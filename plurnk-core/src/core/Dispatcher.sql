@@ -16,7 +16,7 @@ WHERE turn_id = $turn_id
   AND origin = 'model'
   AND source IS NULL
   AND inherited_history = 0
-  AND op NOT IN ('SEND', 'TASK')
+  AND op NOT IN ('SEND', 'NOTE', 'WAIT', 'DONE', 'FAIL')
 ORDER BY sequence, id;
 
 -- PREP: engine_worker_has_undelivered_stream_term

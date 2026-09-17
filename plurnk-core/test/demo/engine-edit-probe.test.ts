@@ -41,7 +41,7 @@ test("demo: locate and edit deep in a large source file — coordinate held, no 
         assert.equal(loop.finalStatus, 200, "loop terminated cleanly");
 
         // (1) COORDINATE: the audit line lands immediately above resolveWorkerProviderIdentity — the located target, not a fabricated spot.
-        const rwpIdx = editedLines.findIndex((l) => /\bresolveWorkerProviderIdentity\s*\(/.test(l) && !l.trimStart().startsWith("//"));
+        const rwpIdx = editedLines.findIndex((line) => /^\s*async\s+resolveWorkerProviderIdentity\s*\(/.test(line));
         assert.ok(rwpIdx > 0, "resolveWorkerProviderIdentity declaration still present");
         assert.match(editedLines[rwpIdx - 1], /#pragma plurnk-once/, "the marker sits immediately above resolveWorkerProviderIdentity (coordinate landed on the located target)");
 

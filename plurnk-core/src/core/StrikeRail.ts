@@ -4,7 +4,7 @@ import type { Db } from "./Db.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
 import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
-// {§engine-rails}: discovery misses and not-ready results are soft, and no answer to a TASK claim strikes
+// {§engine-rails}: discovery misses and not-ready results are soft, and no answer to a completion claim strikes
 // (a completion joins live work, {§completion-joins-live-work}; a claim over settled results
 // defers, {§completion-defers-to-results}). Executor evidence is soft wherever it surfaces,
 // including a completion READ ({§exec-stream}).
@@ -43,7 +43,13 @@ export default class StrikeRail {
         const activity = ops.flatMap((statement, index) => {
             const operation = Object.fromEntries(Object.entries(statement).filter(([key]) =>
                 !SOURCE_DECORATION.has(key)));
-            return [[operation, observedResult(results?.[index])]];
+            const result = results?.[index];
+            // {§engine-cycle-evidence}: NOTE's assigned source coordinate is storage,
+            // not an observation; its complete authored content remains in operation.
+            const evidence = statement.op === "NOTE" && result !== undefined
+                ? Object.fromEntries(Object.entries(result).filter(([key]) => key !== "resource")) as OperationResult
+                : result;
+            return [[operation, observedResult(evidence)]];
         });
         const canonical = JSON.stringify(activity, (_key, value) =>
             value !== null && typeof value === "object" && !Array.isArray(value)

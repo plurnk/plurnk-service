@@ -20,13 +20,13 @@ for (const admission of ["accept", "reject", "deny"] as const) {
             'console.log("js-runtime-witness");',
             "````",
             "",
-            "````TASK",
-            '[{"content":"Observe the result.","status":"waiting"}]',
+            "````WAIT",
+            "Observe the result.",
             "````",
         ].join("\n");
         const mock = new Mock({ contextWindow: 100_000, responses: [
             makeRawMockResponse(source, 10),
-            makeRawMockResponse('````SEND\nResult observed.\n````\n\n````TASK\n[{"content":"Observed the result.","status":"completed"}]\n````', 10),
+            makeRawMockResponse("````SEND\nResult observed.\n````\n\n````DONE\n````", 10),
         ] });
         await withDaemon(mock, async (db, daemon, addr) => {
             const client = await connect(addr);

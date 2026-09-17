@@ -15,7 +15,7 @@ import { makeMockResponse, waitForDb } from "./_rpc.ts";
 process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
 process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "60000";
 
-const task = (status: string) => PlurnkParser.frame("TASK", JSON.stringify([{ content: "Inspect the resource.", status }]));
+const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "");
 const read = (uri: string) => PlurnkParser.frame(`READ (fixture://${resourcePath(uri)}) <1,-1>`, null);
 
 test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource updates refresh a later READ without changing history or waking unrelated workers", { timeout: 20_000 }, async (t) => {
@@ -39,11 +39,11 @@ test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource upd
     }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
     const served = await serveMcpHttp(t, handler);
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        `${read(alpha)}\n\n${read(beta)}\n\n${task("in_progress")}`,
-        task("completed"),
-        task("completed"),
-        `${read(alpha)}\n\n${task("in_progress")}`,
-        task("completed"),
+        `${read(alpha)}\n\n${read(beta)}\n\n${step("NOTE")}`,
+        step("DONE"),
+        step("DONE"),
+        `${read(alpha)}\n\n${step("NOTE")}`,
+        step("DONE"),
     ].map(makeMockResponse) });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules") });

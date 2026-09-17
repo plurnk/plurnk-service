@@ -7,7 +7,7 @@ import { writtenOp } from "@plurnk/plurnk-contracts";
 const statements = (r: ReturnType<typeof PlurnkParser.parse>) => r.items.flatMap((i) => i.kind === "statement" ? [i.statement] : []);
 const errors = (r: ReturnType<typeof PlurnkParser.parse>) => r.items.flatMap((i) => i.kind === "error" ? [i.error] : []);
 const frame = PlurnkParser.frame;
-const task = (status = "in_progress") => frame("TASK", JSON.stringify([{ content: "Continue the task.", status }]));
+const task = (op = "DONE") => frame(op, "Observe the results.");
 const turn = (...blocks: string[]) => [...blocks, task()].join("\n");
 
 test("a scope inside a target is applied with one factual warning per selection", () => {
@@ -18,7 +18,7 @@ test("a scope inside a target is applied with one factual warning per selection"
     assert.equal(errs[0].message, "The scope was inside the target slot; it was applied as the operation scope.");
     assert.equal(errs[0].column, 26);
     const ops = statements(r);
-    assert.deepEqual(ops.map(writtenOp), ["COPY", "READ", "TASK"]);
+    assert.deepEqual(ops.map(writtenOp), ["COPY", "READ", "DONE"]);
     const copy = ops[0];
     assert.ok(copy.op === "COPY");
     assert.equal(copy.source.target.raw, "worker:///src.md");
@@ -40,16 +40,16 @@ test("conflicting scopes on one resource selection are rejected without affectin
         const r = PlurnkParser.parse(turn(frame(header, null)));
         assert.equal(r.unparsedTail, undefined, header);
         assert.equal(errors(r).filter((e) => e.severity === "error").length, 1, header);
-        assert.deepEqual(statements(r).map(writtenOp), ["TASK"], header);
+        assert.deepEqual(statements(r).map(writtenOp), ["DONE"], header);
     }
 });
 
 test("a malformed block never downgrades a conclusion", () => {
-    const r = PlurnkParser.parse([frame("READ (b.ts) <1,-1>", null), frame("READ [+diff] (a.ts) <1,-1>", null), task("completed")].join("\n"));
+    const r = PlurnkParser.parse([frame("READ (b.ts) <1,-1>", null), frame("READ [+diff] (a.ts) <1,-1>", null), task()].join("\n"));
     assert.equal(errors(r).length, 1);
-    assert.deepEqual(statements(r).map(writtenOp), ["READ", "TASK"]);
-    const send = statements(r).find((s) => s.op === "TASK");
-    assert.equal(send?.op, "TASK");
+    assert.deepEqual(statements(r).map(writtenOp), ["READ", "DONE"]);
+    const send = statements(r).find((s) => s.op === "DONE");
+    assert.equal(send?.op, "DONE");
     assert.equal(send?.position.line, 5);
 });
 
@@ -65,7 +65,7 @@ test("bracket metadata belongs to a target, executor, or targetless SEND", () =>
         const r = PlurnkParser.parse(turn(frame(header, null)));
         assert.deepEqual(errors(r), [], header);
         assert.equal(r.unparsedTail, undefined, header);
-        assert.deepEqual(statements(r).map(writtenOp), [op, "TASK"], header);
+        assert.deepEqual(statements(r).map(writtenOp), [op, "DONE"], header);
         const [statement] = statements(r);
         if (!("metadata" in statement)) assert.fail(header);
         assert.equal(statement.target?.raw ?? null, target, header);
@@ -77,18 +77,18 @@ test("bracket metadata belongs to a target, executor, or targetless SEND", () =>
         assert.equal(errors(r)[0].line, 1, header);
         assert.equal(errors(r)[0].message, "unexpected bracket modifier; the fence name selects the executor", header);
         assert.equal(r.unparsedTail, undefined, header);
-        assert.deepEqual(statements(r).map(writtenOp), ["TASK"], header);
+        assert.deepEqual(statements(r).map(writtenOp), ["DONE"], header);
     }
     const r = PlurnkParser.parse(turn(frame("sh (greet.sh)", "body")));
     assert.deepEqual(errors(r), []);
-    assert.deepEqual(statements(r).map(writtenOp), ["sh", "TASK"]);
+    assert.deepEqual(statements(r).map(writtenOp), ["sh", "DONE"]);
 });
 
 test("a second path on a one-path operation names the slot contract", () => {
     const r = PlurnkParser.parse(turn(frame("FIND (/needle/) (src/) <1,-1>", null)));
     assert.equal(errors(r).length, 1);
     assert.equal(errors(r)[0].message, "a heading takes exactly one `(path)` slot; a pattern belongs in the heading as `[{\"pattern\": \"…\"}]`");
-    assert.deepEqual(statements(r).map(writtenOp), ["TASK"]);
+    assert.deepEqual(statements(r).map(writtenOp), ["DONE"]);
 });
 
 test("a plus-prefixed path is still a path, alone or as an extglob", () => {
@@ -101,13 +101,13 @@ test("a plus-prefixed path is still a path, alone or as an extglob", () => {
 });
 
 test("duplicate dispositions are structural failures, never a false unclosed tail", () => {
-    for (const status of ["completed", "in_progress", "waiting", "failed"]) {
-        const r = PlurnkParser.parse([task(status), task()].join("\n"));
+    for (const op of ["DONE", "WAIT", "FAIL"]) {
+        const r = PlurnkParser.parse([task(op), task()].join("\n"));
         assert.equal(r.unparsedTail, undefined);
         assert.equal(errors(r).length, 1);
-        assert.equal(errors(r)[0].message, "A turn permits only one TASK inventory.");
+        assert.equal(errors(r)[0].message, "A turn permits only one lifecycle declaration: WAIT, DONE, or FAIL.");
         assert.equal(errors(r)[0].code, "invalid-turn-structure");
         assert.equal(errors(r)[0].line, 4);
-        assert.deepEqual(statements(r).map(writtenOp), ["TASK"]);
+        assert.deepEqual(statements(r).map(writtenOp), [op]);
     }
 });

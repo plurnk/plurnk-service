@@ -10,8 +10,8 @@ import { openMigrated } from "./_helpers.ts";
 import { waitForDb } from "./_rpc.ts";
 
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
-const next = "```TASK\n[{\"content\":\"Deliver selected resources.\",\"status\":\"in_progress\"}]\n```";
-const done = "```TASK\n[{\"content\":\"Resources delivered.\",\"status\":\"completed\"}]\n```";
+const next = "```NOTE\nDeliver selected resources.\n```";
+const done = "```DONE\n```";
 
 test("{§send-resource-attachments}: outbound A2A snapshots only selected resources and a failed source sends nothing", async () => {
     const remote = await startDemoAgent("direct-message");

@@ -1,8 +1,8 @@
 import test from "node:test";
 import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 import assert from "node:assert/strict";
-import { PlanValue } from "@plurnk/plurnk-contracts";
-import type { TextLineMarker, EditStatement, ReadStatement, KillStatement, DispositionStatement, MatcherBody, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
+import type { TextLineMarker, EditStatement, ReadStatement, KillStatement, NoteStatement, MatcherBody, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
+import { dispositionStmt } from "./_dsl.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryScheme from "./_entry-scheme.ts";
@@ -43,12 +43,12 @@ const killStmt = (opts: { target: ParsedPath; marker?: TextLineMarker | null; ma
     position: { line: 1, column: 1 },
 });
 
-const continuationStmt = (opts: { body?: string | null }): DispositionStatement => ({
+const continuationStmt = (opts: { body?: string | null }): NoteStatement => ({
     metadata: null,
-    op: "TASK", aside: null,
+    op: "NOTE", aside: null,
     target: null,
     lineMarker: null,
-    body: PlanValue.admit(opts.body ?? "Continue the task."),
+    body: opts.body ?? "Continue the task.",
     position: { line: 1, column: 1 },
 });
 
@@ -167,7 +167,7 @@ test("model-origin log KILL atomically retires its target and preserves exact hi
             statement: continuationStmt({ body: "obsolete goals to curate away" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
-        assert.equal(plan.status, 102);
+        assert.equal(plan.status, 200);
         const kill = await engine.dispatch({
             statement: killStmt({ target: urlPath("log", "/1/1/1") }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
@@ -207,25 +207,19 @@ test("model-origin log KILL atomically retires its target and preserves exact hi
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: todo TASK inventory continues and its canonical Plurnk value survives into tx", async () => {
+test("{§note-value} a NOTE retains its literal text and does not claim a lifecycle outcome", async () => {
     const { db, engine, env } = await setup();
     try {
         const plan = await engine.dispatch({
-            statement: continuationStmt({ body: JSON.stringify([{
-                content: "The capital of France remains unverified.",
-                status: "todo",
-            }]) }),
+            statement: continuationStmt({ body: "The capital of France remains unverified." }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
-        assert.equal(plan.status, 102);
+        assert.equal(plan.status, 200);
         const log = await db.test_first_log_entry_for_turn.get<{ op: string; tx: string }>({ turn_id: env.turnId });
-        if (log === undefined) throw new Error("TASK log_entry not found");
-        assert.equal(log.op, "TASK");
+        if (log === undefined) throw new Error("NOTE log_entry not found");
+        assert.equal(log.op, "NOTE");
         const tx = JSON.parse(log.tx) as { body: unknown };
-        assert.deepEqual(tx.body, [{
-                content: "The capital of France remains unverified.",
-                status: "todo",
-        }], "persistence retains the model-native status without ACP projection");
+        assert.equal(tx.body, "The capital of France remains unverified.");
     } finally { await db.close(); }
 });
 
@@ -257,30 +251,25 @@ test("{§completion-defers-to-results}: retiring a failed receipt does not make 
         assert.equal(receipt?.status_rx, 404, "execution evidence retains the failure");
 
         const result = await engine.dispatch({
-            statement: continuationStmt({ body: '[{"content":"Finished.","status":"completed"}]' }),
+            statement: dispositionStmt("DONE"),
             ...env, sequence: 3, origin: "model",
         });
         assert.equal(result.status, 102, "the unseen failure defers the completion; it does not refuse it");
         assert.equal(result.problem, undefined, "a deferral carries no Problem and no strike");
         assert.deepEqual(result.attrs, { failures: 1 });
-        assert.equal(result.detail, "Completion deferred: 1 operation failed in the same turn. The failure is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK.");
+        assert.equal(result.detail, "Completion deferred: 1 operation failed in the same turn. The failure is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response.");
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: a KILL line scope trims one item of a projected TASK row (#335)", async () => {
-    // {§body-projection}: the JSON array spreads one task per line.
+test("{§body-projection} a KILL line scope trims a NOTE like any other log body", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: continuationStmt({ body: JSON.stringify([
-                { content: "Verify the finding.", status: "todo" },
-                { content: "Done: the finished action.", status: "completed" },
-                { content: "Next: the open inquiry.", status: "in_progress" },
-            ]) }),
+            statement: continuationStmt({ body: "Verify the finding.\nThe finished action.\nThe open inquiry." }),
             ...env, sequence: 1, origin: "model",
         });
         const curated = await engine.dispatch({
-            statement: killStmt({ target: urlPath("log", "/1/1/1/TASK"), marker: { marks: [2, 2] } }),
+            statement: killStmt({ target: urlPath("log", "/1/1/1/NOTE"), marker: { marks: [2, 2] } }),
             ...env, sequence: 2, origin: "model",
         });
         assert.equal(curated.status, 200);

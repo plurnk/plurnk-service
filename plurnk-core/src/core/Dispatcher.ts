@@ -1,5 +1,6 @@
 import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
+import Turn from "./Turn.ts";
 import type { BareStatement, CapabilityProjection, EditStatement, FindStatement, ForkStatement, KillStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
@@ -540,15 +541,18 @@ export default class Dispatcher {
                     result = await this.#resourceMutations.edit(statement, schemeCtx, context.editSequence);
                 } else if (statement.op === "SEND" && statement.target === null) {
                     result = await this.#respond(statement, schemeCtx, origin, workerId, loopId);
+                } else if (statement.op === "NOTE") {
+                    await Turn.recordSource(this.#db, turnId, "note", statement.body ?? "", { sequence });
+                    const coordinate = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({ loop_id: loopId, turn_id: turnId });
+                    if (coordinate === undefined) throw new Error(`NOTE has no turn coordinate for ${turnId}`);
+                    result = { status: 200, resource: `note:///${coordinate.loop_seq}/${coordinate.turn_seq}/${sequence}` };
                 } else if (TurnDisposition.is(statement)) {
-                    result = await this.#disposition.handle(statement, {
-                        workspaceId,
-                        workerId,
-                        loopId,
-                        turnId,
-                        sequence,
-                        origin,
-                    });
+                    const response = TurnDisposition.isTerminalOp(statement.op) && statement.lineMarker === null && (statement.body?.length ?? 0) > 0
+                        ? await this.#respond(statement, schemeCtx, origin, workerId, loopId) : null;
+                    result = response !== null && response.status >= 400 ? response : {
+                        ...response,
+                        ...await this.#disposition.handle(statement, { workspaceId, workerId, loopId, turnId, sequence, origin }),
+                    };
                 } else if (
                     statement.op === "KILL" && schemeNameOf(statement.target) === "log"
                 ) {
@@ -622,7 +626,7 @@ export default class Dispatcher {
         });
         onDispatch?.(logEntryId);
         // Proposal lifecycle (SPEC.md {§engine-rails} + {§methods-proposal-resolve}; {§proposal-202-pauses}). When a
-        // side-effecting op returns status 202 (a waiting TASK parks rather
+        // side-effecting op returns status 202 (a WAIT parks rather
         // than proposing — #isProposal), the entry is written
         // state='proposed'; dispatch then PAUSES on a per-entry waiter until
         // resolution arrives via Engine.resolveProposal (from a client-interface resume,
@@ -1214,9 +1218,9 @@ export default class Dispatcher {
     // line is an operation heading is a mis-fenced operation, not a reply: the 2026-09-11
     // dogfood put four operations on the line after their fences, delivered all four to the
     // user as 200 replies, then waited fifteen minutes for receipts that could never come.
-    async #respond(statement: SendStatement, schemeCtx: PlurnkSchemeContext, origin: WriterTier, workerId: number, loopId: number): Promise<DispatchResult> {
+    async #respond(statement: SendStatement | import("@plurnk/plurnk-contracts").DispositionStatement, schemeCtx: PlurnkSchemeContext, origin: WriterTier, workerId: number, loopId: number): Promise<DispatchResult> {
         if (origin === "model") {
-            const heading = this.#operationHeading(statement.body?.raw ?? "", schemeCtx);
+            const heading = this.#operationHeading(typeof statement.body === "string" ? statement.body : statement.body?.raw ?? "", schemeCtx);
             if (heading !== null) {
                 return Dispatcher.#failure(
                     "send-looks-like-operation",
@@ -1263,8 +1267,8 @@ export default class Dispatcher {
         return rows.map((row) => `log:///${row.loop_seq}/${row.turn_seq}/${row.seq}/SEND`);
     }
 
-    // {§send-premature-terminate} The pending set is judged at TASK's dispatch point,
-    // after earlier operations have executed. Every non-SEND/TASK/KILL model operation
+    // {§send-premature-terminate} The pending set is judged at the disposition's dispatch point,
+    // after earlier operations have executed. Every non-SEND/NOTE/lifecycle/KILL model operation
     // requires a new packet, independently of its result or log visibility.
     async #pendingSet(workerId: number, turnId: number): Promise<CompletionEvidence> {
         const pending: CompletionEvidence["pending"] = [];

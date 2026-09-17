@@ -1,4 +1,4 @@
-import { Problems, TurnDisposition } from "@plurnk/plurnk-contracts";
+import { Problems } from "@plurnk/plurnk-contracts";
 // The AG-UI Run endpoint: one client run resolved to its worker, streamed, and settled. Split out of the module, which keeps the delegating entry point.
 import { type IncomingMessage, type ServerResponse } from "node:http";
 import Portal from "./Portal.ts";
@@ -336,9 +336,7 @@ export default class RunHandler {
 
     static #isOriented(input: RunAgentInput, history: ReadonlyArray<Record<string, unknown>>): boolean {
         const durableMessageIds = new Set(history.flatMap((entry) =>
-            entry.origin === "model" && typeof entry.op === "string" && TurnDisposition.isOp(entry.op)
-                ? [`${input.threadId}/plan`]
-                : Translator.isResponse(entry)
+            Translator.isResponse(entry)
                     ? [String(entry.coordinate ?? entry.id)]
                 : []));
         return input.messages.some(({ id }) => durableMessageIds.has(id));

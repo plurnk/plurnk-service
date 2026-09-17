@@ -6,8 +6,6 @@ import parsedPathSchema from "../schema/ParsedPath.json" with { type: "json" };
 import matcherBodySchema from "../schema/MatcherBody.json" with { type: "json" };
 import sendBodySchema from "../schema/SendBody.json" with { type: "json" };
 import resourceSelectionSchema from "../schema/ResourceSelection.json" with { type: "json" };
-import acpPlanSchema from "../schema/AcpPlan.json" with { type: "json" };
-import planSchema from "../schema/Plan.json" with { type: "json" };
 import plurnkStatementSchema from "../schema/PlurnkStatement.json" with { type: "json" };
 import clientStatementSchema from "../schema/ClientStatement.json" with { type: "json" };
 import noticeSchema from "../schema/Notice.json" with { type: "json" };
@@ -96,8 +94,6 @@ export default class Validator {
     static #parsedPath = new CfValidator(parsedPathSchema as Schema, "2020-12");
     static #matcherBody = new CfValidator(matcherBodySchema as Schema, "2020-12");
     static #sendBody = new CfValidator(sendBodySchema as Schema, "2020-12");
-    static #acpPlan = new CfValidator(acpPlanSchema as Schema, "2020-12");
-    static #plan = new CfValidator(planSchema as Schema, "2020-12");
     static #plurnkStatement = Validator.#withRefs(
         plurnkStatementSchema,
         [
@@ -108,7 +104,6 @@ export default class Validator {
             matcherBodySchema,
             sendBodySchema,
             resourceSelectionSchema,
-            planSchema,
         ],
     );
     static #clientStatement = Validator.#withRefs(
@@ -122,7 +117,6 @@ export default class Validator {
             matcherBodySchema,
             sendBodySchema,
             resourceSelectionSchema,
-            planSchema,
         ],
     );
     static #notice = new CfValidator(noticeSchema as Schema, "2020-12");
@@ -234,7 +228,6 @@ export default class Validator {
     );
     static #jsonSchemaValidators = new WeakMap<JsonSchema, CfValidator>();
     static #publicSchemas = [
-        acpPlanSchema,
         aguiDiscoverySchema,
         aguiClientConformanceSchema,
         aguiConformanceKitSchema,
@@ -264,7 +257,6 @@ export default class Validator {
         modelRouteSchema,
         noticeSchema,
         operationResultSchema,
-        planSchema,
         problemDetailsSchema,
         problemProjectionSchema,
         loopPolicySchema,
@@ -317,14 +309,6 @@ export default class Validator {
 
     static validateSendBody(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#sendBody, value);
-    }
-
-    static validateAcpPlan(value: unknown): ValidationResult {
-        return Validator.#validate(Validator.#acpPlan, value);
-    }
-
-    static validatePlan(value: unknown): ValidationResult {
-        return Validator.#validate(Validator.#plan, value);
     }
 
     static validatePlurnkStatement(value: unknown): ValidationResult {

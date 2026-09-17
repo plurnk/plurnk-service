@@ -16,8 +16,8 @@ test("a bare execution of a tool's name fails with a receipt that names the tool
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("```sh\nfail {\"message\":\"boom\"}\n```\n\n```TASK\n[{\"content\":\"waiting on the shell\",\"status\":\"waiting\"}]\n```", 10),
-            makeMockResponse("```SEND\nseen\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+            makeMockResponse("```sh\nfail {\"message\":\"boom\"}\n```\n\n```WAIT\nwaiting on the shell\n```", 10),
+            makeMockResponse("```SEND\nseen\n```\n```DONE\n```", 10),
         ],
     });
     const db = await openMigrated();
@@ -63,8 +63,8 @@ test("an ordinary missing shell command keeps the plain exit-127 receipt", { tim
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("```sh\nno_such_program_zq --help\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
-            makeMockResponse("```SEND\nseen\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+            makeMockResponse("```sh\nno_such_program_zq --help\n```\n\n```WAIT\nwaiting\n```", 10),
+            makeMockResponse("```SEND\nseen\n```\n```DONE\n```", 10),
         ],
     });
     const db = await openMigrated();

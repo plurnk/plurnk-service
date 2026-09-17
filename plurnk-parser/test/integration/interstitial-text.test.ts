@@ -4,24 +4,24 @@ import { PlurnkParser } from "../../src/index.ts";
 import { isExecution } from "@plurnk/plurnk-contracts";
 import { writtenOp } from "@plurnk/plurnk-contracts";
 
-const task = PlurnkParser.frame("TASK", '[{"content":"Observe the result.","status":"completed"}]');
+const task = PlurnkParser.frame("DONE", '[{"content":"Observe the result.","status":"completed"}]');
 const statements = (result: ReturnType<typeof PlurnkParser.parse>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 
 test("{§whitespace-contract}: provider preamble is ignored with or without a separating newline", () => {
     for (const prefix of ["plain preamble\n", "harmless status."]) {
         const result = PlurnkParser.parse(prefix + PlurnkParser.frame("READ (worker:///x)", null) + "\n" + task);
         assert.deepEqual(result.items.map((item) => item.kind), ["statement", "statement"]);
-        assert.deepEqual(statements(result).map(({ op }) => op), ["READ", "TASK"]);
+        assert.deepEqual(statements(result).map(({ op }) => op), ["READ", "DONE"]);
         assert.deepEqual(statements(result)[0].position, prefix.endsWith("\n") ? { line: 2, column: 0 } : { line: 1, column: prefix.length });
     }
 });
 
 test("{§fence-boundary}: ignored preamble does not promote headings or inline body examples", () => {
     const body = "keep inline ### READ_ (worker:///not-an-operation) as body";
-    const result = PlurnkParser.parse("ordinary.## Heading! remains preamble\n" + PlurnkParser.frame("TASK", JSON.stringify([{ content: body, status: "completed" }])));
+    const result = PlurnkParser.parse("ordinary.## Heading! remains preamble\n" + PlurnkParser.frame("DONE", body));
     assert.deepEqual(result.items.map((item) => item.kind), ["statement"]);
     const first = statements(result)[0];
-    assert.equal(first.op === "TASK" ? first.body[0]?.content : undefined, body);
+    assert.equal(first.op === "DONE" ? first.body : undefined, body);
 });
 
 test("{§whitespace-contract}: the topology witness ignores a model-written result between intact operations", () => {
@@ -42,7 +42,7 @@ test("{§whitespace-contract}: the topology witness ignores a model-written resu
     assert.equal(parsed.unparsedTail, undefined);
     assert.deepEqual(parsed.items.map((item) => item.kind), ["statement", "statement", "statement"]);
     const ops = statements(parsed);
-    assert.deepEqual(ops.map(writtenOp), ["jq", "SEND", "TASK"]);
+    assert.deepEqual(ops.map(writtenOp), ["jq", "SEND", "DONE"]);
     assert.equal(isExecution(ops[0]) ? ops[0].body : null, "length");
     assert.equal(ops[1].op === "SEND" ? ops[1].body?.raw : null, "3\nTop-level JSON array.");
     assert.deepEqual(ops[1].position, { line: 6, column: 0 });
@@ -64,7 +64,7 @@ test("{§tier-entrypoints}: every parser tier ignores outside text without chang
             assert.equal(parsed.unparsedTail, undefined);
             assert.deepEqual(parsed.items.map((item) => item.kind), ["statement", "statement", "statement"]);
             const ops = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-            assert.deepEqual(ops.map(({ op }) => op), ["EDIT", "SEND", "TASK"]);
+            assert.deepEqual(ops.map(({ op }) => op), ["EDIT", "SEND", "DONE"]);
             assert.equal(ops[0].op === "EDIT" ? ops[0].body : null, body);
             assert.deepEqual(ops[0].position, { line: 2, column: 0 });
         }
@@ -80,9 +80,9 @@ test("{§turn-shape}: ignored text supplies neither an operation nor a task inve
     assert.deepEqual(missing.items.filter((item) => item.kind === "error"), []);
 });
 
-test("{§disposition-anywhere}: ignored prose neither hides an operation after TASK nor a duplicate TASK", () => {
+test("{§disposition-anywhere}: ignored prose neither hides an operation after DONE nor a duplicate DONE", () => {
     const parsed = PlurnkParser.parse(task + "\nSome prose.\n````READ (late.md)````\nMore prose.");
-    assert.deepEqual(statements(parsed).map(({ op }) => op), ["TASK", "READ"]);
+    assert.deepEqual(statements(parsed).map(({ op }) => op), ["DONE", "READ"]);
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
     const duplicate = PlurnkParser.parse(task + "\nCommentary.\n" + task);
     assert.ok(duplicate.items.some((item) => item.kind === "error" && item.error.code === "invalid-turn-structure"));

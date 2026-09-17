@@ -9,9 +9,9 @@ const fixtureExecutors = (text: string): readonly string[] => [...new Set([...te
 
 const parseOp = (source: string, op: PlurnkStatement["op"]): PlurnkStatement => {
     const parsed = PlurnkParser.parse([
-        source, PlurnkParser.frame("TASK", null),
+        source, PlurnkParser.frame("NOTE", null),
     ].join("\n"), { executors: fixtureExecutors([
-        source, PlurnkParser.frame("TASK", null),
+        source, PlurnkParser.frame("NOTE", null),
     ].join("\n")) });
     const item = parsed.items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === op,

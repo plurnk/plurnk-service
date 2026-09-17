@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { resolve as resolveTokenizer } from "@plurnk/plurnk-mimetypes-tokenizers";
 import PacketWire from "../../src/core/packet-wire.ts";
-import { planValue } from "./_dsl.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 
 // Per-row `tokens` tests assert on bodies/substrings, not tokenizer-specific
@@ -1090,7 +1089,7 @@ test("render guard: every content-emitting op applies the N: convention uniforml
     // The model orients on line numbers, so EVERY op that emits a content body
     // must number textual content regardless of mimetype. Pins the invariant
     // across READ, FIND, EDIT-span,
-    // execution-body, the foisted exec-stream delta (incl. its cross-turn startLine), and TASK/SEND bodies.
+    // execution-body, the foisted exec-stream delta (incl. its cross-turn startLine), and NOTE/SEND bodies.
     // Log rows mirror the model's work as numbered content; they do not reserialize operation headings.
     // No future content branch can silently diverge.
     const base = { coordinate: "1/1/1", origin: "model", status: 200, target: { scheme: "worker", pathname: "/a" } };
@@ -1103,7 +1102,7 @@ test("render guard: every content-emitting op applies the N: convention uniforml
         { label: "EDIT span → pre-numbered span preserved verbatim (editedSpan owns the real offsets)", entry: { ...base, op: "EDIT", rx: { status: 200, span: "5:x\n6:y" } }, want: /5:x\n6:y/, anti: /1:5:/ },
         { label: "execution body → numbered", entry: { ...base, op: "sh", target: { scheme: "sh", pathname: "/1/1/1/sh" }, tx: execTx("ls\npwd") }, want: /1:ls\n2:pwd/ },
         { label: "exec-stream delta → cross-turn startLine continues", entry: { ...base, op: "READ", origin: "_plurnk", target: { scheme: "sh", pathname: "/1/1/1/sh", fragment: "stdout" }, rx: { status: 200, mimetype: "text/stream", content: "out5\nout6", startLine: 5 } }, want: /5:out5\n6:out6/ },
-        { label: "TASK body → the numbered json-result spread (#339), never an operation heading", entry: { ...base, op: "TASK", tx: { body: planValue("read line 2\nthen answer") } }, want: /1:\[\{"content":"read line 2\\nthen answer","status":"in_progress"}\]/, anti: /^## (?:PLAN|TASK)/m },
+        { label: "NOTE body → numbered literal text, never an operation heading", entry: { ...base, op: "NOTE", tx: { body: "read line 2\nthen answer" } }, want: /1:read line 2\n2:then answer/, anti: /^## NOTE/m },
         { label: "SEND body → numbered content, never a SEND heading", entry: { ...base, op: "SEND", tx: { body: "here is the answer" } }, want: /1:here is the answer/, anti: /^## SEND/m },
     ];
     for (const c of cases) {
@@ -1281,7 +1280,7 @@ test("a suppressed program READ receipt keeps its address and readable extent", 
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: "READ", status: 200, initial_folded: [[1, -1]],
         target: { scheme: "ops", pathname: "/1/1" },
-        rx: { content: "\n```TASK\n[{\"content\":\"Initialized\",\"status\":\"in_progress\"}]\n```", mimetype: "text/vnd.plurnk" },
+        rx: { content: "\n```NOTE\nInitialized\n```", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /^### log:\/\/\/1\/1\/1\/READ\n\{"target":"ops:\/\/\/1\/1",/, "the READ receipt identifies the immutable source");
     assert.doesNotMatch(out, /"kind":/, "the canonical path does not duplicate source identity as metadata");
@@ -1306,18 +1305,18 @@ test("a program READ presents exact source, line-numbered", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "_plurnk", op: "READ", status: 200, folded: [],
         target: { scheme: "ops", pathname: "/1/1" },
-        rx: { content: "\n```TASK\n[{\"content\":\"Initialized\",\"status\":\"in_progress\"}]\n```", mimetype: "text/vnd.plurnk" },
+        rx: { content: "\n```NOTE\nInitialized\n```", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /^### log:\/\/\/1\/1\/1\/READ$/m, "the heading owns the canonical address; lines counts the navigable body");
     assert.doesNotMatch(out, /"kind":/, "the open source uses the same canonical leaf without duplicate metadata");
     assert.match(out, /"origin":"_plurnk"/, "the item identifies its actual producer");
-    assert.match(out, /1:\n2:```TASK\n3:\[{"content":"Initialized","status":"in_progress"}\]\n4:```/, "the entire source, including the initial blank line, remains line-addressable");
+    assert.match(out, /1:\n2:```NOTE\n3:Initialized\n4:```/, "the entire source, including the initial blank line, remains line-addressable");
 });
 
 test("{§body-projection}: scoped program READs bypass previews, not curation or output withholding", () => {
     const source = [
         ...Array.from({ length: 20 }, (_, index) => `\`\`\`\`READ (file-${index}.md) <!-- ${"orientation ".repeat(20)}-->\`\`\`\``),
-        '````TASK\n[{"content":"Address the message.","status":"in_progress"}]\n````',
+        "````NOTE\nAddress the message.\n````",
     ].join("\n\n");
     const lines = source.split("\n");
     const numbered = lines.map((line, index) => `${String(index + 1).padStart(String(lines.length).length)}:${line}`);
@@ -1351,20 +1350,20 @@ test("initialization renders a program READ alongside its other real operation o
             tags: ["_plurnk", "init"], rx: { results: [] },
         },
         {
-            coordinate: "1/1/2", origin: "_plurnk", op: "TASK", status: 102, folded: [],
-            tags: ["_plurnk", "init"], tx: { body: planValue("Address the message.") },
+            coordinate: "1/1/2", origin: "_plurnk", op: "NOTE", status: 200, folded: [],
+            tags: ["_plurnk", "init"], tx: { body: "Address the message." },
         },
         {
             coordinate: "1/1/3", origin: "_plurnk", op: "READ", status: 200, folded: [],
             tags: ["_plurnk", "init"], target: { scheme: "ops", pathname: "/1/1" },
             rx: { content: `\`\`\`FIND (*)\`\`\`
-\`\`\`TASK
-${JSON.stringify(planValue("Address the message."))}
+\`\`\`NOTE
+Address the message.
 \`\`\``, mimetype: "text/vnd.plurnk" },
         },
     ], tok);
     assert.match(out, /^### log:\/\/\/1\/1\/1\/FIND$/m, "the survey has an operation coordinate");
-    assert.match(out, /^### log:\/\/\/1\/1\/2\/TASK$/m, "the continuation has an operation coordinate");
+    assert.match(out, /^### log:\/\/\/1\/1\/2\/NOTE$/m, "the note has an operation coordinate");
     assert.match(out, /"origin":"_plurnk"/, "the operations preserve their kernel authorship");
     assert.match(out, /^### log:\/\/\/1\/1\/3\/READ$/m, "Turn 0's exact program arrives as an ordinary READ");
     assert.doesNotMatch(out, /"kind":/, "Turn 0 uses the same address-owned identity");
@@ -1466,23 +1465,23 @@ test("{§log-wire-format}: body coordinates prevent source Markdown from creatin
     assert.equal(parseLogRecords(out).length, 1, "numbered source headings remain body content");
 });
 
-test("TASK/READ/FIND bodies bypass the ordinary preview", () => {
+test("NOTE/READ/FIND bodies bypass the ordinary preview", () => {
     const long = Array.from({ length: 30 }, (_, i) => `line ${i + 1} of a runaway emission`).join("\n");
 
-    // A short TASK renders whole — no behavior change for a well-formed op.
+    // A short NOTE renders whole — no behavior change for a well-formed op.
     const shortOut = PacketWire.renderLog([
-        { coordinate: "1/1/1", origin: "model", op: "TASK", status: 200, target: { scheme: null, pathname: "" }, tx: { body: planValue("Tidy context, then read the loader.") } },
+        { coordinate: "1/1/1", origin: "model", op: "NOTE", status: 200, target: { scheme: null, pathname: "" }, tx: { body: "Tidy context, then read the loader." } },
     ], tok);
-    assert.match(shortOut, /Tidy context, then read the loader\./, "a short TASK renders in full");
+    assert.match(shortOut, /Tidy context, then read the loader\./, "a short NOTE renders in full");
     assert.doesNotMatch(shortOut, /"chunk"/, "a complete body needs no chunk extent");
 
-    // TASK is the model's task inventory. Its visible projection is
+    // NOTE is the model's working memory. Its visible projection is
     // complete even when it exceeds the ordinary body preview.
     const planOut = PacketWire.renderLog([
-        { coordinate: "1/1/1", origin: "model", op: "TASK", status: 200, target: { scheme: null, pathname: "" }, tx: { body: planValue(long) } },
+        { coordinate: "1/1/1", origin: "model", op: "NOTE", status: 200, target: { scheme: null, pathname: "" }, tx: { body: long } },
     ], tok);
-    assert.match(planOut, /line 30 of a runaway/, "the model receives its complete TASK inventory");
-    assert.doesNotMatch(planOut, /"chunk"/, "a TASK never carries an ordinary preview cut");
+    assert.match(planOut, /line 30 of a runaway/, "the model receives its complete NOTE text");
+    assert.doesNotMatch(planOut, /"chunk"/, "a NOTE never carries an ordinary preview cut");
 
     // System-narrated environment spans have no intrinsic receipt bound.
     const numberedSpan = Array.from({ length: 30 }, (_, i) => `${i + 1}:span line ${i + 1}`).join("\n");
@@ -1512,15 +1511,13 @@ test("TASK/READ/FIND bodies bypass the ordinary preview", () => {
     assert.doesNotMatch(pushedRead, /"chunk"/, "provenance does not introduce a hidden READ bound");
 });
 
-test("{§body-projection}: TASK reaches the next model packet without ACP priority or envelope", () => {
-    const plan = [
-        { content: "Verify the baseline schema.", status: "todo" },
-    ];
+test("{§body-projection}: NOTE reaches the next model packet as literal authored text", () => {
+    const note = "Verify the baseline schema.";
     const out = PacketWire.renderLog([
-        { coordinate: "1/1/1", origin: "model", op: "TASK", status: 200, target: { scheme: null, pathname: "" }, tx: { body: plan } },
+        { coordinate: "1/1/1", origin: "model", op: "NOTE", status: 200, target: { scheme: null, pathname: "" }, tx: { body: note } },
     ], tok);
 
-    assert.match(out, /"status":"todo"/, "the model sees its authored task status in the durable log");
+    assert.match(out, /1:Verify the baseline schema\./, "the model sees its authored working memory in the durable log");
     assert.doesNotMatch(out, /"priority"|"entries"/, "ACP framing is absent from model packet materialization");
 });
 

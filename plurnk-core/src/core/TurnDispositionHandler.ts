@@ -8,7 +8,7 @@ import Results from "./results.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 
-const observedResultsGuidance = "If your final response has already been sent and these results require no further work or response revision, submit only TASK.";
+const observedResultsGuidance = "If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response.";
 
 export interface PacketBoundaries {
     operations: Array<{ op: string; tx: string | null }>;
@@ -63,25 +63,20 @@ export default class TurnDispositionHandler {
         origin: WriterTier;
     }): Promise<DispatchResult> {
         const { workerId, loopId, turnId } = ctx;
-        const intent = TurnDisposition.intent(statement.body);
+        const intent = TurnDisposition.intent(statement);
         const status = TurnDisposition.status(statement);
-        // {§send-wait-scope} — TASK takes no scope: a wait joins live work, and a wake later with
+        // {§send-wait-scope} — lifecycle declarations take no scope: a wait joins live work, and a wake later with
         // nothing in flight is a schedule rule.
         if (statement.lineMarker !== null) {
             return this.#failure("scope-unsupported", 400,
-                "TASK takes no scope. A waiting inventory joins live work; to wake later with nothing in flight, add a rule with the schedule family.");
+                `${statement.op} takes no scope. WAIT joins live work; to wake later with nothing in flight, add a rule with the schedule family.`);
         }
-        if (intent === "missing") {
-            return this.#failure("task-inventory-missing", 409,
-                "No tasks were supplied. Submit a nonempty TASK inventory.");
-        }
-        if (intent === "continue" || intent === "todo") return { status: 102 };
 
         // {§wait-obligation-matrix} decides a join: live work parks the loop, nothing in flight continues.
         if (intent === "wait") {
             if (await this.#hasLiveWork(workerId)) {
                 if (!await this.#lifecycle.park(loopId)) {
-                    return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when TASK attempted to wait.");
+                    return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when WAIT attempted to wait.");
                 }
                 return { status: 202, attrs: { waiting: -1 } };
             }
@@ -115,21 +110,21 @@ export default class TurnDispositionHandler {
         if (status === 200) {
             const finished = await this.#lifecycle.finish(
                 loopId,
-                TerminalResult.success(null),
+                TerminalResult.success(statement.body),
             );
             return this.#statusResult(
                 finished !== null ? 200 : await this.#lifecycle.status(loopId),
                 "loop-already-terminal",
-                "The loop was already terminal when TASK attempted to conclude it.",
+                "The loop was already terminal when DONE attempted to conclude it.",
             );
         }
         if (status === 499) {
-            const reason = ErrorDetail.preview(statement.body.filter(({ status: state }) => state === "failed").map(({ content }) => content).join("\n"));
+            const reason = ErrorDetail.preview(statement.body ?? "");
             const failure = this.#failure(
                 "scope-abandoned",
                 499,
-                "All tasks in the final inventory failed.",
-                {},
+                "The model abandoned the work.",
+                statement.body === null || statement.body.length === 0 ? {} : { content: statement.body, mimetype: "text/markdown" },
                 {
                     ...(reason.length === 0 ? {} : { reason }),
                     retryable: false,
@@ -140,15 +135,15 @@ export default class TurnDispositionHandler {
                 turn_id: turnId,
             });
             if (seqs === undefined) {
-                throw new Error(`TASK: no coordinate for loop=${loopId} turn=${turnId}`);
+                throw new Error(`FAIL: no coordinate for loop=${loopId} turn=${turnId}`);
             }
             Results.attachInstance(
                 failure,
-                `log:///${seqs.loop_seq}/${seqs.turn_seq}/${ctx.sequence}/TASK`,
+                `log:///${seqs.loop_seq}/${seqs.turn_seq}/${ctx.sequence}/FAIL`,
             );
             const finished = await this.#lifecycle.finish(loopId, failure);
-            if (finished === null) return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when TASK attempted to abandon it.");
-            await this.#cancelDescendants?.(workerId, reason || "all tasks in the parent inventory failed");
+            if (finished === null) return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when FAIL attempted to abandon it.");
+            await this.#cancelDescendants?.(workerId, reason || "the parent abandoned the work");
             return failure;
         }
         return { status };
@@ -170,7 +165,6 @@ export default class TurnDispositionHandler {
         { workerId, loopId, turnId }: { workerId: number; loopId: number; turnId: number },
         verb: "Completion" | "Abandonment",
     ): Promise<DispatchResult | null> {
-        const concludes = verb === "Completion" ? "complete" : "conclude";
         // {§completion-defers-to-messages} — a message that arrived during this turn is published
         // by the next packet; concluding over it would answer a conversation the model has not
         // seen. Not the model's fault, so a deferral, never a strike.
@@ -179,7 +173,7 @@ export default class TurnDispositionHandler {
             return {
                 status: 102,
                 detail: `${verb} deferred: ${undelivered} new message${undelivered === 1 ? "" : "s"} arrived during this turn. `
-                    + `${undelivered === 1 ? "It is" : "They are"} in this packet; a response and a TASK now ${concludes}.`,
+                    + `${undelivered === 1 ? "It is" : "They are"} in this packet; address ${undelivered === 1 ? "it" : "them"} before concluding.`,
             };
         }
         const { pending, receipts } = await this.#pendingSet(workerId, turnId);
@@ -187,9 +181,9 @@ export default class TurnDispositionHandler {
         if (verb === "Completion" && live.length > 0) {
             // {§completion-joins-live-work} — a completion over live work is the join a scope's
             // exit implies: the loop parks until the work settles, the wake carries what concluded,
-            // and the next TASK decides with it in the packet. Never a strike.
+            // and the next disposition decides with it in the packet. Never a strike.
             if (!await this.#lifecycle.park(loopId)) {
-                return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when TASK attempted to conclude it.");
+                return this.#statusResult(await this.#lifecycle.status(loopId), "loop-already-terminal", "The loop was already terminal when DONE attempted to conclude it.");
             }
             return { status: 202, detail: TurnDispositionHandler.joinDetail(live), attrs: { waiting: -1, pending: [...pending] } };
         }

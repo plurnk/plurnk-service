@@ -19,7 +19,7 @@ const providerAt = (capacity: number | null, responses: MockResponse[] = [], mod
         responses,
     });
 const response = (reported = 0): MockResponse => ({
-    assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed", "done")] },
+    assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE", "done")] },
     usage: { inputTokens: reported, totalTokens: reported },
 });
 

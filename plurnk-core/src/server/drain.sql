@@ -86,7 +86,7 @@ ORDER BY ordinal ASC;
 -- PREP: drain_unpublished_arrivals_for_loop
 -- {§completion-defers-to-messages}: the messages that arrived after the loop began and are not
 -- yet published. Ordinal 1 is the loop's assignment, published by the first turn boundary before
--- any model TASK can exist, so it never defers a completion.
+-- any model disposition can exist, so it never defers a completion.
 SELECT id, ordinal
 FROM loop_messages
 WHERE loop_id = $loop_id AND ordinal > 1 AND log_entry_id IS NULL

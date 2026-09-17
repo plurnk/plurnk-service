@@ -2,8 +2,7 @@ import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // The projection — plurnk's log-shaped wire onto AG-UI's event vocabulary. PURE: one daemon
 // notification in, zero-or-more AG-UI events out, with per-worker turn tracking as the only state.
 // The mapping ({§agui-projection}):
-//   log/entry op=TASK (model) → ACTIVITY_SNAPSHOT (the latest task inventory)
-//   log/entry op=SEND  (model)  → optional standard reasoning lifecycle, then TEXT_MESSAGE triple
+//   log/entry response (model) → optional standard reasoning lifecycle, then TEXT_MESSAGE triple
 //                                 (assistant speech; the signal rides plurnk.send)
 //   log/entry rejected emission → forensic row only, no conversational event
 //   log/entry other    (model)  → TOOL_CALL_START/ARGS/END + TOOL_CALL_RESULT (an op row IS a
@@ -18,7 +17,6 @@ import { TurnDisposition } from "@plurnk/plurnk-contracts";
 
 import {
     EventType,
-    type ActivityMessage,
     type AguiEvent,
     type AssistantMessage,
     type LogEntryNotification,
@@ -28,7 +26,7 @@ import {
     type UserMessage,
 } from "./types.ts";
 import { derivationActivity } from "./AguiPlus.ts";
-import { AcpPlanValue, Validator, type AcpPlan, type ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
+import { Validator, type ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
 
 export interface TranslatorContinuation {
     readonly currentTurn: number | null;
@@ -39,7 +37,6 @@ export interface TranslatorContinuation {
 export default class Translator {
     #threadId: string;
     #runId: string;   // AG-UI's Run id (echoed from RunAgentInput.runId) — the standard face
-    #planMessageId: string;
     #currentTurn: number | null = null;
     #stepOpen = false;
     #modelWorkerId: number | null;
@@ -56,7 +53,6 @@ export default class Translator {
     }) {
         this.#threadId = args.threadId;
         this.#runId = args.runId;
-        this.#planMessageId = `${args.threadId}/plan`;
         this.#currentTurn = args.continuation?.currentTurn ?? null;
         this.#modelWorkerId = args.continuation?.modelWorkerId ?? args.modelWorkerId ?? null;
         this.#completedReasoning = new Map(
@@ -118,19 +114,10 @@ export default class Translator {
         return events;
     }
 
-    static projectRow(entry: Record<string, unknown>): { entry: Record<string, unknown>; plan: AcpPlan | null } {
-        const projection = typeof entry.op === "string" && TurnDisposition.isOp(entry.op)
-            ? Translator.#projectPlanTransaction(entry.tx)
-            : null;
-        return projection === null
-            ? { entry, plan: null }
-            : { entry: { ...entry, tx: projection.tx }, plan: projection.plan };
-    }
-
     logEntry(n: LogEntryNotification): AguiEvent[] {
         const e = n.entry;
         const events: AguiEvent[] = [];
-        const { entry: clientEntry, plan } = Translator.projectRow(e);
+        const clientEntry = e;
         // {§agui-topology-scope} — the workspace broadcast carries EVERY worker's rows (workers, the
         // plurnk worker, siblings); only the THREAD's model worker projects onto the core vocabulary.
         // Everything else rides plurnk.row/plurnk.ambient — visible to rich clients as topology,
@@ -143,9 +130,7 @@ export default class Translator {
         const foreign = this.#modelWorkerId !== null && typeof workerId === "number" && workerId !== this.#modelWorkerId;
         // {§agui-row-channel} — the complete client-facing row rides plurnk.row alongside the core projection:
         // curation metadata, durable tags, coordinates — everything clients render that
-        // the core vocabulary can't hold. TASK bodies use the same ACP projection as PLAN activity;
-        // native extensions do not cross this standards boundary. Rich clients render from
-        // plurnk.row; generic clients never see the difference.
+        // the core vocabulary can't hold. Rich clients render the original operations.
         const row = { type: EventType.CUSTOM, name: "plurnk.row", value: clientEntry } as const;
         if (foreign) {
             events.push(row);
@@ -156,7 +141,9 @@ export default class Translator {
         // TEXT_MESSAGE. Delay that one mirror until after the standard reasoning
         // lifecycle so both generic and family clients observe reasoning before speech.
         const response = Translator.isResponse(e);
-        const delayedSendRow = e.origin === "model" && (response || plan !== null);
+        const lifecycle = typeof e.op === "string" && TurnDisposition.isOp(e.op);
+        const reasoningRow = response || lifecycle || e.op === "NOTE";
+        const delayedSendRow = e.origin === "model" && reasoningRow;
         if (!delayedSendRow) events.push(row);
         if (typeof e.turn_id === "number") events.push(...this.#enterTurn(e.turn_id));
         if (e.origin !== "model") {
@@ -164,27 +151,20 @@ export default class Translator {
             return events;
         }
         const id = e.coordinate ?? String(e.id);
-        if (response || plan !== null) {
+        if (reasoningRow) {
             const text = Translator.#txBody(e.tx);
             events.push(...Translator.#readableReasoningEvents(id,
                 Translator.#claimReasoning(this.#completedReasoning, e.turn_id, e.reasoning)));
             events.push(row);
-            if (plan !== null) {
-                events.push({
-                    type: EventType.ACTIVITY_SNAPSHOT,
-                    messageId: this.#planMessageId,
-                    activityType: "PLAN",
-                    content: plan,
-                    replace: true,
-                });
+            if (response) {
+                events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "assistant" });
+                events.push({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: id, delta: text });
+                events.push({ type: EventType.TEXT_MESSAGE_END, messageId: id });
+            }
+            if (response || lifecycle) {
                 events.push({ type: EventType.CUSTOM, name: "plurnk.send", value: { signal: e.signal, status: e.status_rx, coordinate: e.coordinate } });
                 return events;
             }
-            events.push({ type: EventType.TEXT_MESSAGE_START, messageId: id, role: "assistant" });
-            if (text.length > 0) events.push({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: id, delta: text });
-            events.push({ type: EventType.TEXT_MESSAGE_END, messageId: id });
-            events.push({ type: EventType.CUSTOM, name: "plurnk.send", value: { signal: e.signal, status: e.status_rx, coordinate: e.coordinate } });
-            return events;
         }
         if (e.op === null) {
             const kind = Translator.#modelArtifactKind(e.attrs);
@@ -294,14 +274,11 @@ export default class Translator {
         return events;
     }
 
-    // {§agui-replay} — the workspace log as AG-UI history: model inventories retain their
-    // activity identity and model SENDs become assistant messages. Everything else
+    // {§agui-replay} — delivered model responses become assistant messages. Everything else
     // stays reachable through live plurnk.row rendering. Wire rows arrive as the
     // log.read projection (tx parsed).
     replay(entries: Array<Record<string, unknown>>, currentUser?: UserMessage): AguiEvent[] {
-        const messages: Array<ActivityMessage | AssistantMessage | ReasoningMessage | UserMessage> = [];
-        let currentPlan: ActivityMessage | null = null;
-        let currentPlanPosition = 0;
+        const messages: Array<AssistantMessage | ReasoningMessage | UserMessage> = [];
         const deliveredReasoning = new Map<number, string[]>();
         const chronological = entries.toSorted((left, right) => {
             const leftId = typeof left.id === "number" ? left.id : Number.MAX_SAFE_INTEGER;
@@ -318,19 +295,9 @@ export default class Translator {
             }
             if (e.origin !== "model") continue;
             const text = Translator.#txBody(e.tx);
-            if (e.op === "SEND" || typeof e.op === "string" && TurnDisposition.isOp(e.op)) {
+            if (e.op === "SEND" || e.op === "NOTE" || typeof e.op === "string" && TurnDisposition.isOp(e.op)) {
                 const reasoning = Translator.#claimReasoning(deliveredReasoning, e.turn_id, e.reasoning);
                 if (reasoning.length > 0) messages.push({ id: `${id}/reasoning`, role: "reasoning", content: reasoning });
-            }
-            if (typeof e.op === "string" && TurnDisposition.isOp(e.op)) {
-                currentPlan = {
-                    id: this.#planMessageId,
-                    role: "activity",
-                    activityType: "PLAN",
-                    content: Translator.#txPlan(e.tx),
-                };
-                currentPlanPosition = messages.length;
-                continue;
             }
             if (Translator.isResponse(e)) {
                 const message: AssistantMessage = { id, role: "assistant", content: text };
@@ -342,7 +309,6 @@ export default class Translator {
                 }
             }
         }
-        if (currentPlan !== null) messages.splice(currentPlanPosition, 0, currentPlan);
         if (currentUser !== undefined && !messages.some(({ id }) => id === currentUser.id)) {
             messages.push(currentUser);
         }
@@ -406,7 +372,7 @@ export default class Translator {
     }
 
     // {§agui-readable-reasoning} Durable reasoning precedes the turn's first
-    // speech or inventory projection when live delivery has not already supplied it.
+    // speech or note projection when live delivery has not already supplied it.
     static #readableReasoningEvents(sendId: string, value: unknown): AguiEvent[] {
         if (typeof value !== "string" || value.length === 0) return [];
         const messageId = `${sendId}/reasoning`;
@@ -428,38 +394,17 @@ export default class Translator {
         return kind === "emissionAttempt" ? kind : null;
     }
 
-    static #projectPlanTransaction(tx: unknown): { plan: AcpPlan; tx: Record<string, unknown> } {
-        let parsed: unknown = tx;
-        if (typeof tx === "string") {
-            try {
-                parsed = JSON.parse(tx);
-            } catch (error) {
-                throw new TypeError("A TASK log row carries malformed transaction JSON.", { cause: error });
-            }
-        }
-        if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-            throw new TypeError("A TASK log row carries a noncanonical transaction.");
-        }
-        const transaction = parsed as Record<string, unknown>;
-        try {
-            const plan = AcpPlanValue.project(transaction.body);
-            return { plan, tx: { ...transaction, body: plan } };
-        } catch (error) {
-            throw new TypeError("A TASK log row carries a noncanonical Plurnk Plan body.", { cause: error });
-        }
-    }
-
-    static #txPlan(tx: unknown): AcpPlan {
-        return Translator.#projectPlanTransaction(tx).plan;
-    }
-
     // {§loop-response-messages}: share admission with reattach orientation.
     static isResponse(entry: Record<string, unknown>): boolean {
-        if (entry.origin !== "model" || entry.op !== "SEND"
-            || typeof entry.status_rx !== "number" || entry.status_rx < 200 || entry.status_rx >= 300
-            || entry.source != null || entry.inherited_history === 1) return false;
+        if (entry.op !== "SEND" && entry.op !== "DONE" && entry.op !== "FAIL") return false;
+        if (entry.origin !== "model" || entry.source != null || entry.inherited_history === 1) return false;
         const tx: unknown = typeof entry.tx === "string" ? JSON.parse(entry.tx) : entry.tx;
-        return tx !== null && typeof tx === "object" && (tx as { target?: unknown }).target == null;
+        if (tx === null || typeof tx !== "object" || (tx as { target?: unknown }).target != null) return false;
+        if (entry.op === "SEND") return typeof entry.status_rx === "number" && entry.status_rx >= 200 && entry.status_rx < 300;
+        if (Translator.#txBody(entry.tx).length === 0) return false;
+        if (typeof entry.op !== "string" || !TurnDisposition.isTerminalOp(entry.op)) return false;
+        const rx: unknown = typeof entry.rx === "string" ? JSON.parse(entry.rx) : entry.rx;
+        return rx !== null && typeof rx === "object" && Array.isArray((rx as { recipients?: unknown }).recipients);
     }
 
     // The model-facing textual statement body out of the tx. The real

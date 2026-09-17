@@ -7,7 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderErrorKind, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import type { CapabilityPolicy, Notice } from "@plurnk/plurnk-contracts";
-import type { BareStatement, PlurnkStatement, ReadStatement, UrlPath, FindStatement, DispositionStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, PlurnkStatement, ReadStatement, UrlPath, FindStatement } from "@plurnk/plurnk-contracts";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
@@ -709,7 +709,7 @@ export default class TurnRunner {
         const systemCtx = this.#schemeContext(args, initializationTurn?.id ?? modelTurn!.id);
         const initializationStatements: InternalTurnStatement[] = [];
         // {§worker-initialization-entry} — the worker's first turn is the worked
-        // example itself: the actual orienting operations and an ordinary TASK.
+        // example itself: the actual orienting operations and an extracted NOTE.
         // {§turn0-agents-stunt} — the project AGENTS.md (materialized by LoopDocs as
         // worker:///_plurnk/agents.md) gets one foisted READ on the worker's first
         // loop, so local repo guidance is visible turn-0 content. Global policy
@@ -798,7 +798,7 @@ export default class TurnRunner {
     }
 
     // {§worker-initialization-entry} — the worker's first turn is the worked example
-    // itself: the actual orienting operations and an ordinary TASK, executed as a
+    // itself: the actual orienting operations and an extracted NOTE, executed as a
     // complete turn before the model boundary.
     async #runInitializationTurn(args: TurnArgs, container: TurnContainer, initializationTurn: TurnRow): Promise<void> {
         const { provider, workspaceId, workerId, loopId, onDispatch, onSettled } = args;
@@ -814,16 +814,10 @@ export default class TurnRunner {
         if (filesItems !== null) { // {§actor-boundary-catalog-preview} — once per worker
             initializationStatements.push(...await this.#catalogSurveys(args, container, filesItems));
         }
-        const task: DispositionStatement = {
-            op: "TASK", aside: null, target: null, metadata: null, lineMarker: null,
-            body: [{ content: "Address the message.", status: "in_progress" }],
-            position: UNKNOWN_POSITION,
-        };
         const pathname = `/${loopSequence}/${initializationTurn.sequence}`;
-        await Turn.recordSource(this.#db, initializationTurn.id, "reasoning", ReasoningView.initialSource());
-        // {§reasoning-initial-read} — the pattern READ needs a text/plain projection to run the regex.
-        const pluck = await this.#mimetypes.getHandler("text/plain") !== null;
-        const reasoningRead = ReasoningView.initialRead(provider, loopSequence, initializationTurn.sequence, pluck);
+        const reasoning = ReasoningView.initialSource();
+        await Turn.recordSource(this.#db, initializationTurn.id, "reasoning", reasoning);
+        const reasoningRead = ReasoningView.initialRead(provider, loopSequence, initializationTurn.sequence);
         if (reasoningRead !== null) initializationStatements.push(reasoningRead);
         initializationStatements.push({
             op: "READ", aside: "inspect this turn's emission", matcher: null, body: null, metadata: null,
@@ -835,11 +829,10 @@ export default class TurnRunner {
         });
         // {§message-arrival} — the message reaches the model as an inbound SEND in the first
         // model turn; initialization does not READ it a second time.
-        initializationStatements.push(task);
         const admittedInitializationStatements = initializationStatements.filter((statement) =>
             this.#capabilities.allowsAcross(statement, workspaceId, initializationPolicies));
-        const source = TurnOps.renderInternal(admittedInitializationStatements);
-        const admitted = TurnOps.parseInternal(source);
+        const source = admittedInitializationStatements.length === 0 ? "" : TurnOps.renderInternal(admittedInitializationStatements);
+        const admitted = [...PlurnkParser.parseReasoningNotes(reasoning), ...(source.length === 0 ? [] : TurnOps.parseInternal(source))];
         const result = await this.executeAdmittedTurn({
             statements: admitted,
             source,
@@ -855,7 +848,7 @@ export default class TurnRunner {
             onSettled,
         });
         if (result.status !== TURN_STATUS_IMPLICIT_CONTINUE) {
-            throw new Error(`initialization TASK returned ${result.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
+            throw new Error(`initialization returned ${result.status}; expected ${TURN_STATUS_IMPLICIT_CONTINUE}`);
         }
     }
 
@@ -998,7 +991,7 @@ export default class TurnRunner {
         const facts: PacketFacts = { turnId, seq, gitStatus, notices, transientOpenLogEntryId: container.transientOpenLogEntryId, promptProjection: "automatic" };
         let packet = await this.#buildPacket(args, facts);
         // {§context-output-admission} — output admission changes no operation
-        // outcome, authored inventory, or turn identity.
+        // outcome, authored memory, or turn identity.
         if (await this.#packets.admitOutput(packet, turnId)) packet = await this.#buildPacket(args, facts);
         return { ...facts, createdTurnIds: container.createdTurnIds, loopSeq: container.loopSequence, systemCtx, nextActionIndex, packet };
     }
@@ -1778,6 +1771,15 @@ export default class TurnRunner {
                 parseErrors.push({ message: tail.reason, line: tail.from.line, column: tail.from.column, source: "grammar" });
             }
         }
+        const reasoning = assistant.reasoning ?? null;
+        const notes = reasoning === null ? [] : PlurnkParser.parseReasoningNotes(reasoning);
+        ops.unshift(...notes);
+        if (notes.length > 0) {
+            // A reasoned NOTE is an operation even when the content contains no program.
+            for (let index = parseErrors.length - 1; index >= 0; index--) {
+                if (parseErrors[index]!.message === PlurnkParser.NO_VALID_OPERATION) parseErrors.splice(index, 1);
+            }
+        }
         const sourceStatementCount = ops.filter(({ position }) => position.line > 0).length;
         const dispositions = ops.filter(TurnDisposition.is);
         const trustworthyBoundary = dispositions.length <= 1 && !hasUnparsedTail;
@@ -1802,7 +1804,6 @@ export default class TurnRunner {
                 && sourceStatementCount > 0
                 && recoverableParseErrors.length === parseErrors.length
             );
-        const reasoning = assistant.reasoning ?? null;
         return {
             packetAssistant: { content: assistant.content, ops, reasoning },
             sourceBacked: preParsedOps === undefined,
@@ -1812,7 +1813,7 @@ export default class TurnRunner {
             emptyTurn,
             parseNotices,
             // The ANTLR model-turn parser is authoritative. At least one source
-            // operation is required; TASK omission continues silently. Bounded
+            // operation is required; lifecycle omission continues silently. Bounded
             // statement failures become durable operation results.
             // Boundary loss and an unparsed tail still reject
             // wholesale. Pre-parsed ops are Mock's trusted test seam.

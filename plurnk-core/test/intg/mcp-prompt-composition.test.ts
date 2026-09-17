@@ -1,3 +1,4 @@
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { resolve } from "node:path";
@@ -12,7 +13,7 @@ import { openMigrated } from "./_helpers.ts";
 import { waitForDb } from "./_rpc.ts";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
-const task = (status: string) => `\`\`\`TASK\n[{"content":"Inspect the prompt media.","status":"${status}"}]\n\`\`\``;
+const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "");
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
 
 class PromptReader extends Mock {
@@ -48,10 +49,10 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             return server;
         }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
         const provider = new PromptReader({ contextWindow: 1_000_000, inputModalities: modalities, responses: [
-            turn(`\`\`\`READ (fixture:///prompts/inspect) <1,-1>\n\`\`\`\n\n${task("in_progress")}`),
-            turn(`\`\`\`READ ($RESOURCE#bytes) <1,3>\n\`\`\`\n\n${task("in_progress")}`),
-            turn(task("in_progress")),
-            turn(task("completed")),
+            turn(`\`\`\`READ (fixture:///prompts/inspect) <1,-1>\n\`\`\`\n\n${step("NOTE")}`),
+            turn(`\`\`\`READ ($RESOURCE#bytes) <1,3>\n\`\`\`\n\n${step("NOTE")}`),
+            turn(step("NOTE")),
+            turn(step("DONE")),
         ] });
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules") });

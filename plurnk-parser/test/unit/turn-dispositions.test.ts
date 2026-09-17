@@ -1,52 +1,49 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "../../src/index.ts";
-import { Validator } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, Validator } from "@plurnk/plurnk-contracts";
 
-for (const status of ["todo", "in_progress", "waiting", "completed", "failed"]) {
-    test(`TASK ${status} is durable inventory, not an executor or SEND alias`, () => {
-        const body = JSON.stringify([{ content: "Task state.", status }]);
-        const result = PlurnkParser.parse(`\`\`\`READ (notes.md)\`\`\`
-\`\`\`TASK\n${body}\n\`\`\``);
+for (const [op, intent, status] of [["WAIT", "wait", 202], ["DONE", "complete", 200], ["FAIL", "fail", 499]] as const) {
+    test(`{§turn-disposition} ${op} determines lifecycle independently of its literal body`, () => {
+        for (const body of [null, "Inspect the evidence.", "{broken JSON", "[]"]) {
+            const result = PlurnkParser.parse(PlurnkParser.frame(op, body));
+            assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+            const statement = result.items[0];
+            assert.ok(statement?.kind === "statement" && TurnDisposition.is(statement.statement));
+            const value = statement.statement;
+            assert.equal(value.op, op);
+            assert.equal(value.body, body);
+            assert.equal(TurnDisposition.intent(value), intent);
+            assert.equal(TurnDisposition.status(value), status);
+            assert.equal(Validator.validatePlurnkStatement(value).valid, true);
+            const again = PlurnkParser.parseStatements(PlurnkParser.stringify([value]));
+            assert.deepEqual(again.items, result.items);
+        }
+    });
+
+    test(`{§send-wait-scope} ${op} scope reaches runtime admission, but target and metadata are not slots`, () => {
+        const result = PlurnkParser.parseStatements(PlurnkParser.frame(`${op} <5,1>`, null));
         assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
-        const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        assert.deepEqual(statements.map((statement) => statement.op), ["READ", "TASK"]);
-        const last = statements.at(-1)!;
-        assert.equal(Object.hasOwn(last, "status"), false, "inventory determines disposition; no contradictory status operand");
-        assert.equal(Validator.validatePlurnkStatement(last).valid, true);
-        const again = PlurnkParser.parseStatements(PlurnkParser.stringify(statements));
-        assert.deepEqual(again.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "TASK"]);
+        const item = result.items[0];
+        assert.ok(item?.kind === "statement" && TurnDisposition.is(item.statement));
+        assert.deepEqual(item.statement.lineMarker, { marks: [5, 1] });
+        assert.equal(Validator.validatePlurnkStatement(item.statement).valid, true);
+        for (const operand of ["(notes.md)", "[{\"trace\":true}]"]) {
+            const invalid = PlurnkParser.parseStatements(PlurnkParser.frame(`${op} ${operand}`, null));
+            assert.ok(invalid.items.some((entry) => entry.kind === "error"), operand);
+        }
     });
 }
 
-test("SEND messages do not conclude a turn and omitted TASK remains absent", () => {
-    const result = PlurnkParser.parse("```SEND (worker://peer)\nhello\n```");
+test("{§turn-shape} SEND does not conclude a turn or manufacture a disposition", () => {
+    const result = PlurnkParser.parse(PlurnkParser.frame("SEND (worker://peer)", "hello"));
     assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["SEND"]);
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
 });
 
-test("{§interstitial-fence}: an unlabeled fence between operations is prose and the TASK after it is the disposition", () => {
-    const result = PlurnkParser.parse("```READ (notes.md)\n```\n```\n```TASK\n[{\"content\":\"Inspect the note.\",\"status\":\"in_progress\"}]\n```");
-    const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-    assert.deepEqual(statements.map(({ op }) => op), ["READ", "TASK"]);
+test("{§interstitial-fence} an unlabeled fence between operations does not hide DONE", () => {
+    const result = PlurnkParser.parse("```READ (notes.md)\n```\n```\n```DONE\nDone.\n```");
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "DONE"]);
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
-});
-
-test("TASK scope syntax reaches runtime admission irrespective of inventory but never admits a resource operand", () => {
-    const wait = PlurnkParser.parseStatements("```TASK <5,1>\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```");
-    assert.deepEqual(wait.items.filter((item) => item.kind === "error"), []);
-    const statement = wait.items[0];
-    assert.equal(statement?.kind, "statement");
-    if (statement?.kind === "statement") {
-        assert.equal(statement.statement.op, "TASK");
-        assert.deepEqual(statement.statement.lineMarker, { marks: [5, 1] });
-        for (const status of ["todo", "in_progress", "completed", "failed"]) {
-            const body = [{ content: "Task state.", status }];
-            assert.equal(Validator.validatePlurnkStatement({ ...statement.statement, body }).valid, true);
-            assert.equal(Validator.validatePlurnkStatement({ ...statement.statement, body, lineMarker: null }).valid, true);
-        }
-    }
-    const invalid = PlurnkParser.parseStatements("```SEND\ncomplete\n```\n```TASK (notes.md)\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
-    assert.ok(invalid.items.some((item) => item.kind === "error"));
 });

@@ -14,9 +14,9 @@ test("{§loop-wake-identity}: a message's reported and actual receiving loop agr
     const provider = new Mock({
         contextWindow: 65536,
         responses: [
-            makeMockResponse("```TASK\n[{\"content\":\"First task waits.\",\"status\":\"waiting\"}]\n```"),
-            makeMockResponse("```TASK\n[{\"content\":\"Second task waits.\",\"status\":\"waiting\"}]\n```"),
-            makeMockResponse("```SEND\nEnd the receiving task.\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```"),
+            makeMockResponse("```WAIT\nFirst task waits.\n```"),
+            makeMockResponse("```WAIT\nSecond task waits.\n```"),
+            makeMockResponse("```SEND\nEnd the receiving task.\n```\n```FAIL\n```"),
         ],
     });
     await withDaemon(provider, async (db, daemon) => {
@@ -54,8 +54,8 @@ test("{§loop-wake-identity}: a message's reported and actual receiving loop agr
 test("{§worker-lifecycle-no-resurrection}: a concurrent cancellation leaves no runnable orphan message", async (t) => {
     t.mock.method(Dispatcher.prototype, "hasLiveWork", async () => true);
     const provider = new Mock({ contextWindow: 65536, responses: [
-        makeMockResponse("```TASK\n[{\"content\":\"Wait.\",\"status\":\"waiting\"}]\n```"),
-        makeMockResponse("```SEND\nMust not execute the cancelled follow-up.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+        makeMockResponse("```WAIT\nWait.\n```"),
+        makeMockResponse("```SEND\nMust not execute the cancelled follow-up.\n```\n```DONE\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-admission-race" });

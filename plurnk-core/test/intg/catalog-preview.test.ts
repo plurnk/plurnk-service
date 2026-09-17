@@ -14,7 +14,7 @@ import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string | null; pathname: string; scheme: string | null; hostname: string | null; sequence: number; turn_id: number; signal: string | null; status_rx: number; tx: string; rx: string; attrs: string; folded: string; origin: string };
-const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)] });
+const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 50)] });
 
 test("PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs only project files (none when off)", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
@@ -144,7 +144,7 @@ test("turn-0 once-per-worker foists fire on the worker's first loop only, not ev
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // preview ON
     try {
-        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50), makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)] });
+        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 50), makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 50)] });
         await withDaemon(twoLoops, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -188,7 +188,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 assert.deepEqual(
                     initializationRows.map(({ op }) => op),
-                    ["FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ", "TASK"],
+                    ["NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ"],
                     "initialization reads its authored reasoning and its exact program; the prompt arrives as its row",
                 );
                 const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
@@ -197,18 +197,14 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                     { producer: "_plurnk", kind: "initialization", status: 102 },
                 );
                 assert.ok(turn?.completed_at !== null, "a completed continuation turn is distinct from an open turn");
-                const plan = JSON.parse(initializationRows.find(({ op }) => op === "TASK")!.tx) as { body: Array<{ content: string; status: string }> };
-                assert.deepEqual(plan.body, [
-                    {
-                        content: "Address the message.",
-                        status: "in_progress",
-                    },
-                ]);
+                const note = JSON.parse(initializationRows.find(({ op }) => op === "NOTE")!.tx) as { body: string };
+                const reasoning = JSON.parse(initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "reasoning")!.rx) as { content: string };
+                assert.ok(reasoning.content.includes(note.body), "the ordinary NOTE is extracted from the preserved reasoning source");
                 const program = JSON.parse(initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "ops")!.rx) as { content: string };
-                assert.match(program.content, /\n````TASK\n\[/, "initialization ends with an ordinary continuation inventory");
+                assert.match(program.content, /\n````READ \(ops:\/\/\/1\/1\)/, "initialization demonstrates its source address through an ordinary READ");
                 assert.deepEqual(
                     program.content.split("\n\n").map((block) => /^````([A-Z]+)/.exec(block)?.[1]),
-                    initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
+                    initializationRows.filter(({ op }) => op !== null && op !== "NOTE").map(({ op }) => op),
                     "{§statement-rendering}: every initialization operation is separated by a blank line",
                 );
                 const packet = provider.received[0].filter(({ role }) => role === "user").map(chatMessageText).join("\n");
@@ -311,15 +307,15 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ", "TASK"],
-                    "initialization contains the eight surveys, the reasoning and program READs, and TASK",
+                    ["NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ"],
+                    "initialization contains a reasoning NOTE, eight surveys, and the reasoning and program READs",
                 );
                 const turnOps = initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "ops");
                 assert.equal(turnOps?.origin, "_plurnk");
                 assert.equal(turnOps?.folded, "[]", "the exact initialization program is born visible");
                 assert.match(
                     (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content,
-                    /^````FIND[^\n]*\n[\s\S]*\n````TASK\n\[{"content":"Address the message\.","status":"in_progress"}\]\n````$/,
+                    /^````FIND[^\n]*\n[\s\S]*\n````READ \(ops:\/\/\/1\/1\)[^\n]*\n````$/,
                     "the exact initialization source surrounds the same eight executed surveys",
                 );
             } finally { ws.close(); }

@@ -31,10 +31,10 @@ const fixture = async (t: TestContext) => {
     return { db, workspaceId, workerId, loopId, engine, sends };
 };
 
-const response = (operation: string, status = "completed", body = "The answer is 42.") => ({
+const response = (operation: string, op = "DONE", body = "The answer is 42.") => ({
     assistant: {
         content: [operation, PlurnkParser.frame("SEND", body),
-            PlurnkParser.frame("TASK", JSON.stringify([{ content: "Report the answer.", status }]))].join("\n"),
+            PlurnkParser.frame(op, "")].join("\n"),
         reasoning: null,
     },
 });
@@ -48,10 +48,10 @@ for (const { name, operation, maxStrikes } of [
     { name: "FIND", operation: "```FIND (worker:///answer.md)```", maxStrikes: 3 },
     { name: "BARE", operation: "```BARE\nWhat is six times seven?\n```", maxStrikes: 3 },
 ]) {
-    test(`{§completion-defers-to-results}: ${name} beside a completion defers one packet, then the same TASK completes without a strike`, async (t) => {
+    test(`{§completion-defers-to-results}: ${name} beside a completion defers one packet, then the same DONE completes without a strike`, async (t) => {
         const { db, engine, workspaceId, workerId, loopId, sends } = await fixture(t);
         const provider = new Mock({ contextWindow: 100_000, responses: [response(operation), {
-            assistant: { content: PlurnkParser.frame("TASK", '[{"content":"Report the answer.","status":"completed"}]'), reasoning: null },
+            assistant: { content: PlurnkParser.frame("DONE", ""), reasoning: null },
         }] });
         const childProvider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "42", reasoning: null } }] });
         const result = await engine.runLoop({
@@ -59,18 +59,18 @@ for (const { name, operation, maxStrikes } of [
         });
         assert.equal(result.result.status, 200, "the deferred completion concludes on the next packet");
         assert.equal(result.result.content, "The answer is 42.", "the answer is delivered once");
-        assert.equal(provider.received.length, 2, "one packet to observe, then the same TASK completes");
+        assert.equal(provider.received.length, 2, "one packet to observe, then the same DONE completes");
         assert.equal(provider.remaining, 0);
         const rows = await sends();
         assert.deepEqual(rows.map(({ status_rx }) => status_rx), [102, 200]);
         const deferral = JSON.parse(rows[0]!.rx) as Deferral;
         assert.equal(deferral.problem, undefined, "a deferral carries no Problem");
         assert.deepEqual(deferral.attrs, { pending: ["receipts"] });
-        assert.match(deferral.detail ?? "", /^Completion deferred until .+ reached a packet\. It is in this packet\. If your final response has already been sent and these results require no further work or response revision, submit only TASK\.$/);
-        assert.ok(JSON.stringify(provider.received[1]).includes(deferral.detail!), "the model receives the conditional TASK-only guidance beside the results");
+        assert.match(deferral.detail ?? "", /^Completion deferred until .+ reached a packet\. It is in this packet\. If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response\.$/);
+        assert.ok(JSON.stringify(provider.received[1]).includes(deferral.detail!), "the model receives the conditional DONE-only guidance beside the results");
         const messages = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; tx: string }>({ loop_id: loopId });
         assert.deepEqual(messages.filter(({ op, origin }) => op === "SEND" && origin === "model").map(({ status_rx, tx }) => [status_rx, JSON.parse(tx).body.raw]),
-            [[200, "The answer is 42."]], "TASK-only completion preserves the answer without delivering a second SEND");
+            [[200, "The answer is 42."]], "DONE-only completion preserves the answer without delivering a second SEND");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status, 200);
         const finalTurnId = result.turnIds.at(-1);
         assert.ok(finalTurnId !== undefined);
@@ -81,18 +81,18 @@ for (const { name, operation, maxStrikes } of [
 test("{§loop-response-messages}: deferred completion permits a revised answer after observing the result", async (t) => {
     const { db, engine, workspaceId, workerId, loopId } = await fixture(t);
     const provider = new Mock({ contextWindow: 100_000, responses: [
-        response("```READ (worker:///answer.md)```", "completed", "The answer is 41."),
-        response("", "completed", "Correction: the answer is 42."),
+        response("```READ (worker:///answer.md)```", "DONE", "The answer is 41."),
+        response("", "DONE", "Correction: the answer is 42."),
     ] });
     const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 3 });
     assert.equal(result.result.status, 200);
     assert.equal(result.result.content, "Correction: the answer is 42.");
     assert.equal(provider.received.length, 2);
-    assert.ok(JSON.stringify(provider.received[1]).includes("If your final response has already been sent and these results require no further work or response revision, submit only TASK."));
+    assert.ok(JSON.stringify(provider.received[1]).includes("If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response."));
     const messages = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; tx: string }>({ loop_id: loopId });
     assert.deepEqual(messages.filter(({ op, origin }) => op === "SEND" && origin === "model").map(({ status_rx, tx }) => [status_rx, JSON.parse(tx).body.raw]),
         [[200, "The answer is 41."], [200, "Correction: the answer is 42."]],
-        "a necessary correction is still delivered; TASK-only is conditional, not enforced");
+        "a necessary correction is still delivered; DONE-only is conditional, not enforced");
 });
 
 for (const target of ["log:///999/*/*", "worker:///answer.md"]) {
@@ -127,11 +127,11 @@ test("{§completion-defers-to-results}: repeated early claims cost packets, neve
     const { engine, workspaceId, workerId, loopId, sends } = await fixture(t);
     const read = "```READ (worker:///answer.md)```";
     const provider = new Mock({ contextWindow: 100_000, responses: [
-        response(read), response(read), response(read, "in_progress"), response(read), response(""),
+        response(read), response(read), response(read, "NOTE"), response(read), response(""),
     ] });
     const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 6, maxStrikes: 1 });
     assert.equal(result.result.status, 200, "at one strike any refusal would have ended the loop; deferrals never struck");
-    assert.deepEqual((await sends()).map(({ status_rx }) => status_rx), [102, 102, 102, 102, 200]);
+    assert.deepEqual((await sends()).map(({ status_rx }) => status_rx), [102, 102, 102, 200]);
     assert.equal(provider.received.length, 5);
 });
 
@@ -146,7 +146,7 @@ for (const kind of ["workers", "streams", "failed-stream-results", "late-failed-
             : [response(read), response(second), response("")] });
         const generate = provider.generate.bind(provider);
         t.mock.method(provider, "generate", async (args: Parameters<Mock["generate"]>[0]) => {
-            // The obligation lands during the second call: after that turn's packet, before its TASK.
+            // The obligation lands during the second call: after that turn's packet, before its DONE.
             if (provider.received.length === 1) {
                 if (kind === "workers" || kind === "worker-results") {
                     const child = await insertWorker(db, workspaceId, workerId, "child");
@@ -197,25 +197,25 @@ for (const kind of ["workers", "streams", "failed-stream-results", "late-failed-
             assert.equal(join.problem, undefined, "a join carries no Problem and no strike");
             assert.deepEqual(join.attrs, { waiting: -1, pending: [kind] });
             assert.equal(join.detail, kind === "workers"
-                ? "Completion joined: child workers were still running. The loop waited, and what concluded is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK."
-                : "Completion joined: an execution was still running. The loop waited, and what concluded is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK.");
+                ? "Completion joined: child workers were still running. The loop waited, and what concluded is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response."
+                : "Completion joined: an execution was still running. The loop waited, and what concluded is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response.");
             assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status, 202, "parked on the live obligation, like a waiting inventory");
             return;
         }
-        assert.equal(result.result.status, 200, "the settled result is shown, then the same TASK completes");
+        assert.equal(result.result.status, 200, "the settled result is shown, then the same DONE completes");
         assert.equal(provider.received.length, 3);
         assert.deepEqual(rows.map(({ status_rx }) => status_rx), [102, 102, 200]);
         const deferral = JSON.parse(rows[1]!.rx) as Deferral;
         assert.equal(deferral.problem, undefined, "a deferral carries no Problem and no strike");
         if (kind === "operation-failure" || kind === "kill-failure") {
             assert.deepEqual(deferral.attrs, { failures: 1 });
-            assert.equal(deferral.detail, "Completion deferred: 1 operation failed in the same turn. The failure is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK.");
+            assert.equal(deferral.detail, "Completion deferred: 1 operation failed in the same turn. The failure is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response.");
         } else if (kind === "worker-results") {
             assert.deepEqual(deferral.attrs, { pending: ["worker-results"] });
-            assert.equal(deferral.detail, "Completion deferred until a child worker's result reached a packet. It is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK.");
+            assert.equal(deferral.detail, "Completion deferred until a child worker's result reached a packet. It is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response.");
         } else {
             assert.deepEqual(deferral.attrs, { pending: ["receipts", "failed-stream-results"] });
-            assert.equal(deferral.detail, "Completion deferred until a failed execution result and operation receipts reached a packet. They are in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK.");
+            assert.equal(deferral.detail, "Completion deferred until a failed execution result and operation receipts reached a packet. They are in this packet. If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response.");
         }
         assert.equal((await db.test_get_turn.get<{ status: number }>({ id: finalTurnId }))?.status, 200);
     });
@@ -226,8 +226,8 @@ test("{§completion-defers-to-results}: an abandonment over a settled result tak
     const child = await insertWorker(db, workspaceId, workerId, "child");
     await insertLoop(db, child, 1, "delegated work that never finishes");
     const provider = new Mock({ contextWindow: 100_000, responses: [
-        response("```READ (worker:///answer.md)```", "failed", "I could not finish."),
-        response("", "failed", "I could not finish."),
+        response("```READ (worker:///answer.md)```", "FAIL", "I could not finish."),
+        response("", "FAIL", "I could not finish."),
     ] });
     const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 3, maxStrikes: 3 });
     assert.equal(result.result.status, 499, "the second abandonment concludes although a child is still live");
@@ -237,7 +237,7 @@ test("{§completion-defers-to-results}: an abandonment over a settled result tak
     assert.deepEqual(rows.map(({ status_rx }) => status_rx), [102, 499]);
     const deferral = JSON.parse(rows[0]!.rx) as Deferral;
     assert.equal(deferral.problem, undefined, "an abandonment deferral carries no Problem and no strike");
-    assert.equal(deferral.detail, "Abandonment deferred until READ reached a packet. It is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK.");
+    assert.equal(deferral.detail, "Abandonment deferred until READ reached a packet. It is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response.");
     assert.deepEqual(deferral.attrs, { pending: ["receipts"] });
     assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status, 499);
 });
@@ -245,8 +245,8 @@ test("{§completion-defers-to-results}: an abandonment over a settled result tak
 test("{§completion-defers-to-results}: an abandonment over a same-turn failure defers with the failure count", async (t) => {
     const { engine, workspaceId, workerId, loopId, sends } = await fixture(t);
     const provider = new Mock({ contextWindow: 100_000, responses: [
-        response("```READ (worker:///missing.md)```", "failed", "Nothing to report."),
-        response("", "failed", "Nothing to report."),
+        response("```READ (worker:///missing.md)```", "FAIL", "Nothing to report."),
+        response("", "FAIL", "Nothing to report."),
     ] });
     const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 3, maxStrikes: 1 });
     assert.equal(result.result.status, 499);
@@ -254,5 +254,5 @@ test("{§completion-defers-to-results}: an abandonment over a same-turn failure 
     assert.deepEqual(rows.map(({ status_rx }) => status_rx), [102, 499]);
     const deferral = JSON.parse(rows[0]!.rx) as Deferral;
     assert.deepEqual(deferral.attrs, { failures: 1 });
-    assert.equal(deferral.detail, "Abandonment deferred: 1 operation failed in the same turn. The failure is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK.");
+    assert.equal(deferral.detail, "Abandonment deferred: 1 operation failed in the same turn. The failure is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response.");
 });

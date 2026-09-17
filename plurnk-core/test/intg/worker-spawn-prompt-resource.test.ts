@@ -12,9 +12,13 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flus
 
 // The brief is created by the parent in the same turn (a creation is a member), then handed to the child by path.
 const parentThenChild = (brief: string, work: string) => new Mock({ contextWindow: 16384, responses: [
-    makeMockResponse(`\`\`\`EDIT (brief.md)\n${brief}\`\`\`\n\n${work}\n\n\`\`\`TASK\n[{"content":"delegated","status":"waiting"}]\n\`\`\``, 10),
-    makeMockResponse("```SEND\nchild done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
-    makeMockResponse("```SEND\nparent done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+    makeMockResponse(`\`\`\`EDIT (brief.md)\n${brief}\`\`\`\n\n${work}
+
+\`\`\`WAIT
+delegated
+\`\`\``, 10),
+    makeMockResponse("```SEND\nchild done\n```\n```DONE\n```", 10),
+    makeMockResponse("```SEND\nparent done\n```\n```DONE\n```", 10),
 ] });
 
 const childPrompts = async (db: Db, parentWorkerId: number) => {
@@ -72,8 +76,8 @@ test("{§worker-spawn-prompt-resource}: a missing resource is the operation's fa
     const root = await mkdtemp(join(tmpdir(), "spawn-prompt-"));
     try {
         const mock = new Mock({ contextWindow: 16384, responses: [
-            makeMockResponse("```WORK (missing.md)\n```\n\n```WORK (worker://bad/path)\nx\n```\n\n```TASK\n[{\"content\":\"tried\",\"status\":\"in_progress\"}]\n```", 10),
-            makeMockResponse("```SEND\ngiving up\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+            makeMockResponse("```WORK (missing.md)\n```\n\n```WORK (worker://bad/path)\nx\n```\n\n```NOTE\ntried\n```", 10),
+            makeMockResponse("```SEND\ngiving up\n```\n```DONE\n```", 10),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

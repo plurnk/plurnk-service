@@ -200,11 +200,11 @@ interfaces remain remote protocol authority.
 | READ | Exact Task resource | Materialize the remote Task's current canonical snapshot. |
 | READ | Stored Artifact resource | Read the workspace's retained bytes without requiring an active agent connection. |
 
-§a2a-outbound-turn-rhythm SEND delivers a Message; TASK independently declares
-the local Loop's inventory under {§task-inventory-intent}. A Task-backed SEND
-creates an ordinary live obligation. An `in_progress` inventory continues work;
-a `waiting` inventory joins that obligation. Subscription settlement wakes the
-same Loop with its terminal READ, and a later terminal inventory concludes
+§a2a-outbound-turn-rhythm SEND delivers a Message; lifecycle verbs independently
+declare the local Loop's intent under {§turn-disposition}. A Task-backed SEND
+creates an ordinary live obligation. Ordinary operations continue work;
+WAIT joins that obligation. Subscription settlement wakes the
+same Loop with its terminal READ, and a later DONE or FAIL concludes
 under {§wait-obligation-matrix}. KILL cancels through that same subscription.
 No adapter-authored turn or alternate disposition path fills any step.
 

@@ -41,6 +41,7 @@ projection follows every source write and is never written itself.
 | --- | --- |
 | `ops:///<loop>/<turn>` | The exact submitted program, including interstitial text. |
 | `reasoning:///<loop>/<turn>` | Original provider reasoning when exposed, or a harness turn's authored rationale. |
+| `note:///<loop>/<turn>/<item>` | The literal NOTE body, from the program or exposed reasoning; the receipt gives its address. |
 
 READ brings the selected source into your log; KILL of that READ curates only
 its log projection, never the original evidence. No later reasoning is added
@@ -56,6 +57,18 @@ producing. For example, on `"loop":1,"turn":3`:
 The ordinary READ receipt appears in subsequent packets. A turn that produced
 no reasoning reads empty; a turn that has not happened returns a missing-source
 result. READ never requests inference.
+
+NOTE retains working memory without changing the loop state. Only NOTE also
+executes from exposed reasoning; quoted examples and other reasoned operations
+remain data. Notes are ordinary log items: KILL or trim their log projection
+when no longer useful. Their read-only `note:///` sources remain searchable and
+READable, including after log curation or a FORK.
+
+````FIND (note:///**) /parser/
+````
+
+````READ (note:///1/3/2) <1,-1>
+````
 
 ## Delegation
 
@@ -98,33 +111,34 @@ Their answers are ordinary BARE receipts, visible in the next packet.
 
 ## Lifecycle
 
-**Continue or wait.** TASK declares the current inventory. An `in_progress`
-item keeps the loop working while children run; `waiting` joins their activity:
+**Continue or wait.** Ordinary operations keep the loop working while children
+run; WAIT joins their activity:
 
 ````WORK (worker://capital-checker)
 Find the capital of France from a primary source
 ````
 
-````TASK
-[{"content":"Await capital-checker's answer.","status":"waiting"}]
+````WAIT
+Await capital-checker's answer.
 ````
 
-TASK takes no scope. A waiting inventory continues the same loop: with live
+WAIT takes no scope. It continues the same loop: with live
 work, a child or an open stream, the loop parks and wakes when that work
 settles, when a message arrives, or on an open stream's observation cadence;
 without live work it continues at once. To wake later with nothing in flight,
 add a rule with the `schedule` family targeting yourself.
 
-A wake ends that wait. Submit another waiting inventory to wait again. Waking
+A wake ends that wait. Submit WAIT to wait again. Waking
 retains the loop's messages, turn allowance, and remaining execution time;
-parked time does not consume execution time. A terminal inventory with at least one completed item claims success;
-a nonempty all-failed inventory concludes unsuccessfully.
+parked time does not consume execution time. DONE claims success; FAIL claims
+failure. Their optional bodies answer the open messages. Blank DONE or FAIL
+retains any previously delivered response without repeating it.
 
 Each child task's conclusion reaches its parent as a message from
 `worker://capital-checker`, waking a waiting parent. Success includes the body;
 failure preserves its status and Problem. `READ (worker://capital-checker)`
 collects the same result explicitly. While the child is running it returns
-`425`; the inventory still chooses whether to continue or wait.
+`425`; ordinary operations continue and WAIT explicitly joins.
 A result does not imply that every task in that worker has finished.
 
 `KILL (worker://<name>)` cancels that worker and its descendants, including

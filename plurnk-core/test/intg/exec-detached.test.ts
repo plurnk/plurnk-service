@@ -40,9 +40,8 @@ ${heartbeat(file)}
 \`\`\`SEND
 the server stays up
 \`\`\`
-\`\`\`TASK
-[{"content":"Task completed.","status":"completed"}]
-\`\`\``), mockTurn('```TASK\n[{"content":"The server is running.","status":"completed"}]\n```')],
+\`\`\`DONE
+\`\`\``), mockTurn("```DONE\n```")],
         });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

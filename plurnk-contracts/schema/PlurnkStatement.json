@@ -39,6 +39,9 @@
         },
         {
             "$ref": "#/$defs/DispositionStatement"
+        },
+        {
+            "$ref": "#/$defs/NoteStatement"
         }
     ],
     "$defs": {
@@ -574,7 +577,7 @@
             "additionalProperties": false,
             "properties": {
                 "op": {
-                    "const": "TASK"
+                    "enum": ["WAIT", "DONE", "FAIL"]
                 },
                 "aside": {
                     "$ref": "#/$defs/AsideOrNull"
@@ -589,11 +592,25 @@
                     "$ref": "#/$defs/LineMarkerOrNull"
                 },
                 "body": {
-                    "$ref": "https://schemas.plurnk.xyz/v0/Plan.json"
+                    "type": ["string", "null"]
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"
                 }
+            }
+        },
+        "NoteStatement": {
+            "type": "object",
+            "required": ["op", "aside", "metadata", "target", "lineMarker", "body", "position"],
+            "additionalProperties": false,
+            "properties": {
+                "op": { "const": "NOTE" },
+                "aside": { "$ref": "#/$defs/AsideOrNull" },
+                "metadata": { "type": "null" },
+                "target": { "type": "null" },
+                "lineMarker": { "type": "null" },
+                "body": { "type": ["string", "null"] },
+                "position": { "$ref": "#/$defs/PositionRef" }
             }
         }
     }

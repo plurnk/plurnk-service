@@ -45,8 +45,8 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
         return response;
     });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        '````fixture (third)\n{}\n````\n\n````TASK\n[{"content":"Observe the result.","status":"waiting"}]\n````',
-        '````TASK\n[{"content":"Observed the result.","status":"completed"}]\n````',
+        "````fixture (third)\n{}\n````\n\n````WAIT\nObserve the result.\n````",
+        "````DONE\n````",
     ].map(makeMockResponse) });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider });

@@ -7,7 +7,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, logEntries } from "./_helpers.ts";
 import { statement, type Read } from "./reasoning-fixture.ts";
 
-const next = PlurnkParser.frame("TASK", JSON.stringify([{ content: "Continue.", status: "in_progress" }]));
+const next = PlurnkParser.frame("NOTE", "Continue.");
 
 test("{§reasoning-initial-read}: the first model input contains initialization's complete authored rationale", async () => {
     const db = await openMigrated();
@@ -23,9 +23,9 @@ test("{§reasoning-initial-read}: the first model input contains initialization'
         const initial = logEntries(packet).find((row) => row.target === "reasoning:///3/1");
         assert.ok(initial);
         assert.equal(initial.origin, "_plurnk");
-        // {§reasoning-initial-read} — the pattern READ plucks the NOTE: line alone; the rest of the rationale stays out of the packet.
-        assert.match(String(initial.body), /^\s*2:Note: Prior reasoning can be searched with the pattern filters\.$/m);
-        assert.doesNotMatch(String(initial.body), /This harness-generated turn surveys/);
+        assert.match(String(initial.body), /^\s*1:This harness-generated turn surveys/m);
+        assert.match(String(initial.body), /````NOTE/);
+        assert.match(String(initial.body), /Only NOTE also works in reasoning\./);
         assert.doesNotMatch(String(initial.body), /Unrequested model reasoning/);
         const reads = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
         assert.equal(reads.length, 1);

@@ -90,7 +90,7 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         const skillGone = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "fixture", pathname: "/france/capital" });
         assert.equal(skillGone, undefined);
 
-        const [sendTerminal, inventory] = parse("```SEND\nanswer delivered\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```");
+        const [sendTerminal, inventory] = parse("```SEND\nanswer delivered\n```\n```DONE\n```");
         const r12 = await dispatch(sendTerminal, 11);
         assert.equal(r12.status, 200);
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: env.loopId }))?.status, 102, "delivering a message does not complete work");

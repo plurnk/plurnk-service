@@ -19,14 +19,17 @@ const withSettlement = async (ms: string, fn: () => Promise<void>): Promise<void
 };
 
 for (const command of ["true", "hostname"]) {
-    for (const hasTask of [false, true]) test(`a successful ${command} settles before the next packet, TASK=${hasTask ? "completed" : "omitted"}`, async () => {
+    for (const hasTask of [false, true]) test(`a successful ${command} settles before the next packet, DONE=${hasTask ? "completed" : "omitted"}`, async () => {
         const answer = command === "hostname" ? hostname() : "The command completed successfully.";
-        const inventory = hasTask ? "\n```TASK\n[{\"content\":\"Address the prompt.\",\"status\":\"completed\"}]\n```" : "";
+        const inventory = hasTask ? "\n```DONE\n```" : "";
         const provider = new Mock({
             contextWindow: 100_000,
             responses: [
                 makeMockResponse(`\`\`\`sh\n${command}\n\`\`\`\n\`\`\`SEND\nThe hostname is plurnk-sandbox.\n\`\`\`${inventory}`),
-                makeMockResponse(`\`\`\`SEND\n${answer}\n\`\`\`\n\`\`\`TASK\n[{"content":"Address the prompt.","status":"completed"}]\n\`\`\``),
+                makeMockResponse(`\`\`\`SEND\n${answer}
+\`\`\`
+\`\`\`DONE
+\`\`\``),
             ],
         });
         await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -44,7 +47,7 @@ for (const command of ["true", "hostname"]) {
                 const rows = await db.test_log_entries_by_worker.all<{ op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
                 assert.ok(rows.some((r) => isExecutionOp(r.op)), "the stream ran");
                 assert.equal(rows.filter((r) => r.op === "SEND" && r.origin === "model" && r.status_rx === 200).length, 2, "both messages were delivered");
-                assert.equal(rows.filter((r) => r.op === "TASK" && r.origin === "model" && r.status_rx === 102).length, hasTask ? 1 : 0,
+                assert.equal(rows.filter((r) => ["WAIT", "DONE", "FAIL"].includes(r.op ?? "") && r.origin === "model" && r.status_rx === 102).length, hasTask ? 1 : 0,
                     "an explicit blind completion is deferred; omission continues silently");
             } finally {
                 ws.close();
@@ -63,8 +66,8 @@ test("{§completion-defers-to-results}: a successful execution receipt defers co
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("```sh\ntrue\n```\n```SEND\nCompleted.\n```\n```TASK\n[{\"content\":\"Address the prompt.\",\"status\":\"completed\"}]\n```"),
-            makeMockResponse("```SEND\nCompleted.\n```\n```TASK\n[{\"content\":\"Address the prompt.\",\"status\":\"completed\"}]\n```"),
+            makeMockResponse("```sh\ntrue\n```\n```SEND\nCompleted.\n```\n```DONE\n```"),
+            makeMockResponse("```SEND\nCompleted.\n```\n```DONE\n```"),
         ],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -76,7 +79,7 @@ test("{§completion-defers-to-results}: a successful execution receipt defers co
             assert.equal(provider.received.length, 2);
             assert.equal(provider.remaining, 0);
             const rows = await db.test_log_entries_by_worker.all<{ op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
-            assert.deepEqual(rows.filter(({ op, origin }) => op === "TASK" && origin === "model").map(({ status_rx }) => status_rx), [102, 200]);
+            assert.deepEqual(rows.filter(({ op, origin }) => ["WAIT", "DONE", "FAIL"].includes(op ?? "") && origin === "model").map(({ status_rx }) => status_rx), [102, 200]);
             assert.equal(rows.filter(({ op, origin }) => isExecutionOp(op) && origin === "model").length, 1, "the submitted command was executed");
         } finally {
             ws.close();
@@ -88,8 +91,8 @@ test("{§completion-defers-to-results}: a failed same-turn stream defers complet
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("```sh\nexit 3\n```\n```SEND\nconcluding blind\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
-            makeMockResponse("```SEND\nconcluding after reading the failure\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            makeMockResponse("```sh\nexit 3\n```\n```SEND\nconcluding blind\n```\n```DONE\n```"),
+            makeMockResponse("```SEND\nconcluding after reading the failure\n```\n```DONE\n```"),
         ],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -100,13 +103,13 @@ test("{§completion-defers-to-results}: a failed same-turn stream defers complet
             assert.equal(result.finalStatus, 200);
             assert.equal(provider.remaining, 0, "the deferral cost exactly one more provider turn");
             const rows = await db.test_log_entries_by_worker.all<{ id: number; op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
-            const deferred = rows.find((r) => r.op === "TASK" && r.origin === "model" && r.status_rx === 102);
+            const deferred = rows.find((r) => ["WAIT", "DONE", "FAIL"].includes(r.op ?? "") && r.origin === "model" && r.status_rx === 102);
             assert.ok(deferred, "the blind conclusion was deferred");
             const entry = await db.test_get_log_entry_by_id.get<{ rx: string | null }>({ id: deferred.id });
             const deferral = JSON.parse(entry?.rx ?? "{}") as { problem?: unknown; detail?: string; attrs?: { pending?: string[] } };
             assert.equal(deferral.problem, undefined, "a deferral carries no Problem and no strike");
             assert.deepEqual(deferral.attrs?.pending, ["receipts", "failed-stream-results"]);
-            assert.equal(deferral.detail, "Completion deferred until a failed execution result and operation receipts reached a packet. They are in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK.");
+            assert.equal(deferral.detail, "Completion deferred until a failed execution result and operation receipts reached a packet. They are in this packet. If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response.");
             assert.doesNotMatch(entry?.rx ?? "", /exit 3|sh:/, "the command is already owned by the execution row");
         } finally {
             ws.close();

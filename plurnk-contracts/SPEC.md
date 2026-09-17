@@ -360,11 +360,7 @@ single line: prose, then heading after heading with no line ending anywhere. Two
 rules absorb it. The next opener on a heading's own line, after the heading's
 slots, ends that heading's block bodyless and opens ({§empty-section}), so
 `````EDIT (a.rs) <60,66> <!-- drop --> ````EDIT (b.rs) <31,38>` is two scoped
-deletions; and a TASK whose inventory rides its heading line as a `[…]` block
-(`````TASK [{"content": "…", "status": "in_progress"}] ````) takes that block as
-its body when nothing sits beneath the heading, with one warning-severity
-advisory naming the body as where the inventory belongs. A block beneath the
-heading still wins.
+deletions. Literal inline bodies follow {§heading-inline-body}.
 
 §anchor-digits In a text scope, `@` followed by one to four digits cannot be a
 hash and is read as that line number, with one warning-severity advisory naming
@@ -383,13 +379,12 @@ header or recursively parsed. There is no implicit SEND: a reply is an explicit
 chapter, whose unlabeled fences turned displaced headings into silent messages.)
 
 §bare-heading-advisory An operation name that opens a line outside any block in the
-shape of a heading (`READ (…)`, `TASK`, …) is prose and runs nothing. The parser
+shape of a heading (`READ (…)`, `NOTE`, …) is prose and runs nothing. The parser
 emits one warning-severity advisory naming the fence form, placed after the parsed
 items, so the loss is never quiet.
 
 §empty-section Both the compact bodyless form and an empty multiline block
-normalize optional bodies to null. TASK normalizes an empty body to `[]`
-under {§plan-value}. Closing fences are conventional, never required
+normalize optional bodies to null. Closing fences are conventional, never required
 ({§closer-fallback}).
 
 §statement-rendering `PlurnkParser.stringify` renders native OP names and named
@@ -419,8 +414,9 @@ adjacent slots and scope/metadata permutations within a selection without
 changing ownership or making them distinct canonical forms. Each selection
 has at most one scope; its metadata blocks retain their authored order.
 
-§plan-slotless TASK accepts no target, scope, or metadata. Its inventory body
-begins below the header.
+§lifecycle-slots NOTE, WAIT, DONE and FAIL accept no target or metadata. NOTE
+accepts no scope; lifecycle scopes reach the ordinary refusal in {§send-wait-scope}.
+Their literal bodies begin below the header.
 
 §heading-inline-body Nonempty body text belongs below the fence header.
 The ingester tolerates body text after horizontal whitespace on the header,
@@ -476,7 +472,7 @@ whose block left no metadata back bare when the bare form reads back identically
 
 | Element | Shape or role |
 |---|---|
-| Native OP | `FIND READ EDIT COPY MOVE SEND BARE WORK FORK KILL TASK` |
+| Native OP | `FIND READ EDIT COPY MOVE SEND BARE WORK FORK KILL NOTE WAIT DONE FAIL` |
 | Executor name | Letters, digits, `_`, `.`, `+`, or `-`; reserved OPs win |
 | Fence | Three or more backticks, matched by exact count |
 | `(path)` | Local path, URI, program or tool name; §5 |
@@ -502,57 +498,32 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | FORK | optional context-inheriting `worker://name`, or a prompt resource | none            | prompt; optional with a resource |
 | KILL | required target, including a log item        | optional text region ({§kill-scope}) | none; the matcher is the `pattern` option |
 | SEND | optional recipient | recipient-defined; none for workers ({§send-directed-scope}) | message |
-| TASK | none | none | Plurnk Plan JSON array |
+| NOTE | none | none | literal working memory |
+| WAIT | none | none | explanation of the wait |
+| DONE | none | none | final response |
+| FAIL | none | none | explanation of abandonment |
 
 §operation-code-polymorphism Operation-result statuses and turn dispositions are
-distinct facts. TASK derives lifecycle intent from its inventory;
-SEND and KILL carry no disposition operand.
+distinct facts. WAIT, DONE and FAIL declare lifecycle intent;
+SEND, NOTE and KILL carry no disposition operand.
 
-§plan-value **TASK carries the complete current task inventory.** Admission
-parses one JSON array in any whitespace layout, including
-{§json-result-rendering}, strips unknown entry keys, and validates string
-`content` and native `status`. Opaque `_meta` remains optional. Nonempty plain
-text, malformed JSON, or an invalid array becomes one `in_progress` entry
-containing the exact body, with one factual warning. No partial repair or list
-inference occurs. A blank body becomes `[]`, never inferred completion.
-The normalized array is the sole semantic value in AST, persistence and model
-log; exact authored bytes remain in `turnOps`. Earlier inventories are history,
-not accumulated obligations. Task descriptions are not executable dependencies.
+§note-value NOTE retains its literal body as ordinary model-owned working memory.
+It has no target, scope, metadata, or lifecycle effect. Its full body participates
+in ordinary log token accounting and model-driven curation; prior notes are not
+automatically hidden. NOTE-only turns continue under the ordinary repetition
+and strike rules.
 
-§task-inventory-intent The first matching row determines intent, independently
-of entry order. Actual execution adjudicates intent under {§wait-obligation-matrix}.
-
-| Inventory condition | Intent | Derived lifecycle status |
-|---|---|---|
-| TASK omitted | Continue silently | 102 |
-| Explicit empty inventory | Recover empty inventory | 102 |
-| Any `in_progress` | Continue independent actionable work | 102 |
-| Any `waiting`, no `in_progress` | Await work or an event | 202 |
-| Any `todo`, no actionable or waiting entry | Continue | 102 |
-| All terminal, any `completed` | End successfully | 200 |
-| All `failed`, nonempty | End unsuccessfully | 499 |
-
-`todo` is not started; `in_progress` can be actively advanced;
-`waiting` awaits an ongoing stream, worker or external event. `completed` is
-successful resolution; `failed` is unsuccessful resolution. A failed sibling
-does not terminate independent unfinished work. The engine does not infer a
-dependency graph from task text.
-
-§plan-acp-projection **Only an ACP-facing boundary projects the model-native
-Plan.** It constructs ACP's `{ "entries": [...] }` Plan object from the internal
-array, synthesizes the ACP-required neutral `medium` priority on every entry
-(the model-native Plan carries none). The internal value is never mutated.
-Native `todo` maps to ACP `pending`: the same state under ACP's name, so it carries no marker.
-Native `waiting` maps to ACP `in_progress`, with `Waiting:` and a space prepended
-to its display content; native `failed` maps to ACP `completed`, with `Failed:` and a space.
-Both carry their native status in `_meta["plurnk.xyz/status"]`, an edge-owned
-key derived from the native status rather than trusted from authored metadata.
-Other statuses and unrelated metadata remain unchanged. The labels preserve
-meaning even when a generic client ignores extension metadata.
-The projected value validates against the separately owned ACP Plan schema pinned
-to ACP v1
-[`schema-v1.21.0`](https://github.com/agentclientprotocol/agent-client-protocol/tree/schema-v1.21.0)
-commit `272bf799f35a258c6a4107a0410ed361e83683d3`.
+§reasoning-notes NOTE is the only operation admitted from exposed provider
+reasoning. The shared fence parser selects line-leading NOTE statements in a
+quotation-preserving reasoning context: other backtick or tilde code blocks are
+opaque, and operation-heading recovery cannot escape them. Blockquoted and inline
+examples are not headings. Program parsing is unchanged; other reasoned operations
+never execute.
+Selected notes precede the content program in the admitted turn and use the
+ordinary dispatcher, persistence and log projection. Reasoning bytes and content
+bytes remain separate, unchanged forensic sources. Rejected or superseded
+provider attempts cannot commit notes. Non-thinking models use NOTE in their
+ordinary program. No task inventory is inferred from notes or lifecycle prose.
 
 §exec-executor-slot The fence name selects the executor directly: for example,
 `python3 (tools/report.py)` or `gitea (issue_list)` on the opening fence line.
@@ -566,15 +537,18 @@ shell examples name `sh` explicitly.
 The path names a program or tool and is never split. Metadata such as
 `[{"cwd": "…"}]` remains interpreted by the selected executor.
 
-§turn-disposition TASK is the sole workflow declaration. `TurnDisposition`
-derives intent from its canonical inventory under {§task-inventory-intent}.
-The AST has no independently settable lifecycle status, target or metadata.
-SEND deliberately messages its recipient, or the user when targetless; it
-neither changes task status nor terminates a run. A program contains one final
-TASK, not last-wins competing inventories. Former lifecycle names are not aliases.
+§turn-disposition WAIT, DONE and FAIL declare wait, success and abandonment,
+respectively. Their literal bodies do not control scheduling. The AST has no
+independently settable lifecycle status, target or metadata. A turn admits at
+most one lifecycle declaration, deferred until its other operations settle.
+Without one it continues silently. DONE and FAIL bodies answer the open
+messages through the existing response path; SEND remains independent messaging.
+Standing alone is teaching, not an admission restriction. Existing observation,
+incoming-message, join and cancellation rules adjudicate the requested outcome
+under {§wait-obligation-matrix}. NOTE is local memory, not unobserved external work.
 
-§send-wait-scope TASK takes no scope; the dispatcher refuses one
-(`scope-unsupported`, 400). A waiting inventory joins live work
+§send-wait-scope Lifecycle operations take no scope; the dispatcher refuses one
+(`scope-unsupported`, 400). WAIT joins live work
 ({§park-202-only}); a wake later with nothing in flight is a schedule rule.
 
 §send-directed-scope A recipient SEND carries an optional numeric scope after
@@ -688,7 +662,7 @@ Mutation semantics:
 | WORK | Spawn acknowledgement; the deliverable arrives through the log                    |
 | FORK | Spawn acknowledgement; the inherited worker's deliverable arrives through the log |
 | KILL | Status of deletion or termination                                                 |
-| TASK | Current inventory and adjudicated lifecycle outcome                              |
+| NOTE / WAIT / DONE / FAIL | Literal memory or adjudicated lifecycle outcome                              |
 
 §find-result-unit For FIND, authored target shape fixes the paginated result
 unit. An exact target with a matcher pages flat match locations; a glob or
@@ -705,7 +679,7 @@ EDIT. Whole-channel transfers remain bodyless structural effects; runtime
 owners reject binary markers rather than treating a text field as a byte lane.
 
 Every operation returns the runtime-neutral `OperationResult` defined by
-{§operation-result}. Its `status` belongs to the result envelope; TASK supplies
+{§operation-result}. Its `status` belongs to the result envelope; a lifecycle operation supplies
 the authored lifecycle intent. Durable operation observations are projected into a later packet;
 retrieval never returns inline within the emitting turn.
 
@@ -846,7 +820,7 @@ The operation column names the canonical AST operation after
 | COPY/MOVE destination | 0/1/2/4 text coordinates after target  | Region replaced or insertion point at the destination                      |
 | KILL                  | 0/1/2 text coordinates                 | Whole target when absent; one physical line or inclusive range when present ({§kill-scope}) |
 | execution             | `timeout[,poll]`                       | Spawn lifetime bound and poll cadence in minutes                           |
-| ```` ```TASK ````     | None                                   | A scope is refused ({§send-wait-scope}) |
+| WAIT / DONE / FAIL     | None                                   | A scope is refused ({§send-wait-scope}) |
 | Directed SEND         | Owner-defined numeric scope           | Carried to the addressed owner; worker actors refuse it ({§send-directed-scope}) |
 
 Text coordinates use the algebra in {§text-scope-semantics}: one integer is a
@@ -904,46 +878,43 @@ rule protects code examples in SEND, WORK, FORK, BARE and every other body.
 
 ## 9. Turn dispositions
 
-TASK inventory intent maps to the existing HTTP-shaped lifecycle statuses
-({§task-inventory-intent}). The runtime adjudicates that intent against actual
-results and live obligations:
+Explicit lifecycle verbs retain the existing HTTP-shaped outcomes. The runtime
+adjudicates intent against actual results and live obligations:
 
 | Intent | Nominal status | Meaning |
 |---|---|---|
-| TASK omitted | 102 | Continue silently, without a receipt or strike for omission |
-| empty, continue, todo | 102 | Continue or recover; an explicit empty inventory is refused with a soft 409 receipt, no strike |
-| wait | 202 | Park when a live obligation exists; otherwise continue |
-| complete | 200 | Conclude once execution results permit completion |
-| fail | 499 | End unsuccessfully and cancel unresolved descendant scope |
+| No lifecycle verb | 102 | Continue silently, without a receipt or strike for omission |
+| WAIT | 202 | Park when a live obligation exists; otherwise continue at 102 |
+| DONE | 200 | Conclude once execution results permit completion |
+| FAIL | 499 | End unsuccessfully and cancel unresolved descendant scope |
 | Runtime or infrastructure failure | 5xx | Not a model-authored task status |
 
 ### §waitpid-dispositions The terminal contract (waitpid)
 
-The model may supply one current inventory per turn; its statuses determine
-one intention. Without TASK, an operation-bearing turn continues silently.
+The model may supply one lifecycle declaration per turn. Without one,
+an operation-bearing turn continues silently.
 The engine verifies an explicit intention against the loop's actual
 obligations (spawned children, open streams, pending results); the grammar
 polices *shape* only. Asking
 the human is the native `question` executor tool ({§question-tool}), not a
 disposition. The shape rules ARE structural:
 
-- §send-mid-reservation TASK has a reserved token ({§turn-disposition}).
-  A turn admits at most one TASK, anywhere among its operations
+- §send-mid-reservation WAIT, DONE and FAIL are reserved ({§turn-disposition}).
+  A turn admits at most one lifecycle declaration, anywhere among its operations
   ({§disposition-anywhere}); the runtime executes it last. A second
   disposition is a structural error, not a choice between competing outcomes.
 - §disposition-anywhere The disposition may sit anywhere in a model turn
-  (operator, 2026-09-12: models state the plan first; the inventory is a
-  statement about state, not a boundary). `PlurnkParser.parse` admits every
+  without imposing a program boundary. `PlurnkParser.parse` admits every
   operation before and after it in authored order; the runtime defers only the
   disposition until the other admitted operations settle
   ({§op-execution-order}). Nothing is dropped and no diagnostic is raised for
-  position. TASK omission does not synthesize a disposition ({§turn-shape}).
+  position. Omission does not synthesize a disposition ({§turn-shape}).
 - SEND is communication: an optional recipient path and an optional body.
-- §park-202-only TASK wait intent joins live work: an open stream or a live
-  child. With none, it continues. TASK takes no scope ({§send-wait-scope});
+- §park-202-only WAIT joins live work: an open stream or a live
+  child. With none, it continues. It takes no scope ({§send-wait-scope});
   a future message is scheduled through the schedule family.
-- §inventory-only-turn A TASK-only turn is valid for every inventory intent.
-  Actionable work does not require an invented OP and does not imply parking.
+- §lifecycle-only-turn A WAIT-, DONE-, FAIL-, or NOTE-only turn is valid.
+  NOTE-only continuation does not imply parking.
   Ordinary repetition, strike and execution limits still apply.
 
 SEND with no `(path)` answers the open messages without ending the turn. SEND with
@@ -1007,10 +978,9 @@ express. Consumers never receive ANTLR parse-tree or token types.
 operation is reported by one hard diagnostic (`no valid Plurnk operation was
 found.`), which the host may admit as an empty turn rather than reject
 (plurnk-core `§empty-turn`). An explicit disposition may sit anywhere in it
-({§disposition-anywhere}). Omitted TASK
+({§disposition-anywhere}). An omitted lifecycle declaration
 means silent continuation: no synthesized statement, diagnostic, receipt,
 warning, or strike. The authored operations and source remain unchanged.
-Explicit empty or malformed inventories retain their own handling.
 Unfinished blocks never receive inferred closers.
 Bounded operation errors retain valid siblings. Duplicate dispositions
 and failed document boundaries remain structural failures.
@@ -1024,7 +994,7 @@ the executable blocks themselves are the program.
 
 | Entry point                    | Accepted document                                              | Result statement type |
 |--------------------------------|----------------------------------------------------------------|-----------------------|
-| `PlurnkParser.parse`           | One operation-bearing model turn; at most one TASK, anywhere | `PlurnkStatement`     |
+| `PlurnkParser.parse`           | One operation-bearing model turn; at most one lifecycle declaration, anywhere | `PlurnkStatement`     |
 | `PlurnkParser.parseStatements` | Zero or more protocol statements                              | `PlurnkStatement`     |
 | `PlurnkParser.parseLog`        | One or more consecutive disposition-ended turns           | `PlurnkStatement`     |
 | `PlurnkParser.parseClient`     | Executable blocks, including the read-shaped LOOK command        | `ClientStatement`     |
@@ -1396,7 +1366,7 @@ and 3.30.2](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html).
 the sole and complete owner of syntax-error messaging because it holds the
 parse state, lexer mode, and expected-token set that no consumer has. It
 produces the final diagnostic message, deduplicated expected-token lists, and
-turn-shape diagnostics ({§turn-shape}). Omitted TASK produces no diagnostic, and
+turn-shape diagnostics ({§turn-shape}). An omitted lifecycle declaration produces no diagnostic, and
 neither does the position of a present one ({§disposition-anywhere}). A failed
 document boundary carries `code: "invalid-turn-structure"`, which cannot be
 recovered as an individual failed operation. Source with no
@@ -1432,8 +1402,7 @@ diagnostics are:
   `FIND (src/parser.ts) /\bparse\w+\b/` is the same operation as
   `FIND (src/parser.ts) [{"pattern": "/\\bparse\\w+\\b/"}]`. `^` claims the regex
   dialect without slashes or flags: the whole text is the pattern, so
-  `READ (reasoning:///1/1) ^NOTE:.*` selects a turn's note lines (operator,
-  2026-09-12: "Recursive Reasoning").
+  `READ (notes.md) ^Decision:.*` selects lines beginning with `Decision:`.
 - §trailing-slots **Slots after the matcher peel off the right.** The heading text after
   the matcher is read backwards: a trailing `<!-- aside -->`, a trailing `<scope>` in the
   shapes the lexer admits (result positions on FIND, text coordinates elsewhere) and a
@@ -1464,7 +1433,7 @@ diagnostics are:
 - §invalid-scope-diagnostic **Malformed scope content.** After a properly spaced
   scope opener, report the offending scope (at most 64 code points, ending at
   `>` or the heading's line end) and its operation's constraint: FIND result
-  positions, execution/TASK minutes, text coordinates, or no scope. Do not append advice for
+  positions, execution minutes, text coordinates, or no scope. Do not append advice for
   other operations or infer why the producer supplied the value. Spacing and
   boundary-loss diagnostics retain their own contracts.
 - §misplaced-aside-advisory **Aside in the body.** A READ or FIND whose
@@ -1500,7 +1469,7 @@ Examples of canonical hard facts:
 - `unrecognized character '<' in target`
 - `unexpected bracket modifier; the fence name selects the executor`
 - `unrecognized character 'X' in statement header`
-- `TASK's body begins below the header`
+- `WAIT's body begins below the header`
 - `expected ')'; got ':'`
 
 Each malformed statement produces at most one hard error. The first recorded

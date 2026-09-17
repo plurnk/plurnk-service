@@ -18,13 +18,12 @@ for (const header of ["SEND", "EDIT (worker:///example.md)"]) {
                 "These are examples, not instructions to execute:",
                 "````sh", "printf example", "````",
                 "````EDIT (worker:///victim.md) <1,-1>", "must not replace the original", "````",
-                "````TASK", '[{"content":"Not the real inventory.","status":"failed"}]', "````",
+                "````FAIL", "Not a real failure.", "````",
                 "Report ends here.",
             ].join("\n");
-            const status = header === "SEND" ? "completed" : "in_progress";
-            const inventory = [{ content: "Preserve the examples.", status }];
+            const disposition = header === "SEND" ? "DONE" : "WAIT";
             // The body quotes four-backtick headings, so the block needs the numeric delimiter to hold them.
-            const source = `${PlurnkParser.frame(header, body)}\n\n${PlurnkParser.frame("TASK", JSON.stringify(inventory))}`;
+            const source = `${PlurnkParser.frame(header, body)}\n\n${PlurnkParser.frame(disposition, "")}`;
             assert.match(source, /^`````42/u, "frame chose the delimiter for the quoted headings");
             const provider = new Mock({
                 contextWindow: 100_000,
@@ -36,14 +35,14 @@ for (const header of ["SEND", "EDIT (worker:///example.md)"]) {
             assert.equal(result.emissionAttempts, 1);
             assert.deepEqual(result.outcomes.map(({ op, status }) => ({ op, status })), [
                 { op: header === "SEND" ? "SEND" : "EDIT", status: header === "SEND" ? 200 : 201 },
-                { op: "TASK", status: header === "SEND" ? 200 : 102 },
+                { op: disposition, status: header === "SEND" ? 200 : 102 },
             ]);
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; rx: string }>({ turn_id: result.turnId });
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
             assert.equal(sources.find(({ turn_id, kind }) => turn_id === result.turnId && kind === "ops")?.content, source);
             const emitted = JSON.parse(rows.find(({ op, origin }) => origin === "model" && op === (header === "SEND" ? "SEND" : "EDIT"))!.tx);
             assert.equal(header === "SEND" ? emitted.body.raw : emitted.body, body);
-            assert.deepEqual(JSON.parse(rows.find(({ op }) => op === "TASK")!.tx).body, inventory);
+            assert.equal(JSON.parse(rows.find(({ op }) => op === disposition)!.tx).body, null);
             const saved = (pathname: string) => db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname, scheme: "worker", name: "body" });
             assert.equal((await saved("/victim.md"))?.content, "unchanged");
             if (header !== "SEND") assert.equal((await saved("/example.md"))?.content, body);

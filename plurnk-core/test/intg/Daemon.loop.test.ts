@@ -6,9 +6,9 @@ import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockRe
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 
 test("loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
-    const dsl = "```EDIT (worker:///france/capital)\nParis\n```\n\n```SEND\nParis is the capital.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
+    const dsl = "```EDIT (worker:///france/capital)\nParis\n```\n\n```SEND\nParis is the capital.\n```\n```DONE\n```";
     // {§send-premature-terminate} — the EDIT receipt lands next packet; [200] concludes on the second turn.
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 142), makeMockResponse("```SEND\nParis is the capital.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 0)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 142), makeMockResponse("```SEND\nParis is the capital.\n```\n```DONE\n```", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -40,7 +40,7 @@ test("loop.run accepts immediately (100); the loop's outcome arrives via loop/te
 test("{§message-causal-source}: a trusted adapter source survives message publication", async () => {
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10)],
+        responses: [makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10)],
     });
 
     await withDaemon(mock, async (_db, daemon) => {
@@ -79,8 +79,8 @@ test("{§message-causal-source}: a trusted adapter source survives message publi
 
 test("loop.inject speaks into an existing worker; errors when there's none", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("```SEND\nfirst done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
-        makeMockResponse("```SEND\ninjected done\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+        makeMockResponse("```SEND\nfirst done\n```\n```DONE\n```", 10),
+        makeMockResponse("```SEND\ninjected done\n```\n```DONE\n```", 10),
     ] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -116,7 +116,7 @@ test("loop.inject speaks into an existing worker; errors when there's none", asy
 });
 
 test("run.fork branches the model worker into a named worker; errors with no worker", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("```EDIT (worker:///x)\nhi\n```\n\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10), makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("```EDIT (worker:///x)\nhi\n```\n\n```SEND\ndone\n```\n```DONE\n```", 10), makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -163,8 +163,8 @@ test("run.fork branches the model worker into a named worker; errors with no wor
 });
 
 test("loop.run streams log/entry notifications during execution", async () => {
-    const dsl = "```EDIT (worker:///x)\nhello\n```\n\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 0)] });
+    const dsl = "```EDIT (worker:///x)\nhello\n```\n\n```SEND\ndone\n```\n```DONE\n```";
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -185,8 +185,8 @@ test("loop.run streams log/entry notifications during execution", async () => {
                 false,
                 "initialization has no synthetic actionless receipt",
             );
-            assert.equal(initialization[0]?.op, "READ", "the real initialization opens with its reasoning READ");
-            assert.equal(initialization.at(-1)?.op, "TASK", "initialization dispatches its inventory last");
+            assert.equal(initialization[0]?.op, "NOTE", "initialization extracts its own reasoning NOTE");
+            assert.equal(initialization.at(-1)?.op, "READ", "initialization ends with its own program READ");
             assert.equal(new Set(initialization.map(({ id }) => id)).size, initialization.length, "initialization rows are ordinary settled operations, not later updates");
             assert.ok(initialization.filter(({ op }) => op === "READ").every(({ status_rx }) => status_rx === 200));
             const authored = captured.filter((event) => {
@@ -194,7 +194,7 @@ test("loop.run streams log/entry notifications during execution", async () => {
                 return (entry.op === "SEND" && entry.origin === "_plurnk") || entry.origin === "model";
             });
             // {§send-premature-terminate} — the EDIT receipt forces a second turn.
-            assert.deepEqual(authored.map((event) => (event as { entry: { op: string } }).entry.op), ["SEND", "EDIT", "SEND", "TASK", "SEND", "TASK"], "each message and inventory streams independently of initialization");
+            assert.deepEqual(authored.map((event) => (event as { entry: { op: string } }).entry.op), ["SEND", "EDIT", "SEND", "DONE", "SEND", "DONE"], "each message and disposition streams independently of initialization");
             const prompt = authored[0] as { entry: { op: string; origin: string } };
             assert.equal(prompt.entry.op, "SEND");
             assert.equal(prompt.entry.origin, "_plurnk");
@@ -202,18 +202,18 @@ test("loop.run streams log/entry notifications during execution", async () => {
             assert.equal(first.entry.op, "EDIT");
             assert.equal(first.entry.origin, "model");
             const second = authored[3] as { entry: { op: string; status_rx: number } };
-            assert.equal(second.entry.op, "TASK");
+            assert.equal(second.entry.op, "DONE");
             assert.equal(second.entry.status_rx, 102, "the same-turn [200] is deferred over the unseen EDIT receipt ({§completion-defers-to-results})");
             const concluding = authored[5] as { entry: { op: string; status_rx: number } };
-            assert.equal(concluding.entry.op, "TASK");
+            assert.equal(concluding.entry.op, "DONE");
             assert.equal(concluding.entry.status_rx, 200, "the observation turn concludes");
         } finally { ws.close(); }
     });
 });
 
 test("loop.run fires loop/terminated notification on completion", async () => {
-    const dsl = "```EDIT (worker:///x)\nbody\n```\n\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 0)] });
+    const dsl = "```EDIT (worker:///x)\nbody\n```\n\n```SEND\ndone\n```\n```DONE\n```";
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -248,7 +248,7 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
     // async client's sole outcome channel. One non-terminal turn, then the Mock exhausts — each
     // exhausted call is an invalid response, one provider-response-contract strike ({§engine-rails}
     // Contract Strikes) — three consecutive strike out 500, and the drain must still publish it.
-    const dsl = "```EDIT (worker:///x)\niter\n```\n\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```";
+    const dsl = "```EDIT (worker:///x)\niter\n```\n\n```NOTE\ncontinue\n```";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 10)] });
     // The failure must reach daemon diagnostics too. Capture stderr around the loop.
     const logged: string[] = [];
@@ -333,7 +333,7 @@ test("loop.run requires non-empty prompt", async () => {
 });
 
 test("loop.run respects maxTurns cap when model emits non-terminal statuses repeatedly", async () => {
-    const dsl = "```EDIT (worker:///x)\niter\n```\n\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```";
+    const dsl = "```EDIT (worker:///x)\niter\n```\n\n```NOTE\ncontinue\n```";
     const responses = Array.from({ length: 5 }, () => makeMockResponse(dsl, 10));
     // Generous context: this test isolates the maxTurns ceiling, so the budget must NOT fire first.
     // At 8192 the 3-turn EDIT accumulation + the foisted docs tips into a 413 before turn 3's cap
@@ -353,7 +353,7 @@ test("loop.run respects maxTurns cap when model emits non-terminal statuses repe
     });
 });
 test("{§methods-loop-run-open-paths}: a fresh loop foists one turn-zero READ per path", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10)] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -383,7 +383,7 @@ test("{§methods-loop-run-open-paths}: a fresh loop foists one turn-zero READ pe
 
 // {§methods-event-subscribe}: a subscriber failure never propagates into engine control flow.
 test("a throwing seam subscriber never kills the loop — the transport's failure is its own", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10)] });
     const logged: string[] = [];
     const realErr = console.error;
     console.error = (...a: unknown[]) => { logged.push(a.map(String).join(" ")); };

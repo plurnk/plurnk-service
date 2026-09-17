@@ -25,8 +25,8 @@ const execFileP = promisify(execFile);
 // cap decides how many actions land. Turn 2 SENDs to terminate (no reliance on
 // maxTurns composition), so the loop ends cleanly either way.
 const twoEdits = () => new Mock({ contextWindow: viableWindow(), responses: [
-    makeMockResponse("```EDIT (worker:///a.md)\naaa\n```\n\n```EDIT (worker:///b.md)\nbbb\n```\n\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```", 50),
-    makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
+    makeMockResponse("```EDIT (worker:///a.md)\naaa\n```\n\n```EDIT (worker:///b.md)\nbbb\n```\n\n```NOTE\ncontinue\n```", 50),
+    makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 50),
 ] });
 const entryId = (db: Db, pathname: string) =>
     db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "worker", pathname });
@@ -60,13 +60,13 @@ test("workspace settings.maxCommands min()s the env action cap — tightens, nev
     }
 });
 
-test("maxCommands:0 admits TASK and drops every authored command", async () => {
+test("maxCommands:0 admits DONE and drops every authored command", async () => {
     const prev = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     try {
         process.env.PLURNK_SERVICE_MAX_COMMANDS = "99";
-        // TASK remains the disposition when the command cap admits neither EDIT nor SEND.
+        // DONE remains the disposition when the command cap admits neither EDIT nor SEND.
         const mock = new Mock({ contextWindow: viableWindow(), responses: [
-            makeMockResponse("```EDIT (worker:///a.md)\naaa\n```\n\n```EDIT (worker:///b.md)\nbbb\n```\n\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
+            makeMockResponse("```EDIT (worker:///a.md)\naaa\n```\n\n```EDIT (worker:///b.md)\nbbb\n```\n\n```SEND\ndone\n```\n```DONE\n```", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -79,7 +79,7 @@ test("maxCommands:0 admits TASK and drops every authored command", async () => {
                     .map((e) => (e as { entry: { op: string; origin: string } }).entry)
                     .filter((e) => e.origin === "model")
                     .map((e) => e.op);
-                assert.deepEqual(modelOps, ["TASK"], "only TASK dispatched — every authored command capped out");
+                assert.deepEqual(modelOps, ["DONE"], "only DONE dispatched — every authored command capped out");
                 assert.equal(await entryId(db, "/a.md"), undefined, "the first EDIT action never landed at maxCommands:0");
                 assert.equal(await entryId(db, "/b.md"), undefined, "the second EDIT action never landed");
             } finally { ws.close(); }
@@ -117,7 +117,7 @@ test("workspace settings.git:false denies git membership for the workspace (env 
 });
 
 test("workspace.create rejects malformed ceiling settings — fail hard, no silent accept", async () => {
-    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)] });
+    const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 50)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

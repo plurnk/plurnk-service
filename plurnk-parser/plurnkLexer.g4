@@ -2,7 +2,7 @@ lexer grammar plurnkLexer;
 
 tokens {
     OPEN_FIND, OPEN_READ, OPEN_EDIT, OPEN_COPY, OPEN_MOVE,
-    OPEN_SEND, OPEN_TASK,
+    OPEN_SEND, OPEN_NOTE, OPEN_WAIT, OPEN_DONE, OPEN_FAIL,
     OPEN_EXEC, OPEN_BARE, OPEN_WORK, OPEN_FORK, OPEN_KILL,
     OPEN_LOOK,
     LPAREN, RPAREN, LBRACKET, RBRACKET, L_MARKER, BODY_OPEN, SECTION_END,
@@ -17,7 +17,10 @@ private openHeading: string = "";
 private openHeadingLine: number = 0;
 private openHeadingColumn: number = 0;
 private fenceLength: number = 0;
+private fenceCharacter: number = 0x60;
 private fenceDelimiter: string = "";
+// {§reasoning-notes} — quotations are opaque; program-boundary recovery is not note extraction.
+public reasoning: boolean = false;
 private started: boolean = false;
 // {§inline-chain} — a closer on the heading line may be followed by the next opener on the same line.
 private inlineChain: boolean = false;
@@ -83,6 +86,7 @@ private unknownTags: Array<{ line: number; column: number; tag: string }> = [];
 // {§interstitial-fence} - only a native operation or a known executor opens a block.
 private knownHeading(): boolean {
     const name = this.text.replace(/^\x60+[0-9]*/, "");
+    if (this.reasoning) return name === "NOTE";
     return Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutor(name);
 }
 
@@ -100,14 +104,16 @@ private static readonly OPERATIONS: Readonly<Record<string, number>> = {
     FIND: plurnkLexer.OPEN_FIND, READ: plurnkLexer.OPEN_READ,
     EDIT: plurnkLexer.OPEN_EDIT, COPY: plurnkLexer.OPEN_COPY, MOVE: plurnkLexer.OPEN_MOVE,
     SEND: plurnkLexer.OPEN_SEND, BARE: plurnkLexer.OPEN_BARE,
-    TASK: plurnkLexer.OPEN_TASK,
+    NOTE: plurnkLexer.OPEN_NOTE, WAIT: plurnkLexer.OPEN_WAIT,
+    DONE: plurnkLexer.OPEN_DONE, FAIL: plurnkLexer.OPEN_FAIL,
     WORK: plurnkLexer.OPEN_WORK, FORK: plurnkLexer.OPEN_FORK, KILL: plurnkLexer.OPEN_KILL,
     LOOK: plurnkLexer.OPEN_LOOK,
 };
 
 private open(implicitName?: string): void {
     this.fenceLength = 0;
-    while (this.text.charCodeAt(this.fenceLength) === 0x60) this.fenceLength++;
+    this.fenceCharacter = this.text.charCodeAt(0);
+    while (this.text.charCodeAt(this.fenceLength) === this.fenceCharacter) this.fenceLength++;
     // {§numeric-delimiter} - digits between the backticks and the name identify the block.
     let digits = this.fenceLength;
     while (this.text.charCodeAt(digits) >= 0x30 && this.text.charCodeAt(digits) <= 0x39) digits++;
@@ -124,8 +130,7 @@ private open(implicitName?: string): void {
     this.openHeadingColumn = (this as any).currentTokenColumn;
     this.started = true;
     this.slotReady = true;
-    // {§one-line-turn} - TASK takes its inventory as a heading-line block; a bracket there is a slot.
-    this.metadataReady = this.execFence || this.openOp === "TASK" || this.openOp === "SEND";
+    this.metadataReady = this.execFence || this.openOp === "SEND";
     this.inlineBody = false;
 }
 
@@ -153,10 +158,10 @@ private offsetAfterEol(offset: number): number | null {
 // opener's numeric delimiter (none when the opener had none). Count is CommonMark's rule; the
 // delimiter is what lets an equal-count block nest ({§numeric-delimiter}).
 private closingAt(offset: number): boolean {
-    if (this.inputStream.LA(offset === 1 ? -1 : offset - 1) === 0x60) return false;
+    if (this.inputStream.LA(offset === 1 ? -1 : offset - 1) === this.fenceCharacter) return false;
     offset = this.skipHorizontal(offset);
     let cursor = offset;
-    while (this.inputStream.LA(cursor) === 0x60) cursor++;
+    while (this.inputStream.LA(cursor) === this.fenceCharacter) cursor++;
     if (cursor - offset < this.fenceLength) return false;
     let digits = "";
     while (this.inputStream.LA(cursor) >= 0x30 && this.inputStream.LA(cursor) <= 0x39) {
@@ -166,6 +171,7 @@ private closingAt(offset: number): boolean {
     if (digits !== this.fenceDelimiter) return false;
     while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
     if (this.inputStream.LA(cursor) <= 0 || this.offsetAfterEol(cursor) !== null) return true;
+    if (this.reasoning) return false;
     // {§inline-chain} — a closer followed on its line by the next opener still closes.
     let ticks = 0;
     while (this.inputStream.LA(cursor + ticks) === 0x60) ticks++;
@@ -188,6 +194,7 @@ private closingAt(offset: number): boolean {
 // glued opener (eight backticks then READ) can never swallow the turn. A delimited block is exempt: its
 // delimiter says everything up to its own closer is body ({§numeric-delimiter}).
 private headingAt(offset: number): boolean {
+    if (this.reasoning) return false;
     let cursor = offset;
     while (this.inputStream.LA(cursor) === 0x60) cursor++;
     if (cursor - offset < 4) return false;
@@ -315,7 +322,9 @@ fragment EOL : '\r'? '\n' ;
 
 // {§fence-boundary} - only top-level fences can open statements. The first
 // block may terminate a provider preamble without an intervening newline.
-OPEN : { this.atLineStart() || !this.started || this.inlineChain }? FENCE [0-9]* NAME { this.knownHeading() }? { this.open(); } -> mode(SLOTS) ;
+OPEN : { this.atLineStart() || !this.reasoning && (!this.started || this.inlineChain) }? FENCE [0-9]* NAME { this.knownHeading() }? { this.open(); } -> mode(SLOTS) ;
+// {§reasoning-notes} — an enclosing code fence is quotation, including unknown tags and tildes.
+REASONING_QUOTE : { this.reasoning && this.atLineStart() }? (FENCE [0-9]* NAME? | '~~~' '~'* NAME?) { !this.knownHeading() }? { this.open(); } -> type(TEXT), channel(HIDDEN), mode(QUOTATION) ;
 // {§interstitial-fence} - a fence naming nothing known, or nothing at all, is prose outside a block.
 UNKNOWN_TAG : { this.atLineStart() || !this.started }? FENCE [0-9]* NAME { this.noteUnknownTag(); } -> type(TEXT), channel(HIDDEN) ;
 WS : [ \t\r\n]+ -> channel(HIDDEN) ;
@@ -324,6 +333,12 @@ THINK_BLOCK : '<think>' .*? '</think>' -> type(TEXT), channel(HIDDEN) ;
 CHANNEL_BLOCK : '<|channel>' .*? '<channel|>' -> type(TEXT), channel(HIDDEN) ;
 TEXT_RUN : ~[ \t\r\n`]+ { this.inlineChain = false; } -> type(TEXT), channel(HIDDEN) ;
 TEXT_TICK : '`' { this.inlineChain = false; } -> type(TEXT), channel(HIDDEN) ;
+
+mode QUOTATION;
+Q_END : { this.closingAfterEol() }? EOL [ \t]* ('```' '`'* | '~~~' '~'*) [0-9]* [ \t]* -> type(TEXT), channel(HIDDEN), mode(DEFAULT_MODE) ;
+Q_EMPTY_END : { this.atLineStart() && this.closingAt(1) }? [ \t]* ('```' '`'* | '~~~' '~'*) [0-9]* [ \t]* -> type(TEXT), channel(HIDDEN), mode(DEFAULT_MODE) ;
+Q_RUN : ~[\r\n`~]+ -> type(TEXT), channel(HIDDEN) ;
+Q_CHAR : . -> type(TEXT), channel(HIDDEN) ;
 
 mode SLOTS;
 // {§one-line-turn} - the next opener on a heading's own line ends this bodyless block and opens.

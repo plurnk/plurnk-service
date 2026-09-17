@@ -86,14 +86,14 @@ for (const fixture of cases) test(`{§op-execution-order}: ${fixture.name}`, asy
         makeMockResponse(`\`\`\`EDIT (${target})
 ${content}
 \`\`\`
-\`\`\`TASK
-[{"content":"created","status":"in_progress"}]
+\`\`\`NOTE
+created
 \`\`\``, 10),
         makeMockResponse(`${fixture.ops.join("\n")}
-\`\`\`TASK
-[{"content":"verify","status":"in_progress"}]
+\`\`\`NOTE
+verify
 \`\`\``, 10),
-        makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+        makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -102,7 +102,7 @@ ${content}
             const result = await runLoopToTerminal(ws, 2, { prompt: "run", policy: { proposals: "accept" } });
             assert.equal(result.finalStatus, 200);
             const rows = (await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId }))
-                .filter(({ origin, op }) => origin === "model" && op !== "SEND" && op !== "PLAN" && !TurnDisposition.isOp(op)).slice(1);
+                .filter(({ origin, op }) => origin === "model" && op !== "SEND" && op !== "NOTE" && !TurnDisposition.isOp(op)).slice(1);
             assert.deepEqual(rows.map(({ op }) => op), fixture.order);
             assert.deepEqual(rows.filter(({ op }) => op === "READ").map(({ rx }) => JSON.parse(rx).content), fixture.reads);
             assert.deepEqual(rows.filter(({ op }) => op === "EDIT").map(({ rx }) => JSON.parse(rx).status), fixture.statuses);
@@ -110,8 +110,8 @@ ${content}
     });
 });
 
-for (const origin of ["client", "_plurnk"] as const) for (const hasTask of [false, true]) {
-    for (const failOnOperationError of [false, true]) test(`{§op-execution-order}: ${origin} preserves effects and source with failOnOperationError=${failOnOperationError}, TASK=${hasTask}`, async () => {
+for (const origin of ["client", "_plurnk"] as const) for (const hasNote of [false, true]) {
+    for (const failOnOperationError of [false, true]) test(`{§op-execution-order}: ${origin} preserves effects and source with failOnOperationError=${failOnOperationError}, NOTE=${hasNote}`, async () => {
         const db = await openMigrated();
         try {
             const env = await seedEnvelope(db, `ordered-${origin}`, { producer: origin });
@@ -126,10 +126,7 @@ invalid
 \`\`\`
 \`\`\`EDIT (${target}) <2>
 TWO
-\`\`\`${hasTask ? `
-\`\`\`TASK
-[{"content":"Continue the task.","status":"in_progress"}]
-\`\`\`` : ""}`;
+\`\`\`${hasNote ? "\n```NOTE\nContinue the task.\n```" : ""}`;
             const execution = engine.executeAdmittedTurn({
                 ...env, origin, source, statements: TurnOps.parseInternal(source),
                 fromSequence: 1, failOnOperationError,
@@ -138,7 +135,7 @@ TWO
             else assert.equal((await execution).status, 102);
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string }>({ turn_id: env.turnId });
             assert.deepEqual(rows.filter(({ op }) => op !== null).map(({ op }) => op),
-                failOnOperationError ? ["EDIT", "READ", "EDIT"] : ["EDIT", "READ", "EDIT", "EDIT", ...(hasTask ? ["TASK"] : [])]);
+                failOnOperationError ? ["EDIT", "READ", "EDIT"] : ["EDIT", "READ", "EDIT", "EDIT", ...(hasNote ? ["NOTE"] : [])]);
             assert.equal(JSON.parse(rows.find(({ op }) => op === "READ")!.rx).content, content);
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: env.workerId });
             assert.equal(sources.find(({ turn_id, kind }) => turn_id === env.turnId && kind === "ops")?.content, source,

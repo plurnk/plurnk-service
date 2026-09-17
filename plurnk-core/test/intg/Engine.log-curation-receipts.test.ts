@@ -15,10 +15,10 @@ const row = (log: string, op: string): Record<string, unknown> | undefined => ro
 
 test("{§log-kill-meta-operation} successful log KILL receipts never render; errors, resource KILLs, and forensic evidence remain", async () => {
     const mock = new Mock({ contextWindow: 32768, responses: [
-        "```EDIT (worker:///note)\nfirst line\nsecond line\n```\n\n```READ (worker:///note)```\n```TASK\n[{\"content\":\"wrote\",\"status\":\"in_progress\"}]\n```",
-        "```KILL (log:///1/**/READ) <2,-1>```\n```KILL (log:///1/**/EDIT)```\n```KILL (log:///9/9/9)```\n```TASK\n[{\"content\":\"curated\",\"status\":\"in_progress\"}]\n```",
-        "```KILL (log:///1/**/EDIT)```\n```READ (log:///1/3/1/KILL)```\n```READ (worker:///note)```\n```KILL (worker:///note)```\n```TASK\n[{\"content\":\"verified\",\"status\":\"in_progress\"}]\n```",
-        "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
+        "```EDIT (worker:///note)\nfirst line\nsecond line\n```\n\n```READ (worker:///note)```\n```NOTE\nwrote\n```",
+        "```KILL (log:///1/**/READ) <2,-1>```\n```KILL (log:///1/**/EDIT)```\n```KILL (log:///9/9/9)```\n```NOTE\ncurated\n```",
+        "```KILL (log:///1/**/EDIT)```\n```READ (log:///1/3/1/KILL)```\n```READ (worker:///note)```\n```KILL (worker:///note)```\n```NOTE\nverified\n```",
+        "```SEND\ndone\n```\n```DONE\n```",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

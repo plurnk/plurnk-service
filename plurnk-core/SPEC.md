@@ -163,7 +163,7 @@ Seven principles govern which exterior standards Plurnk conforms to (#299):
 3. **Traction.** Count running counterparties today; integration horizon must be shorter than the standard's expected half-life. Sockets stay configurable with no default until a candidate earns it.
 4. **POSIX app identity.** Decades-stable host-ecosystem conventions (XDG, NO_COLOR, man, completions, service units) outrank months-stable AI-pipeline fashions.
 5. **Faces, never organs.** A standard adopts as one adapter or projection behind an existing seam; if it cannot, that is the alarm, and it goes to a design gate.
-6. **Deletion is the price of admission.** A standard earns adoption by deleting bespoke surface (the ACP Plan object deleted the Markdown plan microformat); parallel representations, second discovery paths, and compatibility grammars are refused.
+6. **Deletion is the price of admission.** A standard earns adoption by deleting bespoke surface; parallel representations, second discovery paths, and compatibility grammars are refused.
 7. **Two arbiters.** Model-facing surfaces change only on measured model evidence; human-facing surfaces follow host-ecosystem convention without ceremony. Standards bodies get a vote on neither.
 
 ### §in-process In-process architecture
@@ -362,12 +362,11 @@ direct-entry-plus-directory count; `-1` enables the ordinary markerless page;
 unset / `0` disables previews. `log://` is absent because the current worker's
 log already renders in present mode.
 
-§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its program is stored before execution and dispatches the orienting READ/FIND surveys, the reasoning and program READs in {§reasoning-initial-read}, and the final TASK (in {§op-execution-order}). The full `<1,-1>` READ of its own `ops:///<loop>/<turn>` source supplies the worked program example; no actionless source row or simulated READ is added. Every orienting row is structurally classified `_plurnk` and `init`. The namespace surveys and their asides follow {§actor-boundary-catalog-preview}.
+§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its reasoning and program are stored before execution. A reasoning NOTE, the orienting READ/FIND surveys, and the reasoning and program READs in {§reasoning-initial-read} execute under {§op-execution-order}. The full `<1,-1>` READ of its own `ops:///<loop>/<turn>` source supplies the worked program example; no actionless source row or simulated READ is added. Every orienting row is structurally classified `_plurnk` and `init`. The namespace surveys and their asides follow {§actor-boundary-catalog-preview}.
 
 Incoming messages publish once as inbound SEND rows in the first model turn
-({§message-arrival}); initialization neither READs nor archives them. TASK
-hands off with one {§plan-value} entry:
-`{"content":"Address the message.","status":"in_progress"}`. The first model
+({§message-arrival}); initialization neither READs nor archives them. The turn
+continues without a lifecycle declaration. The first model
 request occupies database/log turn sequence 2; “turn zero” names the
 initialization phase, not a zero-based database coordinate. Client and
 `_plurnk` administrative workers execute operation turns without model initialization.
@@ -552,7 +551,7 @@ the `git` runtime — never engine machinery.
   verb. The **pull** side mirrors the push: a path-absent
   ```` ```READ (worker://<name>) ```` collects that same result on demand for a
   concluded worker; **unfinished loops** have not delivered, so the READ
-  returns **425** (Too Early). TASK independently chooses whether to continue
+  returns **425** (Too Early). An explicit lifecycle declaration chooses whether to continue
   or wait for that worker ({§join-blocking-collect}). A
   missing name is 404. The model therefore reads the worker itself for its
   outcome or a wait rather than guessing a scratch path to "check on" it.
@@ -788,7 +787,7 @@ explicit.
 
 ## §worker-loop-lifecycle Loop scheduling and lifecycle
 
-- §join-blocking-collect **Collection and scheduling are independent.** A path-absent ```` ```READ (worker://<running-child>) ```` returns **425** (Too Early), without a strike or scheduler side effect. TASK with waiting intent joins live obligations; an `in_progress` inventory keeps working. A child reaching any terminal status wakes a waiting parent with its result, including completion racing the park boundary. Children retain their own limits. Collection never arms an implicit disposition override.
+- §join-blocking-collect **Collection and scheduling are independent.** A path-absent ```` ```READ (worker://<running-child>) ```` returns **425** (Too Early), without a strike or scheduler side effect. WAIT joins live obligations; ordinary operations without WAIT keeps working. A child reaching any terminal status wakes a waiting parent with its result, including completion racing the park boundary. Children retain their own limits. Collection never arms an implicit disposition override.
 
 A worker is a **log plus a cancellation scope** — one `AbortController` per worker, reused while live and replaced only once aborted, so a cancel ends the worker as a unit and a later `runLoop` request is never born cancelled. A worker's queued loops are advanced by a **drain**: a single per-worker drain that claims loops atomically (status 100→102) and runs each under the worker's scope. A loop may spawn **streams** (execs) that outlive it; each is a row in the subscription registry ({§subscriptions}) — the durable record of what the worker holds open. Cancellation and conclusion are defined against these structures, never wall-clock timing.
 
@@ -814,7 +813,7 @@ all use that one definition.
 
 ### §worker-wait-timing Durable waits and wake ownership
 
-A waiting TASK takes no timing. With live work, an open stream or a live child
+WAIT takes no timing. With live work, an open stream or a live child
 worker, the loop parks durably and wakes on that work's settlement, on a
 message, or on the inherited observation cadence of its open streams
 ({§exec-poll}); without live work it continues at once, told so. A wake
@@ -912,7 +911,7 @@ stateDiagram-v2
     Observed --> [*]
 ```
 
-| §worker-lifecycle-subscription-matrix Subscription state at a waiting TASK | Terminal observation already in a packet | Result |
+| §worker-lifecycle-subscription-matrix Subscription state at WAIT | Terminal observation already in a packet | Result |
 |-------------------------------------------------------------------------|---:|---|
 | open                                                                    | no | park; polling or closure may wake it |
 | closed, any status, empty or non-empty                                  | no | continue directly to the observation turn |
@@ -939,9 +938,9 @@ sequenceDiagram
     participant C as Child loop
     participant S as Child stream
     P->>C: WORK or FORK
-    P->>P: TASK waiting parks on live child
+    P->>P: WAIT parks on live child
     C->>S: execution opens subscription
-    C->>C: TASK waiting parks on live stream
+    C->>C: WAIT parks on live stream
     loop backoff, fixed cadence, or explicit arrival
         S-->>C: optional progress observation
         C->>C: continue or park
@@ -962,7 +961,7 @@ sequenceDiagram
 | cancelled or failed terminal                              | no | same wake/delivery path as success; outcome remains non-2xx |
 
 A stream's close status and a loop's terminal status are separate layers. A
-stream may close 4xx/5xx and wake its worker to recover. TASK adjudicates the
+stream may close 4xx/5xx and wake its worker to recover. The lifecycle resolver adjudicates the
 loop's inventory independently of stream and message-delivery statuses
 ({§send}). Only a concluded loop crosses the parent edge as the child's result.
 
@@ -998,7 +997,7 @@ observe their terminal results. No effect is replayed across an unknown
 boundary.
 
 - §worker-lifecycle-single-drain **One drain advances a worker.** At most one drain is registered for a worker at any instant: a `runLoop` request or wake on a worker with a live drain folds in (active→next-turn) or enqueues a loop that drain claims, never a second parallel drain. A drain's start and its empty-queue teardown relinquish the worker under one per-worker lock, so the teardown's re-claim cannot race a concurrent start into a double-drain. Fresh-loop sequence allocation and insertion are one mutation under that same lock; concurrent accepted prompts remain distinct ordered queue items.
-- §worker-lifecycle-total-reap **Cancellation is recursive and reaps every held stream.** `loop.cancel`, worker `KILL`, and a failed TASK terminalize every unresolved loop in the cancelled worker subtree and iterate each worker's durable open-subscription rows, invoking each exact callable owner from the process-local live registry. The durable rows answer *what is held*; the live registry answers *how this process tears it down*; the abort signal is a fast-path optimization. There is no implicit detachment. Shutdown reaps process-local streams while preserving parked work under {§worker-lifecycle-durable-disposition}. Before shutdown awaits drains, it cancels every process-local proposal waiter through {§proposal-cancel-aborts} with outcome `daemon_stopping`, so a stopped-world dispatch cannot hold teardown open. A stream that is running, mid-spawn (its row written before it is killable), or spawned after the cancel is reaped alike. The teardown abort is bounded: the executor sends a polite signal then SIGKILL after a consumer-set grace (`PLURNK_SERVICE_EXEC_KILL_GRACE_MS`). A model ```` ```KILL [code] ```` on one live stream instead delivers exactly that signal once (bare KILL uses the executor's SIGHUP default; ```` ```KILL [9] ```` uses SIGKILL).
+- §worker-lifecycle-total-reap **Cancellation is recursive and reaps every held stream.** `loop.cancel`, worker `KILL`, and FAIL terminalize every unresolved loop in the cancelled worker subtree and iterate each worker's durable open-subscription rows, invoking each exact callable owner from the process-local live registry. The durable rows answer *what is held*; the live registry answers *how this process tears it down*; the abort signal is a fast-path optimization. There is no implicit detachment. Shutdown reaps process-local streams while preserving parked work under {§worker-lifecycle-durable-disposition}. Before shutdown awaits drains, it cancels every process-local proposal waiter through {§proposal-cancel-aborts} with outcome `daemon_stopping`, so a stopped-world dispatch cannot hold teardown open. A stream that is running, mid-spawn (its row written before it is killable), or spawned after the cancel is reaped alike. The teardown abort is bounded: the executor sends a polite signal then SIGKILL after a consumer-set grace (`PLURNK_SERVICE_EXEC_KILL_GRACE_MS`). A model ```` ```KILL [code] ```` on one live stream instead delivers exactly that signal once (bare KILL uses the executor's SIGHUP default; ```` ```KILL [9] ```` uses SIGKILL).
 - §worker-lifecycle-exec-epoch-bound **A stream's kill binds to the scope it captured at spawn.** A stream captures the worker's cancellation scope as it registers and wires its kill to it, re-checking `aborted` AFTER wiring — no check-then-listen gap can drop an abort that lands mid-registration. Because the scope is replaced only once aborted, a captured-then-replaced scope is necessarily already aborted, so replacement never strands a live stream.
 - §worker-lifecycle-no-resurrection **Cancelled work does not revive its scope.** A cancelled worker cannot be woken by its torn-down streams, stale timers, or cancelled unpublished messages. The evidence remains readable. A `499` result from cancelling only one stream is still a completion owed to a live waiting worker: result status is not proof of worker cancellation. Only an explicit new arrival admits new work after scope cancellation; terminal loops themselves remain immutable.
 - §worker-cancel-trigger **A cancellation is one bound statement.** `lifecycle_cancel_workers` writes the causal cutoff and the cancellation Problem onto every worker of the scope; `workers_cancel_live_loops` (an `INIT` process trigger beside the lifecycle statements, {§db-process-triggers}) retires each worker's live loops inside that statement — 499, waits cleared, the delivered response kept as the result's `content`, the Problem instanced `loop:///<id>`, `terminated_by = 'cancel'` — so cutoff and cancellation cannot land apart and no value is string-interpolated. Execution consumption is measured by the process-local monotonic timers ({§loop-execution-allowance}) and lands first through `lifecycle_checkpoint_executions`; a wall clock cannot stand in for it, so the timer stays outside the database by design.
@@ -1015,7 +1014,7 @@ boundary.
 - §worker-lifecycle-wake-liveness **A stream conclusion always reaches its worker.** The stream first persists its terminal state. A worker **blocked on a 202 wait** for that stream ({§wait-obligation-matrix}) then **awakens that loop in place** — the blocked loop *is* the continuation, so there is no fresh loop and no summary-as-prompt fiction. An already-active worker needs no injected prompt or second wake because its next packet reads the durable terminal state. A concluded worker receives no synthetic loop from ambient stream closure. The result remains available in the stream's own state under every case.
 - §worker-lifecycle-child-wake **Each child task completion notifies its parent.** Terminal-task publication, including failure and cancellation of a parked task, notifies the direct parent without injecting a prompt. Other unfinished tasks or streams in that child remain independent obligations; they cannot suppress notification. The parent's eligible waits requeue in place under {§loop-wake-identity} and the bounded {§worker-optimistic-settlement} opportunity. Durable revisioning covers completion-before-park and restart; drain teardown and whole-worker quiescence are not completion identities.
 - §worker-optimistic-settlement **Asynchronous settlement receives one bounded worker-local opportunity before model dispatch.** An initiating turn lets only the streams it started settle before its turn disposition; separately, a stream or direct-child conclusion persists and publishes immediately but holds eligible parked loops' `202→100` requeues while another stream or direct child remains live. Both use `PLURNK_SERVICE_OPTIMISTIC_WAIT_MS`, shipped at five seconds; zero disables the opportunity. The wake hold ends as soon as no sibling obligation remains, never extends its original deadline, and coalesces conclusions within that window into at most one requeue per eligible loop. With no sibling obligation the wake is immediate; at the deadline, surviving work follows the ordinary monitored lifecycle. A conclusion that lands after provider dispatch begins retains its next wake, while poll, message, and operator wakes never open this hold. Only packet/provider dispatch waits: terminal state, client events, cancellation, and child execution do not. One redaction-safe span records elapsed time, quiescence versus deadline, and conclusion count without entering the packet.
-- §worker-lifecycle-idle-is-concluded **No implicit completion.** A waiting inventory without a live obligation continues under {§wait-obligation-matrix}. Only a terminal inventory with at least one completed task claims success. A concluded worker retains durable history; a later addressed arrival starts a new loop.
+- §worker-lifecycle-idle-is-concluded **No implicit completion.** A waiting inventory without a live obligation continues under {§wait-obligation-matrix}. Only a accepted DONE claims success. A concluded worker retains durable history; a later addressed arrival starts a new loop.
 - §worker-lifecycle-no-lost-loop **A loop is never stranded by a drain's exit.** A drain relinquishes its registry slot only after a lock-held re-claim confirms the queue is empty; a loop enqueued during that teardown is either re-claimed by the exiting drain or claimed by a fresh drain that a later inject starts. The relinquish and the start are serialized, so neither the lost-loop hang nor a transient double-drain can occur.
 - §worker-lifecycle-durable-disposition **Durable disposition wins cancellation races.** At a turn boundary, the engine reads the loop's durable status before interpreting a process-local abort. A committed `202` park survives a later daemon-shutdown signal; only a loop still durably running at `102` can be terminalized by that cancellation. Wake selection rechecks shutdown and worker cancellation before requeuing each parked loop.
 - §worker-lifecycle-restart-recovery **Restart is owner-loss reconciliation, not replay.** Before opening client transports, the service holds an exclusive database-adjacent daemon lock; a second live owner fails before touching SQLite, while a dead-PID crash claim is replaced atomically without a timeout lease. Boot preserves accepted `100` loops and restores their drains. A `102` loop belonged to a vanished drain/provider call, so it settles `500` with the interruption on its durable row—never replayed across an unknown effect boundary. Every pending physical provider request first settles as an error with absent usage and explicitly unknown cost; then its logical model call closes. Recovery never fabricates zero evidence. Every durable proposed operation likewise lost its process-local resolution waiter and settles as a visible `500 owner_vanished` occurrence rather than an unresolvable interrupt ({§proposal-list}). A pending client interaction also lost its exact awaiting operation, so boot removes the orphan instead of replaying work or inventing a response ({§client-interactions}). Every durable-open subscription belonged to a vanished callable: active channels become errored and its row closes `500`. A `202` continuation requeues on an unseen completion or when no live obligation remains. Otherwise it stays parked on its surviving children; the drain restores inherited stream observation through the same guarded scheduler ({§worker-wait-timing}). Child terminalization wakes its parked parent on every outcome, including provider exceptions, cancellation, and restart interruption, recursively through the durable parent edges. These operations are idempotent, so an interrupted recovery safely repeats.
@@ -1048,7 +1047,7 @@ recovery completes any turn whose producer vanished.
 A provider response, deterministic `_plurnk` program, or future client/plugin
 program crosses one admission boundary into the same executor. That executor
 parses once, dispatches the admitted statements in order, records their ordinary
-outcomes, and completes the turn from its TASK ruling. Exact source is retained before dispatch.
+outcomes, and completes the turn from its lifecycle ruling. Exact source is retained before dispatch.
 Provider attempts, grammar recovery, reasoning, and accounting end before this
 shared seam. A programmatic operation batch that supplied no Plurnk source does
 not fabricate verbatim source.
@@ -1085,9 +1084,10 @@ other violations in the same turn still strike normally.
 
 §engine-cycle-evidence Cycle identity contains the ordered executed operations
 and their dispatch results, including complete operands, scopes, bodies, and
-scheme metadata, including the complete TASK inventory and SEND bodies. Source
+scheme metadata, including the complete NOTE and response bodies. Source
 positions and asides are excluded. Engine-assigned
-Problem `instance` addresses are excluded from results. Object member order is
+Problem `instance` addresses and NOTE's assigned storage `resource` coordinate
+are excluded from results; the complete note body still distinguishes activity. Object member order is
 irrelevant; operation and array order are preserved. Only the configured
 `MIN_CYCLES × MAX_CYCLE_PERIOD` history window is retained. Repeated addresses
 alone are not a cycle: changing inputs or observations distinguish activity.
@@ -1109,7 +1109,7 @@ scored. Every recovery checkpoint broadcasts live, while the model-facing Notice
 retains only the current provider state; the next completed exchange notices
 `provider_recovered`. Recovery is bounded by `PLURNK_SERVICE_PROVIDER_RECOVERY`; when it
 is spent the turn completes as `202` and the loop parks exactly like a
-TASK wait ({§worker-lifecycle-wake-requeue-not-terminal}), resuming on the
+WAIT ({§worker-lifecycle-wake-requeue-not-terminal}), resuming on the
 next prompt or wake with its log intact. Only a client cancel, the execution allowance
 ({§operator-config-loop-timeout}), or a non-recoverable provider Problem (refusal,
 authorization, quota, an invalid response) settles a loop on a provider failure.
@@ -1158,7 +1158,7 @@ restart; curation of log evidence cannot alter them.
 | Recoverable provider outage | No assessment; preserve the streak. | Preserve until an actual park. |
 | New loop | Start at zero. | Start empty. |
 
-The turn belongs to the wait revision under which it began. A rejected waiting TASK or
+The turn belongs to the wait revision under which it began. A rejected WAIT or
 one resolved without parking does not close a window. Periodic observations
 separated by actual waits are not an uninterrupted cycle; cumulative turn and
 execution allowances remain independent bounds. A committed terminal result
@@ -1194,7 +1194,7 @@ Three current entry points:
 
 ### §emission-admission Provider emission admission
 
-A completed provider exchange is an **emission attempt**, not necessarily an engine turn. ANTLR admits at least one parsed source operation, no `unparsedTail`, and at most one final TASK. Omitted TASK continues silently under {§turn-shape}, without a synthesized inventory, receipt, diagnostic, warning, or strike. Bounded operation errors retain useful siblings and participate in the ordinary struck turn; statements after TASK are admitted in authored order and the disposition is scheduled last ({§disposition-anywhere}). A duplicate TASK or an unfinished heading slot at the end of the input rejects the exchange; no recovered prefix dispatches. A missing closer never rejects ({§closer-fallback}). An exchange with no operation and no other hard error is not rejected: it is admitted as an empty turn ({§empty-turn}). Parser warnings remain admissible. `finish=length` is evidence of likely truncation, not an independent rejection rule. Provider-declared interruption never reaches admission ({§provider-interrupted-attempt}). Accepted source bytes and statement positions remain exact in response evidence and `turnOps`. Execution follows {§op-execution-order}.
+A completed provider exchange is an **emission attempt**, not necessarily an engine turn. ANTLR admits at least one parsed source operation, no `unparsedTail`, and at most one lifecycle declaration. An omitted lifecycle declaration continues silently under {§turn-shape}, without a synthesized disposition, receipt, diagnostic, warning, or strike. Bounded operation errors retain useful siblings and participate in the ordinary struck turn; statements after the lifecycle declaration are admitted in authored order and the disposition is scheduled last ({§disposition-anywhere}). A duplicate lifecycle declaration or an unfinished heading slot at the end of the input rejects the exchange; no recovered prefix dispatches. A missing closer never rejects ({§closer-fallback}). An exchange with no operation and no other hard error is not rejected: it is admitted as an empty turn ({§empty-turn}). Parser warnings remain admissible. `finish=length` is evidence of likely truncation, not an independent rejection rule. Provider-declared interruption never reaches admission ({§provider-interrupted-attempt}). Accepted source bytes and statement positions remain exact in response evidence and `turnOps`. Execution follows {§op-execution-order}.
 
 §safe-uri-target-groups After source and authored-command admission, Core tolerates one target group on READ or KILL only when splitting its raw target at top-level comma or whitespace separators produces at least two members and every member independently parses as an explicit `scheme://` URI. Request-metadata blocks are opaque to this split. Each member becomes one ordinary statement with an independent dispatch outcome and log row, in authored member order at that operation's position under {§op-execution-order}. Otherwise the target remains exactly singular, including local filenames containing spaces or commas. The stored `turnOps` and authored command count remain unexpanded, and no other operation admits target groups.
 
@@ -1210,7 +1210,7 @@ An admitted program may contain bounded malformed statements.
 Parsed operations still dispatch; each hard parser diagnostic
 becomes one durable model-origin `error` row with the parser's exact detail under
 {§parse-diagnostics} and status 400. These failures are committed before the
-explicit final TASK, or at the end of a TASK-less program, participate in the ordinary strike rail, and prevent completed
+explicit lifecycle declaration, or at the end of a program without a lifecycle declaration, participate in the ordinary strike rail, and prevent completed
 inventories from concluding before the model sees them in the next packet.
 A waiting inventory without a live obligation continues to those results.
 This is operation recovery, not provider
@@ -1491,7 +1491,7 @@ effects follow {§edit-result-copy-move-effects}.
 
 A recipient SEND (non-null path — {§turn-disposition}) routes to the scheme's
 `send`: the body is the message — a WebSocket frame, exec stdin, an HTTP POST, an A2A
-message, a worker's next prompt. TASK never reaches a scheme: it controls the
+message, a worker's next prompt. A lifecycle declaration never reaches a scheme: it controls the
 turn ({§send}). Cancelling a stream and deleting an entry are KILL ({§stream}, {§move}).
 
 §send-dispatch-entry-schemes-501 An entry-bearing scheme carries no messages: a recipient SEND aimed at one returns 501.
@@ -2024,22 +2024,15 @@ same transitions the dispatcher's atomic curation event makes, without the row.
 
 ### §reasoning-initial-read Initial reasoning observation
 
-The real initialization turn records a short `_plurnk`-authored rationale before
-executing its program. That program READs its own reasoning and its own persisted
-ops before TASK; the initial message arrives as its inbound `SEND` row ({§message-arrival}),
-never as a second READ. The rationale identifies its harness origin and carries
-exactly one `Note:` line — `Note: Prior reasoning can be searched with the pattern
-filters.` (operator's words, 2026-09-13) — and the reasoning READ is the pattern
-read `READ (reasoning:///L/T) ^Note:.* <!-- pluck notes from this turn's reasoning -->`
-({§naked-pattern} in the contracts SPEC), so the first model packet shows the
-maneuver working rather than described: only the note lands. The model's own
-coordinate is inferable from the `## Worker` block below the log
-({§packet-current-turn}), so the note teaches nothing the packet already says
-(operator, 2026-09-12: "Recursive Reasoning" — mark what must survive `Note:`,
-pluck it, and let the rest of the reasoning go). Each resolves through ordinary
-READ dispatch.
+The initialization turn records a short `_plurnk`-authored rationale containing
+a fenced NOTE. The shared reasoning extractor ({§reasoning-notes}) executes that
+NOTE through ordinary dispatch, creating its log item and immutable source.
+The program READs its own reasoning and persisted ops, demonstrating both the
+authored NOTE and its result. The initial message arrives separately as an
+inbound SEND ({§message-arrival}). Neither initialization nor later turns
+manufacture a task inventory.
 `PLURNK_REASONING_VIEW_LINES` (default `-1`, alias-scoped) selects this one READ's
-scope: `0` omits it, `-1` leaves the pattern unbounded, and a positive integer
+scope: `0` omits it, `-1` reads the complete rationale, and a positive integer
 bounds it to the first N lines. Source retention, deliberate READs, and client
 streaming are independent. No later turn automatically requests reasoning.
 
@@ -2158,9 +2151,10 @@ ordinary bounded bodies expose their displayed and complete chunk extents there.
 
 | Surface | Contract |
 |---|---|
-| Identity | `ops:///<loop>/<turn>` and `reasoning:///<loop>/<turn>` resolve against the current worker's durable loop and turn sequences. Authorities are invalid; there is no cross-worker alias or access policy. |
+| Identity | `ops:///<loop>/<turn>`, `reasoning:///<loop>/<turn>`, and `note:///<loop>/<turn>/<item>` resolve against the current worker's durable coordinates. A note's item is its dispatched NOTE ordinal. Authorities are invalid; there is no cross-worker alias or access policy. |
 | Source | `ops` is exact admitted `text/vnd.plurnk`; `reasoning` is `text/plain` containing the selected original provider reasoning or a non-model producer's authored rationale. Producer identity comes from the owning turn; a harness rationale is not provider evidence. The turn decides existence and the source decides content: a turn that exists but has no source of that kind reads as the ordinary empty resource (204, empty body), never a fabricated one; a coordinate whose turn does not exist is 404. Emptiness over absence, so `reasoning:///L/T` is a stable coordinate for every turn that happened. |
-| Retention | One immutable source of each kind per turn. An optional inference-call link records provenance. Source removal follows deletion of its owning turn, never log curation. |
+| Notes | Each dispatched NOTE stores its exact literal body as an immutable `text/plain` source and returns its `note:///` address. There may be multiple notes in a turn, from reasoning, content, or another producer. A missing note is 404, not an empty invented note. |
+| Retention | One ops source and one reasoning source per turn; one note source per NOTE ordinal. An optional inference-call link records provenance. Source removal follows deletion of its owning turn, never log curation. |
 | Operations | Ordinary scoped READ, FIND, content search and COPY from source. READ returns data and never executes it. Sources are read-only for every actor and have no edit hashes. |
 | Index | Source text uses the existing derivation, FTS and graph machinery; only its derivation attachment is replaceable. |
 | FORK | Sources copy with the inherited turns at identical local coordinates. Branch receipt curation is independent; neither branch can rewrite source evidence. |
@@ -2477,30 +2471,27 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
 SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metadata, lineMarker }`.
 
 - **Message:** SEND addresses its recipient through {§send-dispatch}, or the user when targetless. It never controls the turn.
-- **Disposition:** TASK declares the complete current inventory; {§task-inventory-intent} reduces its statuses, never its prose, to one workflow intent.
+- **Disposition:** WAIT, DONE or FAIL declares one explicit workflow intent under {§turn-disposition}; prose never determines scheduling.
 
-§wait-obligation-matrix **Runtime resolution.** Apply this table after earlier operations have executed. The durable TASK retains its authored inventory even when the actual outcome differs. A live obligation is a worker-owned unresolved child or non-detached stream, read as one row from the `worker_obligations` view ({§worker-obligations}). Unobserved results include this turn's retrievals, mutations and failures, and undelivered stream or child conclusions. TASK takes no scope ({§send-wait-scope}).
+§wait-obligation-matrix **Runtime resolution.** Apply this table after earlier operations have executed. The durable disposition retains its authored verb and body even when the outcome is deferred. A live obligation is an unresolved child or non-detached stream under {§worker-obligations}. Unobserved results include this turn's retrievals, mutations and failures, and undelivered stream or child conclusions. Lifecycle operations take no scope ({§send-wait-scope}); NOTE has no disposition effect.
 
 §worker-obligations **What a worker holds is one durable row.** `worker_obligations(worker_id, streams, workers)` is a view: `streams` is an open subscription of the worker's with `detached = 0` (`subscriptions.detached` is written when a `<-1>` spawn opens its stream, so a detached spawn is nobody's obligation by the row, never by asking the exec scheme's memory), and `workers` is a child with an unresolved loop — the same liveness the Delegation section shows, so the 409 gate and the section the model reads cannot disagree ({§child-orientation}). The completion gate ({§send-premature-terminate}), the wait matrix, and the drain's wake settlement all read `worker_live_obligations`; nothing computes the union in the process.
 
-| Inventory intent | Runtime condition | Outcome | Model-facing feedback |
+| Intent | Runtime condition | Outcome | Model-facing feedback |
 |---|---|---|---|
-| TASK omitted | At least one authored operation | 102; no synthetic TASK, warning, or strike | None |
-| explicit empty inventory | Always | 409 receipt; continue, no strike (operator, 2026-09-12) | `No tasks were supplied. Submit a nonempty TASK inventory.` |
-| continue | Always | 102; no implicit join or idle strike | None |
-| todo | Always | 102; no strike | None |
-| wait | Live obligation: an open stream or a live child worker | 202; durable park and wake of the same loop | None |
-| wait | No wait obligation; results or curation await the next packet | 102 | Existing result evidence |
-| wait | No wait obligation or unobserved result | 102; no strike | `Nothing is in flight. Continuing.` |
-| complete, fail | The loop holds messages it has not yet published ({§completion-defers-to-messages}) | 102; no strike; the next packet publishes them | `Completion deferred: 1 new message arrived during this turn. It is in this packet; a response and a TASK now complete.` |
-| complete | Live work: an open stream or a live child worker ({§completion-joins-live-work}) | 202; durable park and wake of the same loop; no strike | Join detail naming the work, read when the wake lands |
-| complete, fail | Same-turn failures, or settled results the next packet carries — this turn's receipts, a concluded stream, a terminated child ({§completion-defers-to-results}) | 102; no strike; the next packet carries them | Read-time deferral detail naming them |
-| complete | No blocking obligation, or administrative producer | 200 | None |
-| fail | Otherwise; live work is cancelled, never waited for | 499; cancel unresolved descendant scope | `All tasks in the final inventory failed.` |
+| No lifecycle verb | At least one authored operation, including NOTE | 102; no synthetic disposition, warning, or strike | None |
+| WAIT | Live obligation: an open stream or a live child worker | 202; durable park and wake of the same loop | None |
+| WAIT | No wait obligation; results or curation await the next packet | 102 | Existing result evidence |
+| WAIT | No wait obligation or unobserved result | 102; no strike | `Nothing is in flight. Continuing.` |
+| DONE, FAIL | Unpublished messages ({§completion-defers-to-messages}) | 102; no strike; the next packet publishes them | Deferral names the arrivals and asks that they be addressed before concluding |
+| DONE | Live work ({§completion-joins-live-work}) | 202; durable park and wake of the same loop; no strike | Join detail naming the work, read when the wake lands |
+| DONE, FAIL | Same-turn failures or settled results the next packet carries ({§completion-defers-to-results}) | 102; no strike; the next packet carries them | Read-time deferral detail naming them |
+| DONE | No blocking obligation, or administrative producer | 200 | None |
+| FAIL | Otherwise; live work is cancelled, never waited for | 499; cancel unresolved descendant scope | `The model abandoned the work.` |
 
 Every continuation retains the same loop's budgets and strike rail. No-op waiting never invents success.
 
-§loop-response-messages **The response is the last message.** The loop's response is the complete authored body of its last successful targetless SEND, in turn and operation order. Earlier messages reach the client as they are delivered and stay log rows; they are not part of the response, so a corrected answer or a repeated one after a refused completion delivers once. Other directed SEND, TASK, asides, interstitial text, inherited rows and ambient observations never count. The projection reads immutable executed operation evidence, not the curated log projection: KILL cannot retract a delivered message, and a later failure, cancellation or refused completion keeps the last message. A task inventory never becomes a synthetic answer. Terminal status and Problem Details remain independent of this response content. A parent receives its child's response as the child's conclusion (operator, 2026-09-11).
+§loop-response-messages **The response is the last delivered text.** A successful targetless SEND or a nonempty DONE/FAIL body answers the open messages through the same delivery path; the receipt records recipients. A lifecycle deferral does not retract delivery. The loop response is the last nonempty delivered model body in execution order. Earlier messages remain independent messages. Directed SEND, WAIT, NOTE, asides, interstitial text, inherited rows and ambient observations do not count. The projection reads immutable executed evidence: KILL cannot retract a delivered message, and later failure or cancellation retains it. A blank terminal does not invent a response. Attachment-only SEND remains a delivered message with its attachments but supplies no replacement text. Terminal status and Problem Details remain independent of response content. A parent receives its child's response as the child's conclusion.
 
 §loop-terminal-authorship **Terminal authorship is explicit when external.**
 
@@ -2561,16 +2552,16 @@ accounting and model-visible failure evidence remain separately owned by
   as a literal — on a reply's first line that is prose. Origin: the 2026-09-11 dogfood,
   where four operations on the line after their fences were delivered as four 200 replies and the
   loop then parked fifteen minutes on receipts that could never arrive.
-- §send-idle-turn **Inventory-only continuation is valid.** An `in_progress` inventory continues whether or not another operation ran, including while children or streams are live. TASK is operational state; neither absence of other operations nor a not-ready READ may replace its intent with an implicit park. Exact repeating activity remains subject to {§engine-cycle-evidence}.
+- §send-idle-turn **NOTE-only continuation is valid.** A note continues whether or not another operation ran, including while children or streams are live. Neither absence of other operations nor a not-ready READ implies parking. Exact repeating activity remains subject to {§engine-cycle-evidence}.
 - §send-premature-terminate **Premature terminate — the pending set.**
-  A model's completion turn permits SEND, TASK, and KILL. Every other
+  A model's completion barrier exempts SEND, NOTE, lifecycle declarations, and KILL. Every other
   fired operation requires another packet, regardless of success, stream
   timing, or empty results. KILL does not erase other observation requirements
   or failed results. Execution is judged from durable
   operation records, never the curated log projection. Pending work has two states:
   **live obligations** (open
   streams/spawns and live child workers) and **completed-but-unobserved
-  results** (every same-turn non-SEND/TASK/KILL operation, terminal stream output
+  results** (every other same-turn operation, terminal stream output
   without a terminal foisted READ, and child results queued for the next packet).
   The set is judged at the disposition's own dispatch, after
   earlier operations in the emission. `[200]` over a **live** member joins it
@@ -2579,33 +2570,31 @@ accounting and model-visible failure evidence remain separately owned by
   and neither strikes. The pending kinds are `streams`, `workers`, `receipts`,
   `failed-stream-results`, and `worker-results`; a receipt names them and never
   embeds commands, stream handles, result bodies, or a presumed recovery. A
-  nonempty all-`failed` inventory crosses the same deferral and then abandons
+  FAIL crosses the same deferral and then abandons
   regardless of live work, which it cancels rather than waits for.
 - §completion-joins-live-work **A completion over live work is a join.** A scope
   that says done while its own work runs — an open stream, a live child worker —
   is asking to leave with that work unfinished, and the two exits structured
-  concurrency allows are join and cancel. The `completed` inventory takes the
-  join: the TASK answers 202, the loop parks on the live obligation
-  exactly as a `waiting` inventory would, and the settle edge wakes it with what
-  concluded in the packet; the model's next TASK decides with that result in
+  concurrency allows are join and cancel. DONE takes the
+  join: its receipt answers 202, the loop parks on the live obligation
+  exactly as WAIT would, and the settle edge wakes it with what
+  concluded in the packet; the model's next disposition decides with that result in
   front of it, so nothing completes on an answer written before the work
-  finished. The `failed` inventory takes the cancel. The join's `detail` is read
+  finished. FAIL takes the cancel. The join's `detail` is read
   when the wake lands and speaks from that moment; its `attrs` carry `waiting`
   and the pending kinds. It is never a strike: the review contract has no
   violation left, and the rail's remaining sources are hard results, cycles and
   empty turns ({§engine-rails}). A stream the model meant to leave running parks
-  the loop until it ends, as a model-written `waiting` would; KILL before the
-  claim is the way to leave it running (operator, 2026-09-14: "politely
-  converting completed into waiting when there are streams or workers in-flight").
+  the loop until it ends, as a model-written WAIT would.
 - §completion-defers-to-results **Settled results defer a terminal; they never strike.**
   A completion or abandonment claimed over results the model could not yet have
   seen — this turn's failed operations, this turn's receipts (successful execution
   results included, not only READ/FIND), a concluded stream's result, a terminated
-  child's result — is deferred: the TASK answers 102 with no Problem and no strike,
+  child's result — is deferred: the disposition answers 102 with no Problem and no strike,
   the loop continues, and the next packet carries what deferred it. The engine
   owns every observe edge, so such a claim is early in the observation order, not
   false about the world. After observing the results, the model can continue work,
-  revise its response, or conclude with TASK alone while retaining its last SEND
+  revise its response, or conclude with blank DONE while retaining its last response
   ({§loop-response-messages}, {§send-undelivered-child-term}).
   The deferral's `detail` is read one packet later, beside the results it names,
   and speaks from that moment: a receipts-only deferral names the distinct
@@ -2614,7 +2603,7 @@ accounting and model-visible failure evidence remain separately owned by
   stream results; a results deferral names the landed kinds; a failure deferral
   counts the failures. These deferrals and the live-work join receipt share the
   conditional guidance: `If your final response has already been sent and these
-  results require no further work or response revision, submit only TASK.` This
+  results require no further work or response revision, submit only DONE without repeating the response.` This
   avoids repeating a delivered response, not delivering one; newly arrived messages
   retain their distinct feedback under {§completion-defers-to-messages}. Their
   `attrs` carry the pending kinds or the failure count. The rail's streak never
@@ -2625,11 +2614,11 @@ accounting and model-visible failure evidence remain separately owned by
   completed with a frowny face and crosses the same barrier.
 - §send-administrative-terminal **An administrative terminal closes its own
   transaction.** A client, plugin, or `_plurnk` operation program runs in its
-  own administrative loop. Its all-`completed` TASK concludes exactly that loop;
+  own administrative loop. Its DONE concludes exactly that loop;
   it neither claims nor consumes the Worker's model-visible pending set. Model
   completion rails therefore apply only to a model-authored disposition.
 - §send-undelivered-child-term **Completion is not delivery.** A result becomes
-  observed only after crossing a packet boundary. A waiting TASK parks only on
+  observed only after crossing a packet boundary. WAIT parks only on
   live obligations. If work has completed but is unobserved, it continues
   directly to the next packet because the wake edge has already fired. A genuinely
   empty wait also continues under {§wait-obligation-matrix}, never concluding implicitly.
@@ -2781,7 +2770,7 @@ Per-tool programs such as `go`, `cargo`, `make`, and `npm` do not earn executor 
 **Timeout and poll — `<T,P>` on the `<L>` slot (grammar 0.74.20).** An execution
 repurposes the line-marker slot as `<timeout, poll>` in **minutes** — agentic
 latencies make a sub-minute horizon a trap — converted at the parse boundary to the
-catalog's internal `stream.seconds`. The TASK `<T>` wait horizon is minutes too.
+catalog's internal `stream.seconds`. WAIT takes no timing; future wakes belong to the schedule family.
 
 §exec-timeout `T` (`mark[0]`) caps the spawn's lifetime. At `T>0` the service
 aborts it — a bounded reap, polite signal then SIGKILL after
@@ -2790,7 +2779,7 @@ from a deliberate kill (499) or a clean exit (200). Absent is unbounded but
 loop-life bounded — reaped on every loop terminal except 202 — the
 background-stream behavior. **`-1` is unbounded and detached**: the spawn
 outlives its loop's terminal, 200 included. It never binds to the loop's
-teardown and is nobody's obligation — completion is not gated by it, a waiting TASK does
+teardown and is nobody's obligation — completion is not gated by it, WAIT does
 not park on it, optimistic settlement looks past it — and it ends only by KILL,
 the worker's total reap, or daemon shutdown; its late conclusion surfaces
 without opening a loop. **`0` is turn-scoped**:
@@ -3004,7 +2993,7 @@ body prefixes.
   key WORK or FORK does not take is refused the same way. The durable row redacts the block
   wholesale ({§log-sensitive-request-evidence}); the spawn's record names each such value's
   provenance as the modifier's.
-- §exec-hold-until-concluded **The turn-hold exception** — for runtimes in `PLURNK_SERVICE_EXEC_HOLD` (a decision-table env, shipped listing the search family), an in-flight stream **pauses the cycle**: the next packet does not assemble until the stream concludes, so the model never burns a turn asking "are we there yet" about a result the engine controls end-to-end. This exception is limited to seconds-bounded runtimes whose final result the engine controls end-to-end. Bounded by `PLURNK_SERVICE_EXEC_HOLD_MS` and **fail-open**: at the cap the standard cycle resumes untouched (waits, wakes, polls). Zero grammar or teaching surface — the model emits an executor fence followed by TASK; the wake-shaped world simply arrives one packet sooner. It extends selected runtimes beyond the ordinary {§worker-optimistic-settlement} cap before the next packet assembles. A bare entry holds ALL of a runtime's spawns; a `<runtime>:<effect>` suffix (`github:read`) holds only that effect-class — an MCP server is one runtime whose tools split (a `read` `get_issue` is instant; a `host` `run_migration` is a slow mutation), so an operator opts the known-fast read-class in without parking on the mutation. Conservative stays default: an arbitrary third-party server's latency never parks the engine unless a suffix opts a class in.
+- §exec-hold-until-concluded **The turn-hold exception** — for runtimes in `PLURNK_SERVICE_EXEC_HOLD` (a decision-table env, shipped listing the search family), an in-flight stream **pauses the cycle**: the next packet does not assemble until the stream concludes, so the model never burns a turn asking "are we there yet" about a result the engine controls end-to-end. This exception is limited to seconds-bounded runtimes whose final result the engine controls end-to-end. Bounded by `PLURNK_SERVICE_EXEC_HOLD_MS` and **fail-open**: at the cap the standard cycle resumes untouched (waits, wakes, polls). Zero grammar or teaching surface — the model emits an executor fence, optionally followed by WAIT; the wake-shaped world simply arrives one packet sooner. It extends selected runtimes beyond the ordinary {§worker-optimistic-settlement} cap before the next packet assembles. A bare entry holds ALL of a runtime's spawns; a `<runtime>:<effect>` suffix (`github:read`) holds only that effect-class — an MCP server is one runtime whose tools split (a `read` `get_issue` is instant; a `host` `run_migration` is a slow mutation), so an operator opts the known-fast read-class in without parking on the mutation. Conservative stays default: an arbitrary third-party server's latency never parks the engine unless a suffix opts a class in.
 - §exec-entry-sink **The entry() sink** implements {§executor-entry-sink} over ordinary scheme-owned entries. Core owns allocation, materialization, and persistence; executors receive only the returned resource address.
 
   | Input / effect | Consumer behavior |
@@ -3123,7 +3112,7 @@ Capability admission precedes this decision, so proposal disposition cannot gran
 
 ### §subscriptions Subscriptions
 
-§subscriptions-subscription-registry-routes-cancellation READ on a streaming scheme is a subscription, not a one-shot. The scheme establishes its protocol-specific acquisition boundary, returns `102 Processing`, and stays alive through the `StreamSubscription` returned by `subscriptions.open()`. The service commits that initial operation result normally; later chunk and terminal work cannot rewrite it. Durable terminal truth lives on the subscription and its channels. The service records durable subscription identity and metadata in SQLite and retains the callable `SubscriptionHandle` only in its process-local live registry. A failed TASK, worker cancellation, turn-scoped reap, and shutdown all route through that one live registry; no handler-specific cancellation hook or database access is part of the plugin contract.
+§subscriptions-subscription-registry-routes-cancellation READ on a streaming scheme is a subscription, not a one-shot. The scheme establishes its protocol-specific acquisition boundary, returns `102 Processing`, and stays alive through the `StreamSubscription` returned by `subscriptions.open()`. The service commits that initial operation result normally; later chunk and terminal work cannot rewrite it. Durable terminal truth lives on the subscription and its channels. The service records durable subscription identity and metadata in SQLite and retains the callable `SubscriptionHandle` only in its process-local live registry. A FAIL, worker cancellation, turn-scoped reap, and shutdown all route through that one live registry; no handler-specific cancellation hook or database access is part of the plugin contract.
 
 The durable row is lifecycle evidence and the lookup key, not a serialized callback. `subscriptions.open()` establishes both halves before yielding a composed `StreamSubscription`: an `AbortSignal` whose fused `notifyChunk` and terminal `close` methods are safe to retain without the operation's general `SchemeCtx`. `close(result, summary?, channelResults?)` validates one universal terminal producer result plus exact named channel overrides. One SQLite transition closes the subscription and installs each channel's terminal `producerResult`; its lifecycle state derives from that result. The transition then wakes the worker when appropriate and unregisters the live handle. `close_status` is a constrained relational projection of `close_result.status`, never an independent result, while `channel_results` preserves historical overrides after a later subscription replaces the channel's current evidence. A durable open row without a live handle is an explicit lifecycle failure, never a fabricated cancellation success. Channel state ({§channel-state}) + log entries ({§no-chunk-rows}) carry lifecycle.
 
@@ -3935,7 +3924,7 @@ mutation of its source; a resource-backed execution demands its runtime plus sou
 observation. Unknown schemes, runtimes,
 and tools continue to their ordinary resolver so capability policy cannot turn
 absence into a misleading restriction. The same resolver shapes generated
-scheme references, worker tool documents, and Turn0 surveys. TASK inventory, log KILL,
+scheme references, worker tool documents, and Turn0 surveys. NOTE, lifecycle declarations, log KILL,
 and label or targetless SEND are log/program control rather than routed
 external demands and therefore remain outside capability selectors.
 Runtime mutations of owned generated entries ({§worker-generated-subtree})
@@ -4264,7 +4253,7 @@ time of measurement.
 - **Derivation is exhaustive and demand-led.** Explicit searchable-resource changes may start one coalesced warm. Passive creation and attachment do not. The first model turn starts or joins that warm; later turns derive intervening changes before dispatch. No model operation observes partial graph or full-text coverage. Progress notices make the wait visible. {§derivation-exhaustive}
 - §membership-binary-sniff **Binary truth beats a text label.** Filesystem source acquisition, including tracked members and installed skill resources, inspects up to the first 8192 bytes when extension detection does not identify a binary type. NUL marks `application/octet-stream`; existing binary types retain their declared type. Member projections follow {§membership-source-projection}; installed skill projections follow {§skills-resources}.
 - §tokenomics-agnostic-ruler **One model-agnostic curation ruler.** The daemon runs workers on different models in one workspace concurrently, while catalog and log accounting are workspace-wide. `contentWeight = ceil(chars/2)` therefore gives one content one stable number without per-model workspace state or recount passes. It controls curation only; every provider call independently measures the complete request as well as it can.
-- §tokenomics-neutral-telemetry **Curation telemetry is state, not response allowance.** The model-facing `Context Curation` section is one JSON object carrying `logTokensTotal` and `logTokensMax` (and `tokensResponseMax` when an output floor is disclosed), so the block opens as a JSON payload like ```` ```TASK ````. It never presents their difference as free response tokens. The protocol definition directly requires KILL of irrelevant log items and ranges to keep the next packet within the maximum. Per-entry weights remain on log rows where they describe visible cost and curation savings. Generic packet composition and physical-token speculation are absent.
+- §tokenomics-neutral-telemetry **Curation telemetry is state, not response allowance.** The model-facing `Context Curation` section is one JSON object carrying `logTokensTotal` and `logTokensMax` (and `tokensResponseMax` when an output floor is disclosed). It never presents their difference as free response tokens. The protocol definition directly requires KILL of irrelevant log items and ranges to keep the next packet within the maximum. Per-entry weights remain on log rows where they describe visible cost and curation savings. Generic packet composition and physical-token speculation are absent.
 - §tokenomics-pressure-inventory **Pressure identifies its reclaimable concentration.** At 80% of `logTokensMax`, a Markdown `> [!WARNING]` block follows the JSON with `> YOU MUST KILL superseded, stale, or irrelevant log items and ranges.` New output withholding replaces that mandate under {§context-output-warning}. The JSON may include `logTokensLargest`: at most five retained log items, each `{path, logTokens}`, ranked by that charge descending and then path. Native-only, suppressed, and metadata-only items remain eligible: whole-item KILL can reclaim their actual contribution. Include the largest prefix that fits; drop the optional list before the warning. Both participate in the final fixed-point total and complete request admission check.
 - §tokenomics-content-hash-identity **Content identity, not per-tokenizer counts.** Static channel writes stamp `content_hash` (SHA-256) as stable content identity. `weight` is stored beside that content and is never keyed or recomputed by model.
 - §tokenomics-provider-usage **Provider accounting is physical-request evidence, not curation state.** Every issued physical request has one durable pre-I/O `provider_requests` identity beneath the normalized {§inference-ledger} and settles once as response or error. Each record preserves conventional {§provider-usage} quantities and required {§provider-cost} evidence; an unreported quantity remains absent, including on response-less failures, and is never replaced by zero. `model_calls` own response/failure evidence, `turn_attempts` specialize emission admission, and `provider_requests` are the sole durable accounting representation. Emissions, BARE calls, rejected responses, retries, failovers, and errors therefore remain cardinal and ordered. Turn, loop, worker, workspace, digest, and protocol accounting are derived from those records through the shared {§provider-accounting} projection; only emission calls contribute the latest-packet context gauge. The baseline stores no floating-point money, denormalized totals, or rollup triggers. A documented direct charge becomes `charged`; otherwise the provider may compute an exact-decimal USD `estimated` amount from complete usage and the exact model's Models.dev rates; insufficient evidence becomes `unknown`. Derived `costUsd` sums every USD-expressible request and is `null` only when no request is expressible; a response-less failure or an uncataloged model is skipped, never allowed to erase the expressible evidence. Each derived aggregate usage field independently sums its reported quantity, so heterogeneous detail coverage remains partial rather than becoming fictitiously complete. This is operational request accounting, not invoice reconciliation. Output and reasoning are quantities the model cannot KILL, so they never alter the model-facing Budget ledger.
@@ -4274,7 +4263,7 @@ time of measurement.
 
 Operations and their results are execution history. Packet admission controls
 only whether newly presented returned output fits, never what executed or what
-the model's TASK inventory means.
+the model's lifecycle declaration means.
 
 ```mermaid
 flowchart TD
@@ -4292,7 +4281,7 @@ flowchart TD
     prompt -->|no| stop
 ```
 
-§context-output-selection **First presentation, not a turn-number heuristic, owns admission.** Canonical log-body resolution distinguishes authored input from returned output. Before provider I/O, the run boundary records the first admission turn of each newly visible returned body. On measured overflow, that batch's returned bodies and native parts are withheld together. Already-admitted output, authored TASK/program/message bodies, actual statuses and Problems, effects, child state, and immutable evidence remain unchanged. Bodyless and initially suppressed rows require no admission. Packet assembly is pure. No recovery turn, generated TASK, KILL operation, strike, or extra model attempt is manufactured.
+§context-output-selection **First presentation, not a turn-number heuristic, owns admission.** Canonical log-body resolution distinguishes authored input from returned output. Before provider I/O, the run boundary records the first admission turn of each newly visible returned body. On measured overflow, that batch's returned bodies and native parts are withheld together. Already-admitted output, authored NOTE/lifecycle/program/message bodies, actual statuses and Problems, effects, child state, and immutable evidence remain unchanged. Bodyless and initially suppressed rows require no admission. Packet assembly is pure. No recovery turn, generated lifecycle declaration, KILL operation, strike, or extra model attempt is manufactured.
 
 | Projection fact | Meaning |
 |---|---|
@@ -4304,11 +4293,11 @@ flowchart TD
 
 §context-output-warning **New omission escalates the one curation warning.** The admitting request renders `> [!WARNING]` followed by `> YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.` beneath its JSON readout, replacing the ordinary pressure mandate even when withholding brings usage below 80%. Historical omission alone does not retrigger it. The warning participates in exact packet measurement; optional largest-items entries yield space first.
 
-§context-output-hard-413 **Unfittable retained context fails honestly.** If the request still exceeds the ceiling after withholding newly presented output, it terminalizes with an exact `engine/context/token-budget-overflow` 413 Problem without provider I/O. No unrelated older history or authored inventory is pruned. Separately, provider capacity failures follow {§provider-surface-capacity}: withholding automatic prompt-body projection permits a retry only when it changes the request; otherwise the exact provider-owned 413 terminates the request-only model turn.
+§context-output-hard-413 **Unfittable retained context fails honestly.** If the request still exceeds the ceiling after withholding newly presented output, it terminalizes with an exact `engine/context/token-budget-overflow` 413 Problem without provider I/O. No unrelated older history or authored memory is pruned. Separately, provider capacity failures follow {§provider-surface-capacity}: withholding automatic prompt-body projection permits a retry only when it changes the request; otherwise the exact provider-owned 413 terminates the request-only model turn.
 
 - §tokenomics-fetch-fits-free **Withholding is not deletion.** The complete result lands once. READ/FIND of its original log address retain the readable body and original coordinates; scoped READ creates a fresh output occurrence subject to the same admission rule. Source resources and forensic evidence remain unchanged. Deliberate scoped KILL, unlike withholding, removes lines from subsequent readable projections ({§log-readable-projection}).
 
-- §loop-terminals **Engine-imposed terminals are HTTP-precise** — the loop-status vocabulary, one meaning each: `200` concluded (terminal inventory with at least one completed task) · `499` model-abandoned (a nonempty all-failed inventory, or a cancel) · `429` maxTurns exhausted · `413` token-ceiling recovery failure or provider input-capacity failure after changed-request recovery · `500` strike threshold or invalid-emission exhaustion (distinct Problem types; `508` when the crossing strike was a detected cycle) · `504` loop timeout / exec-timeout restamp · `202` waiting — a TASK inventory waiting on a live obligation ({§wait-obligation-matrix}, {§worker-wait-timing}); a wait without live work continues at `102`, never implicit success · `100`/`102` queued/running. Never a catch-all, never a new value without changing the owning schema.
+- §loop-terminals **Engine-imposed terminals are HTTP-precise** — the loop-status vocabulary, one meaning each: `200` concluded (accepted DONE) · `499` model-abandoned (accepted FAIL or cancellation) · `429` maxTurns exhausted · `413` token-ceiling recovery failure or provider input-capacity failure after changed-request recovery · `500` strike threshold or invalid-emission exhaustion (distinct Problem types; `508` when the crossing strike was a detected cycle) · `504` loop timeout / exec-timeout restamp · `202` waiting — WAIT or DONE joining a live obligation ({§wait-obligation-matrix}, {§worker-wait-timing}); a wait without live work continues at `102`, never implicit success · `100`/`102` queued/running. Never a catch-all, never a new value without changing the owning schema.
 
 ### §env-delta The environment delta: what changed since the model last looked
 
@@ -4530,7 +4519,7 @@ reasoning continuation. Readable reasoning remains independent.
 | row producer | ordinary visible projection |
 |---|---|
 | any `READ` or `FIND` | complete selected operation result |
-| `TASK` | complete canonical Plurnk Plan JSON {§plan-value} |
+| `NOTE`, `WAIT`, `DONE`, `FAIL` | complete literal authored text |
 | inbound `SEND` from outside the workspace | budgeted head under {§message-projection} |
 | structured `EDIT` receipt or textual `COPY`/`MOVE` effects | complete receipt-owned join context |
 | every other nonempty body | head bounded independently by `PLURNK_SERVICE_PREVIEW_LINES` and `PLURNK_SERVICE_PREVIEW_CHARS` |
@@ -4542,7 +4531,7 @@ remain exact. Automatic stream delivery uses that markerless selector too;
 its range or region describes the selected content and the complete stream
 remains addressable. This selection is not a second rendering-time cut.
 
-READ and FIND own their range or pagination before packet rendering; the packet never applies a second hidden substring bound to their selected result. TASK inventory is likewise complete while visible: the model's task inventory is serialized once as compact JSON, never preview-clipped. Reasoning arrives through ordinary scoped READs ({§reasoning-history}). Arrivals from outside the workspace follow their separate adaptive projection contract ({§message-projection}). Structured mutation contexts already carry the receipt-owned bound in {§edit-result-receipt-truth}, so packet rendering does not preview them again. Rejected-emission artifacts, SEND/WORK/FORK bodies, execution commands, environment-delta EDIT spans, and extension-produced bodies use the ordinary fixed bound. When a visible projection differs from its canonical body, metadata carries `chunk` with the exact selected and complete extents defined by {§log-wire-format}; complete and fully suppressed bodies omit it. ```` ```READ (log:///<coordinate>/<OP>) ```` selects untrimmed lines in original coordinates under {§log-readable-projection}; the unsuffixed exact shorthand and authoritative suffix behavior are defined by {§log-coordinate-hierarchy}. ```` ```FIND (log:///...) ```` and search match that same readable view. System/policy sections are not log bodies. Notices are transient non-log observations; they share the ordinary line/character bounds but have no durable body or recovery URI.
+READ and FIND own their range or pagination before packet rendering; the packet never applies a second hidden substring bound to their selected result. NOTE and lifecycle bodies are complete literal text while visible, never preview-clipped. Reasoning arrives through ordinary scoped READs ({§reasoning-history}). Arrivals from outside the workspace follow their separate adaptive projection contract ({§message-projection}). Structured mutation contexts already carry the receipt-owned bound in {§edit-result-receipt-truth}, so packet rendering does not preview them again. Rejected-emission artifacts, SEND/WORK/FORK bodies, execution commands, environment-delta EDIT spans, and extension-produced bodies use the ordinary fixed bound. When a visible projection differs from its canonical body, metadata carries `chunk` with the exact selected and complete extents defined by {§log-wire-format}; complete and fully suppressed bodies omit it. ```` ```READ (log:///<coordinate>/<OP>) ```` selects untrimmed lines in original coordinates under {§log-readable-projection}; the unsuffixed exact shorthand and authoritative suffix behavior are defined by {§log-coordinate-hierarchy}. ```` ```FIND (log:///...) ```` and search match that same readable view. System/policy sections are not log bodies. Notices are transient non-log observations; they share the ordinary line/character bounds but have no durable body or recovery URI.
 
 §message-arrival **A message is an inbound SEND row.** Every arrival at a worker — a client's run, a directed worker SEND, an exterior adapter's message — enters the recipient loop's inbox (`loop_messages`, in arrival order, its selected paths beside it) and is published at the loop's next turn boundary as one `SEND` log row the harness writes (`origin="_plurnk"`): the sender's statement is the row's sent side, `attrs.kind = "message"` marks it apart from the engine's other harness-published SEND rows (a child's crossed activity and conclusion narration, {§env-delta-child-termination}), the row is born visible, obeys {§body-projection}, and is the durable record of the message; no entry is stored beside it and no synthetic operation is invented. Inbound and outbound share the op: a `SEND` row with a `source` arrived, a `SEND` row without one is the worker's own. The **Open Messages** section closes the user-slot status clump as a pointer list in Delegation's shape, `{"path":"log:///<loop>/<turn>/<seq>/SEND"}` with a `source` beside the path when another actor caused the message ({§message-causal-source}), listing the loop's messages not yet answered: a message is open until a later untargeted reply in the same loop, whose receipt names it ({§send-response-receipt}). A curated row stays READable by its coordinate ({§log-readable-projection}), so nothing is stored twice (#706).
 
@@ -4560,7 +4549,7 @@ ordered set exactly once. Recovery retries complete the same queued loop and nev
 mint duplicate work. Output withholding preserves readable arrival rows; explicit
 KILL follows the ordinary log contract.
 
-§completion-defers-to-messages **A completion never answers a conversation the model has not seen.** A model TASK that would end the loop at `200` while the loop still contains an unpublished message ({§message-loop-containment}) is deferred at `102` with a receipt naming the arrival; the next turn boundary publishes the message as usual and the model completes after it. The arrival is not the model's doing, so the deferral is neither a refusal nor a strike. `499` is not deferred: declaring failure is weighing it, and the orphan recovery loop still carries any unpublished message. The recovery loop also remains the guard for the one true race, a message written after the terminal decision is committed.
+§completion-defers-to-messages **A terminal does not conclude over unseen messages.** A model DONE or FAIL while the loop holds an unpublished message ({§message-loop-containment}) is deferred at `102` with a receipt naming the arrival. The next turn publishes it; the deferral is neither a refusal nor a strike. The orphan recovery loop remains the guard for a message written after the terminal decision is committed.
 
 §packet-catalog **Catalogs are query results, not packet state.** The packet
 stores no materialized manifest. Complete and one-level entry directories,
@@ -5142,7 +5131,7 @@ presentation aid, never part of canonical content; matchers and mutations
 consume canonical bytes before rendering. A producer may set `startLine: null`
 only when its content is already source-numbered, such as an effect receipt.
 
-§render-rule-find-renders-result A log row's canonical full body is resolved once by `LogBody`: READ/FIND, actionless source artifacts, prompt, and extension result content comes from `rx.content`; EDIT and scoped entry KILL use their structured receipt, while environment-delta EDIT uses its resulting span; COPY/MOVE concatenate the textual receipt contexts in their ordered `effects`; TASK serializes their canonical inventory through the shared {§json-result-rendering} spread as `application/json`; executions and SEND/WORK/FORK use their statement body. Whole-channel COPY/MOVE effects are bodyless rather than fabricating a text projection. Packet rendering applies {§body-projection} and the coordinate projection in {§render-rule-line-navigable-prefix}. READ/FIND over `log:///` and search use the same body with deliberate trims applied under {§log-readable-projection}, without packet-only suppression or preview limits. Status and content are orthogonal: a failed terminal stream READ retains its Problem Details and failure status while rendering captured diagnostic output; failure never erases evidence.
+§render-rule-find-renders-result A log row's canonical full body is resolved once by `LogBody`: READ/FIND, actionless source artifacts, prompt, and extension result content comes from `rx.content`; EDIT and scoped entry KILL use their structured receipt, while environment-delta EDIT uses its resulting span; COPY/MOVE concatenate the textual receipt contexts in their ordered `effects`; NOTE and lifecycle operations retain their literal `text/plain` bodies; executions and SEND/WORK/FORK use their statement body. Whole-channel COPY/MOVE effects are bodyless rather than fabricating a text projection. Packet rendering applies {§body-projection} and the coordinate projection in {§render-rule-line-navigable-prefix}. READ/FIND over `log:///` and search use the same body with deliberate trims applied under {§log-readable-projection}, without packet-only suppression or preview limits. Status and content are orthogonal: a failed terminal stream READ retains its Problem Details and failure status while rendering captured diagnostic output; failure never erases evidence.
 
 An EDIT or scoped entry KILL log row renders its bounded effect receipt (`rx.receipt`) as row
 metadata and join context, not its input statement. Proposal-gated file EDITs

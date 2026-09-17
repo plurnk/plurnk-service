@@ -140,7 +140,7 @@ test("{§log-readable-projection}: a byte-view receipt is readable text, not a s
 
 test("{§log-readable-projection}: initially suppressed program READ receipts remain readable until explicitly trimmed, and forks preserve both facts", async (t) => {
     const { db, ids, dispatch, reserve } = await runtime(t);
-    const content = "```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```";
+    const content = "```NOTE\ncontinue\n```";
     const sequence = reserve();
     await db.engine_insert_log_entry.get({
         worker_id: ids.workerId, loop_id: ids.loopId, turn_id: ids.turnId, sequence,
@@ -160,7 +160,7 @@ test("{§log-readable-projection}: initially suppressed program READ receipts re
     assert.equal((await dispatch(`\`\`\`KILL (${target}) <2>\`\`\``)).status, 200);
     const branch = await Fork.fork(db, ids.workerId, "branch");
     const forkRead = await readLog({ ...readStmt(urlPath("log", "/1/1/1/READ")), lineMarker: { marks: [1, -1] } }, makeSchemeCtx({ db, workspaceId: ids.workspaceId, workerId: branch }));
-    assert.equal(forkRead.content, "```TASK\n```");
+    assert.equal(forkRead.content, "```NOTE\n```");
     const forkRows = await db.test_fork_log_entries.all<{ initial_folded: string; projection_folded: string }>({ worker_id: branch });
     assert.equal(forkRows[0]?.initial_folded, "[[1,-1]]");
     assert.equal(forkRows[0]?.projection_folded, "[[2,2]]");

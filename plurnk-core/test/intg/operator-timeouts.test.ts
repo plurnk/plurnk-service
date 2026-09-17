@@ -78,7 +78,7 @@ test("{§operator-config-loop-timeout}: waiting preserves one execution allowanc
         await insertLoop(db, childId, 1, "Live child work the wait joins.");
         const first = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeMockResponse("```TASK\n[{\"content\":\"Wait before continuing.\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```WAIT\nWait before continuing.\n```"),
         ] });
         const generate = provider.generate.bind(provider);
         t.mock.method(provider, "generate", async (...args: Parameters<Mock["generate"]>) => {
@@ -124,7 +124,7 @@ test("the default wall never intrudes — a short loop concludes 200 untouched",
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "quick");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed", "done")] } }] });
+        const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE", "done")] } }] });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.result.status, 200, "the 24h default is invisible to a normal loop");
     } finally { await db.close(); }

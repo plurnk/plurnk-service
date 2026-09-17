@@ -30,7 +30,7 @@ export default class RecordingListener extends BaseErrorListener {
     ): void {
         let duplicateDisposition = false;
         if (recognizer instanceof plurnkParser && offendingSymbol !== null && [
-            plurnkParser.OPEN_TASK,
+            plurnkParser.OPEN_WAIT, plurnkParser.OPEN_DONE, plurnkParser.OPEN_FAIL,
         ].includes(offendingSymbol.type)) {
             const containsDisposition = (context: ParserRuleContext): boolean =>
                 context.ruleIndex === plurnkParser.RULE_dispositionStatement
@@ -42,7 +42,7 @@ export default class RecordingListener extends BaseErrorListener {
         const structural = duplicateDisposition || recognizer instanceof plurnkParser
             && [plurnkParser.RULE_document, plurnkParser.RULE_log].includes(recognizer.context?.ruleIndex ?? -1);
         const translated = duplicateDisposition
-            ? "A turn permits only one TASK inventory."
+            ? "A turn permits only one lifecycle declaration: WAIT, DONE, or FAIL."
             : this.source === "lexer"
             ? PlurnkErrorStrategy.translateLexerMessage(recognizer as plurnkLexer, msg)
             : msg;

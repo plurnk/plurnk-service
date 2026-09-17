@@ -187,29 +187,16 @@ const post = async (port: number, body: Record<string, unknown>): Promise<AguiEv
     return text.split("\n\n").filter((f) => f.startsWith("data: ")).map((f) => JSON.parse(f.slice(6)) as AguiEvent);
 };
 
-test("{§agui-plan-activity}: log.read and live rows share the ACP TASK projection without mutating history", async () => {
+test("{§agui-lifecycle-projection}: log.read and live NOTE rows retain literal bodies without mutating history", async () => {
     const { seam, loopRuns } = mockSeam();
-    const body = [
-        { content: "Inspect", status: "todo" },
-        { content: "Implement", status: "in_progress" },
-        { content: "Review", status: "waiting", _meta: { "example.org/evidence": "child" } },
-        { content: "Verify", status: "completed" },
-        { content: "Unavailable", status: "failed" },
-    ];
-    const tx = { runtime: "TASK", aside: "inventory", target: null, body };
+    const body = "Inspect, implement, and verify.\nRetain the observed evidence.";
+    const tx = { runtime: "NOTE", aside: "working memory", target: null, body };
     const rows = [
-        { id: 3, worker_id: 20, loop_id: 1, turn_id: 2, coordinate: "1/2/1/TASK", origin: "model", op: "TASK", tx, rx: { status: 200 }, reasoning: "Evidence retained." },
+        { id: 3, worker_id: 20, loop_id: 1, turn_id: 2, coordinate: "1/2/1/NOTE", origin: "model", op: "NOTE", tx, rx: { status: 200 }, reasoning: "Evidence retained." },
         { id: 2, worker_id: 20, loop_id: 1, turn_id: 1, coordinate: "1/1/2/READ", origin: "model", op: "READ", tx: { body: null }, rx: { status: 200, content: "verbatim\n" } },
-        { id: 1, worker_id: 20, loop_id: 1, turn_id: 1, coordinate: "1/1/1/TASK", origin: "_plurnk", op: "TASK", tx: JSON.stringify(tx), rx: null },
+        { id: 1, worker_id: 20, loop_id: 1, turn_id: 1, coordinate: "1/1/1/NOTE", origin: "_plurnk", op: "NOTE", tx: JSON.stringify(tx), rx: null },
     ];
     const before = structuredClone(rows);
-    const expectedPlan = { entries: [
-        { content: "Inspect", status: "pending", priority: "medium" },
-        { content: "Implement", status: "in_progress", priority: "medium" },
-        { content: "Waiting: Review", status: "in_progress", priority: "medium", _meta: { "example.org/evidence": "child", "plurnk.xyz/status": "waiting" } },
-        { content: "Verify", status: "completed", priority: "medium" },
-        { content: "Failed: Unavailable", status: "completed", priority: "medium", _meta: { "plurnk.xyz/status": "failed" } },
-    ] };
     seam.readLog = async () => rows;
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
@@ -220,16 +207,14 @@ test("{§agui-plan-activity}: log.read and live rows share the ACP TASK projecti
         const result = events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.action.result");
         assert.equal(result?.type, "CUSTOM");
         if (result?.type !== "CUSTOM") throw new Error("missing log.read result");
-        assert.deepEqual(result.value, { kind: "log.read", ok: true, result: { entries: rows.map((row) => row.op === "TASK"
-            ? { ...row, tx: { ...tx, body: expectedPlan } }
-            : row) } });
+        assert.deepEqual(result.value, { kind: "log.read", ok: true, result: { entries: rows } });
         const translator = new Translator({ threadId: "history", runId: "live", modelWorkerId: 20 });
         for (const [index, row] of rows.entries()) {
             const live = translator.logEntry({ entry: row }).find((event) => event.type === "CUSTOM" && event.name === "plurnk.row");
             assert.equal(live?.type, "CUSTOM");
             if (live?.type === "CUSTOM") assert.deepEqual(result.value.result.entries[index], live.value);
         }
-        assert.deepEqual(rows, before, "the standards boundary does not rewrite the stored native inventory");
+        assert.deepEqual(rows, before, "the standards boundary does not rewrite stored notes");
         assert.deepEqual(loopRuns, [], "reading history does not invoke a model");
     } finally {
         await mod.close();
@@ -1666,10 +1651,10 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
                     worker_id: 20,
                     loop_id: 9,
                     turn_id: 12,
-                    coordinate: "1/12/1/TASK",
-                    op: "TASK",
+                    coordinate: "1/12/1/NOTE",
+                    op: "NOTE",
                     origin: "model",
-                    tx: { body: [{ content: "Await approval.", status: "in_progress" }] },
+                    tx: { body: "Await approval." },
                 },
             });
             pending = [proposal];
@@ -1769,15 +1754,13 @@ test("PLURNK PARADIGM: the name IS the identity — no prefix, no forging, attac
     } finally { await mod.close(); }
 });
 
-test("reattach replays PLAN as activity and SEND as speech through the thread router", async () => {
+test("reattach replays SEND as speech without inventing an activity from NOTE", async () => {
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => [
         { id: 0, coordinate: "1/1/0/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 0, tx: { body: { raw: "original question" } } },
-        { id: 1, coordinate: "1/1/1/TASK", op: "TASK", origin: "model", turn_id: 1, sequence: 1, tx: { body: [
-            { content: "Inspect, repair, and verify.", status: "in_progress" },
-        ] } },
+        { id: 1, coordinate: "1/1/1/NOTE", op: "NOTE", origin: "model", turn_id: 1, sequence: 1, tx: { body: "Inspect, repair, and verify." } },
         { id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, origin: "model", turn_id: 1, sequence: 2, tx: { body: "checkpoint complete" } },
         { id: 3, coordinate: "1/1/3/attempt", op: null, origin: "model", turn_id: 1, sequence: 3, attrs: { kind: "emissionAttempt" } },
     ];
@@ -1796,9 +1779,6 @@ test("reattach replays PLAN as activity and SEND as speech through the thread ro
         const snapshot = events.find((event) => event.type === "MESSAGES_SNAPSHOT") as { messages?: unknown[] } | undefined;
         assert.deepEqual(snapshot?.messages, [
             { id: "1/1/0/SEND", role: "user", content: "original question" },
-            { id: "workspace/plan", role: "activity", activityType: "PLAN", content: {
-                entries: [{ content: "Inspect, repair, and verify.", priority: "medium", status: "in_progress" }],
-            } },
             { id: "1/1/2/SEND", role: "assistant", content: "checkpoint complete" },
             { id: "reattach-1/user", role: "user", content: "continue" },
         ]);
@@ -1820,9 +1800,7 @@ test("{§agui-conversation-sync}: an inference-free sync replays durable convers
         reads.push(args);
         return [
             { id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 1, tx: { body: { raw: "Prior question." } } },
-            { id: 2, coordinate: "1/1/2/TASK", op: "TASK", origin: "model", turn_id: 1, sequence: 2, tx: { body: [
-                { content: "Answer the prior question.", status: "completed" },
-            ] } },
+            { id: 2, coordinate: "1/1/2/NOTE", op: "NOTE", origin: "model", turn_id: 1, sequence: 2, tx: { body: "Answered the prior question." } },
             { id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 200, origin: "model", turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
         ];
     };
@@ -1842,9 +1820,6 @@ test("{§agui-conversation-sync}: an inference-free sync replays durable convers
         const snapshot = events[2] as { messages?: unknown[] };
         assert.deepEqual(snapshot.messages, [
             { id: "1/1/1/SEND", role: "user", content: "Prior question." },
-            { id: "sync-client/plan", role: "activity", activityType: "PLAN", content: {
-                entries: [{ content: "Answer the prior question.", priority: "medium", status: "completed" }],
-            } },
             { id: "1/1/3/SEND", role: "assistant", content: "Prior answer." },
         ]);
         assert.deepEqual(reads, [{ workspaceId: 3, workerId: 20, limit: 1000 }]);
@@ -1964,9 +1939,7 @@ test("the official AG-UI client keeps the accepted current user message after au
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "replay-client", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.readLog = async () => [
         { id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 200, origin: "model", turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
-        { id: 2, coordinate: "1/1/2/TASK", op: "TASK", origin: "model", turn_id: 1, sequence: 2, tx: { body: [
-            { content: "Answer the prior question.", status: "completed" },
-        ] } },
+        { id: 2, coordinate: "1/1/2/NOTE", op: "NOTE", origin: "model", turn_id: 1, sequence: 2, tx: { body: "Answer the prior question." } },
         { id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 1, tx: { body: { raw: "Prior question." } } },
     ];
     seam.runLoop = async (args) => {
@@ -2666,10 +2639,10 @@ test("a post-headers runLoop failure preserves its exact Problem in the terminal
                 worker_id: 20,
                 loop_id: 9,
                 turn_id: 12,
-                coordinate: "1/12/1/TASK",
-                op: "TASK",
+                coordinate: "1/12/1/NOTE",
+                op: "NOTE",
                 origin: "model",
-                tx: { body: [{ content: "Attempt the run.", status: "in_progress" }] },
+                tx: { body: "Attempt the run." },
             },
         });
         throw Object.assign(new Error(problem.detail), { result: { status: problem.status, problem } });

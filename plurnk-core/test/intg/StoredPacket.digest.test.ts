@@ -18,7 +18,7 @@ test("{§digest-forensic-fidelity}: unknown actionless rows remain evidence with
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const db = await openMigrated(dbPath);
-    const source = "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
+    const source = "```SEND\ndone\n```\n```DONE\n```";
     try {
         const workspaceId = await insertWorkspace(db, "unknown-source");
         const workerId = await insertWorker(db, workspaceId);
@@ -62,9 +62,9 @@ test("{§log-history-projection}: digest retains programs after all source READ 
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const sources = [
-        "```TASK\n[{\"content\":\"Continue one.\",\"status\":\"in_progress\"}]\n```",
-        "```TASK\n[{\"content\":\"Continue two.\",\"status\":\"in_progress\"}]\n```",
-        "```KILL (log:///1/[1-2]/*/READ)```\n```TASK\n[{\"content\":\"Continue three.\",\"status\":\"in_progress\"}]\n```",
+        "```NOTE\nContinue one.\n```",
+        "```NOTE\nContinue two.\n```",
+        "```KILL (log:///1/[1-2]/*/READ)```\n```NOTE\nContinue three.\n```",
     ];
     const db = await openMigrated(dbPath);
     try {
@@ -158,7 +158,7 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const db = await openMigrated(dbPath);
-    const inferenceSource = "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
+    const inferenceSource = "```SEND\ndone\n```\n```DONE\n```";
     let initializationSource = "";
     try {
         const workspaceId = await insertWorkspace(db, "turn-artifacts");

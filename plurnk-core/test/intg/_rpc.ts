@@ -115,7 +115,7 @@ export const waitForDb = async <T>(
 
 // Model 3 — loop.run ACCEPTS and returns immediately (status 100 + loopId); a loop's real
 // outcome arrives via the loop/terminated event, never loop.worker's return. A parked loop
-// (TASK waiting) awaits an external event, so loop.run cannot block on it without deadlocking
+// (WAIT) awaits an external event, so loop.run cannot block on it without deadlocking
 // the client that must send that event. This runs a loop to its true terminal the honest
 // way: fire loop.run, then await its loop/terminated. Returns the terminal status (+ the
 // loopId and the `accepted` status, for callers that assert the 100).
@@ -178,7 +178,7 @@ export const parseDsl = (text: string): PlurnkStatement[] => {
 
 // A response the parser admits nothing from (prose, bare headings): ops stay empty by design.
 export const makeRawMockResponse = (text: string, completion: number = 0): MockResponse => ({
-    ...makeMockResponse("```TASK\n[]\n```", completion),
+    ...makeMockResponse("```NOTE\n```", completion),
     // No pre-parsed ops: the engine parses the content itself and rejects it on its own terms.
     assistant: { content: text, reasoning: null } as MockResponse["assistant"],
 });

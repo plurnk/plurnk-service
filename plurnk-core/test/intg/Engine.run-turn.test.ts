@@ -1,5 +1,6 @@
-import { dispositionStmt } from "./_dsl.ts";
+import { dispositionStmt, noteStmt } from "./_dsl.ts";
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { type EditStatement, type LineMarker, type PlurnkStatement, type ReadStatement, type UrlPath } from "@plurnk/plurnk-contracts";
@@ -76,7 +77,7 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
         const provider = new Mock({
             contextWindow: 100000,
             // {§send-premature-terminate} — an EDIT's receipt lands next packet, so a same-turn [200] would be refused; [102] carries the turn.
-            responses: [response([editStmt("/x", "y"), dispositionStmt("in_progress", "continuing")], "content", 42)],
+            responses: [response([editStmt("/x", "y"), noteStmt("continuing")], "content", 42)],
         });
         const result = await engine.runTurn({
             provider, workspaceId, workerId, loopId,
@@ -88,8 +89,8 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
         assert.equal(result.status, 102, "turn status from the SEND");
         assert.deepEqual(result.outcomes, [
             { op: "EDIT", status: 201, problemType: null },
-            { op: "TASK", status: 102, problemType: null },
-        ], "EDIT created → 201; SEND continue → 102");
+            { op: "NOTE", status: 200, problemType: null },
+        ], "EDIT creates content; NOTE retains memory; the turn continues implicitly");
 
         const turn = await db.test_get_turn.get<{ loop_id: number; sequence: number; status: number }>({ id: result.turnId });
         if (turn === undefined) throw new Error("turn not found");
@@ -113,7 +114,7 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
 test("{§turn-ops-admission-path}: initialization and inference preserve turnOps beside ordinary operation outcomes", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        const source = "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
+        const source = "```SEND\ndone\n```\n```DONE\n```";
         const provider = new Mock({
             contextWindow: 100000,
             responses: [contentResp(source)],
@@ -155,7 +156,7 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         assert.ok(initializationSource!.content.includes("ops:///1/1"));
         assert.ok(!initializationRows.some(({ op }) => op === null));
         assert.ok(initializationRows.some(({ op }) => op === "READ"), "initialization observes its actual program");
-        assert.ok(initializationRows.some(({ op }) => op === "TASK"), "source retention does not replace executed results");
+        assert.ok(initializationRows.some(({ op }) => op === "NOTE"), "source retention does not replace executed results");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
         const opsReceipt = logEntries(packet).find(({ target }) => target === "ops:///1/1");
         assert.match(String(opsReceipt?.body), /\d+:````READ [^\n]+\n[ \t]*\d+:````\n/, "the model sees the same multiline examples through turn0's ordinary READ");
@@ -166,7 +167,7 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         assert.equal(inferenceSource?.content, source, "the admitted source stays exact");
         assert.ok(!inferenceRows.some(({ op }) => op === null));
         assert.equal(inferenceRows.some(({ op }) => op === "PLAN"), false);
-        assert.ok(inferenceRows.some(({ op }) => op === "TASK"));
+        assert.ok(inferenceRows.some(({ op }) => op === "DONE"));
     } finally { await db.close(); }
 });
 
@@ -183,7 +184,7 @@ test("Engine.runTurn: exact request accounting preserves reasoning-inclusive pri
         const provider = new Mock({
             contextWindow: 100000,
             responses: [{
-                assistant: { content: "", ops: [dispositionStmt("completed", "done")], reasoning: "deliberated at length" },
+                assistant: { content: "", ops: [dispositionStmt("DONE", "done")], reasoning: "deliberated at length" },
                 usage,
                 cost: {
                     kind: "estimated",
@@ -224,6 +225,8 @@ test("{§notifications-reasoning-event}: retries produce distinct physical-reque
     const { db, engine, workspaceId, workerId, loopId } = await setup((_workspaceId, event) => events.push(event));
     try {
         const provider = new Mock({ contextWindow: 100000, responses: [] });
+        const abandonedReasoning = PlurnkParser.frame("NOTE", "Abandoned retry note.");
+        const acceptedReasoning = PlurnkParser.frame("NOTE", "Accepted retry note.");
         const failed = validateProviderRequestAccounting({
             provider: "provider:mock",
             model: provider.model,
@@ -240,18 +243,18 @@ test("{§notifications-reasoning-event}: retries produce distinct physical-reque
         provider.generate = async (args) => {
             const capacity = await provider.assessRequestCapacity(args.messages, args.maxOutputTokens);
             const settleFailed = await args.observeRequest?.({ provider: failed.provider, model: failed.model });
-            args.observeReasoning?.("abandoned reasoning");
+            args.observeReasoning?.(abandonedReasoning);
             await settleFailed?.(failed);
             const settleSucceeded = await args.observeRequest?.({ provider: succeeded.provider, model: succeeded.model });
-            args.observeReasoning?.("accepted reasoning");
+            args.observeReasoning?.(acceptedReasoning);
             await settleSucceeded?.(succeeded);
             return {
                 assistant: {
                     content: "",
-                    reasoning: "accepted reasoning",
+                    reasoning: acceptedReasoning,
                     finishReason: "stop",
                     model: provider.model,
-                    ops: [dispositionStmt("completed", "done")],
+                    ops: [dispositionStmt("DONE", "done")],
                 },
                 assistantRaw: null,
                 accounting: [failed, succeeded],
@@ -272,9 +275,13 @@ test("{§notifications-reasoning-event}: retries produce distinct physical-reque
         assert.deepEqual(events.map(({ requestSequence }) => requestSequence), [1, 1, 1, 2, 2, 2]);
         assert.deepEqual(
             events.flatMap((event) => event.phase === "content" ? [event.delta] : []),
-            ["abandoned reasoning", "accepted reasoning"],
+            [abandonedReasoning, acceptedReasoning],
         );
         assert.ok(events.every(({ modelCallId }) => modelCallId === events[0]?.modelCallId));
+        const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: workerId });
+        const notes = sources.filter(({ kind }) => kind === "note");
+        assert.equal(notes.filter(({ content }) => content === "Accepted retry note.").length, 1);
+        assert.ok(notes.every(({ content }) => content !== "Abandoned retry note."), "streamed reasoning from failed requests remains evidence, not committed memory");
     } finally { await db.close(); }
 });
 
@@ -288,7 +295,7 @@ test("Engine.runTurn: packet stores system + user content from messages when the
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "");  // empty input = no message arrival
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextWindow: 100000, responses: [response([dispositionStmt("in_progress", "ok")])] });
+        const provider = new Mock({ contextWindow: 100000, responses: [response([noteStmt("ok")])] });
         const result = await engine.runTurn({
             provider, workspaceId, workerId, loopId,
             messages: [
@@ -312,7 +319,7 @@ test("Engine.runTurn: admitted response does not change packet request-weight se
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([dispositionStmt("completed", "ok")], "a deliberately non-empty admitted response")],
+            responses: [response([dispositionStmt("DONE", "ok")], "a deliberately non-empty admitted response")],
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
@@ -333,7 +340,7 @@ test("Engine.runTurn: multi-op turn - the arrival row precedes model ops", async
             contextWindow: 100000,
             responses: [response([
                 editStmt("/a", "1"), editStmt("/b", "2"), editStmt("/c", "3"),
-                dispositionStmt("in_progress", "continuing"), // {§send-premature-terminate} — edit receipts land next packet
+                noteStmt("continuing"), // {§send-premature-terminate} — edit receipts land next packet
             ])],
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -341,7 +348,7 @@ test("Engine.runTurn: multi-op turn - the arrival row precedes model ops", async
             { op: "EDIT", status: 201, problemType: null },
             { op: "EDIT", status: 201, problemType: null },
             { op: "EDIT", status: 201, problemType: null },
-            { op: "TASK", status: 102, problemType: null },
+            { op: "NOTE", status: 200, problemType: null },
         ]);
         const indices = await db.test_log_entries_by_turn.all<{ sequence: number; op: string | null }>({ turn_id: result.turnId });
         assert.deepEqual(
@@ -351,13 +358,13 @@ test("Engine.runTurn: multi-op turn - the arrival row precedes model ops", async
                 { idx: 2, op: "EDIT" },
                 { idx: 3, op: "EDIT" },
                 { idx: 4, op: "EDIT" },
-                { idx: 5, op: "TASK" },
+                { idx: 5, op: "NOTE" },
             ],
         );
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: a trusted TASK-less program continues with only its authored operations", async () => {
+test("Engine.runTurn: a trusted disposition-less program continues with only its authored operations", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -418,10 +425,10 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched actions; overf
                         editStmt("/c", "3"),
                         editStmt("/d", "4"),
                         editStmt("/e", "5"),
-                        dispositionStmt("in_progress", "continue"),
+                        dispositionStmt("WAIT", "Observe the admitted edits."),
                     ]),
                     // Turn 2 clean — gives us a packet carrying turn 1's failure pointer.
-                    response([editStmt("/z", "z"), dispositionStmt("completed", "ok")]),
+                    response([editStmt("/z", "z"), dispositionStmt("DONE", "ok")]),
                 ],
             });
             const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -465,9 +472,9 @@ test("Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default) leaves the action
                     response([
                         editStmt("/a", "1"), editStmt("/b", "2"), editStmt("/c", "3"),
                         editStmt("/d", "4"), editStmt("/e", "5"),
-                        dispositionStmt("in_progress", "continue"),
+                        noteStmt("continue"),
                     ]),
-                    response([editStmt("/z", "z"), dispositionStmt("completed", "ok")]),
+                    response([editStmt("/z", "z"), dispositionStmt("DONE", "ok")]),
                 ],
             });
             const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -497,7 +504,7 @@ test("Engine.runLoop: hitting maxTurns terminates the loop at 429 (max_turns)", 
         // Every turn continues, so the turn ceiling is what stops it.
         const provider = new Mock({
             contextWindow: 100000,
-            responses: Array.from({ length: 5 }, (_, i) => response([editStmt(`/x-${i}`, "v"), dispositionStmt("in_progress", "more")])),
+            responses: Array.from({ length: 5 }, (_, i) => response([editStmt(`/x-${i}`, "v"), noteStmt("more")])),
         });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 3 });
         assert.equal(result.hitMaxTurns, true);
@@ -521,7 +528,7 @@ test("Engine.runLoop: three consecutive hard failures abandon at 500 with strike
                 "```EDIT (sealed:///x-" + (i) + ")",
                 "v",
                 "```",
-                "```TASK",
+                "```NOTE",
                 "going",
                 "```",
             ].join("\n"))),
@@ -551,13 +558,13 @@ test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () =
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([readMissing("a"), dispositionStmt("in_progress", "1")]),
-                response([readMissing("b"), dispositionStmt("in_progress", "2")]),
-                response([readMissing("c"), dispositionStmt("in_progress", "3")]),
-                response([readMissing("d"), dispositionStmt("in_progress", "4")]),
+                response([readMissing("a"), noteStmt("1")]),
+                response([readMissing("b"), noteStmt("2")]),
+                response([readMissing("c"), noteStmt("3")]),
+                response([readMissing("d"), noteStmt("4")]),
                 // Complete on a clean turn; a READ plus same-turn completion requires observation.
                 // ({§send-premature-terminate}), which would confound this 404-soft-failure assertion.
-                response([dispositionStmt("completed", "done")]),
+                response([dispositionStmt("DONE", "done")]),
             ],
         });
         const result = await engine.runLoop({
@@ -590,10 +597,10 @@ test("Engine.runLoop: clean turn between hard failures resets the streak", async
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([denied(), dispositionStmt("in_progress", "1")]),
-                response([goodEdit("/ok"), dispositionStmt("in_progress", "2")]),
-                response([denied(), dispositionStmt("in_progress", "3")]),
-                response([denied(), dispositionStmt("in_progress", "4")]),
+                response([denied(), noteStmt("1")]),
+                response([goodEdit("/ok"), noteStmt("2")]),
+                response([denied(), noteStmt("3")]),
+                response([denied(), noteStmt("4")]),
             ],
         });
         const result = await engine.runLoop({
@@ -621,9 +628,9 @@ test("Engine.runLoop: strike is engine-internal — model sees action_failure bu
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([denied(), dispositionStmt("in_progress", "1")]),
-                response([denied(), dispositionStmt("in_progress", "2")]),
-                response([dispositionStmt("completed", "done")]),
+                response([denied(), noteStmt("1")]),
+                response([denied(), noteStmt("2")]),
+                response([dispositionStmt("DONE", "done")]),
             ],
         });
         const result = await engine.runLoop({
@@ -649,7 +656,7 @@ test("{§engine-cycle-evidence} creation differs from repeated period-1 no-op ed
         // Creation returns 201; only the following 304 results repeat.
         const provider = new Mock({
             contextWindow: 100000,
-            responses: Array.from({ length: 8 }, () => contentResp("```EDIT (worker:///fixed) <1,-1>\nv\n```\n```TASK\n[{\"content\":\"go\",\"status\":\"in_progress\"}]\n```")),
+            responses: Array.from({ length: 8 }, () => contentResp("```EDIT (worker:///fixed) <1,-1>\nv\n```\n```NOTE\ngo\n```")),
         });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 20, maxStrikes: 3, minCycles: 3, maxCyclePeriod: 4,
@@ -670,12 +677,12 @@ test("Engine.runLoop: varied per-turn fingerprints don't trip cycle detection", 
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([editStmt("/a", "1"), dispositionStmt("in_progress", "1")]),
-                response([editStmt("/b", "2"), dispositionStmt("in_progress", "2")]),
-                response([editStmt("/c", "3"), dispositionStmt("in_progress", "3")]),
-                response([editStmt("/d", "4"), dispositionStmt("in_progress", "4")]),
-                response([editStmt("/e", "5"), dispositionStmt("completed", "done")]),
-                response([dispositionStmt("completed", "done")]), // {§send-premature-terminate} — the last edit's observation turn
+                response([editStmt("/a", "1"), noteStmt("1")]),
+                response([editStmt("/b", "2"), noteStmt("2")]),
+                response([editStmt("/c", "3"), noteStmt("3")]),
+                response([editStmt("/d", "4"), noteStmt("4")]),
+                response([editStmt("/e", "5"), dispositionStmt("DONE", "done")]),
+                response([dispositionStmt("DONE", "done")]), // {§send-premature-terminate} — the last edit's observation turn
             ],
         });
         const result = await engine.runLoop({
@@ -696,15 +703,15 @@ test("{§engine-cycle-evidence} period-2 no-op edits cycle after initial creatio
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([A(), dispositionStmt("in_progress", "Update A")]),
-                response([B(), dispositionStmt("in_progress", "Update B")]),
-                response([A(), dispositionStmt("in_progress", "Update A")]),
-                response([B(), dispositionStmt("in_progress", "Update B")]),
-                response([A(), dispositionStmt("in_progress", "Update A")]),
-                response([B(), dispositionStmt("in_progress", "Update B")]),
-                response([A(), dispositionStmt("in_progress", "Update A")]),
-                response([B(), dispositionStmt("in_progress", "Update B")]),
-                response([A(), dispositionStmt("in_progress", "Update A")]),
+                response([A(), noteStmt("Update A")]),
+                response([B(), noteStmt("Update B")]),
+                response([A(), noteStmt("Update A")]),
+                response([B(), noteStmt("Update B")]),
+                response([A(), noteStmt("Update A")]),
+                response([B(), noteStmt("Update B")]),
+                response([A(), noteStmt("Update A")]),
+                response([B(), noteStmt("Update B")]),
+                response([A(), noteStmt("Update A")]),
             ],
         });
         const result = await engine.runLoop({
@@ -726,7 +733,7 @@ test("Engine.runLoop: cycle detection is internal — NO model-facing notice", a
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: Array.from({ length: 20 }, () => response([editStmt("/x", "v"), dispositionStmt("in_progress", "go")])),
+            responses: Array.from({ length: 20 }, () => response([editStmt("/x", "v"), noteStmt("go")])),
         });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 20, maxStrikes: 10, minCycles: 3, maxCyclePeriod: 4,
@@ -752,9 +759,9 @@ test("Engine.runTurn: the durable failure projection shows once, then ages out",
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([denied(), dispositionStmt("in_progress", "1")]),                // turn 1: 403 action_failure
-                response([editStmt("/b", "2"), dispositionStmt("in_progress", "go")]),   // turn 2: clean (drains buffer)
-                response([editStmt("/c", "3"), dispositionStmt("completed", "ok")]),   // turn 3: clean
+                response([denied(), noteStmt("1")]),                // turn 1: 403 action_failure
+                response([editStmt("/b", "2"), noteStmt("go")]),   // turn 2: clean (drains buffer)
+                response([editStmt("/c", "3"), dispositionStmt("DONE", "ok")]),   // turn 3: clean
             ],
         });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -785,7 +792,7 @@ test("Engine.runTurn: assistantRaw passes through into turn.packet.assistantRaw"
         const provider = new Mock({
             contextWindow: 100000,
             responses: [{
-                assistant: { content: "", ops: [dispositionStmt("completed", "")], reasoning: null },
+                assistant: { content: "", ops: [dispositionStmt("DONE", "")], reasoning: null },
                 assistantRaw: raw,
             }],
         });
@@ -803,9 +810,9 @@ test("Engine.runTurn: sequence increments across multiple turn calls in the same
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([dispositionStmt("in_progress", "1")]),
-                response([dispositionStmt("in_progress", "2")]),
-                response([dispositionStmt("completed", "3")]),
+                response([noteStmt("1")]),
+                response([noteStmt("2")]),
+                response([dispositionStmt("DONE", "3")]),
             ],
         });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -825,7 +832,7 @@ test("Engine.runTurn: a trusted batch with competing dispositions fails before d
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([dispositionStmt("in_progress", "first"), dispositionStmt("completed", "last")])],
+            responses: [response([dispositionStmt("WAIT", "first"), dispositionStmt("DONE", "last")])],
         });
         await assert.rejects(engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }), {
             message: "an admitted operation batch must contain operations and at most one disposition",
@@ -845,7 +852,7 @@ test("Engine.runTurn: the first turn's log section contains the arrival row", as
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([editStmt("/x", "y"), dispositionStmt("completed", "done")])],
+            responses: [response([editStmt("/x", "y"), dispositionStmt("DONE", "done")])],
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
@@ -871,8 +878,8 @@ test("Engine.runTurn: the second turn's log section captures prior actions", asy
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([editStmt("/a", "1"), dispositionStmt("in_progress", "keep going")]),
-                response([editStmt("/b", "2"), dispositionStmt("completed", "done")]),
+                response([editStmt("/a", "1"), noteStmt("keep going")]),
+                response([editStmt("/b", "2"), dispositionStmt("DONE", "done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -888,9 +895,9 @@ test("Engine.runTurn: the second turn's log section captures prior actions", asy
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
         assert.equal(edit.target, "worker:///a");
-        const send = log.find((e) => (e.origin ?? "model") === "model" && String(e.path).endsWith("/TASK"));
-        assert.ok(send, "model SEND logged");
-        assert.equal(send.status, 102);
+        const send = log.find((e) => (e.origin ?? "model") === "model" && String(e.path).endsWith("/NOTE"));
+        assert.ok(send, "model NOTE logged");
+        assert.match(String(send.body), /keep going/);
     } finally { await db.close(); }
 });
 
@@ -900,8 +907,8 @@ test("Engine.runTurn: the log section parses an application/json rx body", async
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([editStmt("/x", "v"), dispositionStmt("in_progress", "more")]),
-                response([dispositionStmt("completed", "done")]),
+                response([editStmt("/x", "v"), noteStmt("more")]),
+                response([dispositionStmt("DONE", "done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -928,7 +935,7 @@ test("Engine.runTurn: Errors is empty on a clean first turn", async () => {
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([editStmt("/x", "y"), dispositionStmt("completed", "done")])],
+            responses: [response([editStmt("/x", "y"), dispositionStmt("DONE", "done")])],
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
@@ -971,8 +978,8 @@ test("Engine.runTurn: previous-turn 403 surfaces in the next packet's Errors sec
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([denied, dispositionStmt("in_progress", "keep going")]),
-                response([dispositionStmt("completed", "done")]),
+                response([denied, noteStmt("keep going")]),
+                response([dispositionStmt("DONE", "done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -999,9 +1006,9 @@ test("Engine.runTurn: Errors includes only the immediately previous turn", async
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([denied, dispositionStmt("in_progress", "t1 had a failure")]),
-                response([editStmt("/ok", "v"), dispositionStmt("in_progress", "t2 was clean")]),
-                response([dispositionStmt("completed", "done")]),
+                response([denied, noteStmt("t1 had a failure")]),
+                response([editStmt("/ok", "v"), noteStmt("t2 was clean")]),
+                response([dispositionStmt("DONE", "done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });   // t1: 1 failure
@@ -1017,10 +1024,10 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         // The parser tolerates free text before a statement. The prose is
-        // non-executable, while the TASK after it still parses and dispatches.
+        // non-executable, while the DONE after it still parses and dispatches.
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [{ assistant: { content: "Just thinking out loud here.\n\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", reasoning: null } }],
+            responses: [{ assistant: { content: "Just thinking out loud here.\n\n```SEND\ndone\n```\n```DONE\n```", reasoning: null } }],
         });
         const result = await engine.runTurn({
             provider, workspaceId, workerId, loopId,
@@ -1028,18 +1035,18 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
         });
         assert.deepEqual(result.outcomes, [
             { op: "SEND", status: 200, problemType: null },
-            { op: "TASK", status: 200, problemType: null },
+            { op: "DONE", status: 200, problemType: null },
         ], "the message and inventory after the prose parse and dispatch");
         assert.equal(result.status, 200, "the SEND terminates the turn; free text does not break the op");
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: TASK carries a durable inventory separate from provider reasoning", async () => {
+test("Engine.runTurn: NOTE carries literal working memory separate from provider reasoning", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([editStmt("/note", "finding"), dispositionStmt("in_progress", "Review the edit result.")], "", 10)],
+            responses: [response([editStmt("/note", "finding"), noteStmt("Review the edit result.")], "", 10)],
         });
         const result = await engine.runTurn({
             provider, workspaceId, workerId, loopId,
@@ -1047,10 +1054,10 @@ test("Engine.runTurn: TASK carries a durable inventory separate from provider re
         });
         assert.deepEqual(result.outcomes, [
             { op: "EDIT", status: 201, problemType: null },
-            { op: "TASK", status: 102, problemType: null },
+            { op: "NOTE", status: 200, problemType: null },
         ]);
         const ops = await db.test_log_entries_by_loop.all<{ op: string; tx: string }>({ loop_id: loopId });
-        assert.ok(ops.some((row) => row.op === "TASK" && JSON.parse(row.tx).body.some((item: { content: string }) => item.content === "Review the edit result.")));
+        assert.ok(ops.some((row) => row.op === "NOTE" && JSON.parse(row.tx).body === "Review the edit result."));
         assert.equal(ops.some((row) => row.op === "PLAN"), false);
     } finally { await db.close(); }
 });

@@ -2,12 +2,11 @@
 // dispatches an op uses one of these.
 
 import type {
-    ReadStatement, SendStatement, DispositionStatement, KillStatement,
+    ReadStatement, SendStatement, DispositionStatement, NoteStatement, KillStatement,
     FindStatement, CopyStatement, MoveStatement, ExecStatement,
-    LocalPath, UrlPath, ParsedPath, MatcherBody, LineMarker, TextLineMarker, Plan,
+    LocalPath, UrlPath, ParsedPath, MatcherBody, LineMarker, TextLineMarker,
 } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
-import { PlanValue } from "@plurnk/plurnk-contracts";
 import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 export const urlPath = (scheme: string, pathname: string, fragment: string | null = null): UrlPath => ({
@@ -17,10 +16,6 @@ export const urlPath = (scheme: string, pathname: string, fragment: string | nul
 });
 
 export const localPath = (raw: string): LocalPath => ({ kind: "local", raw });
-
-export const planValue = (content: string): Plan => [
-    { content, status: "in_progress" },
-];
 
 // {§edit-marker-required-on-existing}: a marker is required on an existing
 // entry; states a deliberate whole-content rewrite explicitly, resolving through
@@ -46,11 +41,14 @@ export const sendStmt = (recipient: ParsedPath | null = null, body: string | nul
     position: { line: 1, column: 1 },
 });
 
-export function dispositionStmt(status: Plan[number]["status"], body: string | null = null): DispositionStatement {
+export function dispositionStmt(op: DispositionStatement["op"], body: string | null = null): DispositionStatement {
     const fields = { aside: null, metadata: null, target: null, lineMarker: null, position: { line: 1, column: 1 } };
-    const entries = body === null ? [{ content: "Task progress.", status }] : PlanValue.admit(body);
-    return { ...fields, op: "TASK", body: entries.map((entry) => ({ ...entry, status })) };
+    return { ...fields, op, body };
 }
+
+export const noteStmt = (body: string | null = null): NoteStatement => ({
+    op: "NOTE", body, aside: null, metadata: null, target: null, lineMarker: null, position: { line: 1, column: 1 },
+});
 
 // {§kill-scope} — a scoped KILL suppresses one log body interval or deletes an entry span; a
 // matcher ({§matcher-option}) selects the rows or lines.

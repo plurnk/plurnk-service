@@ -153,9 +153,7 @@ JOIN loops l ON l.id = le.loop_id
 WHERE le.loop_id = $loop_id AND le.op = 'SEND' AND le.origin = '_plurnk'
   AND json_extract(le.attrs, '$.kind') = 'message'
   AND NOT EXISTS (
-      SELECT 1 FROM log_entries r
-      WHERE r.loop_id = le.loop_id AND r.op = 'SEND' AND r.origin = 'model'
-        AND r.scheme IS NULL AND r.pathname IS NULL
-        AND r.status_rx BETWEEN 200 AND 299 AND r.id > le.id
+      SELECT 1 FROM log_responses r
+      WHERE r.loop_id = le.loop_id AND r.id > le.id
   )
 ORDER BY le.id ASC;

@@ -18,6 +18,7 @@ import type {
     LookStatement,
     MatcherBody,
     MoveStatement,
+    NoteStatement,
     ResourceSelection,
     ParsedPath,
     PlurnkStatement,
@@ -42,6 +43,7 @@ import type {
     ForkStatementContext,
     LookStatementContext,
     MoveStatementContext,
+    NoteStatementContext,
     ResourceSelectionContext,
     SlotModifiersContext,
     ReadStatementContext,
@@ -58,7 +60,7 @@ import {
     TargetWithMetadataContext,
 } from "./generated/plurnkParser.ts";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
-import { PathSyntax, PlanValue, PlurnkParseError, TurnDisposition } from "@plurnk/plurnk-contracts";
+import { PathSyntax, PlurnkParseError, TurnDisposition } from "@plurnk/plurnk-contracts";
 
 // The xpath package's .d.ts omits its `parse` function; augment here.
 declare module "xpath" {
@@ -247,6 +249,7 @@ export default class AstBuilder {
         const work = ctx.workStatement(); if (work) return AstBuilder.#buildWork(work);
         const fork = ctx.forkStatement(); if (fork) return AstBuilder.#buildFork(fork);
         const kill = ctx.killStatement(); if (kill) return AstBuilder.#buildKill(kill);
+        const note = ctx.noteStatement(); if (note) return AstBuilder.#buildNote(note);
         if ("dispositionStatement" in ctx) {
             const disposition = ctx.dispositionStatement(); if (disposition) return AstBuilder.#buildDisposition(disposition);
         }
@@ -375,25 +378,21 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const op = (ctx.start?.text ?? "").replace(/^`+[0-9]*/, "");
         if (!TurnDisposition.isOp(op)) throw new Error(`Unknown disposition operation: ${op}`);
-        // {§one-line-turn} — an inventory written as a block on the heading line is the body when
-        // nothing sits beneath the heading, with one advisory naming where it belongs.
-        const below = AstBuilder.#bodyTextOf(ctx);
-        const inline = ctx.metadata()?.getText() ?? null;
-        if (inline !== null && (below === null || below.trim() === "")) {
-            AstBuilder.#advisories.push(new PlurnkParseError(position.line, position.column, "parser",
-                `${op}'s inventory was read from the heading line; it belongs in the body.`, "warning"));
-        }
-        const raw = below !== null && below.trim() !== "" ? below : inline;
         return {
             op,
             aside: AstBuilder.#asideOf(ctx),
             target: null,
             metadata: null,
             lineMarker: AstBuilder.#lineMarkerFromCtx(ctx.lineMarker()),
-            body: PlanValue.admit(raw ?? "", (message) => AstBuilder.#advisories.push(
-                new PlurnkParseError(position.line, position.column, "visitor", message, "warning"),
-            )),
+            body: AstBuilder.#bodyTextOf(ctx),
             position,
+        };
+    }
+
+    static #buildNote(ctx: NoteStatementContext): NoteStatement {
+        return {
+            op: "NOTE", aside: AstBuilder.#asideOf(ctx), target: null, metadata: null, lineMarker: null,
+            body: AstBuilder.#bodyTextOf(ctx), position: AstBuilder.#positionOf(ctx),
         };
     }
 

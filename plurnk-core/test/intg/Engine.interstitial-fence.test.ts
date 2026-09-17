@@ -6,7 +6,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
 
-const task = PlurnkParser.frame("TASK", '[{"content":"Show the examples.","status":"completed"}]');
+const task = PlurnkParser.frame("DONE", "");
 
 // {§interstitial-fence} — an unlabeled fence is prose and protects nothing: an operation fenced
 // inside it is that operation. Quoting is a delimited SEND's job ({§numeric-delimiter}).
@@ -37,7 +37,7 @@ test("{§interstitial-fence}: an unlabeled fence is transparent; a fenced operat
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: turnId });
         const model = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [["KILL", 200], ["SEND", 200], ["TASK", 200]]);
+        assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [["KILL", 200], ["SEND", 200], ["DONE", 200]]);
         assert.equal(JSON.parse(model[1]!.tx).body.raw, "````KILL (worker:///quoted.md)````", "the quoted heading stayed body under the delimiter");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "ops")?.content, source, "/ops stays exact");

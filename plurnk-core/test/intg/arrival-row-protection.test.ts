@@ -6,7 +6,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import { editStmt, killStmt, dispositionStmt } from "./_dsl.ts";
+import { editStmt, killStmt, noteStmt } from "./_dsl.ts";
 
 const urlLog = (raw: string) => ({ kind: "url" as const, raw, scheme: "log", username: null, password: null, hostname: null, port: null, pathname: "/" + raw.replace(/^log:\/\/\//, ""), query: null, fragment: null });
 const urlWorker = (raw: string) => ({ kind: "url" as const, raw, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/" + raw.replace(/^worker:\/\/\//, ""), query: null, fragment: null });
@@ -18,7 +18,7 @@ async function seedPromptWorker(db: Awaited<ReturnType<typeof openMigrated>>) {
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     // {§message-arrival}: the initial message has one inbound SEND row.
     await engine.runTurn({
-        provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("in_progress")] } }] }),
+        provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [noteStmt("Continue.")] } }] }),
         workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "Improve the module loader so require() stays deterministic." }],
     });
     const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
@@ -46,7 +46,7 @@ test("prior and current loop arrivals share the same explicit curation contract"
         // A second loop takes over; loop 1's arrival becomes curatable history.
         const loop2 = await insertLoop(db, workerId, 2, "the next task");
         await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("in_progress")] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [noteStmt("Continue.")] } }] }),
             workspaceId, workerId, loopId: loop2, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the next task" }],
         });
         const curationTurn = await insertTurn(db, loop2, 2, 102);
@@ -73,7 +73,7 @@ test("sister workers' initial messages have independent inbox rows and publicati
     try {
         const workspaceId = await insertWorkspace(db, `frame-sisters-${crypto.randomUUID()}`);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const mkProvider = () => new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [dispositionStmt("in_progress")] } }] });
+        const mkProvider = () => new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [noteStmt("Continue.")] } }] });
         const parentWorker = await insertWorker(db, workspaceId);
         const parentLoop = await insertLoop(db, parentWorker, 1, "the parent task");
         await engine.runTurn({ provider: mkProvider(), workspaceId, workerId: parentWorker, loopId: parentLoop, messages: [{ role: "system", content: "SD" }, { role: "user", content: "the parent task" }] });

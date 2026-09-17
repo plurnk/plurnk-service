@@ -9,10 +9,10 @@ import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_helpers.ts";
 
-const response = (operation: string, status: string, timing = "") => ({
+const response = (operation: string, op: string, timing = "") => ({
     assistant: { content: [
         operation,
-        PlurnkParser.frame(`TASK${timing}`, JSON.stringify([{ content: "Inspect the result.", status }])),
+        PlurnkParser.frame(`${op}${timing}`, ""),
     ].join("\n"), reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
@@ -31,9 +31,9 @@ test("{§loop-rail-continuity}: a resumed task retains its strike streak across 
         content: "42", mimetype: "text/plain", state: "static",
     });
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response(invalidFind, "in_progress"),
-        response(invalidFind, "waiting"),
-        response(invalidFind, "in_progress"),
+        response(invalidFind, "NOTE"),
+        response(invalidFind, "WAIT"),
+        response(invalidFind, "NOTE"),
     ] });
     const run = () => new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
         workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4, maxStrikes: 3,
@@ -61,7 +61,7 @@ test("{§worker-lifecycle-state-machine}: cancellation wins against a pending st
         }
         return verdict;
     });
-    const provider = new Mock({ contextWindow: 100000, responses: [response(invalidFind, "in_progress")] });
+    const provider = new Mock({ contextWindow: 100000, responses: [response(invalidFind, "NOTE")] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
         workspaceId, workerId, loopId, provider, messages: [], maxTurns: 2, maxStrikes: 1,
     });

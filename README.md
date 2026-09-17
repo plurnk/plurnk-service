@@ -21,7 +21,7 @@ installed option.
 An unedited recording of the published client and daemon against a three-file
 project, answering in seventeen seconds on a local model: Qwen3.8-27B at Q3_K_S,
 served by llama.cpp on one 16 GB consumer GPU. Beneath the prompt are the
-operations the model ran, the task inventory it kept, and a footer carrying
+operations the model ran, its response, and a footer carrying
 turns, elapsed time and tokens. Any provider route works the same way.
 
 ## Design

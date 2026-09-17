@@ -72,7 +72,7 @@ const assertClean = (label, result) => {
     }
 };
 
-const program = PlurnkParser.frame("TASK", '[{"content":"smoke","status":"in_progress"}]');
+const program = PlurnkParser.frame("NOTE", "smoke");
 assertClean("model turn", PlurnkParser.parse(program));
 const result = PlurnkParser.parseStatements(PlurnkParser.frame("EDIT (worker:///foo)", "body content"));
 assertClean("statement sequence", result);
@@ -85,7 +85,7 @@ for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkPar
     const parsed = parse(interstitial);
     assertClean("interstitial text", parsed);
     if (parsed.items.length !== 2 || parsed.items[0]?.statement?.body?.raw !== "Only this is a message."
-        || parsed.items[1]?.statement?.op !== "TASK") throw new Error("outside text changed the parsed program");
+        || parsed.items[1]?.statement?.op !== "NOTE") throw new Error("outside text changed the parsed program");
 }
 
 // A quoted example rides a numeric delimiter ({§numeric-delimiter}): the SEND's body holds the
@@ -98,7 +98,7 @@ assertClean("delimited SEND", quotedSend);
 if (quotedSend.items.length !== 2 || quotedSend.items[0]?.statement?.op !== "SEND"
     || quotedSend.items[0]?.statement?.aside !== "literal example"
     || quotedSend.items[0]?.statement?.body?.raw !== literalExample
-    || quotedSend.items[1]?.statement?.op !== "TASK") throw new Error("delimited SEND did not quote its literal example");
+    || quotedSend.items[1]?.statement?.op !== "NOTE") throw new Error("delimited SEND did not quote its literal example");
 
 const item = result.items[0];
 if (item.kind !== "statement") throw new Error("expected statement, got " + item.kind);
@@ -117,7 +117,7 @@ console.log("OK: the parser is consumable through one installed entrypoint.");
 
     process.stdout.write("[smoke] running the CLI against a turn...\n");
     const cli = join(installedRoot, "bin", "plurnk-parser.js");
-    await writeFile(join(tempDir, "turn.plurnk"), "```TASK\n[{\"content\":\"cli\",\"status\":\"completed\"}]\n```\n");
+    await writeFile(join(tempDir, "turn.plurnk"), "```DONE\n```\n");
     const { stdout: cliOut } = await run("node", [cli, "turn.plurnk"], { cwd: tempDir });
     const cliResult = JSON.parse(cliOut) as { items: Array<{ kind: string }> };
     if (cliResult.items.some(({ kind }) => kind === "error")) throw new Error(`CLI reported parse errors: ${cliOut}`);
@@ -140,7 +140,7 @@ export const parse = (input) => PlurnkParser.parse(input);
     const browserConsumer = await import(`${pathToFileURL(browserBundle).href}?${crypto.randomUUID()}`) as {
         parse(input: string): { items: Array<{ kind: string }> };
     };
-    const browserResult = browserConsumer.parse("```TASK\n[{\"content\":\"browser bundle initialized\",\"status\":\"in_progress\"}]\n```");
+    const browserResult = browserConsumer.parse("```NOTE\nbrowser bundle initialized\n```");
     if (browserResult.items.some(({ kind }) => kind === "error")) {
         throw new Error(`browser bundle returned parse errors: ${JSON.stringify(browserResult.items)}`);
     }

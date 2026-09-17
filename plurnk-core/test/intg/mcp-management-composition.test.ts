@@ -149,8 +149,8 @@ test("{§oauth-continuation}: AG-UI authorization activates the same workspace a
     });
     origin = new URL(served.url).origin;
     const { action, post, provider } = await setup(t, [
-        makeMockResponse('````fixture (echo)\n{"message":"management proof"}\n````\n\n````TASK\n[{"content":"Observe the result.","status":"waiting"}]\n````'),
-        makeMockResponse('````SEND\nObserved the authorized result.\n````\n\n````TASK\n[{"content":"Observed the result.","status":"completed"}]\n````'),
+        makeMockResponse("````fixture (echo)\n{\"message\":\"management proof\"}\n````\n\n````WAIT\nObserve the result.\n````"),
+        makeMockResponse("````SEND\nObserved the authorized result.\n````\n\n````DONE\n````"),
     ]);
     const added = await action("authorization", "workspace.mcp.add", {
         alias: "fixture", definition: { name: "fixture", transport: "http", url: served.url, read: ["echo"],
@@ -248,8 +248,8 @@ const applicationServer = async (t: TestContext, rejectGrant = false) => {
 test("{§oauth-client-credentials}: AG-UI application credentials and SDK refresh deliver an authorized result to the model", { timeout: 20000 }, async (t) => {
     const served = await applicationServer(t);
     const { action, post, provider } = await setup(t, [
-        makeMockResponse('````fixture (echo)\n{"message":"application proof"}\n````\n\n````TASK\n[{"content":"Observe the result.","status":"waiting"}]\n````'),
-        makeMockResponse('````SEND\nObserved the application result.\n````\n\n````TASK\n[{"content":"Observed the result.","status":"completed"}]\n````'),
+        makeMockResponse("````fixture (echo)\n{\"message\":\"application proof\"}\n````\n\n````WAIT\nObserve the result.\n````"),
+        makeMockResponse("````SEND\nObserved the application result.\n````\n\n````DONE\n````"),
     ]);
     const workspace = "application-authorization";
     const configured = await action(workspace, "workspace.env.add", { alias: "MCP_APP_SECRET", definition: { value: "fixture-app-secret" } });
@@ -325,8 +325,8 @@ test("{§mcp-host-composition} {§notice-event-notify}: MCP progress reaches AG-
         return server;
     }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
     const { action, post, provider } = await setup(t, [
-        makeMockResponse('````fixture (observe)\n{}\n````\n\n````TASK\n[{"content":"Observe the result.","status":"waiting"}]\n````'),
-        makeMockResponse('````SEND\nThe observation completed.\n````\n\n````TASK\n[{"content":"Observed the result.","status":"completed"}]\n````'),
+        makeMockResponse("````fixture (observe)\n{}\n````\n\n````WAIT\nObserve the result.\n````"),
+        makeMockResponse("````SEND\nThe observation completed.\n````\n\n````DONE\n````"),
     ]);
     const added = await action("live-progress", "workspace.mcp.add", { alias: "fixture", definition: {
         name: "fixture", transport: "http", url: served.url, read: ["observe"],
@@ -392,8 +392,14 @@ for (const deferred of [false, true]) {
                 return deferred ? fixture.route(request) : null;
             });
             const { action, post, provider } = await setup(t, [
-                makeMockResponse(`\`\`\`\`fixture (${fixture.toolName})\n{"topic":"MCP"}\n\`\`\`\`\n\n\`\`\`\`TASK\n[{"content":"Observe the result.","status":"waiting"}]\n\`\`\`\``),
-                makeMockResponse('````SEND\nInspected the result.\n````\n\n````TASK\n[{"content":"Inspected the result.","status":"completed"}]\n````'),
+                makeMockResponse(`\`\`\`\`fixture (${fixture.toolName})
+{"topic":"MCP"}
+\`\`\`\`
+
+\`\`\`\`WAIT
+Observe the result.
+\`\`\`\``),
+                makeMockResponse("````SEND\nInspected the result.\n````\n\n````DONE\n````"),
             ]);
             const added = await action("structured", "workspace.mcp.add", { alias: "fixture", definition: {
                 name: "fixture", transport: "http", url: served.url, read: [fixture.toolName],

@@ -14,22 +14,22 @@ const response = (dsl: string) => ({
 });
 
 for (const wake of ["message", "same-drain", "restart"] as const) {
-    for (const last of ["TASK", "TASK"] as const) {
+    for (const last of ["WAIT", "DONE"] as const) {
         test(`{§engine-rails}: ${wake} wake preserves consecutive strikes through ${last}`, async (t) => {
             // The waits park on live work the fixture holds; a restart wakes them through recovery.
             t.mock.method(Dispatcher.prototype, "hasLiveWork", async () => true);
             const provider = new Mock({ contextWindow: 100000, responses: [
                 response(`${invalidFind}
-\`\`\`TASK
-[{"content":"Await results.","status":"waiting"}]
+\`\`\`WAIT
+Await results.
 \`\`\``),
                 response(`${invalidFind}
-\`\`\`TASK
-[{"content":"Await results.","status":"waiting"}]
+\`\`\`WAIT
+Await results.
 \`\`\``),
                 response(`${invalidFind}
 \`\`\`${last}\`\`\``),
-                response("```SEND\nMust not reach a fourth model call.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+                response("```SEND\nMust not reach a fourth model call.\n```\n```DONE\n```"),
             ] });
             const seen: Array<number | undefined> = [];
             const generate = provider.generate.bind(provider);
@@ -100,8 +100,8 @@ for (const wake of ["message", "same-drain", "restart"] as const) {
 test("{§engine-cycle-evidence}: actual parks end repetition windows even when wakes stay in one drain", async (t) => {
     t.mock.method(Dispatcher.prototype, "hasLiveWork", async () => true);
     const provider = new Mock({ contextWindow: 100000, responses: [
-        ...Array.from({ length: 6 }, () => response("```READ (worker:///missing)```\n```TASK\n[{\"content\":\"Await results.\",\"status\":\"waiting\"}]\n```")),
-        response("```SEND\nObservation complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+        ...Array.from({ length: 6 }, () => response("```READ (worker:///missing)```\n```WAIT\nAwait results.\n```")),
+        response("```SEND\nObservation complete.\n```\n```DONE\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "wait-cycle-windows" });

@@ -65,8 +65,8 @@ BEGIN
     JOIN turns nt ON nt.loop_id = nl.id AND nt.sequence = ot.sequence
     WHERE ol.worker_id = NEW.parent_worker_id;
 
-    INSERT INTO turn_sources (turn_id, kind, content, deep_hash)
-    SELECT nt.id, s.kind, s.content, s.deep_hash
+    INSERT INTO turn_sources (turn_id, kind, sequence, content, deep_hash)
+    SELECT nt.id, s.kind, s.sequence, s.content, s.deep_hash
     FROM turn_sources s
     JOIN turns ot ON ot.id = s.turn_id
     JOIN loops ol ON ol.id = ot.loop_id

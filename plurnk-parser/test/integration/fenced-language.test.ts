@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "../../src/index.ts";
-import { TurnDisposition, type Plan } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, type DispositionStatement } from "@plurnk/plurnk-contracts";
 import { isExecution } from "@plurnk/plurnk-contracts";
 import { writtenOp } from "@plurnk/plurnk-contracts";
 
@@ -10,8 +10,7 @@ const ops = (result: ReturnType<typeof PlurnkParser.parse>) =>
 const errors = (result: ReturnType<typeof PlurnkParser.parse>) =>
     result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
 const frame = PlurnkParser.frame;
-const task = (content: string, status: Plan[number]["status"] = "in_progress") =>
-    frame("TASK", JSON.stringify([{ content, status }]));
+const task = (content: string, op: DispositionStatement["op"] = "DONE") => frame(op, content);
 
 for (const entrypoint of ["parse", "parseStatements", "parseClient", "parseLog"] as const) {
     test(`{§executor-js-spelling}: ${entrypoint} canonicalizes js without shadowing a registered executor`, () => {
@@ -33,7 +32,7 @@ for (const entrypoint of ["parse", "parseStatements", "parseClient", "parseLog"]
             }] : []);
             assert.equal(parsed.unparsedTail, undefined);
             const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-            assert.deepEqual(statements.map(writtenOp), runtime === null ? ["TASK"] : [runtime, "TASK"]);
+            assert.deepEqual(statements.map(writtenOp), runtime === null ? ["DONE"] : [runtime, "DONE"]);
             if (runtime === null) continue;
             const execution = statements[0];
             assert.ok(isExecution(execution));
@@ -45,9 +44,9 @@ for (const entrypoint of ["parse", "parseStatements", "parseClient", "parseLog"]
 
 test("{§executor-js-spelling}: a nested js example remains a literal message body", () => {
     const body = frame("js", "console.log(42);");
-    const parsed = PlurnkParser.parse(frame("SEND", body) + "\n" + task("Explained.", "completed"), { executors: ["node"] });
+    const parsed = PlurnkParser.parse(frame("SEND", body) + "\n" + task("Explained."), { executors: ["node"] });
     assert.deepEqual(errors(parsed), []);
-    assert.deepEqual(ops(parsed).map(writtenOp), ["SEND", "TASK"]);
+    assert.deepEqual(ops(parsed).map(writtenOp), ["SEND", "DONE"]);
     const send = ops(parsed)[0];
     assert.equal(send.op === "SEND" ? send.body?.raw : null, body);
 });
@@ -63,17 +62,15 @@ test("independent fenced operations retain exact bodies and typed fields", () =>
     assert.deepEqual(errors(parsed), []);
     assert.equal(parsed.unparsedTail, undefined);
     const statements = ops(parsed);
-    assert.deepEqual(statements.map(writtenOp), ["EDIT", "READ", "TASK"]);
+    assert.deepEqual(statements.map(writtenOp), ["EDIT", "READ", "DONE"]);
     assert.equal(statements[0].op === "EDIT" ? statements[0].body : null, "alpha\nbeta");
     assert.equal(statements[1].op === "READ" ? statements[1].body : "wrong op", null);
-    assert.deepEqual(statements[2].op === "TASK" ? statements[2].body : null, [
-        { content: "Waiting for the read result.", status: "in_progress" },
-    ]);
+    assert.equal(statements[2].op === "DONE" ? statements[2].body : null, "Waiting for the read result.");
 });
 
 // {§section-boundary}
 test("framing removes its own newline, not body whitespace or interstatement padding", () => {
-    const input = frame("EDIT (notes.md)", "alpha\n") + "\n\n" + task("done", "completed");
+    const input = frame("EDIT (notes.md)", "alpha\n") + "\n\n" + task("done");
     const parsed = PlurnkParser.parse(input);
     assert.deepEqual(errors(parsed), []);
     const edit = ops(parsed)[0];
@@ -82,7 +79,7 @@ test("framing removes its own newline, not body whitespace or interstatement pad
 
 // {§fence-boundary}
 test("a quoted turn remains one exact literal body", () => {
-    const body = [frame("SEND", "Paris."), task("Answered.", "completed")].join("\n");
+    const body = [frame("SEND", "Paris."), task("Answered.")].join("\n");
     const parsed = PlurnkParser.parse([frame("EDIT (quoted.md)", body), task("Stored it.")].join("\n"));
     assert.deepEqual(errors(parsed), []);
     assert.equal(ops(parsed).length, 2);
@@ -97,10 +94,10 @@ test("{§whitespace-contract}: exact closing fences bound bodies before ignored 
             { source: "```READ (first.md)```\n````sh\necho 42\n````\n\nOutside.", names: ["READ", "sh"], bodies: [null, "echo 42"] },
             { source: "```````READ (note.md)\n```````\nOutside.", names: ["READ"], bodies: [null] },
         ]) {
-            const parsed = PlurnkParser.parse((source + "\n" + task("Done.", "completed")).replaceAll("\n", newline));
+            const parsed = PlurnkParser.parse((source + "\n" + task("Done.")).replaceAll("\n", newline));
             assert.equal(parsed.unparsedTail, undefined);
             assert.deepEqual(errors(parsed), []);
-            assert.deepEqual(ops(parsed).map(writtenOp), [...names, "TASK"]);
+            assert.deepEqual(ops(parsed).map(writtenOp), [...names, "DONE"]);
             assert.deepEqual(ops(parsed).slice(0, -1).map((op) => isExecution(op) ? op.body : op.op === "SEND" ? op.body?.raw : null), bodies.map((body) => body?.replaceAll("\n", newline) ?? null));
         }
     }
@@ -108,13 +105,13 @@ test("{§whitespace-contract}: exact closing fences bound bodies before ignored 
 
 test("{§fence-closer}: a same-width bare fence closes its SEND, and the numeric delimiter keeps it as body", () => {
     for (const newline of ["\n", "\r\n"]) {
-        const bare = PlurnkParser.parse("```SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```\n".replaceAll("\n", newline) + task("Done.", "completed"));
+        const bare = PlurnkParser.parse("```SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```\n".replaceAll("\n", newline) + task("Done."));
         assert.equal(bare.unparsedTail, undefined);
         assert.deepEqual(errors(bare), []);
-        assert.deepEqual(ops(bare).map(writtenOp), ["SEND", "TASK"]);
+        assert.deepEqual(ops(bare).map(writtenOp), ["SEND", "DONE"]);
         const bareSend = ops(bare)[0];
         assert.equal(bareSend.op === "SEND" ? bareSend.body?.raw : null, "Code:\n```ts\nconst value = 42;".replaceAll("\n", newline), "the first same-width bare fence is the closer");
-        const delimited = PlurnkParser.parse("```42SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```42\n".replaceAll("\n", newline) + task("Done.", "completed"));
+        const delimited = PlurnkParser.parse("```42SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```42\n".replaceAll("\n", newline) + task("Done."));
         assert.deepEqual(errors(delimited), []);
         const delimitedSend = ops(delimited)[0];
         assert.equal(delimitedSend.op === "SEND" ? delimitedSend.body?.raw : null, "Code:\n```ts\nconst value = 42;\n```\nVerified.".replaceAll("\n", newline));
@@ -129,20 +126,20 @@ test("{§whitespace-contract}: a text-only statement list is empty", () => {
 
 // {§tier-entrypoints}
 test("parseLog retains consecutive turns with independently chosen fence lengths", () => {
-    const source = "```SEND\nOne.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```\n\n`````SEND\nTwo.\n`````\n`````TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n`````";
+    const source = "```SEND\nOne.\n```\n```DONE\n```\n\n`````SEND\nTwo.\n`````\n`````DONE\n`````";
     const parsed = PlurnkParser.parseLog(source);
     assert.deepEqual(errors(parsed), []);
-    assert.deepEqual(ops(parsed).map(writtenOp), ["SEND", "TASK", "SEND", "TASK"]);
+    assert.deepEqual(ops(parsed).map(writtenOp), ["SEND", "DONE", "SEND", "DONE"]);
     assert.deepEqual(ops(parsed).flatMap((op) => op.op === "SEND" ? [op.body?.raw] : []), ["One.", "Two."]);
 });
 
 // {§disposition-anywhere}
 test("operations after a disposition are admitted in authored order without a diagnostic", () => {
-    for (const status of ["todo", "in_progress", "waiting", "completed", "failed"] as const) {
+    for (const op of ["WAIT", "DONE", "FAIL"] as const) {
         for (const precedingRead of [false, true]) {
             const input = [
                 ...(precedingRead ? [frame("READ (early.md)", null)] : []),
-                task("Answer.", status),
+                task("Answer.", op),
                 frame("KILL (log:///3/3/1/READ)", null),
                 frame("READ (notes.md)", null),
                 frame("SEND (worker://reviewer)", "Check this."),
@@ -150,20 +147,20 @@ test("operations after a disposition are admitted in authored order without a di
             const parsed = PlurnkParser.parse(input);
             assert.equal(parsed.unparsedTail, undefined);
             assert.deepEqual(errors(parsed), []);
-            assert.deepEqual(ops(parsed).map(writtenOp), [...(precedingRead ? ["READ"] : []), "TASK", "KILL", "READ", "SEND"]);
+            assert.deepEqual(ops(parsed).map(writtenOp), [...(precedingRead ? ["READ"] : []), op, "KILL", "READ", "SEND"]);
             const disposition = ops(parsed).find(TurnDisposition.is);
             assert.ok(disposition !== undefined);
-            assert.deepEqual(disposition.body, [{ content: "Answer.", status }]);
+            assert.equal(disposition.body, "Answer.");
         }
     }
 });
 
 // {§fence-boundary} {§disposition-anywhere}
-test("literal examples inside a SEND stay literal while a KILL after TASK is admitted", () => {
+test("literal examples inside a SEND stay literal while a KILL after DONE is admitted", () => {
     const body = "Example:\n" + frame("KILL (notes.md)", null);
-    const parsed = PlurnkParser.parse([frame("SEND", body), task("Explained.", "completed"), frame("KILL (log:///1/2/3/READ)", null)].join("\n"));
+    const parsed = PlurnkParser.parse([frame("SEND", body), task("Explained."), frame("KILL (log:///1/2/3/READ)", null)].join("\n"));
     assert.deepEqual(errors(parsed), []);
-    assert.deepEqual(ops(parsed).map(writtenOp), ["SEND", "TASK", "KILL"]);
+    assert.deepEqual(ops(parsed).map(writtenOp), ["SEND", "DONE", "KILL"]);
     const send = ops(parsed)[0];
     assert.equal(send.op === "SEND" ? send.body?.raw : null, body);
 });
@@ -173,7 +170,7 @@ test("saved turns end at each disposition and retain operations in execution ord
     const turn = [frame("KILL (log:///1/1/1/READ)", null), task("Continue.")].join("\n");
     const parsed = PlurnkParser.parseLog(turn + "\n" + turn);
     assert.deepEqual(errors(parsed), []);
-    assert.deepEqual(ops(parsed).map(writtenOp), ["KILL", "TASK", "KILL", "TASK"]);
+    assert.deepEqual(ops(parsed).map(writtenOp), ["KILL", "DONE", "KILL", "DONE"]);
     const unfinished = PlurnkParser.parseLog(turn + "\n" + frame("READ (unfinished.md)", null));
     assert.ok(errors(unfinished).length > 0 || unfinished.unparsedTail !== undefined);
 });

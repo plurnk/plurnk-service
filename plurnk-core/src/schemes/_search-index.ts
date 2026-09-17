@@ -48,7 +48,7 @@ type DerivationRow = {
 } & (
     | { attachment: "entry-channel"; scheme: string; authority: string; channel: string; hashed: boolean }
     | { attachment: "log"; folded: string }
-    | { attachment: "turn-source"; kind: "ops" | "reasoning" }
+    | { attachment: "turn-source"; kind: "ops" | "reasoning" | "note"; sequence: number }
 );
 type PendingDerivation = {
     r: DerivationRow;
@@ -102,7 +102,7 @@ export default class SearchIndex {
             } else if (r.attachment === "log") {
                 await db.log_set_deep_hash.run({ log_entry_id: r.id, deep_hash: hash, folded: r.folded });
             } else {
-                await db.turn_source_attach_derivation.run({ turn_id: r.id, kind: r.kind, deep_hash: hash });
+                await db.turn_source_attach_derivation.run({ turn_id: r.id, kind: r.kind, sequence: r.sequence, deep_hash: hash });
             }
         };
         let artifact = await db.derivation_get.get<DerivationArtifact>({ deep_hash: hash });
@@ -344,7 +344,7 @@ export default class SearchIndex {
             });
         }
         const sources = await db.turn_source_derivations.all<{
-            turn_id: number; kind: "ops" | "reasoning"; pathname: string; content: string; deep_hash: string | null;
+            turn_id: number; kind: "ops" | "reasoning" | "note"; sequence: number; pathname: string; content: string; deep_hash: string | null;
         }>({ workspace_id: workspaceId });
         for (const source of sources) {
             acquiredBytes += source.content.length;
@@ -354,7 +354,7 @@ export default class SearchIndex {
             const hash = derivationHash({ contentHash: identity, mimetype, binary: false, projectionIdentity, dispositionIdentity: "included" });
             if (hash !== source.deep_hash) pending.push({
                 r: {
-                    id: source.turn_id, attachment: "turn-source", kind: source.kind,
+                    id: source.turn_id, attachment: "turn-source", kind: source.kind, sequence: source.sequence,
                     pathname: source.pathname, mimetype,
                     contentLength: source.content.length, contentHash: identity,
                     body: () => Promise.resolve(source.content),

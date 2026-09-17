@@ -12,7 +12,7 @@ import { makeMockResponse } from "./_rpc.ts";
 
 const completed = (content: string) => makeMockResponse([
     "```SEND", content, "```",
-    "```TASK", JSON.stringify([{ content, status: "completed" }]), "```",
+    "```DONE", "```",
 ].join("\n"));
 
 const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof makeMockResponse>[]) => {
@@ -93,8 +93,8 @@ test("{§a2a-task-listing}: HTTP clients page by status-update order, not Worker
                 },
             }),
             "```",
-            "```TASK",
-            JSON.stringify([{ content: "Await the branch selection.", status: "waiting" }]),
+            "```WAIT",
+            "Await the branch selection.",
             "```",
         ].join("\n")),
         completed("second Task"),
@@ -191,7 +191,7 @@ test("{§send-resource-attachments}: attachment-only Messages and replies round-
             assert.match(targets[1]!, /\/[a-f0-9]{8}$/u, "an unnamed Part receives an eight-character name");
             return { ...response, assistant: { ...response.assistant, content: [
                 `\`\`\`SEND [${JSON.stringify({ attachments: targets })}]`, "```",
-                "```TASK", '[{"content":"Returned the bytes.","status":"completed"}]', "```",
+                "```DONE", "```",
             ].join("\n") } };
         }
     }
@@ -213,7 +213,7 @@ test("{§send-resource-attachments}: attachment-only Messages and replies round-
 });
 
 test("{§send-resource-attachments}: image READ and explicit report SEND preserve send-time bytes after mutation and curation", async (t) => {
-    const continuing = "```TASK\n[{\"content\":\"Prepare the report.\",\"status\":\"in_progress\"}]\n```";
+    const continuing = "```NOTE\nPrepare the report.\n```";
     class Reader extends Mock {
         override async generate(...args: Parameters<Mock["generate"]>) {
             const response = await super.generate(...args);
@@ -286,7 +286,7 @@ test("{§a2a-inbound-exposure}: a rejected answer leaves the Task awaiting a val
             "```question",
             JSON.stringify({ message: "Choose 42.", requestedSchema: { type: "integer", const: 42 } }),
             "```",
-            "```TASK", JSON.stringify([{ content: "Await input.", status: "waiting" }]), "```",
+            "```WAIT", "Await input.", "```",
         ].join("\n")),
         completed("received 42"),
     ]);

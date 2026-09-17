@@ -100,10 +100,10 @@ for (const timing of ["before park", "after park"] as const) {
                 makeMockResponse(`\`\`\`question
 ${body}
 \`\`\`
-\`\`\`TASK
-[{"content":"Waiting for your answer.","status":"waiting"}]
+\`\`\`WAIT
+Waiting for your answer.
 \`\`\``),
-                makeMockResponse("```SEND\nThe answer arrived.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+                makeMockResponse("```SEND\nThe answer arrived.\n```\n```DONE\n```"),
             ] });
             try {
                 await withDaemon(provider, async (db, daemon) => {
@@ -152,7 +152,7 @@ ${body}
 
 test("{§question-tool}: cancelling the worker concludes a pending question as cancellation, not an executor crash", async () => {
     const provider = new StreamMock({ contextWindow: 100_000, responses: [makeMockResponse(
-        "```question\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n```\n```TASK\n[{\"content\":\"Awaiting an answer.\",\"status\":\"waiting\"}]\n```",
+        "```question\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n```\n```WAIT\nAwaiting an answer.\n```",
     )] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "question-user-cancel" });
@@ -177,9 +177,9 @@ test("{§question-tool}: cancelling the worker concludes a pending question as c
 
 test("{§client-interactions}: KILL ends the question's own waiter without cancelling its loop", async () => {
     const provider = new StreamMock({ contextWindow: 100_000, responses: [
-        makeMockResponse("```question\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n```\n```TASK\n[{\"content\":\"Continue while the question is pending.\",\"status\":\"in_progress\"}]\n```"),
-        makeMockResponse("```KILL ($STREAM)```\n```TASK\n[{\"content\":\"Cancel the question.\",\"status\":\"in_progress\"}]\n```"),
-        makeMockResponse("```SEND\nDone.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+        makeMockResponse("```question\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n```\n```NOTE\nContinue while the question is pending.\n```"),
+        makeMockResponse("```KILL ($STREAM)```\n```NOTE\nCancel the question.\n```"),
+        makeMockResponse("```SEND\nDone.\n```\n```DONE\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "question-exec-cancel" });

@@ -16,8 +16,12 @@ for (const specimen of [
 ]) {
     test(`{§completion-defers-to-results}: ${specimen.label} names only the actual observation blockers`, async () => {
         const mock = new Mock({ contextWindow: 16384, responses: [
-            makeMockResponse(`\n\`\`\`EDIT (worker:///notes.md)\nhello\n\`\`\`\n\n${specimen.extra}\`\`\`SEND\ndone\n\`\`\`\n\`\`\`TASK\n[{"content":"Task completed.","status":"completed"}]\n\`\`\``, 10),
-            makeMockResponse("\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+            makeMockResponse(`\n\`\`\`EDIT (worker:///notes.md)\nhello\n\`\`\`\n\n${specimen.extra}\`\`\`SEND
+done
+\`\`\`
+\`\`\`DONE
+\`\`\``, 10),
+            makeMockResponse("\n```SEND\ndone\n```\n```DONE\n```", 10),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -28,10 +32,10 @@ for (const specimen of [
                 assert.equal(turnIds.length, 3, "initialization plus two model turns — the deferral cost one observation turn, no more");
                 await flush();
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
-                const tasks = rows.filter((r) => r.op === "TASK" && r.origin === "model");
+                const tasks = rows.filter((r) => ["WAIT", "DONE", "FAIL"].includes(r.op ?? "") && r.origin === "model");
                 assert.equal(tasks[0]?.status_rx, 102, "the first completion was deferred over the unseen receipt");
                 const deferral = JSON.parse(tasks[0]?.rx ?? "{}") as { problem?: unknown; detail?: string; attrs?: { pending?: string[] }; recovery?: unknown };
-                assert.equal(deferral.detail, `Completion deferred until ${specimen.names} reached a packet. ${specimen.names.includes(",") ? "They are" : "It is"} in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK.`);
+                assert.equal(deferral.detail, `Completion deferred until ${specimen.names} reached a packet. ${specimen.names.includes(",") ? "They are" : "It is"} in this packet. If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response.`);
                 assert.deepEqual(deferral.attrs?.pending, ["receipts"]);
                 assert.equal(deferral.problem, undefined, "a deferral carries no Problem and no strike");
                 assert.equal(deferral.recovery, undefined, "the receipt boundary needs no guessed workflow prescription");

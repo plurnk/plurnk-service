@@ -150,6 +150,7 @@ test("Daemon composes deterministic scheme and MIME display capabilities for cli
                 { kind: "scheme", scheme: "figma", display: { glyph: "󰕧" } },
                 { kind: "scheme", scheme: "file", display: {} },
             { kind: "scheme", scheme: "log", display: {} },
+            { kind: "scheme", scheme: "note", display: {} },
             { kind: "scheme", scheme: "ops", display: {} },
                 { kind: "scheme", scheme: "reasoning", display: {} },
                 { kind: "scheme", scheme: "skill", display: {} },
@@ -1034,8 +1035,8 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
     // budget. This test verifies the seam path, not small-window viability
     // ({§tokenomics-window-partition}).
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
-        makeMockResponse("```SEND\ndone again\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50),
+        makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 50),
+        makeMockResponse("```SEND\ndone again\n```\n```DONE\n```", 50),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
@@ -1232,7 +1233,7 @@ test("the client-interface seam — readLog returns a workspace's journal, owner
 
 test("the client-interface seam — metadata reads surface providers, workspaces, workers, and constraints", async () => {
     // The render surface beyond the journal: providers+budget, workspaces, workers, and the constraint overlay.
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -1261,7 +1262,7 @@ test("the client-interface seam — metadata reads surface providers, workspaces
 test("the client-interface seam — workspace lifecycle: create/attach/rename/set-root", async () => {
     // {§methods-workspace-create}: the module decodes its protocol; core owns semantic validation,
     // the envelope, name invariants, membership, and workspace/created.
-    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10)] });
+    const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10)] });
     await withDaemon(mock, async (_db, daemon, _addr) => {
         const events: Array<{ method: string; params: unknown }> = [];
         daemon.subscribeToEvents((_s, method, params) => { events.push({ method, params }); });

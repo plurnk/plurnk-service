@@ -7,8 +7,8 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flus
 
 test("{§turn-ops-selection-snapshot}: log KILL selects the pre-program snapshot, not rows emitted earlier by its own program", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        { assistant: { content: "```FIND (worker:///*)```\n```KILL (log:///1/2/*)```\n```TASK\n[{\"content\":\"Continue after curating the observed pre-program row.\",\"status\":\"in_progress\"}]\n```", reasoning: null } },
-        { assistant: { content: "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", reasoning: null } },
+        { assistant: { content: "```FIND (worker:///*)```\n```KILL (log:///1/2/*)```\n```NOTE\nContinue after curating the observed pre-program row.\n```", reasoning: null } },
+        { assistant: { content: "```SEND\ndone\n```\n```DONE\n```", reasoning: null } },
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -28,7 +28,7 @@ test("{§turn-ops-selection-snapshot}: log KILL selects the pre-program snapshot
             const firstModelTurn = rows.filter(({ turn_id }) => turn_id === firstModelTurnId);
             const prompt = firstModelTurn.find(({ op, origin }) => op === "SEND" && origin === "_plurnk");
             assert.equal(prompt?.active, 0, "the pre-program arrival row was in the selected snapshot");
-            for (const op of ["FIND", "KILL", "TASK"] as const) {
+            for (const op of ["FIND", "KILL", "NOTE"] as const) {
                 assert.equal(
                     firstModelTurn.find((row) => row.op === op)?.active,
                     1,
@@ -46,8 +46,8 @@ test("{§op-execution-order}: FIND observes an entry created by EDIT in the same
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Turn 1: write, then read-back in the same turn; continue (same-turn completion would
         // — correctly — trip the weigh-before-conclude 409; that gate is not under test here).
-        makeMockResponse("\n```EDIT (worker:///abs/module-loader-spec.md)\nthe spec body\n```\n\n```FIND (worker:///abs/**)```\n```TASK\n[{\"content\":\"wrote and listed\",\"status\":\"in_progress\"}]\n```", 10),
-        makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+        makeMockResponse("\n```EDIT (worker:///abs/module-loader-spec.md)\nthe spec body\n```\n\n```FIND (worker:///abs/**)```\n```NOTE\nwrote and listed\n```", 10),
+        makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -68,9 +68,9 @@ test("{§op-execution-order}: FIND observes an entry created by EDIT in the same
 
 test("{§edit-execution}: each EDIT records its own revision; an earlier READ retains its snapshot", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("\n```EDIT (worker:///mode.md)\none\ntwo\nthree\nfour\n```\n\n```TASK\n[{\"content\":\"fixture created\",\"status\":\"in_progress\"}]\n```", 10),
-        makeMockResponse("\n```READ (worker:///mode.md)```\n```EDIT (worker:///mode.md) <4>\nFOUR\n```\n\n```EDIT (worker:///mode.md) <2>\nTWO\n2.5\n```\n\n```TASK\n[{\"content\":\"mutated and observed\",\"status\":\"in_progress\"}]\n```", 10),
-        makeMockResponse("\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+        makeMockResponse("\n```EDIT (worker:///mode.md)\none\ntwo\nthree\nfour\n```\n\n```NOTE\nfixture created\n```", 10),
+        makeMockResponse("\n```READ (worker:///mode.md)```\n```EDIT (worker:///mode.md) <4>\nFOUR\n```\n\n```EDIT (worker:///mode.md) <2>\nTWO\n2.5\n```\n\n```NOTE\nmutated and observed\n```", 10),
+        makeMockResponse("\n```SEND\ndone\n```\n```DONE\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -105,9 +105,9 @@ test("{§edit-execution}: each EDIT records its own revision; an earlier READ re
 
 test("{§edit-execution}: overlapping numeric EDITs apply to successive resource states", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("```EDIT (worker:///atomic.md)\none\ntwo\nthree\n```\n\n```TASK\n[{\"content\":\"fixture\",\"status\":\"in_progress\"}]\n```", 10),
-        makeMockResponse("```EDIT (worker:///atomic.md) <1,2>\nchanged\n```\n\n```EDIT (worker:///atomic.md) <2,3>\nalso changed\n```\n\n```READ (worker:///atomic.md)```\n```TASK\n[{\"content\":\"checked\",\"status\":\"in_progress\"}]\n```", 10),
-        makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+        makeMockResponse("```EDIT (worker:///atomic.md)\none\ntwo\nthree\n```\n\n```NOTE\nfixture\n```", 10),
+        makeMockResponse("```EDIT (worker:///atomic.md) <1,2>\nchanged\n```\n\n```EDIT (worker:///atomic.md) <2,3>\nalso changed\n```\n\n```READ (worker:///atomic.md)```\n```NOTE\nchecked\n```", 10),
+        makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -129,14 +129,14 @@ test("{§edit-line-anchors}: a two-anchor whole-line range survives the composed
     const content = "alpha\nbeta\ngamma\ndelta";
     const [alpha, beta] = LineAnchors.tokens("worker:///anchored-range.md", content);
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("\n```EDIT (worker:///anchored-range.md)\nalpha\nbeta\ngamma\ndelta\n```\n\n```TASK\n[{\"content\":\"created\",\"status\":\"in_progress\"}]\n```", 10),
+        makeMockResponse("\n```EDIT (worker:///anchored-range.md)\nalpha\nbeta\ngamma\ndelta\n```\n\n```NOTE\ncreated\n```", 10),
         makeMockResponse(`
 \`\`\`EDIT (worker:///anchored-range.md) <${alpha},${beta}>\`\`\`
 \`\`\`READ (worker:///anchored-range.md)\`\`\`
-\`\`\`TASK
-[{"content":"verify","status":"in_progress"}]
+\`\`\`NOTE
+verify
 \`\`\``, 10),
-        makeMockResponse("\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+        makeMockResponse("\n```SEND\ndone\n```\n```DONE\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -163,8 +163,8 @@ test("{§edit-execution}: an invalid anchored EDIT leaves the earlier effect int
 ${content}
 \`\`\`
 
-\`\`\`TASK
-[{"content":"created","status":"in_progress"}]
+\`\`\`NOTE
+created
 \`\`\``, 10),
         makeMockResponse(`
 \`\`\`EDIT (worker:///anchor-batch.md) <${one},${two}>\`\`\`
@@ -173,10 +173,10 @@ replacement
 \`\`\`
 
 \`\`\`READ (worker:///anchor-batch.md)\`\`\`
-\`\`\`TASK
-[{"content":"verify","status":"in_progress"}]
+\`\`\`NOTE
+verify
 \`\`\``, 10),
-        makeMockResponse("\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+        makeMockResponse("\n```SEND\ndone\n```\n```DONE\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

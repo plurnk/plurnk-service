@@ -12,7 +12,7 @@ import NativeContent from "../../src/core/NativeContent.ts";
 
 process.env.PLURNK_MEMBERS_TASK = "**";
 process.env.PLURNK_MEMBERS_ENABLED = '["task"]';
-const next = '```TASK\n[{"content":"Inspect the audio.","status":"in_progress"}]\n```';
+const next = "```NOTE\nInspect the audio.\n```";
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
 
 for (const modalities of [["audio"], []] as InputModality[][]) {
@@ -25,7 +25,7 @@ for (const modalities of [["audio"], []] as InputModality[][]) {
             turn(`\`\`\`KILL (clip.wav)\`\`\`\n${next}`),
             turn(`\`\`\`READ (log:///1/2/2/READ)\`\`\`\n${next}`),
             turn(`\`\`\`KILL (log:///1/2/2/READ) <42>\`\`\`\n${next}`),
-            turn('```TASK\n[{"content":"Inspected.","status":"completed"}]\n```'),
+            turn("```DONE\n```"),
         ] });
         try {
             await withDaemon(provider, async (db, _daemon, addr) => {

@@ -237,7 +237,7 @@ for (const specimen of [
             assert.equal(wakes[0].result.status, specimen.status);
 
             const waited = await engine.dispatch({
-                statement: dispositionStmt("waiting", "waiting"),
+                statement: dispositionStmt("WAIT", "waiting"),
                 workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
             });
             assert.equal(
@@ -246,7 +246,7 @@ for (const specimen of [
                 "closed is not observed: the loop continues so the terminal stream observation can land next packet",
             );
             const completed = await engine.dispatch({
-                statement: dispositionStmt("completed"),
+                statement: dispositionStmt("DONE"),
                 workspaceId, workerId, loopId, turnId, sequence: 3, origin: "model",
             });
             assert.equal(completed.status, 102, "closed but unobserved: the completion defers to the next packet");
@@ -254,7 +254,7 @@ for (const specimen of [
             assert.deepEqual((completed.attrs as { pending?: string[] }).pending, specimen.status === 200
                 ? ["receipts"] : ["receipts", "failed-stream-results"]);
             if (specimen.status === 200) {
-                assert.equal(completed.detail, `Completion deferred until ${tag}, stream completion reached a packet. They are in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK.`,
+                assert.equal(completed.detail, `Completion deferred until ${tag}, stream completion reached a packet. They are in this packet. If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response.`,
                     "the executor's public name is used, not an internal operation name");
             }
         } finally { await db.close(); }
@@ -270,11 +270,11 @@ test("{§send-premature-terminate}: an earlier turn's completed stream is identi
         await waitFor(() => wakes, (events) => events.length > 0, { timeoutMs: 4000 });
         const nextTurnId = await insertTurn(db, loopId, 2, 102);
         const completed = await engine.dispatch({
-            statement: dispositionStmt("completed"),
+            statement: dispositionStmt("DONE"),
             workspaceId, workerId, loopId, turnId: nextTurnId, sequence: 1, origin: "model",
         });
         assert.equal(completed.status, 102);
-        assert.equal(completed.detail, "Completion deferred until stream completion reached a packet. It is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only TASK.");
+        assert.equal(completed.detail, "Completion deferred until stream completion reached a packet. It is in this packet. If your final response has already been sent and these results require no further work or response revision, submit only DONE without repeating the response.");
         assert.deepEqual((completed.attrs as { pending?: string[] }).pending, ["receipts"]);
     } finally { await db.close(); }
 });

@@ -18,7 +18,7 @@ test.afterEach(async () => { await db.close(); });
 const base = { waitRevision: 0, fingerprint: "READ(x)", minCycles: 3, maxCyclePeriod: 4, maxStrikes: 3 };
 const outcome = (op: StrikeOutcome["op"], status: number): StrikeOutcome => ({ op, status });
 
-test("a 409 status alone is soft; no TASK answer strikes ({§completion-joins-live-work}, {§completion-defers-to-results})", async () => {
+test("a 409 status alone is soft; no completion claim strikes ({§completion-joins-live-work}, {§completion-defers-to-results})", async () => {
     const rail = new StrikeRail(db);
     const verdict = await rail.assess(loopId, { ...base, outcomes: [outcome("SEND", 409)] });
     assert.equal(verdict.thresholdCrossed, false);

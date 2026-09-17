@@ -14,7 +14,7 @@ import type { FindResult } from "../../src/schemes/_entry-find.ts";
 const program = (message: string) => [
     "An interstitial sentence retained as evidence.",
     PlurnkParser.frame("SEND", message),
-    PlurnkParser.frame("TASK", '[{"content":"Review the evidence.","status":"in_progress"}]'),
+    PlurnkParser.frame("NOTE", "Review the evidence."),
 ].join("\n\n");
 
 test("{§turn-source-resources}: initialization reads its real program; later sources are pulled, not log rows", async () => {

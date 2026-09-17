@@ -5,10 +5,9 @@ import AstBuilder from "./AstBuilder.ts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
 import {
-    PlanValue,
     PlurnkParseError,
-    TurnDisposition,
     type ClientStatement,
+    type NoteStatement,
     type ParseItem,
     type ParseResult,
     type PlurnkStatement,
@@ -91,8 +90,7 @@ export default class PlurnkParser {
                 modifiers.push(...metadataOf(statement.metadata, "matcher" in statement ? statement.matcher : null, true));
             }
             if (statement.aside !== null) modifiers.push(`<!-- ${statement.aside} -->`);
-            const body = TurnDisposition.is(statement) ? PlanValue.stringify(statement.body)
-                : statement.op === "COPY" || statement.op === "MOVE" || statement.body === null ? null
+            const body = statement.op === "COPY" || statement.op === "MOVE" || statement.body === null ? null
                 : typeof statement.body === "string" ? statement.body : statement.body.raw;
             const header = `${name}${modifiers.length === 0 ? "" : ` ${modifiers.join(" ")}`}`;
             return PlurnkParser.frame(header, body);
@@ -109,6 +107,13 @@ export default class PlurnkParser {
         // remains trustworthy. Neither changes what parsed.
         if (result.unparsedTail === undefined) PlurnkParser.#requireSourceOperation(result.items);
         return result;
+    }
+
+    // {§reasoning-notes} — reasoning is not a program. Only its admitted top-level NOTE blocks
+    // cross this boundary; quoted bodies and all other operations remain reasoning evidence.
+    static parseReasoningNotes(input: string): NoteStatement[] {
+        return PlurnkParser.#run(input, (parser) => parser.statementSeq(), undefined, {}, true).items.flatMap((item) =>
+            item.kind === "statement" && item.statement.op === "NOTE" ? [item.statement] : []);
     }
 
     // {§turn-shape} — no source operation is reported as its own fact, beside every diagnostic
@@ -188,8 +193,10 @@ export default class PlurnkParser {
         parseFn: (parser: plurnkParser) => ParserRuleContext,
         buildFn: (ctx: any) => S = ((ctx: any) => AstBuilder.build(ctx) as S),
         options: ParseOptions = {},
+        reasoning = false,
     ): ParseResult<S> {
         const lexer = new plurnkLexer(CharStream.fromString(input));
+        lexer.reasoning = reasoning;
         for (const name of options.executors ?? []) lexer.knownExecutors.add(name);
         const spellings = new Map([...lexer.knownExecutors].map((name) => [name.toLowerCase(), name]));
         const node = spellings.get("node");
@@ -283,7 +290,7 @@ export default class PlurnkParser {
     // {§bare-heading-advisory} — an operation heading written outside any fence is prose, and prose
     // is silent; one warning names the fence form so the loss is never quiet ({§interstitial-fence}).
     static #adviseBareHeadings(input: string, items: ParseItem<PlurnkStatement>[], executors: readonly string[]): void {
-        const names = ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "WORK", "FORK", "BARE", "KILL", "TASK", ...executors]
+        const names = ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "WORK", "FORK", "BARE", "KILL", "NOTE", "WAIT", "DONE", "FAIL", ...executors]
             .map((name) => name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"));
         const headingShape = new RegExp(`^[ \\t]*(${names.join("|")})(?=\\s*(?:\\(|<|\\[|$))`, "u");
         const covered = new Set<number>();

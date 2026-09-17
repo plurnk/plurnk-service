@@ -1,4 +1,4 @@
-import { sendStmt, dispositionStmt } from "./_dsl.ts";
+import { sendStmt, dispositionStmt, noteStmt } from "./_dsl.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { UrlPath } from "@plurnk/plurnk-contracts";
@@ -28,12 +28,12 @@ const loopStatus = async (db: Db, loopId: number): Promise<number> => {
     return row.status;
 };
 
-test("```SEND\ndone (null path, terminal success) → loop.status = 200\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", async () => {
+test("```SEND\ndone (null path, terminal success) → loop.status = 200\n```\n```DONE\n```", async () => {
     const { db, env, engine } = await setup();
     try {
         assert.equal(await loopStatus(db, env.loopId), 102, "starts at 102 (continuing)");
         const result = await engine.dispatch({
-            statement: dispositionStmt("completed", "done"),
+            statement: dispositionStmt("DONE", "done"),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -44,11 +44,11 @@ test("```SEND\ndone (null path, terminal success) → loop.status = 200\n```\n``
     } finally { await db.close(); }
 });
 
-test("```SEND\ncancelled → loop.status = 499\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```", async () => {
+test("```SEND\ncancelled → loop.status = 499\n```\n```FAIL\n```", async () => {
     const { db, env, engine } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: dispositionStmt("failed", "cancelled"),
+            statement: dispositionStmt("FAIL", "cancelled"),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
@@ -57,18 +57,18 @@ test("```SEND\ncancelled → loop.status = 499\n```\n```TASK\n[{\"content\":\"Ta
     } finally { await db.close(); }
 });
 
-test("```TASK\n[{\"content\":\"continuing → loop.status unchanged (still 102, non-terminal)\",\"status\":\"in_progress\"}]\n```", async () => {
+test("```NOTE\ncontinuing → loop.status unchanged (still 102, non-terminal)\n```", async () => {
     const { db, env, engine } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: dispositionStmt("in_progress", "continuing"),
+            statement: noteStmt("continuing"),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
-        assert.equal(result.status, 102);
+        assert.equal(result.status, 200);
         assert.equal(await loopStatus(db, env.loopId), 102, "non-terminal status leaves loop continuing");
         const log = await db.test_first_log_entry_for_turn.get<{ status_rx: number }>({ turn_id: env.turnId });
-        assert.equal(log?.status_rx, 102);
+        assert.equal(log?.status_rx, 200);
     } finally { await db.close(); }
 });
 test("a recipient SEND routes to the scheme handler and never touches loop.status", async () => {
@@ -101,13 +101,13 @@ test("multiple SENDs in one turn: the first terminal concludes the loop", async 
     const { db, env, engine } = await setup();
     try {
         await engine.dispatch({
-            statement: dispositionStmt("in_progress", "first"),
+            statement: noteStmt("first"),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(await loopStatus(db, env.loopId), 102);
         await engine.dispatch({
-            statement: dispositionStmt("completed", "second-terminal"),
+            statement: dispositionStmt("DONE", "second-terminal"),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
@@ -119,13 +119,13 @@ test("successive terminal SENDs preserve and report the first terminal winner", 
     const { db, env, engine } = await setup();
     try {
         await engine.dispatch({
-            statement: dispositionStmt("completed", "done"),
+            statement: dispositionStmt("DONE", "done"),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(await loopStatus(db, env.loopId), 200);
         const late = await engine.dispatch({
-            statement: dispositionStmt("failed", "actually cancel"),
+            statement: dispositionStmt("FAIL", "actually cancel"),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });

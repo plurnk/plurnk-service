@@ -1,3 +1,4 @@
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { resolve } from "node:path";
@@ -16,7 +17,7 @@ process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
-const task = (status: string) => `\`\`\`TASK\n[{"content":"Inspect the media.","status":"${status}"}]\n\`\`\``;
+const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "");
 
 class ResourceReader extends Mock {
     resource: string | undefined;
@@ -72,11 +73,11 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
         }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
         const served = await serveMcpHttp(t, handler);
         const provider = new ResourceReader({ contextWindow: 1_000_000, inputModalities: modalities, responses: [
-            turn(`\`\`\`fixture (observe)\n{}\n\`\`\`\n\n${task("waiting")}`),
-            ...(form === "multipart" ? [turn(`\`\`\`READ ($RESOURCE)\`\`\`\n\n${task("in_progress")}`)] : []),
-            turn(`\`\`\`READ ($RESOURCE${form === "inline" || form === "link" ? "#bytes" : ""}) <1,3>\`\`\`\n\n${task("in_progress")}`),
-            turn(task("in_progress")),
-            turn(task("completed")),
+            turn(`\`\`\`fixture (observe)\n{}\n\`\`\`\n\n${step("WAIT")}`),
+            ...(form === "multipart" ? [turn(`\`\`\`READ ($RESOURCE)\`\`\`\n\n${step("NOTE")}`)] : []),
+            turn(`\`\`\`READ ($RESOURCE${form === "inline" || form === "link" ? "#bytes" : ""}) <1,3>\`\`\`\n\n${step("NOTE")}`),
+            turn(step("NOTE")),
+            turn(step("DONE")),
         ] });
         provider.beforeFirstRead = () => assert.equal(resourceReads, 0, "listing a resource link does not acquire its bytes");
         const db = await openMigrated();

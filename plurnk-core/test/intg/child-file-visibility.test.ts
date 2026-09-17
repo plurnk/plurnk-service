@@ -36,15 +36,15 @@ for (const c of CASES) {
     test(`a child's new file is readable by its parent by bare path right after child completion (${c.name})`, async () => {
         const root = await c.root();
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("```WORK (worker://counter)\nWrite the number 3 to count.txt and conclude.\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
-            makeMockResponse("```EDIT (count.txt)\n3\n```\n\n```TASK\n[{\"content\":\"wrote\",\"status\":\"in_progress\"}]\n```", 10),
-            makeMockResponse("```SEND\nwritten\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+            makeMockResponse("```WORK (worker://counter)\nWrite the number 3 to count.txt and conclude.\n```\n\n```WAIT\nwaiting\n```", 10),
+            makeMockResponse("```EDIT (count.txt)\n3\n```\n\n```NOTE\nwrote\n```", 10),
+            makeMockResponse("```SEND\nwritten\n```\n```DONE\n```", 10),
             makeMockResponse(`${c.read}
 
-\`\`\`TASK
-[{"content":"reading","status":"in_progress"}]
+\`\`\`NOTE
+reading
 \`\`\``, 10),
-            makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+            makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10),
         ] });
         try {
             await withDaemon(mock, async (db, _daemon, addr) => {
@@ -91,9 +91,9 @@ for (const c of CASES) {
 // space by name. The root worker has no such section.
 test("a child's packet names its parent worker; the root's packet does not", async () => {
     const mock = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse("```WORK (worker://counter)\nReply with the number 3.\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
-        makeMockResponse("```SEND\n3\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
-        makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+        makeMockResponse("```WORK (worker://counter)\nReply with the number 3.\n```\n\n```WAIT\nwaiting\n```", 10),
+        makeMockResponse("```SEND\n3\n```\n```DONE\n```", 10),
+        makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

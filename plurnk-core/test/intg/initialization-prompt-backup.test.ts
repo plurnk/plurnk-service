@@ -4,7 +4,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string | null; pathname: string; scheme: string | null; origin: string; status_rx: number };
-const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 50)] });
+const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 50)] });
 
 // {§worker-initialization-entry} — the arrival row is the archive; turn 0 copies nothing into scratch.
 test("{§worker-initialization-entry}: turn 0 archives nothing; the arrival row is the durable copy", async () => {

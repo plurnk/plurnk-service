@@ -4,7 +4,7 @@ import { PlurnkParser } from "../../src/index.ts";
 import type { ClientStatement, ParseResult } from "@plurnk/plurnk-contracts";
 import { isExecution } from "@plurnk/plurnk-contracts";
 
-const task = PlurnkParser.frame("TASK", '[{"content":"Explain the example.","status":"completed"}]');
+const task = PlurnkParser.frame("DONE", '[{"content":"Explain the example.","status":"completed"}]');
 const unlabeled = (body: string, ticks = 4, newline = "\n") => `${"`".repeat(ticks)}${newline}${body}${newline}${"`".repeat(ticks)}`;
 const statements = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 const errors = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
@@ -25,27 +25,27 @@ for (const [name, parse] of [
         const result = parse(source);
         assert.equal(result.unparsedTail, undefined);
         assert.deepEqual(errors(result), []);
-        assert.deepEqual(statements(result).map(({ op }) => op), ["TASK"]);
+        assert.deepEqual(statements(result).map(({ op }) => op), ["DONE"]);
     });
 
     test(`{§interstitial-fence}: ${name} reads a code-block tag outside a block as prose and inside a body as body`, () => {
         const outside = parse("````ts\nconst x = 1;\n````\n" + task);
         assert.deepEqual(errors(outside).map(({ severity, line }) => ({ severity, line })), [{ severity: "warning", line: 1 }], "one advisory says the tag opened nothing");
         assert.match(errors(outside)[0].message, /`ts` is not an operation or a known executor here/u);
-        assert.deepEqual(statements(outside).map(({ op }) => op), ["TASK"]);
+        assert.deepEqual(statements(outside).map(({ op }) => op), ["DONE"]);
         const body = "````ts\nconst x = 1;\n````";
         const inside = parse(PlurnkParser.frame("EDIT (notes.md)", body) + "\n" + task);
         assert.deepEqual(errors(inside), []);
         const ops = statements(inside);
-        assert.deepEqual(ops.map(({ op }) => op), ["EDIT", "TASK"]);
+        assert.deepEqual(ops.map(({ op }) => op), ["EDIT", "DONE"]);
         assert.equal(ops[0].op === "EDIT" ? ops[0].body : null, body);
     });
 }
 
 test("{§bare-heading-advisory}: an operation heading outside any fence is prose with one warning naming the fence form", () => {
-    for (const bare of ["READ (notes.md)", "TASK", "FIND (src/**) [{\"pattern\":\"/x/\"}]"]) {
+    for (const bare of ["READ (notes.md)", "DONE", "FIND (src/**) [{\"pattern\":\"/x/\"}]"]) {
         const result = PlurnkParser.parse("Prelude.\n" + bare + "\n" + task);
-        assert.deepEqual(statements(result).map(({ op }) => op), ["TASK"], bare);
+        assert.deepEqual(statements(result).map(({ op }) => op), ["DONE"], bare);
         const advisories = errors(result);
         assert.equal(advisories.length, 1, bare);
         assert.equal(advisories[0].severity, "warning");
@@ -58,13 +58,13 @@ test("{§bare-heading-advisory}: headings inside bodies and inside blocks never 
     const body = "READ (notes.md)\nTASK";
     const result = PlurnkParser.parse(PlurnkParser.frame("SEND", body) + "\n" + task);
     assert.deepEqual(errors(result), []);
-    assert.deepEqual(statements(result).map(({ op }) => op), ["SEND", "TASK"]);
+    assert.deepEqual(statements(result).map(({ op }) => op), ["SEND", "DONE"]);
 });
 
 test("{§interstitial-fence}: displaced headings inside an unlabeled fence are prose, and each draws the advisory once", () => {
     const source = unlabeled("KILL (worker:///notes.md)") + "\n" + task;
     const result = PlurnkParser.parse(source);
-    assert.deepEqual(statements(result).map(({ op }) => op), ["TASK"]);
+    assert.deepEqual(statements(result).map(({ op }) => op), ["DONE"]);
     assert.deepEqual(errors(result).map(({ severity, line }) => ({ severity, line })), [{ severity: "warning", line: 2 }]);
 });
 
@@ -75,7 +75,7 @@ test("{§interstitial-fence}: explicit SEND keeps its aside, target, and literal
     const result = PlurnkParser.parse(source);
     assert.deepEqual(errors(result), []);
     const ops = statements(result);
-    assert.deepEqual(ops.map(({ op }) => op), ["SEND", "TASK"]);
+    assert.deepEqual(ops.map(({ op }) => op), ["SEND", "DONE"]);
     const send = ops[0];
     assert.ok(send.op === "SEND");
     assert.equal(send.aside, aside);

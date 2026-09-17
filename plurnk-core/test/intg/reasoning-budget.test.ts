@@ -6,7 +6,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, logEntries } from "./_helpers.ts";
 import { providerWithCapacity, statement, type Read, type Resource } from "./reasoning-fixture.ts";
 
-const task = PlurnkParser.frame("TASK", JSON.stringify([{ content: "Review the result.", status: "in_progress" }]));
+const task = PlurnkParser.frame("NOTE", "Review the result.");
 
 for (const mode of ["fits", "overflow"] as const) test(`{§reasoning-history}: an explicit ${mode} reasoning READ uses ordinary output admission`, async () => {
     const db = await openMigrated();

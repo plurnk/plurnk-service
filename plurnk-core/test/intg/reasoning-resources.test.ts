@@ -128,26 +128,21 @@ for (const limit of [-1, 0, 1, 8]) test(`{§reasoning-initial-read}: configured 
             assert.equal(Object.hasOwn(explicit, "lineAnchors"), false);
         }
         if (limit !== 0) {
-            assert.deepEqual(JSON.parse(reads[0]!.lineMarker), limit === -1 ? null : { marks: [1, limit] });
+            assert.deepEqual(JSON.parse(reads[0]!.lineMarker), { marks: [1, limit] });
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
             const log = packet.sections.find(({ name }: { name: string }) => name === "log").content;
             assert.match(log, /^### log:\/\/\/\d+\/\d+\/\d+\/READ\n\{"target":"reasoning:\/\/\//m, "{§log-wire-format} the assembled reasoning receipt leads with its source target");
             const record = parseLogRecords(log).find(({ path }) => path === `log:///${reads[0]!.loop_seq}/${reads[0]!.turn_seq}/${reads[0]!.sequence}/READ`);
             assert.ok(record);
-            assert.equal(record.aside, "pluck notes from this turn's reasoning");
+            assert.equal(record.aside, "inspect this turn's reasoning");
             assert.equal(record.target, "reasoning:///1/1");
-            // {§reasoning-initial-read} — only the NOTE: line answers the pattern; a scope of one line holds no note.
-            if (limit === 1) assert.doesNotMatch(String(record.body), /Note:/);
-            else assert.match(String(record.body), /^\s*2:Note: Prior reasoning can be searched with the pattern filters\./m);
-            assert.doesNotMatch(String(record.body), /This harness-generated turn/, "the unmarked rationale line is not plucked");
+            assert.match(String(record.body), /^\s*1:This harness-generated turn/m);
+            if (limit === 1) assert.doesNotMatch(String(record.body), /````NOTE/);
+            else assert.match(String(record.body), /````NOTE/);
             assert.doesNotMatch(String(record.body), /Finding 1:/, "the model's original reasoning is not automatically pushed into the log");
             assert.doesNotMatch(String(record.body), /^@[A-Za-z0-9]+\s+\d+:/m, "the materialized read-only projection has no hashes");
-            if (limit === 1) {
-                assert.equal(record.status, 204, "a one-line scope holds no note: the ordinary empty pattern result");
-                assert.deepEqual(record.range, { unit: "line", total: 2, requested: [1, 1] });
-            } else {
-                assert.deepEqual(record.range, { unit: "line", total: 2, requested: limit === -1 ? [2, 2] : [1, limit], returned: [2, 2] });
-            }
+            assert.equal(JSON.parse(reads[0]!.rx).status, 200);
+            assert.deepEqual(record.range, { unit: "line", total: 5, requested: [1, limit], returned: [1, limit === 1 ? 1 : 5] });
         }
     } finally {
         await db.close();
@@ -250,7 +245,7 @@ test("{§reasoning-history}: only exposed final reasoning becomes a resource at 
         const context = { workspaceId, workerId, loopId, messages: [] };
         for (const reasoning of [null, ""]) await engine.runTurn({ ...context, provider: provider(reasoning) });
         assert.deepEqual(await db.test_model_reasoning_resources.all({ worker_id: workerId }), []);
-        const source = "```TASK\n[{\"content\":\"Continue.\",\"status\":\"in_progress\"}]\n```";
+        const source = "```NOTE\nContinue.\n```";
         const admitted = await engine.runTurn({ ...context, provider: new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "````READ (worker:///invalid-program", reasoning: "Private rejected reasoning." } },
             { assistant: { content: source, reasoning: "Admitted reasoning." } },

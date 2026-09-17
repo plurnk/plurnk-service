@@ -11,7 +11,7 @@ const journeys = Object.freeze({
         marker: "Exercise the installed one-shot interface.",
         programs: [{
             reasoning: "I will complete the installed one-shot request through the shared protocol.",
-            content: "```SEND\nThe installed one-shot journey is complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
+            content: "```SEND\nThe installed one-shot journey is complete.\n```\n```DONE\n```",
         }],
     },
     tui: {
@@ -24,11 +24,11 @@ const journeys = Object.freeze({
                 "````READ (worker:///_plurnk/plurnk/node.md) <1,-1>````",
                 "````READ (skill://plurnk/SKILL.md) <1,-1>````",
                 "````READ (skill://plurnk/.env.defaults) <1,16>````",
-                "````TASK\n[{\"content\":\"Confirm the packed interactive terminal path.\",\"status\":\"in_progress\"}]\n````",
+                "````NOTE <!-- Confirm the packed interactive terminal path. -->\nThe shared protocol is available.\n````",
             ].join("\n"),
         }, {
             reasoning: "The message was retrieved from its log address, so the journey can conclude.",
-            content: "```SEND\nThe installed interactive journey is complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
+            content: "```SEND\nThe installed interactive journey is complete.\n```\n```DONE\n```",
         }],
     },
     rejected: {

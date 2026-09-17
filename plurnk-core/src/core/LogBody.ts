@@ -4,7 +4,6 @@ import {
     assertResourceEffects,
     type EditReceipt,
 } from "../content/index.ts";
-import { PlanValue } from "@plurnk/plurnk-contracts";
 import TerminalResult from "./TerminalResult.ts";
 import LogVisibility, { type LogFoldRanges } from "./LogVisibility.ts";
 import LineSelection from "../content/line-selection.ts";
@@ -203,20 +202,15 @@ export default class LogBody {
             return { ...presentation, provenance: "returned", startLine: 1 };
         }
 
-        if (row.op !== null && TurnDisposition.isOp(row.op)) {
+        if (row.op !== null && (TurnDisposition.isOp(row.op) || row.op === "NOTE")) {
             const body = tx !== null && typeof tx === "object"
                 ? (tx as { body?: unknown }).body
                 : undefined;
-            let content: string;
-            try {
-                content = PlanValue.render(body);
-            } catch (error) {
-                throw new TypeError(`A durable ${row.op} row carries a noncanonical Plurnk Plan body.`, { cause: error });
-            }
+            if (body !== null && typeof body !== "string") throw new TypeError(`A durable ${row.op} row carries a non-text body.`);
             return {
                 provenance: "authored",
-                content,
-                mimetype: "application/json",
+                content: body ?? "",
+                mimetype: "text/plain",
                 startLine: 1,
             };
         }

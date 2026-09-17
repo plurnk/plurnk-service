@@ -76,6 +76,7 @@ export default class SchemeRegistry {
         this.#registerBuiltIn("exec", new Exec(opts?.fetchWeb));
         this.#registerBuiltIn("reasoning", new TurnSource("reasoning"));
         this.#registerBuiltIn("ops", new TurnSource("ops"));
+        this.#registerBuiltIn("note", new TurnSource("note"));
         this.#registerBuiltIn("file", new File());
         this.#registerBuiltIn("worker", new Worker());
     }

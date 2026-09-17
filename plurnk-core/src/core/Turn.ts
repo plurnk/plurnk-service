@@ -50,11 +50,12 @@ export default class Turn {
         });
     }
 
-    static async recordSource(db: Db, turnId: number, kind: "ops" | "reasoning", content: string, options: {
+    static async recordSource(db: Db, turnId: number, kind: "ops" | "reasoning" | "note", content: string, options: {
         modelCallId?: number | null;
+        sequence?: number;
     } = {}): Promise<void> {
         const row = await db.turn_source_record.get<{ turn_id: number }>({
-            turn_id: turnId, kind, content,
+            turn_id: turnId, kind, content, sequence: options.sequence ?? 0,
             model_call_id: options.modelCallId ?? null,
         });
         if (row === undefined) throw new Error(`Turn.recordSource: ${kind} requires an open turn and its own settled inference evidence`);

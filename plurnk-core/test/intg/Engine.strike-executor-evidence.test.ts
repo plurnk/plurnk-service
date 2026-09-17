@@ -17,10 +17,10 @@ test("{§engine-rails} consecutive failed commands never strike the loop out", a
 echo attempt-${i} >&2; exit 1
 \`\`\`
 
-\`\`\`TASK
-[{"content":"fixing the tests","status":"in_progress"}]
+\`\`\`NOTE
+fixing the tests
 \`\`\``, 10)),
-        makeMockResponse("```SEND\ngreen\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+        makeMockResponse("```SEND\ngreen\n```\n```DONE\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

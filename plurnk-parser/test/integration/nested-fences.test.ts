@@ -4,7 +4,7 @@ import { PlurnkParser } from "../../src/index.ts";
 import { type ClientStatement, type ParseResult } from "@plurnk/plurnk-contracts";
 import { writtenOp } from "@plurnk/plurnk-contracts";
 
-const task = PlurnkParser.frame("TASK", '[{"content":"Reported the result.","status":"completed"}]');
+const task = PlurnkParser.frame("DONE", "Reported the result.");
 const statements = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 const errors = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
 const bodyText = (op: ClientStatement) => "body" in op && typeof op.body === "object" && op.body !== null && "raw" in op.body ? op.body.raw : "body" in op ? op.body : null;
@@ -31,11 +31,11 @@ for (const [name, parse] of [
         assert.equal(result.unparsedTail, undefined);
         assert.deepEqual(errors(result), []);
         const ops = statements(result);
-        assert.deepEqual(ops.map(writtenOp), ["SEND", "TASK"]);
+        assert.deepEqual(ops.map(writtenOp), ["SEND", "DONE"]);
         assert.ok(ops[0].op === "SEND");
         assert.equal(ops[0].target, null);
         assert.equal(bodyText(ops[0]), body);
-        assert.deepEqual(bodyText(ops[1]), [{ content: "Reported the result.", status: "completed" }]);
+        assert.equal(bodyText(ops[1]), "Reported the result.");
     });
 }
 
@@ -45,7 +45,7 @@ test("{§fence-closer}: a shorter inner fence is body and an equal or longer bar
     assert.equal(bodyText(statements(shorter)[0]), "Code:\n```ts\nconst value = 42;\n```\nDone.");
     const equal = PlurnkParser.parse("````SEND\nCode:\n````\nAfter the closer.\n" + task);
     assert.deepEqual(errors(equal), []);
-    assert.deepEqual(statements(equal).map(writtenOp), ["SEND", "TASK"]);
+    assert.deepEqual(statements(equal).map(writtenOp), ["SEND", "DONE"]);
     assert.equal(bodyText(statements(equal)[0]), "Code:");
     const longer = PlurnkParser.parse("```SEND\nCode:\n`````\n" + task);
     assert.deepEqual(errors(longer), []);
@@ -71,7 +71,7 @@ test("{§numeric-delimiter}: nesting preserves exact bodies across widths, depth
                     assert.equal(result.unparsedTail, undefined, context);
                     assert.deepEqual(errors(result), [], context);
                     const ops = statements(result);
-                    assert.deepEqual(ops.map(writtenOp), [header.split(" ")[0], "TASK"], context);
+                    assert.deepEqual(ops.map(writtenOp), [header.split(" ")[0], "DONE"], context);
                     assert.equal(bodyText(ops[0]), body, context);
                 }
             }
@@ -90,10 +90,10 @@ test("{§numeric-delimiter}: a bare fence never closes a delimited block and a f
 });
 
 test("{§fence-heading-in-body}: a four-backtick heading ends an undelimited block and opens the next statement", () => {
-    const source = "````READ (safe.md)````\n````EDIT (notes.md)\n````sh\nnot the edit\n````\n````TASK\n[]\n````";
+    const source = "````READ (safe.md)````\n````EDIT (notes.md)\n````sh\nnot the edit\n````\n````NOTE\n````";
     const result = PlurnkParser.parseStatements(source);
     assert.equal(result.unparsedTail, undefined);
-    assert.deepEqual(statements(result).map(writtenOp), ["READ", "EDIT", "sh", "TASK"]);
+    assert.deepEqual(statements(result).map(writtenOp), ["READ", "EDIT", "sh", "NOTE"]);
     assert.equal(bodyText(statements(result)[1]), null, "the EDIT ended at the sh heading with nothing left over");
     assert.equal(bodyText(statements(result)[2]), "not the edit");
 });
@@ -102,7 +102,7 @@ test("{§fence-heading-in-body}: a closer glued to the next opener never swallow
     const glued = "````READ (a.md) <1,-1>\n````````READ (b.md) <1,-1>\n````````EDIT (c.md) <@abcde>\nreplacement\n````";
     const result = PlurnkParser.parse(glued + "\n" + task);
     assert.equal(result.unparsedTail, undefined);
-    assert.deepEqual(statements(result).map(writtenOp), ["READ", "READ", "EDIT", "TASK"]);
+    assert.deepEqual(statements(result).map(writtenOp), ["READ", "READ", "EDIT", "DONE"]);
     assert.equal(bodyText(statements(result)[2]), "replacement");
 });
 
@@ -110,23 +110,23 @@ test("{§fence-heading-in-body}: a three-backtick executor line inside a four-ba
     const body = "```sh\necho sample\n```";
     const result = PlurnkParser.parse(`\`\`\`\`EDIT (README.md)\n${body}\n\`\`\`\`\n${task}`);
     assert.deepEqual(errors(result), []);
-    assert.deepEqual(statements(result).map(writtenOp), ["EDIT", "TASK"]);
+    assert.deepEqual(statements(result).map(writtenOp), ["EDIT", "DONE"]);
     assert.equal(bodyText(statements(result)[0]), body);
 });
 
 test("{§fence-heading-in-body}: the host names its executors and unknown tags stay body", () => {
     const source = "````EDIT (notes.md)\n````node\nconsole.log(1)\n````\n" + task;
     const unknown = PlurnkParser.parse(source);
-    assert.deepEqual(statements(unknown).map(writtenOp), ["EDIT", "TASK"]);
+    assert.deepEqual(statements(unknown).map(writtenOp), ["EDIT", "DONE"]);
     assert.equal(bodyText(statements(unknown)[0]), "````node\nconsole.log(1)");
     const known = PlurnkParser.parse(source, { executors: ["node"] });
-    assert.deepEqual(statements(known).map(writtenOp), ["EDIT", "node", "TASK"]);
+    assert.deepEqual(statements(known).map(writtenOp), ["EDIT", "node", "DONE"]);
 });
 
 test("{§closer-fallback}: a block ended by a heading or the end of input keeps its body up to its last bare fence", () => {
     const byHeading = PlurnkParser.parse("````EDIT (a.md)\nline one\n```\nprose after a short closer\n````READ (b.md)\n" + task);
     assert.deepEqual(errors(byHeading), []);
-    assert.deepEqual(statements(byHeading).map(writtenOp), ["EDIT", "READ", "TASK"]);
+    assert.deepEqual(statements(byHeading).map(writtenOp), ["EDIT", "READ", "DONE"]);
     assert.equal(bodyText(statements(byHeading)[0]), "line one");
     const byEof = PlurnkParser.parseStatements("````EDIT (a.md)\nline one\nline two");
     assert.equal(byEof.unparsedTail, undefined);
@@ -141,7 +141,7 @@ test("{§fence-boundary}: shell heredoc Markdown and complete inline examples ar
     const result = PlurnkParser.parse(PlurnkParser.frame("sh", body) + "\n" + task);
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(errors(result), []);
-    assert.deepEqual(statements(result).map(writtenOp), ["sh", "TASK"]);
+    assert.deepEqual(statements(result).map(writtenOp), ["sh", "DONE"]);
     assert.equal(bodyText(statements(result)[0]), body);
 });
 
@@ -150,7 +150,7 @@ test("{§statement-rendering}: a wider canonical wrapper preserves arbitrary unf
         const result = PlurnkParser.parse(PlurnkParser.frame("EDIT (notes.md)", body) + "\n" + task);
         assert.equal(result.unparsedTail, undefined, body);
         assert.deepEqual(errors(result), [], body);
-        assert.deepEqual(statements(result).map(writtenOp), ["EDIT", "TASK"], body);
+        assert.deepEqual(statements(result).map(writtenOp), ["EDIT", "DONE"], body);
         assert.equal(bodyText(statements(result)[0]), body, body);
     }
 });
@@ -169,7 +169,7 @@ test("{§inline-chain}: a closer followed by the next opener on the same line cl
     const result = PlurnkParser.parse(source);
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(errors(result).filter(({ severity }) => severity === "error"), []);
-    assert.deepEqual(statements(result).map(writtenOp), ["READ", "READ", "READ", "TASK"]);
+    assert.deepEqual(statements(result).map(writtenOp), ["READ", "READ", "READ", "DONE"]);
     const marks = statements(result).slice(0, 3).map((op) => (op as { lineMarker?: { marks: unknown[] } | null }).lineMarker?.marks);
     assert.deepEqual(marks, [[1, 30], [140, 245], [1, -1]]);
 });
@@ -217,7 +217,7 @@ test("{§indented-fences}: indented opener and closer lines are fence lines; the
     const result = PlurnkParser.parse(source);
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(errors(result).filter(({ severity }) => severity === "error"), []);
-    assert.deepEqual(statements(result).map(writtenOp), ["EDIT", "READ", "sh", "TASK"]);
+    assert.deepEqual(statements(result).map(writtenOp), ["EDIT", "READ", "sh", "DONE"]);
     assert.equal(bodyText(statements(result)[0]), "    \t\"boolean|TypeWithNoKeywords\",", "the body line keeps its indentation");
     assert.equal(bodyText(statements(result)[2]), "    ./node_modules/.bin/tsc --noEmit");
     const unclosed = PlurnkParser.parseStatements("    ````EDIT (a.md)\n    body\n    ````READ (b.md)\n    ````");
@@ -225,24 +225,23 @@ test("{§indented-fences}: indented opener and closer lines are fence lines; the
     assert.equal(bodyText(statements(unclosed)[0]), "    body");
 });
 
-test("{§one-line-turn}: a whole turn on one line parses, opener after heading and inventory on the heading line included", () => {
-    const chained = PlurnkParser.parse("I'll read the files and repair the mangled regions. ````READ (packages/quill/src/themes/base.ts) <1,30> <!-- imports + WeakMap --> ```` ````READ (packages/quill/src/themes/base.ts) <200,240> <!-- the rest --> ```` ````TASK [{\"content\":\"Repair\",\"status\":\"in_progress\"}] ````");
+test("{§one-line-turn}: a whole turn on one line parses, including opener after heading", () => {
+    const chained = PlurnkParser.parse("I'll read the files and repair the mangled regions. ````READ (packages/quill/src/themes/base.ts) <1,30> <!-- imports + WeakMap --> ```` ````READ (packages/quill/src/themes/base.ts) <200,240> <!-- the rest --> ```` ````WAIT ````");
     assert.equal(chained.unparsedTail, undefined);
     assert.deepEqual(errors(chained).filter(({ severity }) => severity === "error"), []);
-    assert.deepEqual(statements(chained).map(writtenOp), ["READ", "READ", "TASK"]);
-    assert.deepEqual(bodyText(statements(chained)[2]!), [{ content: "Repair", status: "in_progress" }], "the heading-line block is the inventory");
-    assert.match(errors(chained).map(({ message }) => message).join(" "), /TASK's inventory was read from the heading line; it belongs in the body/u);
+    assert.deepEqual(statements(chained).map(writtenOp), ["READ", "READ", "WAIT"]);
+    assert.equal(bodyText(statements(chained)[2]!), null);
 
-    const direct = PlurnkParser.parse("Fix the call sites. ````EDIT (crates/wasmi/src/engine/config.rs) <60,66> <!-- drop mangled duplicate Default fields --> ````EDIT (crates/wasmi/src/error.rs) <31,38> <!-- repair mangled imports --> ````TASK [{\"content\":\"Repair\",\"status\":\"in_progress\"}] ````");
+    const direct = PlurnkParser.parse("Fix the call sites. ````EDIT (crates/wasmi/src/engine/config.rs) <60,66> <!-- drop mangled duplicate Default fields --> ````EDIT (crates/wasmi/src/error.rs) <31,38> <!-- repair mangled imports --> ````WAIT ````");
     assert.deepEqual(errors(direct).filter(({ severity }) => severity === "error"), []);
     const ops = statements(direct);
-    assert.deepEqual(ops.map(writtenOp), ["EDIT", "EDIT", "TASK"]);
+    assert.deepEqual(ops.map(writtenOp), ["EDIT", "EDIT", "WAIT"]);
     assert.deepEqual(ops.slice(0, 2).map((op) => [(op as { lineMarker?: { marks: unknown[] } | null }).lineMarker?.marks, bodyText(op)]), [[[60, 66], null], [[31, 38], null]], "each heading ends bodyless where the next opener begins");
     assert.deepEqual(ops.slice(0, 2).map(({ aside }) => aside), ["drop mangled duplicate Default fields", "repair mangled imports"]);
 
     const bare = PlurnkParser.parseStatements("````READ (a.rs) <1,10> ````READ (b.rs) <1,10>");
     assert.deepEqual(statements(bare).map((op) => [op.op, (op as { target: { raw: string } | null }).target?.raw]), [["READ", "a.rs"], ["READ", "b.rs"]]);
 
-    const canonical = PlurnkParser.parse("````TASK\n[{\"content\":\"Repair\",\"status\":\"in_progress\"}]\n````");
-    assert.deepEqual(errors(canonical), [], "the inventory beneath the heading draws no advisory");
+    const canonical = PlurnkParser.parse("````NOTE\nRepair\n````");
+    assert.deepEqual(errors(canonical), [], "the body beneath the heading draws no advisory");
 });

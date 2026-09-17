@@ -111,7 +111,7 @@ export const assertOverflowEvidence = async ({ db, daemon, workspaceId, workerId
     assert.equal("body" in visibleRead, false, "the oversized body is absent from that packet");
     assert.equal(visibleRead.overflow, "2 output lines not shown; the log exceeded logTokensMax when this row was withheld");
     assert.match(packetSection(JSON.parse(firstModel.packet), "budget"), /> \[!WARNING\]\n> YOU MUST ONLY KILL/u);
-    assert.ok(!projected.some((row) => String(row.path).endsWith("/TASK") && String(row.body).includes("YOU MUST ONLY")), "the warning is not an invented assignment");
+    assert.ok(!projected.some((row) => String(row.path).endsWith("/NOTE") && String(row.body).includes("YOU MUST ONLY")), "the warning is not an invented assignment");
     return {
         overflowRequests: overflowRequests.length,
         modelTurns: turns.filter(({ kind }) => kind === "inference").length,

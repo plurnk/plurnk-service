@@ -14,7 +14,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { CatalogResource, FindResult } from "../../src/schemes/_entry-find.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, readLog, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import { urlPath, findStmt, planValue } from "./_dsl.ts";
+import { urlPath, findStmt } from "./_dsl.ts";
 import { matchLocations } from "./_find.ts";
 
 const editStmt = (pathname: string, content: string): EditStatement => ({
@@ -82,7 +82,7 @@ test("{§log-coordinate-hierarchy}: FIND projects and filters actionless rows by
     const { db, workerId, loopId, turnId, workspaceId } = await setup();
     try {
         for (const [sequence, kind, content] of [
-            [4, "emissionAttempt", "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```"],
+            [4, "emissionAttempt", "```NOTE\nContinue the task.\n```"],
             [5, "emissionAttempt", "broken output"],
         ] as const) {
             await db.engine_insert_log_entry.get({
@@ -270,7 +270,6 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
     const { db, workerId, loopId, turnId, workspaceId } = await setup();
     try {
         const full = Array.from({ length: 30 }, (_, i) => `plan line ${i + 1}`).join("\n");
-        const plan = planValue(full);
         await db.engine_insert_log_entry.get({
             worker_id: workerId,
             loop_id: loopId,
@@ -279,7 +278,7 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
             origin: "model",
             source: null,
             model_call_id: null,
-            op: "TASK",
+            op: "NOTE",
             scheme: null,
             username: null,
             password: null,
@@ -289,7 +288,7 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
             query: null,
             fragment: null,
             lineMarker: null,
-            tx: JSON.stringify({ body: plan }),
+            tx: JSON.stringify({ body: full }),
             mimetype_tx: "application/json",
             rx: JSON.stringify({ status: 200 }),
             mimetype_rx: "application/json",
@@ -301,11 +300,11 @@ test("READ(log://)<1,-1> returns a composed row's complete canonical body", asyn
         });
 
         const result = await readLog(
-            { ...readStmt(urlPath("log", "/1/1/4/TASK")), lineMarker: { marks: [1, -1] } },
+            { ...readStmt(urlPath("log", "/1/1/4/NOTE")), lineMarker: { marks: [1, -1] } },
             makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 200);
-        assert.equal(result.content, `[${plan.map((entry) => JSON.stringify(entry)).join(",\n")}]`, "the canonical TASK body is the shared json-result spread (#339)");
+        assert.equal(result.content, full, "READ recovers the complete note text");
     } finally { await db.close(); }
 });
 

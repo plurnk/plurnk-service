@@ -11,11 +11,11 @@ import type Exec from "../../src/schemes/Exec.ts";
 import { Results } from "@plurnk/plurnk-schemes";
 import { execStmt, dispositionStmt } from "./_dsl.ts";
 import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, testExecutors } from "./_helpers.ts";
-import type { PlanEntry } from "@plurnk/plurnk-contracts";
+import type { DispositionStatement } from "@plurnk/plurnk-contracts";
 
 let runtimeSequence = 0;
 
-const response = (tag: string, disposition: PlanEntry["status"]) => ({
+const response = (tag: string, disposition: DispositionStatement["op"]) => ({
     assistant: {
         content: "",
         reasoning: null,
@@ -81,7 +81,7 @@ test("fast current-turn streams settle before waiting and do not become monitore
     });
     try {
         const result = await fixture.engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "waiting")] }),
+            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "WAIT")] }),
             workspaceId: fixture.workspaceId,
             workerId: fixture.workerId,
             loopId: fixture.loopId,
@@ -90,7 +90,7 @@ test("fast current-turn streams settle before waiting and do not become monitore
         assert.equal(result.status, 102, "a concluded-but-unobserved stream continues to its observation turn");
         assert.deepEqual(result.outcomes, [
             { op: fixture.tag, status: 200, problemType: null },
-            { op: "TASK", status: 102, problemType: null },
+            { op: "WAIT", status: 102, problemType: null },
         ]);
         assert.ok(Date.now() - startedAt < 500, "settlement ends when the stream settles, not at the full cap");
     } finally {
@@ -112,7 +112,7 @@ test("a current-turn stream still active at the settlement cap follows the ordin
     }));
     try {
         const result = await fixture.engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "waiting")] }),
+            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "WAIT")] }),
             workspaceId: fixture.workspaceId,
             workerId: fixture.workerId,
             loopId: fixture.loopId,
@@ -121,7 +121,7 @@ test("a current-turn stream still active at the settlement cap follows the ordin
         assert.equal(result.status, 202, "the still-live stream remains a genuine monitored obligation");
         assert.deepEqual(result.outcomes, [
             { op: fixture.tag, status: 200, problemType: null },
-            { op: "TASK", status: 202, problemType: null },
+            { op: "WAIT", status: 202, problemType: null },
         ]);
         assert.ok(Date.now() - startedAt >= 30, "SEND adjudication follows the configured settlement opportunity");
         release();
@@ -144,7 +144,7 @@ test("strike settlement cannot reap a fast current-turn failed stream before its
     });
     try {
         const result = await fixture.engine.runLoop({
-            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "completed")] }),
+            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "DONE")] }),
             workspaceId: fixture.workspaceId,
             workerId: fixture.workerId,
             loopId: fixture.loopId,

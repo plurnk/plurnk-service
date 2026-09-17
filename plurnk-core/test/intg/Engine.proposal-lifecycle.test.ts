@@ -287,7 +287,7 @@ test("proposal: onProposalPending listener fires with the right payload", async 
     } finally { await db.close(); }
 });
 
-test("{§proposal-202-pauses}: a waiting TASK over live work parks without a proposal", async () => {
+test("{§proposal-202-pauses}: a WAIT over live work parks without a proposal", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -296,7 +296,7 @@ test("{§proposal-202-pauses}: a waiting TASK over live work parks without a pro
         const proposed: number[] = [];
         ctx.engine.onProposalPending((event) => { proposed.push(event.logEntryId); });
 
-        const sendParked = parseDsl("```TASK\n[{\"content\":\"awaiting your reply\",\"status\":\"waiting\"}]\n```").find((s) => s.op === "TASK");
+        const sendParked = parseDsl("```WAIT\nawaiting your reply\n```").find((s) => s.op === "WAIT");
         assert.ok(sendParked, "fixture: the broadcast park parsed as a statement");
         const parkDeferred = deferred<number>();
         const parkResult = await ctx.engine.dispatch({

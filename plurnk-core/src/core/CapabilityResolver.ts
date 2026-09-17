@@ -122,7 +122,10 @@ export default class CapabilityResolver {
                 const control = scheme === "worker" || (scheme !== null && this.#executors()?.entry(scheme, workspaceId) !== undefined);
                 return demands(describe("KILL", control ? "control" : "mutate", statement.target));
             }
-            case "TASK":
+            case "NOTE":
+            case "WAIT":
+            case "DONE":
+            case "FAIL":
                 return [];
             case "SEND": {
                 if (statement.target === null) return [];

@@ -92,8 +92,12 @@ test("{§functionality-model-projection} an absent MCP source has the same Probl
     const provider = new PacketCapturingMock({
         contextWindow: 1_000_000,
         responses: [
-            makeMockResponse(`\`\`\`mcp (discover)\n${JSON.stringify({ source })}\n\`\`\`\n\`\`\`TASK\n[{"content":"Inspect the discovery outcome.","status":"in_progress"}]\n\`\`\``),
-            makeMockResponse("```SEND\nThe source could not be inspected.\n```\n```TASK\n[{\"content\":\"Discovery inspected.\",\"status\":\"completed\"}]\n```"),
+            makeMockResponse(`\`\`\`mcp (discover)\n${JSON.stringify({ source })}
+\`\`\`
+\`\`\`NOTE
+Inspect the discovery outcome.
+\`\`\``),
+            makeMockResponse("```SEND\nThe source could not be inspected.\n```\n```DONE\n```"),
         ],
     });
     const db = await openMigrated();
@@ -146,15 +150,15 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
     const provider = new PacketCapturingMock({
         contextWindow: 1_000_000,
         responses: [
-            makeMockResponse("\n```READ (worker:///_plurnk/tools/fixture.md) <1,-1>```\n```TASK\n[{\"content\":\"Select and inspect the echo contract linked from the family document.\",\"status\":\"in_progress\"}]\n```"),
-            makeMockResponse("\n```READ (worker:///_plurnk/tools/fixture/echo.md) <1,-1>```\n```TASK\n[{\"content\":\"Invoke the documented observation tool.\",\"status\":\"in_progress\"}]\n```"),
-            makeMockResponse("\n```fixture (echo)\nhello from MCP\n```\n\n```TASK\n[{\"content\":\"Inspect the attributable tool failure.\",\"status\":\"in_progress\"}]\n```"),
-            makeMockResponse("\n```KILL (log:///**/READ)```\n```fixture (echo)\n{\"message\":\"hello from MCP\"}\n```\n\n```TASK\n[{\"content\":\"Inspect the corrected tool result.\",\"status\":\"in_progress\"}]\n```"),
-            makeMockResponse("\n```FIND (fixture:///**) <1,-1> [{\"pattern\":\"invalid-tool-arguments\"}]```\n\n```TASK\n[{\"content\":\"Inspect the source's durable terminal result.\",\"status\":\"in_progress\"}]\n```"),
-            makeMockResponse("```SEND\nThe MCP echo returned hello from MCP and its earlier failure remains inspectable at the source.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
-            makeMockResponse("\n```READ (worker:///_plurnk/tools/fixture.md) <1,-1>```\n```TASK\n[{\"content\":\"Invoke the documented host tool.\",\"status\":\"in_progress\"}]\n```"),
-            makeMockResponse("\n```fixture (fail)```\n```TASK\n[{\"content\":\"Inspect the failure.\",\"status\":\"in_progress\"}]\n```"),
-            makeMockResponse("```SEND\nThe MCP server reported its expected tool error; recovery is complete.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            makeMockResponse("\n```READ (worker:///_plurnk/tools/fixture.md) <1,-1>```\n```NOTE\nSelect and inspect the echo contract linked from the family document.\n```"),
+            makeMockResponse("\n```READ (worker:///_plurnk/tools/fixture/echo.md) <1,-1>```\n```NOTE\nInvoke the documented observation tool.\n```"),
+            makeMockResponse("\n```fixture (echo)\nhello from MCP\n```\n\n```NOTE\nInspect the attributable tool failure.\n```"),
+            makeMockResponse("\n```KILL (log:///**/READ)```\n```fixture (echo)\n{\"message\":\"hello from MCP\"}\n```\n\n```NOTE\nInspect the corrected tool result.\n```"),
+            makeMockResponse("\n```FIND (fixture:///**) <1,-1> [{\"pattern\":\"invalid-tool-arguments\"}]```\n\n```NOTE\nInspect the source's durable terminal result.\n```"),
+            makeMockResponse("```SEND\nThe MCP echo returned hello from MCP and its earlier failure remains inspectable at the source.\n```\n```DONE\n```"),
+            makeMockResponse("\n```READ (worker:///_plurnk/tools/fixture.md) <1,-1>```\n```NOTE\nInvoke the documented host tool.\n```"),
+            makeMockResponse("\n```fixture (fail)```\n```NOTE\nInspect the failure.\n```"),
+            makeMockResponse("```SEND\nThe MCP server reported its expected tool error; recovery is complete.\n```\n```DONE\n```"),
         ],
     });
     const db = await openMigrated();
@@ -438,14 +442,14 @@ test(
         const provider = new PacketCapturingMock({
             contextWindow: 1_000_000,
             responses: [
-                makeMockResponse("\n```READ (worker:///_plurnk/tools/kubernetes.md) <1,-1>```\n```TASK\n[{\"content\":\"Select the configuration tool linked from the family document.\",\"status\":\"in_progress\"}]\n```"),
-                makeMockResponse("\n```READ (worker:///_plurnk/tools/kubernetes/configuration_view.md) <1,-1>```\n```TASK\n[{\"content\":\"Use the exact contract after reading it.\",\"status\":\"in_progress\"}]\n```"),
-                makeMockResponse("\n```kubernetes (configuration_view)\n{\"minified\":true}\n```\n\n```TASK\n[{\"content\":\"Inspect the returned configuration.\",\"status\":\"in_progress\"}]\n```"),
-                makeMockResponse("```SEND\nThe current Kubernetes context is specimen.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
-                makeMockResponse("\n```READ (worker:///_plurnk/tools/goji.md) <1,-1>```\n```TASK\n[{\"content\":\"Select the terminology tool linked from the family document.\",\"status\":\"in_progress\"}]\n```"),
-                makeMockResponse("\n```READ (worker:///_plurnk/tools/goji/goji_explain_term.md) <1,-1>```\n```TASK\n[{\"content\":\"Use the documented tool and resource.\",\"status\":\"in_progress\"}]\n```"),
-                makeMockResponse("\n```goji (goji_explain_term)\n{\"term\":\"AEO\"}\n```\n\n```READ (goji:///resources/goji%3A%2F%2Fabout)```\n```TASK\n[{\"content\":\"Inspect both remote results.\",\"status\":\"in_progress\"}]\n```"),
-                makeMockResponse("```SEND\nGOJI defines AEO as Answer Engine Optimisation and identifies itself as a Melbourne digital agency.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+                makeMockResponse("\n```READ (worker:///_plurnk/tools/kubernetes.md) <1,-1>```\n```NOTE\nSelect the configuration tool linked from the family document.\n```"),
+                makeMockResponse("\n```READ (worker:///_plurnk/tools/kubernetes/configuration_view.md) <1,-1>```\n```NOTE\nUse the exact contract after reading it.\n```"),
+                makeMockResponse("\n```kubernetes (configuration_view)\n{\"minified\":true}\n```\n\n```NOTE\nInspect the returned configuration.\n```"),
+                makeMockResponse("```SEND\nThe current Kubernetes context is specimen.\n```\n```DONE\n```"),
+                makeMockResponse("\n```READ (worker:///_plurnk/tools/goji.md) <1,-1>```\n```NOTE\nSelect the terminology tool linked from the family document.\n```"),
+                makeMockResponse("\n```READ (worker:///_plurnk/tools/goji/goji_explain_term.md) <1,-1>```\n```NOTE\nUse the documented tool and resource.\n```"),
+                makeMockResponse("\n```goji (goji_explain_term)\n{\"term\":\"AEO\"}\n```\n\n```READ (goji:///resources/goji%3A%2F%2Fabout)```\n```NOTE\nInspect both remote results.\n```"),
+                makeMockResponse("```SEND\nGOJI defines AEO as Answer Engine Optimisation and identifies itself as a Melbourne digital agency.\n```\n```DONE\n```"),
             ],
         });
         const db = await openMigrated();

@@ -23,7 +23,7 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
             responses: [{
                 assistant: {
                     // ops deliberately absent: the engine must parse this content.
-                    content: "\n```SEND\nobserved.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
+                    content: "\n```SEND\nobserved.\n```\n```DONE\n```",
                     reasoning: null,
                 },
             }],
@@ -82,16 +82,17 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
         // The parse is synchronous and ends before model dispatch.
         const parse = turnChildren.find((s) => s.name === "contracts.parse");
         assert.ok(parse !== undefined, "the turn nests the parse because the mock supplied no ops");
-        assert.equal(parse.attributes.statements, 2, "parse records the emitted SEND and TASK");
+        assert.equal(parse.attributes.statements, 2, "parse records the emitted SEND and DONE");
 
         const dispatches = turnChildren.filter((s) => s.name === "op.dispatch");
         const ops = dispatches.map((s) => s.attributes.op);
         assert.equal(ops.includes("PLAN"), false, "no retired PLAN operation is fabricated");
-        assert.equal(ops.filter((op) => typeof op === "string" && TurnDisposition.isOp(op)).length, 2, "initialization and inference each dispatch their inventory");
+        assert.equal(ops.filter((op) => typeof op === "string" && TurnDisposition.isOp(op)).length, 1, "the inference dispatches its lifecycle declaration");
+        assert.equal(ops.filter((op) => op === "NOTE").length, 1, "initialization extracts its reasoning NOTE through ordinary dispatch");
         assert.equal(ops.filter((op) => op === "SEND").length, 1, "the model's message has its own dispatch span");
         assert.ok(
-            ops.filter((op) => op !== "SEND" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "FIND" || op === "COPY" || op === "READ"),
-            `initialization dispatches the prompt COPY, catalog FINDs and program READ; got ${ops.join(", ")}`,
+            ops.filter((op) => op !== "SEND" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "NOTE" || op === "FIND" || op === "READ"),
+            `initialization dispatches its reasoning NOTE, catalog FINDs and source READs; got ${ops.join(", ")}`,
         );
         for (const d of dispatches) {
             assert.ok(Number.isInteger(d.attributes.status), "every dispatched op records its result status");

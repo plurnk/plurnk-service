@@ -6,10 +6,9 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
-const turn = (operation: string, status: string | null = "in_progress") => ({
-    assistant: { content: status === null ? operation : `${operation}
-\`\`\`TASK
-[{"content":"Task progress.","status":"${status}"}]
+const turn = (operation: string, op: string | null = "NOTE") => ({
+    assistant: { content: op === null ? operation : `${operation}
+\`\`\`${op}
 \`\`\``, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
@@ -27,7 +26,7 @@ for (const identical of [false, true]) {
                 ...lines.map((line) => turn(`\`\`\`EDIT (worker:///journal) <-1>
 ${line}
 \`\`\``)),
-                turn("", "completed"),
+                turn("", "DONE"),
             ] });
             const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10 });
             assert.equal(result.result.status, 200, JSON.stringify(result.result));
@@ -58,7 +57,7 @@ class ObservedContent {
 }
 
 for (const changing of [false, true]) {
-    for (const status of ["in_progress", null]) test(`{§engine-cycle-evidence} repeated reads with ${changing ? "changing" : "unchanged"} results, TASK=${status ?? "omitted"}`, async () => {
+    for (const status of ["NOTE", null]) test(`{§engine-cycle-evidence} repeated reads with ${changing ? "changing" : "unchanged"} results, NOTE=${status ?? "omitted"}`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `cycles-${crypto.randomUUID()}`);
@@ -70,7 +69,7 @@ for (const changing of [false, true]) {
             const engine = new Engine({ db, schemes });
             const provider = new Mock({ contextWindow: 100000, responses: [
                 ...Array.from({ length: 6 }, () => turn("```READ (observed-content:///latest)```", status)),
-                turn("", "completed"),
+                turn("", "DONE"),
             ] });
             const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10 });
             assert.equal(result.result.status, changing ? 200 : 508, JSON.stringify(result.result));

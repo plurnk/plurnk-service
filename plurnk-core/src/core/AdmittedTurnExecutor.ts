@@ -92,7 +92,7 @@ export default class AdmittedTurnExecutor {
         onDispatch?: (logEntryId: number) => void;
         onSettled?: (logEntryId: number) => void | Promise<void>;
     }): Promise<AdmittedTurnResult> {
-        // {§turn-shape} — continuation is the default; TASK is explicit intent.
+        // {§turn-shape} — continuation is the default; lifecycle verbs express explicit intent.
         const dispositions = statements.filter(TurnDisposition.is);
         const finalOp = dispositions[0];
         if ((statements.length === 0 && !emptyTurn) || dispositions.length > 1) {

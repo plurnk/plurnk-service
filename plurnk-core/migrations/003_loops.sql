@@ -295,18 +295,19 @@ FROM turns t;
 -- its curatable log. Derivation attachments are replaceable, source bytes are not.
 CREATE TABLE IF NOT EXISTS turn_sources (
     turn_id INTEGER NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
-    kind TEXT NOT NULL CHECK (kind IN ('ops', 'reasoning')),
+    kind TEXT NOT NULL CHECK (kind IN ('ops', 'reasoning', 'note')),
+    sequence INTEGER NOT NULL DEFAULT 0 CHECK ((kind = 'note' AND sequence > 0) OR (kind != 'note' AND sequence = 0)),
     content TEXT NOT NULL,
     model_call_id INTEGER REFERENCES model_calls(id),
     deep_hash TEXT REFERENCES derivations(deep_hash),
-    PRIMARY KEY (turn_id, kind)
+    PRIMARY KEY (turn_id, kind, sequence)
 ) STRICT;
 
 -- {§db-fk-indexes} A derivation replacement checks its referrers; the hash is indexed where it is a foreign key.
 CREATE INDEX IF NOT EXISTS turn_sources_deep_hash ON turn_sources (deep_hash) WHERE deep_hash IS NOT NULL;
 
 CREATE TRIGGER IF NOT EXISTS turn_sources_immutable
-BEFORE UPDATE OF turn_id, kind, content, model_call_id ON turn_sources
+BEFORE UPDATE OF turn_id, kind, sequence, content, model_call_id ON turn_sources
 BEGIN
     SELECT RAISE(ABORT, 'turn source evidence is immutable');
 END;

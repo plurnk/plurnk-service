@@ -1,3 +1,4 @@
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -11,7 +12,7 @@ process.env.PLURNK_MEMBERS_TASK = "**";
 process.env.PLURNK_MEMBERS_ENABLED = '["task"]';
 process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "60000";
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
-const task = (status = "in_progress") => `\`\`\`TASK\n[{"content":"Inspect the media.","status":"${status}"}]\n\`\`\``;
+const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "");
 const media = [
     { kind: "image", mimetype: "image/png", bytes: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64"), facts: /PNG image/u },
     { kind: "pdf", mimetype: "application/pdf", bytes: Buffer.from(buildPdf({ title: "Contract" })), facts: /PDF document/u },
@@ -45,11 +46,11 @@ for (const enabled of [true, false]) {
         assert.ok(address && typeof address !== "string");
         const url = `http://127.0.0.1:${address.port}/media`;
         const provider = new Mock({ contextWindow: 100_000, inputModalities: enabled ? [sample.kind as InputModality] : [], responses: [
-            turn(`\`\`\`READ (${url}) <1,3>\`\`\`\n${task()}`),
-            turn(`\`\`\`READ (${url}#readable)\`\`\`\n${task()}`),
-            turn(`\`\`\`READ (${url}#bytes) <2,3>\`\`\`\n${task()}`),
-            turn(`\`\`\`READ (${url}#header)\`\`\`\n${task()}`),
-            turn(task("completed")),
+            turn(`\`\`\`READ (${url}) <1,3>\`\`\`\n${step()}`),
+            turn(`\`\`\`READ (${url}#readable)\`\`\`\n${step()}`),
+            turn(`\`\`\`READ (${url}#bytes) <2,3>\`\`\`\n${step()}`),
+            turn(`\`\`\`READ (${url}#header)\`\`\`\n${step()}`),
+            turn(step("DONE")),
         ] });
         await run(provider);
         const parts = provider.received.map((messages) => messages.flatMap((message) => Array.isArray(message.content) ? message.content.filter((part) => part.type === "file") : []));
@@ -90,10 +91,10 @@ test("{§http-binary-source} 304 revalidation preserves bytes and later replacem
     assert.ok(address && typeof address !== "string");
     const url = `http://127.0.0.1:${address.port}/sound.wav`;
     const provider = new Mock({ contextWindow: 100_000, inputModalities: ["audio"], responses: [
-        turn(`\`\`\`READ (${url}) <1,2>\`\`\`\n${task()}`),
-        turn(`\`\`\`READ (${url}#readable)\`\`\`\n${task()}`),
-        turn(`\`\`\`READ (${url}#bytes) <1,2>\`\`\`\n${task()}`),
-        turn(task("completed")),
+        turn(`\`\`\`READ (${url}) <1,2>\`\`\`\n${step()}`),
+        turn(`\`\`\`READ (${url}#readable)\`\`\`\n${step()}`),
+        turn(`\`\`\`READ (${url}#bytes) <1,2>\`\`\`\n${step()}`),
+        turn(step("DONE")),
     ] });
     await run(provider);
     assert.deepEqual(validators, [undefined, '"v1"', '"v1"']);

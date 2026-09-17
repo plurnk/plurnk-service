@@ -104,7 +104,7 @@ test("outbound A2A uses Core's ordinary 102 subscription and terminal READ path"
             assistant: {
                 content: "",
                 reasoning: null,
-                ops: [dispositionStmt("completed", "Task observed")],
+                ops: [dispositionStmt("DONE", "Task observed")],
             },
         }],
     });

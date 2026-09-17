@@ -8,7 +8,7 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flus
 test("a SEND addressed to a turn source the model may not write is refused 400 with neutral recipient guidance", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("```SEND (reasoning:///1/1)\nthe answer\n```", 10),
-        makeMockResponse("```SEND\nthe answer\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+        makeMockResponse("```SEND\nthe answer\n```\n```DONE\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -26,7 +26,7 @@ test("a SEND addressed to a turn source the model may not write is refused 400 w
             assert.equal(problem?.recovery, "A targetless SEND answers the open messages; a directed SEND requires a recipient that implements SEND.");
             assert.doesNotMatch(JSON.stringify(problem), /meant|intended|wanted|tried/u);
             assert.ok(!sends.some((r) => r.status_rx === 403), "the writer rule never speaks first");
-            assert.deepEqual(rows.filter((r) => r.op === "TASK" && r.origin === "model").map(({ status_rx }) => status_rx), [200], "omission continues silently; the explicit completed inventory concludes");
+            assert.deepEqual(rows.filter((r) => ["WAIT", "DONE", "FAIL"].includes(r.op ?? "") && r.origin === "model").map(({ status_rx }) => status_rx), [200], "omission continues silently; the explicit completed inventory concludes");
         } finally { ws.close(); }
     });
 });
@@ -34,7 +34,7 @@ test("a SEND addressed to a turn source the model may not write is refused 400 w
 test("a SEND addressed to a file path preserves the scheme's factual 501", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("```SEND (.)\nwaiting\n```", 10),
-        makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+        makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

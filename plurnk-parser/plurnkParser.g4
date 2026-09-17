@@ -3,7 +3,7 @@ parser grammar plurnkParser;
 options { tokenVocab = plurnkLexer; }
 
 // One model turn: at least one operation; outside text is hidden by the lexer.
-// Model admission continues silently without TASK. Concatenated saved programs
+// Model admission continues silently without a lifecycle declaration. Concatenated saved programs
 // require an explicit disposition per turn. {§turn-shape}
 document
     : modelTurn EOF
@@ -55,6 +55,7 @@ statement
     | workStatement
     | forkStatement
     | killStatement
+    | noteStatement
     ;
 
 midStatement
@@ -69,6 +70,7 @@ midStatement
     | workStatement
     | forkStatement
     | killStatement
+    | noteStatement
     ;
 
 findStatement : OPEN_FIND slotModifiers? opAside? statementEnd ;
@@ -77,10 +79,10 @@ editStatement : OPEN_EDIT slotModifiers? opAside? statementEnd ;
 copyStatement : OPEN_COPY transferModifiers opAside? emptyStatementEnd ;
 moveStatement : OPEN_MOVE transferModifiers opAside? emptyStatementEnd ;
 // {§turn-disposition} — lifecycle operations and addressed messages are distinct.
-// {§one-line-turn} — the inventory may ride the heading line as a `[…]` block.
 dispositionStatement
-    : OPEN_TASK lineMarker? metadata? opAside? statementEnd
+    : (OPEN_WAIT | OPEN_DONE | OPEN_FAIL) lineMarker? opAside? statementEnd
     ;
+noteStatement : OPEN_NOTE opAside? statementEnd ;
 sendStatement : OPEN_SEND (resourceSelection | metadata+)? opAside? statementEnd ;
 execStatement : OPEN_EXEC execModifiers? opAside? statementEnd ;
 bareStatement : OPEN_BARE targetWithMetadata? opAside? statementEnd ;

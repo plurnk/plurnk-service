@@ -50,12 +50,12 @@ const parsedRead = (target: string, metadata: readonly string[] = []): ReadState
     const modifiers = metadata.map((block) => ` [${block}]`).join("");
     const parsed = PlurnkParser.parse(`
 \`\`\`READ (${target})${modifiers}\`\`\`
-\`\`\`TASK
-[{"content":"acquisition pending","status":"in_progress"}]
+\`\`\`NOTE
+acquisition pending
 \`\`\``, { executors: fixtureExecutors(`
 \`\`\`READ (${target})${modifiers}\`\`\`
-\`\`\`TASK
-[{"content":"acquisition pending","status":"in_progress"}]
+\`\`\`NOTE
+acquisition pending
 \`\`\``) });
     const item = parsed.items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",

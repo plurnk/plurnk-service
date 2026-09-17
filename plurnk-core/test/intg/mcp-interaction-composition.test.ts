@@ -1,3 +1,4 @@
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -18,7 +19,7 @@ interface Interrupt {
     readonly responseSchema: Record<string, unknown>;
 }
 
-const task = (status: string): string => `\`\`\`TASK\n[{"content":"Observe the MCP result.","status":"${status}"}]\n\`\`\``;
+const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "");
 const fixturePath = (name: string): string => fileURLToPath(new URL(
     `../../../plurnk-mcp/src/fixtures/${name}`, import.meta.url,
 ));
@@ -33,8 +34,8 @@ const setup = async (
     },
 ) => {
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        makeMockResponse(`${operation}\n\n${task("waiting")}`),
-        makeMockResponse(`\`\`\`SEND\nMCP result observed.\n\`\`\`\n\n${task("completed")}`),
+        makeMockResponse(`${operation}\n\n${step("WAIT")}`),
+        makeMockResponse(`\`\`\`SEND\nMCP result observed.\n\`\`\`\n\n${step("DONE")}`),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules") });

@@ -27,7 +27,7 @@ test("{§statement-rendering}: programs separate fenced operations without chang
     const blocks = [
         PlurnkParser.frame("READ (note.md)", null),
         PlurnkParser.frame("EDIT (example.md)", body),
-        PlurnkParser.frame("TASK", '[{"content":"Verify the edit.","status":"in_progress"}]'),
+        PlurnkParser.frame("DONE", "The edit is verified."),
     ];
     const parsed = PlurnkParser.parse(blocks.join("\n"));
     assert.ok(parsed.items.every((item) => item.kind === "statement"));
@@ -48,7 +48,7 @@ test("framing a large body does not spread its backtick runs into function argum
 // {§fence-boundary}
 test("quoted programs are exact body content without speculative diagnostics", () => {
     const body = "```sh\necho hello\n```\n## PLAN_\n### READ_ (example.md)";
-    const input = PlurnkParser.frame("SEND", body) + "\n" + PlurnkParser.frame("TASK", '[{"content":"Example delivered.","status":"completed"}]');
+    const input = PlurnkParser.frame("SEND", body) + "\n" + PlurnkParser.frame("DONE", '[{"content":"Example delivered.","status":"completed"}]');
     const parsed = PlurnkParser.parse(input);
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
     const send = parsed.items.find((item) => item.kind === "statement" && item.statement.op === "SEND");

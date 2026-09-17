@@ -39,7 +39,7 @@ const explosionProofLoop = async (): Promise<boolean> => {
             contextWindow: 16384,
             responses: [{
                 assistant: {
-                    content: "\n```SEND\nstill works.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
+                    content: "\n```SEND\nstill works.\n```\n```DONE\n```",
                     reasoning: null,
                 },
             }],

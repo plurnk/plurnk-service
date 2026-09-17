@@ -11,7 +11,6 @@ test("ProposalProjection's op keywords are the closed operation alphabet; a runt
 
 test("the package root exposes exactly the supported runtime values", () => {
     assert.deepEqual(Object.keys(Contracts).sort(), [
-        "AcpPlanValue",
         "CapabilityAdmission",
         "DEFAULT_CAPABILITY_POLICY",
         "DEFAULT_LOOP_POLICY",
@@ -51,7 +50,6 @@ test("the package root exposes exactly the supported runtime values", () => {
         "InvalidTextRegionError",
         "PLURNK_OPS",
         "PathSyntax",
-        "PlanValue",
         "PlurnkParseError",
         "Problems",
         "REASONING_POLICIES",

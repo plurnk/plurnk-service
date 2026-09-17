@@ -779,7 +779,7 @@ export default class PacketWire {
             }
             meta.git = git;
         }
-        // SEND, TASK, destructive KILL, and non-200 statuses stay explicit.
+        // SEND, lifecycle verbs, destructive KILL, and non-200 statuses stay explicit.
         // Successful log-KILL rows never reach this projection
         // ({§log-kill-meta-operation}).
         if (typeof e.status === "number" && (op === "SEND" || op === "KILL" || typeof op === "string" && TurnDisposition.isOp(op) || e.status !== 200)) meta.status = e.status;
@@ -894,7 +894,7 @@ export default class PacketWire {
             meta.channels = rx.channels;
         }
         // {§send-response-receipt} — a reply's row names the prompts it answered.
-        if (op === "SEND" && rx !== null && typeof rx === "object" && Array.isArray(rx.recipients)) {
+        if ((op === "SEND" || typeof op === "string" && TurnDisposition.isTerminalOp(op)) && rx !== null && typeof rx === "object" && Array.isArray(rx.recipients)) {
             meta.recipients = rx.recipients;
         }
         if (op === "READ" || op === "FIND") {
@@ -976,7 +976,7 @@ export default class PacketWire {
     }
 
     // The body the row shows: the canonical full body is shared with log READ, log FIND, and
-    // search derivation. READ/FIND own selection bounds, TASK and admitted programs remain
+    // search derivation. READ/FIND own selection bounds, NOTE, lifecycle bodies and admitted programs remain
     // complete, and exterior arrivals share their packet allowance. Structured mutation receipts own
     // their join bound; every remaining body uses the ordinary fixed preview.
     static #rowBody(
@@ -996,7 +996,7 @@ export default class PacketWire {
         const emptyFind = op === "FIND" && e.status === 200 && facts.findItems === 0;
         const previewExempt = op === "READ"
             || op === "FIND"
-            || op === "TASK"
+            || op === "NOTE" || typeof op === "string" && TurnDisposition.isOp(op)
             || (op === null && renderedLeaf === "ops")
             || facts.structuredMutationReceipt;
         const lineAnchors = op === "READ" ? e.lineAnchors ?? null : null;

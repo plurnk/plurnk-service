@@ -64,8 +64,8 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | schema-valid `RunAgentInput`               | `RUN_STARTED` + initial `STATE_SNAPSHOT` |
 | `forwardedProps.plurnk.mode = "sync"`      | Durable conversation `MESSAGES_SNAPSHOT`, then pending interrupt, live observation, or `RUN_FINISHED` {§agui-conversation-sync} |
 | `log/entry` advancing to a newer turn      | `STEP_FINISHED` + `STEP_STARTED` (`turn-<id>`); late updates to earlier receipts retain their row identity without rewinding the step or clearing delivered reasoning. |
-| `log/entry` op=TASK (model)           | `ACTIVITY_SNAPSHOT` {§agui-plan-activity} + `CUSTOM plurnk.send`; no assistant speech |
-| Successful targetless model SEND | Optional readable-reasoning sequence {§agui-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
+| `log/entry` WAIT or blank DONE/FAIL (model) | `CUSTOM plurnk.send` with the actual lifecycle result; no invented plan or assistant speech |
+| Successful targetless model SEND or delivered DONE/FAIL body | Optional readable-reasoning sequence {§agui-readable-reasoning}, then `TEXT_MESSAGE_START/CONTENT/END` + `CUSTOM plurnk.send` (signal/status) |
 | Directed or unsuccessful SEND | Ordinary tool-call operation events; never assistant speech |
 | `log/entry` other op (model)               | `TOOL_CALL_START/ARGS/END` (+ `TOOL_CALL_RESULT` when rx exists) |
 | `log/entry` actionless `kind=emissionAttempt` | Forensic row only; no assistant speech or reasoning replay. |
@@ -79,19 +79,17 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `reasoning/event`                          | Standard live `REASONING_START` → `REASONING_MESSAGE_START` → one or more `REASONING_MESSAGE_CONTENT` → `REASONING_MESSAGE_END` → `REASONING_END` {§agui-readable-reasoning} |
 | `stream/event` + `stream/concluded`        | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475). A conclusion preserves its exact universal `result`, including RFC 9457 Problem Details; AG-UI does not reconstruct failure from a status or summary. |
 
-§agui-plan-activity **Task inventory is replaceable PLAN activity, not reasoning.** PLAN activity is the
-ACP projection of the model's latest TASK {§plan-value} installment, produced only at
-this standards boundary under {§plan-acp-projection}. Provider reasoning is a
-separate channel, so PLAN never projects into AG-UI `REASONING_*` events. The thread-stable
-`<threadId>/plan` identity makes every live update replace the prior activity;
-reattach includes only the newest model inventory. The same ACP projection replaces
-`tx.body` on every client-facing TASK row, whether delivered by `CUSTOM plurnk.row`,
-`CUSTOM plurnk.ambient`, or `log.read`; all other row and transaction fields remain intact:
+§agui-lifecycle-projection **Lifecycle, memory and speech remain distinct.** Live
+events, replay and `log.read` preserve literal native bodies. No task inventory
+or ACP plan is inferred from prose.
 
 | Projection | Standard representation |
 | ---------- | ----------------------- |
-| live       | `ACTIVITY_SNAPSHOT { messageId: "<threadId>/plan", activityType: "PLAN", content: AcpPlan, replace: true }` |
-| reattach   | The newest `ActivityMessage { id: "<threadId>/plan", role: "activity", activityType: "PLAN", content: AcpPlan }` at its chronological position inside `MESSAGES_SNAPSHOT` |
+| NOTE | Ordinary tool-call operation and durable row, not assistant speech, PLAN activity, or a substitute reasoning stream |
+| WAIT | Durable row and lifecycle signal; its text does not become a response |
+| DONE/FAIL with delivered body | Assistant message through {§loop-response-messages}, even when completion defers; status remains independent |
+| Blank DONE/FAIL | Lifecycle signal without an invented answer |
+| Replay | Delivered messages in chronological order; no synthetic latest-plan replacement |
 
 §agui-readable-reasoning **Readable provider reasoning uses AG-UI's standard
 reasoning channel.** A core `{§notifications-reasoning-event}` for the thread's
@@ -102,16 +100,16 @@ the failed request's partial reasoning. Foreign-worker and BARE reasoning never
 enter the thread. Failed or rejected requests may therefore leave honest
 transient reasoning that is not replayed.
 
-Core also derives optional complete `reasoning` on admitted SEND and disposition
+Core also derives optional complete `reasoning` on admitted SEND, NOTE and disposition
 rows from their durable packet ({§methods-readable-reasoning}). When that value
 was not already delivered by the completed live stream, projection emits it
-atomically before the turn's first speech or inventory under `<OP identity>/reasoning`.
+atomically before the turn's first corresponding row under `<OP identity>/reasoning`.
 Subsequent rows in the same turn do not repeat it. A standard interrupt may divide one durable Loop across consecutive
 AG-UI Runs; the Run B projection inherits Run A's delivered-reasoning evidence
 before the stopped operation is released. Reattach replaces transient attempt presentation with the durable
-accepted `ReasoningMessage` once per turn, before its speech or inventory in
-`MESSAGES_SNAPSHOT`. Empty evidence emits nothing, PLAN never substitutes for
-reasoning ({§agui-plan-activity}), and the SEND row still precedes its text
+accepted `ReasoningMessage` once per turn in
+`MESSAGES_SNAPSHOT`. Empty evidence emits nothing, NOTE never substitutes for
+reasoning ({§agui-lifecycle-projection}), and a response row still precedes its text
 sequence.
 
 - **An op row IS a tool call** — its `coordinate` is the `toolCallId`, its tx the args (one
@@ -169,7 +167,7 @@ every other daemon surface.
 
 - §agui-row-channel **The row channel** — every log row ALSO rides `CUSTOM plurnk.row`
   carrying the complete client-facing row (curation metadata, durable tags, coordinate)
-  alongside its core projection. TASK `tx.body` follows {§agui-plan-activity}; rich clients
+  alongside its core projection. Literal bodies follow {§agui-lifecycle-projection}; rich clients
   never receive the internal Plan extension. Generic clients ignore this metadata
   channel.
 - **The gauge starts true** — `RUN_STARTED` is followed by a `STATE_SNAPSHOT` carrying the

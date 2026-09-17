@@ -15,7 +15,7 @@ const fixture = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures/echo-ser
 
 test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodies in interpreter summaries", { timeout: 30_000 }, async () => {
     const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse(
-        PlurnkParser.frame("TASK", JSON.stringify([{ content: "Inspected the tools.", status: "completed" }])),
+        PlurnkParser.frame("DONE", ""),
     )] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules") });
@@ -51,7 +51,7 @@ test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodi
 test("{§tools-resource-materialization} turn 0 surveys an expanded server's tools without narrating its self-describing target", { timeout: 30_000 }, async () => {
     const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
-    const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("```SEND\nsurveyed\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```")] });
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("```SEND\nsurveyed\n```\n```DONE\n```")] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules") });
     daemon.registerModule(McpModule.init({
@@ -99,10 +99,10 @@ test("{§functionality-model-projection} the model READs the complete installed 
     const target = "worker:///_plurnk/plurnk/mcp/add.md";
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse(`\`\`\`READ (${target}) <1,-1>\`\`\`
-\`\`\`TASK
-[{"content":"Read the input schema.","status":"in_progress"}]
+\`\`\`NOTE
+Read the input schema.
 \`\`\``),
-        makeMockResponse("```SEND\nInspected.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+        makeMockResponse("```SEND\nInspected.\n```\n```DONE\n```"),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules") });

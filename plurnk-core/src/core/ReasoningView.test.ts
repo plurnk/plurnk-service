@@ -3,6 +3,7 @@ import test from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
 import ReasoningView from "./ReasoningView.ts";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 
 test("{§reasoning-initial-read}: view limits use the selected alias and reject malformed configuration", () => {
     const keys = ["PLURNK_REASONING_VIEW_LINES", "PLURNK_REASONING_VIEW_LINES_viewtest"];
@@ -46,20 +47,13 @@ test("{§reasoning-initial-read}: initialization reads its own source with the c
     try {
         for (const limit of [-1, 0, 1, 8, 32]) {
             process.env.PLURNK_REASONING_VIEW_LINES = String(limit);
-            const read = ReasoningView.initialRead(provider, 3, 8, true);
+            const read = ReasoningView.initialRead(provider, 3, 8);
             if (limit === 0) assert.equal(read, null);
             else {
                 assert.equal(read?.target?.raw, "reasoning:///3/8");
-                assert.equal(read?.aside, "pluck notes from this turn's reasoning");
-                assert.deepEqual(read?.matcher, { dialect: "regex", raw: "^Note:.*", pattern: "^Note:.*", flags: "" });
-                assert.deepEqual(read?.lineMarker, limit === -1 ? null : { marks: [1, limit] });
-            }
-            const plain = ReasoningView.initialRead(provider, 3, 8, false);
-            if (limit === 0) assert.equal(plain, null);
-            else {
-                assert.equal(plain?.aside, "inspect this turn's reasoning", "without a text/plain projection the READ is the plain scoped observation");
-                assert.equal(plain?.matcher, null);
-                assert.deepEqual(plain?.lineMarker, { marks: [1, limit] });
+                assert.equal(read?.aside, "inspect this turn's reasoning");
+                assert.equal(read?.matcher, null);
+                assert.deepEqual(read?.lineMarker, { marks: [1, limit] });
             }
         }
     } finally {
@@ -68,9 +62,8 @@ test("{§reasoning-initial-read}: initialization reads its own source with the c
     }
 });
 
-test("{§reasoning-initial-read}: the authored rationale teaches the next model turn's current-source address", () => {
-    assert.equal(ReasoningView.initialSource(), "This harness-generated turn surveys the workspace and available capabilities.\n"
-        + "Note: Prior reasoning can be searched with the pattern filters.");
-    const note = ReasoningView.initialSource().split("\n").filter((line) => new RegExp(ReasoningView.NOTE_PATTERN).test(line));
-    assert.equal(note.length, 1, "exactly one line answers the pattern the initialization READ carries");
+test("{§reasoning-notes}: the authored rationale demonstrates an executable NOTE", () => {
+    const notes = PlurnkParser.parseReasoningNotes(ReasoningView.initialSource());
+    assert.equal(notes.length, 1);
+    assert.equal(notes[0]!.body, "Only NOTE also works in reasoning. Notes retain conclusions, decisions, and working memory.");
 });

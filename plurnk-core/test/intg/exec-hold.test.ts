@@ -10,7 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import { dispositionStmt } from "./_dsl.ts";
+import { dispositionStmt, noteStmt } from "./_dsl.ts";
 import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 // This file isolates the hold decision after ordinary optimistic settlement:
@@ -69,9 +69,9 @@ const driveLoop = async (finishAfterMs: number, midTurns: number, effect: "read"
     if (holdSuffix !== undefined) process.env.PLURNK_SERVICE_EXEC_HOLD = `${tag}${holdSuffix}`;
     try {
         const responses = [
-            { assistant: { content: "", reasoning: null, ops: [execStmt(tag, "go"), dispositionStmt("in_progress", "searching")] } },
-            ...Array.from({ length: midTurns }, () => ({ assistant: { content: "", reasoning: null, ops: [dispositionStmt("waiting", "waiting on the monitored stream")] } })),
-            { assistant: { content: "", reasoning: null, ops: [dispositionStmt("completed", "done")] } },
+            { assistant: { content: "", reasoning: null, ops: [execStmt(tag, "go"), noteStmt("searching")] } },
+            ...Array.from({ length: midTurns }, () => ({ assistant: { content: "", reasoning: null, ops: [dispositionStmt("WAIT", "waiting on the monitored stream")] } })),
+            { assistant: { content: "", reasoning: null, ops: [dispositionStmt("DONE", "done")] } },
         ];
         const provider = new Mock({ contextWindow: 100000, responses: responses as never });
         const t0 = Date.now();

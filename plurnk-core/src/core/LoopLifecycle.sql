@@ -44,7 +44,8 @@ UPDATE loops
 SET status = $status,
     execution_elapsed_ms = COALESCE($elapsed_ms, execution_elapsed_ms),
     wait_poll_at = NULL,
-    terminal_result = CASE WHEN EXISTS (SELECT 1 FROM loop_responses WHERE loop_id = loops.id)
+    terminal_result = CASE WHEN json_type($result, '$.content') IS NULL
+        AND EXISTS (SELECT 1 FROM loop_responses WHERE loop_id = loops.id)
         THEN json_set($result,
             '$.content', (SELECT content FROM loop_responses WHERE loop_id = loops.id),
             '$.mimetype', 'text/markdown')

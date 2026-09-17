@@ -8,10 +8,10 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, wait
 
 test("{§env-option} WORK hands the child an environment of its own, seen by its first command", async () => {
     const mock = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse("```WORK (worker://kid) [{\"env\": {\"KID_ONLY\": \"1\"}}]\nPrint KID_ONLY and conclude.\n```\n\n```TASK\n[{\"content\":\"waiting\",\"status\":\"waiting\"}]\n```", 10),
-        makeMockResponse("```sh\necho kid=[$KID_ONLY]\n```\n\n```TASK\n[{\"content\":\"printed\",\"status\":\"in_progress\"}]\n```", 10),
-        makeMockResponse("```SEND\nprinted\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
-        makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+        makeMockResponse("```WORK (worker://kid) [{\"env\": {\"KID_ONLY\": \"1\"}}]\nPrint KID_ONLY and conclude.\n```\n\n```WAIT\nwaiting\n```", 10),
+        makeMockResponse("```sh\necho kid=[$KID_ONLY]\n```\n\n```NOTE\nprinted\n```", 10),
+        makeMockResponse("```SEND\nprinted\n```\n```DONE\n```", 10),
+        makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

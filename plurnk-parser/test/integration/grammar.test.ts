@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser, parsePath } from "../../src/index.ts";
-import { PlurnkParseError, Validator, type Plan } from "@plurnk/plurnk-contracts";
+import { PlurnkParseError, Validator } from "@plurnk/plurnk-contracts";
 import { isExecution } from "@plurnk/plurnk-contracts";
 import { writtenOp } from "@plurnk/plurnk-contracts";
 
@@ -11,8 +11,7 @@ const EXECUTORS = ["sh", "bash", "node", "python3", "gitea", "brave", "search-ap
 const section = (op: string, slots = "", body?: string): string => PlurnkParser.frame(op + slots, body ?? null);
 
 const sections = (...values: string[]): string => values.join("\n\n");
-const inventory = (content: string, status: Plan[number]["status"] = "in_progress") =>
-    JSON.stringify([{ content, status }]);
+const inventory = (content: string) => content;
 
 const errorsOf = (input: string) =>
     PlurnkParser.parseStatements(input, { executors: EXECUTORS }).items.flatMap((item) => item.kind === "error" ? [item.error] : []);
@@ -48,8 +47,8 @@ test("PlurnkParseError keeps diagnostic text separate from structured context", 
 
 test("protocol operations parse as executable fences", () => {
     const cases: Array<[string, string, string | undefined]> = [
-        ["TASK", "", "inspect, act, report"],
-        ["TASK", " <5>", "[]"],
+        ["DONE", "", "inspect, act, report"],
+        ["DONE", " <5>", "[]"],
         ["FIND", " (known:///**) <1,20> [{\"pattern\": \"Paris*\"}]", undefined],
         ["READ", " (README.md)", undefined],
         ["EDIT", " (notes.md) <2>", "replacement"],
@@ -199,12 +198,12 @@ test("{§error-shape} malformed FIND scopes get one relevant correction and pres
     for (const scope of ["<matchLocation,1,16>", "<result range>", "<match locations>"]) {
         const result = PlurnkParser.parseStatements(sections(
             section("FIND", ` (😀/src/*.ts) ${scope}`, "/groupBy/"),
-            section("TASK", "", inventory("continue")),
+            section("DONE", "", inventory("continue")),
         ));
         const errors = result.items.filter((item) => item.kind === "error");
         assert.equal(errors.length, 1);
         assert.equal(errors[0]?.error.message, `invalid FIND scope ${JSON.stringify(scope)}; use numeric result positions, e.g. \`<1,16>\``);
-        assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["TASK"]);
+        assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["DONE"]);
         assert.equal(result.unparsedTail, undefined);
     }
 });
@@ -216,7 +215,7 @@ test("{§error-shape} scope diagnostics do not borrow another operation's contra
     }
     assert.equal(firstError(section("SEND", " (worker://peer) <later>")).message,
         "invalid SEND scope \"<later>\"; use a numeric scope supported by the recipient");
-    for (const op of ["BARE", "WORK", "FORK", "TASK"] as const) {
+    for (const op of ["BARE", "WORK", "FORK", "DONE"] as const) {
         assert.equal(firstError(section(op, " <result range>")).message,
             `invalid ${op} scope "<result range>"; this operation takes no scope`);
     }
@@ -270,10 +269,10 @@ test("{§bare-statement} BARE accepts a prompt resource, inline input, or both",
     assert.deepEqual(metadata.metadata, ['{"Accept": "text/plain"}']);
 
     const body = "```BARE (worker://alice/prompt.md)```";
-    const fenced = PlurnkParser.parseStatements(section("TASK", "", body));
+    const fenced = PlurnkParser.parseStatements(section("DONE", "", body));
     assert.equal(fenced.items.some((item) => item.kind === "statement" && item.statement.op === "BARE"), false);
     const send = fenced.items.find((item) => item.kind === "statement")?.statement;
-    assert.deepEqual(send?.op === "TASK" ? send.body : null, [{ content: body, status: "in_progress" }]);
+    assert.equal(send?.op === "DONE" ? send.body : null, body);
 });
 
 test("resource-selection admission leaves angle brackets elsewhere in URLs untouched", () => {
@@ -313,27 +312,23 @@ test("empty sections normalize to their operation-owned empty values", () => {
         const statement = oneStatement(section(op, " (a) (b)"));
         assert.equal("body" in statement, false, op);
     }
-    const task = oneStatement(section("TASK"));
-    assert.equal(task.op, "TASK");
-    assert.deepEqual("body" in task ? task.body : null, []);
+    const task = oneStatement(section("DONE"));
+    assert.equal(task.op, "DONE");
+    assert.equal("body" in task ? task.body : undefined, null);
 });
 
-// {§plan-slotless}: bracketed inline JSON is structurally a signal modifier;
-// it must never be admitted as an empty semantic Plan.
-test("TASK takes a heading-line inventory block with one advisory ({§one-line-turn}) and still rejects a path slot", () => {
-    const inlineArray = "```TASK [{\"content\":\"keep this\",\"status\":\"todo\"}]\n```";
+test("{§turn-disposition} DONE has no metadata or target operand", () => {
+    const inlineArray = "```DONE [{\"trace\":true}]\n```";
     const result = PlurnkParser.parseStatements(inlineArray);
     const errors = result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
     assert.deepEqual(errors.map(({ message, source, severity }) => ({ message, source, severity })), [{
-        message: "TASK's inventory was read from the heading line; it belongs in the body.",
-        source: "parser",
-        severity: "warning",
+        message: "DONE's body begins below the header",
+        source: "lexer",
+        severity: "error",
     }]);
-    const task = result.items.find((item) => item.kind === "statement" && item.statement.op === "TASK");
-    assert.ok(task !== undefined && task.kind === "statement" && task.statement.op === "TASK");
-    assert.deepEqual(task.statement.body, [{ content: "keep this", status: "todo" }], "the block is the inventory, not a modifier");
+    assert.equal(result.items.filter((item) => item.kind === "statement").length, 0);
 
-    const all = firstError("```TASK (notes.md) <1>\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```");
+    const all = firstError("```NOTE (notes.md) <1>\nContinue the task.\n```");
     assert.equal(all.message, "unexpected `(` (`(path)` slot opener); expected operation fence header, operation-heading line ending, closing fence, or body content");
 });
 
@@ -364,7 +359,7 @@ test("{§closer-fallback}: only an unfinished heading slot loses the boundary; a
     assert.equal(open.unparsedTail, undefined);
     assert.equal(open.items.some((item) => item.kind === "statement" && item.statement.op === "EDIT" && item.statement.body === "body"), true);
 });
-test("{§turn-shape}: TASK-less programs preserve authored positions without EOF diagnostics", () => {
+test("{§turn-shape}: DONE-less programs preserve authored positions without EOF diagnostics", () => {
     for (const { source, line } of [
         { source: "```sh\ncat <<'EOF'\nhello\nEOF\n```", line: 1 },
         { source: "\r\n```READ (notes.md)```", line: 2 },
@@ -379,7 +374,7 @@ test("{§turn-shape}: TASK-less programs preserve authored positions without EOF
         assert.deepEqual(statement.statement.position, { line, column: 0 }, source);
     }
 });
-test("{§turn-shape}: a TASK-less program retains an independent scope recovery warning", () => {
+test("{§turn-shape}: a DONE-less program retains an independent scope recovery warning", () => {
     const result = PlurnkParser.parse("```READ (notes.md<1,2>)```");
     const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     assert.deepEqual(statements.map(({ op }) => op), ["READ"]);
@@ -393,8 +388,8 @@ test("{§turn-shape}: a TASK-less program retains an independent scope recovery 
     }]);
 });
 // {§turn-shape} {§fence-boundary}
-test("omitted TASK leaves literal nested programs intact", () => {
-    const body = "```SEND\nquoted text\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
+test("omitted DONE leaves literal nested programs intact", () => {
+    const body = "```SEND\nquoted text\n```\n```DONE\n```";
     const result = PlurnkParser.parse(sections(section("EDIT", " (quoted.md)", body)));
     const statements = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     assert.deepEqual(statements.map(({ op }) => op), ["EDIT"]);
@@ -403,20 +398,20 @@ test("omitted TASK leaves literal nested programs intact", () => {
     assert.deepEqual(errors, []);
 });
 test("a disposition inside EDIT is data and does not conclude a turn", () => {
-    const result = PlurnkParser.parse(section("EDIT", " (example.md)", "```TASK\n[{\"content\":\"inspect\",\"status\":\"in_progress\"}]\n```"));
+    const result = PlurnkParser.parse(section("EDIT", " (example.md)", "```NOTE\ninspect\n```"));
     assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["EDIT"]);
     const errors = result.items.filter((item) => item.kind === "error");
     assert.deepEqual(errors, []);
 });
-test("model turns without TASK or SEND stand as written", () => {
+test("model turns without DONE or SEND stand as written", () => {
     const planless = PlurnkParser.parse(sections(
         section("READ", " (worker:///notes.md)"),
-        section("TASK", "", inventory("continue")),
+        section("DONE", "", inventory("continue")),
     ));
     assert.equal(planless.unparsedTail, undefined);
     const planlessStatements = planless.items.flatMap((item) =>
         item.kind === "statement" ? [item.statement] : []);
-    assert.deepEqual(planlessStatements.map(({ op }) => op), ["READ", "TASK"], "no PLAN is synthesized");
+    assert.deepEqual(planlessStatements.map(({ op }) => op), ["READ", "DONE"], "no PLAN is synthesized");
     assert.equal(planless.items.some((item) => item.kind === "error"), false, "no PLAN diagnostic");
 
     const missingTask = PlurnkParser.parse(sections(
@@ -437,15 +432,15 @@ test("example is an executor name, not a transparent document wrapper", () => {
     assert.equal("body" in result ? result.body : null, body);
 });
 test("plurnk is an executor name, not a transparent document wrapper", () => {
-    const body = section("READ", " (notes.md)") + "\n" + section("TASK", "", inventory("done", "completed"));
+    const body = section("READ", " (notes.md)") + "\n" + section("DONE", "", inventory("done"));
     const result = oneStatement(PlurnkParser.frame("plurnk", body));
     assert.equal(isExecution(result) ? result.runtime : null, "plurnk");
     assert.equal("body" in result ? result.body : null, body);
 });
-test("{§fence-heading-in-body}: a four-backtick TASK inside an undelimited executor block is the turn's TASK", () => {
-    const result = PlurnkParser.parseStatements("`````plurnk\n" + section("TASK", "", inventory("done", "completed")), { executors: EXECUTORS });
+test("{§fence-heading-in-body}: a four-backtick DONE inside an undelimited executor block is the turn's DONE", () => {
+    const result = PlurnkParser.parseStatements("`````plurnk\n" + section("DONE", "", inventory("done")), { executors: EXECUTORS });
     assert.equal(result.unparsedTail, undefined);
-    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [writtenOp(item.statement)] : []), ["plurnk", "TASK"]);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [writtenOp(item.statement)] : []), ["plurnk", "DONE"]);
     const exec = result.items.find((item) => item.kind === "statement");
     assert.equal(exec?.kind === "statement" && isExecution(exec.statement) ? exec.statement.body : "?", null, "the executor block ended at the heading with no body");
 });
@@ -456,21 +451,21 @@ test("{§fence-closer}: a longer bare fence closes a shorter undelimited block a
     const exec = result.items.find((item) => item.kind === "statement");
     assert.equal(exec?.kind === "statement" && isExecution(exec.statement) ? exec.statement.body : "?", null);
 });
-test("{§disposition-anywhere}: an operation after TASK is admitted in authored order with no diagnostic", () => {
+test("{§disposition-anywhere}: an operation after DONE is admitted in authored order with no diagnostic", () => {
     const result = PlurnkParser.parse(sections(
-        section("TASK", "", inventory("done", "completed")),
+        section("DONE", "", inventory("done")),
         section("READ", " (late.md)"),
     ));
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     const ops = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-    assert.deepEqual(ops.map(({ op }) => op), ["TASK", "READ"]);
-    assert.deepEqual(ops[0]?.op === "TASK" ? ops[0].body : null, [{ content: "done", status: "completed" }]);
+    assert.deepEqual(ops.map(({ op }) => op), ["DONE", "READ"]);
+    assert.equal(ops[0]?.op === "DONE" ? ops[0].body : null, "done");
 });
 
-test("waiting inventory is a valid TASK body", () => {
+test("WAIT has an optional literal body", () => {
     const result = PlurnkParser.parse(sections(
-        section("TASK", "", inventory("waiting", "waiting")),
+        section("WAIT", "", "waiting"),
     ));
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
 });
@@ -612,7 +607,7 @@ test("duplicate slots are rejected", () => {
 
 // {§heading-inline-body}
 test("body text on the heading line runs as the body and raises one advisory naming the rule", () => {
-    const turn = "\n```EDIT (Engine.ts) <3> replacement text\n```\n\n```TASK\n[{\"content\":\"next\",\"status\":\"in_progress\"}]\n```";
+    const turn = "\n```EDIT (Engine.ts) <3> replacement text\n```\n\n```NOTE\nnext\n```";
     const result = PlurnkParser.parse(turn);
     const edit = result.items.find((item) => item.kind === "statement" && item.statement.op === "EDIT");
     assert.equal(edit?.kind, "statement", "the inline body still dispatches as EDIT");
@@ -624,29 +619,29 @@ test("body text on the heading line runs as the body and raises one advisory nam
     assert.match(advisory.error.message, /body text was on the OP line and was taken as the body/);
     assert.match(advisory.error.message, /body content goes immediately beneath the opening fence line/);
     assert.equal(advisory.error.line, 2, "the advisory points at the heading");
-    const canonical = PlurnkParser.parse("\n```EDIT (Engine.ts) <3>\nreplacement text\n```\n\n```TASK\n[{\"content\":\"next\",\"status\":\"in_progress\"}]\n```");
+    const canonical = PlurnkParser.parse("\n```EDIT (Engine.ts) <3>\nreplacement text\n```\n\n```NOTE\nnext\n```");
     assert.ok(!canonical.items.some((item) => item.kind === "error" && item.error.severity === "warning"), "the canonical two-line form raises nothing");
 });
 
 // {§matcher-option}
 test("{§naked-pattern}: a sigil matcher after the target lifts into pattern; a bare word beneath the heading stays an ignored body with one advisory", () => {
     for (const [op, body, dialect] of [["FIND", "/resolveWorkerPrimary/", "regex"], ["KILL", "~topic", "fts"]] as const) {
-        const result = PlurnkParser.parse(sections(section(op, " (Engine.ts)", body), section("TASK", "", inventory("n"))));
+        const result = PlurnkParser.parse(sections(section(op, " (Engine.ts)", body), section("DONE", "", inventory("n"))));
         assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], op);
         const ops = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        assert.deepEqual(ops.map(({ op: name }) => name), [op, "TASK"]);
+        assert.deepEqual(ops.map(({ op: name }) => name), [op, "DONE"]);
         const matcher = (ops[0] as { matcher?: { dialect?: string; raw?: string } | null }).matcher;
         assert.equal(matcher?.dialect, dialect, `${op}: the sigil names the dialect`);
         assert.equal(matcher?.raw, body);
     }
-    const word = PlurnkParser.parse(sections(section("READ", " (Engine.ts)", "resolveWorkerPrimary"), section("TASK", "", inventory("n"))));
+    const word = PlurnkParser.parse(sections(section("READ", " (Engine.ts)", "resolveWorkerPrimary"), section("DONE", "", inventory("n"))));
     const advisories = word.items.filter((item) => item.kind === "error");
     assert.equal(advisories.length, 1);
     assert.equal(advisories[0]!.kind === "error" ? advisories[0]!.error.severity : null, "warning");
     assert.match(advisories[0]!.kind === "error" ? advisories[0]!.error.message : "", /READ takes no body; the body was ignored/u);
-    assert.deepEqual(word.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "TASK"]);
+    assert.deepEqual(word.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "DONE"]);
     // The inline-heading spelling is the grep spelling and lifts the same way.
-    const inline = PlurnkParser.parse("\n```FIND (Engine.ts) /resolveWorkerPrimary/\n```\n\n```TASK\n[{\"content\":\"next\",\"status\":\"in_progress\"}]\n```");
+    const inline = PlurnkParser.parse("\n```FIND (Engine.ts) /resolveWorkerPrimary/\n```\n\n```NOTE\nnext\n```");
     assert.deepEqual(inline.items.filter((item) => item.kind === "error"), []);
     const find = inline.items.find((item) => item.kind === "statement");
     assert.equal(find?.kind === "statement" ? (find.statement as { matcher?: { raw?: string } | null }).matcher?.raw : null, "/resolveWorkerPrimary/");
@@ -670,7 +665,7 @@ test("a pattern with flags parses; an invalid one drops only its own statement",
         const result = PlurnkParser.parse(sections(
             `\`\`\`FIND (**/*.ts) <1,-1> [{"pattern": "/disabled-rules|comment|lint\\\\s*\\\\(/${flags}"}] <!-- locate entry points -->\`\`\``,
             section("READ", " (package.json)"),
-            section("TASK", "", inventory("inspect")),
+            section("DONE", "", inventory("inspect")),
         ));
         assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], flags);
         const find = result.items.find((item) => item.kind === "statement" && item.statement.op === "FIND");
@@ -679,10 +674,10 @@ test("a pattern with flags parses; an invalid one drops only its own statement",
     const result = PlurnkParser.parse(sections(
         '```FIND (**/*.ts) [{"pattern": "/(/i"}]```',
         section("READ", " (package.json)"),
-        section("TASK", "", inventory("inspect")),
+        section("DONE", "", inventory("inspect")),
     ));
     assert.equal(result.items.filter((item) => item.kind === "error").length, 1);
-    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "TASK"]);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "DONE"]);
 });
 
 // {§misplaced-aside-advisory}
@@ -690,7 +685,7 @@ test("a READ or FIND whose body is only an HTML comment takes it as the aside an
     for (const op of ["READ", "FIND"] as const) {
         const turn = sections(
             section(op, " (Engine.ts) <520,530>", "<!-- Read context around the two matches. -->"),
-            section("TASK", "", inventory("next")),
+            section("DONE", "", inventory("next")),
         );
         const result = PlurnkParser.parse(turn);
         const statement = result.items.find((item) => item.kind === "statement" && item.statement.op === op);
@@ -707,10 +702,10 @@ test("a READ or FIND whose body is only an HTML comment takes it as the aside an
         );
     }
     // a heading aside wins; a body with any other content is ignored with an advisory ({§matcher-option})
-    const kept = PlurnkParser.parse(sections(section("READ", " (Engine.ts) <!-- heading -->", "<!-- body -->"), section("TASK", "", inventory("n"))));
+    const kept = PlurnkParser.parse(sections(section("READ", " (Engine.ts) <!-- heading -->", "<!-- body -->"), section("DONE", "", inventory("n"))));
     const read = kept.items.find((item) => item.kind === "statement" && item.statement.op === "READ");
     assert.equal(read?.kind === "statement" ? read.statement.aside : null, "heading");
-    const ignored = PlurnkParser.parse(sections(section("READ", " (Engine.ts)", "resolveWorkerPrimary"), section("TASK", "", inventory("n"))));
+    const ignored = PlurnkParser.parse(sections(section("READ", " (Engine.ts)", "resolveWorkerPrimary"), section("DONE", "", inventory("n"))));
     assert.ok(ignored.items.some((item) => item.kind === "error" && item.error.severity === "warning" && /READ takes no body/u.test(item.error.message)), "a body that is not a comment is ignored with an advisory");
     assert.ok(ignored.items.some((item) => item.kind === "statement" && item.statement.op === "READ"), "the READ still parses");
 });
@@ -786,12 +781,12 @@ test("a combined anchor and displayed line number reads as the anchor, with one 
     }
 });
 
-test("scope syntax is retained for runtime admission, including unsupported TASK scopes", () => {
-    const terminal = oneStatement(section("TASK", " <30>", "polling"));
-    if (terminal.op !== "TASK") assert.fail("expected TASK");
+test("scope syntax is retained for runtime admission, including unsupported DONE scopes", () => {
+    const terminal = oneStatement(section("DONE", " <30>", "polling"));
+    if (terminal.op !== "DONE") assert.fail("expected DONE");
     assert.deepEqual(terminal.lineMarker, { marks: [30] });
-    const appended = oneStatement(section("TASK", " <-1>", "standing by"));
-    if (appended.op !== "TASK") assert.fail("expected TASK");
+    const appended = oneStatement(section("DONE", " <-1>", "standing by"));
+    if (appended.op !== "DONE") assert.fail("expected DONE");
     assert.deepEqual(appended.lineMarker, { marks: [-1] });
     const exec = oneStatement("```node (./) <60,5>\ncommand\n```");
     if (!isExecution(exec)) assert.fail("expected an execution");
@@ -1158,28 +1153,28 @@ test("diagnostics do not leak ANTLR implementation vocabulary", () => {
 
 test("body punctuation and Markdown remain opaque", () => {
     for (const input of [
-        section("TASK", "", "array[0] and a stray ] bracket"),
-        section("TASK", "", '{"expected":["a","b"],"got":[1,2]}'),
-        section("TASK", "", "]]]) }{[ <> mixed"),
+        section("DONE", "", "array[0] and a stray ] bracket"),
+        section("DONE", "", '{"expected":["a","b"],"got":[1,2]}'),
+        section("DONE", "", "]]]) }{[ <> mixed"),
         section("EDIT", " (a.md)", "x = arr[0] + (y) + {z}"),
         section("SEND", " (worker://parent)", "result ] arr[0]"),
-        section("TASK", "", "# User heading\n\n- one\n- two"),
+        section("DONE", "", "# User heading\n\n- one\n- two"),
     ]) {
-        assert.equal(["SEND", "EDIT", "TASK", "TASK"].includes(writtenOp(oneStatement(input))), true, input);
+        assert.equal(["SEND", "EDIT", "DONE", "DONE"].includes(writtenOp(oneStatement(input))), true, input);
     }
 });
 
-test("parse accepts one TASK-terminated turn and rejects another TASK in that turn", () => {
+test("parse accepts one DONE-terminated turn and rejects another DONE in that turn", () => {
     const turn = sections(
         section("READ", " (worker:///x)"),
-        section("TASK", "", inventory("done", "completed")),
+        section("DONE", "", inventory("done")),
     );
     const result = PlurnkParser.parse(turn);
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     assert.equal(result.unparsedTail, undefined);
 
     const twoTurns = sections(turn, sections(
-        section("TASK", "", inventory("done again", "completed")),
+        section("DONE", "", inventory("done again")),
     ));
     const invalid = PlurnkParser.parse(twoTurns);
     assert.ok(invalid.items.some((item) => item.kind === "error") || invalid.unparsedTail !== undefined);
@@ -1188,15 +1183,15 @@ test("parse accepts one TASK-terminated turn and rejects another TASK in that tu
 test("parseLog accepts direct consecutive turns and flattens them in order", () => {
     const input = sections(
         section("READ", " (worker:///x)"),
-        section("TASK", "", inventory("reading")),
-        section("TASK", "", inventory("done", "completed")),
+        section("DONE", "", inventory("reading")),
+        section("DONE", "", inventory("done")),
     );
     const result = PlurnkParser.parseLog(input);
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(
         result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []),
-        ["READ", "TASK", "TASK"],
+        ["READ", "DONE", "DONE"],
     );
 });
 

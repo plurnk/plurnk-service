@@ -15,10 +15,10 @@ for (const op of ["WORK", "FORK"]) {
             makeMockResponse(`\`\`\`${op} (worker://late-child)
 Do the delegated task.
 \`\`\`
-\`\`\`TASK
-[{"content":"Wait for the child.","status":"waiting"}]
+\`\`\`WAIT
+Wait for the child.
 \`\`\``),
-            makeMockResponse("```TASK\n[{\"content\":\"Child task is still running.\",\"status\":\"waiting\"}]\n```"),
+            makeMockResponse("```WAIT\nChild task is still running.\n```"),
         ] });
         await withDaemon(provider, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: `cancel-late-${op}` });
@@ -64,8 +64,8 @@ Do the delegated task.
 
 test("{§worker-lifecycle-no-resurrection}: scope cancellation retires unread arrivals on a completed task across restart", async (t) => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("```SEND\nFinished the original request.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
-        makeMockResponse("```SEND\nIndependent new request completed.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+        makeMockResponse("```SEND\nFinished the original request.\n```\n```DONE\n```"),
+        makeMockResponse("```SEND\nIndependent new request completed.\n```\n```DONE\n```"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-prompt-promotion" });
@@ -135,10 +135,10 @@ test("{§worker-lifecycle-no-resurrection}: scope cancellation retires unread ar
 for (const recipientState of ["idle", "parked"]) {
     test(`{§worker-lifecycle-no-resurrection}: cancelled SEND cannot deliver to a ${recipientState} recipient`, async (t) => {
         t.mock.method(Dispatcher.prototype, "hasLiveWork", async () => true);
-        const wait = makeMockResponse("```TASK\n[{\"content\":\"Waiting for a message.\",\"status\":\"waiting\"}]\n```");
+        const wait = makeMockResponse("```WAIT\nWaiting for a message.\n```");
         const provider = new Mock({ contextWindow: 100000, responses: [
             ...(recipientState === "parked" ? [wait] : []),
-            makeMockResponse("```SEND (worker://recipient)\nThis message must not escape cancellation.\n```\n```SEND\nSent.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            makeMockResponse("```SEND (worker://recipient)\nThis message must not escape cancellation.\n```\n```SEND\nSent.\n```\n```DONE\n```"),
             wait,
         ] });
         await withDaemon(provider, async (db, daemon) => {

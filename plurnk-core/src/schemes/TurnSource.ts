@@ -13,13 +13,13 @@ import { resolveSearchCandidates } from "./_search-candidate.ts";
 
 type Source = { pathname: string; content: string; deep_hash: string | null };
 
-// {§turn-source-resources}: two read-only views of the current worker's history.
+// {§turn-source-resources}: read-only source views of the current worker's history.
 export default class TurnSource extends CoreSchemeAdapterBase implements CoreRepresentationProvider {
     readonly manifest: SchemeManifest;
-    readonly #kind: "ops" | "reasoning";
+    readonly #kind: "ops" | "reasoning" | "note";
     readonly #mimetype: string;
 
-    constructor(kind: "ops" | "reasoning") {
+    constructor(kind: "ops" | "reasoning" | "note") {
         super();
         this.#kind = kind;
         this.#mimetype = kind === "ops" ? "text/vnd.plurnk" : "text/plain";
@@ -41,18 +41,19 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
     async resolveCoreRepresentation(target: ParsedPath | null, context: CoreSchemeCallContext): Promise<CoreRepresentationResolution> {
         const { db, workerId } = this.coreContext(context);
         const pathname = target?.kind === "url" ? target.pathname : target?.raw;
-        const coordinate = /^\/(\d+)\/(\d+)\/?$/.exec(pathname ?? "");
+        const coordinate = (this.#kind === "note" ? /^\/(\d+)\/(\d+)\/(\d+)\/?$/ : /^\/(\d+)\/(\d+)\/?$/).exec(pathname ?? "");
         if (!this.#local(target) || coordinate === null) return { result: this.#failure(
-            400, "coordinate-malformed", `Use ${this.#kind}:///<loop>/<turn>.`,
+            400, "coordinate-malformed", `Use ${this.#kind}:///<loop>/<turn>${this.#kind === "note" ? "/<item>" : ""}.`,
         ) };
         const row = await db.turn_source_read.get<{ content: string | null }>({
             worker_id: workerId, loop_seq: Number(coordinate[1]), turn_seq: Number(coordinate[2]), kind: this.#kind,
+            sequence: Number(coordinate[3] ?? 0),
         });
-        if (row === undefined) return { result: this.#failure(404, "entry-not-found", `No turn exists at ${target.raw}.`) };
+        if (row === undefined) return { result: this.#failure(404, "entry-not-found", `No ${this.#kind} source exists at ${target.raw}.`) };
         // An existing turn without a source of this kind is empty, not missing: the coordinate is
         // real, the provider simply returned nothing there.
         return {
-            identity: `${this.#kind}:///${coordinate[1]}/${coordinate[2]}`,
+            identity: `${this.#kind}:///${coordinate.slice(1).join("/")}`,
             representation: { channels: { body: { content: row.content ?? "", mimetype: this.#mimetype, state: "static" } } },
         };
     }

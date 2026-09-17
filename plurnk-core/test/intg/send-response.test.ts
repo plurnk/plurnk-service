@@ -8,13 +8,13 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, makeRawMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
-const DONE = "```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```";
+const DONE = "```DONE\n```";
 
 // The 2026-09-11 dogfood, verbatim in shape: every operation on the line after its fence.
 const MISFENCED = [
     "````\nsh <!-- brand presence -->\nprintf plurnk\n````",
     "````\nREAD (https://example.invalid/) <!-- retry; 530 was marked retryable after 120s -->\n````",
-    "````\nTASK\n[{\"content\": \"Research positioning\", \"status\": \"in_progress\"}]\n````",
+    "````\nDONE\n[{\"content\": \"Research positioning\", \"status\": \"in_progress\"}]\n````",
 ].join("\n\n");
 
 test("{§empty-turn}: operations on the line after a bare fence make an empty turn with the advisories as notices; nothing runs", async () => {
@@ -31,7 +31,7 @@ test("{§empty-turn}: operations on the line after a bare fence make an empty tu
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; turn_id: number }>({ loop_id: loopId });
             const model = rows.filter((r) => r.origin === "model");
-            assert.deepEqual(model.map(({ op }) => op), ["SEND", "TASK"], "only the corrected turn produced operations");
+            assert.deepEqual(model.map(({ op }) => op), ["SEND", "DONE"], "only the corrected turn produced operations");
             assert.ok(!model.some((r) => isExecutionOp(r.op) || r.op === "READ"), "nothing ran: prose is never promoted into an operation");
             const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: model[0]!.turn_id });
             assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "the corrected turn was admitted on its first attempt: the empty turn before it was never resampled");

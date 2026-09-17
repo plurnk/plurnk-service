@@ -68,14 +68,11 @@ test("{§agui-official-client-conformance} the official client accepts a real da
         const reply = agent.messages.findLast(({ role }) => role === "assistant");
         assert.ok(reply);
         assert.equal(reply.content, "The installed one-shot journey is complete.");
-        const plan = agent.messages.findLast(({ role }) => role === "activity");
-        assert.ok(plan);
-        assert.deepEqual(plan, {
-            id: plan.id,
-            role: "activity",
-            activityType: "PLAN",
-            content: { entries: [{ content: "Task completed.", status: "completed", priority: "medium" }] },
-        });
+        assert.equal(agent.messages.some(({ role }) => role === "activity"), false, "lifecycle verbs do not invent an ACP Plan");
+        const rows = events.filter((event) => event.type === EventType.CUSTOM && (event as { name?: string }).name === "plurnk.row")
+            .map((event) => (event as unknown as { value: { op: string; origin: string } }).value);
+        assert.ok(rows.some(({ op, origin }) => op === "NOTE" && origin === "_plurnk"), "the initialization note remains an ordinary operation");
+        assert.ok(rows.some(({ op, origin }) => op === "DONE" && origin === "model"), "the ordinary row channel retains the lifecycle declaration");
         assert.equal(fixture.requests.length, 1, "one actual inference request completes the run");
         assert.equal(fixture.requests[0].journey, "cli");
 

@@ -36,7 +36,7 @@ test("a client run's arrival row names its AG-UI message as the causal source", 
     ]);
     const provider = new Mock({
         contextWindow: 32768,
-        responses: [makeMockResponse("```SEND\nNamed.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10)],
+        responses: [makeMockResponse("```SEND\nNamed.\n```\n```DONE\n```", 10)],
     });
     const db = await openTestDatabase();
     const root = await mkdtemp(join(tmpdir(), "plurnk-run-source-"));

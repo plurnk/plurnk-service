@@ -191,7 +191,7 @@ test("{§bare-inference}: resource prompts bypass line and size preview caps aft
                 "```BARE (worker:///prompt.md)",
                 "Compare these findings.",
                 "```",
-                "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```",
+                "```NOTE\nContinue the task.\n```",
             ].join("\n"))] }),
         });
         assert.equal(result.status, 102);
@@ -200,7 +200,7 @@ test("{§bare-inference}: resource prompts bypass line and size preview caps aft
             [{ role: "user", content: `${prompt}\n\nCompare these findings.` }],
         ]);
         assert.equal(child.maxActive, 2);
-        assert.deepEqual(result.outcomes.map(({ op }) => op), ["EDIT", "BARE", "BARE", "TASK"], "source reads do not mint extra log receipts");
+        assert.deepEqual(result.outcomes.map(({ op }) => op), ["EDIT", "BARE", "BARE", "NOTE"], "source reads do not mint extra log receipts");
     } finally { await db.close(); }
 });
 
@@ -217,7 +217,7 @@ test("{§bare-inference}: missing resources preserve the source error without ca
                 "```BARE",
                 "survivor",
                 "```",
-                "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```",
+                "```NOTE\nContinue the task.\n```",
             ].join("\n"))] }),
         });
         assert.deepEqual(child.completions, ["survivor"]);
@@ -261,7 +261,7 @@ test("{§bare-inference}: cancellation during source preparation leaves no unsta
                 "```BARE",
                 "last prompt",
                 "```",
-                "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```",
+                "```NOTE\nContinue the task.\n```",
             ].join("\n"))] }),
         }), (error: unknown) => error === cancellation);
         assert.equal(child.calls.length, 0);
@@ -294,7 +294,7 @@ for (const [denied, target] of [
                     "```BARE" + target,
                     "inline prompt",
                     "```",
-                    "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```",
+                    "```NOTE\nContinue the task.\n```",
                 ].join("\n"))] }),
             });
             assert.equal(child.calls.length, 0);
@@ -317,7 +317,7 @@ test("{§bare-inference}: a log prompt uses only retained source lines", async (
                 "last",
                 "```",
                 "```READ (worker:///source.md) <1,-1>```",
-                "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```",
+                "```NOTE\nContinue the task.\n```",
             ].join("\n"))] }),
         });
         const rows = await db.test_log_entries_by_turn.all<{ op: string; sequence: number }>({ turn_id: first.turnId });
@@ -332,7 +332,7 @@ test("{§bare-inference}: a log prompt uses only retained source lines", async (
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
                 "```KILL (" + (address) + ") <2>```",
                 "```BARE (" + (address) + ")```",
-                "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```",
+                "```NOTE\nContinue the task.\n```",
             ].join("\n"))] }),
         });
         assert.deepEqual(second.outcomes.filter(({ op }) => op === "BARE"), [{ op: "BARE", status: 200, problemType: null }]);
@@ -357,7 +357,7 @@ for (const [target, status, problem] of [
                     "```",
                     "```BARE" + (target === null ? "" : ` (${target})`),
                     "```",
-                    "```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```",
+                    "```NOTE\nContinue the task.\n```",
                 ].join("\n"))] }),
             });
             const [bare] = result.outcomes.filter(({ op }) => op === "BARE");
@@ -381,12 +381,12 @@ test("{§bare-inference}: an intervening operation separates concurrent BARE gro
         };
         const result = await engine.runTurn({
             workspaceId, workerId, loopId, messages: [], childProvider: child,
-            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse("```BARE\nbefore\n```\n```EDIT (worker:///between)\nwritten\n```\n```BARE\nafter\n```\n```TASK\n[{\"content\":\"Continue the task.\",\"status\":\"in_progress\"}]\n```")] }),
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse("```BARE\nbefore\n```\n```EDIT (worker:///between)\nwritten\n```\n```BARE\nafter\n```\n```NOTE\nContinue the task.\n```")] }),
         });
         assert.equal(result.status, 102);
         assert.deepEqual(observed, [undefined, "written"]);
         assert.deepEqual(child.completions, ["before", "after"]);
-        assert.deepEqual(result.outcomes.map(({ op }) => op), ["BARE", "EDIT", "BARE", "TASK"]);
+        assert.deepEqual(result.outcomes.map(({ op }) => op), ["BARE", "EDIT", "BARE", "NOTE"]);
     } finally { await db.close(); }
 });
 
@@ -396,7 +396,7 @@ test("BARE calls receive only their body prompts, run in parallel, and commit in
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse("```BARE\nslow\n```\n\n```BARE\nfast\n```\n\n```TASK\n[{\"content\":\"Observe both responses next turn.\",\"status\":\"in_progress\"}]\n```")],
+            responses: [mainResponse("```BARE\nslow\n```\n\n```BARE\nfast\n```\n\n```NOTE\nObserve both responses next turn.\n```")],
         });
         const child = new BareWitness(2);
 
@@ -476,7 +476,7 @@ test("loop cancellation reaches every concurrent BARE call before the batch esca
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse("```BARE\nfirst\n```\n\n```BARE\nsecond\n```\n\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```")],
+            responses: [mainResponse("```BARE\nfirst\n```\n\n```BARE\nsecond\n```\n\n```NOTE\ncontinue\n```")],
         });
         const child = new CancellingBareWitness(2);
         const controller = new AbortController();
@@ -508,7 +508,7 @@ test("one BARE provider failure is an ordered operation result and does not canc
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse("```BARE\nfail\n```\n\n```BARE\nok\n```\n\n```TASK\n[{\"content\":\"Inspect the isolated failure and success.\",\"status\":\"in_progress\"}]\n```")],
+            responses: [mainResponse("```BARE\nfail\n```\n\n```BARE\nok\n```\n\n```NOTE\nInspect the isolated failure and success.\n```")],
         });
         const child = new BareWitness(2, "fail");
 
@@ -539,7 +539,7 @@ test("a same-turn BARE response is unseen retrieval work and defers completion",
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse("```BARE\nquestion\n```\n\n```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```")],
+            responses: [mainResponse("```BARE\nquestion\n```\n\n```SEND\ndone\n```\n```DONE\n```")],
         });
         const child = new BareWitness(1);
         const result = await engine.runTurn({
@@ -551,22 +551,21 @@ test("a same-turn BARE response is unseen retrieval work and defers completion",
             messages: [{ role: "user", content: "ask isolated questions" }],
         });
         assert.equal(result.status, 102);
-        assert.deepEqual(result.outcomes.filter(({ op }) => op === "TASK"), [{ op: "TASK", status: 102, problemType: null }], "deferred, never refused ({§completion-defers-to-results})");
+        assert.deepEqual(result.outcomes.filter(({ op }) => op === "DONE"), [{ op: "DONE", status: 102, problemType: null }], "deferred, never refused ({§completion-defers-to-results})");
     } finally {
         await db.close();
     }
 });
 
-for (const state of ["in_progress", "waiting", "completed"] as const) {
-    test(`{§bare-inference} {§disposition-anywhere}: BARE after TASK ${state} runs before the disposition`, async () => {
+for (const state of ["WAIT", "DONE", "FAIL"] as const) {
+    test(`{§bare-inference} {§disposition-anywhere}: BARE after ${state} runs before the disposition`, async () => {
         const { db, workspaceId, workerId, loopId, engine } = await setup();
         try {
             const child = new BareWitness(1);
             const result = await engine.runTurn({
                 provider: new Mock({
                     contextWindow: 32_768,
-                    responses: [mainResponse(`\`\`\`TASK
-${JSON.stringify([{ content: "Observe the answer.", status: state }])}
+                    responses: [mainResponse(`\`\`\`${state}
 \`\`\`
 \`\`\`BARE
 question
@@ -579,11 +578,11 @@ question
                 messages: [],
             });
             assert.equal(result.status, 102);
-            assert.deepEqual(child.completions, ["question"], "the isolated call was made although BARE was authored after TASK");
-            assert.deepEqual(result.outcomes.map(({ op }) => op), ["BARE", "TASK"], "the disposition is scheduled last");
+            assert.deepEqual(child.completions, ["question"], "the isolated call was made although BARE was authored after the disposition");
+            assert.deepEqual(result.outcomes.map(({ op }) => op), ["BARE", state], "the disposition is scheduled last");
             // A completion over the unseen BARE result defers ({§completion-defers-to-results}); the
-            // other inventories continue: every state answers 102 without a Problem.
-            assert.deepEqual(result.outcomes.filter(({ op }) => op === "TASK"), [{ op: "TASK", status: 102, problemType: null }]);
+            // wait also continues: every state answers 102 without a Problem.
+            assert.deepEqual(result.outcomes.filter(({ op }) => op === state), [{ op: state, status: 102, problemType: null }]);
         } finally {
             await db.close();
         }

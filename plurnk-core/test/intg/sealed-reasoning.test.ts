@@ -37,8 +37,8 @@ test("core preserves opaque state only in provider evidence while readable reaso
         const loopId = await insertLoop(db, workerId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            { assistant: { content: "```SEND\nProgress.\n```\n```TASK\n[{\"content\":\"one\",\"status\":\"in_progress\"}]\n```", reasoning: "readable provider reasoning", reasoningEncrypted: [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }] } },
-            { assistant: { content: "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", reasoning: null } },
+            { assistant: { content: "```SEND\nProgress.\n```\n```NOTE\none\n```", reasoning: "readable provider reasoning", reasoningEncrypted: [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }] } },
+            { assistant: { content: "```SEND\ndone\n```\n```DONE\n```", reasoning: null } },
         ] as never });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
 
@@ -54,11 +54,11 @@ test("core preserves opaque state only in provider evidence while readable reaso
 
         const refs = await db.test_log_entries_by_worker.all<{ id: number; turn_id: number }>({ worker_id: workerId });
         const wires = await Promise.all(refs.filter(({ turn_id }) => turn_id === t1.turnId).map(({ id }) => LogEntry.fetchLogEntry(db, id)));
-        for (const op of ["SEND", "TASK"]) {
+        for (const op of ["SEND", "NOTE"]) {
             assert.equal(wires.find((row) => row.op === op && row.origin === "model")?.reasoning, "readable provider reasoning",
                 `${op} derives readable reasoning from the admitted packet`);
         }
-        assert.ok(wires.filter(({ op }) => op !== "SEND" && op !== "TASK").every((wire) => !Object.hasOwn(wire, "reasoning")), "non-conversational rows do not project provider reasoning");
+        assert.ok(wires.filter(({ op }) => op !== "SEND" && op !== "NOTE").every((wire) => !Object.hasOwn(wire, "reasoning")), "other operation rows do not project provider reasoning");
 
         // 2. Cross-lane conformance: real core rows → hydration → AG-UI Translator.
         const events = await projectThroughAgui(db, workerId, t1.turnId);
@@ -71,7 +71,7 @@ test("core preserves opaque state only in provider evidence while readable reaso
         const readable = events.find((e) => e.type === "REASONING_MESSAGE_CONTENT") as { delta?: string } | undefined;
         assert.equal(readable?.delta, "readable provider reasoning", "admitted readable reasoning reaches AG-UI through the derived SEND projection");
         assert.equal(events.filter(({ type }) => type === "REASONING_MESSAGE_CONTENT").length, 1,
-            "the same turn's SEND and TASK do not duplicate its reasoning");
+            "the same turn's SEND and DONE do not duplicate its reasoning");
         assert.ok(events.findIndex(({ type }) => type === "REASONING_MESSAGE_CONTENT")
             < events.findIndex(({ type }) => type === "TEXT_MESSAGE_START"), "reasoning precedes the first speech");
 
@@ -93,7 +93,7 @@ test("multiple encrypted-reasoning items remain distinct forensic evidence witho
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const A = `${BLOB}-A`, B = `${BLOB}-B`;
         const provider = new Mock({ contextWindow: 100000, responses: [
-            { assistant: { content: "```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", reasoning: null, reasoningEncrypted: [
+            { assistant: { content: "```SEND\ndone\n```\n```DONE\n```", reasoning: null, reasoningEncrypted: [
                 { id: "rs_a", subtype: "message", encrypted: [{ data: A, format: "openai-responses-v1" }] },
                 { id: "rs_b", subtype: "message", encrypted: [{ data: B, format: "openai-responses-v1" }] },
             ] } },

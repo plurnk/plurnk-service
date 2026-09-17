@@ -27,9 +27,9 @@ const providerAt = (capacity: number, responses: MockResponse[]): Mock => {
         else process.env.PLURNK_PROVIDERS_REASONING_BUDGET = reasoning;
     }
 };
-const continuing = '```TASK\n[{"content":"Review the evidence.","status":"in_progress"}]\n```';
+const continuing = "```NOTE\nReview the evidence.\n```";
 
-test("{§context-output-admission}: oversized output is withheld in the same inference turn, retained READable, and never replaces TASK", async () => {
+test("{§context-output-admission}: oversized output is withheld in the same inference turn, retained READable, and never replaces NOTE", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `output-admission-${crypto.randomUUID()}`);
@@ -61,7 +61,7 @@ test("{§context-output-admission}: oversized output is withheld in the same inf
         assert.equal((warning.match(/YOU MUST/gu) ?? []).length, 1);
         assert.ok(packet.weight <= 12_000, "warning and omission metadata fit within the measured budget");
         assert.equal(packetSection(packet, "notices"), "");
-        const task = logEntries(packet).find((row) => String(row.path).startsWith(`log:///1/${firstTurn!.sequence}/`) && String(row.path).endsWith("/TASK"))!;
+        const task = logEntries(packet).find((row) => String(row.path).startsWith(`log:///1/${firstTurn!.sequence}/`) && String(row.path).endsWith("/NOTE"))!;
         assert.match(String(task.body), /Review the evidence/);
         assert.doesNotMatch(String(task.body), /KILL/);
         const retained = await engine.look({ statement: readStmt(urlPath("log", path), { marks: [2, 3] }), workspaceId, workerId, loopId });
@@ -185,19 +185,19 @@ test("{§context-output-hard-413}: an impossible floor terminates the loop witho
         assert.equal(turn!.status, 413);
         assert.equal(turn!.packet, null, "a request that was never submitted is not provider evidence");
         const rows = await db.test_log_entries_by_turn.all<{ op: string }>({ turn_id: result.turnIds.at(-1)! });
-        assert.ok(rows.every(({ op }) => op !== "TASK" && op !== "KILL"), "no recovery inventory or curation program is manufactured");
+        assert.ok(rows.every(({ op }) => !["WAIT", "DONE", "FAIL", "KILL"].includes(op)), "no recovery disposition or curation program is manufactured");
     } finally { await db.close(); }
 });
 
-test("{§context-output-selection}: prior admitted output and an oversized authored TASK are never automatically pruned", async () => {
+test("{§context-output-selection}: prior admitted output and an oversized authored NOTE are never automatically pruned", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `output-authorship-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const task = JSON.stringify([{ content: "Remember ".repeat(5000), status: "in_progress" }]);
-        const wide = providerAt(999_000, [response(`\`\`\`TASK\n${task}\n\`\`\``)]);
+        const note = "Remember ".repeat(5000);
+        const wide = providerAt(999_000, [response(`\`\`\`NOTE\n${note}\n\`\`\``)]);
         const first = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: wide });
         const before = await db.engine_render_log.all({ worker_id: workerId });
         const small = providerAt(12_000, [response(continuing)]);
@@ -208,8 +208,8 @@ test("{§context-output-selection}: prior admitted output and an oversized autho
         const after = await db.engine_render_log.all({ worker_id: workerId });
         assert.deepEqual(after, before, "authored state cannot be removed to manufacture a fit");
         const rows = await db.test_log_entries_by_turn.all<{ op: string; tx: string; folded: string }>({ turn_id: first.turnId });
-        assert.equal(rows.find(({ op }) => op === "TASK")!.folded, "[]");
-        assert.equal(JSON.stringify(JSON.parse(rows.find(({ op }) => op === "TASK")!.tx).body), task);
+        assert.equal(rows.find(({ op }) => op === "NOTE")!.folded, "[]");
+        assert.equal(JSON.parse(rows.find(({ op }) => op === "NOTE")!.tx).body, note);
     } finally { await db.close(); }
 });
 

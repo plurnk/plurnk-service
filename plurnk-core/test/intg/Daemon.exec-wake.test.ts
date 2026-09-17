@@ -19,13 +19,13 @@ import { insertWorker, openMigrated, fixtureExecutors } from "./_helpers.ts";
 // park/wake decision remains the controlled variable.
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
-const execDsl = (command: string, status: "waiting" | "in_progress" = "waiting"): string =>
+const execDsl = (command: string, disposition: "WAIT" | "NOTE" = "WAIT"): string =>
     `\`\`\`sh
 ${command}
 \`\`\`
 
-\`\`\`TASK
-[{"content":"Observe the command","status":"${status}"}]
+\`\`\`${disposition}
+Observe the command.
 \`\`\``;
 
 const mockResponse = (dsl: string) => {
@@ -41,8 +41,8 @@ const mockResponse = (dsl: string) => {
 
 test("{§worker-lifecycle-wake-liveness}: a peer can cancel a workspace stream and wake its initiating waiting worker", async () => {
     const mock = new Mock({ contextWindow: 65536, responses: [
-        mockResponse("```sh\nsleep 30\n```\n```TASK\n[{\"content\":\"Wait for the command's outcome.\",\"status\":\"waiting\"}]\n```"),
-        mockResponse("```SEND\nThe command was cancelled.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+        mockResponse("```sh\nsleep 30\n```\n```WAIT\nWait for the command's outcome.\n```"),
+        mockResponse("```SEND\nThe command was cancelled.\n```\n```DONE\n```"),
     ] });
     await withDaemon(mock, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-stream-not-worker" });
@@ -89,8 +89,8 @@ test("{§notifications-stream-concluded}: a pending completion wake is not repor
         finally { settled.resolve(); }
     });
     const provider = new Mock({ contextWindow: 65536, responses: [
-        mockResponse("```sh\nsleep 30\n```\n```TASK\n[{\"content\":\"Wait for the command.\",\"status\":\"waiting\"}]\n```"),
-        mockResponse("```SEND\nA cancelled task must not reach this turn.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+        mockResponse("```sh\nsleep 30\n```\n```WAIT\nWait for the command.\n```"),
+        mockResponse("```SEND\nA cancelled task must not reach this turn.\n```\n```DONE\n```"),
     ] });
     await withDaemon(provider, async (db, daemon, addr) => {
         const ws = await connect(addr);
@@ -131,13 +131,13 @@ test("{§methods-loop-run-model}: an async wake resumes with the loop's durable 
     const releasePath = join(releaseDir, "release");
     const boot = new Mock({
         contextWindow: 16384,
-        responses: [mockResponse("```SEND\nboot provider must never run this loop\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```")],
+        responses: [mockResponse("```SEND\nboot provider must never run this loop\n```\n```FAIL\n```")],
     });
     const selected = new Mock({
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl(`while [ ! -f '${releasePath}' ]; do sleep 0.05; done; echo selected`)),
-            mockResponse("```SEND\nresumed on selected provider\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            mockResponse("```SEND\nresumed on selected provider\n```\n```DONE\n```"),
         ],
     });
     const selectedSpec = { alias: "wakeb", provider: "openai", model: "wake-provider-b" } as const;
@@ -201,14 +201,14 @@ test("{§methods-loop-run-model}: a selector-less continuation resumes the loop'
     const releasePath = join(releaseDir, "release");
     const boot = new Mock({
         contextWindow: 16384,
-        responses: [mockResponse("```SEND\nboot provider must never run this loop\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```")],
+        responses: [mockResponse("```SEND\nboot provider must never run this loop\n```\n```FAIL\n```")],
     });
     const selected = new Mock({
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl(`while [ ! -f '${releasePath}' ]; do sleep 0.05; done; echo selected`)),
-            mockResponse("```TASK\n[{\"content\":\"awaiting the exec before concluding\",\"status\":\"in_progress\"}]\n```"),
-            mockResponse("```SEND\nresumed on selected provider\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            mockResponse("```NOTE\nawaiting the exec before concluding\n```"),
+            mockResponse("```SEND\nresumed on selected provider\n```\n```DONE\n```"),
         ],
     });
     const selectedSpec = { alias: "wakedefault", provider: "openai", model: "wake-provider-b" } as const;
@@ -254,13 +254,13 @@ test("{§methods-loop-run-model}: a selector-less continuation resumes the loop'
 test("{§methods-loop-run-model}: a parked loop retains its provider across daemon restart", async (t) => {
     const boot = new Mock({
         contextWindow: 16384,
-        responses: [mockResponse("```SEND\nboot provider must remain unused\n```\n```TASK\n[{\"content\":\"Task failed.\",\"status\":\"failed\"}]\n```")],
+        responses: [mockResponse("```SEND\nboot provider must remain unused\n```\n```FAIL\n```")],
     });
     const selected = new Mock({
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl("sleep 30")),
-            mockResponse("```SEND\nresumed after restart on selected provider\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            mockResponse("```SEND\nresumed after restart on selected provider\n```\n```DONE\n```"),
         ],
     });
     const selectedSpec = { alias: "restartb", provider: "openai", model: "restart-provider-b" } as const;
@@ -344,7 +344,7 @@ test("{§methods-loop-run-model}: a parked loop retains its provider across daem
 });
 
 test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, no summary-as-prompt", async () => {
-    // First loop: execution echo + waiting TASK — the loop SLEEPS while the
+    // First loop: execution echo + WAIT — the loop SLEEPS while the
     // spawn runs on. When the spawn concludes (a stream-status transition to terminal,
     // {§actor-boundary-passive-wake}), the daemon AWAKENS that same loop in place —
     // never a fresh loop with a synthetic summary prompt. The resumed loop reads
@@ -353,7 +353,7 @@ test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, n
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl("sleep 0.05; echo hi")),
-            mockResponse("```SEND\nsaw the wake\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            mockResponse("```SEND\nsaw the wake\n```\n```DONE\n```"),
         ],
     });
 
@@ -419,7 +419,7 @@ test("wake-on-completion preserves the durable loop's cumulative maxTurns ceilin
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl("sleep 0.05; echo ceiling")),
-            mockResponse("```SEND\nmust not receive a second model turn\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            mockResponse("```SEND\nmust not receive a second model turn\n```\n```DONE\n```"),
         ],
     });
 
@@ -454,18 +454,18 @@ test("wake-on-completion preserves the durable loop's cumulative maxTurns ceilin
 });
 
 test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op-active-loop)", async () => {
-    // Loop emits exec + an in_progress TASK per turn — the loop
+    // Loop emits exec + an NOTE per turn — the loop
     // stays active across multiple turns. The exec finishes mid-loop;
     // wake should see active loop and skip.
-    const continueResponse = mockResponse("```TASK\n[{\"content\":\"thinking\",\"status\":\"in_progress\"}]\n```");
+    const continueResponse = mockResponse("```NOTE\nthinking\n```");
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse(execDsl("echo soon", "in_progress")),
+            mockResponse(execDsl("echo soon", "NOTE")),
             continueResponse,
             continueResponse,
             continueResponse,
-            mockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            mockResponse("```SEND\ndone\n```\n```DONE\n```"),
         ],
     });
 
@@ -503,9 +503,9 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse("```sh\nfor i in 5 4 3 2 1; do echo $i; sleep 0.4; done\n```\n\n```TASK\n[{\"content\":\"fire and forget\",\"status\":\"waiting\"}]\n```"),
+            mockResponse("```sh\nfor i in 5 4 3 2 1; do echo $i; sleep 0.4; done\n```\n\n```WAIT\nfire and forget\n```"),
             // Wake-opened loop just terminates so the test completes:
-            mockResponse("```SEND\nsaw the wake\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            mockResponse("```SEND\nsaw the wake\n```\n```DONE\n```"),
         ],
     });
 
@@ -561,8 +561,8 @@ test("wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-a
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse("```sh\nsleep 30\n```\n\n```TASK\n[{\"content\":\"running\",\"status\":\"in_progress\"}]\n```"),
-            mockResponse("```SEND\nnever\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            mockResponse("```sh\nsleep 30\n```\n\n```NOTE\nrunning\n```"),
+            mockResponse("```SEND\nnever\n```\n```DONE\n```"),
         ],
     });
 
@@ -612,8 +612,8 @@ test("loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            mockResponse("```sh\nprintf 'a\\nb\\n'; sleep 30\n```\n\n```TASK\n[{\"content\":\"running\",\"status\":\"in_progress\"}]\n```"),
-            mockResponse("```SEND\nnever\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            mockResponse("```sh\nprintf 'a\\nb\\n'; sleep 30\n```\n\n```NOTE\nrunning\n```"),
+            mockResponse("```SEND\nnever\n```\n```DONE\n```"),
         ],
     });
 

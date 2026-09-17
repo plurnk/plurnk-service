@@ -79,7 +79,7 @@ test("{§safe-uri-target-groups}: one admitted READ dispatches every explicit UR
         });
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [response("\n```READ (worker:///alpha.md worker:///beta.md)```\n```TASK\n[{\"content\":\"Both reads are pending review.\",\"status\":\"in_progress\"}]\n```")],
+            responses: [response("\n```READ (worker:///alpha.md worker:///beta.md)```\n```NOTE\nBoth reads are pending review.\n```")],
         });
 
         const result = await engine.runTurn({
@@ -117,7 +117,7 @@ test("{§safe-uri-target-groups}: one admitted scoped KILL curates every explici
         const secondId = await seedLogRead(db, workerId, loopId, sourceTurnId, 2);
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [response("\n```KILL (log:///1/1/1/READ, log:///1/1/2/READ) <1,-1>```\n```TASK\n[{\"content\":\"Both read bodies are suppressed.\",\"status\":\"in_progress\"}]\n```")],
+            responses: [response("\n```KILL (log:///1/1/1/READ, log:///1/1/2/READ) <1,-1>```\n```NOTE\nBoth read bodies are suppressed.\n```")],
         });
 
         const result = await engine.runTurn({
@@ -149,7 +149,7 @@ test("{§safe-uri-target-groups}: one admitted KILL dispatches every explicit UR
         const sourceTurnId = await insertTurn(db, loopId, 1);
         const firstId = await seedLogRead(db, workerId, loopId, sourceTurnId, 1);
         const secondId = await seedLogRead(db, workerId, loopId, sourceTurnId, 2);
-        const source = "\n```KILL (log:///1/1/99/READ,log:///1/1/1/READ log:///1/1/2/READ)```\n```TASK\n[{\"content\":\"Review the independent KILL outcomes.\",\"status\":\"in_progress\"}]\n```";
+        const source = "\n```KILL (log:///1/1/99/READ,log:///1/1/1/READ log:///1/1/2/READ)```\n```NOTE\nReview the independent KILL outcomes.\n```";
         const provider = new Mock({
             contextWindow: 100_000,
             responses: [response(source)],

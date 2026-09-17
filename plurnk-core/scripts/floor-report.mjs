@@ -28,7 +28,7 @@ const approxTokens = (text) => Math.round(text.length / 3.8);
 try {
     const provider = new Capture({
         contextWindow: 65536,
-        responses: [{ assistant: { content: "```TASK\n[{\"content\":\"Measure the initial packet\",\"status\":\"completed\"}]\n```", reasoning: null } }],
+        responses: [{ assistant: { content: "```DONE\n```", reasoning: null } }],
     });
     const root = await mkdtemp(join(tmpdir(), "plurnk-floor-"));
     try {

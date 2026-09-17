@@ -8,7 +8,7 @@
 `AstBuilder`, the error strategy and the recording listener, the `PlurnkParser`
 tier entry points, `parsePath`, and the `plurnk-parser` command line. It depends
 on contracts for the AST and wire types, the schemas, `PathSyntax`,
-`PlurnkParseError`, `PlanValue`, `TurnDisposition`, and the constants. Contracts
+`PlurnkParseError`, `TurnDisposition`, and the constants. Contracts
 depends on nothing here.
 
 §parser-boundary **The contract lives in contracts; the implementation lives here.**

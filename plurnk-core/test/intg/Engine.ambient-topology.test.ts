@@ -5,12 +5,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import {
-    PlanValue,
     type KillStatement,
     type ReadStatement,
-    type DispositionStatement,
+    type NoteStatement,
     type UrlPath,
 } from "@plurnk/plurnk-contracts";
+import Turn from "../../src/core/Turn.ts";
 import Engine from "../../src/core/Engine.ts";
 import Fork from "../../src/core/fork.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -27,24 +27,24 @@ const continueResponse = () => ({
         content: "",
         reasoning: null,
         ops: [{
-            op: "TASK",
+            op: "NOTE",
             aside: null,
             metadata: null,
             target: null,
             lineMarker: null,
-            body: PlanValue.admit("continue"),
+            body: "continue",
             position: { line: 1, column: 1 },
-        } as DispositionStatement],
+        } as NoteStatement],
     },
 });
 
-const plan = (body: string): DispositionStatement => ({
+const plan = (body: string): NoteStatement => ({
     metadata: null,
-    op: "TASK",
+    op: "NOTE",
     aside: null,
     target: null,
     lineMarker: null,
-    body: PlanValue.admit(body),
+    body,
     position: { line: 1, column: 1 },
 });
 
@@ -93,7 +93,7 @@ test("direct-child activity reaches its parent without leaking to a grandparent 
         const parentLoop = await insertLoop(db, parent, 1, "observe");
         const independentLoop = await insertLoop(db, independent, 1, "observe");
         const childLoop = await insertLoop(db, child, 1, "work");
-        const childTurn = await insertTurn(db, childLoop, 1);
+        const { id: childTurn } = await Turn.open(db, { loopId: childLoop, producer: "model", kind: "inference" });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({
             contextWindow: 100_000,
@@ -112,7 +112,7 @@ test("direct-child activity reaches its parent without leaking to a grandparent 
             turnId: childTurn,
             sequence: 1,
             origin: "model",
-        })).status, 102);
+        })).status, 200);
         assert.equal((await engine.dispatch({
             statement: read(path("missing", "/evidence")),
             workspaceId,
@@ -137,7 +137,7 @@ test("direct-child activity reaches its parent without leaking to a grandparent 
 
         assert.deepEqual(
             (await observedFromChild(parent)).map(({ op }) => op),
-            ["TASK", "READ"],
+            ["NOTE", "READ"],
             "the parent receives every final op-bearing child activity in causal order",
         );
         assert.ok(
@@ -264,8 +264,8 @@ test("a fork inherits parent activity pending at its snapshot but not later sibl
             .filter(({ origin, source }) => origin === "_plurnk" && source === "worker://sibling")
             .map(({ op }) => op);
 
-        assert.deepEqual(await childOps(branch), ["TASK"], "the branch receives only the pending parent event inside its fork boundary");
-        assert.deepEqual(await childOps(parent), ["TASK", "READ"], "the parent independently receives both child events");
+        assert.deepEqual(await childOps(branch), ["NOTE"], "the branch receives only the pending parent event inside its fork boundary");
+        assert.deepEqual(await childOps(parent), ["NOTE", "READ"], "the parent independently receives both child events");
     } finally {
         await db.close();
     }

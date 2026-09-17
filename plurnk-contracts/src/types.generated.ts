@@ -29,43 +29,6 @@ token: string
 }
 }
 
-export interface AcpPlan {
-/**
- * The complete list of current plan entries.
- */
-entries: AcpPlanEntry[]
-/**
- * Metadata reserved by ACP. Consumers must not assume meanings for its keys.
- */
-_meta?: ({
-[k: string]: unknown
-} | null)
-}
-/**
- * One task or goal in an ACP execution plan.
- */
-
-export interface AcpPlanEntry {
-/**
- * Human-readable description of what this task aims to accomplish.
- */
-content: string
-/**
- * The relative importance of this task.
- */
-priority: ("high" | "medium" | "low")
-/**
- * The current execution status of this task.
- */
-status: ("pending" | "in_progress" | "completed")
-/**
- * Metadata reserved by ACP. Consumers must not assume meanings for its keys.
- */
-_meta?: ({
-[k: string]: unknown
-} | null)
-}
-
 export type Disposition = ({
 posture: ("native" | "generic")
 dimensions: Dimensions
@@ -290,7 +253,7 @@ export type ClientStatement = (PlurnkStatement | LookStatement)
  * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, aside, body, and source-position fields, and the text and log operations add a matcher lifted from the `pattern` option; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
  */
 
-export type PlurnkStatement = (FindStatement | ReadStatement | EditStatement | CopyStatement | MoveStatement | SendStatement | ExecStatement | BareStatement | WorkStatement | ForkStatement | KillStatement | DispositionStatement)
+export type PlurnkStatement = (FindStatement | ReadStatement | EditStatement | CopyStatement | MoveStatement | SendStatement | ExecStatement | BareStatement | WorkStatement | ForkStatement | KillStatement | DispositionStatement | NoteStatement)
 /**
  * A parsed target slot from a plurnk statement. Discriminated on `kind`: a bare local path or a WHATWG-decomposed URL. Targets carry an exact address or a path glob; content matching belongs in the statement body.
  */
@@ -301,11 +264,6 @@ export type ParsedPath = (LocalPath | UrlPath)
  */
 
 export type MatcherBody = (XPathBody | RegexBody | JsonPathBody | FtsBody | GraphBody | GlobBody)
-/**
- * Plurnk's model-native task inventory.
- */
-
-export type Plan = PlanEntry[]
 
 export type AsideOrNull = (string | null)
 
@@ -613,33 +571,23 @@ position: Position
 }
 
 export interface DispositionStatement {
-op: "TASK"
+op: ("WAIT" | "DONE" | "FAIL")
 aside: (string | null)
 metadata: null
 target: null
 lineMarker: (LineMarker | null)
-body: Plan
+body: (string | null)
 position: Position
 }
-/**
- * One task or goal in the model's plan.
- */
 
-export interface PlanEntry {
-/**
- * Human-readable description of what this task aims to accomplish.
- */
-content: string
-/**
- * The current execution status of this task.
- */
-status: ("todo" | "in_progress" | "waiting" | "completed" | "failed")
-/**
- * Opaque entry metadata preserved through standards projection.
- */
-_meta?: ({
-[k: string]: unknown
-} | null)
+export interface NoteStatement {
+op: "NOTE"
+aside: (string | null)
+metadata: null
+target: null
+lineMarker: null
+body: (string | null)
+position: Position
 }
 
 export interface LookStatement {
@@ -1142,9 +1090,6 @@ export type LineMarkerOrNull = (LineMarker | null)
  */
 
 export type SendBodyOrNull = (SendBody | null)
-/**
- * Plurnk's model-native task inventory.
- */
 
 export interface ProblemProjection {
 /**
@@ -1189,7 +1134,7 @@ turnId: number
 /**
  * An operation keyword, or a runtime tag: an execution's operation is its runtime.
  */
-op: "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "BARE" | "WORK" | "FORK" | "KILL" | "TASK" | Lowercase<string>
+op: "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "BARE" | "WORK" | "FORK" | "KILL" | "NOTE" | "WAIT" | "DONE" | "FAIL" | Lowercase<string>
 target: {
 scheme: (string | null)
 authority: (string | null)

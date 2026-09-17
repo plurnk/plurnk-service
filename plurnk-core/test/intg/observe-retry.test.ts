@@ -20,14 +20,14 @@ test("observe: an invalid first emission retries under the turn without failing 
             responses: [
                 {
                     assistant: {
-                        // No executable operation or TASK inventory.
+                        // No executable operation or lifecycle declaration.
                         content: "````READ (worker:///not-a-plurnk-turn",
                         reasoning: null,
                     },
                 },
                 {
                     assistant: {
-                        content: "\n```SEND\nrecovered.\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```",
+                        content: "\n```SEND\nrecovered.\n```\n```DONE\n```",
                         reasoning: null,
                     },
                 },

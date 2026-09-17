@@ -13,15 +13,15 @@ const one = (source: string) => {
 };
 
 test("{§naked-pattern}: `^` claims the regex dialect without slashes, and a trailing aside on the same line stays the aside", () => {
-    const { op, diagnostics: notes } = one("````READ (reasoning:///1/1) ^NOTE:.* <!-- pluck notes from this turn's reasoning -->\n````\n");
+    const { op, diagnostics: notes } = one("````READ (notes.md) ^Decision:.* <!-- select decisions -->\n````\n");
     assert.deepEqual(notes, []);
-    assert.deepEqual(op.matcher, { dialect: "regex", raw: "^NOTE:.*", pattern: "^NOTE:.*", flags: "" });
-    assert.equal(op.aside, "pluck notes from this turn's reasoning");
+    assert.deepEqual(op.matcher, { dialect: "regex", raw: "^Decision:.*", pattern: "^Decision:.*", flags: "" });
+    assert.equal(op.aside, "select decisions");
     assert.equal(op.metadata, null);
-    assert.equal(PlurnkParser.stringify([op]), "````READ (reasoning:///1/1) ^NOTE:.* <!-- pluck notes from this turn's reasoning -->\n````");
-    const slash = one("````READ (notes.md) /NOTE:.*/i <!-- the slash spelling keeps its flags -->\n````\n");
+    assert.equal(PlurnkParser.stringify([op]), "````READ (notes.md) ^Decision:.* <!-- select decisions -->\n````");
+    const slash = one("````READ (notes.md) /Decision:.*/i <!-- the slash spelling keeps its flags -->\n````\n");
     assert.deepEqual(slash.diagnostics, []);
-    assert.deepEqual(slash.op.matcher, { dialect: "regex", raw: "/NOTE:.*/i", pattern: "NOTE:.*", flags: "i" });
+    assert.deepEqual(slash.op.matcher, { dialect: "regex", raw: "/Decision:.*/i", pattern: "Decision:.*", flags: "i" });
     assert.equal(slash.op.aside, "the slash spelling keeps its flags");
     const broken = PlurnkParser.parseStatements("````READ (notes.md) ^(unclosed\n````\n");
     assert.match(diagnostics(broken)[0]?.message ?? "", /pattern leads with `\^` but is not a valid regex/u);

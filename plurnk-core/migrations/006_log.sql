@@ -115,21 +115,25 @@ CREATE        INDEX IF NOT EXISTS log_entries_deep_hash        ON log_entries (d
 -- {§loop-response-messages}: the response is the last delivered message, read from
 -- executed evidence so curation cannot retract it. This projection is also used inside
 -- atomic cancellation; no second response projection exists.
-CREATE VIEW IF NOT EXISTS loop_responses AS
-SELECT loop_id, content FROM (
-    SELECT le.loop_id,
-        json_extract(le.tx, '$.body.raw') AS content,
-        ROW_NUMBER() OVER (PARTITION BY le.loop_id ORDER BY t.sequence DESC, le.sequence DESC) AS recency
-    FROM log_entries le JOIN turns t ON t.id = le.turn_id
-    WHERE le.op = 'SEND' AND le.state = 'resolved' AND le.status_rx BETWEEN 200 AND 299
+CREATE VIEW IF NOT EXISTS log_responses AS
+SELECT le.id, le.loop_id, le.turn_id, le.worker_id, le.sequence, le.source, le.origin, le.rx,
+       COALESCE(CASE WHEN le.op = 'SEND' THEN json_extract(le.tx, '$.body.raw') ELSE json_extract(le.tx, '$.body') END, '') AS content
+FROM log_entries le
+    WHERE le.state = 'resolved'
+      AND ((le.op = 'SEND' AND le.status_rx BETWEEN 200 AND 299)
+        OR (le.op IN ('DONE', 'FAIL') AND json_type(le.rx, '$.recipients') = 'array'))
       AND le.source IS NULL AND le.inherited_history = 0
       AND json_valid(le.tx)
-      -- {§loop-response-messages}: the model's own untargeted SEND; an arrival is an inbound SEND
-      -- row the harness published ({§message-arrival}) and never the response.
-      AND le.origin = 'model'
+      AND le.origin != '_plurnk'
       AND json_type(le.tx, '$.target') = 'null'
-      AND json_type(le.tx, '$.body.raw') = 'text'
-      AND length(json_extract(le.tx, '$.body.raw')) > 0
+      AND typeof(content) = 'text';
+
+CREATE VIEW IF NOT EXISTS loop_responses AS
+SELECT loop_id, content FROM (
+    SELECT r.loop_id, r.content,
+        ROW_NUMBER() OVER (PARTITION BY r.loop_id ORDER BY t.sequence DESC, r.sequence DESC) AS recency
+    FROM log_responses r JOIN turns t ON t.id = r.turn_id
+    WHERE r.origin = 'model' AND length(r.content) > 0
 )
 WHERE recency = 1;
 

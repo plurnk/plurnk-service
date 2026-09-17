@@ -252,25 +252,17 @@ test("LogBody resolves built-in statement-backed and pushed bodies", () => {
         assert.equal(LogBody.resolve({ op, tx: { body: `${op} body` }, rx: null }).content, `${op} body`, op);
     }
 
-    const plan = [
-        { content: "Record the evidence in notes.md.", status: "completed" },
-        { content: "Inspect the evidence.", status: "in_progress" },
-    ];
-    assert.deepEqual(
-        LogBody.resolve({ op: "TASK", tx: { body: plan }, rx: null }),
-        { content: plan.map((entry) => JSON.stringify(entry)).join(",\n").replace(/^/, "[").concat("]"), mimetype: "application/json", startLine: 1, provenance: "authored" },
-        "PLAN projects through the shared json-result spread — scoped-KILL-trimmable, plain-JSON round-trip (#339)",
-    );
-    assert.deepEqual(
-        LogBody.resolve({ op: "TASK", tx: { body: [] }, rx: null }),
-        { content: "[]", mimetype: "application/json", startLine: 1, provenance: "authored" },
-        "a planless PLAN projects one [] line",
-    );
-    assert.throws(
-        () => LogBody.resolve({ op: "TASK", tx: { body: "legacy plaintext" }, rx: null }),
-        /noncanonical Plurnk Plan/,
-        "source admission normalizes PLAN before durable projection",
-    );
+    for (const op of ["NOTE", "WAIT", "DONE", "FAIL"]) {
+        assert.deepEqual(
+            LogBody.resolve({ op, tx: { body: "Retain this.\nAnd this." }, rx: null }),
+            { content: "Retain this.\nAnd this.", mimetype: "text/plain", startLine: 1, provenance: "authored" },
+        );
+        assert.deepEqual(
+            LogBody.resolve({ op, tx: { body: null }, rx: null }),
+            { content: "", mimetype: "text/plain", startLine: 1, provenance: "authored" },
+        );
+        assert.throws(() => LogBody.resolve({ op, tx: { body: [] }, rx: null }), { name: "TypeError", message: `A durable ${op} row carries a non-text body.` });
+    }
 
     assert.equal(
         LogBody.resolve({ op: "SEND", tx: "", rx: "child deliverable", mimetypeRx: "text/markdown" }).content,

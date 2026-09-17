@@ -176,7 +176,7 @@ test("a model turn joins an in-flight startup warm before calling its provider",
         const response: MockResponse = {
             assistant: {
                 content: "",
-                ops: [{ op: "TASK", aside: null, target: null, metadata: null, lineMarker: null, body: [{ content: "Ready", status: "completed" }], position: { line: 1, column: 1 } }],
+                ops: [{ op: "DONE", aside: null, target: null, metadata: null, lineMarker: null, body: null, position: { line: 1, column: 1 } }],
                 reasoning: null,
             },
         };

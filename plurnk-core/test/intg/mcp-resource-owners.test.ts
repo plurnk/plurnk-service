@@ -21,7 +21,7 @@ const uri = "fixture://resource/item";
 const guardedUri = "fixture://resource/guarded";
 const multipartUri = "fixture://resource/multipart";
 const path = resourcePath(uri);
-const task = (status: string) => PlurnkParser.frame("TASK", JSON.stringify([{ content: "Inspect the resource.", status }]));
+const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "");
 
 const statement = (source: string) => {
     const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
@@ -239,8 +239,8 @@ for (const transition of ["enabled", "disabled", "removed", "producer-removed", 
 
 test("{§runtime-resource-binding}: MCP resource elicitation and its receipt belong to the requesting model operation", { timeout: 20_000 }, async (t) => {
     const f = await fixture(t, [
-        `${PlurnkParser.frame(`READ (other://${resourcePath(guardedUri)})`, null)}\n\n${task("in_progress")}`,
-        `${PlurnkParser.frame("SEND", "The resource was read.")}\n\n${task("completed")}`,
+        `${PlurnkParser.frame(`READ (other://${resourcePath(guardedUri)})`, null)}\n\n${step("NOTE")}`,
+        `${PlurnkParser.frame("SEND", "The resource was read.")}\n\n${step("DONE")}`,
     ]);
     const run = await f.daemon.runLoop({ workspaceId: f.workspaceId, workerId: f.alice, prompt: "Read Bob's guarded resource." });
     const waiting = await waitForDb(() => f.daemon.pendingClientInteractions(f.workspaceId), (items) => items.length === 1);
@@ -262,7 +262,7 @@ test("{§runtime-resource-binding}: MCP resource elicitation and its receipt bel
 
 test("{§runtime-resource-binding}: cancelling the requester settles its MCP interaction and releases the shared connection", { timeout: 20_000 }, async (t) => {
     const f = await fixture(t, [
-        `${PlurnkParser.frame(`READ (other://${resourcePath(guardedUri)})`, null)}\n\n${task("in_progress")}`,
+        `${PlurnkParser.frame(`READ (other://${resourcePath(guardedUri)})`, null)}\n\n${step("NOTE")}`,
     ]);
     const run = await f.daemon.runLoop({ workspaceId: f.workspaceId, workerId: f.alice, prompt: "Read Bob's guarded resource." });
     const pending = await waitForDb(() => f.daemon.pendingClientInteractions(f.workspaceId), (items) => items.length === 1);

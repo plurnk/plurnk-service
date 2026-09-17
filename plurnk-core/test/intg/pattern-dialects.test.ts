@@ -110,15 +110,15 @@ ${NOTES}
     const mock = new Mock({ contextWindow: 65536, responses: [
         makeMockResponse(`${seed}
 
-\`\`\`TASK
-[{"content":"seeded","status":"in_progress"}]
+\`\`\`NOTE
+seeded
 \`\`\``, 10),
         makeMockResponse(`${finds}
 
-\`\`\`TASK
-[{"content":"searched","status":"in_progress"}]
+\`\`\`NOTE
+searched
 \`\`\``, 10),
-        makeMockResponse("```SEND\ndone\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```", 10),
+        makeMockResponse("```SEND\ndone\n```\n```DONE\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

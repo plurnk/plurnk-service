@@ -32,14 +32,23 @@ test("{§engine-cycle-evidence} every operational operand distinguishes activity
 });
 
 test("{§engine-cycle-evidence} source decoration does not disguise a cycle", () => {
-    assert.equal(fingerprint("```READ (a) <1>```\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```"),
-        fingerprint("\n```READ (a) <1> <!-- another aside -->```\n```TASK\n[{\"content\":\"continue\",\"status\":\"in_progress\"}]\n```"));
+    assert.equal(fingerprint("```READ (a) <1>```\n```NOTE\ncontinue\n```"),
+        fingerprint("\n```READ (a) <1> <!-- another aside -->```\n```NOTE\ncontinue\n```"));
 });
 
-test("{§engine-cycle-evidence} native inventory changes are workflow changes", () => {
-    const task = (content: string, status: string) => PlurnkParser.frame("TASK", JSON.stringify([{ content, status }]));
-    assert.notEqual(fingerprint(task("Inspect.", "todo")), fingerprint(task("Inspect.", "in_progress")));
-    assert.notEqual(fingerprint(task("Inspect.", "in_progress")), fingerprint(task("Implement.", "in_progress")));
+test("{§engine-cycle-evidence} note content and lifecycle changes distinguish authored activity", () => {
+    assert.notEqual(fingerprint(PlurnkParser.frame("WAIT", "Inspect.")), fingerprint(PlurnkParser.frame("DONE", "Inspect.")));
+    assert.notEqual(fingerprint(PlurnkParser.frame("NOTE", "Inspect.")), fingerprint(PlurnkParser.frame("NOTE", "Implement.")));
+});
+
+test("{§engine-cycle-evidence} a note's assigned storage coordinate does not disguise repetition", () => {
+    const note = PlurnkParser.frame("NOTE", "Retain this determination.");
+    assert.equal(fingerprint(note, [{ status: 200, resource: "note:///1/2/1" }]),
+        fingerprint(note, [{ status: 200, resource: "note:///1/3/1" }]));
+    assert.notEqual(fingerprint(note, [{ status: 200, resource: "note:///1/2/1" }]),
+        fingerprint(PlurnkParser.frame("NOTE", "A different determination."), [{ status: 200, resource: "note:///1/3/1" }]));
+    assert.notEqual(fingerprint(note, [{ status: 200, resource: "note:///1/2/1" }]),
+        fingerprint(note, [{ status: 500 }]));
 });
 
 test("{§engine-cycle-evidence} changing observations distinguish otherwise identical requests", () => {

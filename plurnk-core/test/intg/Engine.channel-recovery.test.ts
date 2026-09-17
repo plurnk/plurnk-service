@@ -5,10 +5,9 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
 
-const response = (operation: string, status = "in_progress") => ({
+const response = (operation: string, op = "NOTE") => ({
     assistant: { content: `${operation}
-\`\`\`TASK
-[{"content":"Task progress.","status":"${status}"}]
+\`\`\`${op}
 \`\`\``, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
@@ -34,7 +33,7 @@ test("{§channel-selection-missing} channel exploration across operation owners 
             response("```EDIT (worker:///note)\nretained text\n```"),
             ...misses.map((operation) => response(operation)),
             response("```READ (worker:///note)```"),
-            response("", "completed"),
+            response("", "DONE"),
         ] });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 15 });
         assert.equal(result.result.status, 200, JSON.stringify(result.result));

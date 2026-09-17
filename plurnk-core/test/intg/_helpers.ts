@@ -388,9 +388,7 @@ export const seedEnvelope = async (
     const workerId = await insertWorker(db, workspaceId);
     const loopId = await insertLoop(db, workerId, 1);
     const producer = options.producer ?? "model";
-    const turnId = producer === "model"
-        ? await insertTurn(db, loopId, 1)
-        : await insertOperationTurn(db, loopId, 1, producer);
+    const { id: turnId } = await Turn.open(db, { loopId, producer, kind: producer === "model" ? "inference" : "operation" });
     return { workspaceId, workerId, loopId, turnId };
 };
 

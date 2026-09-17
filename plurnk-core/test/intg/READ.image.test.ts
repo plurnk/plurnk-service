@@ -60,17 +60,17 @@ const runLoop = async (
         responses: responses ?? [
             mockTurn(`${read}
 
-\`\`\`TASK
-[{"content":"looking","status":"in_progress"}]
+\`\`\`NOTE
+looking
 \`\`\``),
             renew
                 ? mockTurn(`${read}
 
-\`\`\`TASK
-[{"content":"keep looking","status":"in_progress"}]
+\`\`\`NOTE
+keep looking
 \`\`\``)
-                : mockTurn("```TASK\n[{\"content\":\"continue inspecting\",\"status\":\"in_progress\"}]\n```"),
-            mockTurn("```SEND\nseen\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+                : mockTurn("```NOTE\ncontinue inspecting\n```"),
+            mockTurn("```SEND\nseen\n```\n```DONE\n```"),
         ],
     });
     try {
@@ -116,12 +116,12 @@ test("{§context-output-admission}: withholding native output does not deliver i
     try {
         await writeFile(join(root, "logo.png"), PNG);
         await writeFile(join(root, "large.txt"), "evidence ".repeat(100_000));
-        const next = '```TASK\n[{"content":"Review the evidence.","status":"in_progress"}]\n```';
+        const next = "```NOTE\nReview the evidence.\n```";
         const provider = new Mock({ contextWindow: 36_000, inputModalities: ["image"], responses: [
             mockTurn(`\`\`\`READ (logo.png)\`\`\`\n\`\`\`READ (large.txt) <1,-1>\`\`\`\n${next}`),
             mockTurn(next),
             mockTurn(`\`\`\`READ (logo.png)\`\`\`\n${next}`),
-            mockTurn('```TASK\n[{"content":"Reviewed.","status":"completed"}]\n```'),
+            mockTurn("```DONE\n```"),
         ] });
         await withDaemon(provider, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -183,10 +183,10 @@ test("{§packet-attachment-parts} repeating READ creates a new native delivery f
 
 test("{§packet-attachment-parts} invalid-emission rerolls reuse the same materialized native request", async () => {
     const requests = await runLoop(["image"], "```READ (logo.png)```", false, [
-        mockTurn("```READ (logo.png)```\n```TASK\n[{\"content\":\"looking\",\"status\":\"in_progress\"}]\n```"),
+        mockTurn("```READ (logo.png)```\n```NOTE\nlooking\n```"),
         { assistant: { content: "````READ (worker:///not-a-plurnk-emission", reasoning: null }, assistantRaw: null },
-        mockTurn("```TASK\n[{\"content\":\"recovered\",\"status\":\"in_progress\"}]\n```"),
-        mockTurn("```SEND\nseen\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+        mockTurn("```NOTE\nrecovered\n```"),
+        mockTurn("```SEND\nseen\n```\n```DONE\n```"),
     ]);
     const attempted = requests.slice(1, 3).map((request) => request.find((message) => message.role === "user"));
     assert.equal(attempted.length, 2);
@@ -202,9 +202,9 @@ test("{§packet-attachment-parts} a response-less network retry retains the same
         contextWindow: viableWindow(),
         inputModalities: ["image"],
         responses: [
-            mockTurn("```READ (logo.png)```\n```TASK\n[{\"content\":\"looking\",\"status\":\"in_progress\"}]\n```"),
-            mockTurn("```TASK\n[{\"content\":\"recovered\",\"status\":\"in_progress\"}]\n```"),
-            mockTurn("```SEND\nseen\n```\n```TASK\n[{\"content\":\"Task completed.\",\"status\":\"completed\"}]\n```"),
+            mockTurn("```READ (logo.png)```\n```NOTE\nlooking\n```"),
+            mockTurn("```NOTE\nrecovered\n```"),
+            mockTurn("```SEND\nseen\n```\n```DONE\n```"),
         ],
     });
     await runLoop(["image"], "```READ (logo.png)```", false, undefined, provider);
@@ -246,12 +246,12 @@ test("{§read-bytes} {§packet-attachment-parts} a ranged byte READ remains the 
 });
 
 test("{§packet-attachment-parts} native content survives completed responses until scoped KILL retires its READ", async () => {
-    const next = '```TASK\n[{"content":"Inspect the picture.","status":"in_progress"}]\n```';
+    const next = "```NOTE\nInspect the picture.\n```";
     const requests = await runLoop(["image"], undefined, false, [
         mockTurn(`\`\`\`READ (logo.png)\`\`\`\n${next}`),
         mockTurn(next),
         mockTurn(`\`\`\`KILL (log:///*/*/*/READ) <42>\`\`\`\n${next}`),
-        mockTurn('```TASK\n[{"content":"Inspection complete.","status":"completed"}]\n```'),
+        mockTurn("```DONE\n```"),
     ]);
     const users = requests.map((messages) => messages.find(({ role }) => role === "user")!);
     for (const index of [1, 2]) {
@@ -267,11 +267,11 @@ test("{§packet-attachment-parts} native content survives completed responses un
 });
 
 test("{§packet-attachment-parts} retained and forked READs preserve original bytes after source deletion", async () => {
-    const next = '```TASK\n[{"content":"Inspect the retained picture.","status":"in_progress"}]\n```';
+    const next = "```NOTE\nInspect the retained picture.\n```";
     const requests = await runLoop(["image"], undefined, false, [
         mockTurn(`\`\`\`READ (logo.png)\`\`\`\n${next}`),
         mockTurn(`\`\`\`KILL (logo.png)\`\`\`\n${next}`),
-        mockTurn('```TASK\n[{"content":"Inspection complete.","status":"completed"}]\n```'),
+        mockTurn("```DONE\n```"),
     ], undefined, async (root, db, loopId) => {
         await assert.rejects(readFile(join(root, "logo.png")), { code: "ENOENT" }, "the source was actually deleted");
         const loop = await db.drain_message_source.get<{ worker_id: number }>({ loop_id: loopId });
@@ -289,12 +289,12 @@ test("{§packet-attachment-parts} retained and forked READs preserve original by
 });
 
 test("{§packet-attachment-parts} explicit log READ preserves its own observation after source deletion and curation", async () => {
-    const next = '```TASK\n[{"content":"Inspect history.","status":"in_progress"}]\n```';
+    const next = "```NOTE\nInspect history.\n```";
     const requests = await runLoop(["image"], undefined, false, [
         mockTurn(`\`\`\`READ (logo.png)\`\`\`\n${next}`),
         mockTurn(`\`\`\`KILL (logo.png)\`\`\`\n\`\`\`READ (log:///1/2/2/READ)\`\`\`\n${next}`),
         mockTurn(`\`\`\`KILL (log:///1/2/2/READ) <42>\`\`\`\n${next}`),
-        mockTurn('```TASK\n[{"content":"History inspected.","status":"completed"}]\n```'),
+        mockTurn("```DONE\n```"),
     ]);
     const copied = requests[2]!.find(({ role }) => role === "user")!.content;
     assert.ok(Array.isArray(copied));
@@ -307,11 +307,11 @@ test("{§packet-attachment-parts} explicit log READ preserves its own observatio
 });
 
 test("{§log-kill-scope} a text-only route preserves ordinary scoped trimming of a media READ", async () => {
-    const next = '```TASK\n[{"content":"Inspect bytes.","status":"in_progress"}]\n```';
+    const next = "```NOTE\nInspect bytes.\n```";
     const requests = await runLoop([], undefined, false, [
         mockTurn(`\`\`\`READ (file:///logo.png#bytes) <1,16>\`\`\`\n${next}`),
         mockTurn(`\`\`\`KILL (log:///1/2/2/READ) <1>\`\`\`\n${next}`),
-        mockTurn('```TASK\n[{"content":"Bytes inspected.","status":"completed"}]\n```'),
+        mockTurn("```DONE\n```"),
     ]);
     const content = requests[2]!.find(({ role }) => role === "user")!.content;
     assert.equal(typeof content, "string");

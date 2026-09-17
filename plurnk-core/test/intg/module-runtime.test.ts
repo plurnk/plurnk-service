@@ -275,7 +275,7 @@ test("{§runtime-resource-binding}: READ, FIND, COPY, execution, and BARE use th
             workspaceId, workerId: alice, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: [
                 PlurnkParser.frame("BARE (myserver:///resources/item)", "Analyze this."),
-                PlurnkParser.frame("TASK", '[{"content":"Inspect the answer.","status":"in_progress"}]'),
+                PlurnkParser.frame("NOTE", "Inspect the answer."),
             ].join("\n\n"), reasoning: null } }] }),
         });
         assert.equal(result.status, 102);

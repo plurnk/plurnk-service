@@ -99,8 +99,8 @@ TWO
 \`\`\`EDIT (file:///${target}) <${anchors[2]}>
 THREE
 \`\`\`
-\`\`\`TASK
-[{"content":"Continue the task.","status":"in_progress"}]
+\`\`\`NOTE
+Continue the task.
 \`\`\``;
         const first = deferred<number>();
         const second = deferred<number>();

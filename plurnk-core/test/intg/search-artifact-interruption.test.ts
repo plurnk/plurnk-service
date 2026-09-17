@@ -295,7 +295,7 @@ test("{§derivation-member-failure} the model's turn proceeds past a member whos
         const provider = new Mock({ contextWindow: 100000, responses: [{
             assistant: {
                 content: "",
-                ops: [{ op: "TASK", aside: null, target: null, metadata: null, lineMarker: null, body: [{ content: "Complete.", status: "completed" }], position: { line: 1, column: 1 } } as DispositionStatement],
+                ops: [{ op: "DONE", aside: null, target: null, metadata: null, lineMarker: null, body: null, position: { line: 1, column: 1 } } as DispositionStatement],
                 reasoning: null,
             },
         }] });
