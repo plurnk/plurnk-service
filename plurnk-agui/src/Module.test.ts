@@ -1518,6 +1518,66 @@ test("a standard resume resolves the paused proposal without driving a new loop"
     } finally { await mod.close(); }
 });
 
+for (const { stage, accepted } of ["snapshot", "validation", "resolution"].flatMap(
+    (stage) => [false, true].map((accepted) => ({ stage, accepted })),
+)) {
+    test(`{§agui-proposal-resolve}: a delayed terminal preserves ${accepted ? "accepted" : "rejected"} resume during ${stage}`, async () => {
+        const { seam, emit, loopRuns } = mockSeam();
+        let resolutions = 0;
+        let pending = [{
+            interactionId: 88, workerId: 77, loopId: 9, turnId: 1,
+            request: { toolName: "review", arguments: {}, responseSchema: { type: "object" } },
+        }];
+        seam.pendingClientInteractions = async () => pending;
+        seam.listWorkers = async () => [workerRow(77, "resume-race")];
+        const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+        try {
+            const interrupted = await post(mod.address().port, {
+                threadId: "resume-race", runId: "before-expiry",
+                messages: [{ role: "user", content: "Review." }],
+                forwardedProps: { plurnk: { workspace: "resume-race" } },
+            });
+            assert.deepEqual((interrupted.at(-1) as { outcome: { type: string } }).outcome.type, "interrupt");
+            const terminal = (): void => emit(3, "loop/terminated", termination({ workerId: 77, loopId: 9 }));
+            if (!accepted && stage !== "resolution") pending = [];
+            if (stage === "snapshot") {
+                const readModel = seam.readWorkerModel;
+                seam.readWorkerModel = async (args) => { terminal(); return readModel(args); };
+            } else if (stage === "validation") {
+                seam.pendingClientInteractions = async () => { terminal(); return pending; };
+            }
+            seam.resolveClientInteraction = async () => {
+                resolutions++;
+                if (stage === "resolution") terminal();
+                if (!accepted) {
+                    throw Object.assign(new Error("The interaction expired."), {
+                        problem: Problems.create("test:interaction", "expired", 409, "The interaction expired."),
+                    });
+                }
+                pending = [];
+            };
+            const late = await post(mod.address().port, {
+                threadId: "resume-race", runId: "after-expiry",
+                forwardedProps: { plurnk: { workspace: "resume-race" } },
+                resume: [{ interruptId: "int:88", status: "cancelled" }],
+            });
+            assert.equal(late[0]?.type, "RUN_STARTED", JSON.stringify(late));
+            const outcome = late.at(-1);
+            assert.equal(outcome?.type, accepted ? "RUN_FINISHED" : "RUN_ERROR", JSON.stringify(late));
+            if (accepted) {
+                assert.deepEqual((outcome as { outcome: unknown }).outcome, { type: "success" });
+            } else {
+                assert.match((outcome as { code: string }).code, stage === "resolution" ? /\/expired$/u : /\/interrupt-not-pending$/u);
+            }
+            assert.equal(late.filter((event) => event.type === "RUN_FINISHED").length, accepted ? 1 : 0);
+            assert.equal(resolutions, accepted || stage === "resolution" ? 1 : 0);
+            assert.equal(loopRuns.length, 0, "a resume never starts fresh inference");
+        } finally {
+            await mod.close();
+        }
+    });
+}
+
 test("a descendant client interaction round-trips through its controlling AG-UI conversation", async () => {
     const { seam, emit, loopRuns } = mockSeam();
     let pending = [{

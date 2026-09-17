@@ -404,7 +404,7 @@ for (const source of ["MRTR", "Task", "resource", "prompt"] as const) {
         assert.match(packet, /operation timeout/u);
         assert.match(packet, tool ? /tool-call-failed/u : /resource-read-failed/u);
         const late = await post({ resume: [{ interruptId: pending.id, status: "cancelled" }] });
-        assert.ok(late.some((event) => event.type === "RUN_ERROR"));
+        assert.ok(late.some((event) => event.type === "RUN_ERROR"), JSON.stringify(late));
         assert.match(JSON.stringify(late), /interrupt-not-pending/u);
         const synced = await reconnect();
         const terminal = synced.at(-1);

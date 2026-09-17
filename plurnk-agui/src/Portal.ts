@@ -28,6 +28,7 @@ interface Thread {
     openStreams: Set<string>;   // stream addresses this Run owns until their stream/concluded
     deferredFinish: AguiEvent[] | null;
     pendingTerminations: unknown[];
+    resolvingInterrupts: boolean;
     // {§agui-status-children} — the last alive-children count this thread published; null until the first refresh.
     children: number | null;
 }
@@ -104,7 +105,7 @@ export default class Portal {
             if (method === "loop/terminated") {
                 const loopId = (params as { loopId?: unknown }).loopId;
                 if (typeof loopId !== "number") continue;
-                if (thread.loopId === null) {
+                if (thread.loopId === null || thread.resolvingInterrupts) {
                     thread.pendingTerminations.push(params);
                     continue;
                 }
@@ -386,6 +387,7 @@ export default class Portal {
             openStreams: new Set(),
             deferredFinish: null,
             pendingTerminations: [],
+            resolvingInterrupts: args.resume !== undefined,
             children: null,
         };
         let set = this.#threads.get(args.workspaceId);
@@ -498,6 +500,7 @@ export default class Portal {
     // releasing every addressed interrupt.
     async resolve(workspaceId: number, thread: unknown, entries: ResumeEntry[]): Promise<void> {
         const bound = thread as Thread;
+        bound.resolvingInterrupts = true;
         const continuations = entries.map(({ interruptId }) => this.#continuations.get(interruptId));
         const persisted = continuations.filter(
             (continuation): continuation is InterruptContinuation => continuation !== undefined,
@@ -545,15 +548,12 @@ export default class Portal {
                     ? resolution.loopId
                     : await this.#activeLoopId(workspaceId, bound.workerId);
             }
-            const terminal = bound.pendingTerminations.find(
-                (params) => (params as { loopId?: unknown }).loopId === bound.loopId,
-            );
-            bound.pendingTerminations = [];
-            if (terminal !== undefined) {
-                const out = bound.router.route("loop/terminated", terminal);
-                if (out.length > 0) bound.emit(out);
-            }
         });
+        // {§agui-proposal-resolve} A stale or expired answer owns its failure,
+        // even when the previously interrupted loop has already terminated.
+        bound.resolvingInterrupts = false;
+        if (bound.loopId === null) throw new Error("resolved interrupts did not bind a loop");
+        this.#bindLoop(bound, bound.loopId);
         for (const { interruptId } of entries) this.#continuations.delete(interruptId);
         if (this.#threads.get(workspaceId)?.has(bound)) {
             await this.#resurfaceControlled(workspaceId, bound);

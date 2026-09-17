@@ -248,6 +248,9 @@ settle Run A before the interrupt is emitted. Concurrent descendant gates are
 presented one Worker at a time; resolving one re-surfaces the next without admitting a new prompt.
 Sibling and unrelated conversations never receive one another's gates. A resume containing foreign, partial, unknown, duplicate, or multi-worker
 interrupt sets fails before any stopped operation is released.
+Loop terminals received while a resume is being validated or resolved are held:
+successful resolution delivers the bound Loop's terminal once; rejected resolution
+emits its exact `RUN_ERROR`, never success from the previously interrupted Loop.
 
 An interrupt is an AG-UI Run boundary, not a Plurnk turn boundary. Before Run A's interrupt
 terminal, the projection closes any active `turn-<id>` step. Run B emits `RUN_STARTED`, its
