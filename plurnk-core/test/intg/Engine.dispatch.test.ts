@@ -240,6 +240,7 @@ for (const op of ["READ", "FIND"] as const) {
             const parsed = PlurnkParser.parse(`\`\`\`\`${op}\n*\n\`\`\`\``);
             const item = parsed.items.find((candidate) => candidate.kind === "statement");
             assert.ok(item?.kind === "statement");
+            assert.ok(item.statement.op === "READ" || item.statement.op === "FIND");
             const result = await engine.dispatch({ statement: item.statement, ...env, sequence: 1, origin: "model" });
             assert.equal(result.status, 400);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/target-required");
