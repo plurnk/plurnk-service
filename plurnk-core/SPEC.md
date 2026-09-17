@@ -1740,17 +1740,17 @@ Rules:
 | URI                                  | Channel                              |
 | ------------------------------------ | ------------------------------------ |
 | `worker:///france/capital`           | body (default)                       |
-| `sh:///1/1/2/sh#stdout`            | stdout                               |
-| `sh:///1/1/2/sh#stderr`            | stderr                               |
+| `sh:///a3b7c921#stdout`            | stdout                               |
+| `sh:///a3b7c921#stderr`            | stderr                               |
 | `https://feed.example/y#body`        | body                                 |
-| `log:///N/T/A`                       | (no channel concept; atomic log row) |
+| `log:///1/2/3/READ`                  | (no channel concept; atomic log row) |
 
 Op implications:
 
 - EDIT to undeclared channel → 404; read-only channel → 405.
 - COPY/MOVE source and destination fragments independently select channels.
 
-Client-interface target parameters carry fragments inline (`{ target: "sh:///1/1/2/sh#stderr" }`).
+Client-interface target parameters carry fragments inline (`{ target: "sh:///a3b7c921#stderr" }`).
 
 **Wire rendering: default channel is path-only.** A rendered target omits `#channel` when channel matches `defaultChannel`. Single-channel entries render path-only; multi-channel entries render the default path-only and only non-default carries `#name`.
 

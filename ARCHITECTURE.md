@@ -135,8 +135,8 @@ authority are not interchangeable.
 An execution answers `200 started` — for every executor, gated or not: the
 runtime slot resolves the executor ({§exec-registry-resolves}), the spawn
 backgrounds, and its output is *observed, not fetched* ({§exec-stream}). The
-executor streams into the channels of its `<tag>:///<loop>/<turn>/<seq>/<tag>`
-output entry and settles them (`closed` or `errored`); an executor's refusal
+executor streams into the channels of its `<tag>:///<id>` output entry
+({§execution-output-identity}) and settles them (`closed` or `errored`); an executor's refusal
 travels as the settled status of the operation's log row, never as channel
 content. The model learns the result through the ordinary environment
 observation of newly publishable stream content on a later turn — there is no
