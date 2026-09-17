@@ -27,7 +27,7 @@ test("demo: the model finds a credential's name in the catalog and asks for it b
         const loop = await liveLoop(
             s, 1,
             {
-                prompt: "You need to use Tavily for a web search, but its search credential is not configured. "
+                prompt: "You need to use Tavily to extract a web page, but its API credential is not configured. "
                     + "Find out which environment variable supplies it and what it is for, then tell me "
                     + "its exact name and purpose. Do not guess the name — find it.",
                 maxTurns: 12,
@@ -35,7 +35,7 @@ test("demo: the model finds a credential's name in the catalog and asks for it b
             { signal: t.signal },
         );
         assert.equal(loop.finalStatus, 200, "loop terminated cleanly");
-        assert.match(loop.lastContent, /TAVILY_API_KEY/u, "the model found the name in the catalog rather than guessing");
+        assert.match(loop.lastContent, /TAVILY_API_KEY/u, "the reply names the credential declared by the installed adapter");
 
         // The operator's real value must never appear.
         assert.doesNotMatch(loop.lastContent, new RegExp(operatorValue.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"),
