@@ -28,12 +28,9 @@ ORDER BY sequence, id;
 -- Completion is information independently of payload: an empty success and especially
 -- an empty failure must receive the same terminal observation as a non-empty stream.
 -- Success and failure both require observation.
-SELECT DISTINCT s.close_status AS closeStatus
-FROM subscriptions s
-JOIN subscription_publications sp ON sp.subscription_id = s.id
-WHERE s.worker_id = $worker_id
-  AND s.closed_at IS NOT NULL
-  AND sp.terminal_published = 0;
+SELECT DISTINCT status AS closeStatus
+FROM unobserved_worker_completions
+WHERE worker_id = $worker_id AND kind = 'stream';
 
 -- PREP: engine_turn_failures
 -- {§send-premature-terminate}: model-authored failures require observation before
@@ -49,11 +46,6 @@ WHERE turn_id = $turn_id
 -- A child conclusion newer than the parent's observation cursor is complete but
 -- not delivered. This is the same durable boundary the next packet consumes,
 -- not a second timestamp race. {§send-undelivered-child-term}
-SELECT 1 AS pending
-FROM ambient_events ae
-JOIN workers parent ON parent.id = $worker_id
-WHERE ae.workspace_id = parent.workspace_id
-  AND ae.kind IN ('loop_termination', 'reply')
-  AND ae.recipient_worker_id = parent.id
-  AND ae.id > COALESCE(parent.ambient_event_cursor, 0)
+SELECT 1 AS pending FROM unobserved_worker_completions
+WHERE worker_id = $worker_id AND kind = 'ambient'
 LIMIT 1;

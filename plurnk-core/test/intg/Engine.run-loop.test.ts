@@ -4,8 +4,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, PlurnkStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
+import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import Turn from "../../src/core/Turn.ts";
+import TurnMaterialization from "../../src/core/TurnMaterialization.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_helpers.ts";
@@ -40,6 +43,68 @@ const setup = async () => {
     const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelWorker: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); } });
     return { db, engine, workspaceId, workerId, loopId };
 };
+
+for (const kind of ["child", "stream"] as const) for (const phase of ["before observation", "after observation", "during inference"] as const) {
+test(`{§loop-wake-identity}: ${kind} completion ${phase} is acknowledged only by the input that contains it`, async (t) => {
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    try {
+        const lifecycle = new LoopLifecycle(db);
+        const parkedLoop = await insertLoop(db, workerId, 2, "An independent waiting task.");
+        await lifecycle.park(parkedLoop);
+        let finish: () => Promise<unknown>;
+        if (kind === "child") {
+            const child = await insertWorker(db, workspaceId, workerId, "child");
+            const childLoop = await insertLoop(db, child, 1, "Look up the answer.");
+            finish = () => lifecycle.finish(childLoop, { status: 200, content: "The observed answer is 42." });
+        } else {
+            const entry = await seedEntryWithChannel(db, { workspaceId, scheme: "sh", content: "The observed answer is 42.", state: "active" });
+            const subscriptionId = await ChannelWrite.openSubscription(db, { workerId, entryId: entry, scheme: "exec", handle: "answer" });
+            finish = () => ChannelWrite.closeSubscription(db, { subscriptionId, result: { status: 200 } });
+        }
+        let settled = false;
+        const settle = async () => {
+            if (!settled) {
+                settled = true;
+                await finish();
+            }
+        };
+        if (phase === "before observation") {
+            const open = Turn.open;
+            t.mock.method(Turn, "open", async (...args: Parameters<typeof open>) => {
+                const turn = await open(...args);
+                if (args[1].loopId === loopId && args[1].producer === "model") await settle();
+                return turn;
+            });
+        } else if (phase === "after observation") {
+            const method = kind === "child" ? "materializeEnvironmentDeltas" : "materializeStreamDeltas";
+            const materialize = TurnMaterialization.prototype[method];
+            t.mock.method(TurnMaterialization.prototype, method, async function (this: TurnMaterialization, ...args: Parameters<typeof materialize>) {
+                const rows = await materialize.apply(this, args);
+                if (args[0].loopId === loopId) await settle();
+                return rows;
+            });
+        }
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            contentResponse("````SEND\nThe answer is 42.\n````"),
+            contentResponse("````NOTE\nThe answer was already delivered.\n````"),
+        ] });
+        if (phase === "during inference") {
+            const generate = provider.generate.bind(provider);
+            t.mock.method(provider, "generate", async (...args: Parameters<typeof generate>) => {
+                await settle();
+                return generate(...args);
+            });
+        }
+        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
+        const observed = phase === "before observation";
+        assert.equal(JSON.stringify(provider.received[0]).includes("The observed answer is 42."), observed);
+        assert.match(JSON.stringify(provider.received.at(-1)), /The observed answer is 42\./, "the terminal evidence reaches the producer before completion");
+        assert.equal(result.result.status, 200);
+        assert.equal(provider.received.length, observed ? 1 : 2, "exactly one additional inference is required for unseen evidence");
+        assert.equal(await new LoopLifecycle(db).wake(parkedLoop, { eventOnly: true }), true, "this loop's acknowledgement cannot consume another loop's wake");
+    } finally { await db.close(); }
+});
+}
 
 test("Engine.runLoop: three edits are observed before answered work concludes", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();

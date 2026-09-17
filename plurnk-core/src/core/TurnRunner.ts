@@ -985,6 +985,7 @@ export default class TurnRunner {
         nextActionIndex += ambientEntries.length;
         const streamEntries = await this.#materialization.materializeStreamDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
         nextActionIndex += streamEntries.length;
+        await Turn.observeCompletions(this.#db, turnId);
         // {§notifications-log-entry-notify}: materialized observations are
         // ordinary committed log rows, not packet-only content.
         for (const id of [...ambientEntries, ...streamEntries]) {

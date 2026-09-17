@@ -1,5 +1,21 @@
 -- TurnMaterialization: the harness rows a turn opens with — stream deltas the worker observes.
 
+-- INIT: unobserved_worker_completions
+-- {§loop-wake-identity}: packet acknowledgement and program settlement share
+-- the same durable publication boundary.
+DROP VIEW IF EXISTS unobserved_worker_completions;
+CREATE VIEW unobserved_worker_completions AS
+SELECT s.worker_id, 'stream' AS kind, s.close_status AS status
+FROM subscriptions s
+JOIN subscription_publications sp ON sp.subscription_id = s.id
+WHERE s.closed_at IS NOT NULL AND sp.terminal_published = 0
+UNION ALL
+SELECT w.id, 'ambient', ae.status_rx
+FROM ambient_events ae
+JOIN workers w ON w.id = ae.recipient_worker_id
+WHERE ae.kind IN ('loop_termination', 'reply')
+  AND ae.id > w.ambient_event_cursor;
+
 -- PREP: engine_worker_stream_channels
 -- {§exec-stream} — every not-yet-terminally-published stream channel the worker
 -- owns, with its durable per-subscription cursor. Log curation never rewinds it.

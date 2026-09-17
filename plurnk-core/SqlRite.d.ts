@@ -285,6 +285,7 @@ export class SqlRiteSync {
 	turn_record_inference: SqlRiteSyncPreparedStatements;
 	turn_complete: SqlRiteSyncPreparedStatements;
 	turn_fail_open: SqlRiteSyncPreparedStatements;
+	turn_observe_completions: SqlRiteSyncPreparedStatements;
 	engine_loop_turn_seqs: SqlRiteSyncPreparedStatements;
 	engine_worker_stream_channels: SqlRiteSyncPreparedStatements;
 	engine_mark_publication_terminal: SqlRiteSyncPreparedStatements;
@@ -552,6 +553,7 @@ export default class SqlRite {
 	turn_record_inference: SqlRitePreparedStatements;
 	turn_complete: SqlRitePreparedStatements;
 	turn_fail_open: SqlRitePreparedStatements;
+	turn_observe_completions: SqlRitePreparedStatements;
 	engine_loop_turn_seqs: SqlRitePreparedStatements;
 	engine_worker_stream_channels: SqlRitePreparedStatements;
 	engine_mark_publication_terminal: SqlRitePreparedStatements;

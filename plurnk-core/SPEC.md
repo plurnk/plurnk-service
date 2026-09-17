@@ -837,12 +837,16 @@ obligations, not merely its latest parked loop. A completion crossing an active
 loop's park boundary is owed to that loop, never a future unrelated loop.
 
 Each loop captures the worker's completion revision when its program begins.
-Stream closure and direct-child terminalization advance that revision in the
-same database mutation as their terminal evidence. An unobserved completion
-remains owed through parking and restart; another loop's turn cannot consume
-it. Waking is guarded by both the wait identity and the relevant due/event
-predicate, so delayed callbacks do not wake programs that already observed
-their evidence.
+Before inference, it acknowledges the current revision only after every addressed
+terminal/reply occurrence has crossed the ambient observation cursor and every
+closed stream has published its terminal channels. The publication check and
+revision acknowledgement are atomic; an arrival beyond either materialization
+snapshot remains owed. Stream closure, direct-child terminalization and addressed
+replies advance the revision in the same database mutation as their evidence.
+An unobserved completion remains owed through parking and restart; another loop's
+turn cannot consume it. Waking is guarded by both the wait identity and the
+relevant due/event predicate, so delayed callbacks do not wake programs that
+already observed their evidence.
 
 Wait identity commits with the parked transition. The drain persists any
 inherited stream-observation due time; process timers only arrange a bounded

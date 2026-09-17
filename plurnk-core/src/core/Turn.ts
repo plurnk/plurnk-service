@@ -50,6 +50,10 @@ export default class Turn {
         });
     }
 
+    static async observeCompletions(db: Db, id: number): Promise<void> {
+        await db.turn_observe_completions.run({ turn_id: id });
+    }
+
     static async recordSource(db: Db, turnId: number, kind: "ops" | "reasoning" | "note", content: string, options: {
         modelCallId?: number | null;
         sequence?: number;
