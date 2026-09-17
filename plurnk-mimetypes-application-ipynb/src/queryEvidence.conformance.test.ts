@@ -1,10 +1,14 @@
 import { describe, it } from "node:test";
 import { assertQueryEvidenceConformance } from "@plurnk/plurnk-mimetypes/conformance";
 import Handler from "./Ipynb.ts";
+import { notebook } from "../test/notebook.ts";
 
 // {§mimetype-content-query}: the queried source is notebook JSON, not its readable sibling.
 const h = new Handler({"mimetype":"application/x-ipynb+json","glyph":"📓","extensions":[".ipynb"]});
-const src = "{\n \"cells\": [\n  {\n   \"cell_type\": \"code\",\n   \"source\": [\n    \"x=1\"\n   ]\n  }\n ],\n \"metadata\": {},\n \"nbformat\": 4,\n \"nbformat_minor\": 5\n}";
+const src = notebook({
+    cells: [{ cell_type: "code", source: ["x=1"], id: "code", metadata: {}, outputs: [], execution_count: null }],
+    metadata: {}, nbformat: 4, nbformat_minor: 5,
+}, 1);
 
 describe("query-evidence conformance (both dialects)", () => {
     it("jsonpath: a cell property carries its source region", async () => {

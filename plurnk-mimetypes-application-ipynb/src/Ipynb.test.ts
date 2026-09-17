@@ -2,28 +2,36 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import Ipynb from "./Ipynb.ts";
 import { project } from "./Ipynb.ts";
+import { notebook } from "../test/notebook.ts";
 
 const META = { mimetype: "application/x-ipynb+json", glyph: "📓", extensions: [".ipynb"] };
 const h = () => new Ipynb(META);
 
-const NB = JSON.stringify({
+const NB = notebook({
     nbformat: 4,
-    metadata: { kernelspec: { language: "python" } },
+    nbformat_minor: 5,
+    metadata: { kernelspec: { name: "python3", display_name: "Python 3", language: "python" } },
     cells: [
-        { cell_type: "markdown", source: ["# Analysis\n", "\n", "Some intro text.\n"] },
+        { cell_type: "markdown", id: "intro", metadata: {}, source: ["# Analysis\n", "\n", "Some intro text.\n"] },
         {
             cell_type: "code",
+            id: "load-data",
+            metadata: {},
             execution_count: 1,
             source: ["import pandas as pd\n", "df = pd.read_csv('x.csv')\n"],
-            outputs: [{ output_type: "stream", text: ["loaded 10 rows\n"] }],
+            outputs: [{ output_type: "stream", name: "stdout", text: ["loaded 10 rows\n"] }],
         },
-        { cell_type: "markdown", source: ["## Plotting\n"] },
+        { cell_type: "markdown", id: "plot-heading", metadata: {}, source: ["## Plotting\n"] },
         {
             cell_type: "code",
+            id: "plot-data",
+            metadata: {},
             execution_count: 2,
             source: ["df.plot()\n"],
             outputs: [{
                 output_type: "execute_result",
+                execution_count: 2,
+                metadata: {},
                 data: { "text/plain": ["<AxesSubplot>"], "image/png": "BASE64DATA..." },
             }],
         },

@@ -2,7 +2,7 @@ import { BaseHandler, projectJsonToXml, queryJsonpathObject, TextCoordinates } f
 import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
 import { findNodeAtLocation, getNodeValue, parseTree, type Node } from "jsonc-parser";
 
-// application/x-ipynb+json (Jupyter notebook) handler — Tier 4, no parser dep.
+// application/x-ipynb+json (Jupyter notebook) handler.
 //
 // A .ipynb IS json, but the json IS the noise: a model that wants to read a
 // notebook does not want `{"cell_type":"code","source":["import x\n",...]}`,

@@ -2,11 +2,17 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import Ipynb from "./Ipynb.ts";
+import { notebook } from "../test/notebook.ts";
 
 const h = new Ipynb({ mimetype: "application/x-ipynb+json", glyph: "📓", extensions: [".ipynb"] as const });
-const nb = JSON.stringify(
-    { cells: [{ cell_type: "markdown", source: ["# T"] }, { cell_type: "code", source: ["x=1"] }], metadata: {}, nbformat: 4, nbformat_minor: 5 },
-    null,
+const nb = notebook(
+    {
+        cells: [
+            { cell_type: "markdown", source: ["# T"], id: "heading", metadata: {} },
+            { cell_type: "code", source: ["x=1"], id: "code", metadata: {}, outputs: [], execution_count: null },
+        ],
+        metadata: {}, nbformat: 4, nbformat_minor: 5,
+    },
     1,
 );
 
@@ -16,15 +22,15 @@ describe("ipynb structural match evidence", () => {
         assert.equal(out.length, 2);
         assert.deepEqual(out.map(({ matching }) => matching), ["$['cells'][0]", "$['cells'][1]"]);
         assert.deepEqual(out.map(({ regions }) => regions), [
-            [{ startLine: 3, startColumn: 3, endLine: 8, endColumn: 4 }],
-            [{ startLine: 9, startColumn: 3, endLine: 14, endColumn: 4 }],
+            [{ startLine: 3, startColumn: 3, endLine: 10, endColumn: 4 }],
+            [{ startLine: 11, startColumn: 3, endLine: 20, endColumn: 4 }],
         ]);
     });
     it("a leaf retains its canonical locator", async () => {
         const out = await h.query(nb, "jsonpath", "$.nbformat");
         assert.equal(out[0].matched, 4);
         assert.equal(out[0].matching, "$['nbformat']");
-        assert.deepEqual(out[0].regions, [{ startLine: 17, startColumn: 2, endLine: 17, endColumn: 15 }]);
+        assert.deepEqual(out[0].regions, [{ startLine: 23, startColumn: 2, endLine: 23, endColumn: 15 }]);
     });
 });
 

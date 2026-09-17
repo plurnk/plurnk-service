@@ -1,6 +1,6 @@
 # @plurnk/plurnk-mimetypes-application-ipynb
 
-`application/x-ipynb+json` (Jupyter notebook) mimetype handler for the [plurnk](https://github.com/plurnk) ecosystem. Hand-rolled, no parser dependency.
+`application/x-ipynb+json` (Jupyter notebook) mimetype handler for the [plurnk](https://github.com/plurnk) ecosystem. Uses `jsonc-parser` for source coordinates.
 
 ## install
 
@@ -23,3 +23,8 @@ References are deferred: a notebook's imports/calls are kernel-language code, an
 ## license
 
 MIT.
+
+All positive notebook fixtures are checked against Jupyter's [nbformat v4.5 schema, pinned to nbformat v5.10.4](https://github.com/jupyter/nbformat/blob/v5.10.4/nbformat/v4/nbformat.v4.5.schema.json).
+The schema and its BSD-3-Clause license live under `test/`; neither ships in the
+runtime package. A negative cell-ID case verifies the checker. This is fixture
+validation, not a new strict-schema requirement on the runtime's tolerant reader.
