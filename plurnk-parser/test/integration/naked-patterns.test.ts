@@ -95,6 +95,67 @@ test("{§matcher-option}: the option form is still read, and it is the rendered 
     assert.equal(PlurnkParser.stringify([transfer.op]), '````COPY (worker:///a.md) [{"pattern":"/x/"}] (worker:///b.md)\n````', "COPY/MOVE operands keep the option form");
 });
 
+for (const op of ["FIND", "READ", "EDIT", "KILL"]) {
+    test(`{§naked-pattern}: ${op} composes owner metadata with a bare matcher and round-trips both`, () => {
+        const patterns = ["/needle/i", "^needle", "//item", "$.needle", "~needle", "&needle"];
+        if (op !== "EDIT") patterns.push("needle", "*needle*");
+        for (const metadata of ['{}', '{"headers":{"Accept":"text/plain"}}', '{"first":1},{"second":2}']) {
+            for (const pattern of patterns) {
+                const body = op === "EDIT" ? "literal replacement" : null;
+                const source = PlurnkParser.frame(`${op} (opaque:///notes) <1,-1> [${metadata}] ${pattern} <!-- selection -->`, body);
+                const parsed = one(source);
+                assert.deepEqual(parsed.diagnostics, [], source);
+                assert.equal(parsed.op.matcher?.raw, pattern, source);
+                assert.deepEqual(parsed.op.metadata, [metadata], "owner metadata remains verbatim");
+                assert.equal(parsed.op.body, body, "the matcher does not become replacement text");
+                assert.equal(parsed.op.aside, "selection");
+                const rendered = PlurnkParser.stringify([parsed.op]);
+                const reparsed = one(rendered);
+                assert.deepEqual(reparsed.diagnostics, [], rendered);
+                assert.deepEqual(reparsed.op, parsed.op, "rendering preserves the entire accepted selection");
+            }
+        }
+    });
+}
+
+test("{§trailing-slots}: canonicalizing trailing owner metadata retains the matcher", () => {
+    const parsed = one('````READ (notes.md) /todo/i [{"limit":3}] <1,-1> <!-- selected -->\n````');
+    assert.equal(parsed.diagnostics.length, 2);
+    const rendered = PlurnkParser.stringify([parsed.op]);
+    assert.equal(rendered, '````READ (notes.md) <1,-1> [{"limit":3}] /todo/i <!-- selected -->\n````');
+    const reparsed = one(rendered);
+    assert.deepEqual(reparsed.diagnostics, []);
+    assert.deepEqual(reparsed.op, parsed.op);
+});
+
+test("{§statement-rendering}: an escaped matcher shares one options block with owner metadata", () => {
+    for (const op of ["READ", "COPY", "MOVE"]) {
+        const metadata = '{"headers":{"Accept":"text/plain"}}';
+        const parsed = one(PlurnkParser.frame(`${op} (opaque:///source) [${metadata},{"pattern":"<!--"}]${op === "READ" ? "" : " (worker:///copy)"}`, null)).op;
+        if (parsed.op === "COPY" || parsed.op === "MOVE") parsed.source.metadata = [metadata];
+        else parsed.metadata = [metadata];
+        const rendered = PlurnkParser.stringify([parsed]);
+        assert.ok(rendered.includes(`[${metadata},{"pattern":"<!--"}]`), rendered);
+        const reparsed = one(rendered);
+        assert.deepEqual(reparsed.diagnostics, []);
+        if (parsed.op === "COPY" || parsed.op === "MOVE") {
+            assert.ok(reparsed.op.op === parsed.op);
+            assert.deepEqual(reparsed.op.source.matcher, parsed.source.matcher);
+            assert.deepEqual(reparsed.op.destination, parsed.destination);
+        } else assert.deepEqual(reparsed.op.matcher, parsed.matcher);
+    }
+});
+
+test("{§scheme-metadata-modifier}: invalid owner blocks do not erase an independent bare matcher", () => {
+    for (const block of ["[not-json]", "[3]", '[{"one":1}] [{"two":2}]']) {
+        const source = PlurnkParser.frame(`READ (opaque:///notes) ${block} /needle/`, null);
+        const parsed = one(source);
+        assert.deepEqual(parsed.diagnostics, [], "the owner still receives its invalid metadata");
+        assert.equal(parsed.op.matcher?.raw, "/needle/", source);
+        assert.equal(PlurnkParser.stringify([parsed.op]), source, "no metadata is rewritten or discarded");
+    }
+});
+
 test("{§inline-flag-tolerance}: a leading PCRE inline modifier lifts into the flags with one advisory", () => {
     const slash = one("````READ (ledger.md) /(?i)shutdown|reactor|code/ <!-- locate the code -->\n````\n");
     assert.deepEqual(slash.op.matcher, { dialect: "regex", raw: "/(?i)shutdown|reactor|code/", pattern: "shutdown|reactor|code", flags: "i" });

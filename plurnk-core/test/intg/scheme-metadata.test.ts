@@ -5,7 +5,7 @@ import { type ReadStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeHandler } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, seedEntryWithChannel, seedEnvelope, fixtureExecutors } from "./_helpers.ts";
+import { openMigrated, seedEntryWithChannel, seedEnvelope, fixtureExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const read = (source: string): ReadStatement => {
     const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
@@ -28,6 +28,60 @@ const manifest = (name: string, metadataModifier = false) => ({
     modelVisible: true,
     ...(metadataModifier ? { metadataModifier: true } : {}),
 });
+
+for (const op of ["FIND", "READ", "EDIT", "KILL"] as const) {
+    for (const pattern of ["needle", "absent"]) {
+        test(`{§naked-pattern}: ${op} with owner metadata applies /${pattern}/ without widening selection`, async () => {
+            const db = await openMigrated();
+            const env = await seedEnvelope(db, `metadata-pattern-${crypto.randomUUID()}`);
+            const schemes = new SchemeRegistry();
+            const observed: unknown[] = [];
+            schemes.register("opaque", {
+                manifest: { ...manifest("opaque", true), textEditScopes: true },
+                async prepareRepresentation(request) {
+                    observed.push(request.metadata);
+                    return { status: 200 };
+                },
+                async find(statement, ctx) {
+                    observed.push(statement.metadata);
+                    return ctx.entries.operations.find(statement);
+                },
+                async editBatch(statements, ctx) {
+                    observed.push(...statements.map(({ metadata }) => metadata));
+                    return ctx.entries.operations.editBatch(statements);
+                },
+            } satisfies SchemeHandler);
+            const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
+            const original = "keep first\nneedle one\nkeep last\nneedle two";
+            try {
+                await seedEntryWithChannel(db, { workspaceId: env.workspaceId, scheme: "opaque", pathname: "/notes", content: original });
+                const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(
+                    `${op} (opaque:///notes) [{"accept":"text/plain"}] /${pattern}/`,
+                    op === "EDIT" ? "replacement" : null,
+                ));
+                assert.equal(parsed.items.length, 1);
+                const item = parsed.items[0];
+                assert.ok(item?.kind === "statement" && item.statement.op === op);
+                const result = await engine.dispatch({ statement: item.statement, ...env, sequence: 1, origin: "model" });
+                assert.equal(result.status, pattern === "absent" ? 204 : 200, JSON.stringify(result));
+                if (op === "READ") assert.equal(result.content, pattern === "absent" ? "" : "needle one\nneedle two");
+                if (op === "FIND") assert.equal(result.matchLocationCount, pattern === "absent" ? 0 : 2);
+                const expected = pattern === "absent" || op === "FIND" || op === "READ" ? original
+                    : op === "EDIT" ? "keep first\nreplacement one\nkeep last\nreplacement two"
+                        : "keep first\nkeep last\n";
+                const stored = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
+                    scheme: "opaque", pathname: "/notes", name: "body",
+                });
+                assert.equal(stored?.content, expected, "unmatched content survives the real operation");
+                assert.ok(observed.length > 0, "the owning scheme participates");
+                for (const metadata of observed) assert.deepEqual(metadata, ['{"accept":"text/plain"}'], "the owner receives its authored options");
+            } finally {
+                await schemes.close();
+                await db.close();
+            }
+        });
+    }
+}
 
 test("scheme metadata remains outside the target and reaches only an opted-in scheme", async () => {
     const db = await openMigrated();

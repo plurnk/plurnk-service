@@ -162,10 +162,20 @@ export default class AstBuilder {
     }
 
     static #isJsonArrayOfObjects(inner: string): boolean {
-        try {
-            const parsed = JSON.parse(`[${inner}]`) as unknown;
-            return Array.isArray(parsed) && parsed.every((element) => typeof element === "object" && element !== null && !Array.isArray(element));
-        } catch { return false; }
+        return AstBuilder.metadataOptions([inner]) !== null;
+    }
+
+    // {§matcher-option} — shared by admission and rendering; invalid blocks remain owner input.
+    static metadataOptions(metadata: readonly string[] | null | undefined): Record<string, unknown> | null {
+        if (metadata?.length !== 1) return null;
+        let parsed: unknown;
+        try { parsed = JSON.parse(`[${metadata[0]}]`); }
+        catch (cause) {
+            if (!(cause instanceof SyntaxError)) throw cause;
+            return null;
+        }
+        if (!Array.isArray(parsed) || parsed.some((element) => typeof element !== "object" || element === null || Array.isArray(element))) return null;
+        return Object.assign({}, ...parsed as object[]) as Record<string, unknown>;
     }
 
     static readonly #SIGIL = /^(\/|\$|~|&|\^)/u;
@@ -186,7 +196,8 @@ export default class AstBuilder {
     }
 
     static #liftMatcher(op: string, metadata: SchemeMetadata, position: Position, raw: string | null = null, inline = false, carriedScope = false): { matcher: MatcherBody | null; metadata: SchemeMetadata; aside: string | null; scope: string | null } {
-        if (metadata === null || metadata.length !== 1) {
+        const options = AstBuilder.metadataOptions(metadata);
+        if (options === null || !Object.hasOwn(options, "pattern")) {
             const bare = AstBuilder.#bareMatcher(raw, op, inline, position, { scope: carriedScope, metadata: metadata !== null });
             return bare === null
                 ? { matcher: null, metadata, aside: null, scope: null }
@@ -197,18 +208,6 @@ export default class AstBuilder {
                     scope: bare.scope,
                 };
         }
-        let parsed: unknown;
-        try { parsed = JSON.parse(`[${metadata[0]}]`); }
-        catch (cause) {
-            if (!(cause instanceof SyntaxError)) throw cause;
-            return { matcher: null, metadata, aside: null, scope: null };
-        }
-        const elements = parsed as unknown[];
-        if (elements.some((element) => typeof element !== "object" || element === null || Array.isArray(element))) {
-            return { matcher: null, metadata, aside: null, scope: null };
-        }
-        const options = Object.assign({}, ...elements as object[]) as Record<string, unknown>;
-        if (!Object.hasOwn(options, "pattern")) return { matcher: null, metadata, aside: null, scope: null };
         const pattern = options.pattern;
         if (typeof pattern !== "string") {
             throw new PlurnkParseError(position.line, position.column, "visitor", `${op} "pattern" must be a string matcher, e.g. [{"pattern": "/needle/i"}].`);

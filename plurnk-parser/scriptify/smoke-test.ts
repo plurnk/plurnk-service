@@ -78,6 +78,18 @@ const result = PlurnkParser.parseStatements(PlurnkParser.frame("EDIT (worker:///
 assertClean("statement sequence", result);
 assertClean("client tier", PlurnkParser.parseClient(PlurnkParser.frame("LOOK (known://foo)", null)));
 
+const selected = PlurnkParser.parseStatements(PlurnkParser.frame('READ (https://example.com) [{"headers":{"Accept":"text/plain"}}] /needle/', null));
+assertClean("owner metadata with matcher", selected);
+const selection = selected.items[0]?.statement;
+if (selection?.matcher?.raw !== "/needle/" || selection.metadata?.[0] !== '{"headers":{"Accept":"text/plain"}}') {
+    throw new Error("owner metadata erased the resource selection: " + JSON.stringify(selection));
+}
+const reparsedSelection = PlurnkParser.parseStatements(PlurnkParser.stringify([selection]));
+assertClean("rendered resource selection", reparsedSelection);
+if (JSON.stringify(reparsedSelection.items[0]?.statement) !== JSON.stringify(selection)) {
+    throw new Error("rendering erased the resource selection");
+}
+
 const interstitial = "Prelude.\\n" + PlurnkParser.frame("SEND", "Only this is a message.")
     + "\\n3\\n" + program + "\\nPostscript.";
 for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {

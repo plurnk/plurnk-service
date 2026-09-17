@@ -406,7 +406,8 @@ It chooses at least four backticks and more than any run within the body, and a
 numeric delimiter whenever the body holds a heading line of four or more backticks
 ({§fence-heading-in-body}), preserving body bytes on reparse. Fence length and
 delimiter are syntax, not AST or persistence state. Core-authored programs use
-this serializer and the ordinary admission parser.
+this serializer and the ordinary admission parser. Rendering preserves a matcher
+beside owner metadata, not only a matcher carried inside its `pattern` option.
 
 | Element | Contract |
 |---|---|
@@ -1393,7 +1394,9 @@ diagnostics are:
   matcher, in whichever dialect its first characters claim
   ({§matcher-prefix-claims}): `/re/i`, `^anchored`, `//xpath`, `$.json`, `~words`,
   `&symbol`, or a sigil-less glob or literal such as `TODO` or `*.ts`. Those
-  operations take no body, so heading-line text can mean nothing else. On EDIT only
+  matchers remain independent of owner options: a block without `pattern` never
+  erases the heading matcher, and invalid blocks still reach the owning validator.
+  These operations take no body, so heading-line text can mean nothing else. On EDIT only
   a sigil lifts, because plain heading-line text is the replacement body it always
   was; the lines beneath the heading are then the replacement, and none deletes each
   match ({§edit-pattern}). A trailing `<!-- aside -->` on the same line stays the
