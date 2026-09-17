@@ -2521,6 +2521,57 @@ test("cache policy: no-store evidence supplies neither TTL content nor validator
     assert.equal(inspect().storedEntry?.channels.body?.content, "current response");
 });
 
+for (const { status, policy, reusable } of [
+    { status: 200, policy: "", reusable: true },
+    { status: 201, policy: "", reusable: false },
+    { status: 202, policy: "", reusable: false },
+    { status: 203, policy: "", reusable: true },
+    { status: 206, policy: "", reusable: false },
+    { status: 299, policy: "", reusable: false },
+    { status: 300, policy: "", reusable: true },
+    { status: 301, policy: "", reusable: true },
+    { status: 302, policy: "", reusable: false },
+    { status: 307, policy: "", reusable: false },
+    { status: 308, policy: "", reusable: true },
+    { status: 201, policy: "max-age=60", reusable: true },
+    { status: 202, policy: "max-age=60", reusable: true },
+    { status: 202, policy: "public", reusable: true },
+    { status: 202, policy: "private", reusable: true },
+    { status: 202, policy: "public, no-store", reusable: false },
+    { status: 206, policy: "max-age=60, public", reusable: false },
+    { status: 299, policy: "max-age=60", reusable: true },
+]) {
+    test(`{§revalidation} READ and FIND reuse eligibility: HTTP ${status}, ${policy || "no explicit permission"}`, async () => {
+        const { ctx, inspect } = makeCtx();
+        const http = new Http();
+        const target = urlTarget("https://example.com/eligibility", "/eligibility");
+        const requests: Headers[] = [];
+        await withTtl("60000", async () => {
+            await withFetch(async (_url, init) => {
+                requests.push(new Headers(init?.headers));
+                return new Response(`response ${requests.length}`, {
+                    status,
+                    headers: {
+                        "content-type": "text/plain",
+                        "cache-control": policy,
+                        etag: '"stored"',
+                    },
+                });
+            }, async () => {
+                assert.equal((await prepareRepresentation(http, readStmt(target), ctx)).status, 200);
+                assert.equal(inspect().storedEntry?.channels.body?.content, "response 1", "ineligible content still exists as evidence");
+                assert.match(inspect().storedEntry?.channels.header?.content ?? "", new RegExp(`^HTTP ${status} `));
+                assert.equal((await prepareRepresentation(http, readStmt(target), ctx)).status, 200);
+                assert.equal(requests.length, reusable ? 1 : 2, "second READ respects reuse eligibility");
+                assert.equal((await prepareExactFind(http, findStmt(target), ctx)).status, 200);
+                assert.equal(requests.length, reusable ? 1 : 3, "exact FIND shares eligibility");
+            });
+        });
+        assert.ok(requests.every(headers => !headers.has("if-none-match")), "ineligible evidence supplies no stored validators");
+        assert.equal(inspect().storedEntry?.channels.body?.content, `response ${reusable ? 1 : 3}`);
+    });
+}
+
 for (const { name, ageMs, ttl, cacheHeaders, expectedFetch } of [
     {
         name: "max-age inside both origin and operator windows",

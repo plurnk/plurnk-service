@@ -111,6 +111,38 @@ test("{§http-channel-outcomes} finite origin statuses never become nonterminal 
     }
 });
 
+for (const status of [201, 202, 206]) {
+    test(`{§revalidation} a durable HTTP ${status} body remains evidence without satisfying the next READ`, async (t) => {
+        const db = await openMigrated();
+        t.after(() => db.close());
+        const requests: Headers[] = [];
+        t.mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
+            if (String(url).endsWith("/llms.txt")) return new Response(null, { status: 404 });
+            requests.push(new Headers(init?.headers));
+            return new Response(`revision ${requests.length}`, {
+                status,
+                headers: { "content-type": "text/plain", etag: '"v1"' },
+            });
+        });
+        const workspaceId = await insertWorkspace(db, `http-ineligible-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const stored = await makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
+        const http = new Http();
+        const read = parsedRead("https://93.184.216.34/ineligible");
+        for (const revision of [1, 2]) {
+            const result = await readHttp(http, read, ctx);
+            assert.equal(result.status, 200, JSON.stringify(result));
+            assert.equal(result.content, `revision ${revision}`);
+            const entry = (await stored.entries.read("/ineligible")).entry;
+            assert.equal(entry?.channels.body.content, `revision ${revision}`);
+            assert.match(entry?.channels.header.content ?? "", new RegExp(`^HTTP ${status} `));
+        }
+        assert.equal(requests.length, 2);
+        assert.ok(requests.every(headers => !headers.has("if-none-match")));
+    });
+}
+
 // Minimal valid one-page PDF whose content stream contains "Hello, world!".
 const readablePdf = () => new Uint8Array(Buffer.from(
     "JVBERi0xLjQKJaWx6woxIDAgb2JqCjw8IC9UeXBlIC9DYXRhbG9nIC9QYWdlcyAyIDAgUiA+PgplbmRvYmoKMiAwIG9iago8PCAvVHlwZSAvUGFnZXMgL0tpZHMgWzMgMCBSXSAvQ291bnQgMSA+PgplbmRvYmoKMyAwIG9iago8PCAvVHlwZSAvUGFnZSAvUGFyZW50IDIgMCBSIC9NZWRpYUJveCBbMCAwIDMwMCAxNDRdIC9SZXNvdXJjZXMgPDwgL0ZvbnQgPDwgL0YxIDUgMCBSID4+ID4+IC9Db250ZW50cyA0IDAgUiA+PgplbmRvYmoKNCAwIG9iago8PCAvTGVuZ3RoIDQ1ID4+CnN0cmVhbQpCVCAvRjEgMTggVGYgMzYgMTAwIFRkIChIZWxsbywgd29ybGQhKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMTQgMDAwMDAgbiAKMDAwMDAwMDA2MyAwMDAwMCBuIAowMDAwMDAwMTIwIDAwMDAwIG4gCjAwMDAwMDAyNDYgMDAwMDAgbiAKMDAwMDAwMDM0MCAwMDAwMCBuIAp0cmFpbGVyCjw8IC9TaXplIDYgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjQxMAolJUVPRgo=",

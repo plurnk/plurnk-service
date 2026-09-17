@@ -19,6 +19,7 @@ import LiveAcquisitions from "./LiveAcquisitions.ts";
 // Package-owned metadata appended after untrusted origin headers. Readers take
 // the last value so an origin using the same field name cannot override it.
 const DELTA_SECONDS_LIMIT = 2_147_483_648n;
+const HEURISTIC_CACHE_STATUSES = new Set([200, 203, 204, 206, 300, 301, 308, 404, 405, 410, 414, 501]);
 const BODY_PROCESSING_FIELDS = new Set([
     "content-encoding",
     "content-length",
@@ -38,7 +39,7 @@ interface EntityTag {
 }
 
 interface StoredCachePolicy {
-    readonly noStore: boolean;
+    readonly cacheable: boolean;
     readonly noCache: boolean;
     readonly freshnessLifetimeMs?: number;
 }
@@ -369,7 +370,7 @@ export default class Http implements SchemeHandler {
             && Http.#requestMethod(header.content) === "GET"
             && requestHeaders.length === 0
             && Http.#cacheVariant(header.content) === "default"
-            && !Http.#storedCachePolicy(header.content).noStore
+            && Http.#storedCachePolicy(header.content).cacheable
             && await Http.#projectionCurrent(header.content, projection);
     }
 
@@ -536,7 +537,7 @@ export default class Http implements SchemeHandler {
         const residentTime = Math.max(0, now - fetchedAt);
         if (residentTime >= ttl) return false;
         const policy = Http.#storedCachePolicy(header);
-        if (policy.noStore || policy.noCache) return false;
+        if (!policy.cacheable || policy.noCache) return false;
         return policy.freshnessLifetimeMs === undefined
             || Http.#currentAge(header, fetchedAt, now) < policy.freshnessLifetimeMs;
     }
@@ -610,8 +611,13 @@ export default class Http implements SchemeHandler {
                 }
             }
         }
+        const status = Number(/^HTTP ([0-9]{3})(?:\s|$)/.exec(header)?.[1]);
+        const explicitPermission = freshnessLifetimeMs !== undefined
+            || directives.some(({ name, argument }) => name === "private" || (name === "public" && argument === undefined));
         return {
-            noStore: directives.some(({ name }) => name === "no-store"),
+            cacheable: status >= 200 && status <= 599 && status !== 206
+                && !directives.some(({ name }) => name === "no-store")
+                && (HEURISTIC_CACHE_STATUSES.has(status) || explicitPermission),
             noCache: directives.some(({ name }) => name === "no-cache"),
             ...(freshnessLifetimeMs === undefined ? {} : { freshnessLifetimeMs }),
         };

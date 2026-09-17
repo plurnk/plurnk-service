@@ -81,6 +81,8 @@ Re-reading an exact URL can reuse only a complete GET acquired without
 explicit request metadata whose response had no `Vary` field. Plurnk keeps one
 representation per URL, so any request metadata or `Vary` response bypasses both
 the freshness shortcut and old validators instead of creating a variant store.
+Reuse also requires a cacheable status or explicit origin permission; partial
+`206` responses are retained but never reused as a complete GET.
 Eligible content is served directly only while both the operator TTL and any
 origin `max-age` or `Expires` lifetime remain live. `no-cache` requires origin
 validation; `no-store` evidence remains in the log but supplies neither content

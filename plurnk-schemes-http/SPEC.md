@@ -379,6 +379,11 @@ channel lifecycle, not body length: `body` and `header` must be successful
 may be `errored`; `active` or unknown state is ineligible. Durable operation
 evidence and HTTP reuse eligibility remain distinct: an acquired response stays
 in the entry even when its origin policy prevents later cache use.
+Reuse also requires a heuristically cacheable origin status (RFC 9110 §15.1)
+or explicit cache permission (`public`, `private`, `max-age`, or `Expires`).
+Partial `206` responses remain evidence only: this cache does not combine or
+select byte ranges. Ineligible responses supply neither cached content nor
+validators to a later READ or exact FIND.
 
 | Stored origin policy                  | Direct READ after acquisition                          | Exact FIND after acquisition             |
 | ------------------------------------- | ------------------------------------------------------ | ---------------------------------------- |
@@ -387,7 +392,7 @@ in the entry even when its origin policy prevents later cache use.
 | Valid `max-age`                       | Serve only inside origin lifetime and operator ceiling | Reuse only while fresh under both limits |
 | Valid `Expires`, without `max-age`    | Same, using the origin expiration lifetime             | Same                                     |
 | Invalid or ambiguous explicit expiry  | Treat as stale; validate or acquire                    | Full acquisition                         |
-| No explicit origin lifetime           | Use the operator TTL as Plurnk's heuristic             | Reuse inside the operator TTL            |
+| Eligible response without explicit lifetime | Use the operator TTL as Plurnk's heuristic          | Reuse inside the operator TTL            |
 
 The operator ceiling is `PLURNK_SCHEMES_HTTP_TTL_MS`; `0` disables every
 validation-free reuse. Origin age is the greater of the response's `Age` value

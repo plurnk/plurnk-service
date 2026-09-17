@@ -10,9 +10,9 @@ authored against the DB-free
 
 | Operation                                      | Behavior                                                                                  |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| ```` ```READ (http(s)://…) ````                       | Fetch or reuse/revalidate a GET representation, then stream the selected response channel |
-| ```` ```READ (http(s)://…) <scope> ````               | Apply the standard entry READ to an already-materialized response without refetching      |
-| ```` ```FIND (http(s)://…) ```` with matcher body     | Materialize an exact URL when required, then use the universal entry query and matcher    |
+| ```` ```READ (http(s)://…) ````                       | Fetch or reuse/revalidate a GET representation, then project the selected response channel |
+| ```` ```READ (http(s)://…) <scope> ````               | Apply standard entry scope after the same acquisition/revalidation; scope does not bypass it |
+| ```` ```FIND (http(s)://…) [{"pattern": "…"}] ````     | Materialize an exact URL when required, then use the universal entry query and matcher    |
 | ```` ```SEND (http(s)://…) ```` with body             | POST the body and stream the response                                                     |
 | ```` ```EDIT (http(s)://…) ```` with body             | PUT a whole-resource replacement; line-scoped HTTP edits are invalid                      |
 | ```` ```KILL (http(s)://…) ````                       | Cancel a live acquisition of the address, or forget its stored response                 |
@@ -32,7 +32,7 @@ location, weighting, pagination, and status contract.
 
 A fragmentless operation publishes only `body`; auxiliary channels remain
 durable and can be addressed explicitly. Remote HTTP status is stored in
-`header`; the PLURNK operation result reports the streaming lifecycle.
+`header`; the PLURNK operation result reports the selected channel's outcome.
 Binary responses retain their bounded original bytes. Ordinary READ returns
 hex and, on a supporting model, attaches native media; `#readable` selects
 derived facts/text with the same native source. Unknown formats remain
@@ -44,7 +44,7 @@ byte-readable. Input above the common binary ceiling returns `413`.
   WebSocket retain their explicit-target authority.
 - Generic GETs negotiate origin Markdown first. When the origin returns HTML,
   a selected materializer plugin ({§http-materializer-plugins}) produces
-  `body`; otherwise the installed HTML reader is the local route. Recoverable
+  `readable`; otherwise the installed HTML reader is the local route. Recoverable
   materializer failures use that same reader as a `203` recovery floor. Hard
   provider failures do not silently change producers.
 - `body`, `header`, and `readable` settle independently. The selected channel
@@ -89,3 +89,17 @@ Without a selection, `@plurnk/plurnk-mimetypes-text-html` supplies the local
 ```sh
 npm test
 ```
+
+The optional [HTTP cache survey](https://repo.possumtech.com/plurnk/plurnk-service/issues/674)
+uses the unmodified [http-tests corpus](https://github.com/http-tests/cache-tests).
+Its adapter, case results, exclusions, and open questions are retained in the
+issue, not added to the test gate. It is a diagnostic, not a conformance score.
+
+| Boundary | Current behavior |
+| --- | --- |
+| Origin lifetime | `max-age`, `Expires`, and origin age constrain reuse alongside the operator TTL. |
+| Heuristic reuse | Requires an eligible status or explicit permission; errors and partial `206` responses are reacquired. |
+| Request headers / `Vary` | Bypass reuse; there is no variant cache. |
+| Stale data | Never substituted for failed acquisition; no stale-while-revalidate behavior. |
+| Response evidence | Stored headers are not a forwarded HTTP response; no generated `Age` or removed hop-by-hop evidence. |
+| Shared-cache directives | `s-maxage` is not interpreted; `private` does not prohibit workspace-local reuse. The survey tracks the unresolved private/shared-cache classification. |
