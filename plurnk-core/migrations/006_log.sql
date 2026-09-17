@@ -611,6 +611,7 @@ FROM (
     JOIN turns t ON t.id = le.turn_id
     WHERE le.ambient_event_id IS NULL
       AND le.inherited_history = 0
+      AND COALESCE(json_extract(le.attrs, '$.kind'), '') != 'message'
       AND (
           le.op IN ('EDIT', 'COPY', 'MOVE', 'SEND', 'WORK', 'FORK')
           OR CASE WHEN json_valid(le.tx) THEN json_type(le.tx, '$.runtime') END = 'text'

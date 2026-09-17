@@ -712,7 +712,7 @@ test("{§env-delta-child-termination} administrative loops stay private without 
     }
 });
 
-test("a child's loop termination reaches only its parent — 2xx visible, failure body-suppressed", async () => {
+test("a child's loop termination reaches only its parent with success, failure, and cancellation bodies visible", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loopterm-${crypto.randomUUID()}`);

@@ -130,12 +130,13 @@ test("direct-child activity reaches its parent without leaking to a grandparent 
     }
 });
 
-test("a delegated message reaches the parent as ordinary body-suppressed child activity", async () => {
+test("{§env-delta-child-activity} received messages remain local observations, not child-authored activity", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `lineage-prompt-${crypto.randomUUID()}`);
         const parent = await insertWorker(db, workspaceId, null, "parent");
         const child = await insertWorker(db, workspaceId, parent, "child");
+        await insertWorker(db, workspaceId, null, "peer");
         const parentLoop = await insertLoop(db, parent, 1, "observe");
         const childLoop = await insertLoop(db, child, 1, "inspect the delegated evidence");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -148,6 +149,34 @@ test("a delegated message reaches the parent as ordinary body-suppressed child a
             messages,
             turnNumber: 1,
         });
+        const arrivals = [
+            { source: null, body: "inspect the delegated evidence" },
+            { source: "worker://parent", body: "An updated request from the parent." },
+            { source: "worker://peer", body: "An unrelated peer's request." },
+            { source: "agui://anonymous/threads/child/messages/m1", body: "An external client's request." },
+        ];
+        for (const { source, body } of arrivals.slice(1)) {
+            assert.ok(await engine.injectIntoLoop(childLoop, body, [], source!));
+        }
+        await engine.runTurn({
+            provider: new Mock({ contextWindow: 100_000, responses: [continueResponse()] }),
+            workspaceId,
+            workerId: child,
+            loopId: childLoop,
+            messages,
+            turnNumber: 2,
+        });
+        const childRows = await db.engine_render_log.all<{
+            attrs: string;
+            source: string | null;
+            tx: string;
+        }>({ worker_id: child });
+        assert.deepEqual(
+            childRows.filter(({ attrs }) => JSON.parse(attrs).kind === "message")
+                .map(({ source, tx }) => ({ source, body: JSON.parse(tx).body.raw })),
+            arrivals,
+            "initial and mid-loop messages retain their original sender and body in the recipient's log",
+        );
         await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [continueResponse()] }),
             workspaceId,
@@ -161,15 +190,12 @@ test("a delegated message reaches the parent as ordinary body-suppressed child a
             op: string;
             origin: string;
             source: string | null;
-            tx: string;
-            initial_folded: string;
-            folded: string;
         }>({ worker_id: parent });
-        // {§message-arrival} — the child's own arrival row crosses like any of its activity.
-        const prompt = rows.find(({ op, origin, source, tx }) => op === "SEND" && origin === "_plurnk" && source === "worker://child" && tx.includes("inspect the delegated evidence"));
-        assert.ok(prompt, "the real message-publication path reaches the direct parent");
-        assert.equal(prompt.initial_folded, "[[1,-1]]");
-        assert.equal(prompt.folded, "[]", "the parent can READ the initially suppressed message");
+        assert.deepEqual(
+            rows.filter(({ origin, source }) => origin === "_plurnk" && source === "worker://child"),
+            [],
+            "receiving a request does not become an action attributed to its recipient",
+        );
     } finally {
         await db.close();
     }
