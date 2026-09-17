@@ -22,7 +22,6 @@ test("live exec: model emits a sh fence and the spawn captures stdout", async (t
             "If you see the exec's stdout stream (a `sh:///...` entry) containing",
             "`plurnk-exec-live-ok`, emit this complete turn:",
             PlurnkParser.frame("SEND", "plurnk-exec-live-ok"),
-            PlurnkParser.frame("SEND", ""),
             "",
             "Otherwise, emit this complete turn to run `echo plurnk-exec-live-ok` and await its result:",
             PlurnkParser.frame("sh", "echo plurnk-exec-live-ok"),
@@ -31,7 +30,7 @@ test("live exec: model emits a sh fence and the spawn captures stdout", async (t
             "Do not repeat the command once you see the `sh:///...` stream entry in the log.",
         ].join("\n");
 
-        const { finalStatus, hitMaxTurns, turnIds } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 8 }, { signal: t.signal });
+        const { finalStatus, hitMaxTurns, lastContent, turnIds } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 8 }, { signal: t.signal });
 
         const dumpTurns = async (): Promise<void> => {
             for (const turnId of turnIds) {
@@ -43,10 +42,9 @@ test("live exec: model emits a sh fence and the spawn captures stdout", async (t
         if (finalStatus !== 200) await dumpTurns();
         assert.equal(finalStatus, 200);
         assert.equal(hitMaxTurns, false);
+        assert.equal(lastContent.trim(), "plurnk-exec-live-ok", "the model reports the observed stdout to the client");
 
-        // Verify a real exec-output entry was created and captured the probe string.
-        // {§exec}: shell output persists under the runtime-tag scheme ("sh"),
-        // addressed sh:///<loop>/<turn>/<seq>/sh — NOT scheme="exec" (exec:// is process-control only).
+        // {§exec}: inspect the real invocation's retained stdout, not just its receipt.
         const execEntryCount = (await s.db.test_count_entries_by_workspace_scheme.get<{ n: number }>({
             workspace_id: s.workspaceId, scheme: "sh",
         }))?.n ?? 0;
