@@ -138,7 +138,7 @@ export default class DataStatementRunner {
             return this.#failure(
                 "scheme-metadata-unsupported",
                 400,
-                `Scheme '${schemeName}' does not accept the [metadata] modifier.`,
+                `${writtenOp(statement)} on '${schemeName}' does not accept the [metadata] modifier.`,
                 {},
                 {
                     scheme: schemeName,

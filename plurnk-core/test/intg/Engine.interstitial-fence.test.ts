@@ -124,6 +124,6 @@ test("{§metadata-ignored}: metadata on a file READ is ignored with a notice and
         assert.deepEqual(result.outcomes.filter(({ op }) => op === "READ").map(({ op, status }) => [op, status]), [["READ", 200]], "the READ ran without its metadata");
         const notice = notices.find(({ kind }) => kind === "metadata_ignored");
         assert.ok(notice, "one metadata_ignored notice");
-        assert.match(notice!.message ?? "", /takes no \[metadata\]; the READ ran without it/u);
+        assert.equal(notice.message, "READ on 'worker' takes no [metadata]; the READ ran without it.");
     } finally { await db.close(); }
 });

@@ -190,7 +190,7 @@ export default class AdmittedTurnExecutor {
         };
 
         for (const [index, scheduledStatement] of scheduled.entries()) {
-            // {§metadata-ignored} — a scheme that takes no [metadata] gets the operation without it,
+            // {§metadata-ignored} — an unsupported resource option is dropped,
             // and the model gets one notice, never a refusal. SEND recipients and invocation owners
             // receive their own input whole ({§send-resource-attachments}, {§env-option}).
             let statement = scheduledStatement;
@@ -203,7 +203,7 @@ export default class AdmittedTurnExecutor {
                         source: "engine:dispatcher",
                         kind: "metadata_ignored",
                         level: "warn",
-                        message: `Scheme '${schemeName}' takes no [metadata]; the ${statement.op} ran without it.`,
+                        message: `${statement.op} on '${schemeName}' takes no [metadata]; the ${statement.op} ran without it.`,
                     });
                     statement = { ...statement, metadata: null } as typeof statement;
                 }
