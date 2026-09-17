@@ -103,14 +103,14 @@ test("{§whitespace-contract}: exact closing fences bound bodies before ignored 
     }
 });
 
-test("{§fence-closer}: a same-width bare fence closes its SEND, and the numeric delimiter keeps it as body", () => {
+test("{§balanced-fences}: complete same-width examples remain body with or without an explicit delimiter", () => {
     for (const newline of ["\n", "\r\n"]) {
         const bare = PlurnkParser.parse("```SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```\n".replaceAll("\n", newline) + task("Done."));
         assert.equal(bare.unparsedTail, undefined);
         assert.deepEqual(errors(bare), []);
         assert.deepEqual(ops(bare).map(writtenOp), ["SEND", "WAIT"]);
         const bareSend = ops(bare)[0];
-        assert.equal(bareSend.op === "SEND" ? bareSend.body?.raw : null, "Code:\n```ts\nconst value = 42;".replaceAll("\n", newline), "the first same-width bare fence is the closer");
+        assert.equal(bareSend.op === "SEND" ? bareSend.body?.raw : null, "Code:\n```ts\nconst value = 42;\n```\nVerified.".replaceAll("\n", newline), "the complete nesting preserves the example and the following prose");
         const delimited = PlurnkParser.parse("```42SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```42\n".replaceAll("\n", newline) + task("Done."));
         assert.deepEqual(errors(delimited), []);
         const delimitedSend = ops(delimited)[0];

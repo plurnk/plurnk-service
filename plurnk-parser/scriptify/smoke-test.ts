@@ -99,6 +99,13 @@ if (quotedSend.items.length !== 2 || quotedSend.items[0]?.statement?.op !== "SEN
     || quotedSend.items[0]?.statement?.body?.raw !== literalExample
     || quotedSend.items[1]?.statement?.op !== "NOTE") throw new Error("delimited SEND did not quote its literal example");
 
+const balancedBody = "Literal example:\\n" + literalExample + "\\nThe answer continues here.";
+const balanced = PlurnkParser.parse(outer + "SEND\\n" + balancedBody + "\\n" + outer + "\\n" + program);
+assertClean("balanced SEND", balanced);
+if (balanced.items.length !== 2 || balanced.items[0]?.statement?.op !== "SEND"
+    || balanced.items[0]?.statement?.body?.raw !== balancedBody
+    || balanced.items[1]?.statement?.op !== "NOTE") throw new Error("balanced nesting truncated the reply or executed its example");
+
 const item = result.items[0];
 if (item.kind !== "statement") throw new Error("expected statement, got " + item.kind);
 if (item.statement.op !== "EDIT") throw new Error("expected EDIT, got " + item.statement.op);

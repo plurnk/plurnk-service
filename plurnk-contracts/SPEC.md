@@ -267,34 +267,44 @@ input
 physical line: a fence of at least three backticks, an optional numeric delimiter
 ({§numeric-delimiter}), then the name and its slots. A closer is shown by
 convention and never demanded ({§fence-closer}, {§closer-fallback}). There are no
-operation suffixes or heading levels. Nothing in the language is counted by the
-author: every boundary is an anchored line the parser recognizes by its first
-characters (operator, 2026-09-12: counted pairs failed 52 of 363 turns on
-GLM-5.3-flash; anchored tokens failed none).
+operation suffixes or heading levels. Complete nested matches take precedence
+over local recovery ({§balanced-fences}).
 
 §fence-closer A block opened with N backticks and delimiter D (its digits, possibly
-none) closes at the first line at column zero made of at least N backticks,
+none) closes at the first unclaimed line made of at least N backticks,
 exactly D, and nothing else but horizontal whitespace. Count follows CommonMark: a
 shorter fence inside the body is body; an equal or longer bare fence closes a bare
-block. The delimiter compares exactly: a bare fence never closes a delimited block,
+block unless it closes a balanced nested block ({§balanced-fences}). The delimiter
+compares exactly: a bare fence never closes a delimited block,
 and a delimited fence never closes a bare one. The compact one-line form closes on
 its heading line after the modifiers under the same rule.
 
+§balanced-fences A complete nested interpretation takes precedence over missing-closer
+recovery. Within an undelimited body, line-leading labeled fences open literal
+blocks; their matching closers close the innermost block first. The enclosing
+block and its nested blocks must all close, with matching widths and delimiters
+under {§fence-closer}. Equal opener/closer totals alone are insufficient. A complete
+inline block is already closed; a numerically delimited block is opaque until its
+own closer. Preserve every nested body byte, including apparent OPs and known
+executors, without dispatching them. If no complete enclosing interpretation exists,
+retain {§fence-heading-in-body} and {§closer-fallback}. These rules apply equally to
+model programs, stored programs, client operations, and reasoning quotations.
+
 §numeric-delimiter Digits between the opening backticks and the name (an opener
-carrying `42EDIT (x)`) identify the block, and only a fence carrying `42` closes it. This is how a
-block nests fences of its own width: with a delimiter, a body may carry bare fences
-and headings of the same count. The delimiter is syntax, never AST or persistence
+carrying `42EDIT (x)`) identify the block, and only a fence carrying `42` closes it.
+This explicitly protects bare fences and headings, including incomplete examples.
+The delimiter is syntax, never AST or persistence
 state; `PlurnkParser.frame` chooses one when the body it wraps holds a heading line
 of four or more backticks ({§statement-rendering}).
 
-§fence-heading-in-body A fence line of four or more backticks, optional digits, and
-a name that is a native operation or a known executor is a heading wherever it
-stands. Inside an open block it ends that block without closing it
+§fence-heading-in-body Outside a complete nested block ({§balanced-fences}), a fence
+line of four or more backticks, optional digits, and a name that is a native operation
+or a known executor is a heading. Inside an open block it ends that block without closing it
 ({§closer-fallback}) and opens the next statement. Fence lines of fewer than four
 backticks are headings only outside any block. Known executors are `sh` plus what
 the host names in `ParseOptions.executors`. Consequences: a closer glued to the next
-opener (eight backticks then `READ`) can never swallow the rest of a turn, and a quoted
-heading of four or more backticks inside a body needs the numeric delimiter to stay body.
+opener (eight backticks then `READ`) can never swallow an unbalanced turn, and a numeric
+delimiter preserves quoted headings even when their own fences are incomplete.
 
 §closer-fallback A block that ends at a heading or at the end of the input has no
 closer of its own. Its body is cut back to its last bare fence line (any count,
@@ -303,11 +313,12 @@ ending goes with it; when no bare fence line exists the body is the whole span l
 one terminating line ending. This carries no diagnostic: a missing closer is never
 an admission failure, and {§unparsed-tail-boundary} is not involved.
 
-§fence-boundary Inside a body, fences are read by count and delimiter, never by
-name, except for the heading rule above:
+§fence-boundary Balanced nesting is resolved before local recovery. Otherwise,
+fences are read by count and delimiter, except for the heading rule above:
 
 | Fence encountered inside a body | Meaning |
 |---|---|
+| Part of a complete nested block | Literal body, including its openers and closers |
 | Fewer backticks than the block's own | Body |
 | At least the block's backticks, bare, block undelimited | The block's closer |
 | At least the block's backticks carrying the block's delimiter | The block's closer |

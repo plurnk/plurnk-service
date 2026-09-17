@@ -32,8 +32,8 @@ const CONTAINER_RULES = new Set<number>([
     plurnkParser.RULE_modelTurn,
 ]);
 
-// {§fence-heading-in-body} — the host names its registered executors so their fence tags end an
-// open block from inside it exactly as the native operations do.
+// {§fence-heading-in-body} — the host names executors eligible for heading recovery
+// when a complete nested block cannot be established ({§balanced-fences}).
 export interface ParseOptions {
     readonly executors?: readonly string[];
 }
@@ -41,9 +41,8 @@ export interface ParseOptions {
 export default class PlurnkParser {
     static readonly NO_VALID_OPERATION = "no valid Plurnk operation was found.";
 
-    // {§statement-rendering} — a wider fence keeps shorter inner fences as body ({§fence-closer});
-    // a body that itself holds a heading line of four or more backticks needs the numeric
-    // delimiter, since such a line ends any block it stands in ({§fence-heading-in-body}).
+    // {§statement-rendering} — canonical framing protects arbitrary, even unfinished,
+    // examples without depending on balanced nesting ({§numeric-delimiter}).
     static frame(header: string, body: string | null): string {
         const longest = (body?.match(/`+/g) ?? []).reduce((maximum, ticks) => Math.max(maximum, ticks.length), 0);
         const fence = "`".repeat(Math.max(4, longest + 1));

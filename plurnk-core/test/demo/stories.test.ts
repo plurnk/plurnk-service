@@ -218,6 +218,21 @@ test("story: answer a recent general-knowledge question", async (t) => {
     } finally { await story.cleanup(); }
 });
 
+test("story: explain Markdown with nested code examples", async (t) => {
+    const ending = "Examples are text, not commands.";
+    const story = await runStory({
+        signal: t.signal,
+        label: "nested-code-examples",
+        prompt: `Show me a Markdown source example that itself contains a fenced shell code block printing hello. Include a short explanation after the source example. Do not execute the example. End your answer with this exact sentence: ${ending}`,
+    });
+    try {
+        assert.equal(story.finalStatus, 200);
+        assert.match(story.lastContent, /(?:echo|printf)[^\r\n]*hello/iu, "the response includes the requested command example");
+        assert.match(story.lastContent, /(?:\x60{3,}|~{3,})/u, "the response demonstrates fencing");
+        assert.ok(story.lastContent.trim().endsWith(ending), "the explanation after the nested example reaches the client");
+    } finally { await story.cleanup(); }
+});
+
 test("story: read the codename from notes.md", async (t) => {
     const story = await runStory({
         signal: t.signal,

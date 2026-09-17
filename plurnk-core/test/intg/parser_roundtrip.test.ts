@@ -188,11 +188,11 @@ test("parser: a 3-backtick block stays literal in a 4-backtick body ({§fence-cl
     assert.equal((stmts[0] as EditStatement).body, body);
 });
 
-test("parser: a 4-backtick heading inside a 3-backtick body is a heading unless the body is delimited ({§fence-heading-in-body} {§numeric-delimiter})", () => {
+test("parser: a balanced 4-backtick example inside a 3-backtick body stays literal ({§balanced-fences} {§numeric-delimiter})", () => {
     const body = "quoted section:\n````EDIT (worker:///inner)\nhello\n````";
     const bare = parseAll(`\`\`\`EDIT (worker:///demo)\n${body}\n\`\`\``);
-    assert.deepEqual(bare.map(({ op }) => op), ["EDIT", "EDIT"], "the inner heading ended the outer block and opened its own");
-    assert.equal((bare[0] as EditStatement).body, "quoted section:");
+    assert.deepEqual(bare.map(({ op }) => op), ["EDIT"], "a quoted edit does not become a real mutation");
+    assert.equal((bare[0] as EditStatement).body, body);
     const delimited = parseAll(`\`\`\`42EDIT (worker:///demo)\n${body}\n\`\`\`42`);
     assert.equal(delimited.length, 1, "the delimiter keeps the quoted heading as body");
     assert.equal((delimited[0] as EditStatement).body, body);

@@ -19,6 +19,9 @@ private openHeadingColumn: number = 0;
 private fenceLength: number = 0;
 private fenceCharacter: number = 0x60;
 private fenceDelimiter: string = "";
+private openFenceStart: number = 0;
+private balancedEnds: Map<number, number | null> = new Map();
+private fenceLines: Array<{ start: number; width: number; delimiter: string; character: number; tail: string } | null> | null = null;
 // {§reasoning-notes} — quotations are opaque; program-boundary recovery is not note extraction.
 public reasoning: boolean = false;
 private started: boolean = false;
@@ -125,6 +128,7 @@ private open(implicitName?: string): void {
     this.inlineChain = false;
     this.inlineCloserSeen = false;
     this.openHeading = this.text;
+    this.openFenceStart = this.tokenStartCharIndex;
     this.openHeadingLine = (this as any).currentTokenStartLine;
     this.openHeadingColumn = (this as any).currentTokenColumn;
     this.started = true;
@@ -153,12 +157,86 @@ private offsetAfterEol(offset: number): number | null {
     return this.inputStream.LA(offset) === 0x0A ? offset + 1 : null;
 }
 
+// {§balanced-fences} — retain complete nested blocks before trying local missing-closer
+// recovery. Cache descendants as well as the root so an unclosed prefix is scanned once.
+private balancedEnd(): number | null {
+    if (this.fenceDelimiter !== "") return null;
+    if (this.balancedEnds.has(this.openFenceStart)) return this.balancedEnds.get(this.openFenceStart)!;
+    if (this.fenceLines === null) {
+        let start = 0;
+        this.fenceLines = this.inputStream.toString().split("\n").map((line) => {
+            const match = /^([ \t]*)(\x60{3,}|~{3,})([0-9]*)(.*?)[ \t\r]*$/u.exec(line);
+            const fence = match === null ? null : {
+                start: start + match[1].length,
+                width: match[2].length,
+                character: match[2].charCodeAt(0),
+                delimiter: match[3],
+                tail: match[4],
+            };
+            // ANTLR indexes Unicode code points, not JavaScript UTF-16 units.
+            start += [...line].length + 1;
+            return fence;
+        });
+    }
+    const stack = [{ start: this.openFenceStart, width: this.fenceLength, delimiter: this.fenceDelimiter, character: this.fenceCharacter }];
+    for (let index = this.openHeadingLine; index < this.fenceLines.length; index++) {
+        const fence = this.fenceLines[index];
+        if (fence === null) continue;
+        const top = stack[stack.length - 1];
+        const continuation = this.continuedFence(fence);
+        if ((fence.tail === "" || continuation !== null) && fence.character === top.character && fence.width >= top.width && fence.delimiter === top.delimiter) {
+            stack.pop();
+            this.balancedEnds.set(top.start, fence.start);
+            if (stack.length === 0) return fence.start;
+            if (continuation !== null) {
+                const nested = this.nestedFence(continuation);
+                if (nested !== null) stack.push(nested);
+            }
+            continue;
+        }
+        // Numeric delimiters explicitly protect arbitrary (including unfinished) examples.
+        if (top.delimiter !== "" || fence.tail.trim() === "") continue;
+        const nested = this.nestedFence(fence);
+        if (nested !== null) stack.push(nested);
+    }
+    for (const fence of stack) this.balancedEnds.set(fence.start, null);
+    return null;
+}
+
+private continuedFence(fence: { start: number; width: number; delimiter: string; tail: string }): { start: number; width: number; delimiter: string; character: number; tail: string } | null {
+    const match = /^([ \t]*)(\x60{3,})([0-9]*)([A-Za-z0-9_.+-]+)(.*)$/u.exec(fence.tail);
+    if (match === null || !Object.hasOwn(plurnkLexer.OPERATIONS, match[4]) && !this.knownExecutor(match[4])) return null;
+    return { start: fence.start + fence.width + fence.delimiter.length + match[1].length, width: match[2].length, delimiter: match[3], character: 0x60, tail: match[4] + match[5] };
+}
+
+private nestedFence(fence: { start: number; width: number; delimiter: string; character: number; tail: string }): { start: number; width: number; delimiter: string; character: number } | null {
+    if (!/[\x60~]{3}/u.test(fence.tail)) return fence;
+    const name = /^[A-Za-z0-9_.+-]+/u.exec(fence.tail)?.[0];
+    if (name === undefined) return fence;
+    // Reuse the heading lexer: fences quoted in a target, metadata or aside are not closers.
+    // Literal examples need only a lexical boundary; their slot diagnostics stay opaque.
+    const lexer = new plurnkLexer(antlr.CharStream.fromString(String.fromCharCode(fence.character).repeat(fence.width) + fence.delimiter + fence.tail + "\n"));
+    lexer.knownExecutors = new Set([...this.knownExecutors, name]);
+    lexer.reasoning = fence.character !== 0x60;
+    lexer.removeErrorListeners();
+    let closed = false;
+    for (let token = lexer.nextToken(); token.type !== Token.EOF; token = lexer.nextToken()) {
+        if (token.type === plurnkLexer.SECTION_END && token.text?.includes("\x60")) closed = true;
+    }
+    if (lexer.mode === plurnkLexer.DEFAULT_MODE && (closed || lexer.inlineCloserSeen)) return null;
+    return { start: fence.start + lexer.openFenceStart, width: lexer.fenceLength, delimiter: lexer.fenceDelimiter, character: lexer.fenceCharacter };
+}
+
 // {§fence-closer} - a closer is a line of at least the opener's backticks carrying exactly the
 // opener's numeric delimiter (none when the opener had none). Count is CommonMark's rule; the
 // delimiter is what lets an equal-count block nest ({§numeric-delimiter}).
 private closingAt(offset: number): boolean {
     if (this.inputStream.LA(offset === 1 ? -1 : offset - 1) === this.fenceCharacter) return false;
     offset = this.skipHorizontal(offset);
+    if ((this.mode === plurnkLexer.BODY || this.mode === plurnkLexer.QUOTATION) && !(this.inlineBody && offset === 1)) {
+        const end = this.balancedEnd();
+        if (end !== null && this.inputStream.index + offset - 1 !== end) return false;
+    }
     let cursor = offset;
     while (this.inputStream.LA(cursor) === this.fenceCharacter) cursor++;
     if (cursor - offset < this.fenceLength) return false;
@@ -188,10 +266,8 @@ private closingAt(offset: number): boolean {
     return name !== "" && (Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutor(name));
 }
 
-// {§fence-heading-in-body} - a fence line of four or more backticks naming an operation or a known
-// executor is a heading wherever it stands: it ends the open block without closing it, so a
-// glued opener (eight backticks then READ) can never swallow the turn. A delimited block is exempt: its
-// delimiter says everything up to its own closer is body ({§numeric-delimiter}).
+// {§fence-heading-in-body} — a known heading recovers an unclosed block only after
+// {§balanced-fences} has ruled out complete nesting. Explicit delimiters remain opaque.
 private headingAt(offset: number): boolean {
     if (this.reasoning) return false;
     let cursor = offset;
@@ -216,7 +292,7 @@ private headingAt(offset: number): boolean {
 
 private headingAfterEol(): boolean {
     const after = this.offsetAfterEol(1);
-    return after !== null && this.headingAt(this.skipHorizontal(after));
+    return after !== null && this.balancedEnd() === null && this.headingAt(this.skipHorizontal(after));
 }
 
 private closingAfterEol(): boolean {

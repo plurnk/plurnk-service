@@ -15,6 +15,36 @@ const MISFENCED = [
     "````\nWAIT\nResearch positioning.\n````",
 ].join("\n\n");
 
+test("{§balanced-fences}: a complete nested reply reaches the client without executing its examples", async () => {
+    const body = [
+        "The syntax and command are examples:",
+        "```text", "````OP (path)? <scope>?", "body", "````", "```",
+        "````sh", "printf must-not-execute", "````",
+        "The rest of the answer survives intact. 🙂",
+    ].join("\n");
+    const source = `\`\`\`\`SEND\n${body}\n\`\`\`\``;
+    const mock = new Mock({ contextWindow: 16384, responses: [
+        makeRawMockResponse(source, 10),
+        makeMockResponse("````SEND\nUnexpected continuation.\n````", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "send-nested-fences" });
+            const { finalStatus, loopId, result, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "Explain with examples.", policy: { proposals: "accept" } });
+            assert.equal(finalStatus, 200);
+            assert.equal((result as { content?: string } | undefined)?.content, body, "the client receives the entire answer, not its prefix");
+            await flush();
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: loopId });
+            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["SEND", 200]], "quoted commands produce no dispatch, proposals or execution receipts");
+            const turns = await db.test_list_turns_in_loop.all<{ producer: string }>({ loop_id: loopId });
+            assert.equal(turns.filter(({ producer }) => producer === "model").length, 1, "no recovery turn or unnecessary continuation");
+            const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: modelWorkerId! });
+            assert.ok(sources.some((row) => row.kind === "ops" && row.content === source), "the original emission remains forensic evidence");
+        } finally { ws.close(); }
+    });
+});
+
 test("{§empty-turn}: operations on the line after a bare fence make an empty turn with the advisories as notices; nothing runs", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeRawMockResponse(MISFENCED, 10),
