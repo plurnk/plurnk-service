@@ -12,6 +12,7 @@ import Exec from "../../src/schemes/Exec.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { Results } from "@plurnk/plurnk-schemes";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel, testExecutors } from "./_helpers.ts";
+import { killStmt, urlPath } from "./_dsl.ts";
 
 const execStmt = (command: string): ExecStatement => ({
     metadata: null,
@@ -19,11 +20,11 @@ const execStmt = (command: string): ExecStatement => ({
     lineMarker: null, body: command, position: { line: 1, column: 1 },
 });
 
-const killExec = (pathname: string): KillStatement => ({
+const killExec = (pathname: string, scheme = "exec"): KillStatement => ({
     metadata: null,
     op: "KILL", aside: null,
     target: {
-        kind: "url", raw: `exec://${pathname}`, scheme: "exec",
+        kind: "url", raw: `${scheme}://${pathname}`, scheme,
         username: null, password: null, hostname: null, port: null,
         pathname, query: null, fragment: null,
     },
@@ -36,7 +37,8 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     return { promise, resolve };
 };
 
-test("Engine.dispatch: KILL aborts a running (backgrounded) exec — 200, spawn drained", async () => {
+for (const scheme of ["sh", "exec"]) {
+test(`Engine.dispatch: KILL through ${scheme} aborts a running exec — 200, spawn drained`, async () => {
     const db = await openMigrated();
     try {
         const registry = new SchemeRegistry();
@@ -69,7 +71,7 @@ test("Engine.dispatch: KILL aborts a running (backgrounded) exec — 200, spawn 
 
         // KILL it by coordinate.
         const kill = await engine.dispatch({
-            statement: killExec(pathname), workspaceId, workerId, loopId, turnId,
+            statement: killExec(pathname, scheme), workspaceId, workerId, loopId, turnId,
             sequence: 2, origin: "model",
         });
         assert.equal(kill.status, 200, "KILL on a running exec returns 200");
@@ -79,6 +81,7 @@ test("Engine.dispatch: KILL aborts a running (backgrounded) exec — 200, spawn 
         assert.equal(exec.hasActiveSpawns(workerId), false, "the killed spawn must be drained");
     } finally { await db.close(); }
 });
+}
 
 test("{§stream-control}: KILL on an unknown exec coordinate returns 404", async () => {
     const db = await openMigrated();
@@ -107,16 +110,13 @@ test("{§stream-control}: a KILL error answers in the model's runtime-tag scheme
         const workerId = await insertWorker(db, workspaceId);
         const ctx = { db, workspaceId, workerId, loopId: 0, turnId: 0, writer: "model" as const, signal: undefined, mimetypes: undefined, weigh: (t: string) => t.length };
         const exec = new Exec();
-        // The model addresses a stream by its RUNTIME TAG; kill() must render the error in the
-        // scheme it was CALLED with (the dispatcher passes the model's schemeName), never the
-        // internal exec machinery. The model KILLed sh:/// and must not get exec:// back.
-        const notRunning = await exec.kill("/3/1/4", null, ctx as never, "sh");
+        // {§scheme-operation-dispatch} The authored target names the runtime, not its adapter.
+        const notRunning = await exec.kill(killStmt(urlPath("sh", "/3/1/4")), ctx);
         assert.equal(notRunning.status, 404);
         assert.match(notRunning.problem?.detail ?? "", /sh:\/\/\/3\/1\/4/, "error names the model's own sh:/// address");
         assert.doesNotMatch(notRunning.problem?.detail ?? "", /exec:\/\//, "never leaks the internal exec:// scheme");
-        // The default (other internal callers) stays exec — no behavior change off the model path.
-        const bare = await exec.kill("/3/1/4", null, ctx as never);
-        assert.match(bare.problem?.detail ?? "", /exec:\/\//, "the default scheme is unchanged for non-model callers");
+        const bare = await exec.kill(killStmt(urlPath("exec", "/3/1/4")), ctx);
+        assert.match(bare.problem?.detail ?? "", /exec:\/\//, "an explicit internal address retains its own identity");
     } finally { await db.close(); }
 });
 
@@ -146,14 +146,14 @@ test("KILL rejects streams whose terminal state is already durable", async () =>
         };
 
         await close("/3/1/1", { status: 200 });
-        const closed = await exec.kill("/3/1/1", null, ctx as never, "sh");
+        const closed = await exec.kill(killStmt(urlPath("sh", "/3/1/1")), ctx);
         assert.equal(closed.status, 409);
         assert.equal(closed.problem?.type, "https://problems.plurnk.xyz/scheme/exec/stream-already-terminal");
         assert.equal(closed.problem?.terminalStatus, 200);
         assert.match(closed.problem?.detail ?? "", /already concluded with status 200/);
 
         await close("/3/1/2", Results.failure("executor:sh", "killed", 499, "killed"));
-        const killed = await exec.kill("/3/1/2", null, ctx as never, "sh");
+        const killed = await exec.kill(killStmt(urlPath("sh", "/3/1/2")), ctx);
         assert.equal(killed.status, 410);
         assert.equal(killed.problem?.type, "https://problems.plurnk.xyz/scheme/exec/stream-already-killed");
     } finally { await db.close(); }

@@ -8,10 +8,9 @@ import { entryCoordinateOf, renderAddress, schemeNameOf } from "./plurnk-uri.ts"
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
 import { type CancelWorkerNotify } from "./ChannelWrite.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
-import { InvalidOperationResultError, type SchemeCtx, type SchemeResult } from "@plurnk/plurnk-schemes";
+import { InvalidOperationResultError, type SchemeCtx, type SchemeHandler, type SchemeResult } from "@plurnk/plurnk-schemes";
 import { type BoundEntryAddress as ResolvedDataEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import type { DispatchResult, SchemeWithEntryAddress } from "./Dispatcher.ts";
-import type { TextLineMarker } from "@plurnk/plurnk-contracts";
 import ResourceBindings from "./ResourceBindings.ts";
 import ChannelWrite from "./ChannelWrite.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
@@ -50,8 +49,7 @@ export default class KillHandler {
         this.#failure = failure;
     }
 
-    // KILL is target-polymorphic. Scheme handlers own the optional numeric code's
-    // meaning; core retains worker and entry dispatch. {§operation-code-polymorphism}
+    // {§scheme-operation-dispatch} The resource owner receives the complete KILL.
     async handleKill(statement: PlurnkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.op !== "KILL") throw new Error("unreachable");
         const path = statement.target;
@@ -85,19 +83,14 @@ export default class KillHandler {
         const coordinate = entryCoordinateOf(path, manifest?.authority ?? "namespace");
         // log:/// KILL has already gone through the projection-curation owner.
         // This path owns scheme-specific world and process KILL semantics.
-        // Process-KILL: any scheme whose handler exposes kill() aborts a live stream — the
-        // exec handler, registered as "exec" + under every runtime tag (sh/node), so a tag-
-        // addressed stream (sh:///l/t/s) routes here, not to deleteEntry. {§exec}
-        const killable = binding?.handler as { kill?: (pathname: string, scope: TextLineMarker | null, ctx: SchemeCtx, scheme?: string) => Promise<SchemeResult> } | undefined;
+        const killable = binding?.handler as SchemeHandler | undefined;
         if (killable !== undefined && typeof killable.kill === "function") {
-            // Pass the model's OWN scheme so a stream-KILL error answers in the runtime tag the
-            // model addressed (sh:///…), not the internal `exec` ({§fs-answer-in-canon}).
             let handlerCtx: SchemeCtxImpl | null;
             if (manifest?.category === "data") {
                 const resolved = await this.#resolveDataEntryAddress({
                     target: path,
                     routedScheme: schemeName,
-                    handler: killable as SchemeWithEntryAddress,
+                    handler: killable,
                     manifest,
                     ctx,
                     access: "write",
@@ -119,7 +112,7 @@ export default class KillHandler {
             if (handlerCtx === null) {
                 throw new InvalidOperationResultError(`Registered scheme '${schemeName}' has no dispatch context.`);
             }
-            return await killable.kill(coordinate.pathname, statement.lineMarker, handlerCtx, schemeName);
+            return await killable.kill(statement, handlerCtx);
         }
         if (schemeName === "worker") {
             // {§worker-scheme}: an entry path deletes scratch; a pathless target cancels an actor.

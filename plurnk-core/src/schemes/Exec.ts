@@ -1,6 +1,6 @@
 import { parsePath } from "@plurnk/plurnk-parser";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
-import type { ExecStatement, FindStatement, SendStatement } from "@plurnk/plurnk-contracts";
+import type { ExecStatement, FindStatement, KillStatement, SendStatement } from "@plurnk/plurnk-contracts";
 import type { ChannelState } from "@plurnk/plurnk-execs";
 import type { ExecResult as ExecutorResult } from "@plurnk/plurnk-execs";
 import {
@@ -33,6 +33,7 @@ import {
     NetworkAddress,
     ResourceNames,
     type ProposalApplyRequest,
+    type SchemeHandler,
 } from "@plurnk/plurnk-schemes";
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
@@ -46,7 +47,6 @@ import { setTimeout as delay } from "node:timers/promises";
 import ExecScheduler from "./ExecScheduler.ts";
 import ExecutionInput from "./ExecutionInput.ts";
 import { execRouteOf } from "./exec-runtime.ts";
-import type { TextLineMarker } from "@plurnk/plurnk-contracts";
 import { type RuntimeTag } from "@plurnk/plurnk-contracts";
 
 type ExecResult = SchemeResultBase & { body?: string; attrs?: object };
@@ -96,7 +96,7 @@ const resourceSourceOf = (target: ExecStatement["target"]): string | null => {
 // Injectable because automatic acquisition refuses localhost.
 export type WebFetch = (url: string, opts?: { signal?: AbortSignal }) => Promise<WebFetchResult | null>;
 
-export default class Exec extends CoreSchemeAdapterBase {
+export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHandler, "kill"> {
     // The record goes on the output the spawn produces ({§execution-output-identity}) — the log row
     // is the model's proposal and stays immutable. An output that is not there is a defect in the
     // provenance chain, never a spawn that quietly runs unrecorded.
@@ -205,7 +205,10 @@ export default class Exec extends CoreSchemeAdapterBase {
 
     // {§stream-control} — active KILL routes through the live controller;
     // terminal and missing outcomes resolve from the durable subscription.
-    async kill(pathname: string, scope: TextLineMarker | null, ctx: CoreSchemeCallContext, scheme = "exec"): Promise<SchemeResultBase> {
+    async kill(statement: KillStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
+        if (statement.target?.kind !== "url") throw new InvalidOperationResultError("Execution KILL requires a runtime URL.");
+        const { scheme } = statement.target;
+        const { pathname } = entryCoordinateOf(statement.target, "namespace");
         const core = this.coreContext(ctx);
         for (const entry of this.#activeAborts.values()) {
             if (entry.workspaceId === core.workspaceId && entry.pathname === pathname && (scheme === "exec" || entry.runtime === scheme)) {

@@ -11,6 +11,7 @@ import Exec from "../../src/schemes/Exec.ts";
 import Log from "../../src/schemes/Log.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, testExecutors } from "./_helpers.ts";
 import type { RuntimeTag } from "@plurnk/plurnk-contracts";
+import { killStmt, urlPath } from "./_dsl.ts";
 
 const execStmt = (runtime: string | null, body: string): ExecStatement => ({
     metadata: null,
@@ -51,7 +52,7 @@ test("scoped KILL on a streaming exec's log row keeps the subscription live", as
 
         // Mid-stream: KILL the exec's log row body (log:///1/1/1 <1,-1>) — render-only curation.
         await new Promise((r) => setTimeout(r, 500));
-        const scoped = await new Log().kill("/1/1/1", { marks: [1, -1] }, makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
+        const scoped = await new Log().kill(killStmt(urlPath("log", "/1/1/1"), { marks: [1, -1] }), makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
         assert.equal(scoped.status, 200, "a scoped KILL of the exec log row succeeds");
 
         // The subscription is STILL open — scoped KILL touched body visibility, not the registry.

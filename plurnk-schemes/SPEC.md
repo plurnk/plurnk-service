@@ -109,13 +109,15 @@ must not substitute the file for a selected derived channel. Native execution
 preserves the file's name and surrounding filesystem; it grants no new
 capability, changes no working directory, and performs no automatic copying.
 
-Sister scheme handlers implement op methods consumed by plurnk-service via
+§scheme-operation-dispatch Sister scheme handlers implement op methods consumed by plurnk-service via
 dispatch. The consumer owns READ for every `category: "data"` scheme and owns
 exact-target FIND over its canonical representation; no handler method can
 replace either projection. Other absent operation methods return **501**. The
 exported **`SchemeHandler`** interface gives operation methods their grammar
-statement and `ctx`, while representation preparation receives a deliberately
-narrower request. `editBatch` returns the typed `EditBatchResult`
+statement and `ctx`, including KILL's target, scope, metadata and aside. Bundled
+adapters use the same interface; no positional pathname/scope overload exists.
+Representation preparation receives a deliberately narrower request.
+`editBatch` returns the typed `EditBatchResult`
 specialization:
 
 ```ts

@@ -26,8 +26,7 @@ import EntryGraph from "./_entry-graph.ts";
 import { resolveSearchCandidates } from "./_search-candidate.ts";
 import { pathFolderSummaries, pathScope, pathScopeMatches } from "./_path-scope.ts";
 import type { CatalogChannel, CatalogDefaultChannel } from "./_entry-manifest.ts";
-import type { TextLineMarker } from "@plurnk/plurnk-contracts";
-import { UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
+import type { SchemeHandler } from "@plurnk/plurnk-schemes";
 
 type OpenFoldResult = SchemeResultBase & { matched?: number };
 type LogCatalogMatch = [CatalogDefaultChannel, ...CatalogChannel[]];
@@ -154,7 +153,7 @@ const coordinateCandidatePrefix = (prefix: string | null): string | null => pref
     ? null
     : LogEntryProjection.base(prefix);
 
-export default class Log extends CoreSchemeAdapterBase implements CoreRepresentationProvider {
+export default class Log extends CoreSchemeAdapterBase implements CoreRepresentationProvider, Pick<SchemeHandler, "kill"> {
     static manifest: SchemeManifest = {
         name: "log",
         channels: {},
@@ -554,7 +553,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     async curate(
         statement: KillStatement,
         ctx: CoreSchemeCallContext,
-        maxLogEntryId: number,
+        maxLogEntryId: number | null,
     ): Promise<LogCurationOutcome> {
         const core = this.coreContext(ctx);
         // {§log-kill-scope} — a scoped KILL trims the readable body; the row stays.
@@ -906,11 +905,9 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
 
     // A whole KILL shares the scoped form's address resolution and retires the current
     // projection without erasing execution evidence. {§log-history-projection}
-    async kill(pathname: string, scope: TextLineMarker | null, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
+    async kill(statement: KillStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
         const core = this.coreContext(ctx);
-        const outcome = scope === null
-            ? await this.#planKill(pathname.replace(/^\//, ""), core, null)
-            : await this.#planScoped({ op: "KILL", aside: null, target: { kind: "local", raw: pathname.replace(/^\//, "") }, metadata: null, lineMarker: scope, matcher: null, body: null, position: UNKNOWN_POSITION }, core, null);
+        const outcome = await this.curate(statement, core, null);
         if (outcome.plan !== null) await this.#applyDirect(outcome.plan, core);
         return outcome.result;
     }

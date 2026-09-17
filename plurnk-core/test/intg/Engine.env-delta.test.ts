@@ -440,7 +440,7 @@ test("ambient occurrence evidence survives source-log curation", async () => {
             statement: editStmt(urlPath("worker", "/curated.md"), "durable occurrence"),
             workspaceId, workerId: producer, loopId: producerLoop, turnId: producerTurn, sequence: 1, origin: "model",
         });
-        const killed = await new Log().kill("/1/1/1", null, makeSchemeCtx({
+        const killed = await new Log().kill(killStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({
             db, workspaceId, workerId: producer, loopId: producerLoop, turnId: producerTurn, writer: "model",
         }));
         assert.equal(killed.status, 200, "the producer really curated away its source row");

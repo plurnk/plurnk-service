@@ -89,7 +89,7 @@ test("KILL <1,-1> (log:///1/1/1) suppresses the complete body interval", async (
     const context = await setup();
     const { db, workerId } = context;
     try {
-        const r = await new Log().kill("/1/1/1", WHOLE, ctxOf(context));
+        const r = await new Log().kill(killStmt(urlPath("log", "/1/1/1"), WHOLE), ctxOf(context));
         assert.equal(r.status, 200);
         assert.equal(r.matched, 1);
         assert.equal(await getFolded(db, workerId), "[[1,-1]]");
@@ -100,7 +100,7 @@ test("a scoped KILL accepts the canonical /OP suffix", async () => {
     const context = await setup();
     const { db, workerId } = context;
     try {
-        const r = await new Log().kill("/1/1/1/EDIT", WHOLE, ctxOf(context));
+        const r = await new Log().kill(killStmt(urlPath("log", "/1/1/1/EDIT"), WHOLE), ctxOf(context));
         assert.equal(r.status, 200);
         assert.equal(await getFolded(db, workerId), "[[1,-1]]");
     } finally { await db.close(); }
@@ -110,7 +110,7 @@ test("a scoped KILL rejects a supplied /OP suffix that disagrees with the addres
     const context = await setup();
     const { db, workerId } = context;
     try {
-        const r = await new Log().kill("/1/1/1/READ", WHOLE, ctxOf(context));
+        const r = await new Log().kill(killStmt(urlPath("log", "/1/1/1/READ"), WHOLE), ctxOf(context));
         assert.equal(r.status, 404);
         assert.equal(await getFolded(db, workerId), "[]", "a discordant address cannot curate the row");
     } finally { await db.close(); }
@@ -119,12 +119,12 @@ test("a scoped KILL rejects a supplied /OP suffix that disagrees with the addres
 test("a typed entry-materialization row resolves by its projected /READ suffix, not its durable EDIT event", async () => {
     const accepted = await setup('{"kind":"entry_materialized"}');
     try {
-        assert.equal((await new Log().kill("/1/1/1/READ", WHOLE, ctxOf(accepted))).status, 200);
+        assert.equal((await new Log().kill(killStmt(urlPath("log", "/1/1/1/READ"), WHOLE), ctxOf(accepted))).status, 200);
     } finally { await accepted.db.close(); }
 
     const rejected = await setup('{"kind":"entry_materialized"}');
     try {
-        assert.equal((await new Log().kill("/1/1/1/EDIT", WHOLE, ctxOf(rejected))).status, 404);
+        assert.equal((await new Log().kill(killStmt(urlPath("log", "/1/1/1/EDIT"), WHOLE), ctxOf(rejected))).status, 404);
     } finally { await rejected.db.close(); }
 });
 
@@ -133,11 +133,11 @@ test("a scoped KILL is a friendly visibility no-op on a valid bodyless entry", a
     const { db, workerId } = context;
     try {
         const log = new Log();
-        const first = await log.kill("/1/1/1", WHOLE, ctxOf(context));
+        const first = await log.kill(killStmt(urlPath("log", "/1/1/1"), WHOLE), ctxOf(context));
         assert.equal(first.status, 200);
         assert.equal(first.matched, 1);
         assert.equal(await getFolded(db, workerId), "[]", "a bodyless row has no hidden line interval");
-        const again = await log.kill("/1/1/1", WHOLE, ctxOf(context));
+        const again = await log.kill(killStmt(urlPath("log", "/1/1/1"), WHOLE), ctxOf(context));
         assert.equal(again.status, 200);
         assert.equal(again.matched, 1);
         assert.equal(await getFolded(db, workerId), "[]");
@@ -152,16 +152,16 @@ test("scoped KILLs compose one way: numeric and hash-selected intervals accumula
         const id = await seedRead(context, 2, content);
         const log = new Log();
 
-        const numeric = await log.kill("/1/1/2/READ", { marks: [3, 5] }, ctxOf(context));
+        const numeric = await log.kill(killStmt(urlPath("log", "/1/1/2/READ"), { marks: [3, 5] }), ctxOf(context));
         assert.equal(numeric.status, 200);
         assert.deepEqual(await foldedAt(db, workerId, id), [[3, 5]]);
 
         const anchor = LineAnchors.token("log:///1/1/2/READ", 7, content);
-        const anchored = await log.kill("/1/1/2/READ", { marks: [anchor] }, ctxOf(context));
+        const anchored = await log.kill(killStmt(urlPath("log", "/1/1/2/READ"), { marks: [anchor] }), ctxOf(context));
         assert.equal(anchored.status, 200);
         assert.deepEqual(await foldedAt(db, workerId, id), [[3, 5], [7, 7]], "the second interval joins the first; suppression is monotonic");
 
-        const inside = await log.kill("/1/1/2/READ", { marks: [4] }, ctxOf(context));
+        const inside = await log.kill(killStmt(urlPath("log", "/1/1/2/READ"), { marks: [4] }), ctxOf(context));
         assert.equal(inside.status, 200);
         assert.deepEqual(await foldedAt(db, workerId, id), [[3, 5], [7, 7]], "a line already suppressed is a stable no-op");
     } finally { await db.close(); }
@@ -177,7 +177,7 @@ test("bulk scoped KILL intersects one scope with every selected canonical body",
             3,
             Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n"),
         );
-        const result = await new Log().kill("/**/READ", { marks: [17, -1] }, ctxOf(context));
+        const result = await new Log().kill(killStmt(urlPath("log", "/**/READ"), { marks: [17, -1] }), ctxOf(context));
         assert.equal(result.status, 200);
         assert.equal(result.matched, 2, "row selection is independent of each body's scope intersection");
         assert.deepEqual(await foldedAt(db, workerId, shortId), [], "an absent range is a successful no-op");
@@ -208,8 +208,8 @@ test("KILL on a nonexistent coordinate returns 404, scoped or whole", async () =
     const context = await setup();
     const { db } = context;
     try {
-        assert.equal((await new Log().kill("/9/9/9", WHOLE, ctxOf(context))).status, 404);
-        assert.equal((await new Log().kill("/9/9/9", null, ctxOf(context))).status, 404);
+        assert.equal((await new Log().kill(killStmt(urlPath("log", "/9/9/9"), WHOLE), ctxOf(context))).status, 404);
+        assert.equal((await new Log().kill(killStmt(urlPath("log", "/9/9/9"), null), ctxOf(context))).status, 404);
     } finally { await db.close(); }
 });
 
@@ -217,7 +217,7 @@ test("KILL on a malformed path returns 400", async () => {
     const context = await setup();
     const { db } = context;
     try {
-        assert.equal((await new Log().kill("/garbage", WHOLE, ctxOf(context))).status, 400);
+        assert.equal((await new Log().kill(killStmt(urlPath("log", "/garbage"), WHOLE), ctxOf(context))).status, 400);
     } finally { await db.close(); }
 });
 
@@ -247,16 +247,16 @@ test("log curation honors segment-local `*` and recursive `**`", async () => {
     try {
         const log = new Log();
 
-        const shallow = await log.kill("/*", WHOLE, ctxOf(context));
+        const shallow = await log.kill(killStmt(urlPath("log", "/*"), WHOLE), ctxOf(context));
         assert.equal(shallow.status, 204, "no row lives directly at the log root");
         assert.equal(await getFolded(db, workerId), "[]", "`*` does not cross coordinate separators");
 
-        const turnRows = await log.kill("/1/1/*", WHOLE, ctxOf(context));
+        const turnRows = await log.kill(killStmt(urlPath("log", "/1/1/*"), WHOLE), ctxOf(context));
         assert.equal(turnRows.status, 200, "the documented loop/turn/item hierarchy reaches rows with one star");
         assert.equal(turnRows.matched, 1);
         assert.equal(await getFolded(db, workerId), "[[1,-1]]", "the rendered /OP decoration is not a mandatory hierarchy level");
 
-        const recursive = await log.kill("/**", WHOLE, ctxOf(context));
+        const recursive = await log.kill(killStmt(urlPath("log", "/**"), WHOLE), ctxOf(context));
         assert.equal(recursive.status, 200);
         assert.equal(await getFolded(db, workerId), "[[1,-1]]", "`**` reaches recursive log rows");
     } finally { await db.close(); }
@@ -269,7 +269,7 @@ test("KILL retires the addressed row from the active projection without erasing 
     try {
         const log = new Log();
         assert.equal(await getFolded(db, workerId), "[]", "row exists before KILL");
-        const r = await log.kill("/1/1/1", null, ctxOf(context));
+        const r = await log.kill(killStmt(urlPath("log", "/1/1/1"), null), ctxOf(context));
         assert.equal(r.status, 200, "KILL on a log item succeeds");
         assert.equal(r.matched, 1, "the receipt reports the exact active target count");
         assert.deepEqual(
@@ -288,7 +288,7 @@ test("KILL retires the addressed row from the active projection without erasing 
         const read = await log.resolveCoreRepresentation(urlPath("log", "/1/1/1"), ctxOf(context));
         assert.ok("result" in read);
         assert.equal(read.result.status, 404, "inactive evidence is absent from exact model READ");
-        const repeated = await log.kill("/1/1/1", null, ctxOf(context));
+        const repeated = await log.kill(killStmt(urlPath("log", "/1/1/1"), null), ctxOf(context));
         assert.equal(repeated.status, 404, "an exact killed coordinate is no longer addressable to ordinary curation");
     } finally { await db.close(); }
 });
@@ -328,7 +328,7 @@ test("log selectors treat complete numeric bracket segments as inclusive interva
             "FIND uses the same inclusive multi-digit interval as curation",
         );
 
-        const killed = await new Log().kill("/1/[35-46]/*/NOTE", null, ctxOf(context));
+        const killed = await new Log().kill(killStmt(urlPath("log", "/1/[35-46]/*/NOTE"), null), ctxOf(context));
         assert.equal(killed.status, 200);
         assert.equal(killed.matched, 12);
         const plans = await db.engine_render_log.all<{ turn_seq: number; op: string }>({ worker_id: workerId });
@@ -338,7 +338,7 @@ test("log selectors treat complete numeric bracket segments as inclusive interva
             "the range includes both boundaries and preserves adjacent turns",
         );
 
-        const documented = await new Log().kill("/1/[1-7]/*/NOTE", null, ctxOf(context));
+        const documented = await new Log().kill(killStmt(urlPath("log", "/1/[1-7]/*/NOTE"), null), ctxOf(context));
         assert.equal(documented.status, 200);
         assert.equal(documented.matched, 7);
         const remaining = await db.engine_render_log.all<{ turn_seq: number; op: string }>({ worker_id: workerId });
@@ -348,11 +348,11 @@ test("log selectors treat complete numeric bracket segments as inclusive interva
             "the documented single-digit form is an interval too",
         );
 
-        const repeated = await new Log().kill("/1/[35-46]/*/NOTE", null, ctxOf(context));
+        const repeated = await new Log().kill(killStmt(urlPath("log", "/1/[35-46]/*/NOTE"), null), ctxOf(context));
         assert.equal(repeated.status, 204, "a repeated broad KILL is a deterministic no-op");
         assert.equal(repeated.matched, 0);
 
-        const reversed = await new Log().kill("/1/[46-35]/*/NOTE", null, ctxOf(context));
+        const reversed = await new Log().kill(killStmt(urlPath("log", "/1/[46-35]/*/NOTE"), null), ctxOf(context));
         assert.equal(reversed.status, 400, "a reversed numeric interval is malformed rather than an empty selection");
     } finally { await db.close(); }
 });
@@ -371,7 +371,7 @@ test("KILL retires an op='error' item while preserving the durable failure recor
             rx: JSON.stringify({ message: "parse error", snippet: "bad" }), mimetype_rx: "application/json",
             status_rx: 400, weight: 0, state: "resolved", outcome: null, attrs: "{}",
         });
-        const r = await new Log().kill("/1/1/2", null, ctxOf(context));
+        const r = await new Log().kill(killStmt(urlPath("log", "/1/1/2"), null), ctxOf(context));
         assert.equal(r.status, 200, "an error row is KILLable exactly like any log item — no special-casing");
         const durable = await db.test_get_log_projection.get<{ active: number; folded: string }>({
             worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2,
@@ -389,7 +389,7 @@ test("KILL <1,-1> (log:///1/1/) suppresses the turn's row bodies — the trailin
     const context = await setup();
     const { db, workerId } = context;
     try {
-        const r = await new Log().kill("/1/1/", WHOLE, ctxOf(context));
+        const r = await new Log().kill(killStmt(urlPath("log", "/1/1/"), WHOLE), ctxOf(context));
         assert.equal(r.status, 200);
         assert.equal(r.matched, 1, "the count of curated rows, clearly shown");
         assert.equal(await getFolded(db, workerId), "[[1,-1]]", "the turn's row body is suppressed");
@@ -400,10 +400,10 @@ test("a zero-match sweep is a NO-OP SUCCESS — 204 with matched: 0, never an er
     const context = await setup();
     const { db } = context;
     try {
-        const r = await new Log().kill("/9/9/", WHOLE, ctxOf(context));
+        const r = await new Log().kill(killStmt(urlPath("log", "/9/9/"), WHOLE), ctxOf(context));
         assert.equal(r.status, 204, "204 stays OFF the errors surface — a sweep that found nothing steers nothing");
         assert.equal(r.matched, 0, "clearly shown");
-        const star = await new Log().kill("/9/9/*", WHOLE, ctxOf(context));
+        const star = await new Log().kill(killStmt(urlPath("log", "/9/9/*"), WHOLE), ctxOf(context));
         assert.equal(star.status, 204, "the explicit-glob form agrees");
     } finally { await db.close(); }
 });
@@ -413,12 +413,12 @@ test("{§log-coordinate-hierarchy} a partial coordinate is a prefix with or with
     const { db, workerId } = context;
     try {
         // The natural whole-turn curation the jumbo model reached for (no trailing slash) resolves.
-        const noSlash = await new Log().kill("/1/1", WHOLE, ctxOf(context));
+        const noSlash = await new Log().kill(killStmt(urlPath("log", "/1/1"), WHOLE), ctxOf(context));
         assert.equal(noSlash.status, 200, "log:///1/1 (no slash) curates turn 1/1 — no more 400");
         assert.equal(noSlash.matched, 1, "the turn's row");
         assert.equal(await getFolded(db, workerId), "[[1,-1]]");
         // And the loop prefix: log:///1 selects all of loop 1's rows.
-        const loop = await new Log().kill("/1", WHOLE, ctxOf(context));
+        const loop = await new Log().kill(killStmt(urlPath("log", "/1"), WHOLE), ctxOf(context));
         assert.equal(loop.status, 200, "log:///1 curates loop 1's rows");
         assert.ok(Number(loop.matched) >= 1, "the loop prefix matched");
     } finally { await db.close(); }
@@ -441,7 +441,7 @@ test("a scoped KILL curates engine-minted error rows through the same operation 
             mimetype_rx: "application/json", status_rx: 429, weight: 50, state: "failed", outcome: "max_commands_exceeded", attrs: "{}",
         });
         // The model's exact gesture — scope the error row away by its canonical operation address.
-        const scoped = await new Log().kill("/1/1/2/error", WHOLE, ctxOf(context));
+        const scoped = await new Log().kill(killStmt(urlPath("log", "/1/1/2/error"), WHOLE), ctxOf(context));
         assert.equal(scoped.status, 200, "an error row is suppressed by coordinate — the model can reclaim budget by curating its OWN error rows");
         const folded = await db.test_get_log_folded.get<{ folded: string }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2 });
         assert.equal(folded?.folded, "[[1,-1]]", "the error row body is suppressed");

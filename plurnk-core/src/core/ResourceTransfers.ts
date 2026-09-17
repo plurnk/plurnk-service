@@ -342,15 +342,14 @@ export default class ResourceTransfers {
             return MutationEffects.finalizeEffects(edited, source, removals.map(() => effect));
         }
         if (ResourceTransfers.#curatedSource(source)) {
-            const handler = this.#schemes.get(source.scheme, ctx.workspaceId) as
-                { kill?: (pathname: string, scope: LineMarker | null, ctx: SchemeCtxImpl) => Promise<DispatchResult> } | undefined;
+            const handler = this.#schemes.get(source.scheme, ctx.workspaceId) as SchemeHandler | undefined;
             if (handler?.kill === undefined) {
                 throw new InvalidOperationResultError(`Resolved MOVE source scheme '${source.scheme}' curates nothing.`);
             }
             const curated = await handler.kill(
-                source.pathname,
-                source.lineMarker,
-                new SchemeCtxImpl(ctx, source.scheme, source.manifest, this.#liveSubscriptions, { }),
+                { op: "KILL", target: source.target, lineMarker: source.lineMarker, metadata: source.metadata,
+                    matcher: null, body: null, aside: statement.aside, position: statement.position },
+                new SchemeCtxImpl(ctx, source.scheme, source.manifest, this.#liveSubscriptions, { authority: source.authority }),
             );
             return MutationEffects.finalizeEffects(Results.assert(curated), source, [effect]);
         }

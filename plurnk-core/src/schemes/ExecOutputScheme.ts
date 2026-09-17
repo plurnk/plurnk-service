@@ -1,4 +1,4 @@
-import type { FindStatement, ParsedPath, SendStatement } from "@plurnk/plurnk-contracts";
+import type { FindStatement, KillStatement, ParsedPath, SendStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "../core/scheme-types.ts";
 import type Exec from "./Exec.ts";
 import EntryFind, { type FindResult } from "./_entry-find.ts";
@@ -14,12 +14,12 @@ import type {
     RepresentationPreparationResult,
     SchemeCtx,
     ProposalApplyRequest,
+    SchemeHandler,
 } from "@plurnk/plurnk-schemes";
 import { entryCoordinateOf } from "../core/plurnk-uri.ts";
-import type { TextLineMarker } from "@plurnk/plurnk-contracts";
 
 // {§runtime-resource-binding} Stored output and live runtime facets use one entry face.
-export default class ExecOutputScheme extends CoreSchemeAdapterBase {
+export default class ExecOutputScheme extends CoreSchemeAdapterBase implements Pick<SchemeHandler, "kill"> {
     #manifest: SchemeManifest;
     #exec: Exec;
     #facet: RuntimeSchemeFacet | undefined;
@@ -100,11 +100,8 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase {
             : EntryCrud.readEntry({ authority: "", pathname }, core, this.#manifest.name);
     }
 
-    // Process-KILL by coordinate — the spawn-abort state (#activeAborts) lives on the
-    // one Exec handler, so the per-tag face delegates to it.
-    async kill(pathname: string, scope: TextLineMarker | null, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
-        // The face names its own tag: the terminal status of a finished stream lives under the
-        // runtime scheme (`sh:///…`), so a second KILL answers 410, never a 404 under `exec`.
-        return this.#exec.kill(pathname, scope, ctx, this.#manifest.name);
+    // {§scheme-operation-dispatch} The authored runtime address survives delegation.
+    async kill(statement: KillStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
+        return this.#exec.kill(statement, ctx);
     }
 }
