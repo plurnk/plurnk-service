@@ -530,6 +530,47 @@ test("WORK and FORK reject non-mintable worker authorities before creating or st
     } finally { await db.close(); }
 });
 
+test("{§op-execution-order}: one model program creates workers before cancelling selected children", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, "ordered-worker-control");
+        const workerId = await insertWorker(db, workspaceId, null, "parent");
+        const loopId = await insertLoop(db, workerId, 1, "Compare approaches.");
+        const lifecycle = new LoopLifecycle(db);
+        const children = new Map<string, number>();
+        const engine = new Engine({
+            db, schemes: new SchemeRegistry(), weigh,
+            injectWorker: async ({ workerId: child, prompt }) => {
+                const childLoop = await insertLoop(db, child, 1, prompt);
+                children.set(await WorkerName.forId(db, child), childLoop);
+                return { action: "enqueued_new_loop", loopId: childLoop };
+            },
+            cancelWorker: async (child, reason) => { await lifecycle.cancelTree(child, reason, true); },
+        });
+        const content = [
+            PlurnkParser.frame("WORK (worker://approach-a)", "Consider approach A."),
+            PlurnkParser.frame("WORK (worker://approach-b)", "Consider approach B."),
+            PlurnkParser.frame("WORK (worker://approach-c)", "Consider approach C."),
+            PlurnkParser.frame("KILL (worker://approach-a)", null),
+            PlurnkParser.frame("KILL (worker://approach-c)", null),
+        ].join("\n\n");
+        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning: null } }] });
+        const turn = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] });
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; hostname: string | null; origin: string; status_rx: number }>({ turn_id: turn.turnId });
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, hostname, status_rx }) => [op, hostname, status_rx]), [
+            ["WORK", "approach-a", 200],
+            ["WORK", "approach-b", 200],
+            ["WORK", "approach-c", 200],
+            ["KILL", "approach-a", 200],
+            ["KILL", "approach-c", 200],
+        ], "every operation sees the preceding operation's durable effects");
+        assert.deepEqual([...children.keys()], ["approach-a", "approach-b", "approach-c"]);
+        assert.equal(await lifecycle.status(children.get("approach-a")!), 499);
+        assert.equal(await lifecycle.status(children.get("approach-b")!), 102);
+        assert.equal(await lifecycle.status(children.get("approach-c")!), 499);
+    } finally { await db.close(); }
+});
+
 test("{§worker-scheme-spawn}: a completed Worker retains its name and scratch identity", async () => {
     const db = await openMigrated();
     try {
