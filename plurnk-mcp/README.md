@@ -78,15 +78,15 @@ can provide the executable while one project's `.env` supplies its identity:
 
 ```text
 # $XDG_CONFIG_HOME/plurnk/.env, read by the service
-PLURNK_MCP_GITEA=/usr/local/bin/possumtech-gitea-mcp
+PLURNK_MCP_project=/opt/mcp/current-server
 PLURNK_MCP_ENABLED=[]
 
 # <project>/.env, read by the client
-PLURNK_MCP_GITEA_ARGS=["plurnk_pk"]
+PLURNK_MCP_project_ARGS=["--stdio","--project","example"]
 ```
 
 The client carries its raw declarations while listing and enabling. Listing is
-inert. `/mcp enable gitea` (or `plurnk mcp enable gitea` in a bound conversation)
+inert. `/mcp enable project` (or `plurnk mcp enable project` in a bound conversation)
 composes service, durable workspace, client, and optional command-file fields
 in that order, prepares the connection, then persists the complete unexpanded
 workspace definition. Arrays and maps replace rather than append or merge.
@@ -98,7 +98,7 @@ the same workspace alias requires explicit removal before replacement.
 Web discovery is an ordinary MCP attachment ({§web-search-retrieval}); the demo
 tier exercises search through a documented fixture rather than an owned
 runtime. Two service-owned definitions are permitted to participate in demos
-of MCP and model behavior — Gitea (above) and Brave Search:
+of MCP and model behavior — Gitea and Brave Search:
 
 ```text
 # $XDG_CONFIG_HOME/plurnk/.env, read by the service — demo fixtures; never default-enabled
