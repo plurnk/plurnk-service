@@ -18,7 +18,7 @@ for (const mode of ["fits", "overflow"] as const) test(`{§reasoning-history}: a
         const context = { workspaceId, workerId, loopId, messages: [] };
         const reasoning = Array.from({ length: 120 }, (_, index) => `Finding ${index + 1}: ${"evidence ".repeat(mode === "overflow" ? 100 : 2)}`).join("\n");
         const first = await engine.runTurn({ ...context, provider: providerWithCapacity(999_000, [
-            { assistant: { content: `${PlurnkParser.frame("READ (reasoning:///1/2) <1,-1> <!-- retain reasoning -->", null)}\n\n${task}`, reasoning } },
+            { assistant: { content: `${PlurnkParser.frame("READ (reasoning://alice/1/2) <1,-1> <!-- retain reasoning -->", null)}\n\n${task}`, reasoning } },
         ]) });
         const initial = (await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).find(({ pathname }) => pathname === "/1/2")!;
         assert.equal(initial.turn_seq, 2);
@@ -34,7 +34,7 @@ for (const mode of ["fits", "overflow"] as const) test(`{§reasoning-history}: a
         assert.equal(next.status, 102);
         assert.equal(next.createdTurnIds.length, 1);
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
-        const record = logEntries(packet).find(({ target }) => target === "reasoning:///1/2")!;
+        const record = logEntries(packet).find(({ target }) => target === "reasoning://alice/1/2")!;
         assert.ok(record);
         assert.equal(record.aside, "retain reasoning");
         if (mode === "fits") {
@@ -55,7 +55,7 @@ for (const mode of ["fits", "overflow"] as const) test(`{§reasoning-history}: a
         const later = await engine.runTurn({ ...context, provider });
         assert.equal(later.status, 102);
         const laterPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: later.turnId }))!.packet);
-        const laterRecord = logEntries(laterPacket).find(({ target }) => target === "reasoning:///1/2")!;
+        const laterRecord = logEntries(laterPacket).find(({ target }) => target === "reasoning://alice/1/2")!;
         assert.equal(laterRecord.body, record.body, "no automatic re-READ or restoration after withholding");
         const reads = (await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).filter(({ pathname }) => pathname === "/1/2");
         assert.equal(reads.length, 1);

@@ -43,11 +43,11 @@ test("{§engine-cycle-evidence} note content and lifecycle changes distinguish a
 
 test("{§engine-cycle-evidence} a note's assigned storage coordinate does not disguise repetition", () => {
     const note = PlurnkParser.frame("NOTE", "Retain this determination.");
-    assert.equal(fingerprint(note, [{ status: 200, resource: "note:///1/2/1" }]),
-        fingerprint(note, [{ status: 200, resource: "note:///1/3/1" }]));
-    assert.notEqual(fingerprint(note, [{ status: 200, resource: "note:///1/2/1" }]),
-        fingerprint(PlurnkParser.frame("NOTE", "A different determination."), [{ status: 200, resource: "note:///1/3/1" }]));
-    assert.notEqual(fingerprint(note, [{ status: 200, resource: "note:///1/2/1" }]),
+    assert.equal(fingerprint(note, [{ status: 200, resource: "note://alice/1/2/1" }]),
+        fingerprint(note, [{ status: 200, resource: "note://alice/1/3/1" }]));
+    assert.notEqual(fingerprint(note, [{ status: 200, resource: "note://alice/1/2/1" }]),
+        fingerprint(PlurnkParser.frame("NOTE", "A different determination."), [{ status: 200, resource: "note://alice/1/3/1" }]));
+    assert.notEqual(fingerprint(note, [{ status: 200, resource: "note://alice/1/2/1" }]),
         fingerprint(note, [{ status: 500 }]));
 });
 

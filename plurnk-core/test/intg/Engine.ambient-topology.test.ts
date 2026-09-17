@@ -6,7 +6,6 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import {
     type KillStatement,
-    type ReadStatement,
     type NoteStatement,
     type UrlPath,
 } from "@plurnk/plurnk-contracts";
@@ -38,16 +37,6 @@ const continueResponse = () => ({
     },
 });
 
-const plan = (body: string): NoteStatement => ({
-    metadata: null,
-    op: "NOTE",
-    aside: null,
-    target: null,
-    lineMarker: null,
-    body,
-    position: { line: 1, column: 1 },
-});
-
 const path = (scheme: string, pathname: string): UrlPath => ({
     kind: "url",
     raw: `${scheme}://${pathname}`,
@@ -59,16 +48,6 @@ const path = (scheme: string, pathname: string): UrlPath => ({
     pathname,
     query: null,
     fragment: null,
-});
-
-const read = (target: UrlPath): ReadStatement => ({
-    metadata: null,
-    op: "READ",
-    aside: null,
-    target,
-    lineMarker: null,
-    matcher: null, body: null,
-    position: { line: 1, column: 1 },
 });
 
 const kill = (target: UrlPath): KillStatement => ({
@@ -105,16 +84,16 @@ test("direct-child activity reaches its parent without leaking to a grandparent 
         await engine.runTurn({ provider, workspaceId, workerId: independent, loopId: independentLoop, messages, turnNumber: 1 });
 
         assert.equal((await engine.dispatch({
-            statement: plan("Remember the direct-child finding."),
+            statement: editStmt({ ...path("worker", "/finding.md"), hostname: "child", raw: "worker://child/finding.md" }, "Record the direct-child finding."),
             workspaceId,
             workerId: child,
             loopId: childLoop,
             turnId: childTurn,
             sequence: 1,
             origin: "model",
-        })).status, 200);
+        })).status, 201);
         assert.equal((await engine.dispatch({
-            statement: read(path("missing", "/evidence")),
+            statement: editStmt(path("missing", "/evidence"), "A failed action."),
             workspaceId,
             workerId: child,
             loopId: childLoop,
@@ -137,8 +116,8 @@ test("direct-child activity reaches its parent without leaking to a grandparent 
 
         assert.deepEqual(
             (await observedFromChild(parent)).map(({ op }) => op),
-            ["NOTE", "READ"],
-            "the parent receives every final op-bearing child activity in causal order",
+            ["EDIT", "EDIT"],
+            "the parent receives successful and failed child actions in causal order",
         );
         assert.ok(
             (await observedFromChild(parent)).every(({ initial_folded, folded }) => initial_folded === "[[1,-1]]" && folded === "[]"),
@@ -216,28 +195,28 @@ test("a fork inherits parent activity pending at its snapshot but not later sibl
             messages,
             turnNumber: 1,
         });
-        await engine.dispatch({
-            statement: plan("pending before fork"),
+        assert.equal((await engine.dispatch({
+            statement: editStmt({ ...path("worker", "/finding.md"), hostname: "sibling", raw: "worker://sibling/finding.md" }, "pending before fork"),
             workspaceId,
             workerId: sibling,
             loopId: siblingLoop,
             turnId: siblingTurn,
             sequence: 1,
             origin: "model",
-        });
+        })).status, 201);
 
         const branch = await Fork.fork(db, parent, "branch");
         const branchLoop = await insertLoop(db, branch, 2, "continue");
 
-        await engine.dispatch({
-            statement: read(path("missing", "/after-fork")),
+        assert.equal((await engine.dispatch({
+            statement: editStmt(path("missing", "/after-fork"), "A failed action."),
             workspaceId,
             workerId: sibling,
             loopId: siblingLoop,
             turnId: siblingTurn,
             sequence: 2,
             origin: "model",
-        });
+        })).status, 501);
 
         await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [continueResponse()] }),
@@ -264,8 +243,8 @@ test("a fork inherits parent activity pending at its snapshot but not later sibl
             .filter(({ origin, source }) => origin === "_plurnk" && source === "worker://sibling")
             .map(({ op }) => op);
 
-        assert.deepEqual(await childOps(branch), ["NOTE"], "the branch receives only the pending parent event inside its fork boundary");
-        assert.deepEqual(await childOps(parent), ["NOTE", "READ"], "the parent independently receives both child events");
+        assert.deepEqual(await childOps(branch), ["EDIT"], "the branch receives only the pending parent event inside its fork boundary");
+        assert.deepEqual(await childOps(parent), ["EDIT", "EDIT"], "the parent independently receives both child events");
     } finally {
         await db.close();
     }

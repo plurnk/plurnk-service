@@ -282,8 +282,9 @@ file or entry through its ordinary read-authority boundary ({§worker-read-scope
 §actor-boundary-lineage-attention **Addressability is workspace-wide; attention
 is lineage-scoped.** Project files, registered resources, and named scratch
 entries remain addressable throughout the workspace, but ordinary changes do
-not enter unrelated workers' logs. A child's activity reaches only its direct
-parent. That observer row carries the source occurrence identity and never
+not enter unrelated workers' logs. Eligible child actions ({§env-delta-child-activity})
+reach only the direct parent; exploration and local curation do not. That
+observer row carries the source occurrence identity and never
 republishes, so grandparents observe what their own direct children do without
 receiving an automatic recursive mirror of every descendant.
 
@@ -366,7 +367,7 @@ direct-entry-plus-directory count; `-1` enables the ordinary markerless page;
 unset / `0` disables previews. `log://` is absent because the current worker's
 log already renders in present mode.
 
-§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its reasoning and program are stored before execution. NOTEs from its reasoning and program, the orienting READ/FIND surveys, and the reasoning and program READs in {§reasoning-initial-read} execute under {§op-execution-order}. The full `<1,-1>` READ of its own `ops:///<loop>/<turn>` source supplies the worked program example; no actionless source row or simulated READ is added. Every orienting row is structurally classified `_plurnk` and `init`. The namespace surveys and their asides follow {§actor-boundary-catalog-preview}.
+§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its reasoning and program are stored before execution. NOTEs from its reasoning and program, the orienting READ/FIND surveys, and the reasoning and program READs in {§reasoning-initial-read} execute under {§op-execution-order}. The full `<1,-1>` READ of its own `ops://<worker>/<loop>/<turn>` source supplies the worked program example; no actionless source row or simulated READ is added. Every orienting row is structurally classified `_plurnk` and `init`. The namespace surveys and their asides follow {§actor-boundary-catalog-preview}.
 
 Incoming messages publish once as inbound SEND rows in the first model turn
 ({§message-arrival}); initialization neither READs nor archives them. The turn
@@ -584,8 +585,8 @@ the `git` runtime — never engine machinery.
 - §packet-current-turn **The packet says who and which turn, below the log.** The
   `## Worker` block is the first section after the log, carrying
   `{"path": "worker://<name>", "parent": <address or null>, "loop": L, "turn": T}`: the actor,
-  whose child it is, and the coordinate this packet's response becomes, so `reasoning:///L/T`
-  and `ops:///L/T` are the model's own and `log:///L/T/*` its rows; a model never infers the
+  whose child it is, and the coordinate this packet's response becomes, so `reasoning://<worker>/L/T`
+  and `ops://<worker>/L/T` are the model's own and `log:///L/T/*` its rows; a model never infers the
   present from the last row's coordinate, which may or may not be its own turn. The block
   changes every turn, so nothing of it precedes the log, and the packet carries no date, time
   or zone anywhere (operator, 2026-09-13: no date or time injection, and nothing volatile above
@@ -1210,7 +1211,7 @@ Core retries a rejected emission against the exact same packet beneath the same 
 When the loop continues after exhaustion under {§invalid-emission-attempts}, the next ordinary turn's packet projects the latest rejected response visibly from a durably body-suppressed emission-attempt item under {§rejected-emission-entry} and carries one transient `invalid_emission` Notice: `Response rejected before dispatch; no operations were performed.` followed by `Parser: <the latest attempt's first diagnostic>` with its `content-offset` position — the model sees why, at which line, against its own projected text. The Notice states only observed admission facts; it does not classify the response as unrecoverable, infer why generation ended, or prescribe intent beyond the parser-owned diagnostic. Attempt count and rail state never become model-facing. The recovery turn has its own honestly stored packet and its configured private same-packet attempts. The packet-local projection never changes the row's curation state, so no later packet repeats that malformed body unless the model explicitly READs its exact address. Admission clears the recovery projection; another exhaustion replaces it with the latest rejected response if the loop continues.
 
 Outside-block text has no execution, message, or receipt semantics under
-{§whitespace-contract}. The `ops:///` source retains it verbatim under
+{§whitespace-contract}. The `ops://<worker>/` source retains it verbatim under
 {§turn-ops-log-curation}; execution never reconstructs source from the AST.
 
 An admitted program may contain bounded malformed statements.
@@ -1357,7 +1358,7 @@ meaning of an authored URI authority before any entry capability is exposed:
 | Project files | Filesystem namespace | Workspace policy | Shared live |
 | `worker:///...` | Empty, shared scratch | Any workspace actor | Shared live |
 | `worker://alice/...` | Named scratch | Any workspace actor | Snapshot source namespace into new name |
-| `ops:///...`, `reasoning:///...` | Current worker's turn coordinates | Immutable for every actor | Snapshot sources at identical local coordinates |
+| `ops://<worker>/...`, `reasoning://<worker>/...`, `note://<worker>/...` | Named worker's history within the workspace | Immutable for every actor | Snapshot sources at identical coordinates under the child's name |
 | `skill://recipe/...` | Installed skill name | Skill resource contract | Shared installation |
 | HTTP, WebSocket, executor/MCP, A2A resources | Scheme's canonical namespace | Scheme contract and workspace policy | Shared live; no copied connection |
 
@@ -2025,10 +2026,10 @@ same transitions the dispatcher's atomic curation event makes, without the row.
 | Surface | Contract |
 |---|---|
 | Evidence | Original provider reasoning remains verbatim in immutable model-call responses and admitted packets. Resource and log operations never rewrite it. Only an admitted response, or the final exhausted emission attempt, produces a model reasoning source; missing provider reasoning creates no substitute. A non-model producer may record its own authored rationale under {§turn-source-resources}. |
-| Resource | `reasoning:///<loop>/<turn>` is immutable text/plain source belonging to the current worker's turn under {§turn-source-resources}. Every actor may READ, FIND, search and COPY from it; none may EDIT, KILL, COPY into or MOVE it. |
+| Resource | `reasoning://<worker>/<loop>/<turn>` is immutable text/plain source belonging to the named workspace worker's turn under {§turn-source-resources}. Every workspace actor may READ, FIND, search and COPY from it; none may EDIT, KILL, COPY into or MOVE it. |
 | Delivery | Initialization READs its own authored rationale under {§reasoning-initial-read}. Further observations require deliberate READs. The selected model reasoning source is stored before its OPs execute, so an ordinary READ of the current turn resolves immediately and is visible in subsequent packets. Every READ retains its authored scope and ordinary range metadata, without edit anchors. |
 | Curation | Scoped log KILL suppresses receipt lines; whole log KILL retires the receipt. Neither affects the source. Explicit log READs retain ordinary curation anchors. A mutable working copy requires ordinary COPY into an editable resource. |
-| Lifecycle | Restart retains sources and observations. FORK snapshots sources at the same local coordinates and receipts with independent curation. No curation or lifecycle event automatically READs model reasoning. A turn the provider left without reasoning reads empty; future and foreign coordinates return the ordinary missing result ({§turn-source-resources}). |
+| Lifecycle | Restart retains sources and observations. FORK snapshots sources under the child's name at the same loop/turn coordinates and receipts with independent curation. No curation or lifecycle event automatically READs model reasoning. A turn the provider left without reasoning reads empty; absent workers and turns return the ordinary missing result ({§turn-source-resources}). |
 | Client | Standard live reasoning events and replay retain original provider reasoning; working resources and READ receipts never substitute for or replay that stream. |
 
 ### §reasoning-initial-read Initial reasoning observation
@@ -2160,13 +2161,13 @@ ordinary bounded bodies expose their displayed and complete chunk extents there.
 
 | Surface | Contract |
 |---|---|
-| Identity | `ops:///<loop>/<turn>`, `reasoning:///<loop>/<turn>`, and `note:///<loop>/<turn>/<item>` resolve against the current worker's durable coordinates. A note's item is its dispatched NOTE ordinal. Authorities are invalid; there is no cross-worker alias or access policy. |
-| Source | `ops` is exact admitted `text/vnd.plurnk`; `reasoning` is `text/plain` containing the selected original provider reasoning or a non-model producer's authored rationale. Producer identity comes from the owning turn; a harness rationale is not provider evidence. The turn decides existence and the source decides content: a turn that exists but has no source of that kind reads as the ordinary empty resource (204, empty body), never a fabricated one; a coordinate whose turn does not exist is 404. Emptiness over absence, so `reasoning:///L/T` is a stable coordinate for every turn that happened. |
-| Notes | Each dispatched NOTE stores its exact literal body as an immutable `text/plain` source and returns its `note:///` address. There may be multiple notes in a turn, from reasoning, content, or another producer. A missing note is 404, not an empty invented note. |
+| Identity | `ops://<worker>/<loop>/<turn>`, `reasoning://<worker>/<loop>/<turn>`, and `note://<worker>/<loop>/<turn>/<item>` name a worker in the current workspace and its durable coordinates. A note's item is its dispatched NOTE ordinal. The worker authority is required and case-sensitive; userinfo, ports, and queries are invalid. Source identity never depends on the reading worker. `log:///` remains local; READ, FIND and KILL reject log authorities, userinfo, ports and queries with 400, never substitute the caller's log. |
+| Source | `ops` is exact admitted `text/vnd.plurnk`; `reasoning` is `text/plain` containing the selected original provider reasoning or a non-model producer's authored rationale. Producer identity comes from the owning turn; a harness rationale is not provider evidence. The turn decides existence and the source decides content: a turn that exists but has no source of that kind reads as the ordinary empty resource (204, empty body), never a fabricated one; a worker or turn that does not exist is 404. |
+| Notes | Each dispatched NOTE stores its exact literal body as an immutable `text/plain` source and returns its worker-qualified address. There may be multiple notes in a turn, from reasoning, content, or another producer. A missing note is 404, not an empty invented note. Sharing its URI uses ordinary SEND; the receiver deliberately READs it. NOTE itself sends no ambient update. |
 | Retention | One ops source and one reasoning source per turn; one note source per NOTE ordinal. An optional inference-call link records provenance. Source removal follows deletion of its owning turn, never log curation. |
-| Operations | Ordinary scoped READ, FIND, content search and COPY from source. READ returns data and never executes it. Sources are read-only for every actor and have no edit hashes. |
+| Operations | Ordinary scoped READ, FIND, content search and COPY from any named worker's source within the workspace. FIND accepts authority and path patterns, retaining complete worker-qualified identities in results and folder selectors. READ returns data and never executes it. Sources are read-only for every actor and have no edit hashes. |
 | Index | Source text uses the existing derivation, FTS and graph machinery; only its derivation attachment is replaceable. |
-| FORK | Sources copy with the inherited turns at identical local coordinates. Branch receipt curation is independent; neither branch can rewrite source evidence. |
+| FORK | Sources copy with the inherited turns at identical loop/turn/item coordinates under the fork's own authority. Bytes and embedded source references are preserved verbatim; an explicit reference still names its original worker. Branch receipt curation is independent; neither branch can rewrite source evidence. |
 | Forensics | Digest assistant artifacts read source directly, independently of receipt presence or curation. Original provider responses retain all attempts and opaque fields separately. |
 
 §rejected-emission-entry A rejected provider response is not `turnOps`: it never became an admitted turn program. The one bounded invalid-emission recovery item under {§emission-admission} has `attrs.kind="emissionAttempt"`, `origin="model"`, the canonical model-facing `/attempt` leaf, and the exact latest rejected response. The packet does not duplicate that identity as `kind` metadata. It is born durably body-suppressed and projected visibly only in the informed recovery packet; every other rejected attempt remains forensic-only.
@@ -2542,7 +2543,7 @@ accounting and model-visible failure evidence remain separately owned by
 - §empty-turn **A response with no operation is a turn, not a retry.** When the parser finds
   no operation and no other hard error (prose, bare headings outside fences, an empty
   response), the emission is admitted as an empty turn (operator, 2026-09-12): its text and
-  reasoning are stored like any turn's (`ops:///`, `reasoning:///`), the model's own message
+  reasoning are stored like any turn's (`ops://<worker>/`, `reasoning://<worker>/`), the model's own message
   stays in the next packet's history, that packet carries one `turn_no_operations` notice and
   any {§bare-heading-advisory} notices, the turn continues at 102, and the strike rail counts
   one progress-contract strike, so a model that only talks strikes out at the ordinary
@@ -4077,8 +4078,8 @@ hands the AST to core's `look`; core owns the full resolver and the no-log
 invariant. The internal closed, rowless observation segment supplies an honest
 numeric loop coordinate for relative `log:///` addressing without leaving
 active lifecycle behind. The segment belongs to the acting worker (`workerId`);
-the READ resolves as `perspectiveWorkerId` when one is given — `log:///`, `reasoning:///`,
-and `ops:///` as that worker sees them — so a client can look at a conversation without
+the READ resolves `log:///` as `perspectiveWorkerId` when one is given; explicit source
+authorities retain their identity under {§turn-source-resources}. A client can look at a conversation without
 adding a loop to it. LOOK text anchors resolve through the same
 {§line-anchors} path as READ.
 
@@ -4340,7 +4341,7 @@ ordinary operation evidence still reaches that child's direct parent.
 
 | Producer / event                                      | Durable occurrence                                                                                     | Observer projection                                                                                                                |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| §env-delta-child-activity Direct-child activity       | Every final op-bearing child log row except the runtime's own rows — `_plurnk` initialization, maintenance, and operation turns are private to the child. A reply already delivered to the parent uses its reply occurrence instead ({§message-reply-delivery}). | Direct parent only; one exact attributed row born body-suppressed. Provider reasoning, calls, rejected emissions, turnOps, and harness maintenance do not cross. |
+| §env-delta-child-activity Direct-child activity       | Final EDIT, COPY, MOVE, SEND, executor invocation, WORK, FORK, and non-log KILL receipts, including failures. `_plurnk` initialization, maintenance, and operation turns stay with the worker. A reply already delivered to the parent uses its reply occurrence instead ({§message-reply-delivery}). | Direct parent only; one exact attributed row born body-suppressed. NOTE, READ (including executor-output READs), FIND, BARE, WAIT, and log KILL never create activity occurrences. Provider reasoning, calls, rejected emissions, and turn sources do not cross automatically. |
 | §env-delta-child-termination Direct-child termination | The child's exact terminal loop result, except loops containing only `_plurnk` operation or maintenance turns. A conclusion before the first turn still reports, including failed spawns. The observation is untargeted: `source` (`worker://<name>`) names the actor and its deliverable; no commons-shaped target is invented. | Direct parent only; the exact result is born visible for every status ({§worker-scheme-collect}); a body already delivered as a reply is suppressed only in this log observation ({§message-reply-delivery}). Excluded administrative loops create no pending child-result edge. |
 | §env-delta-commons-mutation Commons mutation          | One successful resolved operation whose landed effects touch `worker:///...`.                         | Every existing worker; one body-suppressed row per observer, deduplicated with any lineage audience.                               |
 | §env-delta-filesystem-narration Project-file divergence | Runtime-owned reconciliation evidence remains in the runtime actor's own log.                        | No ambient observer row. Current content remains addressable and stale hash edits reject at their owned boundary.                 |
@@ -4354,8 +4355,8 @@ ordinary operation evidence still reaches that child's direct parent.
 | `origin`    | The actor tier that wrote the row; a materialized delta is `_plurnk`.                                                                                                                   |
 | `source`    | The immediate causal identity in this log: a lineage or commons observation uses canonical `worker://<producer>`, a terminal stream observation uses its causal `log:///<coord>/<runtime>`, and a subsystem observation may use its stable token (for example `file`). Self-authored rows omit it. |
 
-§env-delta-no-coalescing **Activity is never coalesced.** Each admitted child
-operation and each commons mutation has one occurrence identity. Combining
+§env-delta-no-coalescing **Activity is never coalesced.** Each eligible child
+action and each commons mutation has one occurrence identity. Combining
 them would destroy causal order and conflate event replay with a state
 comparison.
 
@@ -4705,7 +4706,7 @@ USD, and token totals across every physical exchange the turn paid for, failed
 calls included. It is the shared exact derivation from the ledger, never a second
 stored fact, so a live watcher accrues running loop cost per turn (#465).
 
-§notice-content-offset-pointer **Content-offset position.** A non-fatal diagnosis on an accepted emission (for example `grammar_unenforced` or `parse_advisory`) carries `position: { type: "content-offset", line, column }` into the model's exact `ops:///<loop>/<turn>` source. A bounded hard parse error becomes a durable failed operation whose Problem Details preserve its line, column, source, and parser-owned diagnostic. Hard errors that make the frame untrustworthy remain only with their rejected forensic attempt.
+§notice-content-offset-pointer **Content-offset position.** A non-fatal diagnosis on an accepted emission (for example `grammar_unenforced` or `parse_advisory`) carries `position: { type: "content-offset", line, column }` into the model's exact `ops://<worker>/<loop>/<turn>` source. A bounded hard parse error becomes a durable failed operation whose Problem Details preserve its line, column, source, and parser-owned diagnostic. Hard errors that make the frame untrustworthy remain only with their rejected forensic attempt.
 
 ### §tools Executable tool resources
 

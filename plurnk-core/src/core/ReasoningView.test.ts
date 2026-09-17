@@ -47,10 +47,10 @@ test("{§reasoning-initial-read}: initialization reads its own source with the c
     try {
         for (const limit of [-1, 0, 1, 8, 32]) {
             process.env.PLURNK_REASONING_VIEW_LINES = String(limit);
-            const read = ReasoningView.initialRead(provider, 3, 8);
+            const read = ReasoningView.initialRead(provider, "alice", 3, 8);
             if (limit === 0) assert.equal(read, null);
             else {
-                assert.equal(read?.target?.raw, "reasoning:///3/8");
+                assert.equal(read?.target?.raw, "reasoning://alice/3/8");
                 assert.equal(read?.aside, "inspect this turn's reasoning");
                 assert.equal(read?.matcher, null);
                 assert.deepEqual(read?.lineMarker, { marks: [1, limit] });

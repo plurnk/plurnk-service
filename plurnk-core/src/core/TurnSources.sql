@@ -15,19 +15,20 @@ RETURNING turn_id;
 -- a turn that does not exist (404); a NULL content is an existing turn with no source of this
 -- kind, which reads empty rather than absent.
 SELECT s.content
-FROM turns t JOIN loops l ON l.id = t.loop_id
+FROM turns t JOIN loops l ON l.id = t.loop_id JOIN workers w ON w.id = l.worker_id
 LEFT JOIN turn_sources s ON s.turn_id = t.id AND s.kind = $kind AND s.sequence = $sequence
-WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq
+WHERE w.workspace_id = $workspace_id AND w.name = $worker_name
+  AND l.sequence = $loop_seq AND t.sequence = $turn_seq
   AND ($kind != 'note' OR s.turn_id IS NOT NULL);
 
 -- PREP: turn_source_candidates
-SELECT s.turn_id, s.kind, s.sequence,
+SELECT s.turn_id, s.kind, s.sequence, w.name AS authority,
        '/' || l.sequence || '/' || t.sequence || CASE WHEN s.kind = 'note' THEN '/' || s.sequence ELSE '' END AS pathname,
        s.content, s.deep_hash
 FROM turn_sources s JOIN turns t ON t.id = s.turn_id
-JOIN loops l ON l.id = t.loop_id
-WHERE l.worker_id = $worker_id AND s.kind = $kind
-ORDER BY l.sequence, t.sequence, s.sequence;
+JOIN loops l ON l.id = t.loop_id JOIN workers w ON w.id = l.worker_id
+WHERE w.workspace_id = $workspace_id AND ($worker_name IS NULL OR w.name = $worker_name) AND s.kind = $kind
+ORDER BY w.name, l.sequence, t.sequence, s.sequence;
 
 -- PREP: turn_source_derivations
 SELECT s.turn_id, s.kind, s.sequence,

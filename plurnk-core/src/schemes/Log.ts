@@ -156,6 +156,7 @@ const coordinateCandidatePrefix = (prefix: string | null): string | null => pref
 export default class Log extends CoreSchemeAdapterBase implements CoreRepresentationProvider, Pick<SchemeHandler, "kill"> {
     static manifest: SchemeManifest = {
         name: "log",
+        authority: "resource",
         channels: {},
         defaultChannel: "",
         category: "logging",
@@ -167,10 +168,20 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         textEditScopes: true,
     };
 
+    #addressFailure(target: ParsedPath | null) {
+        if (target?.kind !== "url" || [target.hostname, target.username, target.password, target.port, target.query]
+            .every((value) => value === null || value === "")) return null;
+        return Results.failure("scheme:log", "coordinate-malformed", 400,
+            "Use log:/// with local log coordinates, without an authority, userinfo, a port, or a query.",
+            { content: null, mimetype: null, channel: null });
+    }
+
     async resolveCoreRepresentation(
         target: ParsedPath | null,
         ctx: CoreSchemeCallContext,
     ): Promise<CoreRepresentationResolution> {
+        const addressFailure = this.#addressFailure(target);
+        if (addressFailure !== null) return { result: addressFailure };
         const core = this.coreContext(ctx);
         const { db, workerId } = core;
         const failure = (
@@ -277,6 +288,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     // coordinate-scoped rows resolved by LogBody exactly as READ shows them, so every content
     // dialect works on log BY CONSTRUCTION and log FIND -> coordinate READ composes like any scheme.
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
+        const failure = this.#addressFailure(statement.target);
+        if (failure !== null) return { ...failure, ...emptyFindFields() };
         return this.#find(statement, this.coreContext(ctx), false, null);
     }
 
@@ -555,6 +568,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         ctx: CoreSchemeCallContext,
         maxLogEntryId: number | null,
     ): Promise<LogCurationOutcome> {
+        const failure = this.#addressFailure(statement.target);
+        if (failure !== null) return { result: failure, plan: null };
         const core = this.coreContext(ctx);
         // {§log-kill-scope} — a scoped KILL trims the readable body; the row stays.
         if (statement.lineMarker !== null) return this.#planScoped(statement, core, maxLogEntryId);

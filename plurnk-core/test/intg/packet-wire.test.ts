@@ -208,10 +208,10 @@ test("{§log-wire-format}: receipt metadata leads with target, then aside, befor
             name: "harness reasoning READ with an aside",
             entry: {
                 ...read, origin: "_plurnk", source: "worker://child",
-                target: { scheme: "reasoning", pathname: "/1/4/1" },
+                target: { scheme: "reasoning", hostname: "alice", pathname: "/1/4" },
                 tx: { aside: "Prior reasoning", body: null },
             },
-            target: "reasoning:///1/4/1",
+            target: "reasoning://alice/1/4",
         },
         { name: "suppressed READ", entry: { ...read, initial_folded: [[1, -1]] }, target: "notes.md" },
         {
@@ -1279,10 +1279,10 @@ test("log render: READ@200 with text/html is line-addressable", () => {
 test("a suppressed program READ receipt keeps its address and readable extent", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: "READ", status: 200, initial_folded: [[1, -1]],
-        target: { scheme: "ops", pathname: "/1/1" },
+        target: { scheme: "ops", hostname: "alice", pathname: "/1/1" },
         rx: { content: "\n```NOTE\nInitialized\n```", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /^### log:\/\/\/1\/1\/1\/READ\n\{"target":"ops:\/\/\/1\/1",/, "the READ receipt identifies the immutable source");
+    assert.match(out, /^### log:\/\/\/1\/1\/1\/READ\n\{"target":"ops:\/\/alice\/1\/1",/, "the READ receipt identifies the immutable source");
     assert.doesNotMatch(out, /"kind":/, "the canonical path does not duplicate source identity as metadata");
     assert.equal(parseLogRecords(out)[0]?.logTokens, tok(out), "the suppressed receipt charges only its metadata");
     assert.doesNotMatch(out, /tokensBody/);
@@ -1304,7 +1304,7 @@ test("a rejected emission renders as an addressable /attempt leaf without duplic
 test("a program READ presents exact source, line-numbered", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "_plurnk", op: "READ", status: 200, folded: [],
-        target: { scheme: "ops", pathname: "/1/1" },
+        target: { scheme: "ops", hostname: "alice", pathname: "/1/1" },
         rx: { content: "\n```NOTE\nInitialized\n```", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /^### log:\/\/\/1\/1\/1\/READ$/m, "the heading owns the canonical address; lines counts the navigable body");
@@ -1323,7 +1323,7 @@ test("{§body-projection}: scoped program READs bypass previews, not curation or
     for (const origin of ["_plurnk", "model", "client", "plugin"]) {
         const entry = {
             coordinate: "1/1/1", origin, op: "READ", status: 200,
-            target: { scheme: "ops", pathname: "/1/1" }, rx: { content: source, mimetype: "text/vnd.plurnk" },
+            target: { scheme: "ops", hostname: "alice", pathname: "/1/1" }, rx: { content: source, mimetype: "text/vnd.plurnk" },
         };
         const complete = parseLogRecords(PacketWire.renderLog([entry], tok))[0]!;
         assert.equal(complete.body, `${numbered.join("\n")}\n`, `${origin} source exceeds both preview bounds without clipping`);
@@ -1355,7 +1355,7 @@ test("initialization renders a program READ alongside its other real operation o
         },
         {
             coordinate: "1/1/3", origin: "_plurnk", op: "READ", status: 200, folded: [],
-            tags: ["_plurnk", "init"], target: { scheme: "ops", pathname: "/1/1" },
+            tags: ["_plurnk", "init"], target: { scheme: "ops", hostname: "alice", pathname: "/1/1" },
             rx: { content: `\`\`\`FIND (*)\`\`\`
 \`\`\`NOTE
 Address the message.

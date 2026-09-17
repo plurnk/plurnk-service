@@ -717,7 +717,7 @@ export default class TurnRunner {
         if (initializationTurn !== null) {
             initializationStatements.push({
                 op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null,
-                body: `This turn surveys tooling and environment. The log records results; ops:///${loopSequence}/${initializationTurn.sequence} contains the submitted OPs.`, position: UNKNOWN_POSITION,
+                body: `This turn surveys tooling and environment. The log records results; ops://${workerName}/${loopSequence}/${initializationTurn.sequence} contains the submitted OPs.`, position: UNKNOWN_POSITION,
             });
             const agentsEntry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: workspaceId,
@@ -806,7 +806,7 @@ export default class TurnRunner {
     // complete turn before the model boundary.
     async #runInitializationTurn(args: TurnArgs, container: TurnContainer, initializationTurn: TurnRow): Promise<void> {
         const { provider, workspaceId, workerId, loopId, onDispatch, onSettled } = args;
-        const { loopSequence, initializationStatements, initializationPolicies } = container;
+        const { workerName, loopSequence, initializationStatements, initializationPolicies } = container;
         // Turn-0 catalog preview (PLURNK_SERVICE_FILES_ITEMS, {§actor-boundary-catalog-preview}):
         // Eight bodyless FIND surveys in the worker's packetless initialization turn establish the Agent
         // Skills, the plurnk references, the enabled tools, agents, and members, then the project, commons,
@@ -821,13 +821,13 @@ export default class TurnRunner {
         const pathname = `/${loopSequence}/${initializationTurn.sequence}`;
         const reasoning = ReasoningView.initialSource();
         await Turn.recordSource(this.#db, initializationTurn.id, "reasoning", reasoning);
-        const reasoningRead = ReasoningView.initialRead(provider, loopSequence, initializationTurn.sequence);
+        const reasoningRead = ReasoningView.initialRead(provider, workerName, loopSequence, initializationTurn.sequence);
         if (reasoningRead !== null) initializationStatements.push(reasoningRead);
         initializationStatements.push({
             op: "READ", aside: "inspect this turn's emission", matcher: null, body: null, metadata: null,
             target: {
-                kind: "url", raw: `ops://${pathname}`, scheme: "ops", pathname,
-                username: null, password: null, hostname: null, port: null, query: null, fragment: null,
+                kind: "url", raw: `ops://${workerName}${pathname}`, scheme: "ops", pathname,
+                username: null, password: null, hostname: workerName, port: null, query: null, fragment: null,
             },
             lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
         });
@@ -1624,7 +1624,7 @@ export default class TurnRunner {
         }
         // Non-fatal provider transport notices on an accepted turn. Forward each
         // Notice with a content-offset `line:col`;
-        // the model resolves it against its own emission — READ ops:///<loop>/<turn> at the
+        // the model resolves it against its own emission — READ ops://<worker>/<loop>/<turn> at the
         // cited lines ({§turn-ops-entry}) — not an embedded snippet that would duplicate the emission.
         for (const notice of response.notices ?? []) {
             const located = typeof notice.position === "number"

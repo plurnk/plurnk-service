@@ -12,6 +12,7 @@ import type ClientInteractions from "./ClientInteractions.ts";
 import type { ProposalResolution } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import { foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
+import WorkerName from "./WorkerName.ts";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
@@ -535,7 +536,8 @@ export default class Dispatcher {
                     await Turn.recordSource(this.#db, turnId, "note", statement.body ?? "", { sequence });
                     const coordinate = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({ loop_id: loopId, turn_id: turnId });
                     if (coordinate === undefined) throw new Error(`NOTE has no turn coordinate for ${turnId}`);
-                    result = { status: 200, resource: `note:///${coordinate.loop_seq}/${coordinate.turn_seq}/${sequence}` };
+                    const workerName = await WorkerName.forId(this.#db, workerId);
+                    result = { status: 200, resource: renderAddress({ scheme: "note", authority: workerName, pathname: `/${coordinate.loop_seq}/${coordinate.turn_seq}/${sequence}` }) };
                 } else if (TurnDisposition.is(statement)) {
                     result = await this.#disposition.handle(statement, { workerId, loopId, turnId, origin });
                 } else if (

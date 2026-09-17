@@ -79,7 +79,7 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
 };
 
 test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, no embedded snippet", async () => {
-    // A NOTICE points at exact source retrievable through ops:///, not an automatic log row.
+    // A NOTICE points at exact source retrievable through ops://<worker>/, not an automatic log row.
     // ({§turn-ops-entry}) — the model READs it at the cited lines. No snippet duplicating the bytes.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {

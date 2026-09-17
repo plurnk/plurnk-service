@@ -145,7 +145,7 @@ test("a parent receives all direct-child entry activity while an independent run
     }
 });
 
-test("{§log-kill-meta-operation} child log-curation successes stay out of the parent's packet, while failures remain visible", async () => {
+test("{§env-delta-child-activity}: child log curation stays with the child, including failures", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `curation-observation-${crypto.randomUUID()}`);
@@ -168,14 +168,13 @@ test("{§log-kill-meta-operation} child log-curation successes stay out of the p
         });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet);
         const kills = logEntries(packet).filter(({ path }) => String(path).endsWith("/KILL"));
-        assert.deepEqual(kills.map(({ target, source, status }) => ({ target, source, status })), [
-            { target: "log:///9/9/9", source: "worker://child", status: 404 },
-        ], "attribution does not exempt successful curation receipts from suppression");
+        assert.deepEqual(kills, [], "neither successful nor failed log curation becomes parent activity");
         const observations = await db.test_log_entries_by_worker.all<{ op: string; source: string; status_rx: number }>({ worker_id: parent });
-        assert.deepEqual(observations.filter(({ op }) => op === "KILL").map(({ source, status_rx }) => ({ source, status_rx })), [
-            { source: "worker://child", status_rx: 200 },
-            { source: "worker://child", status_rx: 404 },
-        ], "both child occurrences remain durable, even though only the failure enters the packet");
+        assert.deepEqual(observations.filter(({ op }) => op === "KILL"), []);
+        assert.ok(observations.some(({ op, source }) => op === "EDIT" && source === "worker://child"), "the actual edit still reaches the parent");
+        const childHistory = await db.test_log_entries_by_worker.all<{ op: string; status_rx: number }>({ worker_id: child });
+        assert.deepEqual(childHistory.filter(({ op }) => op === "KILL").map(({ status_rx }) => status_rx), [200, 404],
+            "both curation outcomes remain durable for the child and forensics");
     } finally {
         await db.close();
     }

@@ -98,9 +98,9 @@ BEGIN
 END;
 
 -- INIT: log_entries_append_ambient_event_insert
--- Every final op-bearing child row is parent activity. A successful operation
--- whose landed effects touch worker:/// additionally acquires the workspace
--- audience. Observer rows and copied fork history cannot republish themselves.
+-- {§env-delta-child-activity} The candidate view owns action eligibility.
+-- Commons effects add the workspace audience; observer rows and copied fork
+-- history cannot republish themselves.
 DROP TRIGGER IF EXISTS log_entries_append_ambient_event_insert;
 CREATE TRIGGER log_entries_append_ambient_event_insert
 AFTER INSERT ON log_entries

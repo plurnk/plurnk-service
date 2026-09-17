@@ -349,8 +349,8 @@ export default class BuiltinActions {
                     }
                     // LOOK is the client's observation with a matcher body; on the seam it is a READ whose
                     // heading pattern is that matcher ({§read-pattern}): the matching lines, no log row.
-                    // It resolves as the conversation worker — `log:///`, `reasoning:///`, and `ops:///` as the
-                    // model sees them — while the observation segment stays on the connection's own worker (plurnk#68).
+                    // Local log coordinates resolve as the conversation worker; explicit resource authorities
+                    // keep their identity. The observation segment stays on the connection's own worker ({§op-look}).
                     const { body: matcher, ...look } = item.statement;
                     const statement = { ...look, op: "READ", matcher, body: null } as unknown as PlurnkStatement;
                     return operationOutcome(await this.#seam().look({

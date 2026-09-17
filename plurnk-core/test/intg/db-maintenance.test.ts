@@ -28,8 +28,8 @@ test("{§db-maintenance-optimize}: stopping the daemon runs PRAGMA optimize on t
         const workerId = await insertWorker(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, workerId, 1);
         await daemon.engine.runTurn({ workspaceId, workerId, loopId, provider: provider("thought",
-            `${PlurnkParser.frame("READ (reasoning:///1/2) <1,-1>", null)}\n\n${PlurnkParser.frame("SEND", "Ready.")}`), messages: [] });
-        assert.equal((await daemon.engine.look({ workspaceId, workerId, loopId, statement: statement("```READ (reasoning:///1/2) <1,-1>```") })).status, 200);
+            `${PlurnkParser.frame("READ (reasoning://alice/1/2) <1,-1>", null)}\n\n${PlurnkParser.frame("SEND", "Ready.")}`), messages: [] });
+        assert.equal((await daemon.engine.look({ workspaceId, workerId, loopId, statement: statement("```READ (reasoning://alice/1/2) <1,-1>```") })).status, 200);
         assert.equal(stat1(path), 0, "a fresh baseline carries no statistics");
     } finally {
         await daemon.stop();

@@ -201,7 +201,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const reasoning = JSON.parse(initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "reasoning")!.rx) as { content: string };
                 assert.ok(reasoning.content.includes(note.body), "the ordinary NOTE is extracted from the preserved reasoning source");
                 const program = JSON.parse(initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "ops")!.rx) as { content: string };
-                assert.match(program.content, /\n````READ \(ops:\/\/\/1\/1\)/, "initialization demonstrates its source address through an ordinary READ");
+                assert.match(program.content, /\n````READ \(ops:\/\/[^/\s]+\/1\/1\)/, "initialization demonstrates its source address through an ordinary READ");
                 assert.deepEqual(
                     program.content.split("\n\n").map((block) => /^````([A-Z]+)/.exec(block)?.[1]),
                     initializationRows.slice(1).map(({ op }) => op),
@@ -315,7 +315,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 assert.equal(turnOps?.folded, "[]", "the exact initialization program is born visible");
                 assert.match(
                     (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content,
-                    /^````NOTE\n[^\n]+\n````\n\n````FIND[^\n]*\n[\s\S]*\n````READ \(ops:\/\/\/1\/1\)[^\n]*\n````$/,
+                    /^````NOTE\n[^\n]+\n````\n\n````FIND[^\n]*\n[\s\S]*\n````READ \(ops:\/\/[^/\s]+\/1\/1\)[^\n]*\n````$/,
                     "the exact initialization source surrounds the same eight executed surveys",
                 );
             } finally { ws.close(); }

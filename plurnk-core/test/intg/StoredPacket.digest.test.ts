@@ -69,7 +69,7 @@ test("{§log-history-projection}: digest retains programs after all source READ 
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "killed-turn-artifact");
-        const workerId = await insertWorker(db, workspaceId);
+        const workerId = await insertWorker(db, workspaceId, null, "analyst");
         const loopId = await insertLoop(db, workerId, 1, "curate history");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const observeProgram = async (turnId: number, source: string): Promise<number> => {
@@ -79,7 +79,7 @@ test("{§log-history-projection}: digest retains programs after all source READ 
                 workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
                 statement: {
                     op: "READ", aside: null, metadata: null, matcher: null, body: null,
-                    target: urlPath("ops", `/1/${turn.sequence}`), lineMarker: { marks: [1, -1] },
+                    target: { ...urlPath("ops", `/1/${turn.sequence}`), hostname: "analyst", raw: `ops://analyst/1/${turn.sequence}` }, lineMarker: { marks: [1, -1] },
                     position: { line: 1, column: 1 },
                 },
             });
@@ -162,7 +162,7 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
     let initializationSource = "";
     try {
         const workspaceId = await insertWorkspace(db, "turn-artifacts");
-        const workerId = await insertWorker(db, workspaceId);
+        const workerId = await insertWorker(db, workspaceId, null, "analyst");
         const loopId = await insertLoop(db, workerId, 1, "conclude");
         const response = {
             assistant: { content: inferenceSource, reasoning: null },
@@ -202,7 +202,7 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
         const turns = await db.test_list_turns_in_loop.all<{ id: number }>({ loop_id: loopId });
         const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         initializationSource = programs.find(({ turn_id, kind }) => turn_id === turns[0]!.id && kind === "ops")!.content;
-        assert.match(initializationSource, /^````NOTE\nThis turn surveys tooling and environment\. The log records results; ops:\/\/\/1\/1 contains the submitted OPs\.\n````\n\n````READ \(reasoning:/);
+        assert.match(initializationSource, /^````NOTE\nThis turn surveys tooling and environment\. The log records results; ops:\/\/analyst\/1\/1 contains the submitted OPs\.\n````\n\n````READ \(reasoning:/);
         assert.ok(!programs.some(({ turn_id }) => turn_id === overflow.turnId), "no recovery program was executed or fabricated");
     } finally {
         await db.close();

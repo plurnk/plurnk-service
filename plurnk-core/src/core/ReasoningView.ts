@@ -21,13 +21,13 @@ export default class ReasoningView {
         return value;
     }
 
-    static initialRead(provider: Provider, loopSequence: number, turnSequence: number): ReadStatement | null {
+    static initialRead(provider: Provider, workerName: string, loopSequence: number, turnSequence: number): ReadStatement | null {
         const limit = ReasoningView.lines(provider);
         if (limit === 0) return null;
         const pathname = `/${loopSequence}/${turnSequence}`;
         const target = {
-            kind: "url" as const, scheme: "reasoning", raw: `reasoning://${pathname}`, pathname,
-            username: null, password: null, hostname: null, port: null, query: null, fragment: null,
+            kind: "url" as const, scheme: "reasoning", raw: `reasoning://${workerName}${pathname}`, pathname,
+            username: null, password: null, hostname: workerName, port: null, query: null, fragment: null,
         };
         return {
             op: "READ", aside: "inspect this turn's reasoning", metadata: null, matcher: null, body: null,

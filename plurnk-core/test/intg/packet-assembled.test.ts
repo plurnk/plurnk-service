@@ -175,7 +175,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-backbone-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const workerId = await insertWorker(db, workspaceId, null, "subject");
         const loopId = await insertLoop(db, workerId, 1, "what do I have?"); // {§actor-boundary-catalog-preview}: first loop foists
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.md", channel: "body", content: "the answer is 42", mimetype: "text/markdown" });
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/nested/deep.md", channel: "body", content: "nested", mimetype: "text/markdown" });
@@ -235,7 +235,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
             "turn 0 exposes its reasoning and program notes, executed surveys, and reasoning and program READs",
         );
         assert.deepEqual(
-            initialization.filter(({ target }) => target === "ops:///1/1").map((row) => ({ open: "body" in row, origin: row.origin })),
+            initialization.filter(({ target }) => target === "ops://subject/1/1").map((row) => ({ open: "body" in row, origin: row.origin })),
             [{ open: true, origin: "_plurnk" }],
             "turn 0's source is the result of its actual READ",
         );

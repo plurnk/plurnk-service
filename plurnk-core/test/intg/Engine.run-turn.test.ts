@@ -63,7 +63,7 @@ class Sealed {
 const setup = async (reasoningEventNotify?: ReasoningEventNotify) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
+    const workerId = await insertWorker(db, workspaceId, null, "subject");
     const loopId = await insertLoop(db, workerId, 1, "test prompt");
     const schemes = new SchemeRegistry();
     schemes.register("sealed", new Sealed());
@@ -152,13 +152,13 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         assert.equal(initializationSource?.producer, "_plurnk");
         assert.match(initializationSource!.content, /^````/);
         assert.doesNotMatch(initializationSource!.content, /^(`{4,})\w[^\n]*\1$/m, "initialization never teaches inline operation fences");
-        assert.match(initializationSource!.content, /^````READ \(ops:\/\/\/1\/1\)[^\n]*\n````$/m, "the initialization program demonstrates a bodyless READ with a separate closing line");
-        assert.ok(initializationSource!.content.includes("ops:///1/1"));
+        assert.match(initializationSource!.content, /^````READ \(ops:\/\/subject\/1\/1\)[^\n]*\n````$/m, "the initialization program demonstrates a bodyless READ with a separate closing line");
+        assert.ok(initializationSource!.content.includes("ops://subject/1/1"));
         assert.ok(!initializationRows.some(({ op }) => op === null));
         assert.ok(initializationRows.some(({ op }) => op === "READ"), "initialization observes its actual program");
         assert.ok(initializationRows.some(({ op }) => op === "NOTE"), "source retention does not replace executed results");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
-        const opsReceipt = logEntries(packet).find(({ target }) => target === "ops:///1/1");
+        const opsReceipt = logEntries(packet).find(({ target }) => target === "ops://subject/1/1");
         assert.match(String(opsReceipt?.body), /\d+:````READ [^\n]+\n[ \t]*\d+:````\n/, "the model sees the same multiline examples through turn0's ordinary READ");
 
         const inferenceRows = await rowsFor(turns[1]!.id);

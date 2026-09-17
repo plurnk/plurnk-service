@@ -7,7 +7,7 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flus
 
 test("a SEND addressed to a turn source the model may not write is refused 400 with neutral recipient guidance", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("```SEND (reasoning:///1/1)\nthe answer\n```", 10),
+        makeMockResponse("```SEND (reasoning://alice/1/1)\nthe answer\n```", 10),
         makeMockResponse("```SEND\nthe answer\n```", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {

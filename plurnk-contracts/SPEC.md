@@ -966,7 +966,7 @@ already ends in one. Interstatement whitespace belongs to no body.
 A header starts at column zero; the first operation may follow provider preamble
 without a separating newline. Text outside operation blocks is ignored in every
 parser tier: before, between, and after operations. It produces no AST item,
-message, receipt, or diagnostic. Exact source remains in `ops:///` under
+message, receipt, or diagnostic. Exact source remains in `ops://<worker>/` under
 {§turn-ops-log-curation}; body bytes and source positions are unchanged. A matching
 closer still ends its body, and no missing closer is inferred. No generic Markdown
 rendering, indentation stripping or recursive code-block extraction occurs.

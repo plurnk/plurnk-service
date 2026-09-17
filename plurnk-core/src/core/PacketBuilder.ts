@@ -334,7 +334,7 @@ export default class PacketBuilder {
             },
             // {§packet-current-turn} — the Worker block opens the status clump below the log: who
             // the actor is, whose child it is, and the coordinate this packet's response becomes —
-            // the one fact the sources cannot state about themselves (which `reasoning:///L/T` is
+            // the one fact the sources cannot state about themselves (which `reasoning://<worker>/L/T` is
             // the model's own). It changes every turn, so it never precedes the log.
             { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({ path: `worker://${workerName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq }) },
             // The per-turn status clump follows the log ({§packet-cache-monotone}).

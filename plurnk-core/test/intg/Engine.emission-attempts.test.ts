@@ -76,7 +76,7 @@ class AttemptWitness extends Mock {
 const setup = async (dbPath?: string) => {
     const db = await openMigrated(dbPath);
     const workspaceId = await insertWorkspace(db, `emissions-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
+    const workerId = await insertWorker(db, workspaceId, null, "subject");
     const loopId = await insertLoop(db, workerId, 1, "do the task");
     const packetNotifications: Array<{ workspaceId: number; workerId: number; loopId: number; packetCount: number }> = [];
     const engine = new Engine({
@@ -278,7 +278,7 @@ test("{§whitespace-contract}: interstitial text executes nothing and survives e
         assert.equal(landed?.content, "Actual body.");
         const turn = await db.test_get_turn.get<{ sequence: number }>({ id: result.turnId });
         const readSource = [
-            PlurnkParser.frame(`READ (ops:///1/${turn!.sequence}) <1,-1>`, null),
+            PlurnkParser.frame(`READ (ops://subject/1/${turn!.sequence}) <1,-1>`, null),
             PlurnkParser.frame("NOTE", "Inspect the original emission."),
         ].join("\n");
         const review = await engine.runTurn({

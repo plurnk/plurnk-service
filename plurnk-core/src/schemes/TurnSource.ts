@@ -1,4 +1,4 @@
-import type { FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import { PathSyntax, type FindStatement, type ParsedPath, type UrlPath } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "@plurnk/plurnk-schemes";
 import { CoreSchemeAdapterBase, type CoreRepresentationProvider, type CoreRepresentationResolution, type CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results from "../core/results.ts";
@@ -10,10 +10,11 @@ import EntryGraph from "./_entry-graph.ts";
 import { emptyFindFields, projectFindResult, type FindResult, type FindProjectionResource } from "./_entry-find.ts";
 import { pathScope, pathScopeMatches, pathFolderSummaries } from "./_path-scope.ts";
 import { resolveSearchCandidates } from "./_search-candidate.ts";
+import { renderAddress } from "../core/plurnk-uri.ts";
 
-type Source = { pathname: string; content: string; deep_hash: string | null };
+type Source = { authority: string; pathname: string; content: string; deep_hash: string | null };
 
-// {§turn-source-resources}: read-only source views of the current worker's history.
+// {§turn-source-resources}: immutable, worker-qualified history within a workspace.
 export default class TurnSource extends CoreSchemeAdapterBase implements CoreRepresentationProvider {
     readonly manifest: SchemeManifest;
     readonly #kind: "ops" | "reasoning" | "note";
@@ -24,7 +25,7 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
         this.#kind = kind;
         this.#mimetype = kind === "ops" ? "text/vnd.plurnk" : "text/plain";
         this.manifest = {
-            name: kind, channels: { body: this.#mimetype }, defaultChannel: "body",
+            name: kind, authority: "resource", channels: { body: this.#mimetype }, defaultChannel: "body",
             category: "logging", writableBy: [], volatile: false, modelVisible: true,
             folderScopes: true, textEditScopes: true,
         };
@@ -34,40 +35,47 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
         return Results.failure(`scheme:${this.#kind}`, code, status, detail, { content: null, mimetype: null, channel: null });
     }
 
-    #local(target: ParsedPath | null): target is ParsedPath {
-        return target !== null && (target.kind !== "url" || [target.hostname, target.username, target.password, target.port].every((value) => value === null));
+    #named(target: ParsedPath | null): target is UrlPath & { hostname: string } {
+        return target?.kind === "url" && target.hostname !== null && target.hostname.length > 0
+            && [target.username, target.password, target.port, target.query].every((value) => value === null);
     }
 
     async resolveCoreRepresentation(target: ParsedPath | null, context: CoreSchemeCallContext): Promise<CoreRepresentationResolution> {
-        const { db, workerId } = this.coreContext(context);
+        const { db, workspaceId } = this.coreContext(context);
         const pathname = target?.kind === "url" ? target.pathname : target?.raw;
         const coordinate = (this.#kind === "note" ? /^\/(\d+)\/(\d+)\/(\d+)\/?$/ : /^\/(\d+)\/(\d+)\/?$/).exec(pathname ?? "");
-        if (!this.#local(target) || coordinate === null) return { result: this.#failure(
-            400, "coordinate-malformed", `Use ${this.#kind}:///<loop>/<turn>${this.#kind === "note" ? "/<item>" : ""}.`,
+        if (!this.#named(target) || coordinate === null) return { result: this.#failure(
+            400, "coordinate-malformed", `Use ${this.#kind}://<worker>/<loop>/<turn>${this.#kind === "note" ? "/<item>" : ""}, without userinfo, a port, or a query.`,
         ) };
         const row = await db.turn_source_read.get<{ content: string | null }>({
-            worker_id: workerId, loop_seq: Number(coordinate[1]), turn_seq: Number(coordinate[2]), kind: this.#kind,
+            workspace_id: workspaceId, worker_name: target.hostname,
+            loop_seq: Number(coordinate[1]), turn_seq: Number(coordinate[2]), kind: this.#kind,
             sequence: Number(coordinate[3] ?? 0),
         });
         if (row === undefined) return { result: this.#failure(404, "entry-not-found", `No ${this.#kind} source exists at ${target.raw}.`) };
         // An existing turn without a source of this kind is empty, not missing: the coordinate is
         // real, the provider simply returned nothing there.
         return {
-            identity: `${this.#kind}:///${coordinate.slice(1).join("/")}`,
+            identity: renderAddress({ scheme: this.#kind, authority: target.hostname, pathname: `/${coordinate.slice(1).join("/")}` }),
             representation: { channels: { body: { content: row.content ?? "", mimetype: this.#mimetype, state: "static" } } },
         };
     }
 
     async find(statement: FindStatement, context: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(context);
-        const { db, workerId, mimetypes } = core;
+        const { db, workspaceId, mimetypes } = core;
         if (mimetypes === undefined) throw new Error("TurnSource.find requires mimetypes.");
         const target = statement.target;
         const failed = (status: number, code: string, detail: string): FindResult => ({ ...this.#failure(status, code, detail), ...emptyFindFields() });
-        if (!this.#local(target)) return failed(400, "coordinate-malformed", `Use ${this.#kind}:/// with loop/turn coordinates or a path pattern.`);
-        const pathname = target.kind === "url" ? target.pathname : target.raw;
+        if (!this.#named(target)) return failed(400, "coordinate-malformed", `Use ${this.#kind}://<worker>/ with loop/turn coordinates or a path pattern, without userinfo, a port, or a query.`);
+        const pathname = target.pathname;
+        const authorityScope = pathScope(target.hostname, false);
         const scope = pathScope(/^\/\d+$/.test(pathname) ? `${pathname}/` : pathname, true);
-        const load = () => db.turn_source_candidates.all<Source>({ worker_id: workerId, kind: this.#kind });
+        const load = async () => (await db.turn_source_candidates.all<Source>({
+            workspace_id: workspaceId, worker_name: PathSyntax.hasGlob(target.hostname) ? null : target.hostname, kind: this.#kind,
+        })).filter((row) => pathScopeMatches(authorityScope, row.authority)).map((row) => ({
+            ...row, key: renderAddress({ scheme: this.#kind, authority: row.authority, pathname: row.pathname }),
+        }));
         let all = await load();
         const matcher = statement.matcher;
         const relation = matcher !== null && (matcher.dialect === "fts" || matcher.dialect === "graph") ? matcher : null;
@@ -76,12 +84,12 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
             all = await load();
         }
         const selected = all.filter((row) => pathScopeMatches(scope, row.pathname));
-        if (scope.kind === "exact" && selected.length === 0) return failed(404, "entry-not-found", `No ${this.#kind} source exists at ${target.raw}.`);
-        const projections = selected.map(({ pathname: key, content }) => ({ key, content, mimetype: this.#mimetype }));
+        if (authorityScope.kind === "exact" && scope.kind === "exact" && selected.length === 0) return failed(404, "entry-not-found", `No ${this.#kind} source exists at ${target.raw}.`);
+        const projections = selected.map(({ key, content }) => ({ key, content, mimetype: this.#mimetype }));
         let matches: CandidateMatch[];
         if (relation !== null) {
-            const candidates = resolveSearchCandidates(selected.map(({ pathname: key, deep_hash: deepHash }) => ({ key, deepHash })));
-            const universe = resolveSearchCandidates(all.map(({ pathname: key, deep_hash: deepHash }) => ({ key, deepHash })));
+            const candidates = resolveSearchCandidates(selected.map(({ key, deep_hash: deepHash }) => ({ key, deepHash })));
+            const universe = resolveSearchCandidates(all.map(({ key, deep_hash: deepHash }) => ({ key, deepHash })));
             if (candidates.state !== "ready" || universe.state !== "ready") return failed(503, "search-index-incomplete", "The persistent search index does not yet cover the selected history.");
             if (relation.dialect === "fts") {
                 const result = await EntryFts.rankCandidates(db, candidates.candidates, relation.raw.slice(1), core.signal);
@@ -97,21 +105,24 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
             if (result.status !== 200) return { ...result, ...emptyFindFields() };
             matches = result.matches;
         } else {
-            matches = selected.map(({ pathname: key }) => ({ key, matches: [] }));
+            matches = selected.map(({ key }) => ({ key, matches: [] }));
         }
         const weigh = core.weigh ?? contentWeight;
-        const byPath = new Map(all.map((row) => [row.pathname, row]));
+        const byPath = new Map(all.map((row) => [row.key, row]));
         const resources: FindProjectionResource[] = matches.map(({ key, matches: evidence }) => {
             const row = byPath.get(key)!;
             return {
-                item: [{ path: `${this.#kind}://${key}`, mimetype: this.#mimetype, weight: weigh(row.content), lines: LogVisibility.lineCount(row.content) }],
+                item: [{ path: key, mimetype: this.#mimetype, weight: weigh(row.content), lines: LogVisibility.lineCount(row.content) }],
                 match: { pathname: key, matches: evidence },
             };
         });
-        const folders = statement.matcher === null ? pathFolderSummaries(scope, all.map(({ pathname }) => pathname)).map(({ selector, pathnames }) => ({
-            path: `${this.#kind}://${selector}`, items: pathnames.length,
-            weight: pathnames.reduce((sum, key) => sum + weigh(byPath.get(key)!.content), 0),
-        })) : [];
-        return projectFindResult(statement, scope, resources, folders);
+        const folders = statement.matcher === null ? [...Map.groupBy(all, (row) => row.authority)]
+            .flatMap(([authority, rows]) => pathFolderSummaries(scope, rows.map(({ pathname }) => pathname))
+                .map(({ selector, pathnames }) => ({
+                    path: renderAddress({ scheme: this.#kind, authority, pathname: selector }), items: pathnames.length,
+                    weight: pathnames.reduce((sum, pathname) => sum + weigh(byPath.get(renderAddress({ scheme: this.#kind, authority, pathname }))!.content), 0),
+                }))) : [];
+        const projectionScope = authorityScope.kind === "glob" ? authorityScope : scope;
+        return projectFindResult(statement, projectionScope, resources, folders);
     }
 }

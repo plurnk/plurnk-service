@@ -853,11 +853,11 @@ test("{§reasoning-history}: log EDIT has no mutation surface; reasoning uses an
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: model EDIT reasoning:/// rejected with 403 (turn sources are immutable)", async () => {
+test("Engine.dispatch: model EDIT of reasoning is rejected with 403 (turn sources are immutable)", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: editStmt({ target: urlPath("reasoning", "/1/1"), body: "y" }),
+            statement: editStmt({ target: { ...urlPath("reasoning", "/1/1"), hostname: "alice", raw: "reasoning://alice/1/1" }, body: "y" }),
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });

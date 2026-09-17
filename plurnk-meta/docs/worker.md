@@ -39,21 +39,23 @@ projection follows every source write and is never written itself.
 
 ## Turn sources
 
-| Address | Read-only source in your worker's history |
+| Address | Read-only source in the named worker's history |
 | --- | --- |
-| `ops:///<loop>/<turn>` | The exact submitted program, including interstitial text. |
-| `reasoning:///<loop>/<turn>` | Original provider reasoning when exposed, or a harness turn's authored rationale. |
-| `note:///<loop>/<turn>/<item>` | The literal NOTE body, from the program or exposed reasoning; the receipt gives its address. |
+| `ops://<worker>/<loop>/<turn>` | The exact submitted program, including interstitial text. |
+| `reasoning://<worker>/<loop>/<turn>` | Original provider reasoning when exposed, or a harness turn's authored rationale. |
+| `note://<worker>/<loop>/<turn>/<item>` | The literal NOTE body, from the program or exposed reasoning; the receipt gives its address. |
 
+The worker name is required. Any worker in the workspace can READ these sources;
+SEND an address to share a note deliberately. `log:///` remains your own context.
 READ brings the selected source into your log; KILL of that READ curates only
 its log projection, never the original evidence. No later reasoning is added
 automatically after initialization's example READ.
 
 A READ can retain your current turn's reasoning: the source exists when your
 OPs execute. The packet's `## Worker` block names the coordinate you are
-producing. For example, on `"loop":1,"turn":3`:
+producing. For example, as `worker://reviewer` on `"loop":1,"turn":3`:
 
-````READ (reasoning:///1/3) <1,-1>
+````READ (reasoning://reviewer/1/3) <1,-1>
 ````
 
 The ordinary READ receipt appears in subsequent packets. A turn that produced
@@ -63,16 +65,22 @@ result. READ never requests inference.
 NOTE retains working memory without changing the loop state. Only NOTE also
 executes from exposed reasoning; quoted examples and other reasoned operations
 remain data. Notes are ordinary log items: KILL or trim their log projection
-when no longer useful. Their read-only `note:///` sources remain searchable and
+when no longer useful. Their read-only sources remain searchable and
 READable, including after log curation or a FORK.
 
-````FIND (note:///**) /parser/
+````FIND (note://reviewer/**) /parser/
 ````
 
-````READ (note:///1/3/2) <1,-1>
+````READ (note://reviewer/1/3/2) <1,-1>
 ````
 
 ## Delegation
+
+Parents passively observe child mutations, messages, executor invocations, and
+worker launches, including failed actions. Exploration and context
+curation (NOTE, READ, FIND, BARE, WAIT, and log KILL) stay with the child, including
+READs of executor output. These observations never wake the parent; replies and
+child conclusions retain their ordinary delivery and wake behavior.
 
 Open Messages names unanswered messages; an arrival receipt's `resource` links
 to the same source. SEND to that address answers that message. A targetless SEND

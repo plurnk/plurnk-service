@@ -112,11 +112,11 @@ test("{§completion-defers-to-results} an observed cleanup failure does not inva
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "cleanup-outcome");
-    const workerId = await insertWorker(db, workspaceId);
+    const workerId = await insertWorker(db, workspaceId, null, "alice");
     const loopId = await insertLoop(db, workerId, 1, "Deliver the project brief.");
     const brief = "Codename: phoenix. Host: db.internal. TODO: add error handling.";
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response(`${frame("SEND", brief)}\n${frame("KILL (reasoning:///1/2) <1,-1>", "")}`, "The requested project brief is ready."),
+        response(`${frame("SEND", brief)}\n${frame("KILL (reasoning://alice/1/2) <1,-1>", "")}`, "The requested project brief is ready."),
         response(frame("NOTE", "The read-only source cannot be removed; the brief is unchanged.")),
     ] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4 });

@@ -33,28 +33,28 @@ test("{§turn-source-resources}: initialization reads its real program; later so
         ] });
         const first = await engine.runTurn({ ...context, provider: model, messages: [] });
         const read = (target: string, scope = "<1,-1>") => engine.look({ ...context, statement: statement(`\`\`\`READ (${target}) ${scope}\`\`\``) });
-        const initialization = await read("ops:///1/1");
+        const initialization = await read("ops://analyst/1/1");
         assert.equal(initialization.status, 200);
         assert.ok("content" in initialization && typeof initialization.content === "string");
         const parsed = PlurnkParser.parseStatements(initialization.content, { executors: fixtureExecutors(initialization.content) });
         assert.ok(parsed.items.some((item) => item.kind === "statement" && item.statement.op === "READ"
-            && item.statement.target?.raw === "ops:///1/1"
+            && item.statement.target?.raw === "ops://analyst/1/1"
             && JSON.stringify(item.statement.lineMarker?.marks) === "[1,-1]"), "the program contains its own ordinary full READ");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: first.turnId }))!.packet);
         const records = logEntries(packet);
-        const selfRead = records.find((row: Record<string, unknown>) => row.target === "ops:///1/1");
+        const selfRead = records.find((row: Record<string, unknown>) => row.target === "ops://analyst/1/1");
         assert.ok(selfRead, "the actual initialization READ is visible to the first model request");
         assert.equal(selfRead.origin, "_plurnk");
-        assert.ok(typeof selfRead.body === "string" && selfRead.body.includes("ops:///1/1"));
+        assert.ok(typeof selfRead.body === "string" && selfRead.body.includes("ops://analyst/1/1"));
         assert.ok(!records.some((row: Record<string, unknown>) => String(row.path).endsWith("/ops")));
         const turn = (await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId }))!;
         const coordinate = `1/${turn.sequence}`;
-        const ops = await read(`ops:///${coordinate}`);
+        const ops = await read(`ops://analyst/${coordinate}`);
         assert.equal(ops.status, 200);
         assert.ok("content" in ops);
         assert.equal(ops.content, source, "source is verbatim, including ignored interstitial text");
         assert.ok(!Object.hasOwn(ops, "lineAnchors"));
-        const reason = await read(`reasoning:///${coordinate}`, "<2>");
+        const reason = await read(`reasoning://analyst/${coordinate}`, "<2>");
         assert.equal(reason.status, 200);
         assert.ok("content" in reason);
         assert.equal(reason.content, "Second finding.");
@@ -67,13 +67,13 @@ test("{§turn-source-resources}: initialization reads its real program; later so
         });
         assert.ok(killed.status < 400);
         for (const [scheme, expected] of [["ops", source], ["reasoning", reasoning]]) {
-            const retained = await read(`${scheme}:///${coordinate}`);
+            const retained = await read(`${scheme}://analyst/${coordinate}`);
             assert.ok("content" in retained);
             assert.equal(retained.content, expected);
         }
         const child = await Fork.fork(db, workerId, "branch");
         for (const [scheme, expected] of [["ops", source], ["reasoning", reasoning]]) {
-            const inherited = await engine.look({ ...context, workerId: child, statement: statement(`\`\`\`READ (${scheme}:///${coordinate}) <1,-1>\`\`\``) });
+            const inherited = await engine.look({ ...context, workerId: child, statement: statement(`\`\`\`READ (${scheme}://branch/${coordinate}) <1,-1>\`\`\``) });
             assert.equal(inherited.status, 200);
             assert.ok("content" in inherited);
             assert.equal(inherited.content, expected, "forked history keeps the same local coordinate");
@@ -102,7 +102,7 @@ test("{§turn-source-resources}: source facts reject rewriting and disappear onl
     } finally { await db.close(); }
 });
 
-test("{§turn-source-resources}: every producer reads the same local sources without a write exception", async () => {
+test("{§turn-source-resources}: every producer reads the same named sources without a write exception", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "source-operation-contract");
@@ -119,7 +119,7 @@ test("{§turn-source-resources}: every producer reads the same local sources wit
             let sequence = 1;
             const dispatch = (source: string) => engine.dispatch({ ...context, turnId: turn.id, sequence: sequence++, origin, statement: statement(source) });
             for (const kind of ["ops", "reasoning"] as const) {
-                const target = `${kind}:///1/${sourceTurn.sequence}`;
+                const target = `${kind}://analyst/1/${sourceTurn.sequence}`;
                 const read = await dispatch(`\`\`\`READ (${target}) <1,-1>\`\`\``);
                 assert.equal(read.status, 200);
                 assert.ok("content" in read);
@@ -134,10 +134,10 @@ test("{§turn-source-resources}: every producer reads the same local sources wit
                     assert.equal(result.status, 403, `${origin}: ${operation}`);
                     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden");
                 }
-                const named = await dispatch(`\`\`\`READ (${kind}://analyst/1/${sourceTurn.sequence})\`\`\``);
-                assert.equal(named.status, 400);
-                assert.equal(named.problem?.type, `https://problems.plurnk.xyz/scheme/${kind}/coordinate-malformed`);
-                const absent = await dispatch(`\`\`\`READ (${kind}:///99/99)\`\`\``);
+                const unqualified = await dispatch(`\`\`\`READ (${kind}:///1/${sourceTurn.sequence})\`\`\``);
+                assert.equal(unqualified.status, 400);
+                assert.equal(unqualified.problem?.type, `https://problems.plurnk.xyz/scheme/${kind}/coordinate-malformed`);
+                const absent = await dispatch(`\`\`\`READ (${kind}://analyst/99/99)\`\`\``);
                 assert.equal(absent.status, 404);
                 assert.equal(absent.problem?.type, `https://problems.plurnk.xyz/scheme/${kind}/entry-not-found`);
             }
@@ -152,7 +152,7 @@ test("{§turn-source-resources}: FIND uses ordinary folder, page and indexed-con
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "source-discovery");
-        const workerId = await insertWorker(db, workspaceId);
+        const workerId = await insertWorker(db, workspaceId, null, "analyst");
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         for (let index = 1; index <= 3; index++) {
@@ -168,9 +168,9 @@ test("{§turn-source-resources}: FIND uses ordinary folder, page and indexed-con
             assert.ok("results" in result);
             return result as FindResult;
         };
-        assert.deepEqual(resourcePaths(await query("```FIND (ops:///1/) <1,-1>```")), ["ops:///1/1", "ops:///1/2", "ops:///1/3"]);
-        assert.deepEqual(resourcePaths(await query("```FIND (ops:///*/*) <2,2>```")), ["ops:///1/2"]);
-        assert.deepEqual(resourcePaths(await query("```FIND (ops:///1/*) <1,-1> [{\"pattern\":\"~needle\"}]```")), ["ops:///1/1", "ops:///1/2", "ops:///1/3"]);
+        assert.deepEqual(resourcePaths(await query("```FIND (ops://analyst/1/) <1,-1>```")), ["ops://analyst/1/1", "ops://analyst/1/2", "ops://analyst/1/3"]);
+        assert.deepEqual(resourcePaths(await query("```FIND (ops://analyst/*/*) <2,2>```")), ["ops://analyst/1/2"]);
+        assert.deepEqual(resourcePaths(await query("```FIND (ops://analyst/1/*) <1,-1> [{\"pattern\":\"~needle\"}]```")), ["ops://analyst/1/1", "ops://analyst/1/2", "ops://analyst/1/3"]);
         const indexed = await db.test_turn_sources.all<{ deep_hash: string | null }>({ worker_id: workerId });
         assert.ok(indexed.every(({ deep_hash }) => deep_hash !== null), "history uses the persistent shared derivation index");
     } finally { await db.close(); }

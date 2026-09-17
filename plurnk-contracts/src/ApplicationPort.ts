@@ -217,7 +217,7 @@ export interface ApplicationPort {
         readonly level: "info" | "warn" | "error";
     } | null;
     // {§op-look} — `workerId` owns the closed observation segment; `perspectiveWorkerId`, when
-    // given, is the worker the READ resolves as (`log:///`, `reasoning:///`, `ops:///`), so a human's look
+    // given, is the worker whose local `log:///` the READ resolves against, so a human's look
     // sees the conversation as the model does without touching the conversation's loops.
     look(args: {
         readonly workspaceId: number;

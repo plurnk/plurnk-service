@@ -164,7 +164,7 @@ test("{§inline-flag-tolerance}: a leading PCRE inline modifier lifts into the f
     assert.equal(slash.diagnostics[0]!.message, "`(?i)` was read as the `i` flag; an ECMAScript regex takes its flags after the closing `/`.");
     const merged = one("````FIND (src/**) /(?ms)^begin.*end$/i\n````\n");
     assert.deepEqual(merged.op.matcher, { dialect: "regex", raw: "/(?ms)^begin.*end$/i", pattern: "^begin.*end$", flags: "ims" }, "authored flags and lifted letters merge without duplicates");
-    const caret = one("````READ (reasoning:///1/1) ^(?i)note:.*\n````\n");
+    const caret = one("````READ (reasoning://alice/1/1) ^(?i)note:.*\n````\n");
     assert.deepEqual(caret.op.matcher, { dialect: "regex", raw: "^(?i)note:.*", pattern: "^note:.*", flags: "i" });
     assert.equal(caret.diagnostics.length, 1);
     const scoped = one("````READ (a.md) /(?i:note):.*/\n````\n");

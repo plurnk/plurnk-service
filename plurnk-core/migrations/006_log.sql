@@ -608,15 +608,14 @@ FROM (
            json_remove(le.attrs, '$.__plurnk_curation') AS attrs
     FROM log_entries le
     JOIN workers w ON w.id = le.worker_id
-    JOIN loops l ON l.id = le.loop_id
     JOIN turns t ON t.id = le.turn_id
     WHERE le.ambient_event_id IS NULL
       AND le.inherited_history = 0
-      AND le.op IS NOT NULL
-      AND le.state != 'proposed'
-      AND NOT (
-          le.op = 'WAIT'
-          AND l.status IN (200, 413, 429, 499, 500, 504, 508)
+      AND (
+          le.op IN ('EDIT', 'COPY', 'MOVE', 'SEND', 'WORK', 'FORK')
+          OR CASE WHEN json_valid(le.tx) THEN json_type(le.tx, '$.runtime') END = 'text'
+          OR (le.op = 'KILL' AND COALESCE(le.scheme, 'file') != 'log')
       )
+      AND le.state != 'proposed'
 ) candidate
 WHERE recipient_worker_id IS NOT NULL OR workspace_broadcast = 1;
