@@ -24,6 +24,8 @@ export interface ApplicationMessage {
     readonly loopId: number;
     readonly direction: "inbound" | "outbound";
     readonly source: string | null;
+    /** Message addresses answered by an outbound reply; empty for incoming messages. */
+    readonly answers: readonly string[];
     readonly body: string;
     readonly envelope?: Readonly<Record<string, unknown>>;
     readonly attachments: readonly MessageResource[];

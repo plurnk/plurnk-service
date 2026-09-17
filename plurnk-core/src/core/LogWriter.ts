@@ -92,7 +92,7 @@ export default class LogWriter {
             `${seqs.loop_seq}/${seqs.turn_seq}/${sequence}`,
             { op: writtenOp(durableStatement), origin, tx: durableStatement, attrs: attrsObj },
         );
-        if (result.problem !== undefined && seqs !== undefined) {
+        if (result.problem !== undefined && result.problem.instance === undefined && seqs !== undefined) {
             Results.attachInstance(result, `log:///${coordinate}`);
         } else {
             Results.assert(result);

@@ -3,8 +3,10 @@ import Exec, { type WebFetch } from "../schemes/Exec.ts";
 import TurnSource from "../schemes/TurnSource.ts";
 import File from "../schemes/File.ts";
 import Worker from "../schemes/Worker.ts";
+import Loop from "../schemes/Loop.ts";
 import {
     Manifest,
+    MessageScheme,
     PacketSections,
     SchemeDiscovery,
     type PacketSectionDraft,
@@ -54,7 +56,7 @@ export default class SchemeRegistry {
     #packageAttributions = new Map<string, PluginAttribution>();
     #packageAttributionSources = new Map<string, Set<object>>();
     // {§exec} — runtime-tag schemes (sh/node/…) that ALIAS the exec handler for output-entry
-    // addressing (sh:///l/t/s). Routable via get(), but NOT separately taught or doc-materialized
+    // addressing (sh:///<id>). Routable via get(), but NOT separately taught or doc-materialized
     // (exec is taught once); else the catalog + docs bloat by one redundant line/entry per tag.
     #runtimeSchemes = new Set<string>();
     // One ownership ledger for built-ins, installed schemes, runtime output
@@ -72,13 +74,15 @@ export default class SchemeRegistry {
         // {§scheme} — "exec" is internal machinery, not an addressable scheme: executions route here
         // and the spawn-abort/idle state lives here, but the model addresses output via the tag
         // schemes (sh://, jq://) and process-KILLs the tag coordinate. The knowledgebase
-        // is worker:// (commons/~/name/plurnk).
+        // is worker:/// (shared) or worker://<name>/ (named).
         this.#registerBuiltIn("exec", new Exec(opts?.fetchWeb));
         this.#registerBuiltIn("reasoning", new TurnSource("reasoning"));
         this.#registerBuiltIn("ops", new TurnSource("ops"));
         this.#registerBuiltIn("note", new TurnSource("note"));
         this.#registerBuiltIn("file", new File());
         this.#registerBuiltIn("worker", new Worker());
+        this.#registerBuiltIn("message", new MessageScheme("message"));
+        this.#registerBuiltIn("loop", new Loop());
     }
 
     outputResource(manifest: SchemeManifest): ExecOutputScheme {

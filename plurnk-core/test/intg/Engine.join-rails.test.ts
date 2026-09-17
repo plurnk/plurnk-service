@@ -6,7 +6,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import StrikeRail from "../../src/core/StrikeRail.ts";
 import TerminalResult from "../../src/core/TerminalResult.ts";
-import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { lastReply, holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
 import { waitForDb, withDaemon } from "./_rpc.ts";
 
 const response = (content: string) => ({
@@ -58,13 +58,14 @@ Await results.
         assert.equal(await lifecycle.wake(loopId), true);
         const result = await run();
         assert.equal(result.result.status, 200);
-        assert.equal(result.result.content, "42");
+        assert.equal(result.result.content, undefined);
+        assert.equal(await lastReply(db, loopId), "42");
         const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: loopId });
         const reads = rows.filter(({ op }) => op === "READ");
         const unfinished = reads.filter(({ status_rx }) => status_rx === 425);
         assert.equal(unfinished.length, 2, "the original not-ready receipts are not erased or relabeled");
         for (const row of unfinished) {
-            assert.equal(JSON.parse(row.rx).problem.type, "https://problems.plurnk.xyz/scheme/worker/worker-unfinished");
+            assert.equal(JSON.parse(row.rx).problem.type, "https://problems.plurnk.xyz/scheme/loop/loop-unfinished");
         }
         assert.ok(reads.some(({ status_rx, rx }) => status_rx === 200 && JSON.parse(rx).content === "42"),
             "resumption collects the child's actual terminal response");
@@ -101,22 +102,30 @@ test("{§join-blocking-collect} the daemon wakes a collecting parent on actual c
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "join-wake-rails" });
         const parentId = await daemon.ensureModelWorker(workspaceId);
+        const parentWorker = await daemon.readWorker({ workspaceId, identity: { id: parentId } });
+        assert.ok(parentWorker);
         const { workerId: childId } = await daemon.forkWorker({ workspaceId, workerId: parentId, name: "child" });
         const held = await holdChild(db, workspaceId, childId);
         const lifecycle = new LoopLifecycle(db);
         try {
-            const child = await daemon.runLoop({ workspaceId, workerId: childId, prompt: "Wait, then answer." });
+            const child = await daemon.runLoop({ workspaceId, workerId: childId, prompt: "Wait, then answer.", source: `worker://${parentWorker.name}` });
             await waitForDb(() => lifecycle.status(child.loopId), (status) => status === 202);
             const parent = await daemon.runLoop({ workspaceId, workerId: parentId, prompt: "Collect the child's answer." });
             await waitForDb(() => lifecycle.status(parent.loopId), (status) => status === 202);
             await lifecycle.finish(held, TerminalResult.success("The held dependency completed."));
-            const resumed = await daemon.runLoop({ workspaceId, workerId: childId, prompt: "Answer now." });
+            const resumed = await daemon.runLoop({ workspaceId, workerId: childId, prompt: "Answer now.", source: `worker://${parentWorker.name}` });
             assert.equal(resumed.loopId, child.loopId);
             await waitForDb(() => lifecycle.status(parent.loopId), (status) => status === 200);
-            assert.equal((await lifecycle.result(parent.loopId))?.content, "Child answer received: 42.");
+            assert.equal((await lifecycle.result(parent.loopId))?.content, undefined);
+            assert.equal(await lastReply(db, parent.loopId), "Child answer received: 42.");
             assert.equal(provider.received.length, 4, "actual child completion resumes the same parent loop exactly once");
             const parentRail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: parent.loopId });
             assert.equal(parentRail?.strike_streak, 0, "neither the join nor its wake consumes recovery allowance");
+            const delivered = await db.test_log_entries_by_loop.all<{ attrs: string; initial_folded: string; folded: string }>({ loop_id: parent.loopId });
+            const reply = delivered.find(({ attrs }) => JSON.parse(attrs).kind === "reply");
+            assert.ok(reply);
+            assert.equal(reply.initial_folded, "[]", JSON.stringify(reply));
+            assert.equal(reply.folded, "[]", JSON.stringify(reply));
             assert.match(JSON.stringify(provider.received.at(-1)), /Child answer: 42\./,
                 "the resumed parent packet contains the child's completed response");
             assert.equal(await new StrikeRail(db).streak(parent.loopId), 0);

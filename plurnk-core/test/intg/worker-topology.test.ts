@@ -81,11 +81,14 @@ test("{§worker-lifecycle-child-wake}: one completed child task wakes its parent
         await withDaemon(provider, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: "partial-child-result" });
             const parentId = await daemon.ensureModelWorker(workspaceId);
+            const parentWorker = await daemon.readWorker({ workspaceId, identity: { id: parentId } });
+            assert.ok(parentWorker);
             const { workerId: childId } = await daemon.forkWorker({ workspaceId, workerId: parentId, name: "child" });
             const held = await holdChild(db, workspaceId, childId);
             try {
                 const common = {
                     workspaceId, workerId: childId,
+                    source: `worker://${parentWorker.name}`,
                     providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
                     reasoningPolicy: "adaptive" as const, systemPrompt: "test system",
                 };
@@ -102,7 +105,7 @@ test("{§worker-lifecycle-child-wake}: one completed child task wakes its parent
                 const parent = await daemon.runLoop({ workspaceId, workerId: parentId, prompt: "Observe each child result." });
                 await waitForDb(() => db.test_get_loop_status.get<{ status: number }>({ id: parent.loopId }), (row) => row?.status === 202);
                 await new LoopLifecycle(db).finish(held, { status: 200, content: "The held work finished." });
-                const delivery = await daemon.runLoop({ workspaceId, workerId: childId, prompt: "Complete the first task." });
+                const delivery = await daemon.runLoop({ workspaceId, workerId: childId, prompt: "Complete the first task.", source: `worker://${parentWorker.name}` });
                 assert.equal(delivery.loopId, childTasks[0]?.loopId);
                 await waitForDb(async () => provider.received.length, (count) => count === 5);
                 const latest = provider.received.at(-1)!;

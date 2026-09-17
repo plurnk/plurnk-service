@@ -10,7 +10,8 @@ an entry rather than controlling that worker.
 | Address | Meaning | Model access |
 | --- | --- | --- |
 | `worker://reviewer` | Named worker | WORK/FORK create; SEND messages; READ collects; KILL terminates. |
-| `worker://reviewer/?message=ab3d5678` | Retained message | READ/FIND/COPY inspect; SEND replies. Neither EDIT nor KILL changes its source. |
+| `message://reviewer/ab3d5678` | Retained message | READ/FIND/COPY inspect; SEND replies. Neither EDIT nor KILL changes its source. |
+| `loop://reviewer/1` | Retained loop result | READ/FIND/COPY inspect; source is immutable. |
 | `worker://reviewer/notes.md` | Named scratch entry | Read and write from any worker in the workspace. |
 | `worker:///notes.md` | Shared commons entry | Read and write. |
 
@@ -28,8 +29,8 @@ console.log(greet("world"));
 ````
 
 Control addresses contain only scheme and authority: no trailing slash,
-userinfo, port, query, or fragment. A `?message=` address selects a retained
-message instead of controlling the worker.
+userinfo, port, query, or fragment. Messages and loop outcomes have separate
+addresses; neither is a scratch entry or an actor control.
 
 An entry whose source has a readable projection (HTML, a notebook) carries it
 beside the source as `#readable`, text/markdown, in its own line coordinates;
@@ -152,11 +153,12 @@ parked time does not consume execution time. Conclude by observing the work's
 results and answering every Open Message with SEND. A later observation turn
 can conclude without repeating a response already delivered.
 
-Each child task's conclusion reaches its parent as a message from
-`worker://capital-checker`, waking a waiting parent. An answer already delivered
-is not repeated at conclusion; success otherwise includes the body;
-failure preserves its status and Problem. `READ (worker://capital-checker)`
-collects the same result explicitly. While the child is running it returns
+Each child task's conclusion wakes its waiting parent and arrives as an
+`_plurnk` READ of `loop://capital-checker/1`. This is the execution outcome,
+not another message. Replies remain separate; failure retains its status and Problem.
+READ that address with a scope to inspect more of the exact result, even after
+the child starts another task. Bare `READ (worker://capital-checker)` collects
+the current result instead, naming its exact source in `resource`. While the child is running it returns
 `425`; ordinary operations continue and WAIT explicitly joins.
 A result does not imply that every task in that worker has finished.
 

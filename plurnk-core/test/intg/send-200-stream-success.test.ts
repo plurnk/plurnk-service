@@ -1,3 +1,4 @@
+import { lastReply } from "./_helpers.ts";
 // {§send-premature-terminate} {§loop-response-messages}
 
 import assert from "node:assert/strict";
@@ -37,7 +38,8 @@ for (const command of ["true", "hostname"]) {
                 assert.equal(result.finalStatus, 200);
                 assert.equal(provider.remaining, 0, "the model gets exactly one observation turn before completing");
                 assert.equal(provider.received.length, 2);
-                assert.equal(result.result.content, answer, "the corrected answer is the response; the blind first SEND stays a log row");
+                assert.equal(result.result.content, undefined);
+        assert.equal(await lastReply(db, result.loopId), answer, "the corrected answer is the response; the blind first SEND stays a log row");
                 const observedPacket = JSON.stringify(provider.received[1]);
                 assert.match(observedPacket, /terminal/, "the next packet contains the stream conclusion");
                 if (command === "hostname") assert.ok(observedPacket.includes(hostname()), "the actual hostname reaches the model");
@@ -78,7 +80,8 @@ test("{§completion-defers-to-results}: a successful execution receipt defers co
             assert.equal(provider.remaining, 0);
             const rows = await db.test_log_entries_by_worker.all<{ op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
             assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "SEND", "NOTE"]);
-            assert.equal(result.result.content, "Completed.", "observation alone can complete an answered assignment without repeating the answer");
+            assert.equal(result.result.content, undefined);
+        assert.equal(await lastReply(db, result.loopId), "Completed.", "observation alone can complete an answered assignment without repeating the answer");
             assert.equal(rows.filter(({ op, origin }) => isExecutionOp(op) && origin === "model").length, 1, "the submitted command was executed");
         } finally {
             ws.close();
@@ -105,7 +108,8 @@ test("{§completion-defers-to-results}: a failed same-turn stream defers complet
             assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "SEND", "SEND"]);
             assert.ok(rows.some(({ op, status_rx }) => op === "READ" && status_rx === 500), "the terminal stream observation retains its failure");
             assert.match(JSON.stringify(provider.received[1]), /exit 3/, "the failed execution reaches the observation packet");
-            assert.equal(result.result.content, "concluding after reading the failure");
+            assert.equal(result.result.content, undefined);
+        assert.equal(await lastReply(db, result.loopId), "concluding after reading the failure");
             assert.ok(rows.filter(({ origin, op }) => origin === "model" && op === "SEND").every(({ status_rx }) => status_rx === 200),
                 "both replies succeeded independently of the failed execution");
         } finally {

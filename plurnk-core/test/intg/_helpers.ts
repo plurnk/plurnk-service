@@ -29,6 +29,10 @@ import {
 } from "@plurnk/plurnk-providers";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
+// {§loop-response-messages}: evaluate delivered text independently of execution outcome.
+export const lastReply = async (db: Db, loopId: number): Promise<string> =>
+    (await db.test_last_loop_reply.get<{ content: string }>({ loop_id: loopId }))?.content ?? "";
+
 export const testProviderCapacity = (
     messages: readonly ChatMessage[],
     contextWindow: number | null,

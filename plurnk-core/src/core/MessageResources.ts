@@ -33,7 +33,7 @@ export default class MessageResources {
 
     static async read(db: Db, args: { workspaceId: number; workerId: number; loopId?: number }): Promise<ApplicationMessage[]> {
         const rows = await db.message_history.all<{
-            id: number; loop_id: number; direction: "inbound" | "outbound"; source: string | null; body: string; evidence: string;
+            id: number; loop_id: number; direction: "inbound" | "outbound"; source: string | null; body: string; evidence: string; answers: string;
         }>({ workspace_id: args.workspaceId, worker_id: args.workerId, loop_id: args.loopId ?? null });
         return Promise.all(rows.map(async (row) => {
             const evidence = JSON.parse(row.evidence) as MessageEvidence;
@@ -42,6 +42,7 @@ export default class MessageResources {
                 bytes: await NativeContent.read(db, receipt.contentHash),
             })));
             return { id: row.id, loopId: row.loop_id, direction: row.direction, source: row.source, body: row.body,
+                answers: JSON.parse(row.answers) as string[],
                 ...(evidence.envelope === undefined ? {} : { envelope: evidence.envelope }), attachments };
         }));
     }

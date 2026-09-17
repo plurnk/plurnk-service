@@ -470,8 +470,9 @@ likewise. Both carry `columnKind: "unicodeCodePoints"`.
 - `Results.assertReadResult(result)` - validate the universal operation result plus any `region` and `matches` it exposes.
 - `Results.attachInstance(result, uri)` — attach the durable occurrence URI to a failed result.
 
-A handler owns its failure classification and explanation. The daemon owns the
-durable `instance`, because only it knows the committed log coordinate. A
+A handler owns its failure classification and explanation. A retained failure's
+`instance` continues to identify its original occurrence; reading it does not create
+a different failure. When absent, the daemon adds the committed log coordinate. A
 malformed handler result is a plugin contract violation and fails hard; the
 consumer does not invent a fallback error or reinterpret arbitrary fields.
 The same discrimination applies to every `SchemeCtx` capability result:

@@ -9,6 +9,7 @@ import {
     A2aMessage,
     connectHttpJsonAgent,
     Module as A2aModule,
+    OutboundModule,
 } from "@plurnk/plurnk-a2a";
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
@@ -62,6 +63,59 @@ const runTask = async (
     if (first.$case !== "task") throw new Error("the composed A2A run did not create a Task");
     return { task: first.value, events };
 };
+
+test("{§a2a-inbound-exposure}: an unrelated addressed reply is not an A2A artifact", async (t) => {
+    const db = await openMigrated();
+    const provider = new Mock({ contextWindow: 100_000, responses: [] });
+    const daemon = new Daemon({ db, provider });
+    daemon.registerModule(OutboundModule.init({}));
+    const workspace = await daemon.createWorkspace({ name: "a2a-reply-audience", projectRoot: null });
+    const registration = A2aModule.init({
+        workspace: { name: workspace.workspaceName, projectRoot: null }, card: a2aCard(), host: "127.0.0.1", port: 0,
+    });
+    let exposure: A2aModule | undefined;
+    daemon.registerModule({ start: async (port) => { exposure = await registration.start(port); return exposure; } });
+    let calls = 0;
+    let protocolAddress = "";
+    let unrelatedAddress = "";
+    t.mock.method(provider, "generate", async (args: Parameters<Mock["generate"]>[0]) => {
+        const [task] = (await daemon.listWorkers(workspace.workspaceId, { origin: "model" }))
+            .filter((worker) => worker.parentWorkerId !== null);
+        assert.ok(task);
+        let program: string;
+        if (calls++ === 0) {
+            const [request] = await daemon.readMessages({ workspaceId: workspace.workspaceId, workerId: task.id });
+            assert.ok(request?.source);
+            protocolAddress = request.source;
+            unrelatedAddress = `message://${task.name}/abcdef12`;
+            await daemon.runLoop({ workspaceId: workspace.workspaceId, workerId: task.id,
+                prompt: "An unrelated native request.", messageAddress: unrelatedAddress });
+            program = "```NOTE\nObserve the new request before replying.\n```";
+        } else {
+            program = `\`\`\`SEND (${protocolAddress})\nThe A2A answer.\n\`\`\`\n\n\`\`\`SEND (${unrelatedAddress})\nThe unrelated answer.\n\`\`\``;
+        }
+        return new Mock({ contextWindow: 100_000, responses: [makeMockResponse(program)] }).generate(args);
+    });
+    try {
+        await daemon.start();
+        assert.ok(exposure);
+        const address = exposure.address();
+        assert.ok(address);
+        const client = await connectHttpJsonAgent(`http://${address.host}:${address.port}`);
+        const { task } = await runTask(client, "Provide the A2A answer.");
+        const retrieved = await client.getTask({ tenant: "", id: task.id, historyLength: 10 });
+        const binding = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: task.id } });
+        assert.ok(binding);
+        assert.equal(retrieved.status?.state, TaskState.TASK_STATE_COMPLETED, JSON.stringify(retrieved));
+        assert.equal(retrieved.artifacts[0]?.parts[0]?.content?.value, "The A2A answer.");
+        assert.doesNotMatch(JSON.stringify(retrieved), /unrelated answer/);
+        const messages = await daemon.readMessages({ workspaceId: workspace.workspaceId, workerId: binding.id });
+        assert.deepEqual(messages.filter(({ direction }) => direction === "outbound").map(({ body, answers }) => ({ body, answers })), [
+            { body: "The A2A answer.", answers: [protocolAddress] },
+            { body: "The unrelated answer.", answers: [unrelatedAddress] },
+        ]);
+    } finally { await daemon.stop(); await db.close(); }
+});
 
 test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task workers through ApplicationPort", async (testContext) => {
     const db = await openMigrated();

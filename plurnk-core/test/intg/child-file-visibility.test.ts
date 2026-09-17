@@ -68,14 +68,14 @@ reading
                     assert.equal(finalStatus, 200);
                     // {§message-reply-delivery} {§env-delta-child-termination}
                     const turns = await db.test_list_turns_in_loop.all<{ sequence: number; packet: string | null }>({ loop_id: loopId });
-                    const messages = turns.flatMap(({ packet }) => (packet === null ? [] : logEntries(JSON.parse(packet)))
-                        .filter((entry) => entry.source === "worker://counter" && entry.origin === "_plurnk" && String(entry.path).endsWith("/SEND") && entry.status === 200));
-                    const replies = messages.filter((entry) => "body" in entry);
-                    const conclusions = messages.filter((entry) => !("body" in entry));
+                    const observations = turns.flatMap(({ packet }) => (packet === null ? [] : logEntries(JSON.parse(packet)))
+                        .filter((entry) => entry.source === "worker://counter" && entry.origin === "_plurnk"));
+                    const replies = observations.filter((entry) => String(entry.path).endsWith("/SEND") && entry.status === 200 && Array.isArray(entry.answers));
+                    const conclusions = observations.filter((entry) => String(entry.path).endsWith("/READ") && entry.target === "loop://counter/1");
                     assert.equal(new Set(conclusions.map(({ path }) => path)).size, 1, "one bodyless terminal observation avoids repeating the reply");
                     assert.equal(new Set(replies.map(({ path }) => path)).size, 1, `one durable child reply reaches the parent's packets: ${JSON.stringify(replies)}`);
                     assert.match(String(replies[0]!.body ?? ""), /written/, "the delivered reply remains visible");
-                    assert.equal("target" in conclusions[0]!, false, "a terminal observation does not invent an entry target");
+                    assert.equal("body" in conclusions[0]!, false, "the terminal outcome does not copy the child's reply");
                 } finally { ws.close(); }
             });
         } finally { await rm(root, { recursive: true, force: true }); }

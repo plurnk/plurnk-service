@@ -6,7 +6,7 @@ import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import StrikeRail from "../../src/core/StrikeRail.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { lastReply, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
 
 const frame = PlurnkParser.frame;
 const response = (content: string, reasoning: string | null = null) => ({
@@ -32,7 +32,8 @@ for (const [name, first, detail] of [
             workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3, maxStrikes: 2,
         });
         assert.equal(result.result.status, 200);
-        assert.equal(result.result.content, "Answer.");
+        assert.equal(result.result.content, undefined);
+        assert.equal(await lastReply(db, loopId), "Answer.");
         assert.equal(provider.received.length, 2);
         assert.equal(await new StrikeRail(db).streak(loopId), 0);
         const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string; status_rx: number }>({ loop_id: loopId });
@@ -82,8 +83,9 @@ for (const [cancel, status] of [[false, 200], [true, 499]] as const) {
         const lifecycle = new LoopLifecycle(db);
         const result = await new Engine({ db, schemes: new SchemeRegistry(), cancelWorker: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); } }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3 });
         assert.equal(result.result.status, status);
-        assert.equal(result.result.content, "The answer.");
-        assert.equal((await new LoopLifecycle(db).result(loopId))?.content, "The answer.");
+        assert.equal(result.result.content, undefined);
+        assert.equal(await lastReply(db, loopId), "The answer.");
+        assert.equal((await new LoopLifecycle(db).result(loopId))?.content, undefined);
         const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number }>({ loop_id: loopId });
         assert.ok(rows.some(({ op, status_rx }) => op === "KILL" && status_rx === 200));
         assert.equal(provider.received.length, 2, "final housekeeping requires no extra inference");
@@ -103,8 +105,9 @@ test("{§loop-response-messages} a terminal response supersedes earlier delivere
     ] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3 });
     assert.equal(result.result.status, 200);
-    assert.equal(result.result.content, "The codename is phoenix.");
-    assert.equal((await new LoopLifecycle(db).result(loopId))?.content, "The codename is phoenix.");
+    assert.equal(result.result.content, undefined);
+    assert.equal(await lastReply(db, loopId), "The codename is phoenix.");
+    assert.equal((await new LoopLifecycle(db).result(loopId))?.content, undefined);
     const messages = await db.message_history.all<{ direction: string; body: string }>({ workspace_id: workspaceId, worker_id: workerId, loop_id: loopId });
     assert.deepEqual(messages.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["The codename is Bumblebee.", "The codename is phoenix."]);
 });
@@ -129,7 +132,8 @@ test("{§completion-defers-to-results} an observed cleanup failure does not inva
     assert.equal(provider.received.length, 2);
     assert.equal(result.result.status, 200);
     assert.equal(result.result.problem, undefined);
-    assert.equal(result.result.content, brief);
+    assert.equal(result.result.content, undefined);
+    assert.equal(await lastReply(db, loopId), brief);
 });
 
 test("{§loop-response-messages} cancellation preserves delivered messages but not WAIT text", async (t) => {
@@ -148,8 +152,9 @@ test("{§loop-response-messages} cancellation preserves delivered messages but n
     const own = cancelled.loops.find(({ loopId: id }) => id === loopId);
     assert.ok(own);
     assert.equal(own.result.status, 499);
-    assert.equal(own.result.content, "Update delivered.");
-    assert.equal((await lifecycle.result(loopId))?.content, "Update delivered.");
+    assert.equal(own.result.content, undefined);
+    assert.equal(await lastReply(db, loopId), "Update delivered.");
+    assert.equal((await lifecycle.result(loopId))?.content, undefined);
     assert.equal(own.result.problem?.type, "https://problems.plurnk.xyz/lifecycle/cancel/scope-cancelled");
 });
 
@@ -197,5 +202,6 @@ test("{§note-value} writing about failure in NOTE does not declare failure", as
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3 });
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 2);
-    assert.equal(result.result.content, "Second approach succeeded.");
+    assert.equal(result.result.content, undefined);
+    assert.equal(await lastReply(db, loopId), "Second approach succeeded.");
 });

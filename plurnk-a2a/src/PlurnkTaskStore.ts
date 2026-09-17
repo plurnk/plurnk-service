@@ -81,17 +81,17 @@ const message = (
     referenceTaskIds: [],
 });
 
-const terminalArtifact = (result: OperationResult | null): Artifact[] => {
+const terminalArtifact = (result: OperationResult | null, content: string | undefined): Artifact[] => {
     if (result === null || result.status < 200 || result.status >= 400) return [];
-    if (!nonempty(result.content)) return [];
+    if (!nonempty(content)) return [];
     return [{
         artifactId: "result",
         name: "Result",
-        description: "The terminal Plurnk SEND deliverable.",
+        description: "The final delivered reply.",
         parts: [{
-            content: { $case: "text", value: result.content },
+            content: { $case: "text", value: content },
             filename: "",
-            mediaType: nonempty(result.mimetype) ? result.mimetype : "text/markdown",
+            mediaType: "text/markdown",
             metadata: {},
         }],
         metadata: {},
@@ -287,7 +287,9 @@ export default class PlurnkTaskStore implements TaskStore {
                 if (row.envelope === undefined) throw new Error(`A2A message ${row.id} lost its protocol envelope.`);
                 return Message.fromJSON(row.envelope);
             });
-        const artifacts: Artifact[] = rows.filter((row) => row.direction === "outbound")
+        const replies = rows.filter((row) => row.direction === "outbound"
+            && row.answers.some((address) => PlurnkTaskStore.#ownsSource(address, context.name, task.name)));
+        const artifacts: Artifact[] = replies
             .flatMap((row) => row.attachments.map((attachment, index) => ({
                 artifactId: createHash("sha256").update(`${task.name}/${row.id}/${index}`).digest("hex").slice(0, 8),
                 name: attachment.name,
@@ -304,7 +306,8 @@ export default class PlurnkTaskStore implements TaskStore {
                 message: statusMessage,
                 timestamp: loop.terminatedAt ?? undefined,
             },
-            artifacts: [...terminalArtifact(loop.terminalResult), ...artifacts],
+            artifacts: [...terminalArtifact(loop.terminalResult, replies.findLast((row) =>
+                row.loopId === loop.id && nonempty(row.body))?.body), ...artifacts],
             history,
             metadata: {},
         };

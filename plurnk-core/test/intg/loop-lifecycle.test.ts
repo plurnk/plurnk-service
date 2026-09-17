@@ -66,7 +66,7 @@ test("structured cancellation atomically claims the unresolved descendant tree",
         for (const loop of cancelled.loops) {
             assert.equal(loop.result.status, 499);
             assert.equal(loop.result.problem?.type, "https://problems.plurnk.xyz/lifecycle/cancel/scope-cancelled");
-            assert.equal(loop.result.problem?.instance, `loop:///${loop.loopId}`);
+            assert.equal(loop.result.problem?.instance, `loop://${loop.workerId === child ? "child" : "grandchild"}/1`);
             assert.equal(loop.result.problem?.detail, "The worker scope was cancelled: scope abandoned.");
             assert.equal(loop.result.problem?.reason, "scope abandoned");
             assert.equal(loop.result.problem?.stage, "loop");
@@ -104,7 +104,8 @@ test("an uncommon terminal status remains exact in the result while the schedule
         assert.equal(await lifecycle.status(loopId), 500, "the scheduler sees one terminal failure class");
         assert.equal(exact?.status, 502, "the product result retains the exact status");
         assert.equal(exact?.problem?.status, 502);
-        assert.equal(exact?.problem?.instance, `loop:///${loopId}`);
+        const name = (await db.worker_name_by_id.get<{ name: string }>({ worker_id: workerId }))!.name;
+        assert.equal(exact?.problem?.instance, `loop://${name}/1`);
         assert.deepEqual(await lifecycle.result(loopId), exact);
     } finally {
         await db.close();

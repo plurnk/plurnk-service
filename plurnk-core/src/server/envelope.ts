@@ -251,7 +251,7 @@ export default class Envelope {
     static async closeClientLoop(db: Db, loopId: number, result: SchemeResult): Promise<void> {
         const exact = structuredClone(Results.assert(result));
         if (exact.problem !== undefined && exact.problem.instance === undefined) {
-            Results.attachInstance(exact, `loop:///${loopId}`);
+            Results.attachInstance(exact, await LoopLifecycle.address(db, loopId));
         }
         await db.envelope_close_client_loop.run({
             status: LoopLifecycle.projectStatus(exact.status),

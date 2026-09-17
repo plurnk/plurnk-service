@@ -4,6 +4,8 @@ import { type FsDivergence } from "./git-membership.ts";
 import { type GitStatusSnapshot } from "./git-state.ts";
 import { editedSpan } from "../content/index.ts";
 import ReadResolve from "../content/read-resolve.ts";
+import ReadProjector from "../content/read-projector.ts";
+import Loop from "../schemes/Loop.ts";
 import { authorityParts } from "./plurnk-uri.ts";
 import Results, { type SchemeResult } from "./results.ts";
 import TerminalResult from "./TerminalResult.ts";
@@ -13,17 +15,21 @@ import Turn from "./Turn.ts";
 import RuntimeWorker from "./RuntimeWorker.ts";
 import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 export default class TurnMaterialization {
     readonly #db: Db;
     readonly #weighContent: (text: string) => number;
+    readonly #mimetypes: Mimetypes;
 
-    constructor({ db, weighContent }: {
+    constructor({ db, weighContent, mimetypes }: {
         db: Db;
         weighContent: (text: string) => number;
+        mimetypes: Mimetypes;
     }) {
         this.#db = db;
         this.#weighContent = weighContent;
+        this.#mimetypes = mimetypes;
     }
 
     async materializeEnvironmentDeltas(args: {
@@ -75,18 +81,25 @@ export default class TurnMaterialization {
                 throw new Error(`ambient loop-termination event ${r.event_id} status ${r.status_rx} does not match its terminal result status ${terminal.status}`);
             }
             let attrs = r.attrs ?? "{}";
-            let replyDelivered = false;
+            let rx = r.rx;
             if (terminal !== null) {
                 const inherited = JSON.parse(attrs) as unknown;
                 if (inherited === null || typeof inherited !== "object" || Array.isArray(inherited)) {
                     throw new TypeError(`ambient loop-termination event ${r.event_id} attrs must be an object`);
                 }
-                replyDelivered = (inherited as { replyDelivered?: unknown }).replyDelivered === true;
                 attrs = JSON.stringify({
                     ...inherited,
                     kind: "loop_termination",
                     ...(r.terminated_by === null ? {} : { terminatedBy: r.terminated_by }),
                 });
+                const resource = `loop://${r.hostname}${r.pathname}`;
+                rx = JSON.stringify(await ReadProjector.project({
+                    statement: { op: "READ", target: null, lineMarker: null, matcher: null, metadata: null,
+                        body: null, aside: null, position: { line: 1, column: 1 } },
+                    manifest: Loop.manifest, publishesLineAnchors: false,
+                    target: resource, identity: resource, mimetypes: this.#mimetypes,
+                    representation: TerminalResult.representation(terminal, resource, r.terminated_by),
+                }));
             }
             const inserted = await this.#db.engine_insert_ambient_delta.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + entryIds.length,
@@ -106,22 +119,20 @@ export default class TurnMaterialization {
                 line_marker: r.line_marker,
                 tx: r.tx,
                 mimetype_tx: r.mimetype_tx,
-                rx: r.rx,
+                rx,
                 mimetype_rx: r.mimetype_rx,
                 status: r.status_rx,
                 weight: LogBody.weight({
                     op: r.op,
                     attrs,
                     tx: r.tx,
-                    rx: r.rx,
+                    rx,
                     mimetypeTx: r.mimetype_tx,
                     mimetypeRx: r.mimetype_rx,
                 }, this.#weighContent),
                 state: r.state,
                 outcome: r.outcome,
-                // {§message-reply-delivery}: retain the exact conclusion, but do
-                // not repeat a reply already delivered to this recipient.
-                folded: LogVisibility.serialize((terminal !== null && !replyDelivered) || r.kind === "reply" ? LogVisibility.OPEN : LogVisibility.FOLDED),
+                folded: LogVisibility.serialize(terminal !== null || r.kind === "reply" ? LogVisibility.OPEN : LogVisibility.FOLDED),
                 attrs,
             });
             const materialized = inserted ?? await this.#db.engine_ambient_delta_id.get<{ id: number }>({
@@ -208,7 +219,7 @@ export default class TurnMaterialization {
                 ...(page.range === undefined ? {} : { range: page.range }),
                 ...(page.range !== undefined || page.region === undefined ? {} : { region: page.region }),
             });
-            if (result.problem !== undefined) {
+            if (result.problem !== undefined && result.problem.instance === undefined) {
                 const seqs = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({
                     loop_id: loopId,
                     turn_id: turnId,
@@ -321,8 +332,7 @@ export default class TurnMaterialization {
     // {§message-arrival} — an arrival is an inbound SEND row: the sender's statement as the row's
     // sent side, published by the harness (origin `_plurnk`) with the causal `source` when another
     // actor caused it ({§message-causal-source}). `attrs.kind = "message"` tells it from the
-    // engine's other harness-published SEND rows: a child's crossed activity and its conclusion
-    // narration ({§env-delta-child-termination}).
+    // engine's other harness-published SEND rows: observed activity and addressed replies.
     async writeArrivalLog({
         workerId,
         loopId,

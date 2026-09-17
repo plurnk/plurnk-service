@@ -44,12 +44,7 @@ UPDATE loops
 SET status = $status,
     execution_elapsed_ms = COALESCE($elapsed_ms, execution_elapsed_ms),
     wait_poll_at = NULL,
-    terminal_result = CASE WHEN json_type($result, '$.content') IS NULL
-        AND EXISTS (SELECT 1 FROM loop_responses WHERE loop_id = loops.id)
-        THEN json_set($result,
-            '$.content', (SELECT content FROM loop_responses WHERE loop_id = loops.id),
-            '$.mimetype', 'text/markdown')
-        ELSE $result END,
+    terminal_result = $result,
     terminated_by = $terminated_by
 WHERE id = $loop_id AND status IN (100, 102, 202)
   AND ($require_answered = 0 OR NOT EXISTS (SELECT 1 FROM unanswered_messages WHERE loop_id = loops.id))
@@ -116,8 +111,8 @@ ORDER BY loops.id;
 
 -- INIT: loops_stamp_terminated_at
 -- {§worker-scheme}: a loop crossing into a terminal status stamps terminated_at, so sibling
--- workers pull the termination as a folded ambient delta — caught uniformly across every
--- death-path (SEND, overflow recovery, max-turns, strike, KILL). The stamp updates terminated_at,
+-- workers observe the terminal outcome uniformly across every conclusion path.
+-- The stamp updates terminated_at,
 -- never status, so it cannot re-fire this trigger. Terminals: 200 done · 413 budget ·
 -- 429 turn-ceiling · 499 cancel · 500 fail · 504 execution timeout · 508 runaway. (202 = parked/sleeping, NOT terminal.)
 DROP TRIGGER IF EXISTS loops_stamp_terminated_at;
@@ -130,7 +125,7 @@ END;
 
 -- INIT: workers_cancel_live_loops
 -- {§worker-cancel-trigger}: writing a worker's cancellation retires its live loops in the same
--- statement — 499, waits cleared, the delivered response kept as the result's content, the
+-- statement — 499, waits cleared, the
 -- Problem instanced per loop. Loops already terminal keep their own outcome.
 DROP TRIGGER IF EXISTS workers_cancel_live_loops;
 CREATE TRIGGER workers_cancel_live_loops
@@ -141,13 +136,9 @@ BEGIN
     SET status = 499,
         wait_poll_at = NULL,
         terminal_result = json_set(
-            CASE WHEN EXISTS (SELECT 1 FROM loop_responses WHERE loop_id = loops.id)
-                THEN json_set(NEW.cancellation,
-                    '$.content', (SELECT content FROM loop_responses WHERE loop_id = loops.id),
-                    '$.mimetype', 'text/markdown')
-                ELSE NEW.cancellation END,
+            NEW.cancellation,
             '$.problem.instance',
-            'loop:///' || id
+            'loop://' || NEW.name || '/' || sequence
         ),
         terminated_by = 'cancel'
     WHERE worker_id = NEW.id
@@ -155,7 +146,8 @@ BEGIN
 END;
 
 -- PREP: engine_loop_sequence
--- The loop's per-worker sequence — the model-facing coordinate (prompt/<worker>/<loop-seq>/<turn-seq>,
--- matching the log's loop-relative numbering). The raw db id leaked into prompt paths and the
--- model's first loop read as prompt/2/1 (the docs loop holds id 1). Owner: minor but annoying.
 SELECT sequence FROM loops WHERE id = $loop_id;
+
+-- PREP: loop_resource_identity
+SELECT 'loop://' || w.name || '/' || l.sequence AS resource
+FROM loops l JOIN workers w ON w.id = l.worker_id WHERE l.id = $loop_id;

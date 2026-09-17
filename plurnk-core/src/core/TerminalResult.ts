@@ -1,4 +1,5 @@
 import Results, { type SchemeResult } from "./results.ts";
+import type { ChannelProducerResult, StoredEntryData } from "@plurnk/plurnk-schemes";
 
 export interface TerminalPresentation {
     readonly content: string;
@@ -6,6 +7,20 @@ export interface TerminalPresentation {
 }
 
 export default class TerminalResult {
+    static representation(result: SchemeResult, resource: string, terminatedBy: string | null): StoredEntryData {
+        const presentation = TerminalResult.present(result, { terminatedBy });
+        const projected = new Set(["content", "mimetype", "channel", "startLine", "region", "matches", "range"]);
+        const producerResult = Results.assertChannelProducerResult({
+            ...Object.fromEntries(Object.entries(result).filter(([field]) => !projected.has(field))),
+            status: result.status,
+            resource,
+        } as ChannelProducerResult);
+        return { channels: { body: {
+            content: presentation?.content ?? "", mimetype: presentation?.mimetype ?? "text/markdown",
+            state: "static", producerResult,
+        } } };
+    }
+
     static success(content: string | null, mimetype = "text/markdown"): SchemeResult {
         return Results.assert(content === null || content.length === 0
             ? { status: 200 }
@@ -34,8 +49,6 @@ export default class TerminalResult {
         result: SchemeResult,
         options: {
             terminatedBy?: string | null;
-            receipt?: string | null;
-            fallback?: string | null;
         } = {},
     ): TerminalPresentation | null {
         const exact = Results.assert(result);
@@ -43,15 +56,9 @@ export default class TerminalResult {
             ? exact.content
             : null;
         const problemContent = exact.problem?.detail ?? null;
-        // A branch receipt is a deliverable in itself: the branch now exists. The
-        // "no deliverable" fallback only stands when nothing was returned at all.
-        const hasReceipt = options.receipt !== undefined && options.receipt !== null;
-        let content = resultContent ?? problemContent ?? (hasReceipt ? "" : options.fallback ?? "");
+        let content = resultContent ?? problemContent ?? "";
         if (options.terminatedBy === "cancel") {
             content = `[ worker cancelled ]${content.length === 0 ? "" : ` ${content}`}`;
-        }
-        if (options.receipt !== undefined && options.receipt !== null) {
-            content = content.length === 0 ? options.receipt : `${content}\n\n${options.receipt}`;
         }
         if (content.length === 0) return null;
         return {

@@ -162,7 +162,7 @@ test("a worker without pending interrupts drives the loop, then live events fan 
                 title: "Loop cancelled",
                 status: 499,
                 detail: "The foreign loop was cancelled.",
-                instance: "loop:///88",
+                instance: "loop://worker/88",
             },
         },
         hitMaxTurns: false,

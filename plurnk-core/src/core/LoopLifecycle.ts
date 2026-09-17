@@ -114,7 +114,7 @@ export default class LoopLifecycle {
     ): Promise<SchemeResult | null> {
         const exact = structuredClone(Results.assert(result));
         if (exact.problem !== undefined && exact.problem.instance === undefined) {
-            Results.attachInstance(exact, `loop:///${loopId}`);
+            Results.attachInstance(exact, await LoopLifecycle.address(this.#db, loopId));
         }
         const status = LoopLifecycle.projectStatus(exact.status);
         const row = await this.#db.lifecycle_finish_loop.get<{ terminal_result: string }>({
@@ -128,6 +128,12 @@ export default class LoopLifecycle {
         if (row === undefined) return null;
         await this.endExecution(loopId);
         return Results.assert(JSON.parse(row.terminal_result) as SchemeResult);
+    }
+
+    static async address(db: Db, loopId: number): Promise<string> {
+        const row = await db.loop_resource_identity.get<{ resource: string }>({ loop_id: loopId });
+        if (row === undefined) throw new Error(`loop ${loopId} does not exist`);
+        return row.resource;
     }
 
     async status(loopId: number): Promise<number> {

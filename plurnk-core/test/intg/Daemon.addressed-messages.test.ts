@@ -19,7 +19,7 @@ test("{§message-reply-delivery}: a client-authored answer wakes its assigned wo
         const { workerId } = await daemon.createConversationWorker({ workspaceId, name: "assigned" });
         const collaborator = await daemon.createConversationWorker({ workspaceId, name: "collaborator" });
         await holdChild(db, workspaceId, workerId);
-        const address = "worker://assigned/?message=12345678";
+        const address = "message://assigned/12345678";
         const accepted = await daemon.runLoop({ workspaceId, workerId, prompt: "What is the result?", messageAddress: address });
         await waitForDb(() => db.test_get_loop_status.get({ id: accepted.loopId }), (row) => row?.status === 202);
         const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`SEND (${address})`, "The result is 42."));

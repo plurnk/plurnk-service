@@ -6,13 +6,9 @@ SELECT id FROM workers WHERE workspace_id = $workspace_id AND name = $name;
 -- PREP: worker_name_by_id
 SELECT name FROM workers WHERE id = $worker_id;
 
--- PREP: worker_deliverable_by_name
--- The named worker, with its live loop or latest-settled terminal result — the
--- deliverable a sister COLLECTS by READing worker://<name> ({§worker-scheme-collect}, the pull side of
--- the same deliverable the push delta carries). Non-terminal means the worker has not delivered yet
--- (READ steers to 202).
--- terminated_by names an external cancellation so COLLECT renders its marker.
-SELECT r.id AS worker_id, l.id, l.status, l.terminal_result, l.terminated_by
+-- PREP: worker_collect_loop
+-- The worker's live loop, otherwise its latest conclusion ({§worker-scheme-collect}).
+SELECT r.name, l.sequence, l.status, l.terminal_result, l.terminated_by
 FROM workers r
 JOIN loops l ON l.worker_id = r.id
 WHERE r.workspace_id = $workspace_id AND r.name = $name

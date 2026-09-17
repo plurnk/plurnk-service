@@ -3,10 +3,8 @@
 // separately and is NOT a release gate. Deterministic integration owns the lifecycle contract,
 // while bench evaluates whether models choose and use delegation effectively.
 //
-// AUTO-PROMPTING NOTE (owner's injection smell): there is none here. The child's prompt is the
-// model's verbatim EDIT body (it authors it); the parent's wake is resume-in-place — the child's
-// result arrives as a body-suppressed collect-delta (a SEND from worker://<name> [status]: deliverable) the
-// parent READS, never a synthetic prompt. The only prompt in a topology is the one the model writes.
+// {§message-reply-delivery} / {§env-delta-child-termination}: replies and retained
+// outcomes resume the parent in place; observations do not manufacture assignments.
 
 import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";

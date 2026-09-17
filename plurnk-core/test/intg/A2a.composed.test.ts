@@ -126,9 +126,9 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
         });
         assert.deepEqual(await terminal.promise, {
             status: 200,
-            content: "Mangoes are drupes; pineapples are aggregate fruits.",
-            mimetype: "text/markdown",
         });
+        const replies = await caller.readMessages({ workspaceId: callerWorkspace.workspaceId, workerId: worker.workerId });
+        assert.deepEqual(replies.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["Mangoes are drupes; pineapples are aggregate fruits."]);
 
         const callerLog = await caller.readLog({
             workspaceId: callerWorkspace.workspaceId,
@@ -284,14 +284,12 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
 
         assert.deepEqual(await runToTerminal(worker.workerId, "Delegate the first fruit comparison."), {
             status: 200,
-            content: "First delegation done.",
-            mimetype: "text/markdown",
         });
         assert.deepEqual(await runToTerminal(worker.workerId, "Delegate the second fruit comparison."), {
             status: 200,
-            content: "Second delegation done.",
-            mimetype: "text/markdown",
         });
+        const replies = await caller.readMessages({ workspaceId: callerWorkspace.workspaceId, workerId: worker.workerId });
+        assert.deepEqual(replies.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["First delegation done.", "Second delegation done."]);
 
         // Each delegation is one remote Context (a root Worker) holding exactly
         // one Task (a child Worker); nothing lands in the unrelated workspace.

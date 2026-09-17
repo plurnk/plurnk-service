@@ -137,11 +137,12 @@ CREATE TABLE IF NOT EXISTS ambient_events (
         (kind IN ('activity', 'reply') AND terminated_by IS NULL)
         OR
         (kind = 'loop_termination'
-            AND op = 'SEND'
-            -- {§env-delta-child-termination}: a message from the concluded child;
-            -- `source` names the actor and its READ address (#567, operator 2026-09-07).
-            AND scheme IS NULL
-            AND pathname IS NULL
+            AND op = 'READ'
+            -- {§env-delta-child-termination}: the exact concluded loop is a resource, not a message.
+            AND scheme = 'loop'
+            AND hostname IS NOT NULL
+            AND pathname IS NOT NULL
+            AND query IS NULL
             AND json_valid(rx)
             AND json_type(rx) = 'object'
             AND json_type(rx, '$.status') = 'integer'

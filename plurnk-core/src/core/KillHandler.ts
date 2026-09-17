@@ -117,7 +117,7 @@ export default class KillHandler {
         if (schemeName === "worker") {
             // {§worker-scheme}: an entry path deletes scratch; a pathless target cancels an actor.
             const entryPath = path.kind === "url" ? (path.pathname ?? "") : "";
-            if (entryPath !== "" && entryPath !== "/" || WorkerControlAddress.isMessage(path)) {
+            if (entryPath !== "" && entryPath !== "/") {
                 const workerHandler = this.#schemes.get("worker") as SchemeWithEntryAddress & { killEntry: (s: PlurnkStatement, c: SchemeCtx) => Promise<SchemeResult> };
                 if (manifest?.category !== "data") {
                     throw new InvalidOperationResultError("Registered scheme 'worker' is not entry-bearing.");

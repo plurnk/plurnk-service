@@ -56,9 +56,8 @@ END;
 -- INIT: loops_append_ambient_event
 -- A child terminal transition is an occurrence addressed only to its direct
 -- parent. Directly inserted fork history never crosses this transition and
--- therefore cannot fabricate a new conclusion event. The occurrence carries no
--- target: it is a message from the child, and a commons-shaped
--- `worker:///name` would name an entry the child never wrote (#567).
+-- therefore cannot fabricate a new conclusion event. Its target selects the
+-- completed loop, never the worker's potentially newer current result.
 DROP TRIGGER IF EXISTS loops_append_ambient_event;
 CREATE TRIGGER loops_append_ambient_event
 AFTER UPDATE OF status ON loops
@@ -67,20 +66,15 @@ BEGIN
     INSERT INTO ambient_events (
         workspace_id, producer_worker_id, recipient_worker_id,
         workspace_broadcast, kind, source_record_id, source,
-        op, scheme, pathname,
+        op, scheme, hostname, pathname, query,
         tx, mimetype_tx, rx, mimetype_rx, status_rx, state, terminated_by, attrs
     )
     SELECT w.workspace_id, NEW.worker_id, w.parent_worker_id,
            0, 'loop_termination', NEW.id, NULL,
-           'SEND', NULL, NULL,
+           'READ', 'loop', w.name, '/' || NEW.sequence, NULL,
            '', 'text/plain', NEW.terminal_result, 'application/json',
            json_extract(NEW.terminal_result, '$.status'), 'resolved', NEW.terminated_by,
-           CASE WHEN EXISTS (
-               SELECT 1 FROM message_reply_deliveries d
-               JOIN log_responses r ON r.id = d.source_record_id
-               WHERE d.loop_id = NEW.id AND d.recipient_worker_id = w.parent_worker_id
-                 AND r.content = json_extract(NEW.terminal_result, '$.content')
-           ) THEN '{"replyDelivered":true}' ELSE '{}' END
+           '{}'
     FROM workers w
     WHERE w.id = NEW.worker_id
       AND w.parent_worker_id IS NOT NULL

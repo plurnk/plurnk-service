@@ -155,7 +155,7 @@ END;
 
 CREATE VIEW IF NOT EXISTS message_sources AS
 SELECT m.*, w.workspace_id, w.id AS worker_id,
-       COALESCE(m.address, 'worker://' || w.name || '/?message=' || m.message_key) AS path
+       COALESCE(m.address, 'message://' || w.name || '/' || m.message_key) AS path
 FROM loop_messages m
 JOIN loops l ON l.id = m.loop_id
 JOIN workers w ON w.id = l.worker_id;

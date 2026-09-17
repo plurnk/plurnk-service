@@ -21,11 +21,6 @@ export default class WorkerControlAddress {
         return target !== null && target.kind === "url" && target.scheme === "worker";
     }
 
-    static isMessage(target: ParsedPath | null): boolean {
-        return target?.kind === "url" && target.scheme === "worker" && ["", "/"].includes(target.pathname)
-            && target.query !== null && new URLSearchParams(target.query).has("message");
-    }
-
     static resolve(target: ParsedPath | null, operation: WorkerControlOperation): WorkerControlAddressResolution {
         const authority = WorkerControlAddress.#authorityOf(target);
         if (authority !== null) return { ok: true, authority };

@@ -470,7 +470,7 @@ export default class TurnRunner {
         this.#warmWorkspace = warmWorkspace;
         this.#dispatch = dispatch;
         this.#resolveWorkerProviderIdentity = resolveWorkerProviderIdentity;
-        this.#materialization = new TurnMaterialization({ db: this.#db, weighContent: this.#weighContent });
+        this.#materialization = new TurnMaterialization({ db: this.#db, weighContent: this.#weighContent, mimetypes: this.#mimetypes });
         this.#bareBatch = new BareBatchRunner({ db: this.#db, providerAttributions: this.#providerAttributions.bind(this), providerFailure: TurnRunner.#providerFailure });
         this.#admitted = new AdmittedTurnExecutor({ db: this.#db, schemes: this.#schemes, notices: this.#notices, problems: this.#problems, dispatcher: this.#dispatcher, bareBatch: this.#bareBatch });
     }

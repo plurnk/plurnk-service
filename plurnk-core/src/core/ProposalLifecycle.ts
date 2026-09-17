@@ -646,7 +646,7 @@ export default class ProposalLifecycle {
             `${coordinate.loop_seq}/${coordinate.turn_seq}/${coordinate.sequence}`,
             coordinate,
         );
-        Results.attachInstance(result, `log:///${pathname}`);
+        if (result.problem?.instance === undefined) Results.attachInstance(result, `log:///${pathname}`);
         const rx = JSON.stringify(result);
         const weight = LogBody.weight({
             op: coordinate.op,

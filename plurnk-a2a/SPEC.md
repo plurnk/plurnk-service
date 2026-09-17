@@ -87,11 +87,12 @@ failures follow the SDK's failed-Task behavior.
 | Loop `100` | `SUBMITTED` |
 | Loop `102` or `202` | `WORKING`; parking alone does not claim user input is required |
 | Pending client interaction on the Task Loop | `INPUT_REQUIRED` |
-| Successful terminal result | `COMPLETED`; a non-empty final SEND is the `result` Artifact |
+| Successful terminal result | `COMPLETED`; the current Loop's last non-empty delivered reply from message history is the `result` Artifact. The lifecycle result is not a message body. |
 | External cancellation / Loop `499` | `CANCELED` |
 | Other terminal failure | `FAILED` with the exact Problem detail as its status Message |
 | Inbox messages carrying the adapter's causal source | Complete admitted user Message history from {§message-envelope-evidence}, including accepted interaction answers; independent of log curation and publication. |
-| Successful targetless SEND attachment receipts | Distinct standard Artifacts holding send-time bytes from {§send-resource-attachments}, independent of later source changes. |
+| Delivered replies answering this Task's A2A messages | Only replies whose `answers` name this Task's A2A messages contribute text or attachments. Native or other-protocol replies do not become A2A Artifacts. |
+| Such replies' attachment receipts | Distinct standard Artifacts holding send-time bytes from {§send-resource-attachments}, independent of later source changes. |
 
 The exposure accepts text, data, URL, and raw Message Parts, advertises HTTP+JSON v1
 streaming without push notifications, tenants, extended cards, or security

@@ -1286,7 +1286,8 @@ it; Core validates and records it through the same prompt admission path.
 `runLoop.attachments` carries typed bytes selected by the adapter;
 `runLoop.envelope` retains opaque protocol evidence under
 {§message-envelope-evidence}. `readMessages` projects durable inbox messages
-and successful conversation replies independently of log visibility.
+and successful conversation replies independently of log visibility, retaining
+each reply's `answers` addresses (empty for incoming messages).
 `resolveClientInteraction` may carry the accepted answer's message evidence;
 Core validates the resolution, retains the arrival, then resumes the operation.
 

@@ -27,9 +27,10 @@ BEGIN
 
     -- A forked loop is a new durable resource: a failure result identifies the branch loop.
     UPDATE loops
-    SET terminal_result = json_set(terminal_result, '$.problem.instance', 'loop:///' || id)
+    SET terminal_result = json_set(terminal_result, '$.problem.instance', 'loop://' || NEW.name || '/' || sequence)
     WHERE worker_id = NEW.id
-      AND json_type(terminal_result, '$.problem') = 'object';
+      AND json_extract(terminal_result, '$.problem.instance') =
+          'loop://' || (SELECT name FROM workers WHERE id = NEW.parent_worker_id) || '/' || sequence;
 
     -- Turns, loop remapped. Model calls, admission rows and provider requests stay with the
     -- source ({§machine-processes-fork-cost}).

@@ -79,7 +79,7 @@ test("a jumbo message renders an adaptive chunk and Open Messages points to its 
             assert.ok(promptSection, "the messages section exists");
             assert.equal(promptSection!.slot, "user", "the open-message pointers close the user-slot status clump");
             assert.equal(promptSection!.header, "Open Messages");
-            assert.match(promptSection!.content, /^\[\{"path":"worker:\/\/[^/]+\/\?message=[0-9a-f]{8}"\}\]$/, "an immutable message address without a causal source for the owner's own request");
+            assert.match(promptSection!.content, /^\[\{"path":"message:\/\/[^/]+\/[0-9a-f]{8}"\}\]$/, "an immutable message address without a causal source for the owner's own request");
             assert.doesNotMatch(promptSection!.content, /prompt line 5/, "no bodies in the section");
         } finally { ws.close(); }
     });

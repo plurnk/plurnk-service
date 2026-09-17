@@ -8,7 +8,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import StrikeRail from "../../src/core/StrikeRail.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { lastReply, openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
 
 const frame = PlurnkParser.frame;
 const response = (...program: string[]) => ({ assistant: { content: program.join("\n\n"), reasoning: null } });
@@ -39,7 +39,8 @@ for (const [op, maxStrikes] of [["READ (worker:///answer.md)", 0], ["READ (worke
         const childProvider = new Mock({ contextWindow: 100000, responses: [response("42")] });
         const result = await engine.runLoop({ provider, childProvider, workspaceId, workerId, loopId, messages: [], maxTurns: 3, maxStrikes });
         assert.equal(result.result.status, 200);
-        assert.equal(result.result.content, "The answer is 42.");
+        assert.equal(result.result.content, undefined);
+        assert.equal(await lastReply(db, loopId), "The answer is 42.");
         assert.equal(provider.received.length, 2);
         assert.match(JSON.stringify(provider.received[1]), /42/, "the observation packet contains the result");
         const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; tx: string }>({ loop_id: loopId });
@@ -60,7 +61,8 @@ test("{§loop-response-messages} observation permits a corrected reply", async (
     ] });
     const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 3 });
     assert.equal(result.result.status, 200);
-    assert.equal(result.result.content, "Correction: the answer is 42.");
+    assert.equal(result.result.content, undefined);
+    assert.equal(await lastReply(db, loopId), "Correction: the answer is 42.");
     const history = await db.message_history.all<{ direction: string; body: string }>({ workspace_id: workspaceId, worker_id: workerId, loop_id: loopId });
     assert.deepEqual(history.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["The answer is 41.", "Correction: the answer is 42."]);
 });
@@ -146,7 +148,8 @@ test("{§worker-cancel-trigger} explicit scope cancellation does not wait for re
         frame("SEND", "Stopping the work."), frame("KILL (worker://alice)", null))] });
     const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 2 });
     assert.equal(result.result.status, 499);
-    assert.equal(result.result.content, "Stopping the work.");
+    assert.equal(result.result.content, undefined);
+    assert.equal(await lastReply(db, loopId), "Stopping the work.");
     assert.equal(await new LoopLifecycle(db).status(childLoop), 499);
     assert.equal(provider.received.length, 1);
 });

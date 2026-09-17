@@ -284,7 +284,7 @@ export default class EditMutations {
         }
         const handler = this.#schemes.get(schemeName, ctx.workspaceId) as SchemeHandler | undefined;
         const manifest = this.#schemes.manifestFor(schemeName, ctx.workspaceId);
-        if (handler?.editBatch === undefined || manifest === undefined) {
+        if (handler === undefined || manifest === undefined) {
             return MutationEffects.failure("operation-not-implemented", 501,
                 `Scheme '${schemeName}' does not implement EDIT.`, {},
                 { scheme: schemeName, operation: "EDIT", retryable: false });
@@ -300,6 +300,11 @@ export default class EditMutations {
             target: statement.target, routedScheme: schemeName, handler, manifest, ctx, access: "write",
         });
         if (binding?.result !== null && binding?.result !== undefined) return binding.result;
+        if (handler.editBatch === undefined) {
+            return MutationEffects.failure("operation-not-implemented", 501,
+                `Scheme '${schemeName}' does not implement EDIT.`, {},
+                { scheme: schemeName, operation: "EDIT", retryable: false });
+        }
         if (binding !== null && binding.address === null) {
             return MutationEffects.failure("entry-not-found", 404, "The EDIT target could not be resolved.");
         }

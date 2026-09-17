@@ -21,7 +21,7 @@ import { contentWeight } from "../src/core/content-weight.ts";
 import EntryCrud from "../src/schemes/_entry-crud.ts";
 import Daemon from "../src/server/Daemon.ts";
 import type { Db } from "../src/core/Db.ts";
-import { openMigrated } from "./intg/_helpers.ts";
+import { openMigrated, lastReply } from "./intg/_helpers.ts";
 import { connect, rpcCall, runLoopToTerminal, WaitTimeoutError } from "./intg/_rpc.ts";
 import Digest from "../src/digest/Digest.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -156,8 +156,7 @@ export const liveLoop = async (
         });
     }
     if (term.modelWorkerId === undefined) throw new Error("liveLoop: loop.run returned no modelWorkerId");
-    const lastContent = term.result.content ?? "";
-    if (typeof lastContent !== "string") throw new TypeError("loop/terminated response content must be text");
+    const lastContent = await lastReply(s.db, term.loopId);
     return {
         finalStatus: term.finalStatus, hitMaxTurns: term.hitMaxTurns ?? false,
         turnIds: term.turnIds ?? [], modelWorkerId: term.modelWorkerId, lastContent,

@@ -9,7 +9,6 @@ import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } 
 import type { FindResult } from "./_entry-find.ts";
 import type { SendStatement, FindStatement, KillStatement, ParsedPath } from "@plurnk/plurnk-contracts";
 import type {
-    ChannelProducerResult,
     EntryAddress,
     ResolvedEditStatement,
     RepresentationPreparationRequest,
@@ -19,17 +18,14 @@ import type {
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
-import TerminalResult from "../core/TerminalResult.ts";
+import Loop, { type LoopResource } from "./Loop.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
-import { MessageAttachments, MessageScheme } from "@plurnk/plurnk-schemes";
-import DbMessageCaps from "../core/caps/DbMessageCaps.ts";
+import { MessageAttachments } from "@plurnk/plurnk-schemes";
 
 // {§worker-scheme} Named and shared scratch are workspace resources; pathless
 // addresses target actors through the ordinary delegation and messaging lifecycle.
 export default class Worker extends CoreSchemeAdapterBase {
-    readonly #messages = new MessageScheme("worker");
-
     static manifest: SchemeManifest = {
         name: "worker",
         authority: "resource",
@@ -73,7 +69,6 @@ export default class Worker extends CoreSchemeAdapterBase {
         _ctx: CoreSchemeCallContext,
         access: "read" | "write" = "read",
     ): Promise<EntryAddress | SchemeResultBase | null> {
-        if (WorkerControlAddress.isMessage(target)) return this.#messages.resolveEntryAddress(target, _ctx, access);
         const authority = Worker.#authority(target);
         return authority === null ? null
             : Worker.#entryAddress(authority, Worker.#entryPath(target), access);
@@ -83,7 +78,6 @@ export default class Worker extends CoreSchemeAdapterBase {
         request: RepresentationPreparationRequest,
         ctx: SchemeCtx,
     ): Promise<RepresentationPreparationResult> {
-        if (WorkerControlAddress.isMessage(request.target)) return this.#messages.prepareRepresentation(request, ctx);
         if (request.metadata !== null) {
             return Results.failure(
                 "scheme:worker",
@@ -131,69 +125,14 @@ export default class Worker extends CoreSchemeAdapterBase {
             );
         }
         const core = this.coreContext(ctx);
-        const row = await core.db.worker_deliverable_by_name.get<{
-            id: number;
-            worker_id: number;
-            status: number;
-            terminal_result: string | null;
-            terminated_by: string | null;
-        }>({ workspace_id: core.workspaceId, name: authority });
-        if (row === undefined) {
-            return Results.failure(
-                "scheme:worker",
-                "worker-not-found",
-                404,
-                `Worker '${authority}' does not exist in this workspace.`,
-                {},
-                { worker: authority, retryable: false },
-            );
-        }
-        if (!Worker.#TERMINAL_LOOP.has(row.status)) {
-            const detail = `Worker '${authority}' has unfinished work (status ${row.status}).`;
-            return Results.failure(
-                "scheme:worker",
-                "worker-unfinished",
-                425,
-                detail,
-                { loopId: row.id },
-                {
-                    worker: authority,
-                    retryable: false,
-                },
-            );
-        }
-        if (row.terminal_result === null) {
-            throw new Error(`terminal worker '${authority}' has no terminal result`);
-        }
-        const exact = TerminalResult.parse(
-            row.terminal_result,
-            `terminal worker '${authority}'`,
+        const row = await core.db.worker_collect_loop.get<LoopResource>({
+            workspace_id: core.workspaceId, name: authority,
+        });
+        if (row === undefined) return Results.failure(
+            "scheme:worker", "worker-not-found", 404,
+            `Worker '${authority}' has no loop in this workspace.`, {}, { retryable: false },
         );
-        const presentation = TerminalResult.present(exact, {
-            terminatedBy: row.terminated_by,
-            fallback: `[ worker '${authority}' concluded with no deliverable (status ${exact.status}) ]`,
-        });
-        const projectionFields = new Set([
-            "content",
-            "mimetype",
-            "channel",
-            "startLine",
-            "region",
-            "matches",
-            "range",
-        ]);
-        const producerResult = Results.assertChannelProducerResult(Object.fromEntries(
-            Object.entries(exact).filter(([field]) => !projectionFields.has(field)),
-        ) as unknown as ChannelProducerResult);
-        const written = await ctx.entries.write(request.pathname, {
-            channels: {
-                body: {
-                    content: presentation?.content ?? "",
-                    mimetype: presentation?.mimetype ?? "text/markdown",
-                    producerResult,
-                },
-            },
-        });
+        const written = await ctx.entries.write(request.pathname, Loop.representation(row));
         return Results.isErrorStatus(written.status) ? written : { status: 200 };
     }
 
@@ -286,14 +225,9 @@ export default class Worker extends CoreSchemeAdapterBase {
         return EntryOps.deleteWorkspaceEntry(statement, core, Worker.manifest);
     }
 
-    // Terminal loop statuses ({§lifecycle-terms}); all other tasks remain unfinished.
-    static #TERMINAL_LOOP = new Set([200, 413, 429, 499, 500, 504, 508]);
-
     // {§worker-read-scope} The requested namespace scopes discovery, not access.
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
-        const prepared = await new DbMessageCaps(core, "worker").prepare();
-        if (prepared.status >= 400) throw new Error("Worker message preparation failed.", { cause: prepared });
         const authority = Worker.#authority(statement.target);
         if (authority === null) {
             return Results.failure("scheme:worker", "worker-target-required", 400, "FIND requires a worker:// target.", {
@@ -337,11 +271,6 @@ export default class Worker extends CoreSchemeAdapterBase {
     }
 
     async send(statement: SendStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
-        if (WorkerControlAddress.isMessage(statement.target)) {
-            return "messages" in ctx
-                ? ctx.messages.reply(statement)
-                : new DbMessageCaps(this.coreContext(ctx), "worker").reply(statement);
-        }
         const core = this.coreContext(ctx);
         const authority = Worker.#authority(statement.target);
         if (authority === null) {

@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, makeRawMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
+import { lastReply } from "./_helpers.ts";
 
 // Every operation is on the line after its fence.
 const MISFENCED = [
@@ -33,7 +34,8 @@ test("{§balanced-fences}: a complete nested reply reaches the client without ex
             await rpcCall(ws, 1, "workspace.create", { name: "send-nested-fences" });
             const { finalStatus, loopId, result, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "Explain with examples.", policy: { proposals: "accept" } });
             assert.equal(finalStatus, 200);
-            assert.equal((result as { content?: string } | undefined)?.content, body, "the client receives the entire answer, not its prefix");
+            assert.equal(result.content, undefined);
+            assert.equal(await lastReply(db, loopId), body, "the client receives the entire answer, not its prefix");
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: loopId });
             assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["SEND", 200]], "quoted commands produce no dispatch, proposals or execution receipts");
@@ -65,7 +67,8 @@ test("{§empty-turn}: operations on the line after a bare fence make an empty tu
             assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "the corrected turn was admitted on its first attempt: the empty turn before it was never resampled");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: modelWorkerId! });
             assert.ok(sources.some((row) => row.kind === "ops" && row.content === MISFENCED), "the empty turn's text is stored as its ops source");
-            assert.equal((result as { content?: string } | undefined)?.content, "the answer");
+            assert.equal(result.content, undefined);
+            assert.equal(await lastReply(db, loopId), "the answer");
             const shells = await db.test_get_entry_by_pathname_scheme.get({ scheme: "sh", pathname: "/1/1/1/sh" });
             assert.equal(shells, undefined, "no shell spawned");
         } finally { ws.close(); }

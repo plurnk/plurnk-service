@@ -20,7 +20,7 @@ test("{§message-source-scheme} restart retains source text and answered state a
         const workspaceId = await insertWorkspace(db, "retained-message");
         const workerId = await insertWorker(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, workerId, 1, "Keep this original assignment.");
-        const [message] = await db.message_source_resources.all<{ path: string }>({ workspace_id: workspaceId, scheme: "worker", target: null });
+        const [message] = await db.message_source_resources.all<{ path: string }>({ workspace_id: workspaceId, scheme: "message", target: null });
         const address = message!.path;
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [
@@ -67,7 +67,7 @@ test("{§send-response-receipt} failed exact delivery does not acknowledge the l
     const loopId = await insertLoop(db, workerId, 1, "An unanswered assignment.");
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeRawMockResponse(frame("SEND (worker://alice/?message=ffffffff)", "Not delivered.")),
+        makeRawMockResponse(frame("SEND (message://alice/ffffffff)", "Not delivered.")),
         makeRawMockResponse(frame("SEND", "The real answer.")),
     ] });
     const run = () => engine.runTurn({ messages: [], provider, workspaceId, workerId, loopId });
@@ -95,7 +95,7 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         await engine.injectIntoLoop(loopId, "The original request.", [], delegated ? "worker://parent" : undefined);
-        const requests = await db.message_source_resources.all<{ path: string; body: string }>({ workspace_id: workspaceId, scheme: "worker", target: null });
+        const requests = await db.message_source_resources.all<{ path: string; body: string }>({ workspace_id: workspaceId, scheme: "message", target: null });
         const request = requests.find(({ body }) => body === "The original request.");
         assert.ok(request);
         const address = request.path;
@@ -159,7 +159,7 @@ test("{§message-source-scheme} native message views reject mutations without ca
         const workspaceId = await insertWorkspace(db, "immutable-message");
         const workerId = await insertWorker(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, workerId, 1, "Immutable input.");
-        const [message] = await db.message_source_resources.all<{ path: string }>({ workspace_id: workspaceId, scheme: "worker", target: null });
+        const [message] = await db.message_source_resources.all<{ path: string }>({ workspace_id: workspaceId, scheme: "message", target: null });
         const path = message!.path;
         const provider = new Mock({ contextWindow: 100000, responses: [makeRawMockResponse([
             frame(`READ (${path}) <1,-1>`, null),
@@ -193,11 +193,11 @@ for (const scope of ["", " <1,-1>"]) test(`{§message-arrival} curation${scope} 
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         await engine.injectIntoLoop(loopId, "Second assignment.");
         const messages = await db.message_source_resources.all<{ path: string; body: string }>({
-            workspace_id: workspaceId, scheme: "worker", target: null,
+            workspace_id: workspaceId, scheme: "message", target: null,
         });
         const first = messages.find(({ body }) => body === "First assignment.")!.path;
         const second = messages.find(({ body }) => body === "Second assignment.")!.path;
-        assert.match(first, /^worker:\/\/alice\/\?message=[a-f0-9]{8}$/);
+        assert.match(first, /^message:\/\/alice\/[a-f0-9]{8}$/);
         const provider = new Mock({ contextWindow: 100000, responses: [
             makeRawMockResponse([
                 frame(`KILL (log:///**/SEND)${scope}`, null),
@@ -304,7 +304,7 @@ test("{§message-reply-delivery} another worker's addressed answer reaches both 
         const responderLoop = await insertLoop(db, responderId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         await engine.injectIntoLoop(ownerLoop, "A shared assignment.", [], "worker://alice");
-        const messages = await db.message_source_resources.all<{ path: string; body: string }>({ workspace_id: workspaceId, scheme: "worker", target: null });
+        const messages = await db.message_source_resources.all<{ path: string; body: string }>({ workspace_id: workspaceId, scheme: "message", target: null });
         const path = messages.find(({ body }) => body === "A shared assignment.")!.path;
         const run = (workerId: number, loopId: number, program: string) => engine.runTurn({
             messages: [], workspaceId, workerId, loopId,
@@ -318,7 +318,7 @@ test("{§message-reply-delivery} another worker's addressed answer reaches both 
         const completed = await run(ownerId, ownerLoop, frame("NOTE", "The assignment was answered."));
         assert.equal(completed.status, 200);
         const result = await db.lifecycle_loop_status.get<{ terminal_result: string }>({ loop_id: ownerLoop });
-        assert.equal(JSON.parse(result!.terminal_result).content, "Charlie's answer.");
+        assert.equal(JSON.parse(result!.terminal_result).content, undefined, "the answer remains a message, not an execution outcome");
         const observed = await run(senderId, senderLoop, frame("SEND", "Answer collected."));
         for (const turn of [completed, observed]) {
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet);

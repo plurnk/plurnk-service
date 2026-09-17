@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { withDaemon, makeMockResponse, waitForDb } from "./_rpc.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import { lastReply } from "./_helpers.ts";
 
 for (const cancel of [false, true]) {
     test(`{§completion-defers-to-results}: a failed operation is observed before ${cancel ? "scope cancellation" : "automatic completion"}`, async () => {
@@ -22,7 +23,8 @@ for (const cancel of [false, true]) {
                         .filter(({ producer }) => producer === "model"),
                     (turns) => turns.length === 2 && turns.every(({ completed_at }) => completed_at !== null),
                 );
-                assert.equal((await lifecycle.result(result.loopId))?.content, "The requested entry does not exist.");
+                assert.equal((await lifecycle.result(result.loopId))?.content, undefined);
+                assert.equal(await lastReply(db, result.loopId), "The requested entry does not exist.");
                 assert.equal(mock.received.length, 2);
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: result.loopId });
                 assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [

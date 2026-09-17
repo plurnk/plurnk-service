@@ -241,7 +241,7 @@ test("an upstream 413 withholds the automatic prompt body and retries without sp
         assert.ok(requestChars(provider.requests[0]) > UpstreamPromptCapacityMock.maxRequestChars);
         assert.ok(requestChars(provider.requests[1]) <= UpstreamPromptCapacityMock.maxRequestChars, "withholding the automatic prompt body makes the request fit");
         assert.ok(!provider.requests[1].some((message) => chatMessageText(message).includes(PROMPT_CAPACITY_SENTINEL)), "the withheld prompt body is absent from the changed request");
-        assert.ok(provider.requests[1].some((message) => /"path":"worker:\/\/[^/]+\/\?message=[0-9a-f]{8}"/.test(chatMessageText(message))), "the Open Messages pointer retains the immutable message source the model can READ");
+        assert.ok(provider.requests[1].some((message) => /"path":"message:\/\/[^/]+\/[0-9a-f]{8}"/.test(chatMessageText(message))), "the Open Messages pointer retains the immutable message source the model can READ");
 
         const calls = await db.test_model_calls.all<{ state: string; capacity: string | null }>({ turn_id: result.turnId });
         assert.deepEqual(calls.map(({ state }) => state), ["error", "response"]);

@@ -240,7 +240,7 @@ for (const exitCode of [0, 7]) test(`{§env-delta-child-activity}: executor exit
         await engine.runTurn({ workspaceId, workerId: parent, loopId: parentLoop, provider: continuation(), messages: [] });
         const observations = (await db.test_log_entries_by_loop.all<{ op: string; source: string; attrs: string }>({ loop_id: parentLoop }))
             .filter(({ source }) => source === "worker://child");
-        assert.deepEqual(observations.map(({ op }) => op), ["sh", "SEND"], "the invocation and child conclusion reach the parent; READs and notes do not");
+        assert.deepEqual(observations.map(({ op }) => op), ["sh", "READ"], "the invocation and child conclusion reach the parent; the child's READs and notes do not");
         assert.equal(JSON.parse(observations[1]!.attrs).kind, "loop_termination", "the child's conclusion still uses the lifecycle channel");
     } finally {
         await exec.idle();

@@ -4,7 +4,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, seedEnvelope } from "./_helpers.ts";
+import { lastReply, openMigrated, seedEnvelope } from "./_helpers.ts";
 import { noteStmt, sendStmt, urlPath } from "./_dsl.ts";
 
 const setup = async () => {
@@ -47,7 +47,8 @@ test("{§loop-response-messages} every SEND in a program executes before automat
         const turn = await engine.runTurn({ ...env, provider, messages: [] });
         assert.equal(turn.status, 200);
         assert.deepEqual(turn.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["SEND", 200], ["NOTE", 200]]);
-        assert.equal((await lifecycle.result(env.loopId))?.content, "Second.");
+        assert.equal((await lifecycle.result(env.loopId))?.content, undefined);
+        assert.equal(await lastReply(db, env.loopId), "Second.");
     } finally { await db.close(); }
 });
 
@@ -60,6 +61,7 @@ test("{§loop-terminals} a later cancellation cannot overwrite a successful conc
         assert.equal((await engine.runTurn({ ...env, provider, messages: [] })).status, 200);
         await lifecycle.cancelTree(env.workerId, "Late cancellation.", true);
         assert.equal(await lifecycle.status(env.loopId), 200);
-        assert.equal((await lifecycle.result(env.loopId))?.content, "Answer.");
+        assert.equal((await lifecycle.result(env.loopId))?.content, undefined);
+        assert.equal(await lastReply(db, env.loopId), "Answer.");
     } finally { await db.close(); }
 });

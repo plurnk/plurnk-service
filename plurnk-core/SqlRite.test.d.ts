@@ -235,6 +235,8 @@ export class SqlRiteSync {
 	log_entry_by_id: SqlRiteSyncPreparedStatements;
 	log_entries_recent: SqlRiteSyncPreparedStatements;
 	engine_insert_log_entry: SqlRiteSyncPreparedStatements;
+	loop_resource_read: SqlRiteSyncPreparedStatements;
+	loop_resource_candidates: SqlRiteSyncPreparedStatements;
 	loop_docs_materialized: SqlRiteSyncPreparedStatements;
 	engine_loop_status: SqlRiteSyncPreparedStatements;
 	engine_reclaim_queued_loop: SqlRiteSyncPreparedStatements;
@@ -253,6 +255,7 @@ export class SqlRiteSync {
 	lifecycle_cancel_workers: SqlRiteSyncPreparedStatements;
 	lifecycle_cancelled_loops: SqlRiteSyncPreparedStatements;
 	engine_loop_sequence: SqlRiteSyncPreparedStatements;
+	loop_resource_identity: SqlRiteSyncPreparedStatements;
 	engine_get_loop_policy: SqlRiteSyncPreparedStatements;
 	maintenance_optimize: SqlRiteSyncPreparedStatements;
 	message_history: SqlRiteSyncPreparedStatements;
@@ -311,7 +314,7 @@ export class SqlRiteSync {
 	turn_source_attach_derivation: SqlRiteSyncPreparedStatements;
 	worker_resolve_by_name: SqlRiteSyncPreparedStatements;
 	worker_name_by_id: SqlRiteSyncPreparedStatements;
-	worker_deliverable_by_name: SqlRiteSyncPreparedStatements;
+	worker_collect_loop: SqlRiteSyncPreparedStatements;
 	worker_count_active: SqlRiteSyncPreparedStatements;
 	worker_get: SqlRiteSyncPreparedStatements;
 	worker_live_obligations: SqlRiteSyncPreparedStatements;
@@ -486,6 +489,7 @@ export class SqlRiteSync {
 	test_open_subscription_detached: SqlRiteSyncPreparedStatements;
 	test_close_subscription: SqlRiteSyncPreparedStatements;
 	test_strike_streak: SqlRiteSyncPreparedStatements;
+	test_last_loop_reply: SqlRiteSyncPreparedStatements;
 	test_context_insert_turn: SqlRiteSyncPreparedStatements;
 	test_context_insert_failed_model_call: SqlRiteSyncPreparedStatements;
 	test_context_fail_model_call: SqlRiteSyncPreparedStatements;
@@ -791,6 +795,8 @@ export default class SqlRite {
 	log_entry_by_id: SqlRitePreparedStatements;
 	log_entries_recent: SqlRitePreparedStatements;
 	engine_insert_log_entry: SqlRitePreparedStatements;
+	loop_resource_read: SqlRitePreparedStatements;
+	loop_resource_candidates: SqlRitePreparedStatements;
 	loop_docs_materialized: SqlRitePreparedStatements;
 	engine_loop_status: SqlRitePreparedStatements;
 	engine_reclaim_queued_loop: SqlRitePreparedStatements;
@@ -809,6 +815,7 @@ export default class SqlRite {
 	lifecycle_cancel_workers: SqlRitePreparedStatements;
 	lifecycle_cancelled_loops: SqlRitePreparedStatements;
 	engine_loop_sequence: SqlRitePreparedStatements;
+	loop_resource_identity: SqlRitePreparedStatements;
 	engine_get_loop_policy: SqlRitePreparedStatements;
 	maintenance_optimize: SqlRitePreparedStatements;
 	message_history: SqlRitePreparedStatements;
@@ -867,7 +874,7 @@ export default class SqlRite {
 	turn_source_attach_derivation: SqlRitePreparedStatements;
 	worker_resolve_by_name: SqlRitePreparedStatements;
 	worker_name_by_id: SqlRitePreparedStatements;
-	worker_deliverable_by_name: SqlRitePreparedStatements;
+	worker_collect_loop: SqlRitePreparedStatements;
 	worker_count_active: SqlRitePreparedStatements;
 	worker_get: SqlRitePreparedStatements;
 	worker_live_obligations: SqlRitePreparedStatements;
@@ -1042,6 +1049,7 @@ export default class SqlRite {
 	test_open_subscription_detached: SqlRitePreparedStatements;
 	test_close_subscription: SqlRitePreparedStatements;
 	test_strike_streak: SqlRitePreparedStatements;
+	test_last_loop_reply: SqlRitePreparedStatements;
 	test_context_insert_turn: SqlRitePreparedStatements;
 	test_context_insert_failed_model_call: SqlRitePreparedStatements;
 	test_context_fail_model_call: SqlRitePreparedStatements;

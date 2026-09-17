@@ -825,3 +825,6 @@ WHERE id = $id;
 -- PREP: test_strike_streak
 -- {§engine-rails} — the loop's persisted strike streak, the rail's own truth.
 SELECT strike_streak FROM loops WHERE id = $loop_id;
+-- PREP: test_last_loop_reply
+SELECT content FROM message_responses WHERE loop_id = $loop_id AND length(content) > 0
+ORDER BY id DESC LIMIT 1;

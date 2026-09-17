@@ -112,9 +112,8 @@ CREATE        INDEX IF NOT EXISTS log_entries_loop_id          ON log_entries (l
 -- {§db-fk-indexes} Derivation replacement checks the rows that cite the hash.
 CREATE        INDEX IF NOT EXISTS log_entries_deep_hash        ON log_entries (deep_hash) WHERE deep_hash IS NOT NULL;
 
--- {§loop-response-messages}: the response is the last delivered message, read from
--- executed evidence so curation cannot retract it. This projection is also used inside
--- atomic cancellation; no second response projection exists.
+-- {§loop-response-messages}: delivered messages remain executed evidence;
+-- curation and loop termination cannot retract or replace them.
 CREATE VIEW IF NOT EXISTS log_responses AS
 SELECT le.id, le.loop_id, le.turn_id, le.worker_id, le.sequence, le.source, le.origin,
        CASE WHEN json_valid(le.rx) THEN le.rx END AS rx,
@@ -136,13 +135,6 @@ JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.wo
 UNION ALL
 SELECT r.id, r.loop_id, r.worker_id, r.source, r.content, r.rx
 FROM log_responses r WHERE json_array_length(r.rx, '$.answers') = 0;
-
-CREATE VIEW IF NOT EXISTS loop_responses AS
-SELECT loop_id, content FROM (
-    SELECT loop_id, content,
-        ROW_NUMBER() OVER (PARTITION BY loop_id ORDER BY id DESC) AS recency
-    FROM message_responses WHERE length(content) > 0
-) WHERE recency = 1;
 
 CREATE VIEW IF NOT EXISTS unanswered_messages AS
 SELECT m.* FROM message_sources m

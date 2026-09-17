@@ -112,12 +112,12 @@ test("{§methods-worker-read}{§methods-worker-list}{§methods-worker-loops}: ex
                 terminatedAt: own?.terminatedAt,
                 terminalResult: {
                     status: 200,
-                    content: "composed result",
-                    mimetype: "text/markdown",
                 },
                 packetCount: 1,
             });
             assert.equal(typeof own?.terminatedAt, "string");
+            const messages = await daemon.readMessages({ workspaceId: workspace.workspaceId, workerId: task.workerId });
+            assert.deepEqual(messages.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["composed result"]);
             assert.deepEqual(packets, [{ workerId: task.workerId, loopId: accepted.loopId, packetCount: 1 }], "packet chronology broadcasts once when inference evidence becomes durable");
         } finally {
             unsubscribe();

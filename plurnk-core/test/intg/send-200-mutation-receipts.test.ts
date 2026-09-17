@@ -1,3 +1,4 @@
+import { lastReply } from "./_helpers.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -16,7 +17,8 @@ for (const curate of [false, true]) {
                 await rpcCall(ws, 1, "workspace.create", { name: "mutation-gate" });
                 const result = await runLoopToTerminal(ws, 2, { prompt: "go", policy: { proposals: "accept" } });
                 assert.equal(result.finalStatus, 200);
-                assert.equal(result.result.content, "Written.");
+                assert.equal(result.result.content, undefined);
+        assert.equal(await lastReply(db, result.loopId), "Written.");
                 assert.equal(mock.received.length, 2, "a completed mutation needs one observation turn, no terminal ceremony");
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: result.loopId });
                 const model = rows.filter(({ origin }) => origin === "model");

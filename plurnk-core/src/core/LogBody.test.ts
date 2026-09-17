@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import LogBody from "./LogBody.ts";
-import Results from "./results.ts";
 
 const content = (value: string, mimetype = "text/markdown") => ({
     content: value,
@@ -274,42 +273,14 @@ test("LogBody resolves built-in statement-backed and pushed bodies", () => {
     );
 });
 
-test("LogBody derives loop-termination presentation from the exact result", () => {
-    const deliverable = { status: 200, content: "child answer", mimetype: "text/markdown" };
-    assert.deepEqual(
-        LogBody.resolve({
-            op: "SEND",
-            attrs: { kind: "loop_termination" },
-            tx: "",
-            rx: JSON.stringify(deliverable),
+test("LogBody treats a completion observation as an ordinary READ", () => {
+    for (const attrs of [undefined, { kind: "loop_termination", terminatedBy: "cancel" }]) {
+        assert.deepEqual(LogBody.resolve({
+            op: "READ", attrs, tx: "",
+            rx: { status: 499, content: "[ worker cancelled ] Stopped.", mimetype: "text/markdown", startLine: 1 },
             mimetypeRx: "application/json",
-        }),
-        { content: "child answer", mimetype: "text/markdown", startLine: 1, provenance: "returned" },
-    );
-
-    const failure = Results.attachInstance(
-        Results.failure("test:worker", "child-failed", 502, "The child provider failed."),
-        "loop:///7",
-    );
-    assert.deepEqual(
-        LogBody.resolve({
-            op: "SEND",
-            attrs: {
-                kind: "loop_termination",
-                terminatedBy: "cancel",
-                receipt: "Branch receipt: `feature/x` failed.",
-            },
-            tx: "",
-            rx: JSON.stringify(failure),
-            mimetypeRx: "application/json",
-        }),
-        {
-            content: "[ worker cancelled ] The child provider failed.\n\nBranch receipt: `feature/x` failed.",
-            provenance: "returned",
-            mimetype: "text/markdown",
-            startLine: 1,
-        },
-    );
+        }), { content: "[ worker cancelled ] Stopped.", mimetype: "text/markdown", startLine: 1, provenance: "returned" });
+    }
 });
 
 test("LogBody gives extension rows the same structural body contract", () => {
