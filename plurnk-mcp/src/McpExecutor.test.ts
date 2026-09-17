@@ -448,12 +448,25 @@ test("{§mcp-summary-derivation} every server-summary tier has one deterministic
 
     assert.equal(serverSummary("cdp", catalog({ description: "Server description.", title: "Display title" }), "Authored override."), "Authored override.");
     assert.equal(serverSummary("cdp", catalog({ description: " Server   description. ", title: "Display title" }), undefined), "Server description.");
+    assert.equal(serverSummary("search", catalog({ title: "Search MCP" }, "Search the Web. Consult the available tools."), undefined), "Search the Web.");
+    assert.equal(serverSummary("search", catalog({ description: " \n ", title: "Search MCP" }, "Search the Web. More guidance."), " \t "), "Search the Web.");
+    assert.equal(serverSummary("cdp", catalog({ title: "Chrome DevTools MCP server" }, " \n "), undefined), "Chrome DevTools MCP server");
+    assert.equal(serverSummary("cdp", catalog({ description: "", title: "" }, ""), undefined), "Tools: click.");
     assert.equal(serverSummary("cdp", catalog({ title: "Chrome DevTools MCP server" }), undefined), "Chrome DevTools MCP server");
     assert.equal(serverSummary("cdp", catalog({}, "First instruction. Second instruction."), undefined), "First instruction.");
     assert.equal(serverSummary("cdp", catalog({}, undefined), undefined), "Tools: click.");
     assert.equal(serverSummary("cdp", catalog({}, undefined, []), undefined), "MCP server cdp.");
     assert.deepEqual(runtimeServerSummary("cdp", catalog({}, undefined), undefined), { from: "tools" });
     assert.equal(runtimeServerSummary("cdp", catalog({}, undefined, []), undefined), "MCP server cdp.");
+    const instructions = "Search **the Web** for current information.\n\n## Results\nPreserve links and attribution.";
+    const described = catalog({ title: "Search MCP" }, instructions);
+    assert.deepEqual(runtimeServerSummary("search", described, undefined), { from: "tools", description: "Search **the Web** for current information." });
+    assert.deepEqual(runtimeServerSummary("search", described, "Operator purpose."), { from: "tools", description: "Operator purpose." });
+    assert.equal(runtimeDecl("search", runtimeServerSummary("search", described, undefined), false, instructions).details, instructions);
+    assert.equal(runtimeDecl("search", "Search the Web.", false, " \n ").details, undefined);
+    const verbose = catalog({ description: "Search ".repeat(100), title: "Search MCP" });
+    assert.ok(serverSummary("search", verbose, undefined).length <= 81, "derived descriptions are bounded like tool summaries");
+    assert.match(serverSummary("search", verbose, undefined), /…$/u);
 });
 
 // A numbered `### EXEC1` under another delimiter is body text (delimiters nest programs), so it

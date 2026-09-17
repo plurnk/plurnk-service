@@ -23,35 +23,19 @@ import { resourcePath } from "./McpResources.ts";
 import ContentProjection from "./ContentProjection.ts";
 import type { ToolPolicy } from "./config.ts";
 import { toolRegistry as presentTools } from "./ToolPresentation.ts";
+import { summaryLine } from "./Summary.ts";
 
 const CHANNEL = "body";
 
-const firstSentence = (text: string | undefined): string | undefined => {
-    if (text === undefined) return undefined;
-    const normalized = text.replaceAll(/\s+/gu, " ").trim();
-    if (normalized === "") return undefined;
-    const boundary = /[.!?](?:\s|$)/u.exec(normalized);
-    return boundary === null ? normalized : normalized.slice(0, boundary.index + 1);
-};
-
-// {§mcp-summary-derivation} — one server one-liner: the authored _SUMMARY
-// companion, then the server's own description and display title (spec
-// metadata — a title like "Chrome DevTools MCP server" IS the one-liner), then
-// the first sentence of its instructions essay. Never the container template;
-// when the chain is empty, name the actual tools.
+// {§mcp-summary-derivation}: authored purpose precedes a display label.
 const authoredServerSummary = (
-    name: string,
     catalog: ServerCatalog | undefined,
     override: string | undefined,
 ): string | undefined => {
     if (override !== undefined && override.trim() !== "") return override.trim();
-    const described = catalog?.server?.description;
-    if (described !== undefined && described.trim() !== "") return described.replaceAll(/\s+/gu, " ").trim();
-    const titled = catalog?.server?.title;
-    if (titled !== undefined && titled.trim() !== "") return titled.replaceAll(/\s+/gu, " ").trim();
-    const instructed = firstSentence(catalog?.instructions);
-    if (instructed !== undefined) return instructed;
-    return undefined;
+    return summaryLine(catalog?.server?.description)
+        ?? summaryLine(catalog?.instructions)
+        ?? summaryLine(catalog?.server?.title);
 };
 
 export const serverSummary = (
@@ -59,7 +43,7 @@ export const serverSummary = (
     catalog: ServerCatalog | undefined,
     override: string | undefined,
 ): string => {
-    const authored = authoredServerSummary(name, catalog, override);
+    const authored = authoredServerSummary(catalog, override);
     if (authored !== undefined) return authored;
     const tools = catalog?.tools.map((tool) => tool.name).join(", ");
     return tools === undefined || tools === ""
@@ -67,16 +51,16 @@ export const serverSummary = (
         : `Tools: ${tools}.`;
 };
 
-// The generated runtime document resolves a factual tool-list fallback from
-// its effective registry. An authored server description remains invariant.
+// {§scheme-catalog-aside}: purpose annotates the effective menu, never replaces it.
 export const runtimeServerSummary = (
     name: string,
     catalog: ServerCatalog | undefined,
     override: string | undefined,
 ): RuntimeSummaryDecl => {
-    const authored = authoredServerSummary(name, catalog, override);
-    if (authored !== undefined) return authored;
-    return (catalog?.tools.length ?? 0) === 0 ? `MCP server ${name}.` : { from: "tools" };
+    const authored = authoredServerSummary(catalog, override);
+    return (catalog?.tools.length ?? 0) === 0
+        ? authored ?? `MCP server ${name}.`
+        : { from: "tools", ...(authored === undefined ? {} : { description: authored }) };
 };
 
 // The channel carries the tool's RESULT, never the transport envelope: text parts as text with
@@ -112,10 +96,11 @@ export const toolResultBody = async (result: ToolResultShape, runtime: string, e
     return { content: formatted ?? text, mimetype: formatted === undefined ? (parts.some((part) => part.type !== "text") ? "text/markdown" : "text/plain") : "application/json" };
 };
 
-export const runtimeDecl = (name: string, summary: RuntimeSummaryDecl, expandTools: boolean): RuntimeDecl => ({
+export const runtimeDecl = (name: string, summary: RuntimeSummaryDecl, expandTools: boolean, instructions?: string): RuntimeDecl => ({
     name,
     glyph: "🔌",
     summary,
+    ...(instructions === undefined || instructions.trim() === "" ? {} : { details: instructions }),
     // {§tools-resource-materialization} — MCP families live in the tools
     // namespace; the turn-0 survey lists the family document, and expandTools
     // (PLURNK_MCP_EXPANDED) adds the complete tool tree.

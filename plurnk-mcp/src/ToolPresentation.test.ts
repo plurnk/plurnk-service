@@ -25,7 +25,7 @@ test("{§mcp-tool-presentation} derives exact summaries and invocations from the
     const registry = toolRegistry("gitea", tools);
     assert.deepEqual(registry.tools, [{
         target: "issue_read",
-        summary: "Issue reader",
+        summary: "Read one issue.",
         invocation: {
             body: { role: "JSON arguments", required: true },
             target: { role: "MCP tool", required: true, kind: "literal" },
@@ -33,6 +33,15 @@ test("{§mcp-tool-presentation} derives exact summaries and invocations from the
         },
         details: tools[0]!.description,
     }]);
+});
+
+test("{§mcp-summary-derivation} tool purpose precedes titles; blank values fall through in protocol title order", () => {
+    const tool = { name: "web_search", inputSchema: { type: "object" as const } };
+    const summary = (fields: Partial<Tool>) => toolRegistry("search", [{ ...tool, ...fields }]).tools[0]!.summary;
+    assert.equal(summary({ description: "Search the Web. Return matching pages.", title: "Search", annotations: { title: "Old title" } }), "Search the Web.");
+    assert.equal(summary({ description: " \n ", title: "Search", annotations: { title: "Old title" } }), "Search");
+    assert.equal(summary({ title: " \t ", annotations: { title: "Search title" } }), "Search title");
+    assert.equal(summary({ description: " ", title: "", annotations: { title: " " } }), "web_search");
 });
 
 test("{§mcp-tool-presentation} an empty enabled set exposes no hidden tool names", () => {

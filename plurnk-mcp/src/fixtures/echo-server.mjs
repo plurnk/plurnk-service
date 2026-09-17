@@ -27,6 +27,9 @@ const factory = () => {
     const server = new McpServer({
         name: "current-echo",
         version: "1.0.0",
+        ...(process.env.PLURNK_MCP_TEST_TITLE === undefined ? {} : { title: process.env.PLURNK_MCP_TEST_TITLE }),
+    }, {
+        ...(process.env.PLURNK_MCP_TEST_INSTRUCTIONS === undefined ? {} : { instructions: process.env.PLURNK_MCP_TEST_INSTRUCTIONS }),
     });
     if (listChangedAfterMs > 0) {
         setTimeout(() => { try { server.sendToolListChanged(); } catch { /* not connected yet */ } }, listChangedAfterMs).unref();

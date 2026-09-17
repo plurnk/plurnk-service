@@ -463,13 +463,22 @@ test("{§mcp-catalog-refresh-in-place} a catalog change rebuilds the executor on
     t.after(() => rm(temp, { recursive: true, force: true }));
     const marker = join(temp, "a.closed");
     const started = join(temp, "a.started");
-    const definition = stdio("a", [fixture], { env: { PLURNK_MCP_TEST_CLOSE_MARKER: marker, PLURNK_MCP_TEST_START_MARKER: started, PLURNK_MCP_TEST_LIST_CHANGED_AFTER_MS: "150" } });
+    const instructions = "Echo tools for transport testing.\n\n## Usage\nPass the message field unchanged.";
+    const definition = stdio("a", [fixture], { env: {
+        PLURNK_MCP_TEST_CLOSE_MARKER: marker,
+        PLURNK_MCP_TEST_START_MARKER: started,
+        PLURNK_MCP_TEST_LIST_CHANGED_AFTER_MS: "150",
+        PLURNK_MCP_TEST_TITLE: "Transport fixture",
+        PLURNK_MCP_TEST_INSTRUCTIONS: instructions,
+    } });
     const h = harness();
     await h.setup();
     console.error("[429-probe] test pid", process.pid, "ppid", process.ppid);
     try {
         const first = await h.lane(1, new Map([["a", definition]]));
         assert.deepEqual(h.runtimeTags(1), ["a"]);
+        assert.deepEqual(first.runtimes[0]?.decl.summary, { from: "tools", description: "Echo tools for transport testing." });
+        assert.equal(first.runtimes[0]?.decl.details, instructions);
         const connectStarts = (await readFile(started, "utf8")).trim().split("\n").filter((line) => line.length > 0).length;
         assert.ok(connectStarts >= 1 && connectStarts <= 2, `connect starts the real server and at most the SDK's probe sibling; got ${connectStarts}`);
         // The notification arrives ~150ms after connect; the scheduled refresh re-prepares the worker.
@@ -479,6 +488,7 @@ test("{§mcp-catalog-refresh-in-place} a catalog change rebuilds the executor on
         }
         assert.notEqual(h.snapshots.get(1)?.prepared, first, "the catalog change drove a refresh");
         assert.deepEqual(h.runtimeTags(1), ["a"], "the alias stays in service");
+        assert.equal(h.snapshots.get(1)?.prepared?.runtimes[0]?.decl.details, instructions, "catalog refresh retains the complete on-demand instructions");
         // Connect starts the SDK's disposable probe sibling and then the real server; a refresh
         // on the held connection starts nothing more, and never closes the committed server.
         const pids = (await readFile(started, "utf8")).trim().split("\n").filter((line) => line.length > 0).map((line) => line.split(" ")[0]!);

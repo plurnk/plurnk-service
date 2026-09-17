@@ -201,6 +201,10 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                         kind: "workspace.mcp.discover",
                         configuration: {
                             PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixture]),
+                            PLURNK_MCP_FIXTURE_ENV: JSON.stringify({
+                                PLURNK_MCP_TEST_TITLE: "Transport fixture",
+                                PLURNK_MCP_TEST_INSTRUCTIONS: "Echo tools for transport testing.\n\n## Usage\nPass the message field unchanged.",
+                            }),
                             "PLURNK_MCP_CLIENT-ONLY": process.execPath,
                             "PLURNK_MCP_CLIENT-ONLY_ARGS": JSON.stringify([fixture]),
                         },
@@ -309,11 +313,14 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.ok(firstPacket.includes("````mcp (list|discover|add|enable|disable|remove) <!-- Manage MCP servers -->\\\\n````"),
             "the initial survey teaches the manager's complete lifecycle");
         assert.doesNotMatch(firstPacket, /## Registered Tools/);
+        assert.match(firstPacket, /Echo tools for transport testing\./);
+        assert.doesNotMatch(firstPacket, /Pass the message field unchanged/, "full server instructions are not pushed into turn0");
         assert.match(firstPacket, /"path":"worker:\/\/\/_plurnk\/tools\/fixture\.md"/);
         assert.match(firstPacket, /```fixture \(echo\)/);
         assert.doesNotMatch(firstPacket, /```fixture \([^)]*fail/);
         assert.doesNotMatch(firstPacket, /"path":"worker:\/\/\/_plurnk\/tools\/fixture\/echo\.md"/, "without PLURNK_MCP_EXPANDED, turn 0 surveys family documents only");
         const familyContract = packet(provider.requests, 1);
+        assert.match(familyContract, /Pass the message field unchanged\./, "READ of the family document retrieves the full authored instructions");
         assert.match(familyContract, /```fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.md -->/);
         assert.doesNotMatch(familyContract, /```fixture \(fail\)/);
         const echoContract = packet(provider.requests, 2);

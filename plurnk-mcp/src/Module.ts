@@ -600,7 +600,12 @@ export default class Module {
                 executor,
                 runtime: {
                     namespaceOwner: OWNER,
-                    decl: runtimeDecl(definition.name, runtimeServerSummary(definition.name, executor.catalog, this.#summaries.servers.get(definition.name)), this.#expanded.has(definition.name)),
+                    decl: runtimeDecl(
+                        definition.name,
+                        runtimeServerSummary(definition.name, executor.catalog, this.#summaries.servers.get(definition.name)),
+                        this.#expanded.has(definition.name),
+                        executor.catalog.instructions,
+                    ),
                     executor,
                     availability,
                     scheme: new McpResources(definition.name, candidate, executor.catalog),

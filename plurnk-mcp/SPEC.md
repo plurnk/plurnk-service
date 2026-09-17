@@ -241,16 +241,23 @@ executable string even when its path contains whitespace; arguments never hide
 inside it. Bearer authentication and a case-insensitive `Authorization` entry
 in `_HEADERS` are mutually exclusive.
 
-§mcp-summary-derivation **Every orientation line derives from authored
-metadata — never a container template.** The runtime declaration's summary
-resolves in order: the `_SUMMARY` companion, the server's own
-`serverInfo.description`, its display `title` (both spec metadata — a title
-like "Chrome DevTools MCP server" is already a one-liner), the first sentence
-of its `instructions` essay, then a factual tool-name list derived from the
-effective admitted tool registry. Each tool's one-liner
-resolves: its `_<server>_<tool>_SUMMARY` companion, `annotations.title`, the
-first sentence of its `description` (capped), then the tool name. The family
-doc's Summary section and the survey row carry the server one-liner; the tool
+§mcp-summary-derivation **Orientation prefers authored purpose over display
+labels; no capabilities are inferred.** Blank values fall through:
+
+| Summary | Precedence, highest first |
+|---|---|
+| Server | `_SUMMARY` → `serverInfo.description` → `instructions` → `serverInfo.title` → effective admitted tool-name list → server alias |
+| Tool | `_<server>_<tool>_SUMMARY` → `description` → `title` → `annotations.title` → tool name |
+
+Derived prose is whitespace-normalized, limited to its first sentence, and
+clipped within 80 characters plus an ellipsis, preferring a word boundary. Explicit
+one-line overrides remain intact. Full server instructions remain authored
+Markdown in the family document's runtime `details`, available on demand;
+turn0 surveys only the compact summary/invocations. Full tool descriptions
+remain in the linked input-contract documents. With tools, the runtime declares
+`{ from: "tools", description }`: purpose annotates rather than replaces the
+complete effective menu in the family Summary and survey row
+({§scheme-catalog-aside}). Without authored purpose the menu stands alone. The tool
 doc's Summary section IS the invocation form
 ```` ```server (tool) <!-- one-liner --> ````, so the discovery row teaches the
 call ({§tools-resource-materialization}). Summary companions expand `${NAME}`
@@ -651,9 +658,7 @@ The compact family document contains annotated, copyable tool invocations with
 shallow required-field previews and alias-scoped schema links. Each linked child
 preserves the complete remote description and raw input schema, without
 reconstructing property tables or expanding nested constraints into the preview.
-A missing remote description falls back to the tool name rather than an invented
-capability claim. Output schemas
-do not enter model teaching; the returned value remains ordinary evidence. Disabled names
+Output schemas do not enter model teaching; the returned value remains ordinary evidence. Disabled names
 appear in neither discovery nor admission, and there is no MCP-specific FIND,
 READ, authority-root, or other model discovery mechanism for tools.
 
