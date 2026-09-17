@@ -17,7 +17,7 @@
 
 ## Helper Operations
 
-* NOTE: retain conclusions, decisions, and working memory
+* NOTE: retain conclusions, decisions, and working memory (also works inside reasoning)
 
 * FIND: list matching paths, or the match locations inside one path
 * READ: read files, entries, streams, or only the lines a pattern selects
