@@ -13,7 +13,6 @@ const step = async (command, args) => {
     process.stderr.write(result.stderr);
 };
 
-await step("npm", ["run", "generate", "-w", "plurnk-models"]);
 await step("node", ["scripts/deps-preflight.mjs"]);
 await step("node", ["scripts/release-version.mjs", version]);
 await step("node", ["plurnk-meta/scripts/external-package-census.mjs", "--write"]);

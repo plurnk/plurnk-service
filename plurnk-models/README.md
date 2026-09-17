@@ -50,14 +50,23 @@ Context windows, output envelopes, reasoning activation, and prices resolve by
 different rules in the provider contract ({§model-fact-resolution}). In
 particular, PLURNK does not fetch live per-token prices.
 
-## Refresh
+## Build and refresh
 
-The committed snapshot is refreshed deliberately at release time:
+The lockfile selects Models.dev's official
+[`@opencode-ai/models/snapshot`](https://github.com/anomalyco/models.dev/tree/dev/packages/sdk#snapshot)
+as a build-only dependency. Normal build and prepack generate the pruned source
+JSON and include it in `dist`; generated JSON stays out of Git. Generation
+works offline after dependency installation, and consumers need no upstream SDK.
+
+To refresh the catalog from the repository root:
 
 ```sh
-npm run generate
+npm install --save-dev @opencode-ai/models@latest --workspace plurnk-models --no-audit --no-fund
+npm run build --workspace plurnk-models
+npm test --workspace plurnk-models
 ```
 
-That command fetches `https://models.dev/api.json`, retains providers whose AI
-SDK package PLURNK supports, prunes the model facts, and rewrites the two source
-JSON files.
+Commit the dependency/lockfile change, not the generated catalogs. `npm run
+generate --workspace plurnk-models` regenerates from the already installed
+snapshot without selecting a newer version. See {§model-catalog-build} and
+{§model-catalog-projection}.

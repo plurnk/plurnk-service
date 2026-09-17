@@ -1,4 +1,8 @@
 const projections = new Map([
+    ["plurnk-models", {
+        required: ["dist/catalog.json", "dist/providers.json"],
+        forbiddenPrefixes: [],
+    }],
     ["plurnk-mcp", {
         required: [
             "dist/mcp-watchdog.mjs",

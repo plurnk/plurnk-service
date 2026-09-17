@@ -3,7 +3,17 @@ import test from "node:test";
 import { packageArtifactViolations } from "./package-artifacts.mjs";
 
 test("package artifact projection leaves packages without special roots unchanged", () => {
-    assert.deepEqual(packageArtifactViolations("plurnk-models", ["dist/index.js"]), []);
+    assert.deepEqual(packageArtifactViolations("plurnk-aliases", ["dist/index.js"]), []);
+});
+
+test("model package projection includes the generated runtime catalogs", () => {
+    assert.deepEqual(packageArtifactViolations("plurnk-models", [
+        "dist/index.js", "dist/catalog.json", "dist/providers.json",
+    ]), []);
+    assert.deepEqual(packageArtifactViolations("plurnk-models", ["dist/index.js"]), [
+        "plurnk-models: required runtime artifact is absent: dist/catalog.json",
+        "plurnk-models: required runtime artifact is absent: dist/providers.json",
+    ]);
 });
 
 test("MCP package projection retains the runtime watchdog loaded beside client.js", () => {

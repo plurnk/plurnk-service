@@ -1,15 +1,9 @@
-// Release-time generator. Fetches Models.dev and vendors the provider facts
-// needed to construct an AI SDK provider plus the pruned model facts PLURNK
-// consumes. Run on the release cadence:
-//   npm run generate
-// The snapshot is committed; there is no Models.dev request at install or
-// runtime. {§model-fact-resolution} owns each field's runtime precedence.
+// {§model-catalog-build} owns generation; {§model-fact-resolution} owns runtime precedence.
 
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-const SOURCE = "https://models.dev/api.json";
+import { providers as source, generatedAt } from "@opencode-ai/models/snapshot";
 
 // Package mechanics are the only support boundary. Vendor membership comes
 // entirely from models.dev: every provider using an SDK package we ship is
@@ -112,36 +106,37 @@ const prune = (providerId, modelId, m) => {
     return info;
 };
 
-const res = await fetch(SOURCE, { signal: AbortSignal.timeout(30_000) });
-if (!res.ok) throw new Error(`models.dev fetch failed: ${res.status}`);
-const db = await res.json();
+export const projectCatalog = (db) => {
+    const catalog = {};
+    const providers = {};
+    for (const [id, entry] of Object.entries(db)) {
+        if (!SUPPORTED_NPM.has(entry.npm)) continue;
+        if (typeof entry.name !== "string" || entry.name.length === 0) {
+            throw new Error(`Models.dev provider ${id} has no display name`);
+        }
+        providers[id] = {
+            id: entry.id,
+            name: entry.name,
+            npm: entry.npm,
+            env: entry.env ?? [],
+            ...(entry.api === undefined ? {} : { api: entry.api }),
+        };
+        const out = {};
+        for (const [modelId, m] of Object.entries(entry.models ?? {})) {
+            const info = prune(id, modelId, m);
+            if (info !== null) out[modelId] = info;
+        }
+        if (Object.keys(out).length > 0) catalog[id] = out;
+    }
+    return { catalog, providers };
+};
 
-const catalog = {};
-const providersCatalog = {};
-let providers = 0, models = 0, dropped = 0;
-for (const [id, entry] of Object.entries(db)) {
-    if (!SUPPORTED_NPM.has(entry.npm)) continue;
-    if (typeof entry.name !== "string" || entry.name.length === 0) {
-        throw new Error(`Models.dev provider ${id} has no display name`);
+if (import.meta.main) {
+    const dir = path.dirname(fileURLToPath(import.meta.url));
+    const projected = projectCatalog(source);
+    for (const [name, data] of Object.entries(projected)) {
+        await fs.writeFile(path.join(dir, `${name}.json`), JSON.stringify(data) + "\n", "utf8");
     }
-    providersCatalog[id] = {
-        id: entry.id,
-        name: entry.name,
-        npm: entry.npm,
-        env: entry.env ?? [],
-        ...(entry.api === undefined ? {} : { api: entry.api }),
-    };
-    const out = {};
-    for (const [modelId, m] of Object.entries(entry.models ?? {})) {
-        const info = prune(id, modelId, m);
-        if (info === null) { dropped++; continue; }
-        out[modelId] = info;
-        models++;
-    }
-    if (Object.keys(out).length > 0) { catalog[id] = out; providers++; }
+    const count = Object.values(projected.catalog).reduce((total, models) => total + Object.keys(models).length, 0);
+    console.log(`generated ${count} models across ${Object.keys(projected.catalog).length} providers from Models.dev snapshot ${generatedAt}`);
 }
-
-const dir = path.dirname(fileURLToPath(import.meta.url));
-await fs.writeFile(path.join(dir, "catalog.json"), JSON.stringify(catalog, null, 0) + "\n", "utf-8");
-await fs.writeFile(path.join(dir, "providers.json"), JSON.stringify(providersCatalog, null, 0) + "\n", "utf-8");
-console.log(`vendored ${models} models across ${providers} providers (${dropped} dropped for no context window) from ${SOURCE}`);
