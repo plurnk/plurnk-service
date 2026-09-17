@@ -88,8 +88,10 @@ origin `max-age` or `Expires` lifetime remain live. `no-cache` requires origin
 validation; `no-store` evidence remains in the log but supplies neither content
 nor validators to a later request. Only singular, syntactically valid stored
 validators are sent. A 304 restores a non-page representation only when its
-ETag or Last-Modified value identifies the nominated representation; otherwise
-acquisition fails without serving the stored body. Responses to POST, PUT, and
+ETag or Last-Modified value identifies the nominated representation. A strong
+response ETag requires the same stored strong tag; a weak response ETag may
+match either strength. Otherwise, one unconditional GET reacquires the content;
+another 304 fails without serving the stored body. Responses to POST, PUT, and
 DELETE are not reused as later GET representations. A projected GET is reused
 only while the installed reader has the same projection identity. Page bodies
 likewise require the same origin-Markdown, local, materializer-id, or

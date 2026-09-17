@@ -2145,11 +2145,11 @@ for (const {
         valid: true,
     },
     {
-        name: "a strong response ETag weakly identifies a stored weak tag",
+        name: "a strong response ETag cannot promote a stored weak tag to byte identity",
         storedValidator: 'etag: W/"v1"',
         responseHeaders: { etag: '"v1"' },
         expectedConditional: ["if-none-match", 'W/"v1"'],
-        valid: true,
+        valid: false,
     },
     {
         name: "the same weak ETag identifies the stored response",
@@ -2157,6 +2157,27 @@ for (const {
         responseHeaders: { etag: 'W/"v1"' },
         expectedConditional: ["if-none-match", 'W/"v1"'],
         valid: true,
+    },
+    {
+        name: "a different weak ETag cannot certify the stored response",
+        storedValidator: 'etag: W/"v1"',
+        responseHeaders: { etag: 'W/"v2"' },
+        expectedConditional: ["if-none-match", 'W/"v1"'],
+        valid: false,
+    },
+    {
+        name: "a missing response validator cannot certify a Last-Modified-nominated response",
+        storedValidator: "last-modified: Tue, 15 Nov 1994 12:45:26 GMT",
+        responseHeaders: {},
+        expectedConditional: ["if-modified-since", "Tue, 15 Nov 1994 12:45:26 GMT"],
+        valid: false,
+    },
+    {
+        name: "an ETag list is not a singular response validator",
+        storedValidator: 'etag: "v1"',
+        responseHeaders: { etag: '"v1", "v2"' },
+        expectedConditional: ["if-none-match", '"v1"'],
+        valid: false,
     },
     {
         name: "the same Last-Modified value identifies the stored response",

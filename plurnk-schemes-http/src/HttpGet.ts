@@ -191,11 +191,8 @@ export default class HttpGet {
                     if (Results.isErrorStatus(written.status)) return this.#passthrough(written);
                     return { status: 200 };
                 }
-                // {§revalidation} — a genuinely mismatched 304 (different opaque
-                // tags): the conditional is the problem, so fall back to one
-                // unconditional GET and acquire normally instead of surfacing
-                // an unrecoverable 502. A second 304 has no way out and is the
-                // honest failure.
+                // {§revalidation}: reacquire once without conditionals when
+                // the 304 cannot identify the stored response.
                 fetched = await this.#webFetcher.fetch(url, {
                     signal,
                     headers: requestHeaders,
@@ -221,7 +218,7 @@ export default class HttpGet {
                         502,
                         "http",
                         "fetch-failed",
-                        `HTTP GET ${url} returned 304 without identifying the stored representation nominated for revalidation.`,
+                        `HTTP GET ${url} returned 304 again after retrying without conditional headers.`,
                         {
                             target: url,
                             method: "GET",

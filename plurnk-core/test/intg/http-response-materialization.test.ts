@@ -627,7 +627,7 @@ test("a durable no-store response is operation evidence, not a reusable HTTP cac
     }
 });
 
-test("{§revalidation} #288: a 304 with a strong etag of the stored weak etag's opaque value refreshes instead of failing", async () => {
+test("{§revalidation} a strong response tag after a stored weak tag reacquires instead of promoting the stored bytes", async () => {
     const db = await openMigrated();
     const originalFetch = globalThis.fetch;
     const originalTtl = process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
@@ -643,11 +643,18 @@ test("{§revalidation} #288: a 304 with a strong etag of the stored weak etag's 
                     headers: { "content-type": "text/plain", etag: 'W/"opaque-1"', "last-modified": "Wed, 05 Aug 2026 16:23:37 GMT" },
                 });
             }
-            assert.equal(new Headers(init?.headers).get("if-none-match"), 'W/"opaque-1"', "the stored weak etag becomes the conditional");
-            return new Response(null, {
-                status: 304,
-                statusText: "Not Modified",
-                headers: { etag: '"opaque-1"', "last-modified": "Wed, 05 Aug 2026 16:23:37 GMT" },
+            if (requests === 2) {
+                assert.equal(new Headers(init?.headers).get("if-none-match"), 'W/"opaque-1"', "the stored weak etag becomes the conditional");
+                return new Response(null, {
+                    status: 304,
+                    statusText: "Not Modified",
+                    headers: { etag: '"opaque-1"', "last-modified": "Wed, 05 Aug 2026 16:23:37 GMT" },
+                });
+            }
+            assert.equal(new Headers(init?.headers).get("if-none-match"), null);
+            assert.equal(new Headers(init?.headers).get("if-modified-since"), null);
+            return new Response("reacquired body", {
+                headers: { "content-type": "text/plain", etag: '"opaque-1"' },
             });
         };
 
@@ -661,14 +668,93 @@ test("{§revalidation} #288: a 304 with a strong etag of the stored weak etag's 
 
         process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "0";
         const refreshed = await readHttp(http, legacyTextStatement(), ctx);
-        assert.equal(refreshed.status, 200, "a strong-etag 304 of the same opaque value corresponds (weak comparison per RFC 9110 §8.8.3.2)");
-        assert.equal(refreshed.content, "legacy body v1");
-        assert.equal(requests, 2, "one conditional revalidation, no full reacquisition");
+        assert.equal(refreshed.status, 200, "an unvalidated body remains recoverable through ordinary acquisition");
+        assert.equal(refreshed.content, "reacquired body");
+        assert.equal(requests, 3, "one conditional revalidation followed by one unconditional acquisition");
     } finally {
         globalThis.fetch = originalFetch;
         if (originalTtl === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
         else process.env.PLURNK_SCHEMES_HTTP_TTL_MS = originalTtl;
         await db.close();
+    }
+});
+
+test("{§revalidation} wire validators select reuse or reacquisition of durable text and binary bodies", async (t) => {
+    const originalTtl = process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
+    process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "0";
+    t.after(() => {
+        if (originalTtl === undefined) delete process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
+        else process.env.PLURNK_SCHEMES_HTTP_TTL_MS = originalTtl;
+    });
+    const cases: Array<{ name: string; stored: Record<string, string>; response: Record<string, string>; reuse: boolean }> = [
+        { name: "strong to strong", stored: { etag: '"v1"' }, response: { etag: '"v1"' }, reuse: true },
+        { name: "weak to weak", stored: { etag: 'W/"v1"' }, response: { etag: 'W/"v1"' }, reuse: true },
+        { name: "strong to weak", stored: { etag: '"v1"' }, response: { etag: 'W/"v1"' }, reuse: true },
+        { name: "weak to strong", stored: { etag: 'W/"v1"' }, response: { etag: '"v1"' }, reuse: false },
+        { name: "different tag", stored: { etag: '"v1"' }, response: { etag: '"v2"' }, reuse: false },
+        { name: "missing tag", stored: { etag: '"v1"' }, response: {}, reuse: false },
+        { name: "malformed tag", stored: { etag: '"v1"' }, response: { etag: "v1" }, reuse: false },
+        { name: "same modification date", stored: { "last-modified": "Tue, 15 Nov 1994 12:45:26 GMT" }, response: { "last-modified": "Tue, 15 Nov 1994 12:45:26 GMT" }, reuse: true },
+        { name: "different modification date", stored: { "last-modified": "Tue, 15 Nov 1994 12:45:26 GMT" }, response: { "last-modified": "Wed, 16 Nov 1994 12:45:26 GMT" }, reuse: false },
+    ];
+    for (const binary of [false, true]) {
+        for (const specimen of cases) {
+            await t.test(`${binary ? "binary" : "text"}: ${specimen.name}`, async (t) => {
+                const db = await openMigrated();
+                t.after(() => db.close());
+                const requests: Array<{ etag: string | undefined; modified: string | undefined }> = [];
+                const first = binary ? Buffer.from([0x00, 0xff, 0x11]) : Buffer.from("original bytes");
+                const replacement = binary ? Buffer.from([0x00, 0xfe, 0x22]) : Buffer.from("replacement bytes");
+                const server = createServer((request, response) => {
+                    if (request.url !== "/representation") {
+                        response.writeHead(404).end();
+                        return;
+                    }
+                    requests.push({ etag: request.headers["if-none-match"], modified: request.headers["if-modified-since"] });
+                    if (requests.length === 2) {
+                        response.writeHead(304, { ...specimen.response, "x-validation": "accepted" }).end();
+                        return;
+                    }
+                    response.writeHead(200, {
+                        "content-type": binary ? "application/octet-stream" : "text/plain",
+                        ...(requests.length === 1 ? specimen.stored : { etag: '"replacement"' }),
+                    }).end(requests.length === 1 ? first : replacement);
+                });
+                server.listen(0, "127.0.0.1");
+                await once(server, "listening");
+                t.after(() => {
+                    server.closeAllConnections();
+                    return new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+                });
+                const address = server.address();
+                assert.ok(address !== null && typeof address !== "string");
+                const authority = `127.0.0.1:${address.port}`;
+                const workspaceId = await insertWorkspace(db, `http-validators-${crypto.randomUUID()}`);
+                const workerId = await insertWorker(db, workspaceId);
+                const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+                const stored = await makeHandlerCtx(ctx, { ...Http.manifest, name: "http" }, authority);
+                const http = new Http();
+                const read = parsedRead(`http://${authority}/representation`);
+                for (const expected of [first, specimen.reuse ? first : replacement]) {
+                    const result = await readHttp(http, read, ctx);
+                    assert.equal(result.status, 200, JSON.stringify(result));
+                    assert.ok(result.content !== null && result.content.length > 0, "the ordinary READ returns the text or hex projection");
+                    const entry = (await stored.entries.read("/representation")).entry;
+                    assert.ok(entry);
+                    assert.deepEqual(Buffer.from(entry.channels.body.content, binary ? "base64" : "utf8"), expected);
+                    assert.equal(entry.channels.body.state, "static");
+                }
+                assert.deepEqual(requests, [
+                    { etag: undefined, modified: undefined },
+                    { etag: specimen.stored.etag, modified: specimen.stored["last-modified"] },
+                    ...(specimen.reuse ? [] : [{ etag: undefined, modified: undefined }]),
+                ]);
+                const header = (await stored.entries.read("/representation")).entry!.channels.header.content;
+                assert.equal(/^x-validation: accepted$/m.test(header), specimen.reuse,
+                    "only a corresponding 304 may update the stored representation's metadata");
+                if (!specimen.reuse) assert.match(header, /^etag: "replacement"$/m);
+            });
+        }
     }
 });
 

@@ -411,7 +411,15 @@ validator corresponds to the nominated stored representation:
 | Strong ETag                                           | Same stored strong ETag                     |
 | Weak ETag                                             | Same opaque tag under weak comparison       |
 | No ETag; Last-Modified                                | Same valid stored Last-Modified instant     |
-| Missing, malformed, unsolicited, or non-corresponding | Invalid acquisition; `502` (`fetch-failed`) |
+| Missing, malformed, or non-corresponding validator    | Do not update the stored representation    |
+
+Response ETags use RFC 9111 §4.3.4 cache-update correspondence, not the origin's
+`If-None-Match` precondition comparison. A strong response tag cannot promote a
+stored weak tag into byte identity. A non-corresponding 304 triggers one GET
+without conditional headers; a complete response is acquired normally. A
+second 304, or a 304 without a reusable stored representation, returns `502`
+(`fetch-failed`) without serving or replacing the stored body. No validators
+are invented for an unsolicited 304.
 
 A corresponding 304 restores the stored channels without rematerializing and
 updates the header under the following ownership rule; any other response

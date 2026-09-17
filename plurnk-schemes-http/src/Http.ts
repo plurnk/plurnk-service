@@ -757,11 +757,10 @@ export default class Http implements SchemeHandler {
                 ? entityTag(storedTagValues[0]!)
                 : null;
             if (responseTag === null || storedTag === null) return false;
-            // {§revalidation} — If-None-Match correspondence is a weak
-            // comparison (RFC 9110 §8.8.3.2): opaque tags match regardless of
-            // the W/ prefix, so an origin that upgrades a stored weak etag to
-            // a strong etag on the 304 still corresponds.
-            return responseTag.opaque === storedTag.opaque;
+            // {§revalidation}: RFC 9111 §4.3.4 identifies stored responses;
+            // it is not the origin's If-None-Match precondition comparison.
+            return responseTag.opaque === storedTag.opaque
+                && (responseTag.weak || !storedTag.weak);
         }
 
         const responseModifiedValue = responseHeaders.get("last-modified");
