@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
+import { SdkError, SdkErrorCode } from "@modelcontextprotocol/client";
 import { createMcpHandler, McpServer, ProtocolError } from "@modelcontextprotocol/server";
 import { z } from "zod/v4";
 import { serveMcpHttp } from "../test/http-fixture.ts";
@@ -34,6 +36,84 @@ const handler = () => createMcpHandler(() => {
     }));
     return server;
 }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
+
+const discoveryFloor = { PLURNK_MCP_CONNECT_TIMEOUT: "250", PLURNK_MCP_REQUEST_TIMEOUT: "3000" };
+const isTimeout = (error: unknown): boolean => {
+    assert.ok(error instanceof DOMException && error.name === "TimeoutError"
+        || SdkError.isInstance(error) && error.code === SdkErrorCode.RequestTimeout, String(error));
+    return true;
+};
+
+for (const [method] of lists) {
+    test(`{§mcp-catalog-deadline}: stalled ${method} expires before the tool deadline and retries cleanly`, { timeout: 5000 }, async (t) => {
+        let stalled = true;
+        const served = await serveMcpHttp(t, handler(), async (request) => {
+            const body = await request.clone().json();
+            if (stalled && body.method === method) await delay(750, undefined, { signal: request.signal });
+            return null;
+        });
+        const connection = new ServerConnection({ name: "catalog", transport: "http", url: served.url }, discoveryFloor);
+        t.after(() => connection.close());
+        await connection.connect();
+        await assert.rejects(connection.catalog(), isTimeout);
+        assert.equal(connection.activeRequests, 0);
+        stalled = false;
+        const catalog = await connection.catalog();
+        for (const [, key] of lists) assert.equal(catalog[key].length, 1, "retry publishes the complete catalog");
+    });
+}
+
+test("{§mcp-catalog-deadline}: pagination shares one deadline rather than renewing it for each page", { timeout: 5000 }, async (t) => {
+    const served = await serveMcpHttp(t, handler(), async (request) => {
+        const body = await request.clone().json();
+        if (body.method !== "resources/templates/list") return null;
+        await delay(100, undefined, { signal: request.signal });
+        const page = Number(body.params?.cursor ?? 0);
+        return Response.json({ jsonrpc: "2.0", id: body.id, result: {
+            resultType: "complete", resourceTemplates: [{ name: `page${page}`, uriTemplate: `test:///${page}/{name}` }],
+            ...(page < 6 ? { nextCursor: String(page + 1) } : {}), ttlMs: 0, cacheScope: "private",
+        } });
+    });
+    const connection = new ServerConnection({ name: "catalog", transport: "http", url: served.url }, discoveryFloor);
+    t.after(() => connection.close());
+    await connection.connect();
+    await assert.rejects(connection.resources(), isTimeout);
+    const pages = served.requests.filter(({ body }) => (body as { method?: string })?.method === "resources/templates/list");
+    assert.ok(pages.length > 1 && pages.length < 7, `deadline stopped the multi-page walk after ${pages.length} pages`);
+});
+
+test("{§mcp-catalog-deadline}: caller cancellation stays identifiable and does not close the connection", async (t) => {
+    const owner = new AbortController();
+    const cause = new Error("caller cancelled discovery");
+    const served = await serveMcpHttp(t, handler(), async (request) => {
+        const body = await request.clone().json();
+        if (body.method === "tools/list") owner.abort(cause);
+        return null;
+    });
+    const connection = new ServerConnection({ name: "catalog", transport: "http", url: served.url }, floor);
+    t.after(() => connection.close());
+    await assert.rejects(connection.tools(owner.signal), (error) => {
+        assert.ok(SdkError.isInstance(error));
+        assert.equal(error.code, SdkErrorCode.RequestTimeout);
+        assert.equal(error.message, String(cause));
+        assert.equal(owner.signal.reason, cause);
+        return true;
+    });
+    assert.equal(connection.activeRequests, 0);
+    assert.deepEqual((await connection.callTool("echo", {})).content, [{ type: "text", text: "still callable" }]);
+});
+
+test("{§mcp-catalog-deadline}: a real tool operation may outlast the discovery deadline", async (t) => {
+    const served = await serveMcpHttp(t, handler(), async (request) => {
+        const body = await request.clone().json();
+        if (body.method === "tools/call") await delay(500, undefined, { signal: request.signal });
+        return null;
+    });
+    const connection = new ServerConnection({ name: "catalog", transport: "http", url: served.url }, discoveryFloor);
+    t.after(() => connection.close());
+    await connection.catalog();
+    assert.deepEqual((await connection.callTool("echo", {})).content, [{ type: "text", text: "still callable" }]);
+});
 
 for (const [method, collection] of lists) {
     test(`a missing ${method} leaves the other catalog collections usable`, async (t) => {

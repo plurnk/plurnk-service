@@ -687,16 +687,30 @@ export default class ServerConnection {
         return new AuthorizationRequiredError(authorizationUrl.href, cause);
     }
 
-    async tools(signal?: AbortSignal): Promise<Tool[]> {
+    async #list<T>(run: (client: CatalogClient, options: RequestOptions) => Promise<T>, owner?: AbortSignal): Promise<T> {
         return this.#request(async ({ client }, signal) => {
+            const timeout = connectTimeoutMs(this.#environ);
+            const settled = new AbortController();
+            // {§mcp-catalog-deadline}: one bound across parallel lists and every SDK pagination leg.
+            const deadline = AbortSignal.any([signal, AbortSignal.timeout(timeout), settled.signal]);
+            try {
+                return await run(client, { signal: deadline, timeout, maxTotalTimeout: timeout });
+            } finally {
+                settled.abort();
+            }
+        }, owner);
+    }
+
+    async tools(signal?: AbortSignal): Promise<Tool[]> {
+        return this.#list(async (client, options) => {
             if (serverCapabilities(client)?.tools === undefined) return [];
-            const { tools } = await client.listTools(undefined, this.#requestOptions(signal));
+            const { tools } = await client.listTools(undefined, options);
             return tools;
         }, signal);
     }
 
     async catalog(signal?: AbortSignal): Promise<ServerCatalog> {
-        return this.#request(async ({ client }, signal) => {
+        return this.#list(async (client, options) => {
             // {§mcp-authority} — the discover result is the modern identity and
             // capability source; a legacy server's initialize result supplies the
             // same facts at its negotiated revision.
@@ -704,17 +718,17 @@ export default class ServerConnection {
             const [tools, resources, resourceTemplates, prompts] = await Promise.all([
                 capabilities.tools === undefined
                     ? Promise.resolve([])
-                    : client.listTools(undefined, this.#requestOptions(signal)).then((result) => result.tools),
+                    : client.listTools(undefined, options).then((result) => result.tools),
                 capabilities.resources === undefined
                     ? Promise.resolve([])
-                    : client.listResources(undefined, this.#requestOptions(signal)).then((result) => result.resources),
+                    : client.listResources(undefined, options).then((result) => result.resources),
                 capabilities.resources === undefined
                     ? Promise.resolve([])
-                    : client.listResourceTemplates(undefined, this.#requestOptions(signal))
+                    : client.listResourceTemplates(undefined, options)
                         .then((result) => result.resourceTemplates),
                 capabilities.prompts === undefined
                     ? Promise.resolve([])
-                    : client.listPrompts(undefined, this.#requestOptions(signal)).then((result) => result.prompts),
+                    : client.listPrompts(undefined, options).then((result) => result.prompts),
             ]);
             return {
                 protocolVersion: client.getNegotiatedProtocolVersion() ?? "",
@@ -734,14 +748,14 @@ export default class ServerConnection {
         resources: ServerCatalog["resources"];
         resourceTemplates: ServerCatalog["resourceTemplates"];
     }> {
-        return this.#request(async ({ client }, signal) => {
+        return this.#list(async (client, options) => {
             if (serverCapabilities(client)?.resources === undefined) {
                 return { resources: [], resourceTemplates: [] };
             }
             const [resources, resourceTemplates] = await Promise.all([
-                client.listResources(undefined, this.#requestOptions(signal))
+                client.listResources(undefined, options)
                     .then((result) => result.resources),
-                client.listResourceTemplates(undefined, this.#requestOptions(signal))
+                client.listResourceTemplates(undefined, options)
                     .then((result) => result.resourceTemplates),
             ]);
             return { resources, resourceTemplates };
@@ -749,9 +763,9 @@ export default class ServerConnection {
     }
 
     async prompts(signal?: AbortSignal): Promise<ServerCatalog["prompts"]> {
-        return this.#request(async ({ client }, signal) => {
+        return this.#list(async (client, options) => {
             if (serverCapabilities(client)?.prompts === undefined) return [];
-            return (await client.listPrompts(undefined, this.#requestOptions(signal))).prompts;
+            return (await client.listPrompts(undefined, options)).prompts;
         }, signal);
     }
 
@@ -766,10 +780,7 @@ export default class ServerConnection {
         return this.#request(async ({ client, subscriptions, extensions }, signal) => {
             const timeout = requestTimeoutMs(this.#environ);
             if (serverSupportsTasks(serverCapabilities(client))) {
-                const tool = toolDefinition ?? (await client.listTools(
-                    undefined,
-                    this.#requestOptions(signal),
-                )).tools.find((candidate) => candidate.name === name);
+                const tool = toolDefinition ?? (await this.tools(signal)).find((candidate) => candidate.name === name);
                 if (tool === undefined) {
                     throw new Error(`MCP server '${this.#definition.name}' did not list tool '${name}'.`);
                 }

@@ -303,6 +303,38 @@ test("{§mcp-activation-isolation} a failed preparation rejects under reject and
     } finally { await h.teardown(1); await h.module.close(); }
 });
 
+test("{§mcp-catalog-deadline} activation publishes a stalled catalog as unavailable and explicit retry restores it", { timeout: 10000 }, async (t) => {
+    let stalled = true;
+    const handler = createMcpHandler(() => {
+        const server = new McpServer({ name: "stall", version: "1" });
+        server.registerTool("echo", { inputSchema: z.object({}) }, async () => ({ content: [{ type: "text", text: "ready" }] }));
+        return server;
+    }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
+    const served = await serveMcpHttp(t, handler, async (request) => {
+        const body = await request.clone().json();
+        if (stalled && body.method === "tools/list") await delay(1000, undefined, { signal: request.signal });
+        return null;
+    });
+    const h = harness({ PLURNK_MCP_CONNECT_TIMEOUT: "500", PLURNK_MCP_REQUEST_TIMEOUT: "3000" });
+    await h.setup();
+    try {
+        const enabled = new Map([
+            ["stall", { name: "stall", transport: "http", url: served.url }],
+            ["echo", stdio("echo")],
+        ]);
+        const prepared = await h.lane(1, enabled);
+        const unavailable = prepared.outcomes.get("stall");
+        assert.equal(unavailable?.state, "unavailable");
+        if (unavailable?.state !== "unavailable") throw new Error("missing unavailable outcome");
+        assert.equal(unavailable.problem.type, "https://problems.plurnk.xyz/mcp/management/server-unavailable");
+        assert.deepEqual(h.runtimeTags(1), ["echo"], "a silent catalog does not prevent publishing other tools");
+        stalled = false;
+        const retry = await h.lane(1, enabled, { force: "stall" });
+        assert.equal(retry.outcomes.get("stall")?.state, "active");
+        assert.deepEqual(h.runtimeTags(1).toSorted(), ["echo", "stall"]);
+    } finally { await h.teardown(1); await h.module.close(); }
+});
+
 test("{§mcp-setup} commit closes connections the next snapshot no longer uses; abort closes only what the attempt opened; teardown closes the rest", async (t) => {
     const temp = await mkdtemp(join(tmpdir(), "plurnk-mcp-adapter-"));
     t.after(() => rm(temp, { recursive: true, force: true }));

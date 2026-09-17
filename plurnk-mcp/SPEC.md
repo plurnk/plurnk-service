@@ -64,6 +64,13 @@ Pagination, caching, and the cap remain the SDK's; a converging server's pages a
 before. This is a host guard over an upstream behavior, not a second paginator; the upstream
 report is #601's to file.
 
+§mcp-catalog-deadline `PLURNK_MCP_CONNECT_TIMEOUT` bounds connection setup and,
+separately, each complete catalog/list walk, including parallel collections and
+all pagination. Failure cancels unfinished sibling lists; it never publishes a
+partial catalog. Caller cancellation and connection shutdown still apply.
+Tool calls, resource reads, prompt retrieval, and their client-input waits retain
+`PLURNK_MCP_REQUEST_TIMEOUT`; discovery does not borrow that operation allowance.
+
 §mcp-catalog-list-absence **An unsupported list method does not disable the server.**
 At the first page of `tools/list`, `resources/list`, `resources/templates/list`, or
 `prompts/list`, JSON-RPC `-32601` yields an empty collection for that method and an
