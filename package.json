@@ -54,6 +54,7 @@
         "changelog": "node scripts/changelog.mjs",
         "diagnostics:inventory": "node scripts/diagnostic-inventory.mjs",
         "packages:publint": "node scripts/package-publint.mjs",
+        "packages:types": "node scripts/package-types.mjs",
         "metadata:write": "node scripts/package-provenance.mjs --write",
         "metadata:check": "node scripts/package-provenance.mjs",
         "lifecycle:check": "node scripts/package-lifecycle-policy.mjs",

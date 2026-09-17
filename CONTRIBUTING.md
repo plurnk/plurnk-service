@@ -57,6 +57,15 @@ at most 80 characters; reference the issue when useful.
 | Deterministic test failure | The reported workspace `test/intg/.tmp/`; each normal run replaces only its own prior evidence. |
 | Runtime state/telemetry | [`plurnk-core/README.md`](./plurnk-core/README.md) for database, digest, and OpenTelemetry surfaces. |
 | Candidate/model forensics | `candidate` prints its retained artifact directory; [`plurnk-meta/DOGFOOD.md`](./plurnk-meta/DOGFOOD.md) defines digest/reasoning/requiem evidence. |
+| Published type resolution | Optional `npm run packages:types` (or `-- --only plurnk-contracts`): pinned ATTW 0.18.5 checks actual packed packages, invoking their normal prepack builds. |
+
+The type-resolution audit uses ATTW's `esm-only` profile and leaves its findings
+visible. `plurnk-meta`'s `./POLICY.md` and `./recap.md` exports are excluded because
+they are file assets, not code modules. The checker is fetched into npm's cache
+on demand; it adds no project dependency or step to ordinary or release gates.
+Its nonzero exit means the selected audit failed, not an advisory green result.
+ATTW skips packages with no declarations; it complements, rather than replaces,
+the existing package-content and publint checks.
 
 An in-process test timeout does not contain synchronous allocation or native
 work. Run suspected resource-exhaustion cases under OS memory and swap limits;
