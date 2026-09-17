@@ -1,7 +1,7 @@
 // {§schedule-family} — the one definition `add` accepts and the coordinator persists: the rule
 // text ({§schedule-rule}), the worker the message is delivered to, the message, and optionally
 // the proposal policy of a loop the delivery starts ({§schedule-delivery}).
-import { Validator, type JsonSchema, type LoopPolicy } from "@plurnk/plurnk-contracts";
+import { Validator, WORKER_NAME, type JsonSchema, type LoopPolicy } from "@plurnk/plurnk-contracts";
 
 export interface ScheduleDefinition {
     readonly rule: string;
@@ -10,7 +10,7 @@ export interface ScheduleDefinition {
     readonly policy?: LoopPolicy;
 }
 
-export const TARGET = /^worker:\/\/([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)$/u;
+export const TARGET = new RegExp(`^worker://(${WORKER_NAME.source.slice(1, -1)})$`, "u");
 
 export const DEFINITION_SCHEMA = Object.freeze({
     type: "object",
@@ -24,7 +24,7 @@ export const DEFINITION_SCHEMA = Object.freeze({
         },
         target: {
             type: "string",
-            pattern: "^worker://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+            pattern: TARGET.source,
             description: "The worker the message is delivered to.",
         },
         prompt: {

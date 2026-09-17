@@ -18,7 +18,7 @@ const FIRST = Date.UTC(2026, 8, 16, 12, 30, 16);
 
 interface LogRow { readonly op: string; readonly origin: string; readonly source: string | null; readonly attrs: string }
 
-test("a scheduled message reaches its worker as an arrival from schedule://<alias>", { timeout: 60_000 }, async () => {
+const assertDelivery = async (workerName: string): Promise<void> => {
     await import(join(SERVICE, "test/setup.ts"));
     const [{ default: Daemon }, { makeMockResponse }, { openMigrated, insertWorkspace, insertWorker, rootWorkspace }] = await Promise.all([
         import(join(SERVICE, "src/server/Daemon.ts")),
@@ -34,7 +34,7 @@ test("a scheduled message reaches its worker as an arrival from schedule://<alia
     const root = await mkdtemp(join(tmpdir(), "plurnk-schedule-"));
     const workspaceId = await insertWorkspace(db, "scheduled");
     await rootWorkspace(db, workspaceId, root);
-    const workerId = await insertWorker(db, workspaceId, null, "recipient", "model");
+    const workerId = await insertWorker(db, workspaceId, null, workerName, "model");
 
     let now = NOW;
     const armed = new Map<number, () => void>();
@@ -59,7 +59,7 @@ test("a scheduled message reaches its worker as an arrival from schedule://<alia
         });
         const added = await application.invokeModuleAction("workspace.schedule.add", {
             alias: "beat",
-            definition: { rule: "FREQ=HOURLY;COUNT=2", target: "worker://recipient", prompt: "Take the beat.", policy: { proposals: "accept" } },
+            definition: { rule: "FREQ=HOURLY;COUNT=2", target: `worker://${workerName}`, prompt: "Take the beat.", policy: { proposals: "accept" } },
         }, { scope: "workspace", workspaceId }) as { status: number; alias: string; definition?: { state: string; detail?: { next: string | null; rule: string } } };
         assert.equal(added.status, 201);
         assert.equal(added.alias, "beat");
@@ -91,4 +91,10 @@ test("a scheduled message reaches its worker as an arrival from schedule://<alia
         await db.close();
         await rm(root, { recursive: true, force: true });
     }
-});
+};
+
+for (const workerName of ["recipient", "Approach_A"]) {
+    test(`a scheduled message reaches ${workerName} as an arrival from schedule://<alias>`, { timeout: 60_000 }, async () => {
+        await assertDelivery(workerName);
+    });
+}

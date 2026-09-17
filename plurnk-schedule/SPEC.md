@@ -5,7 +5,7 @@
 Scheduled messages are one workspace Functionality family named `schedule`,
 owned by `@plurnk/plurnk-schedule` ({§functionality-adapter}). A definition is
 `{ rule, target, prompt, policy? }`: RFC 5545 rule text ({§schedule-rule}), a
-`worker://<name>` target in the workspace, the message delivered at each
+`worker://<name>` target in the workspace ({§worker-name}, preserved exactly), the message delivered at each
 occurrence, and optionally the proposal policy of a loop the delivery starts
 ({§schedule-delivery}). Aliases take the shared grammar. The verbs are the
 coordinator's: `list`, `discover` ({§schedule-clock}), `add`, `enable`,
