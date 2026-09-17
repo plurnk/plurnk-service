@@ -27,7 +27,7 @@ console.log(greet("world"));
 ````
 
 Control addresses contain only scheme and authority: no trailing slash,
-userinfo, port, query, fragment, or `[metadata]` modifier.
+userinfo, port, query, or fragment.
 
 An entry whose source has a readable projection (HTML, a notebook) carries it
 beside the source as `#readable`, text/markdown, in its own line coordinates;
@@ -68,6 +68,11 @@ A path outside the `worker://` scheme is the child's prompt resource, as for
 BARE: `WORK (specs/feature.md)` reads the file whole as the task,
 an inline body follows it after a blank line, and the child is auto-named.
 Use SEND to give an existing worker a follow-up task.
+
+SEND accepts `[{"attachments":["report.pdf","worker:///notes.md"]}]`.
+It delivers send-time copies through ordinary resource links, not native media
+injection; the recipient READs what it needs. Missing sources fail before
+delivery. The same option works on a targetless reply.
 
 A SEND takes no scope. To deliver a message later or on a cadence, to a worker
 or to yourself, add a rule with the `schedule` family; it arrives as an

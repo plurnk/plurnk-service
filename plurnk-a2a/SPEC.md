@@ -85,9 +85,10 @@ failures follow the SDK's failed-Task behavior.
 | Successful terminal result | `COMPLETED`; a non-empty final SEND is the `result` Artifact |
 | External cancellation / Loop `499` | `CANCELED` |
 | Other terminal failure | `FAILED` with the exact Problem detail as its status Message |
-| Inbound SEND rows carrying the adapter's causal source | User Message text history, read from the submitted body (`tx.body.raw`) |
+| Inbox messages carrying the adapter's causal source | Complete admitted user Message history from {§message-envelope-evidence}, including accepted interaction answers; independent of log curation and publication. |
+| Successful targetless SEND attachment receipts | Distinct standard Artifacts holding send-time bytes from {§send-resource-attachments}, independent of later source changes. |
 
-The first exposure accepts only text Message Parts, advertises HTTP+JSON v1
+The exposure accepts text, data, URL, and raw Message Parts, advertises HTTP+JSON v1
 streaming without push notifications, tenants, extended cards, or security
 schemes, and rejects a card that claims unsupported security. Those omitted
 surfaces are not silently simulated. The adapter subscribes to live
@@ -97,8 +98,9 @@ for retrieval and restart truth.
 §a2a-hosted-card The service generates the hosted standard Agent Card from
 normalized environment identity plus actual adapter capabilities. The adapter,
 not configuration, fixes HTTP+JSON protocol `1.0`, streaming, no push
-notifications, no extended card, no tenant, no security, `text/plain` input,
-and `text/markdown` output. Unsupported security claims are structurally absent
+notifications, no extended card, no tenant, no security, and `*/*` input/output.
+Arbitrary media are resources; native model interpretation still depends on its route.
+Unsupported security claims are structurally absent
 rather than configurable. The official SDK serializes the card served at the
 standard well-known path.
 
@@ -219,6 +221,32 @@ stream end, therefore carry `retryable: false`; Plurnk never recommends an
 automatic identical replay that could duplicate remote work.
 
 ## §a2a-resource-projection Resource projection
+
+§a2a-hosted-message-resources Hosted input uses the ordinary inbox and
+{§send-resource-attachments}, not the outbound alias resolver. An incoming
+caller needs neither an Agent Card nor a configured remote alias.
+
+| Input Part | Model-facing arrival |
+|---|---|
+| Text | Authored text. |
+| Data | Pretty-printed JSON. |
+| URL | Literal supplied URL; no arrival-time fetch. |
+| Raw | Link to `worker://<task>/attachments/<eight-character-id>/<name>`, with ordinary typed bytes; unnamed/colliding names use {§resource-publication-names}. |
+
+The complete admitted SDK Message envelope preserves Part order, media types,
+filenames, metadata, and assigned Task/Context identity. Accepted interaction
+answers enter that same evidence path before the operation resumes; invalid
+answers do not. Task history comes from admitted incoming Messages, including
+those awaiting log publication. Derived status Messages describe the current
+pending interaction or terminal Problem; they are not additional inbox arrivals.
+Task retrieval reconstructs these facts after adapter/daemon restart.
+
+Explicit resource selections in a hosted worker's targetless SEND become
+standard raw-Part Artifacts, one per selected resource in order. Artifact IDs
+are stable within the Task. The ordinary final textual result retains its
+`result` Artifact. A directed A2A SEND instead transmits its selected resources
+as raw Parts of that user Message. Resource creation and READ never export;
+the selected send-time snapshot survives both source mutation and log curation.
 
 Every retained Agent Card, Message, Task, and Artifact has a model-oriented
 Markdown `#body` and an exact protocol `#json` channel serialized by the pinned

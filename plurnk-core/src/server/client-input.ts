@@ -12,6 +12,7 @@ import {
     type CapabilityPolicy,
     type LoopPolicy,
     type ClientInteractionResolution,
+    type MessageResource,
 } from "@plurnk/plurnk-contracts";
 
 
@@ -161,8 +162,8 @@ export default class ClientInput {
         return value as number;
     }
 
-    static assertPrompt(context: string, prompt: unknown): string {
-        if (typeof prompt !== "string" || prompt.length === 0) {
+    static assertPrompt(context: string, prompt: unknown, allowEmpty = false): string {
+        if (typeof prompt !== "string" || (!allowEmpty && prompt.length === 0)) {
             ClientInput.#invalid(
                 context,
                 "prompt-invalid",
@@ -171,6 +172,18 @@ export default class ClientInput {
             );
         }
         return prompt;
+    }
+
+    static assertMessageResources(context: string, resources: unknown): readonly MessageResource[] {
+        if (resources === undefined) return [];
+        if (!Array.isArray(resources) || resources.some((resource) =>
+            resource === null || typeof resource !== "object"
+            || typeof resource.name !== "string"
+            || typeof resource.mediaType !== "string" || resource.mediaType.length === 0
+            || !(resource.bytes instanceof Uint8Array))) {
+            ClientInput.#invalid(context, "message-resources-invalid", "Message attachments require a name, mediaType, and Uint8Array bytes.", { field: "attachments" });
+        }
+        return resources;
     }
 
     static assertOptionalSource(context: string, source: unknown): string | undefined {

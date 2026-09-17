@@ -16,7 +16,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperationTurn, schemeManifest } from "./_helpers.ts";
-import { urlPath, localPath, editStmt, readStmt, copyStmt, moveStmt, dispositionStmt, execStmt } from "./_dsl.ts";
+import { urlPath, localPath, editStmt, readStmt, copyStmt, moveStmt, dispositionStmt, execStmt, sendStmt } from "./_dsl.ts";
 
 const makeMimetypes = (): Mimetypes => new Mimetypes({
     discovery: { registry: emptyRegistry(), handlers: new Map(), skipped: [] },
@@ -120,6 +120,22 @@ const setPolicies = async (
     await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ capabilities: policy.capabilities }) });
     await db.test_set_loop_policy.run({ loop_id: loopId, policy: JSON.stringify({ proposals: policy.proposals }) });
 };
+
+test("{§send-resource-attachments}: attachment acquisition obeys ordinary READ policy before source preparation", async (t) => {
+    const { db, workspaceId, workerId, loopId, turnId, engine, schemes } = await setup();
+    t.after(() => db.close());
+    const source = new TraitSource("attachment-source", ["web"]);
+    schemes.register("attachment-source", source);
+    await setPolicies(db, workspaceId, loopId, policies({ deny: [{ access: "observe", traits: ["web"] }] }));
+    const result = await engine.dispatch({
+        workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
+        statement: { ...sendStmt(null, "Here is the resource."), metadata: ['{"attachments":["attachment-source:///report"]}'] },
+    });
+    assert.equal(result.status, 403);
+    assert.match(result.problem!.type, /capability-denied$/u);
+    assert.equal(result.problem!.operation, "READ");
+    assert.equal(source.preparations, 0, "denied sources are not fetched or prepared");
+});
 
 test("invalid persisted loop policy fails at its durable owner before dispatch", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();

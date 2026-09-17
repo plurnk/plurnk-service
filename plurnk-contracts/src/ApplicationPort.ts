@@ -1,4 +1,5 @@
 import type { LoopLifecycle } from "./LoopLifecycle.ts";
+import type { ApplicationMessage, MessageResource } from "./MessageResource.ts";
 import type {
     CapabilityPolicy,
     CapabilityProjection,
@@ -114,7 +115,9 @@ export interface ApplicationPort {
     resolveClientInteraction(
         interactionId: number,
         resolution: ClientInteractionResolution,
+        message?: { readonly body: string; readonly source: string; readonly envelope: Readonly<Record<string, unknown>> },
     ): Promise<void>;
+    readMessages(args: { readonly workspaceId: number; readonly workerId: number; readonly loopId?: number }): Promise<ApplicationMessage[]>;
     ensureModelWorker(
         workspaceId: number,
     ): Promise<number>;
@@ -123,6 +126,8 @@ export interface ApplicationPort {
         readonly workerId: number;
         readonly prompt: string;
         readonly source?: string;
+        readonly attachments?: readonly MessageResource[];
+        readonly envelope?: Readonly<Record<string, unknown>>;
         readonly maxTurns?: number;
         readonly policy?: Partial<LoopPolicy>;
         readonly openPaths?: string[];

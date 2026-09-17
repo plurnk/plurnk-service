@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import {
     Role,
     TaskState,
     type Artifact,
-    type Message,
+    Message,
     type Task,
 } from "@a2a-js/sdk";
 import {
@@ -16,7 +17,6 @@ import {
     type ApplicationPort,
     type ApplicationWorkerProjection,
     type ClientInteractionProjection,
-    type LogEntryWire,
     type OperationResult,
 } from "@plurnk/plurnk-contracts";
 import type WorkspaceBinding from "./WorkspaceBinding.ts";
@@ -28,34 +28,8 @@ export interface PlurnkTaskBinding {
     readonly loop: ApplicationLoopProjection | null;
 }
 
-interface LogRow extends LogEntryWire {
-    readonly id?: unknown;
-    readonly loop_id?: unknown;
-    readonly op?: unknown;
-    readonly rx?: unknown;
-    readonly mimetype_rx?: unknown;
-    readonly tx?: unknown;
-    readonly origin?: unknown;
-    readonly attrs?: unknown;
-    readonly source?: unknown;
-}
-
 const nonempty = (value: unknown): value is string =>
     typeof value === "string" && value.length > 0;
-
-// {§message-arrival}: an arrival is an inbound SEND row whose sent side is the sender's statement,
-// marked `attrs.kind = "message"`.
-const attrKind = (attrs: unknown): unknown => {
-    const parsed = typeof attrs === "string" ? JSON.parse(attrs) as unknown : attrs;
-    return parsed !== null && typeof parsed === "object" ? (parsed as { kind?: unknown }).kind : undefined;
-};
-const arrivalContent = (row: LogRow): string => {
-    const tx = typeof row.tx === "string" ? JSON.parse(row.tx) as unknown : row.tx;
-    const body = typeof tx === "object" && tx !== null ? (tx as { body?: unknown }).body : undefined;
-    if (typeof body === "string") return body;
-    if (typeof body === "object" && body !== null && typeof (body as { raw?: unknown }).raw === "string") return (body as { raw: string }).raw;
-    throw new Error(`A2A arrival log ${String(row.id)} has no statement body.`);
-};
 
 type TaskCursor = readonly [timestamp: number, id: string];
 
@@ -106,19 +80,6 @@ const message = (
     extensions: [],
     referenceTaskIds: [],
 });
-
-const messageIdFromSource = (source: unknown, fallback: string): string => {
-    if (!nonempty(source)) return fallback;
-    try {
-        const segments = new URL(source).pathname.split("/").filter(Boolean);
-        const marker = segments.lastIndexOf("messages");
-        return marker >= 0 && nonempty(segments[marker + 1])
-            ? decodeURIComponent(segments[marker + 1]!)
-            : fallback;
-    } catch {
-        return fallback;
-    }
-};
 
 const terminalArtifact = (result: OperationResult | null): Artifact[] => {
     if (result === null || result.status < 200 || result.status >= 400) return [];
@@ -303,12 +264,10 @@ export default class PlurnkTaskStore implements TaskStore {
             };
         }
         const [rows, interactions] = await Promise.all([
-            this.#port.readLog({
+            this.#port.readMessages({
                 workspaceId,
                 workerId: task.id,
-                loopId: loop.id,
-                limit: 1000,
-            }) as Promise<LogRow[]>,
+            }),
             this.#port.pendingClientInteractions(workspaceId),
         ]);
         const pending = interactions.find((candidate) =>
@@ -321,19 +280,22 @@ export default class PlurnkTaskStore implements TaskStore {
             pending,
         );
         const history = rows
-            .filter((row) => row.loop_id === loop.id && row.op === "SEND" && row.origin === "_plurnk"
-                && attrKind(row.attrs) === "message"
+            .filter((row) => row.direction === "inbound"
                 && typeof row.source === "string"
                 && PlurnkTaskStore.#ownsSource(row.source, context.name, task.name))
-            .toSorted((left, right) => Number(left.id) - Number(right.id))
-            .map((row) => message(
-                messageIdFromSource(row.source, `plurnk-log-${String(row.id)}`),
-                context.name,
-                task.name,
-                Role.ROLE_USER,
-                arrivalContent(row),
-                "text/markdown",
-            ));
+            .map((row) => {
+                if (row.envelope === undefined) throw new Error(`A2A message ${row.id} lost its protocol envelope.`);
+                return Message.fromJSON(row.envelope);
+            });
+        const artifacts: Artifact[] = rows.filter((row) => row.direction === "outbound")
+            .flatMap((row) => row.attachments.map((attachment, index) => ({
+                artifactId: createHash("sha256").update(`${task.name}/${row.id}/${index}`).digest("hex").slice(0, 8),
+                name: attachment.name,
+                description: "",
+                parts: [{ content: { $case: "raw" as const, value: Buffer.from(attachment.bytes) },
+                    filename: attachment.name, mediaType: attachment.mediaType, metadata: {} }],
+                metadata: {}, extensions: [],
+            })));
         return {
             id: task.name,
             contextId: context.name,
@@ -342,7 +304,7 @@ export default class PlurnkTaskStore implements TaskStore {
                 message: statusMessage,
                 timestamp: loop.terminatedAt ?? undefined,
             },
-            artifacts: terminalArtifact(loop.terminalResult),
+            artifacts: [...terminalArtifact(loop.terminalResult), ...artifacts],
             history,
             metadata: {},
         };

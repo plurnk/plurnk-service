@@ -254,6 +254,7 @@ export class SqlRiteSync {
 	engine_loop_sequence: SqlRiteSyncPreparedStatements;
 	engine_get_loop_policy: SqlRiteSyncPreparedStatements;
 	maintenance_optimize: SqlRiteSyncPreparedStatements;
+	message_history: SqlRiteSyncPreparedStatements;
 	engine_open_model_call: SqlRiteSyncPreparedStatements;
 	engine_observe_model_call_response: SqlRiteSyncPreparedStatements;
 	engine_fail_model_call: SqlRiteSyncPreparedStatements;
@@ -804,6 +805,7 @@ export default class SqlRite {
 	engine_loop_sequence: SqlRitePreparedStatements;
 	engine_get_loop_policy: SqlRitePreparedStatements;
 	maintenance_optimize: SqlRitePreparedStatements;
+	message_history: SqlRitePreparedStatements;
 	engine_open_model_call: SqlRitePreparedStatements;
 	engine_observe_model_call_response: SqlRitePreparedStatements;
 	engine_fail_model_call: SqlRitePreparedStatements;

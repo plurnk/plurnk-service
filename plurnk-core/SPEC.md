@@ -1498,6 +1498,30 @@ turn ({§send}). Cancelling a stream and deleting an entry are KILL ({§stream},
 
 Null-path SEND is broadcast ({§send}), engine-handled.
 
+#### §send-resource-attachments Explicit message attachments
+
+Targetless replies, worker messages, and A2A messages accept
+`[{"attachments":["report.pdf","worker://alice/result.json"]}]` on SEND.
+The body remains the authored message, not an attachment envelope.
+
+| Boundary | Contract |
+|---|---|
+| Selection | An ordered array of exact resource/channel addresses; no implicit export, glob expansion, or Markdown-link interpretation. |
+| Acquisition | The same source selection and representation preparation as COPY, under ordinary READ capability admission; acquire every source before delivering the message. A failed source produces its normal failure and delivers nothing. |
+| Snapshot | Preserve the selected bytes, media type, name, and source address at SEND time. Later source mutation, deletion, or log curation cannot alter the delivered content. |
+| Receipt | Safe attachment descriptors identify immutable content; binary payloads do not enter ordinary log text. |
+| Ownership | Message recipients opt into this option. HTTP headers and executor stdin retain their own metadata contracts. |
+| Arrival | Publish attachments as ordinary typed resources and link them from the inbound SEND. Arrival alone does not inject native media; READ does. |
+
+#### §message-envelope-evidence Durable message evidence
+
+The ordinary inbox retains an optional transport envelope alongside the
+model-facing body and attachments. Exterior adapters own its protocol shape;
+Core preserves it without interpreting protocol fields. History reads this
+durable evidence, not a curated text projection. Accepted interaction answers
+retain their envelope before waking the waiting operation; rejected answers
+create no message evidence.
+
 ### §scheme-surface Consumption surface
 
 Every public handler receives `SchemeCtx` under {§capability-ctx} and

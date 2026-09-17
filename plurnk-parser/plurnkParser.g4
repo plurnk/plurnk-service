@@ -81,7 +81,7 @@ moveStatement : OPEN_MOVE transferModifiers opAside? emptyStatementEnd ;
 dispositionStatement
     : OPEN_TASK lineMarker? metadata? opAside? statementEnd
     ;
-sendStatement : OPEN_SEND resourceSelection? opAside? statementEnd ;
+sendStatement : OPEN_SEND (resourceSelection | metadata+)? opAside? statementEnd ;
 execStatement : OPEN_EXEC execModifiers? opAside? statementEnd ;
 bareStatement : OPEN_BARE targetWithMetadata? opAside? statementEnd ;
 workStatement : OPEN_WORK targetWithMetadata? opAside? statementEnd ;

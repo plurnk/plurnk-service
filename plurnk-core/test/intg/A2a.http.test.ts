@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { createServer } from "node:http";
+import { once } from "node:events";
 import test, { type TestContext } from "node:test";
 import { Module as A2aModule } from "@plurnk/plurnk-a2a";
-import { Mock } from "@plurnk/plurnk-providers";
+import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
 import { a2aCard } from "./_a2a.ts";
 import { openMigrated } from "./_helpers.ts";
@@ -15,7 +17,7 @@ const completed = (content: string) => makeMockResponse([
 
 const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof makeMockResponse>[]) => {
     const db = await openMigrated();
-    const daemon = new Daemon({
+    let daemon = new Daemon({
         db,
         provider: responses instanceof Mock ? responses : new Mock({
             contextWindow: 100_000,
@@ -31,7 +33,7 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof makeM
         projectRoot: null,
     });
     let endpoint = "";
-    daemon.registerModule({
+    const expose = () => daemon.registerModule({
         start: async (port) => {
             const adapter = await A2aModule.init({
                 workspace: { name: workspace.workspaceName, projectRoot: null },
@@ -41,6 +43,7 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof makeM
             return adapter;
         },
     });
+    expose();
     await daemon.start();
 
     // Deliberately use literal HTTP+JSON, not the adapter's client/request builders.
@@ -67,7 +70,13 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof makeM
         assert.ok(result.task?.id);
         return result.task;
     };
-    return { request, send, daemon, workspace, endpoint };
+    const restart = async () => {
+        await daemon.stop();
+        daemon = new Daemon({ db, provider: new Mock({ contextWindow: 100_000, responses: [] }) });
+        expose();
+        await daemon.start();
+    };
+    return { request, send, daemon, workspace, endpoint, restart };
 };
 
 test("{§a2a-task-listing}: HTTP clients page by status-update order, not Worker creation order", async (t) => {
@@ -137,11 +146,114 @@ test("{§a2a-inbound-exposure}: HTTP history retains the admitted prompt identit
         contextId: task.contextId,
         taskId: task.id,
         role: "ROLE_USER",
-        parts: [{ text: "A prompt with \"quotes\" and a\nsecond line.", mediaType: "text/markdown", metadata: {} }],
-        metadata: {},
+        parts: [{ text: "A prompt with \"quotes\" and a\nsecond line.", mediaType: "text/plain" }],
     }]);
     const without = await request(`/tasks/${task.id}?historyLength=0`);
     assert.equal(without.history?.length ?? 0, 0);
+});
+
+test("{§message-envelope-evidence}: hosted A2A retains mixed Parts and metadata without injecting media before READ", async (t) => {
+    let fetches = 0;
+    const resource = createServer((_request, response) => { fetches++; response.end("not requested"); });
+    resource.listen(0, "127.0.0.1");
+    await once(resource, "listening");
+    t.after(() => new Promise<void>((resolve, reject) => resource.close((error) => error ? reject(error) : resolve())));
+    const address = resource.address();
+    assert.ok(address && typeof address === "object");
+    const provider = new Mock({ contextWindow: 100_000, inputModalities: ["image"], responses: [completed("received")] });
+    const { request } = await fixture(t, provider);
+    const parts = [
+        { text: "Inspect this image.", mediaType: "text/plain", metadata: { position: 1 } },
+        { raw: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", mediaType: "image/png", filename: "screen.png", metadata: { position: 2 } },
+        { data: { subject: "screenshot" }, metadata: { position: 3 } },
+        { url: `http://127.0.0.1:${address.port}/external.bin`, mediaType: "application/octet-stream", filename: "external.bin" },
+    ];
+    const result = await request("/message:send", {
+        message: { messageId: "mixed-message", role: "ROLE_USER", parts, metadata: { caller: "independent" } },
+    });
+    assert.equal(result.task.status.state, "TASK_STATE_COMPLETED");
+    const stored = await request(`/tasks/${result.task.id}`);
+    assert.deepEqual(stored.history[0].parts, parts);
+    assert.deepEqual(stored.history[0].metadata, { caller: "independent" });
+    assert.equal(fetches, 0, "arrival of a URL Part does not fetch it");
+    assert.ok(provider.received.length > 0);
+    assert.equal(provider.received.flatMap((messages) => messages.flatMap((message) =>
+        Array.isArray(message.content) ? message.content.filter((part) => part.type === "file") : [])).length, 0);
+});
+
+test("{§send-resource-attachments}: attachment-only Messages and replies round-trip unnamed and opaque binary content", async (t) => {
+    class Echo extends Mock {
+        override async generate(...args: Parameters<Mock["generate"]>) {
+            const response = await super.generate(...args);
+            const packet = args[0].messages.map(chatMessageText).join("\n");
+            const targets = [...packet.matchAll(/<(worker:\/\/[^>]+\/attachments\/[^>]+)>/gu)].map((match) => match[1]);
+            assert.equal(targets.length, 2, "both binary Parts have independently readable addresses");
+            assert.match(targets[1]!, /\/[a-f0-9]{8}$/u, "an unnamed Part receives an eight-character name");
+            return { ...response, assistant: { ...response.assistant, content: [
+                `\`\`\`SEND [${JSON.stringify({ attachments: targets })}]`, "```",
+                "```TASK", '[{"content":"Returned the bytes.","status":"completed"}]', "```",
+            ].join("\n") } };
+        }
+    }
+    const provider = new Echo({ contextWindow: 100_000, responses: [{ assistant: { content: "", reasoning: null } }] });
+    const { request } = await fixture(t, provider);
+    const parts = [
+        { raw: Buffer.from([0, 255, 13, 10, 128]).toString("base64"), mediaType: "application/x-example", filename: "opaque.bin" },
+        { raw: "", mediaType: "application/octet-stream" },
+    ];
+    const result = await request("/message:send", {
+        message: { messageId: "files-only", role: "ROLE_USER", parts },
+    });
+    assert.equal(result.task.status.state, "TASK_STATE_COMPLETED");
+    assert.equal(result.task.artifacts.length, 2);
+    assert.equal(result.task.artifacts[0].parts[0].raw, parts[0]!.raw);
+    assert.equal(result.task.artifacts[0].parts[0].mediaType, "application/x-example");
+    assert.equal(result.task.artifacts[1].parts[0].raw, "");
+    assert.deepEqual(result.task.history[0].parts, parts);
+});
+
+test("{§send-resource-attachments}: image READ and explicit report SEND preserve send-time bytes after mutation and curation", async (t) => {
+    const continuing = "```TASK\n[{\"content\":\"Prepare the report.\",\"status\":\"in_progress\"}]\n```";
+    class Reader extends Mock {
+        override async generate(...args: Parameters<Mock["generate"]>) {
+            const response = await super.generate(...args);
+            const packet = args[0].messages.map(chatMessageText).join("\n");
+            if (!response.assistant.content.includes("$IMAGE")) return response;
+            const path = /<(worker:\/\/[^>]+\/attachments\/[^>]+\/screen.png)>/u.exec(packet)?.[1];
+            assert.ok(path, "the inbound SEND links to the ordinary resource");
+            return { ...response, assistant: { ...response.assistant, content: response.assistant.content.replace("$IMAGE", path) } };
+        }
+    }
+    const provider = new Reader({ contextWindow: 100_000, inputModalities: ["image"], responses: [
+        { assistant: { content: `\`\`\`READ ($IMAGE) <1,3>\n\`\`\`\n${continuing}`, reasoning: null } },
+        { assistant: { content: `\`\`\`EDIT (worker:///report.md)\nOriginal report.\n\`\`\`\n${continuing}`, reasoning: null } },
+        { assistant: { content: `\`\`\`SEND [{"attachments":["worker:///report.md"]}]\nHere is the report.\n\`\`\`\n\`\`\`EDIT (worker:///report.md) <1,-1>\nChanged after sending.\n\`\`\`\n\`\`\`KILL (log:///*/*/*/SEND) <1,-1>\n\`\`\`\n${continuing}`, reasoning: null } },
+        completed("Report delivered."),
+    ] });
+    const { request, restart } = await fixture(t, provider);
+    const raw = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+    const result = await request("/message:send", { message: {
+        messageId: "image-request", role: "ROLE_USER", parts: [
+            { text: "Inspect the screenshot and return your report." },
+            { raw, mediaType: "image/png", filename: "screen.png" },
+        ],
+    } });
+    assert.equal(result.task.status.state, "TASK_STATE_COMPLETED");
+    const native = provider.received.map((messages) => messages.flatMap((message) =>
+        Array.isArray(message.content) ? message.content.filter((part) => part.type === "file") : []));
+    assert.equal(native[0]!.length, 0, "arrival does not attach the image");
+    assert.equal(native[1]!.length, 1, provider.received[1]!.map(chatMessageText).join("\n"));
+    assert.deepEqual(Buffer.from(native[1]![0]!.data), Buffer.from(raw, "base64"), "READ sends exact image bytes to the provider");
+    const stored = await request(`/tasks/${result.task.id}`);
+    const report = stored.artifacts.find((artifact: { name: string }) => artifact.name === "report.md");
+    assert.ok(report, provider.received.at(-1)!.map(chatMessageText).join("\n"));
+    assert.equal(Buffer.from(report.parts[0].raw, "base64").toString(), "Original report.");
+    assert.equal(report.parts[0].mediaType, "text/markdown");
+    assert.equal(stored.history[0].parts[1].raw, raw, "curation cannot erase the caller's image");
+    await restart();
+    const restored = await request(`/tasks/${result.task.id}`);
+    assert.deepEqual(restored.artifacts, stored.artifacts, "a fresh daemon reconstructs immutable Artifact content and identity");
+    assert.deepEqual(restored.history, stored.history, "a fresh daemon reconstructs complete Message evidence");
 });
 
 test("{§a2a-inbound-exposure}: foreign Task identities return protocol not-found, not a Worker validation error", async (t) => {
@@ -154,13 +266,13 @@ test("{§a2a-inbound-exposure}: foreign Task identities return protocol not-foun
     }
 });
 
-test("{§a2a-inbound-exposure}: unsupported content fails before Worker admission in blocking and streaming requests", async (t) => {
+test("{§a2a-inbound-exposure}: a Part without content fails before Worker admission in blocking and streaming requests", async (t) => {
     const { request, daemon, workspace } = await fixture(t, []);
     for (const path of ["/message:send", "/message:stream"]) {
         const problem = await request(path, {
             message: {
                 messageId: randomUUID(), role: "ROLE_USER",
-                parts: [{ raw: "dGNr", mediaType: "application/x-unsupported" }],
+                parts: [{ mediaType: "application/octet-stream" }],
             },
         }, 400);
         assert.equal(problem.error.details[0].reason, "CONTENT_TYPE_NOT_SUPPORTED");
@@ -181,17 +293,24 @@ test("{§a2a-inbound-exposure}: a rejected answer leaves the Task awaiting a val
     const task = await send("Ask for the number.");
     assert.equal(task.status.state, "TASK_STATE_INPUT_REQUIRED");
     const problem = await request("/message:send", {
-        message: { messageId: randomUUID(), role: "ROLE_USER", taskId: task.id, parts: [{ text: "not an integer" }] },
+        message: { messageId: "rejected-answer", role: "ROLE_USER", taskId: task.id, parts: [{ text: "not an integer" }] },
     }, 400);
     assert.equal(problem.error.details[0].reason, "INVALID_PARAMS");
     const waiting = await request(`/tasks/${task.id}`);
     assert.equal(waiting.status.state, "TASK_STATE_INPUT_REQUIRED");
     const resumed = await request("/message:send", {
-        message: { messageId: randomUUID(), role: "ROLE_USER", taskId: task.id, parts: [{ data: 42 }] },
+        message: { messageId: "accepted-answer", role: "ROLE_USER", taskId: task.id, parts: [{ data: 42, metadata: { choice: "number" } }], metadata: { caller: "test" } },
     });
     assert.equal(resumed.task.id, task.id);
     assert.equal(resumed.task.status.state, "TASK_STATE_COMPLETED");
     assert.equal(resumed.task.artifacts[0].parts[0].text, "received 42");
+    const history = (await request(`/tasks/${task.id}`)).history;
+    assert.equal(history.length, 2);
+    assert.equal(history[1].messageId, "accepted-answer");
+    assert.deepEqual(history[1].parts, [{ data: 42, metadata: { choice: "number" } }]);
+    assert.deepEqual(history[1].metadata, { caller: "test" });
+    const last = await request(`/tasks/${task.id}?historyLength=1`);
+    assert.deepEqual(last.history, [history[1]], "historyLength selects the actual last admitted message");
 });
 
 test("{§a2a-inbound-exposure}: a disconnected HTTP subscriber can rejoin the same live Task without repeating inference", async (t) => {

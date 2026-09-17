@@ -86,6 +86,7 @@ const mockSeam = () => {
         executorTags: () => ["sh"],
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         readLog: async () => [{ id: 1, op: "SEND", status_rx: 200, origin: "model" }],
+        readMessages: async () => [],
         listProviders: () => ({ aliases: [{ alias: "opus", provider: "anthropic", model: "claude", active: true, inputCapacity: 200000 }] }),
         listModels: (query) => {
             modelQueries.push(query);

@@ -434,7 +434,7 @@ routing, timing, or body input. Comments inside a body remain literal except
 for the narrowly owned {§misplaced-aside-advisory}.
 
 §scheme-metadata-modifier A target may carry one single-line `[metadata]`
-block after its scope; an executor fence also admits it without a target.
+block after its scope; executor and SEND fences also admit it without a target.
 Read with its brackets, the block is a JSON array of option objects, merged
 left to right with later keys winning; the keys belong to the selected scheme
 or executor, which owns interpretation, validation and authority. The language
@@ -1306,6 +1306,13 @@ interaction, and event owners through this port.
 `runLoop.source` is trusted causal provenance supplied by an adapter, distinct
 from user-authored prompt content. An adapter may expose no public means to set
 it; Core validates and records it through the same prompt admission path.
+
+`runLoop.attachments` carries typed bytes selected by the adapter;
+`runLoop.envelope` retains opaque protocol evidence under
+{§message-envelope-evidence}. `readMessages` projects durable inbox messages
+and successful targetless SEND snapshots independently of log visibility.
+`resolveClientInteraction` may carry the accepted answer's message evidence;
+Core validates the resolution, retains the arrival, then resumes the operation.
 
 §application-worker-observation Worker observation exposes durable identity,
 origin, immediate parent identity, minted `kind` (`conversation`; `fork` for a

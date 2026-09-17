@@ -54,11 +54,13 @@ test("a malformed block never downgrades a conclusion", () => {
 });
 
 // {§legacy-bracket-slot}
-test("bracket metadata parses after the target; a leading bracket on a non-executor op is one bounded diagnostic", () => {
+test("bracket metadata belongs to a target, executor, or targetless SEND", () => {
     for (const [header, op, target, metadata] of [
         ["READ (a.ts) [+diff] <1,-1>", "READ", "a.ts", "+diff"],
         ["KILL (log://**) [memory]", "KILL", "log://**", "memory"],
         ['sh (greet.sh) [{"cwd": "sub"}]', "sh", "greet.sh", '{"cwd": "sub"}'],
+        ['SEND [{"attachments":["report.pdf"]}]', "SEND", null, '{"attachments":["report.pdf"]}'],
+        ["SEND [102]", "SEND", null, "102"],
     ] as const) {
         const r = PlurnkParser.parse(turn(frame(header, null)));
         assert.deepEqual(errors(r), [], header);
@@ -69,7 +71,7 @@ test("bracket metadata parses after the target; a leading bracket on a non-execu
         assert.equal(statement.target?.raw ?? null, target, header);
         assert.deepEqual(statement.metadata, [metadata], header);
     }
-    for (const header of ["READ [+diff] (a.ts) <1,-1>", "SEND [102]", "KILL [memory] (log://**)"]) {
+    for (const header of ["READ [+diff] (a.ts) <1,-1>", "KILL [memory] (log://**)"]) {
         const r = PlurnkParser.parse(turn(frame(header, "body")));
         assert.equal(errors(r).length, 1, header);
         assert.equal(errors(r)[0].line, 1, header);

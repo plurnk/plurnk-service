@@ -19,6 +19,12 @@ class TckProvider extends Mock {
         const source = JSON.stringify(args.messages);
         const scenario = [...source.matchAll(/\/messages\/(tck-[a-z0-9_-]+)/g)].at(-1)?.[1] ?? "default";
         process.stderr.write(`${JSON.stringify({ scenario, call: count + 1 })}\n`);
+        if (scenario.startsWith("tck-artifact-file") && !scenario.startsWith("tck-artifact-file-url")) {
+            const content = count === 0
+                ? ["```EDIT (worker:///output.txt)", "tck", "```", "```TASK", '[{"content":"Send the file.","status":"in_progress"}]', "```"].join("\n")
+                : ["```SEND [{\"attachments\":[\"worker:///output.txt\"]}]", "```", "```TASK", '[{"content":"File sent.","status":"completed"}]', "```"].join("\n");
+            return new Mock({ contextWindow: 1_000_000, responses: [{ assistant: { content, reasoning: null } }] }).generate(args);
+        }
         const awaitingInput = scenario.startsWith("tck-input-required") && (count === 0
             || (source.includes("TCK history message") && !source.includes("TCK complete after history")));
         const content = awaitingInput

@@ -7,7 +7,7 @@ import Results from "./results.ts";
 import type { DispatchResult } from "./mutation-types.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 
-export type PatternOperation = "EDIT" | "KILL" | "COPY" | "MOVE";
+export type PatternOperation = "EDIT" | "KILL" | "COPY" | "MOVE" | "SEND";
 
 export type PatternBounds = { readonly from: number; readonly to: number } | null;
 

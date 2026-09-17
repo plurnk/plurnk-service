@@ -406,6 +406,7 @@ export default class AstBuilder {
             op: "SEND",
             aside: AstBuilder.#asideOf(ctx),
             ...slots,
+            metadata: AstBuilder.#metadataFromCtx(ctx),
             body: raw !== null ? AstBuilder.#parseSendBody(raw) : null,
             position,
         };

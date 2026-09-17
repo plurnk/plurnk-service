@@ -57,6 +57,7 @@ interface StatementTx {
     body?: string | null;
 }
 interface RxView {
+    attachments?: unknown;
     content?: unknown;
     resource?: unknown;
     matched?: unknown;
@@ -838,6 +839,9 @@ export default class PacketWire {
     // projection needs to know about the result.
     static #rowResultFacts(identity: RowIdentity, e: LogEntryView, rx: RxView | null): RowResultFacts {
         const { meta, op, tx, terminalStream } = identity;
+        if (op === "SEND" && rx !== null && typeof rx === "object" && Array.isArray(rx.attachments) && rx.attachments.length > 0) {
+            meta.attachments = rx.attachments.map(({ name, mediaType, target }) => ({ name, mediaType, target }));
+        }
         // {§operation-resource-receipt}: preserve the returned address, not a second authored target.
         if (rx !== null && typeof rx === "object" && typeof rx.resource === "string"
             && rx.resource.length > 0 && rx.resource !== meta.target && rx.resource !== meta.stream) {

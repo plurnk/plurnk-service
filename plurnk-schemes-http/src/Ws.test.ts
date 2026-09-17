@@ -182,6 +182,7 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
     const ctx: SchemeCtx = {
         workspaceId: overrides.workspaceId ?? 1, workerId: overrides.workerId ?? 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
         entries, channels, notify, projection,
+        resources: { capture: async () => { throw new Error("WebSocket metadata must not acquire message attachments."); } },
         interactions: { request: async () => ({ status: "cancelled" }) },
         subscriptions,
     };

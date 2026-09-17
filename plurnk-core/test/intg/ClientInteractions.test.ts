@@ -4,6 +4,7 @@ import type {
     ClientInteractionPendingEvent,
 } from "../../src/core/ClientInteractions.ts";
 import ClientInteractions from "../../src/core/ClientInteractions.ts";
+import MessageResources from "../../src/core/MessageResources.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { openMigrated, seedEnvelope } from "./_helpers.ts";
 
@@ -18,6 +19,34 @@ const request = {
         additionalProperties: false,
     },
 } as const;
+
+test("{§message-envelope-evidence}: competing interaction answers admit exactly one envelope before wake", async (t) => {
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const ids = await seedEnvelope(db, "interaction-message-race");
+    const interactions = new ClientInteractions(db);
+    const observed = Promise.withResolvers<ClientInteractionPendingEvent>();
+    interactions.onPending(observed.resolve);
+    const awaiting = interactions.request(request, ids).then(async (resolution) => {
+        const messages = await MessageResources.read(db, ids);
+        assert.equal(messages.length, 1, "the accepted answer is durable when the waiter wakes");
+        assert.deepEqual(messages[0]!.envelope, { messageId: "first", metadata: { exact: true } });
+        return resolution;
+    });
+    const { interactionId } = await observed.promise;
+    const resolution = { status: "resolved", payload: { repository: "plurnk-service" } } as const;
+    const outcomes = await Promise.allSettled(["first", "second"].map((messageId) => interactions.resolve(interactionId, resolution, {
+        body: messageId, source: "a2a://peer/messages/answer", envelope: { messageId, metadata: { exact: true } },
+    })));
+    assert.equal(outcomes[0]!.status, "fulfilled");
+    const rejected = outcomes[1]!;
+    assert.equal(rejected.status, "rejected");
+    if (rejected.status !== "rejected") assert.fail("the second answer cannot win");
+    assert.ok(rejected.reason instanceof OperationFailureError);
+    assert.equal(rejected.reason.result.status, 409);
+    assert.match(rejected.reason.result.problem.type, /interaction-not-pending$/u);
+    assert.deepEqual(await awaiting, resolution);
+});
 
 test("{§client-interactions}: a pending request is durable, projected, resolved once, then removed", async (t) => {
     const db = await openMigrated();

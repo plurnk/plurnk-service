@@ -301,7 +301,7 @@ export const insertLoop = async (db: Db, workerId: number, sequence: number, pro
     });
     if (row === undefined) throw new Error("insertLoop: insert returned no row");
     if (prompt.length > 0) {
-        const message = await db.drain_enqueue_message.get<{ id: number }>({ loop_id: row.id, source: null, body: prompt, open_paths: "[]" });
+        const message = await db.drain_enqueue_message.get<{ id: number }>({ loop_id: row.id, source: null, body: prompt, open_paths: "[]", evidence: "{}" });
         if (message === undefined) throw new Error("insertLoop: message enqueue returned no row");
     }
     return row.id;

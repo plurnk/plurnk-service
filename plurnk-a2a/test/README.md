@@ -42,13 +42,17 @@ requires success. Compare each assertion with the
 before changing the adapter. Do not patch
 the checker or count these assertions as passing.
 
-The deterministic provider supplies text completion, text Artifacts, and
-input-required interactions, including repeated history exchanges. It does not
-manufacture binary/data Artifacts or direct Message responses outside Core to
-make those scenarios pass. Binary/data delivery remains a product gap; direct
-Message responses are an optional protocol branch, whereas inbound Plurnk work
-consistently creates Tasks. Neither is claimed as exercised. Follow investigation in #663,
-binary translation in #702, and complete Message history in #705. Nonblocking
+The deterministic provider supplies text completion, text/file Artifacts, and
+input-required interactions, including repeated history exchanges. File output
+uses ordinary scratch EDIT and SEND attachment acquisition through Core, not
+fabricated SDK Artifacts. Core's scratch text is `text/markdown`; the checker
+requests `text/plain`. That mismatch remains visible instead of relabeling
+the source's media type in the adapter. URL and structured-data Artifact emission are not provided by the
+current attachment contract; a JSON resource is delivered as typed file bytes.
+Direct Message responses are an optional protocol branch, whereas inbound
+Plurnk work consistently creates Tasks. These unexercised branches remain
+visible in the checker report. Follow investigation in #663, binary translation
+in #702, and complete Message history in #705. Nonblocking
 SDK event processing can outlive HTTP and executor completion; the reconnect
 witness does not establish shutdown safety (#704). Current behavior belongs to
 {§a2a-inbound-exposure} and {§a2a-resource-projection}.

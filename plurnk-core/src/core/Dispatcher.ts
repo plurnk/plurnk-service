@@ -24,10 +24,11 @@ import Results from "./results.ts";
 import { OperationFailureError } from "./results.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
 import { CoreSchemeAdapterBase, type ExecSource } from "./CoreSchemeServices.ts";
-import { InvalidOperationResultError, type SchemeCtx, type SchemeHandler, type SchemeResult } from "@plurnk/plurnk-schemes";
+import { InvalidOperationResultError, MessageAttachments, type SchemeCtx, type SchemeHandler, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { LogCurationOutcome, LogCurationPlan } from "../schemes/Log.ts";
 import type { MatchItem } from "../schemes/_entry-find.ts";
 import ResourceMutations from "./ResourceMutations.ts";
+import ResourceSelector from "./ResourceSelector.ts";
 import { primaryTargetOf } from "./statement-primary.ts";
 import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
@@ -141,6 +142,7 @@ export default class Dispatcher {
     #liveSubscriptions: LiveSubscriptions;
     #lifecycle: LoopLifecycle;
     #resourceMutations: ResourceMutations;
+    #resourceSelector: ResourceSelector;
     #entryAddresses: EntryAddressBinding;
     #capabilities: CapabilityResolver;
     readonly #workerControl: WorkerControlHandler;
@@ -188,6 +190,15 @@ export default class Dispatcher {
         this.#entryAddresses = entryAddresses;
         this.#capabilities = new CapabilityResolver(db, schemes, executors);
         this.#lifecycle = lifecycle;
+        this.#resourceSelector = new ResourceSelector({
+            schemes,
+            admitRead: (statement, ctx) => this.#checkCapabilities(statement, ctx),
+            canonicalFilePath: (pathname, workspaceId) => this.#canonicalFilePath(pathname, workspaceId),
+            prepareDataRepresentation: (args) => this.#prepareDataRepresentation({
+                ...args,
+                handler: args.handler as SchemeWithEntryAddress & SchemeHandler,
+            }),
+        });
         this.#resourceMutations = new ResourceMutations({
             schemes,
             liveSubscriptions,
@@ -195,11 +206,7 @@ export default class Dispatcher {
             checkWritable: (statement, origin, workspaceId) => this.#checkWritable(statement, origin, workspaceId),
             checkCapabilities: (statement, ctx) => this.#checkCapabilities(statement, ctx),
             editTargetIdentity: (statement, workspaceId, workerId) => this.#editTargetIdentity(statement, workspaceId, workerId),
-            canonicalFilePath: (pathname, workspaceId) => this.#canonicalFilePath(pathname, workspaceId),
-            prepareDataRepresentation: (args) => this.#prepareDataRepresentation({
-                ...args,
-                handler: args.handler as SchemeWithEntryAddress & SchemeHandler,
-            }),
+            selection: this.#resourceSelector,
             resolveDataEntryAddress: (args) => this.#entryAddresses.resolve(args),
             readEntry: (scheme, address, ctx) => this.#readEntry(scheme, address, ctx),
             writeEntry: (scheme, address, entry, ctx) => this.#writeEntry(scheme, address, entry, ctx),
@@ -925,6 +932,8 @@ export default class Dispatcher {
             db: this.#db,
             workspaceId, workerId, loopId, turnId,
             writer: origin,
+            resources: { capture: (targets) => ResourceBindings.using(this.#schemes, context,
+                (bound) => this.#resourceSelector.capture(targets, bound)) },
             signal: this.#loopSignal(loopId),
             streamEventNotify: this.#streamEventNotify,
             wakeWorkerNotify: this.#wakeWorkerNotify,
@@ -1223,7 +1232,10 @@ export default class Dispatcher {
                 );
             }
         }
-        return { status: 200, recipients: await this.#openMessages(loopId) };
+        const captured = await MessageAttachments.capture(statement.metadata, schemeCtx.resources!, "message:reply");
+        if ("failure" in captured) return captured.failure;
+        return { status: 200, recipients: await this.#openMessages(loopId),
+            ...(captured.attachments.length === 0 ? {} : { attachments: MessageAttachments.receipts(captured.attachments) }) };
     }
 
     // The first non-blank line, when it parses alone as one clean heading naming an operation

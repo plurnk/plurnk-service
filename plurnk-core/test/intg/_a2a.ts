@@ -27,8 +27,8 @@ export const a2aCard = (): AgentCard => ({
     },
     securitySchemes: {},
     securityRequirements: [],
-    defaultInputModes: ["text/plain"],
-    defaultOutputModes: ["text/markdown"],
+    defaultInputModes: ["*/*"],
+    defaultOutputModes: ["*/*"],
     skills: [{
         id: "general",
         name: "General agent",

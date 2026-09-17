@@ -21,7 +21,7 @@ export default class DurableStatement {
                 destination: DurableStatement.#projectSelection(statement.destination),
             };
         }
-        const target = DurableStatement.#projectPath(statement.target);
+        const target = DurableStatement.projectPath(statement.target);
         const metadata = statement.metadata === null
             ? null
             : statement.metadata.map(() => DurableStatement.#REDACTED);
@@ -31,17 +31,17 @@ export default class DurableStatement {
     static #projectSelection(selection: ResourceSelection): ResourceSelection {
         return {
             ...selection,
-            target: DurableStatement.#projectPath(selection.target),
+            target: DurableStatement.projectPath(selection.target),
             metadata: selection.metadata === null
                 ? null
                 : selection.metadata.map(() => DurableStatement.#REDACTED),
         };
     }
 
-    static #projectPath(path: ParsedPath): ParsedPath;
-    static #projectPath(path: null): null;
-    static #projectPath(path: ParsedPath | null): ParsedPath | null;
-    static #projectPath(path: ParsedPath | null): ParsedPath | null {
+    static projectPath(path: ParsedPath): ParsedPath;
+    static projectPath(path: null): null;
+    static projectPath(path: ParsedPath | null): ParsedPath | null;
+    static projectPath(path: ParsedPath | null): ParsedPath | null {
         if (path === null || path.kind === "local") return path;
         if (path.username === null && path.password === null) {
             return path;

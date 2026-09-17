@@ -73,6 +73,7 @@ export type InjectWorkerNotify = (args: {
     // {§worker-causal-admission}: one identity supplies both liveness and attribution.
     sourceLoopId: number;
     prompt: string;
+    attachments?: readonly import("@plurnk/plurnk-contracts").MessageResource[];
     // WORK/FORK inherit the source loop's spawn model; SEND retains the recipient's.
     spawn?: true;
     // {§env-option} — the child's starting environment from the heading: each name becomes the

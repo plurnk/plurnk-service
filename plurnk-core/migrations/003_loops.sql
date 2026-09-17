@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS loop_messages (
     -- {§message-causal-source}: NULL means the owning worker itself.
     source       TEXT CHECK (source IS NULL OR length(source) > 0),
     body         TEXT NOT NULL CHECK (length(body) > 0),
+    evidence     TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(evidence) AND json_type(evidence) = 'object'),
     -- {§methods-loop-run-open-paths}: the message's selected paths (string[] JSON), read at publication.
     open_paths   TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(open_paths)),
     -- The inbound SEND row this message became (log_entries, chapter 006); NULL until published.

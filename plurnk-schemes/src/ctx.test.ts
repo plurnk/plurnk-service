@@ -194,6 +194,7 @@ const makeCtx = () => {
     const ctx: SchemeCtx = {
         workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
         entries, channels, notify, projection,
+        resources: { capture: async () => { throw new Error("Resource capture is outside this fixture."); } },
         interactions: { request: async () => ({ status: "cancelled" }) },
         subscriptions,
     };

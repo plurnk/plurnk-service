@@ -13,6 +13,19 @@ const failureFrom = (run: () => unknown): OperationFailureError => {
     assert.fail("Expected operation failure.");
 };
 
+test("{§send-resource-attachments} message resources are validated before publication", () => {
+    const resource = { name: "", mediaType: "application/octet-stream", bytes: new Uint8Array() };
+    assert.deepEqual(ClientInput.assertMessageResources("runLoop", [resource]), [resource]);
+    assert.deepEqual(ClientInput.assertMessageResources("runLoop", undefined), []);
+    assert.equal(ClientInput.assertPrompt("runLoop", "", true), "");
+    assert.match(failureFrom(() => ClientInput.assertPrompt("runLoop", "")).result.problem!.type, /prompt-invalid$/u);
+    for (const invalid of [null, {}, [null], [{ ...resource, bytes: "base64" }], [{ ...resource, name: undefined }], [{ ...resource, mediaType: "" }]]) {
+        const failure = failureFrom(() => ClientInput.assertMessageResources("runLoop", invalid));
+        assert.equal(failure.result.status, 400);
+        assert.match(failure.result.problem!.type, /message-resources-invalid$/u);
+    }
+});
+
 test("{§operator-config-workspace-settings} client input accepts the complete settings shape", () => {
     assert.equal(ClientInput.assertProjectRoot("workspace.create", "/srv/project"), "/srv/project");
     assert.equal(ClientInput.assertProjectRoot("workspace.create", null), null);

@@ -42,6 +42,8 @@ import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import LoopPolicyReader from "../core/LoopPolicyReader.ts";
 import { contentWeight } from "../core/content-weight.ts";
+import MessageResources from "../core/MessageResources.ts";
+import type { ApplicationMessage, MessageResource, MessageEvidence } from "@plurnk/plurnk-contracts";
 import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import { parseAliasesFromEnv, resolveActiveRoute } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
@@ -206,7 +208,7 @@ export default class Daemon implements ApplicationPort {
             // daemon owns provider + the law-file system prompt; the worker scheme
             // handler carries neither. Fire-and-forget: the returned drain runs
             // independently (the sister is its own worker). {§machine-processes}
-            injectWorker: async ({ workspaceId, workerId, sourceLoopId, prompt, freshLoopPolicy, spawn, environment }) => {
+            injectWorker: async ({ workspaceId, workerId, sourceLoopId, prompt, freshLoopPolicy, spawn, environment, attachments }) => {
                 await this.#assertModelWorker(workspaceId, workerId);
                 const sender = await this.#db.drain_message_source.get<{ worker_id: number; workspace_id: number }>({ loop_id: sourceLoopId });
                 if (sender === undefined || sender.workspace_id !== workspaceId) {
@@ -250,10 +252,12 @@ export default class Daemon implements ApplicationPort {
                         await this.#functionality.invoke("env", "add", { alias, definition: { value } }, { workspaceId, workerId }, "operation");
                     }
                 }
+                const delivered = await this.#prepareMessage(workspaceId, workerId, prompt, attachments);
                 const { action, loopId } = await this.inject({
                     workspaceId,
                     workerId,
-                    prompt,
+                    prompt: delivered.body,
+                    evidence: delivered.evidence,
                     sourceLoopId,
                     ...(source === undefined ? {} : { source }),
                     providerSpec,
@@ -282,7 +286,7 @@ export default class Daemon implements ApplicationPort {
         this.#drains = new DrainSupervisor({
             db,
             lifecycle: this.#lifecycle,
-            injectPrompt: (loopId, prompt, openPaths, source) => this.#engine.injectIntoLoop(loopId, prompt, openPaths, source),
+            injectPrompt: (loopId, prompt, openPaths, source, evidence) => this.#engine.injectIntoLoop(loopId, prompt, openPaths, source, evidence),
             assertInjectionCompatibility: async ({
                 workerId,
                 loopId,
@@ -406,6 +410,7 @@ export default class Daemon implements ApplicationPort {
     async resolveClientInteraction(
         interactionId: number,
         resolution: ClientInteractionResolution,
+        message?: { readonly body: string; readonly source: string; readonly envelope: Readonly<Record<string, unknown>> },
     ): Promise<void> {
         const checkedInteractionId = ClientInput.assertId(
             "resolveClientInteraction",
@@ -416,18 +421,39 @@ export default class Daemon implements ApplicationPort {
             "resolveClientInteraction",
             resolution,
         );
-        await this.#engine.resolveClientInteraction(checkedInteractionId, checkedResolution);
+        if (message !== undefined) {
+            ClientInput.assertPrompt("resolveClientInteraction", message.body);
+            ClientInput.assertOptionalSource("resolveClientInteraction", message.source);
+        }
+        await this.#engine.resolveClientInteraction(checkedInteractionId, checkedResolution, message);
+    }
+
+    async #prepareMessage(workspaceId: number, workerId: number, body: string, attachments: readonly MessageResource[] = [], envelope?: Readonly<Record<string, unknown>>): Promise<{ body: string; evidence: MessageEvidence }> {
+        const published = await MessageResources.publish(body, attachments, {
+            db: this.#db, workspaceId, workerId, loopId: 0, turnId: 0, writer: "_plurnk", signal: undefined,
+            weigh: contentWeight, mimetypes: this.#mimetypes,
+        });
+        return { body: published.body, evidence: {
+            ...(envelope === undefined ? {} : { envelope: structuredClone(envelope) }),
+            ...(published.attachments.length === 0 ? {} : { attachments: published.attachments }),
+        } };
+    }
+
+    async readMessages(args: { workspaceId: number; workerId: number; loopId?: number }): Promise<ApplicationMessage[]> {
+        await this.#assertModelWorker(args.workspaceId, args.workerId);
+        return MessageResources.read(this.#db, args);
     }
 
     // {§methods-loop-run} — drive/steer a loop. The module supplies only workspace/worker/prompt;
     // the provider and the law-file system prompt are core's and stay inside. Returns immediately — the
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
-    async runLoop(args: { workspaceId: number; workerId: number; prompt: string; source?: string; maxTurns?: number; policy?: Partial<LoopPolicy>; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+    async runLoop(args: { workspaceId: number; workerId: number; prompt: string; source?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; policy?: Partial<LoopPolicy>; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         const workspaceId = ClientInput.assertId("runLoop", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("runLoop", "workerId", args.workerId);
         await this.#assertModelWorker(workspaceId, workerId);
-        const prompt = ClientInput.assertPrompt("runLoop", args.prompt);
+        const attachments = ClientInput.assertMessageResources("runLoop", args.attachments);
+        const body = ClientInput.assertPrompt("runLoop", args.prompt, attachments.length > 0);
         const source = ClientInput.assertOptionalSource("runLoop", args.source);
         const requestedMaxTurns = ClientInput.assertMaxTurns("runLoop", args.maxTurns);
         const openPaths = ClientInput.assertOpenPaths("runLoop", args.openPaths);
@@ -467,10 +493,12 @@ export default class Daemon implements ApplicationPort {
         const turnCeiling: TurnCeilingSelection = {
             effective: maxTurns,
             source: requestedMaxTurns === undefined ? "implicit" : "explicit" };
+        const delivered = await this.#prepareMessage(workspaceId, workerId, body, attachments, args.envelope);
         const { action, loopId, turnSeq } = await this.inject({
             workspaceId,
             workerId,
-            prompt,
+            prompt: delivered.body,
+            evidence: delivered.evidence,
             ...(source === undefined ? {} : { source }),
             ...(policy !== undefined ? { policy } : {}),
             ...(openPaths !== undefined ? { openPaths } : {}),

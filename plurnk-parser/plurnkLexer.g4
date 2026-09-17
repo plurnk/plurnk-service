@@ -125,7 +125,7 @@ private open(implicitName?: string): void {
     this.started = true;
     this.slotReady = true;
     // {§one-line-turn} - TASK takes its inventory as a heading-line block; a bracket there is a slot.
-    this.metadataReady = this.execFence || this.openOp === "TASK";
+    this.metadataReady = this.execFence || this.openOp === "TASK" || this.openOp === "SEND";
     this.inlineBody = false;
 }
 

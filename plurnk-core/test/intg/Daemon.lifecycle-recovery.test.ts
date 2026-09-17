@@ -33,7 +33,7 @@ const enqueueLoop = async (
     });
     if (row === undefined) throw new Error("recovery fixture failed to enqueue loop");
     // {§message-arrival} — as the daemon's enqueue does: the assignment is ordinal 1 of the inbox.
-    const seeded = await db.drain_enqueue_message.get<{ id: number }>({ loop_id: row.id, source: null, body: prompt, open_paths: "[]" });
+    const seeded = await db.drain_enqueue_message.get<{ id: number }>({ loop_id: row.id, source: null, body: prompt, open_paths: "[]", evidence: "{}" });
     if (seeded === undefined) throw new Error("recovery fixture failed to seed the loop's message");
     return row.id;
 };
@@ -238,7 +238,7 @@ test("{§message-loop-containment}: boot completes one partially staged orphan r
         });
 
         for (const [index, content] of ["first orphan", "second orphan"].entries()) {
-            await db.drain_enqueue_message.get({ loop_id: sourceLoopId, source: `worker://sender-${index + 1}`, body: content, open_paths: "[]" });
+            await db.drain_enqueue_message.get({ loop_id: sourceLoopId, source: `worker://sender-${index + 1}`, body: content, open_paths: "[]", evidence: "{}" });
         }
 
         const recovery = await db.drain_enqueue_orphan_recovery_loop.get<{
@@ -309,7 +309,7 @@ test("{§worker-lifecycle-no-resurrection}: cancelled undelivered messages stay 
         const workspaceId = await insertWorkspace(db, "cancelled-prompt-recovery");
         const workerId = await insertWorker(db, workspaceId, null, undefined, "model");
         const loopId = await enqueueLoop(db, workerId, "Original task.");
-        await db.drain_enqueue_message.get({ loop_id: loopId, source: null, body: "A follow-up admitted before cancellation.", open_paths: "[]" });
+        await db.drain_enqueue_message.get({ loop_id: loopId, source: null, body: "A follow-up admitted before cancellation.", open_paths: "[]", evidence: "{}" });
         const lifecycle = new LoopLifecycle(db);
         await lifecycle.cancelTree(workerId, "Cancel the whole assignment.", true);
         await daemon.start();

@@ -31,8 +31,8 @@ const CONTROL_KEYS = new Map([
 ]);
 const AGENT_NAME = /^[a-z][a-z0-9-]*$/;
 const ENV_REFERENCE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/u;
-const INPUT_MODES = ["text/plain"];
-const OUTPUT_MODES = ["text/markdown"];
+const INPUT_MODES = ["*/*"];
+const OUTPUT_MODES = ["*/*"];
 
 type CompanionSuffix = typeof COMPANION_SUFFIXES[number];
 

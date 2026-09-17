@@ -23,6 +23,7 @@ interface InteractionRow {
 interface Settlement {
     readonly resolution?: ClientInteractionResolution;
     readonly rejection?: unknown;
+    readonly message?: { readonly body: string; readonly source: string; readonly envelope: Readonly<Record<string, unknown>> };
 }
 
 interface InteractionWaiter {
@@ -94,6 +95,13 @@ export default class ClientInteractions {
                 this.#pending.delete(interactionId);
                 signal?.removeEventListener("abort", onAbort);
                 try {
+                    if (settlement.message !== undefined) {
+                        const { body, source, envelope } = settlement.message;
+                        const admitted = await this.#db.drain_enqueue_message.get<{ id: number }>({
+                            loop_id: ids.loopId, body, source, open_paths: "[]", evidence: JSON.stringify({ envelope }),
+                        });
+                        if (admitted === undefined) throw new Error(`Interaction ${interactionId} accepted no message.`);
+                    }
                     const deleted = await this.#db.client_interaction_delete.get<{ id: number }>({
                         interaction_id: interactionId,
                     });
@@ -134,7 +142,7 @@ export default class ClientInteractions {
         return deferred.promise;
     }
 
-    async resolve(interactionId: number, resolution: ClientInteractionResolution): Promise<void> {
+    async resolve(interactionId: number, resolution: ClientInteractionResolution, message?: Settlement["message"]): Promise<void> {
         const waiter = this.#pending.get(interactionId);
         if (waiter === undefined) throw pendingFailure(interactionId);
         const exact = structuredClone(Validator.assertClientInteractionResolution(resolution));
@@ -148,7 +156,7 @@ export default class ClientInteractions {
                 ));
             }
         }
-        const failure = await waiter.settle({ resolution: exact });
+        const failure = await waiter.settle({ resolution: exact, message });
         if (failure !== null) throw failure;
     }
 

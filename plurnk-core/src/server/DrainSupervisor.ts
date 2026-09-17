@@ -1,6 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
-import type { ReasoningPolicy } from "@plurnk/plurnk-contracts";
+import type { MessageEvidence, ReasoningPolicy } from "@plurnk/plurnk-contracts";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import { routeForSpec } from "./model-route.ts";
 import type { WakeWorkerPayload } from "../core/ChannelWrite.ts";
@@ -37,6 +37,7 @@ export type DrainInjectionArgs = {
     workerId: number;
     prompt: string;
     source?: string;
+    evidence?: MessageEvidence;
     // Absent for an independent exterior arrival, required for operation-caused delivery.
     sourceLoopId?: number;
     providerSpec: ProviderSpec;
@@ -95,6 +96,7 @@ type InjectPrompt = (
     prompt: string,
     openPaths: readonly string[],
     source?: string,
+    evidence?: MessageEvidence,
 ) => Promise<{ loopId: number; turnSeq: number } | null>;
 type AssertInjectionCompatibility = (args: InjectionCompatibility) => Promise<void>;
 type ReconcileMessages = (workerId: number, endedLoopId: number) => Promise<void>;
@@ -244,7 +246,7 @@ export default class DrainSupervisor {
                 });
             }
             const result = active === undefined ? null
-                : await this.#injectPrompt(active.id, prompt, args.openPaths ?? [], args.source);
+                : await this.#injectPrompt(active.id, prompt, args.openPaths ?? [], args.source, args.evidence);
             if (result !== null) {
                 // runLoop may already have parked in the database while this drain
                 // is still registered. Wake that state now; if it is still running,
@@ -262,6 +264,7 @@ export default class DrainSupervisor {
                 maxTurns: args.turnCeiling?.effective,
                 policy: args.policy ?? args.freshLoopPolicy,
                 openPaths: args.openPaths,
+                evidence: args.evidence,
             });
             return { action: "enqueued_new_loop", ...accepted } as const;
         }));
@@ -273,6 +276,7 @@ export default class DrainSupervisor {
         workerId: number;
         prompt: string;
         source?: string;
+        evidence?: MessageEvidence;
         providerSpec: ProviderSpec;
         reasoningPolicy: ReasoningPolicy;
         childProviderSpec: ProviderSpec | null;
@@ -299,6 +303,7 @@ export default class DrainSupervisor {
         // `prompt` is its headline for listings.
         const seeded = await this.#db.drain_enqueue_message.get<{ id: number; ordinal: number }>({
             loop_id: loopRow.id, source: args.source ?? null, body: args.prompt, open_paths: JSON.stringify(args.openPaths ?? []),
+            evidence: JSON.stringify(args.evidence ?? {}),
         });
         if (seeded === undefined) throw new Error("enqueueFreshLoop: message enqueue returned no row");
         return { loopId: loopRow.id };

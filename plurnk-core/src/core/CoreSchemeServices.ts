@@ -98,6 +98,7 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
             turnId: ctx.turnId,
             writer: ctx.writer,
             signal: ctx.signal,
+            resources: "resources" in ctx ? ctx.resources : undefined,
             streamEventNotify: services.streamEventNotify,
             wakeWorkerNotify: services.wakeWorkerNotify,
             injectWorker: services.injectWorker,

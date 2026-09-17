@@ -7,6 +7,7 @@ import {
 import type { Client } from "@a2a-js/sdk/client";
 import {
     PathSyntax,
+    MessageAttachments,
     Results,
     type ProblemDetails,
     type PassthroughResult,
@@ -54,6 +55,7 @@ export default class A2a implements SchemeHandler {
         volatile: true,
         modelVisible: true,
         folderScopes: true,
+        metadataModifier: true,
         glyph: "🤝",
         traits: ["web"],
         documentation,
@@ -70,7 +72,7 @@ export default class A2a implements SchemeHandler {
         ctx: SchemeCtx,
     ): Promise<RepresentationPreparationResult> {
         if (request.metadata !== null) {
-            return A2a.#problem("metadata-unsupported", 400, "A2A does not accept the [metadata] modifier.", {
+            return A2a.#problem("metadata-unsupported", 400, "A2A READ does not accept the [metadata] modifier.", {
                 retryable: false,
             });
         }
@@ -144,20 +146,14 @@ export default class A2a implements SchemeHandler {
     }
 
     async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
-        if (statement.metadata !== null) {
-            return A2a.#passthrough(A2a.#problem(
-                "metadata-unsupported",
-                400,
-                "A2A does not accept the [metadata] modifier.",
-                { retryable: false },
-            ));
-        }
+        const captured = await MessageAttachments.capture(statement.metadata, ctx.resources, OWNER);
+        if ("failure" in captured) return A2a.#passthrough(captured.failure);
         const resolvedAddress = A2a.#address(statement.target);
         if ("problem" in resolvedAddress) return A2a.#passthrough(resolvedAddress.problem);
         const { address } = resolvedAddress;
-        const text = statement.body?.raw;
-        if (text === undefined || text.length === 0) {
-            return A2a.#failure("message-required", 400, "A2A SEND requires a non-empty Message body.", {
+        const text = statement.body?.raw ?? "";
+        if (text.length === 0 && captured.attachments.length === 0) {
+            return A2a.#failure("message-required", 400, "A2A SEND requires a body or attachments.", {
                 stage: "request-validation",
                 retryable: false,
             });
@@ -182,7 +178,7 @@ export default class A2a implements SchemeHandler {
         else ctx.signal?.addEventListener("abort", abortFromParent, { once: true });
         const unlinkParent = () => ctx.signal?.removeEventListener("abort", abortFromParent);
         const stream = client.sendMessageStream(
-            A2aMessage.request(text, taskId === undefined ? {} : { taskId }),
+            A2aMessage.request(text, taskId === undefined ? {} : { taskId }, captured.attachments),
             { signal: local.signal },
         );
 
@@ -229,6 +225,7 @@ export default class A2a implements SchemeHandler {
                 resource: `a2a://${address.authority}${pathname}`,
                 messageId: payload.value.messageId,
                 contextId: payload.value.contextId,
+                ...(captured.attachments.length === 0 ? {} : { attachments: MessageAttachments.receipts(captured.attachments) }),
             };
         }
         if (payload.$case !== "task") {
@@ -250,7 +247,9 @@ export default class A2a implements SchemeHandler {
                 retryable: false,
             });
         }
-        return this.#retainTask(address, client, stream, payload.value, local, unlinkParent, ctx);
+        const result = await this.#retainTask(address, client, stream, payload.value, local, unlinkParent, ctx);
+        return result.status >= 400 || captured.attachments.length === 0 ? result
+            : { ...result, attachments: MessageAttachments.receipts(captured.attachments) };
     }
 
     async #retainTask(

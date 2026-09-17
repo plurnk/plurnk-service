@@ -361,6 +361,14 @@ is never a `NetworkAddress` component.
 
 ### §scheme-projection Projection capability
 
+§scheme-resource-capture `ctx.resources.capture(addresses)` acquires ordered
+exact resource/channel snapshots through Core's shared source-selection path.
+It returns bytes plus immutable receipt descriptors, or the acquisition failure
+without delivering anything. It neither performs SEND nor transfers resource
+ownership. `MessageAttachments` opts a message recipient into the common
+metadata shape under {§send-resource-attachments}; other recipients retain
+their own metadata vocabulary.
+
 Acquisition schemes delegate model-facing projection to the consumer's one
 configured mimetype family. They neither instantiate readers nor discard source
 bytes merely because no readable projection exists.

@@ -129,16 +129,16 @@ test("{§a2a-hosted-card} the hosted card derives identity from environment and 
     });
     assert.deepEqual(config.card.securitySchemes, {});
     assert.deepEqual(config.card.securityRequirements, []);
-    assert.deepEqual(config.card.defaultInputModes, ["text/plain"]);
-    assert.deepEqual(config.card.defaultOutputModes, ["text/markdown"]);
+    assert.deepEqual(config.card.defaultInputModes, ["*/*"]);
+    assert.deepEqual(config.card.defaultOutputModes, ["*/*"]);
     assert.deepEqual(config.card.skills, [{
         id: "research",
         name: "Research",
         description: "Researches a question",
         tags: ["research"],
         examples: ["Compare two accounts."],
-        inputModes: ["text/plain"],
-        outputModes: ["text/markdown"],
+        inputModes: ["*/*"],
+        outputModes: ["*/*"],
         securityRequirements: [],
     }]);
 });

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { MessageResource } from "@plurnk/plurnk-contracts";
 import {
     Role,
     type SendMessageRequest,
@@ -14,6 +15,7 @@ export default class A2aMessage {
     static request(
         text: string,
         identity: A2aMessageIdentity = {},
+        attachments: readonly MessageResource[] = [],
     ): SendMessageRequest {
         return {
             tenant: "",
@@ -21,12 +23,17 @@ export default class A2aMessage {
             message: {
                 messageId: randomUUID(),
                 role: Role.ROLE_USER,
-                parts: [{
-                    content: { $case: "text", value: text },
+                parts: [...(text.length === 0 ? [] : [{
+                    content: { $case: "text" as const, value: text },
                     filename: "",
                     mediaType: "text/plain",
                     metadata: {},
-                }],
+                }]), ...attachments.map((attachment) => ({
+                    content: { $case: "raw" as const, value: Buffer.from(attachment.bytes) },
+                    filename: attachment.name,
+                    mediaType: attachment.mediaType,
+                    metadata: {},
+                }))],
                 taskId: identity.taskId ?? "",
                 contextId: identity.contextId ?? "",
                 extensions: [],

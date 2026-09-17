@@ -19,5 +19,18 @@ sending the requested input to its Task resource.
 Task resources default to a concise `#body` and retain the protocol snapshot in
 `#json`. Their Artifacts and binary Parts are retained as linked resources;
 READ a link to inspect its content. Supplied URLs are not fetched on arrival.
+
 `KILL` of a live Task resource cancels the local obligation and
 requests remote cancellation.
+
+## Attachments
+
+````SEND (a2a://researcher) [{"attachments":["report.pdf","data/results.json"]}]
+Review these results.
+````
+
+Select exact resource paths or channels. SEND captures their current bytes;
+creating or reading a file alone never sends it. A missing source fails the
+SEND before delivery. To answer an incoming A2A request with files, omit the
+target and use the same attachment option. The caller receives standard
+Artifacts. Incoming files arrive as ordinary resource links; READ them normally.

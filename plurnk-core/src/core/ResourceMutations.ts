@@ -7,7 +7,7 @@ import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } 
 import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import type EntryAddressBinding from "./EntryAddressBinding.ts";
 import type { BoundEntryAddress } from "./EntryAddressBinding.ts";
-import type { DispatchResult, RunOperation, PrepareDataRepresentation, ProposalIds } from "./mutation-types.ts";
+import type { DispatchResult, RunOperation, ProposalIds } from "./mutation-types.ts";
 import MutationEffects from "./MutationEffects.ts";
 import EditMutations from "./EditMutations.ts";
 import ResourceSelector from "./ResourceSelector.ts";
@@ -27,8 +27,7 @@ export default class ResourceMutations {
         checkWritable,
         checkCapabilities,
         editTargetIdentity,
-        canonicalFilePath,
-        prepareDataRepresentation,
+        selection,
         resolveDataEntryAddress,
         readEntry,
         writeEntry,
@@ -45,8 +44,7 @@ export default class ResourceMutations {
             workspaceId: number,
             workerId: number,
         ) => Promise<string | null>;
-        canonicalFilePath: (pathname: string, workspaceId: number) => Promise<string | null>;
-        prepareDataRepresentation: PrepareDataRepresentation;
+        selection: ResourceSelector;
         resolveDataEntryAddress: EntryAddressBinding["resolve"];
         readEntry: (scheme: string, address: BoundEntryAddress, ctx: PlurnkSchemeContext) => Promise<ReadEntryResult>;
         writeEntry: (scheme: string, address: BoundEntryAddress, entry: EntryData, ctx: PlurnkSchemeContext) => Promise<WriteEntryResult>;
@@ -58,7 +56,7 @@ export default class ResourceMutations {
         ) => Promise<DeleteEntryResult>;
         applyProposal: ProposalLifecycle["workerApply"];
     }) {
-        this.#selection = new ResourceSelector({ schemes, canonicalFilePath, prepareDataRepresentation });
+        this.#selection = selection;
         this.#edits = new EditMutations({ schemes, liveSubscriptions, run, checkWritable, checkCapabilities, editTargetIdentity, resolveDataEntryAddress });
         this.#transfers = new ResourceTransfers({ schemes, liveSubscriptions, resolveDataEntryAddress, readEntry, writeEntry, deleteChannel, applyProposal, selection: this.#selection });
     }

@@ -1,5 +1,5 @@
 import { Policy as RuntimePolicy, RuntimeInvocation, RuntimeTag } from "@plurnk/plurnk-execs";
-import type { ClientInteractionProjection, ClientInteractionResolution, CapabilityProjection, PlurnkStatement, ParsedPath } from "@plurnk/plurnk-contracts";
+import type { ClientInteractionProjection, ClientInteractionResolution, CapabilityProjection, PlurnkStatement, ParsedPath, MessageEvidence } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import Meta from "@plurnk/plurnk-meta";
@@ -591,8 +591,9 @@ export default class Engine {
     async resolveClientInteraction(
         interactionId: number,
         resolution: ClientInteractionResolution,
+        message?: { readonly body: string; readonly source: string; readonly envelope: Readonly<Record<string, unknown>> },
     ): Promise<void> {
-        await this.#interactions.resolve(interactionId, resolution);
+        await this.#interactions.resolve(interactionId, resolution, message);
     }
 
     // Used by wake-on-completion (daemon side): "is there any loop in this
@@ -628,13 +629,13 @@ export default class Engine {
     //
     // The admission owner selects the exact loop before checking its policy.
     // This writer never reselects a recipient across an asynchronous boundary.
-    injectIntoLoop(loopId: number, prompt: string, openPaths: readonly string[] = [], source?: string): Promise<
+    injectIntoLoop(loopId: number, prompt: string, openPaths: readonly string[] = [], source?: string, evidence: MessageEvidence = {}): Promise<
         { loopId: number; turnSeq: number } | null
     > {
         if (source !== undefined && source.length === 0) {
             throw new TypeError("Engine.injectIntoLoop: source must be a non-empty string when present");
         }
-        return this.#withPromptWriteLock(loopId, () => this.#injectPrompt(loopId, prompt, openPaths, source));
+        return this.#withPromptWriteLock(loopId, () => this.#injectPrompt(loopId, prompt, openPaths, source, evidence));
     }
 
     #withPromptWriteLock<T>(loopId: number, write: () => Promise<T>): Promise<T> {
@@ -648,7 +649,7 @@ export default class Engine {
         return run;
     }
 
-    async #injectPrompt(loopId: number, prompt: string, openPaths: readonly string[], source?: string): Promise<
+    async #injectPrompt(loopId: number, prompt: string, openPaths: readonly string[], source?: string, evidence: MessageEvidence = {}): Promise<
         { loopId: number; turnSeq: number } | null
     > {
         const loopRow = await this.#db.drain_injection_target.get<{ worker_id: number; sequence: number }>({ loop_id: loopId });
@@ -658,6 +659,7 @@ export default class Engine {
         // {§message-loop-containment}: the inbox keeps arrival order; the next turn boundary publishes.
         const appended = await this.#db.drain_enqueue_message.get<{ id: number; ordinal: number }>({
             loop_id: loopId, source: source ?? null, body: prompt, open_paths: JSON.stringify(openPaths),
+            evidence: JSON.stringify(evidence),
         });
         if (appended === undefined) throw new Error(`Engine.injectIntoLoop: loop ${loopId} accepted no message`);
         return { loopId, turnSeq };

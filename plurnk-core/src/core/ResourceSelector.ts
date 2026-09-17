@@ -1,4 +1,8 @@
-import { type LineMarker, type MatcherBody } from "@plurnk/plurnk-contracts";
+import { PathSyntax, type LineMarker, type MatcherBody, type MessageResource, type MessageResourceReceipt, type ReadStatement } from "@plurnk/plurnk-contracts";
+import { parsePath } from "@plurnk/plurnk-parser";
+import { basename } from "node:path";
+import NativeContent from "./NativeContent.ts";
+import DurableStatement from "./DurableStatement.ts";
 import { InvalidOperationResultError, type ScopeNormalization, type SchemeHandler, type StoredEntryData } from "@plurnk/plurnk-schemes";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import ResourceBindings from "./ResourceBindings.ts";
@@ -16,20 +20,54 @@ import LineSelection from "../content/line-selection.ts";
 import PatternEdits from "../content/pattern-edits.ts";
 import PatternSelection from "./PatternSelection.ts";
 
-// Resource selection for COPY and MOVE: which entry, channel, and line range a statement names.
+// Shared source acquisition for explicit resource transfers.
 export default class ResourceSelector {
     readonly #schemes: SchemeRegistry;
     readonly #canonicalFilePath: (pathname: string, workspaceId: number) => Promise<string | null>;
     readonly #prepareDataRepresentation: PrepareDataRepresentation;
+    readonly #admitRead: (statement: ReadStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
 
-    constructor({ schemes, canonicalFilePath, prepareDataRepresentation }: {
+    constructor({ schemes, canonicalFilePath, prepareDataRepresentation, admitRead }: {
         schemes: SchemeRegistry;
         canonicalFilePath: (pathname: string, workspaceId: number) => Promise<string | null>;
         prepareDataRepresentation: PrepareDataRepresentation;
+        admitRead: (statement: ReadStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
     }) {
         this.#schemes = schemes;
         this.#canonicalFilePath = canonicalFilePath;
         this.#prepareDataRepresentation = prepareDataRepresentation;
+        this.#admitRead = admitRead;
+    }
+
+    async capture(targets: readonly string[], ctx: PlurnkSchemeContext): Promise<
+        { readonly attachments: readonly (MessageResource & MessageResourceReceipt)[] } | { readonly failure: DispatchResult }
+    > {
+        const attachments: (MessageResource & MessageResourceReceipt)[] = [];
+        for (const raw of targets) {
+            const target = parsePath(raw);
+            if (target === null || PathSyntax.hasGlob(target.kind === "url" ? target.pathname : target.raw)) {
+                return { failure: Results.failure("message:attachments", "attachment-address-invalid", 400,
+                    "An attachment selects one exact resource address.", {}, { retryable: false }) };
+            }
+            const denial = await this.#admitRead({
+                op: "READ", target, lineMarker: null, matcher: null, metadata: null, body: null, aside: null,
+                position: { line: 0, column: 0 },
+            }, ctx);
+            if (denial !== null) return { failure: denial };
+            const selection = await this.resolveResourceSelection({ target, metadata: null, lineMarker: null, matcher: null }, ctx, "read");
+            if ("status" in selection) return { failure: selection };
+            const selected = await this.selectSource(selection, ctx, "SEND");
+            if ("status" in selected) return { failure: selected };
+            const bytes = selected.bytes ?? new TextEncoder().encode(selected.content);
+            attachments.push({
+                target: DurableStatement.projectPath(target).raw,
+                name: basename(selection.pathname),
+                mediaType: selected.mimetype,
+                bytes,
+                contentHash: await NativeContent.retain(ctx.db, bytes),
+            });
+        }
+        return { attachments };
     }
 
     async resolveResourceSelection(
@@ -43,7 +81,7 @@ export default class ResourceSelector {
             return MutationEffects.failure(
                 "resource-scheme-required",
                 400,
-                "COPY and MOVE resources require a scheme.",
+                "Resource selection requires an address.",
                 {},
                 { retryable: false },
             );
@@ -66,7 +104,7 @@ export default class ResourceSelector {
             return MutationEffects.failure(
                 "scheme-not-found",
                 501,
-                `COPY or MOVE addressed the unregistered scheme '${scheme}'.`,
+                `Resource selection addressed the unregistered scheme '${scheme}'.`,
                 {},
                 {
                     scheme,
@@ -156,12 +194,12 @@ export default class ResourceSelector {
     async selectSource(
         selection: AddressedResourceSelection,
         ctx: PlurnkSchemeContext,
-        operation: "COPY" | "MOVE",
+        operation: "COPY" | "MOVE" | "SEND",
     ): Promise<SelectedSource | DispatchResult> {
         const handler = (await ResourceBindings.resolve(selection.target, ctx))?.handler as SchemeHandler | undefined;
         if (handler === undefined) {
             throw new InvalidOperationResultError(
-                `Resolved COPY/MOVE source scheme '${selection.scheme}' is no longer registered.`,
+                `Resolved source scheme '${selection.scheme}' is no longer registered.`,
             );
         }
         const acquired = await this.#sourceRepresentation(selection, handler, ctx);
@@ -273,7 +311,7 @@ export default class ResourceSelector {
         resolvedMarker: { readonly selection: ResolvedResourceSelection; readonly precondition: LineAnchorPrecondition | null },
         selected: { readonly content: string; readonly mimetype: string },
         retained: readonly number[] | undefined,
-        operation: "COPY" | "MOVE",
+        operation: "COPY" | "MOVE" | "SEND",
         ctx: PlurnkSchemeContext,
         identity: string | undefined,
     ): Promise<{ lines: number[]; precondition: LineAnchorPrecondition | null } | { result: DispatchResult }> {
@@ -339,7 +377,7 @@ export default class ResourceSelector {
         if (read.status >= 400) return { result: read };
         if (read.status !== 200 || read.entry === null) {
             throw new InvalidOperationResultError(
-                `The '${selection.scheme}' scheme returned status ${read.status} without a COPY/MOVE source entry.`,
+                `The '${selection.scheme}' scheme returned status ${read.status} without a source entry.`,
             );
         }
         return { representation: read.entry, storageAddress };
@@ -349,7 +387,7 @@ export default class ResourceSelector {
     resolveResourceLineMarker(
         selection: AddressedResourceSelection,
         content: string,
-        operation: "COPY" | "MOVE",
+        operation: "COPY" | "MOVE" | "SEND",
         identity?: string,
     ): { readonly selection: ResolvedResourceSelection; readonly precondition: LineAnchorPrecondition | null }
         | { readonly result: DispatchResult } {

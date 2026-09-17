@@ -125,6 +125,17 @@ test("fenced operations: transfer operands and opaque metadata keep their contra
     assert.equal(exec.aside, "list issues");
 });
 
+test("{§scheme-metadata-modifier}: targetless SEND retains message metadata and an opaque body", () => {
+    const [send] = statements('````SEND [{"attachments":["report.pdf"]}] <!-- report -->\nHere is the report.\n````');
+    assert.equal(send.op, "SEND");
+    if (send.op !== "SEND") return;
+    assert.equal(send.target, null);
+    assert.equal(send.lineMarker, null);
+    assert.deepEqual(send.metadata, ['{"attachments":["report.pdf"]}']);
+    assert.equal(send.body?.raw, "Here is the report.");
+    assert.equal(send.aside, "report");
+});
+
 test("fenced operations: an unfinished block keeps a shorter inner executor block as body, never as a statement", () => {
     const result = PlurnkParser.parse('```READ (safe.txt)```\n````EDIT (victim.txt)\n```sh\necho not-an-operation\n```');
     assert.equal(result.unparsedTail, undefined);

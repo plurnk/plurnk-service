@@ -69,6 +69,7 @@ export default class MemorySchemeContext {
             writer: "model",
             signal: undefined,
             entries,
+            resources: { async capture() { throw new Error("resource capture is outside the memory scheme specimen"); } },
             channels: {
                 append: async (pathname, channel, content) => {
                     const entry = this.#entry(pathname);

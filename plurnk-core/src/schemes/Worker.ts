@@ -22,12 +22,14 @@ import Results, { type SchemeResultBase } from "../core/results.ts";
 import TerminalResult from "../core/TerminalResult.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
+import { MessageAttachments } from "@plurnk/plurnk-schemes";
 
 // {§worker-scheme} Named and shared scratch are workspace resources; pathless
 // addresses target actors through the ordinary delegation and messaging lifecycle.
 export default class Worker extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "worker",
+        metadataModifier: true,
         authority: "resource",
         // {§readable-channel} — `readable` is the source's derived projection, never written.
         channels: { body: "text/markdown", readable: "text/markdown" },
@@ -83,7 +85,7 @@ export default class Worker extends CoreSchemeAdapterBase {
                 "scheme:worker",
                 "metadata-unsupported",
                 400,
-                "Worker resources do not accept the {metadata} modifier.",
+                "Worker resource reads do not accept the [metadata] modifier.",
                 {},
                 { retryable: false },
             );
@@ -380,13 +382,16 @@ export default class Worker extends CoreSchemeAdapterBase {
         // {§worker-delegation-inherits-policy} Only fresh loops inherit proposal
         // disposition; resumed loops retain their immutable policy.
         const freshLoopPolicy = await LoopPolicyReader.read(core.db, core.loopId);
+        const captured = await MessageAttachments.capture(statement.metadata, core.resources!, "scheme:worker");
+        if ("failure" in captured) return captured.failure;
         await core.injectWorker({
             workspaceId: core.workspaceId,
             workerId,
             sourceLoopId: core.loopId,
             prompt,
+            ...(captured.attachments.length === 0 ? {} : { attachments: captured.attachments }),
             freshLoopPolicy,
         });
-        return { status: 200 };
+        return { status: 200, ...(captured.attachments.length === 0 ? {} : { attachments: MessageAttachments.receipts(captured.attachments) }) };
     }
 }

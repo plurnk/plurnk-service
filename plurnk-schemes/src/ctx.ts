@@ -11,6 +11,8 @@ import type {
     FindStatement,
     RangeExtent,
     SendStatement,
+    MessageResource,
+    MessageResourceReceipt,
 } from "@plurnk/plurnk-contracts";
 import type { TextRegion } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "./edit-statement.ts";
@@ -273,6 +275,13 @@ export interface SchemeCtx extends SchemeAddressCtx {
     readonly projection: ProjectionCaps;
     readonly interactions: InteractionCaps;
     readonly subscriptions: SubscriptionCaps;
+    readonly resources: ResourceCaps;
+}
+
+export interface ResourceCaps {
+    capture(targets: readonly string[]): Promise<
+        { readonly attachments: readonly (MessageResource & MessageResourceReceipt)[] } | { readonly failure: SchemeResult }
+    >;
 }
 
 // ── proposals (NOT a capability) ─────────────────────────────────────────

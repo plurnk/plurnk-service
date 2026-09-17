@@ -1,6 +1,6 @@
 import {
     TaskState,
-    type Message,
+    Message,
     type Task,
 } from "@a2a-js/sdk";
 import {
@@ -50,17 +50,19 @@ const statusEvent = (task: Task) => ({
 });
 
 const textOf = (message: Message): string => {
-    const unsupported = message.parts.find(({ content }) => content?.$case !== "text");
-    if (unsupported !== undefined) {
-        throw new ContentTypeNotSupportedError(
-            "This Plurnk A2A exposure currently accepts text Message parts only.",
-        );
+    if (message.parts.length === 0) throw new RequestMalformedError("The A2A Message has no Parts.");
+    const text = message.parts.flatMap(({ content }) => {
+        if (content === undefined) throw new ContentTypeNotSupportedError("A Message Part has no content.");
+        switch (content.$case) {
+            case "text": return [content.value];
+            case "data": return [JSON.stringify(content.value, null, 2)];
+            case "url": return [content.value];
+            case "raw": return [];
+        }
+    }).join("\n");
+    if (text.trim().length === 0 && !message.parts.some((part) => part.content?.$case === "raw")) {
+        throw new RequestMalformedError("The A2A Message has no non-empty content.");
     }
-    const text = message.parts
-        .flatMap((part) => part.content?.$case === "text" ? [part.content.value] : [])
-        .join("\n")
-        .trim();
-    if (text.length === 0) throw new RequestMalformedError("The A2A Message has no non-empty text content.");
     return text;
 };
 
@@ -99,10 +101,12 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
             const pending = (await this.#port.pendingClientInteractions(workspaceId))
                 .find((interaction) => interaction.workerId === binding.task.id) ?? null;
             const outcome = await this.#observe(binding.task.id, async () => {
+                const envelope = Message.toJSON({ ...request.userMessage, contextId: request.contextId, taskId: request.taskId }) as Record<string, unknown>;
                 if (pending !== null) {
                     await this.#port.resolveClientInteraction(
                         pending.interactionId,
                         { status: "resolved", payload: this.#interactionPayload(request.userMessage, pending) },
+                        { body: textOf(request.userMessage), source: PlurnkAgentExecutor.#source(request), envelope },
                     );
                     return;
                 }
@@ -110,6 +114,12 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
                     workspaceId,
                     workerId: binding.task.id,
                     prompt: textOf(request.userMessage),
+                    envelope,
+                    attachments: request.userMessage.parts.flatMap((part) => part.content?.$case === "raw" ? [{
+                        name: part.filename,
+                        mediaType: part.mediaType || "application/octet-stream",
+                        bytes: part.content.value,
+                    }] : []),
                     source: PlurnkAgentExecutor.#source(request),
                     policy: { proposals: "reject" },
                 });

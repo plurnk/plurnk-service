@@ -34,6 +34,7 @@ export {
     InvalidJsonSchemaInstanceError,
 } from "./Validator.ts";
 export { default as Problems } from "./Problems.ts";
+export type { MessageResource, MessageResourceReceipt, MessageEvidence, ApplicationMessage } from "./MessageResource.ts";
 export { lifecycleOfLoopStatus, selectWorkerLoop, type LoopLifecycle } from "./LoopLifecycle.ts";
 export type { ProblemOptions, ProblemProjectionContext } from "./Problems.ts";
 export type { ValidationResult } from "./Validator.ts";
