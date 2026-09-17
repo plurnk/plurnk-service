@@ -214,13 +214,18 @@ test("PlurnkStatement: WAIT rejects numeric signal", () => {
     assert.equal(valid, false);
 });
 
-test("{§turn-disposition} PlurnkStatement: WAIT tolerates scope but does not acquire a routing or metadata contract", () => {
+test("{§turn-disposition} PlurnkStatement: WAIT accepts an optional resource target but no metadata or lifecycle status", () => {
     const task = { ...baseFields("WAIT"), body: null };
     assert.equal(Validator.validatePlurnkStatement(task).valid, true);
     assert.equal(Validator.validatePlurnkStatement({ ...task, lineMarker: { marks: [1] } }).valid, true);
+    for (const address of ["notes.md", "worker://child", "schedule:///rules/reminder"]) {
+        const { valid, errors } = Validator.validatePlurnkStatement({ ...task, target: parsePath(address) });
+        assert.equal(valid, true, JSON.stringify(errors));
+    }
     for (const patch of [
-        { target: parsePath("notes.md") },
+        { target: "schedule:///rules/reminder" },
         { metadata: ["x: y"] },
+        { status: 200 },
     ]) {
         const { valid } = Validator.validatePlurnkStatement({ ...task, ...patch });
         assert.equal(valid, false, JSON.stringify(patch));
