@@ -2626,15 +2626,27 @@ test("threadId == workspace name stays on the model worker (the default conversa
 
 test("loop.inject on a distinct thread folds into THAT conversation, never the model worker", async () => {
     const driven: number[] = [];
+    const messages: Array<Parameters<ApplicationPort["runLoop"]>[0]> = [];
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
     seam.listWorkers = async () => [workerRow(44, "spike")];
-    seam.runLoop = async (a) => { driven.push(a.workerId); finish(a.workspaceId, a.workerId); return { status: 100, action: "injected_next_turn", loopId: 9, turnSeq: 2 }; };
+    seam.runLoop = async (a) => { driven.push(a.workerId); messages.push(a); finish(a.workspaceId, a.workerId); return { status: 100, action: "injected_next_turn", loopId: 9, turnSeq: 2 }; };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         await post(mod.address().port, { threadId: "spike", workerId: "r1", forwardedProps: { plurnk: { workspace: "workspace", action: { kind: "loop.inject", prompt: "steer" } } } });
         assert.deepEqual(driven, [44], "the steer reached the thread's own worker");
+        const message = messages[0]!;
+        assert.match(message.source ?? "", /^agui:\/\/anonymous\/threads\/spike\/messages\/[^/]+$/u, "injected input belongs to its conversation just like a normal message Run");
+        assert.equal(message.messageAddress, message.source, "curation cannot erase the injected message's original source");
+        const envelope = message.envelope as { threadId: string; runId: string; message: { id: string; role: string; content: string } };
+        assert.equal(envelope.threadId, "spike");
+        assert.equal(envelope.runId, "r1");
+        assert.equal(envelope.message.role, "user");
+        assert.equal(envelope.message.content, "steer");
+        assert.equal(message.source, `agui://anonymous/threads/spike/messages/${encodeURIComponent(envelope.message.id)}`);
+        await post(mod.address().port, { threadId: "spike", runId: "r2", forwardedProps: { plurnk: { workspace: "workspace", action: { kind: "loop.inject", prompt: "steer" } } } });
+        assert.notEqual(messages[1]!.messageAddress, message.messageAddress, "equal text submitted twice is still two distinct messages");
     } finally { await mod.close(); }
 });
 

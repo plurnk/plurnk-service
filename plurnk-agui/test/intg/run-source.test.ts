@@ -29,6 +29,104 @@ const post = async (port: number, input: Readonly<Record<string, unknown>>): Pro
         .map((frame) => JSON.parse(frame.slice(6)) as AguiEvent);
 };
 
+test("{§agui-run-source}: active-loop injection keeps its source, survives curation and replays exactly once", { timeout: 60_000 }, async () => {
+    await import(join(SERVICE, "test/setup.ts"));
+    const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    class PausedModel extends Mock {
+        override async generate(...args: Parameters<Mock["generate"]>) {
+            if (this.received.length === 0) {
+                entered.resolve();
+                await release.promise;
+            }
+            return super.generate(...args);
+        }
+    }
+    // The injection's server-assigned address is available before the paused model resumes.
+    const inspection = { assistant: { content: "", reasoning: null } };
+    const provider = new PausedModel({ contextWindow: 32768, responses: [
+        { assistant: { content: PlurnkParser.frame("NOTE", "Waiting for the injected requirement."), reasoning: null } },
+        inspection,
+        { assistant: { content: PlurnkParser.frame("NOTE", "Both messages were answered and the retained source was inspected."), reasoning: null } },
+    ] });
+    const db = await openTestDatabase();
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
+    const started = Promise.withResolvers<Module>();
+    const registration = Module.init({ host: "127.0.0.1", port: 0 });
+    daemon.registerModule({ setup: registration.setup, start: async (seam: ApplicationPort) => {
+        const module = await registration.start(seam);
+        started.resolve(module);
+        return module;
+    } });
+    try {
+        await daemon.start();
+        const { port } = (await started.promise).address();
+        const { workspaceId } = await daemon.createWorkspace({ name: "injected-source", projectRoot: null });
+        const result = post(port, {
+            threadId: "conversation", runId: "initial",
+            messages: [{ id: "opening", role: "user", content: "Start the work." }],
+            forwardedProps: { plurnk: { workspace: "injected-source", maxTurns: 4 } },
+        });
+        await entered.promise;
+        const injected = await post(port, {
+            threadId: "conversation", runId: "steering",
+            forwardedProps: { plurnk: { workspace: "injected-source", action: { kind: "loop.inject", prompt: "Also check the new requirement." } } },
+        });
+        assert.equal(injected.at(-1)?.type, "RUN_FINISHED");
+        assert.match(JSON.stringify(injected), /injected_next_turn/);
+        const worker = (await daemon.listWorkers(workspaceId)).find(({ name }: { name: string }) => name === "conversation");
+        assert.ok(worker);
+        const messages = await daemon.readMessages({ workspaceId, workerId: worker.id });
+        assert.equal(messages.length, 2, "the injection is a message in the existing loop, not another conversation");
+        const message = messages.find(({ body }: { body: string }) => body === "Also check the new requirement.");
+        assert.ok(message);
+        assert.equal(message.loopId, messages[0]!.loopId);
+        assert.match(message.source ?? "", /^agui:\/\/anonymous\/threads\/conversation\/messages\/[^/]+$/u);
+        const envelope = message.envelope as { threadId: string; runId: string; message: { id: string; role: string; content: string } };
+        assert.equal(envelope.runId, "steering");
+        assert.equal(envelope.message.role, "user");
+        assert.equal(envelope.message.content, message.body);
+        inspection.assistant.content = [
+            PlurnkParser.frame("KILL (log:///**/SEND)", ""),
+            PlurnkParser.frame(`READ (${message.source}) <1,-1>`, ""),
+            PlurnkParser.frame("SEND (agui://anonymous/threads/conversation/messages/opening)", "Initial request answered."),
+            PlurnkParser.frame(`SEND (${message.source})`, "Injected requirement answered."),
+        ].join("\n\n");
+        release.resolve();
+        const events = await result;
+        assert.equal(events.at(-1)?.type, "RUN_FINISHED", JSON.stringify(events.at(-1)));
+        assert.equal(provider.received.length, 3);
+        const rows = await db.test_log_entries_by_loop.all({ loop_id: message.loopId }) as Array<{ op: string; origin: string; source: string; status_rx: number; rx: string }>;
+        const arrival = rows.find(({ op, origin, source }) => op === "SEND" && origin === "_plurnk" && source === message.source);
+        assert.ok(arrival, "the live arrival carries the conversation identity clients use to suppress their own echo");
+        const model = rows.filter(({ origin }) => origin === "model");
+        assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [
+            ["NOTE", 200], ["KILL", 200], ["READ", 200], ["SEND", 200], ["SEND", 200], ["NOTE", 200],
+        ]);
+        assert.equal(JSON.parse(model.find(({ op }) => op === "READ")!.rx).content, message.body);
+        assert.ok(model.some(({ op, rx }) => op === "SEND" && JSON.parse(rx).answers.includes(message.source)));
+        assert.deepEqual(events.filter(({ type }) => type === "TEXT_MESSAGE_CONTENT").map((event) => (event as { delta: string }).delta),
+            ["Initial request answered.", "Injected requirement answered."]);
+        const replay = await post(port, {
+            threadId: "conversation", runId: "reconnected",
+            forwardedProps: { plurnk: { workspace: "injected-source", mode: "sync" } },
+        });
+        const snapshot = replay.find(({ type }) => type === "MESSAGES_SNAPSHOT") as { messages: Array<{ id: string; role: string; content: string }> } | undefined;
+        assert.ok(snapshot);
+        assert.deepEqual(snapshot.messages.filter(({ role }) => role === "user").map(({ id, content }) => ({ id, content })), [
+            { id: "opening", content: "Start the work." },
+            { id: envelope.message.id, content: message.body },
+        ]);
+        assert.deepEqual(snapshot.messages.filter(({ role }) => role === "assistant").map(({ content }) => content),
+            ["Initial request answered.", "Injected requirement answered."]);
+    } finally {
+        release.resolve();
+        await daemon.stop();
+        await db.close();
+    }
+});
+
 test("{§agui-run-source}: a collaborator's exact reply reaches the assigned conversation live and on replay", { timeout: 60_000 }, async () => {
     await import(join(SERVICE, "test/setup.ts"));
     const [{ default: Daemon }, { makeMockResponse }] = await Promise.all([

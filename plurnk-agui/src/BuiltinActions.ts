@@ -3,6 +3,8 @@ import { type ActionOutcome } from "./AguiPlus.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Problems, UNKNOWN_POSITION, Validator, type AguiDiscovery, type ApplicationPort, type CapabilityPolicy, type ClientEnvelope, type ExecStatement, type OperationResult, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { actionFailure } from "./action-results.ts";
+import MessageAddress from "./MessageAddress.ts";
+import type { RunAgentInput } from "./types.ts";
 
 const operationOutcome = (result: OperationResult): ActionOutcome => {
     const exact = Validator.assertOperationResult(result);
@@ -65,6 +67,7 @@ export default class BuiltinActions {
     async executeBuiltin(
         kind: string,
         p: Readonly<Record<string, unknown>>,
+        input: RunAgentInput,
         env: ClientEnvelope | null,
         conversationWorkerId?: number,
     ): Promise<ActionOutcome> {
@@ -155,7 +158,12 @@ export default class BuiltinActions {
                             { field: "prompt", recovery: "Provide the prompt to inject." },
                         );
                     }
-                    const ack = await this.#seam().runLoop({ workspaceId: world.workspaceId, workerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId), prompt: p.prompt });
+                    const ack = await this.#seam().runLoop({
+                        workspaceId: world.workspaceId,
+                        workerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
+                        prompt: p.prompt,
+                        ...MessageAddress.submission(input, { id: crypto.randomUUID(), role: "user", content: p.prompt }),
+                    });
                     return operationOutcome(ack);
                 }
                 // The stop control (TUI /stop + Ctrl-C): abort the model

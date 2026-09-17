@@ -23,7 +23,7 @@ export default class RunHandler {
     readonly #envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
     readonly #conversationWorker: (threadId: string, env: ClientEnvelope) => Promise<number>;
     readonly #workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
-    readonly #action: (a: ActionRequest, env: ClientEnvelope | null, conversationWorkerId?: number) => Promise<ActionOutcome>;
+    readonly #action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, conversationWorkerId?: number) => Promise<ActionOutcome>;
 
     constructor({ seam, opts, portal, requiresWorkspace, controlRun, envelope, conversationWorker, workerStatus, action }: {
         seam: () => ApplicationPort;
@@ -34,7 +34,7 @@ export default class RunHandler {
         envelope: (threadId: string, forwarded?: Record<string, unknown>, options?: { readonly create?: boolean }) => Promise<{ env: ClientEnvelope; reattached: boolean }>;
         conversationWorker: (threadId: string, env: ClientEnvelope) => Promise<number>;
         workerStatus: (workspaceId: number, workerId: number) => Promise<AguiStatusState>;
-        action: (a: ActionRequest, env: ClientEnvelope | null, conversationWorkerId?: number) => Promise<ActionOutcome>;
+        action: (a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, conversationWorkerId?: number) => Promise<ActionOutcome>;
     }) {
         this.#seam = seam;
         this.#opts = opts;
@@ -226,7 +226,7 @@ export default class RunHandler {
                 }
                 this.#portal().finishRun(workspaceId, lifecycleWorkerId, input.threadId, events);
             };
-            void this.#action(action, env, workerId)
+            void this.#action(action, input, env, workerId)
                 // One queue barrier: a dispatch's channel notifies are enqueued but not yet
                 // delivered when its promise resolves — drain them so Portal's stream
                 // bookkeeping arms BEFORE the finish decision (then stream/concluded,
@@ -265,9 +265,8 @@ export default class RunHandler {
             }
         }
         const started = await this.#portal().run(boundRun, {
-            workspaceId, workerId, prompt, source: RunHandler.#source(input, currentUser),
-            messageAddress: RunHandler.#source(input, currentUser),
-            envelope: { threadId: input.threadId, runId: input.runId, message: currentUser },
+            workspaceId, workerId, prompt,
+            ...MessageAddress.submission(input, currentUser),
             ...(forwarded !== undefined && Object.hasOwn(forwarded, "maxTurns")
                 ? { maxTurns: forwarded.maxTurns as number }
                 : this.#opts().maxTurns !== undefined ? { maxTurns: this.#opts().maxTurns } : {}),
@@ -324,13 +323,6 @@ export default class RunHandler {
             );
             this.#portal().failThread(boundRun, runErrorEvents(problem));
         }
-    }
-
-    // {§agui-run-source} — the run's user message is the causal actor behind the loop's prompt
-    // ({§message-causal-source}), named under the authenticated principal the way the A2A adapter
-    // names its messages; `anonymous` until the authorization layer names principals.
-    static #source(input: RunAgentInput, message: UserMessage): string {
-        return MessageAddress.render(input.threadId, message.id);
     }
 
     static #isOriented(input: RunAgentInput, history: ReadonlyArray<Record<string, unknown>>): boolean {

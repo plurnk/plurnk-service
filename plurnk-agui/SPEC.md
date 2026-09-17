@@ -568,6 +568,8 @@ source, so a model tells an operator's message from a worker's or a schedule's b
 rather than by absence. Message identity belongs to the conversation, not a transport run;
 the run ID remains envelope provenance. Accepted text remains available through ordinary
 READ, FIND and COPY after log curation, run conclusion, disconnect and daemon restart.
+`loop.inject` normalizes its prompt into a user message with a server-generated message ID
+and the injecting Run's thread/envelope; it follows this same source and reply contract.
 The source is immutable: EDIT, MOVE and KILL cannot mutate an accepted message.
 SEND to this exact address answers this message under {§send-response-receipt}; it does
 not create another inbound request. Standard AG-UI assistant messages and history replay

@@ -42,6 +42,7 @@ const writeHttpProblem = (res: ServerResponse, problem: ProblemDetails): void =>
 
 type ActionExecutor = (
     params: Readonly<Record<string, unknown>>,
+    input: RunAgentInput,
     env: ClientEnvelope | null,
     conversationWorkerId?: number,
 ) => Promise<ActionOutcome>;
@@ -74,8 +75,8 @@ export default class Module {
         for (const [name, contract] of Object.entries(AGUI_BUILTIN_ACTIONS)) {
             this.#actions.set(name, {
                 ...contract,
-                execute: (params, env, conversationWorkerId) =>
-                    this.#builtins.executeBuiltin(name, params, env, conversationWorkerId),
+                execute: (params, input, env, conversationWorkerId) =>
+                    this.#builtins.executeBuiltin(name, params, input, env, conversationWorkerId),
             });
         }
         for (const descriptor of this.#seam.listModuleActions()) {
@@ -88,7 +89,7 @@ export default class Module {
                 scope,
                 inputSchema,
                 outputSchema,
-                execute: async (params, env, conversationWorkerId) => {
+                execute: async (params, _input, env, conversationWorkerId) => {
                     if (scope === "worldless") {
                         return {
                             ok: true,
@@ -400,7 +401,7 @@ export default class Module {
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
         const emit = (e: AguiEvent): void => { res.write(`data: ${JSON.stringify(e)}\n\n`); };
         emit({ type: EventType.RUN_STARTED, threadId: input.threadId, runId: input.runId });
-        const outcome = await this.#action(action, null)
+        const outcome = await this.#action(action, input, null)
             .catch((err: unknown): ActionOutcome => {
                 console.error(`AG-UI action '${action.kind}' failed:`, err);
                 const problem = Problems.fromError(err);
@@ -434,7 +435,7 @@ export default class Module {
         });
     }
 
-    async #action(a: ActionRequest, env: ClientEnvelope | null, conversationWorkerId?: number): Promise<ActionOutcome> {
+    async #action(a: ActionRequest, input: RunAgentInput, env: ClientEnvelope | null, conversationWorkerId?: number): Promise<ActionOutcome> {
         const action = this.#actions.get(a.kind);
         if (action === undefined) {
             return actionFailure(
@@ -464,7 +465,7 @@ export default class Module {
         }
         try {
             if (action.scope !== "worldless") Module.#requireWorkspace(a.kind, env);
-            const outcome = await action.execute(a.params, env, conversationWorkerId);
+            const outcome = await action.execute(a.params, input, env, conversationWorkerId);
             if (!outcome.ok) return outcome;
             const projected = Validator.validateJsonSchemaInstance(action.outputSchema, outcome.result);
             if (!projected.valid) {
