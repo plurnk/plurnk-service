@@ -306,15 +306,16 @@ try {
     tui.write("Exercise the installed interactive terminal.\r");
     await tui.waitFor(/The installed interactive journey is complete\./);
     // The status row settles on the session's summary line: elapsed time, the concluded
-    // accounting, the gauge's model, and the ant (the daemon's alive-children count,
-    // {§agui-status-children}). Since plurnk#58 the lifecycle glyph stands alone — the word
+    // accounting and the gauge's model. With no live children ({§agui-status-children}),
+    // the client omits the ant. Since plurnk#58 the lifecycle glyph stands alone — the word
     // repeated it — and the place (workspace, loop, turn, worker) is the prompt prefix's,
     // asserted separately below.
     // The client renders a chosen effort as `alias[low]` and a seeded default as `alias(low)` (plurnk SPEC, identity effort).
-    await tui.waitFor(/⏹️  · \d+ms · ↓800 ↑160 · 🎲 journey(?:[[(]adaptive[\])])? · 🐜 0/);   // two spaces after the glyph (plurnk#67)
+    await tui.waitFor(/⏹️  · \d+ms · ↓800 ↑160 · 🎲 journey(?:[[(]adaptive[\])])?/);   // two spaces after the glyph (plurnk#67)
     // {plurnk#58} — the prompt prefix names the place: [workspace/~worker(loop/turn)].
     await tui.waitFor(/\[installed-tui\/[\s\S]{0,80}?~Tui_Worker(?:\(\d+\/\d+\))?\]/);
     const tuiOutput = tui.output();
+    if (tuiOutput.includes("🐜")) throw new Error(`installed TUI displayed a child indicator with no live children\n${tuiOutput}`);
     if (tuiOutput.includes("problem:")) throw new Error(`installed TUI displayed an unexpected Problem\n${tuiOutput}`);
     assertIncludes(tuiOutput, "I will complete the request through the interactive terminal.", "installed TUI reasoning");
     assertIncludes(tuiOutput, "Confirm the packed interactive terminal path.", "installed TUI NOTE aside");
