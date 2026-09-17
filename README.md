@@ -100,11 +100,6 @@ Logs go to the user journal (`journalctl --user -u plurnk -f`).
 
 ## Develop
 
-[PossumTech Gitea](https://repo.possumtech.com/plurnk/plurnk-service) is the
-canonical maintainer-development forge. [GitHub](https://github.com/plurnk/plurnk-service)
-is the public downstream source, external-contribution, security-reporting, and
-historical surface.
-
 ```sh
 git clone https://github.com/plurnk/plurnk-service.git
 git clone https://github.com/plurnk/plurnk.git

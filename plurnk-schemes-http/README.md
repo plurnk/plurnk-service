@@ -90,10 +90,9 @@ Without a selection, `@plurnk/plurnk-mimetypes-text-html` supplies the local
 npm test
 ```
 
-The optional [HTTP cache survey](https://repo.possumtech.com/plurnk/plurnk-service/issues/674)
+The optional HTTP cache survey
 uses the unmodified [http-tests corpus](https://github.com/http-tests/cache-tests).
-Its adapter, case results, exclusions, and open questions are retained in the
-issue, not added to the test gate. It is a diagnostic, not a conformance score.
+It is a diagnostic, not a conformance score or part of the test gate.
 
 | Boundary | Current behavior |
 | --- | --- |
