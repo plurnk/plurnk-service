@@ -239,13 +239,22 @@ caller needs neither an Agent Card nor a configured remote alias.
 | URL | Literal supplied URL; no arrival-time fetch. |
 | Raw | Link to `worker://<task>/attachments/<eight-character-id>/<name>`, with ordinary typed bytes; unnamed/colliding names use {§resource-publication-names}. |
 
-The complete admitted SDK Message envelope preserves Part order, media types,
-filenames, metadata, and assigned Task/Context identity. Accepted interaction
+The complete admitted SDK SendMessageRequest envelope preserves configuration,
+request metadata, and its inner Message's Part order, media types, filenames,
+metadata, and assigned Task/Context identity. Accepted interaction
 answers enter that same evidence path before the operation resumes; invalid
-answers do not. Task history comes from admitted incoming Messages, including
+answers do not. Task history selects the envelope's inner Message, including
 those awaiting log publication. Derived status Messages describe the current
 pending interaction or terminal Problem; they are not additional inbox arrivals.
 Task retrieval reconstructs these facts after adapter/daemon restart.
+
+§a2a-response-preferences Nonempty `configuration.acceptedOutputModes` appears
+as labeled response preferences beside the model-facing arrival, for normal
+requests and accepted interaction answers. Omitted or empty preferences add
+nothing. This projection neither edits the protocol Message nor changes
+interaction validation. Other request configuration remains adapter-owned;
+opaque request metadata is evidence, not additional instructions. Preferences
+do not relabel source bytes or promise an unavailable output representation.
 
 Explicit resource selections in a hosted worker's targetless SEND become
 standard raw-Part Artifacts, one per selected resource in order. Artifact IDs

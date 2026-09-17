@@ -1,6 +1,7 @@
 import {
     TaskState,
-    Message,
+    SendMessageRequest,
+    type Message,
     type Task,
 } from "@a2a-js/sdk";
 import {
@@ -101,19 +102,26 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
             const pending = (await this.#port.pendingClientInteractions(workspaceId))
                 .find((interaction) => interaction.workerId === binding.task.id) ?? null;
             const outcome = await this.#observe(binding.task.id, async () => {
-                const envelope = Message.toJSON({ ...request.userMessage, contextId: request.contextId, taskId: request.taskId }) as Record<string, unknown>;
+                const envelope = SendMessageRequest.toJSON({
+                    ...request.request,
+                    message: { ...request.userMessage, contextId: request.contextId, taskId: request.taskId },
+                }) as Record<string, unknown>;
+                const text = textOf(request.userMessage);
+                const modes = request.request.configuration?.acceptedOutputModes ?? [];
+                const body = modes.length === 0 ? text
+                    : [text, `Accepted output media types: ${JSON.stringify(modes)}`].filter(Boolean).join("\n\n");
                 if (pending !== null) {
                     await this.#port.resolveClientInteraction(
                         pending.interactionId,
                         { status: "resolved", payload: this.#interactionPayload(request.userMessage, pending) },
-                        { body: textOf(request.userMessage), source: PlurnkAgentExecutor.#source(request), envelope },
+                        { body, source: PlurnkAgentExecutor.#source(request), envelope },
                     );
                     return;
                 }
                 await this.#port.runLoop({
                     workspaceId,
                     workerId: binding.task.id,
-                    prompt: textOf(request.userMessage),
+                    prompt: body,
                     envelope,
                     attachments: request.userMessage.parts.flatMap((part) => part.content?.$case === "raw" ? [{
                         name: part.filename,

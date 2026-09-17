@@ -181,6 +181,42 @@ test("{§message-envelope-evidence}: hosted A2A retains mixed Parts and metadata
         Array.isArray(message.content) ? message.content.filter((part) => part.type === "file") : [])).length, 0);
 });
 
+for (const modes of [undefined, [], ["application/json", "text/plain"]]) {
+    test(`{§a2a-response-preferences}: HTTP request preferences ${JSON.stringify(modes)} reach the provider without changing Message history`, async (t) => {
+        const provider = new Mock({ contextWindow: 100_000, responses: [completed("received")] });
+        const { request, daemon, workspace, restart } = await fixture(t, provider);
+        const message = {
+            messageId: "format-request", role: "ROLE_USER",
+            parts: [{ text: "Return a small report.", mediaType: "text/plain" }],
+            metadata: { authored: true },
+        };
+        const configuration = modes === undefined ? undefined : { acceptedOutputModes: modes, historyLength: 4 };
+        const result = await request("/message:send", {
+            message, configuration, metadata: { evidence: "request-only-evidence" },
+        });
+        assert.equal(result.task.status.state, "TASK_STATE_COMPLETED");
+        const packet = provider.received[0]!.map(chatMessageText).join("\n");
+        assert.equal(packet.includes("Accepted output media types:"), (modes?.length ?? 0) > 0);
+        for (const mode of modes ?? []) assert.ok(packet.includes(mode));
+        assert.ok(!packet.includes("request-only-evidence"), "opaque metadata is retained, not injected as instructions");
+        const admitted = { ...message, contextId: result.task.contextId, taskId: result.task.id };
+        assert.deepEqual(result.task.history, [admitted]);
+        const worker = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: result.task.id } });
+        assert.ok(worker);
+        const incoming = (await daemon.readMessages({ workspaceId: workspace.workspaceId, workerId: worker.id }))
+            .find(row => row.direction === "inbound");
+        assert.ok(incoming?.envelope);
+        assert.deepEqual(incoming.envelope.message, admitted);
+        assert.deepEqual(incoming.envelope.metadata, { evidence: "request-only-evidence" });
+        if (modes === undefined) assert.equal(incoming.envelope.configuration, undefined);
+        else assert.deepEqual(incoming.envelope.configuration, {
+            ...(modes.length === 0 ? {} : { acceptedOutputModes: modes }), historyLength: 4,
+        });
+        await restart();
+        assert.deepEqual((await request(`/tasks/${result.task.id}`)).history, [admitted]);
+    });
+}
+
 test("{§send-resource-attachments}: attachment-only Messages and replies round-trip unnamed and opaque binary content", async (t) => {
     class Echo extends Mock {
         override async generate(...args: Parameters<Mock["generate"]>) {
@@ -281,7 +317,7 @@ test("{§a2a-inbound-exposure}: a Part without content fails before Worker admis
 });
 
 test("{§a2a-inbound-exposure}: a rejected answer leaves the Task awaiting a valid answer", async (t) => {
-    const { request, send } = await fixture(t, [
+    const provider = new Mock({ contextWindow: 100_000, responses: [
         makeMockResponse([
             "```question",
             JSON.stringify({ message: "Choose 42.", requestedSchema: { type: "integer", const: 42 } }),
@@ -289,7 +325,8 @@ test("{§a2a-inbound-exposure}: a rejected answer leaves the Task awaiting a val
             "```WAIT", "Await input.", "```",
         ].join("\n")),
         completed("received 42"),
-    ]);
+    ] });
+    const { request, send, daemon, workspace } = await fixture(t, provider);
     const task = await send("Ask for the number.");
     assert.equal(task.status.state, "TASK_STATE_INPUT_REQUIRED");
     const problem = await request("/message:send", {
@@ -300,6 +337,7 @@ test("{§a2a-inbound-exposure}: a rejected answer leaves the Task awaiting a val
     assert.equal(waiting.status.state, "TASK_STATE_INPUT_REQUIRED");
     const resumed = await request("/message:send", {
         message: { messageId: "accepted-answer", role: "ROLE_USER", taskId: task.id, parts: [{ data: 42, metadata: { choice: "number" } }], metadata: { caller: "test" } },
+        configuration: { acceptedOutputModes: ["text/plain"] },
     });
     assert.equal(resumed.task.id, task.id);
     assert.equal(resumed.task.status.state, "TASK_STATE_COMPLETED");
@@ -311,6 +349,13 @@ test("{§a2a-inbound-exposure}: a rejected answer leaves the Task awaiting a val
     assert.deepEqual(history[1].metadata, { caller: "test" });
     const last = await request(`/tasks/${task.id}?historyLength=1`);
     assert.deepEqual(last.history, [history[1]], "historyLength selects the actual last admitted message");
+    const packet = provider.received.at(-1)!.map(chatMessageText).join("\n");
+    assert.match(packet, /Accepted output media types:.*text\/plain/u);
+    const worker = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: task.id } });
+    assert.ok(worker);
+    const answer = (await daemon.readMessages({ workspaceId: workspace.workspaceId, workerId: worker.id }))
+        .filter(row => row.direction === "inbound").at(-1);
+    assert.deepEqual(answer?.envelope?.configuration, { acceptedOutputModes: ["text/plain"] });
 });
 
 test("{§a2a-inbound-exposure}: a disconnected HTTP subscriber can rejoin the same live Task without repeating inference", async (t) => {

@@ -34,3 +34,5 @@ creating or reading a file alone never sends it. A missing source fails the
 SEND before delivery. To answer an incoming A2A request with files, omit the
 target and use the same attachment option. The caller receives standard
 Artifacts. Incoming files arrive as ordinary resource links; READ them normally.
+Incoming response-format preferences appear beside the message when supplied.
+Attachment media types remain those of the selected resources.

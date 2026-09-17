@@ -3,7 +3,8 @@ import {
     Role,
     TaskState,
     type Artifact,
-    Message,
+    SendMessageRequest,
+    type Message,
     type Task,
 } from "@a2a-js/sdk";
 import {
@@ -285,7 +286,9 @@ export default class PlurnkTaskStore implements TaskStore {
                 && PlurnkTaskStore.#ownsSource(row.source, context.name, task.name))
             .map((row) => {
                 if (row.envelope === undefined) throw new Error(`A2A message ${row.id} lost its protocol envelope.`);
-                return Message.fromJSON(row.envelope);
+                const admitted = SendMessageRequest.fromJSON(row.envelope).message;
+                if (admitted === undefined) throw new Error(`A2A request for message ${row.id} lost its Message.`);
+                return admitted;
             });
         const replies = rows.filter((row) => row.direction === "outbound"
             && row.answers.some((address) => PlurnkTaskStore.#ownsSource(address, context.name, task.name)));
