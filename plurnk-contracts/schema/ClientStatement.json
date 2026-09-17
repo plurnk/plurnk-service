@@ -41,16 +41,6 @@
                 }
             ]
         },
-        "LineMarkerOrNull": {
-            "oneOf": [
-                {
-                    "$ref": "https://schemas.plurnk.xyz/v0/LineMarker.json"
-                },
-                {
-                    "type": "null"
-                }
-            ]
-        },
         "TextLineMarkerOrNull": {
             "oneOf": [
                 {
