@@ -35,6 +35,12 @@ test("parseListing reads only the Available Skills structure behind the CLI's gu
     assert.deepEqual(parseListing("◇  Found 0 skills\n"), []);
 });
 
+test("{§agent-skills-name} source discovery retains Unicode and digit-leading names", () => {
+    const names = ["3d-models", "café", "分析", "𐐨-demo", "ⅳ", "ｓｋｉｌｌ", "skill"];
+    const output = ["◇  Available Skills", ...names.flatMap((name) => [`│    ${name}`, `│      Guide for ${name}.`])].join("\n");
+    assert.deepEqual(parseListing(output), names.map((name) => ({ name, description: `Guide for ${name}.` })));
+});
+
 test("StandardSkillsToolchain reads the registry's JSON into exact candidates and refuses when disabled", async () => {
     const server = createServer((request, response) => {
         response.setHeader("content-type", "application/json");

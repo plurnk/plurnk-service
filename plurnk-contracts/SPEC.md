@@ -1253,13 +1253,12 @@ environment declarations, then validates the resulting
 `McpServerDefinition`. Carrying the overlay does not connect, persist, or
 expand credentials by itself.
 
-`SkillDefinition` is the one definition the Worker `skills` Functionality
-family accepts and persists: the standard Agent Skills `name` (the directory
-name), the universal root `scope` (`project` or `global`), and — for a
-Worker-installed skill — the standard installer package `source` that
-provides it. `Validator.assertSkillDefinition` is the family's admission
-boundary; the filesystem under the scope's root, never the definition, is the
-truth about installation.
+`SkillDefinition` is the one definition the workspace `skills` Functionality
+family accepts and persists: the standard `name`, source `scope`, and optional
+installer `source`. `Validator.assertSkillDefinition` validates the wire shape;
+the schema's name grammar is exposed as `SKILL_NAME` for loaders and discovery
+({§agent-skills-name}). Core owns installation truth and lifecycle
+({§skills-functionality}).
 
 `A2aAgentDefinition` is the one definition the Worker `a2a` Functionality
 family accepts and persists: the local alias `name` (the `a2a://<name>`

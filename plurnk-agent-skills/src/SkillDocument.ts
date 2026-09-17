@@ -1,4 +1,5 @@
 import { parse as parseYaml } from "yaml";
+import { SKILL_NAME } from "@plurnk/plurnk-contracts";
 
 export interface SkillDocument {
     readonly name: string;
@@ -7,8 +8,6 @@ export interface SkillDocument {
     readonly body: string;
     readonly source: string;
 }
-
-const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 
 // {§agent-skills-directory} Discovery consumes two keys; it does not replace the source.
 export const parseSkill = (file: string, folder: string, source: string): SkillDocument => {
@@ -28,9 +27,9 @@ export const parseSkill = (file: string, folder: string, source: string): SkillD
     const { name, description } = fields;
     if (typeof name !== "string" || name.length === 0) throw new Error(`${file}: Agent Skill frontmatter requires name`);
     if (!SKILL_NAME.test(name)) throw new Error(`${file}: Agent Skill name ${JSON.stringify(name)} is invalid`);
-    if (name.length > 64) throw new Error(`${file}: Agent Skill name exceeds 64 characters`);
+    if ([...name].length > 64) throw new Error(`${file}: Agent Skill name exceeds 64 characters`);
     if (name !== folder) throw new Error(`${file}: Agent Skill name ${JSON.stringify(name)} must match folder ${JSON.stringify(folder)}`);
     if (typeof description !== "string" || description.trim().length === 0) throw new Error(`${file}: Agent Skill frontmatter requires description`);
-    if (description.length > 1024) throw new Error(`${file}: Agent Skill description exceeds 1024 characters`);
+    if ([...description].length > 1024) throw new Error(`${file}: Agent Skill description exceeds 1024 characters`);
     return { name, description, metadata: fields, body: source.slice(header[0].length), source };
 };

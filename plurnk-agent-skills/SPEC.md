@@ -11,7 +11,7 @@ The consumer owns composition, activation, and publication, not this loader.
 ## §agent-skills-directory Source directory
 
 The loader consumes the standard [Agent Skills directory format](https://agentskills.io/specification).
-Installation, Worker enablement, proposals, and resource addressing belong to the
+Installation, workspace enablement, proposals, and resource addressing belong to the
 consumer; this package neither installs skills nor grants execution authority.
 
 | Input | Contract |
@@ -22,6 +22,18 @@ consumer; this package neither installs skills nor grants execution authority.
 | Resource paths | Relative to the skill root. Neither lexical traversal nor a resolved symlink may escape that root. |
 | Filesystem changes | Subsequent reads and listings observe the source directly; changing a supporting file does not require changing `SKILL.md`. |
 | Failures | Preserve filesystem errors. Report invalid frontmatter, root escapes, cycles, and non-file resources at the boundary that detects them. |
+
+### §agent-skills-name Discovery identity
+
+| Field | Admission |
+| --- | --- |
+| `name` | 1–64 Unicode code points: lowercase or uncased letters, numbers and single internal hyphens. Exact directory-name match; no case folding or Unicode normalization. |
+| `description` | Nonblank string, at most 1024 Unicode code points. |
+| Other frontmatter | Preserve without interpreting or enforcing unused authoring constraints. Unknown fields, ordinary YAML aliases and flow mappings remain available in the original source. |
+
+The loader is not an authoring linter. The `skills-ref` demonstration's NFKC
+rewriting, lowercase `skill.md` fallback, unknown-field rejection and StrictYAML
+restrictions do not replace the source-preserving contract above.
 
 ## §agent-skills-disclosure Progressive disclosure
 

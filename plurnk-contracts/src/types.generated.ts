@@ -1222,7 +1222,7 @@ export type Tokens = number
 
 export interface SkillDefinition {
 /**
- * The standard Agent Skills name: lowercase words joined by single hyphens, equal to the skill's directory name.
+ * The standard Agent Skills name: Unicode lowercase or uncased letters and numbers joined by single hyphens, equal to the skill's directory name.
  */
 name: string
 /**

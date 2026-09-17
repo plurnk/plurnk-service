@@ -3,6 +3,7 @@
 export * from "./types.generated.ts";
 
 import reasoningPolicySchema from "../schema/ReasoningPolicy.json" with { type: "json" };
+import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
 import type {
     CapabilityPolicy,
     ClientStatement,
@@ -73,6 +74,9 @@ export const DEFAULT_LOOP_POLICY: LoopPolicy = Object.freeze({
 
 // Minting predicate only; URL ingestion deliberately remains permissive. {§worker-name}
 export const WORKER_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/;
+
+// {§agent-skills-name} Discovery and registration share the wire schema's grammar.
+export const SKILL_NAME = new RegExp(skillDefinitionSchema.properties.name.pattern, "u");
 
 // Structurally synthesized statements have no parsed source point. {§parser-position}
 export const UNKNOWN_POSITION: Readonly<Position> = Object.freeze({ line: 0, column: 0 });

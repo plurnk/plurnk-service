@@ -48,6 +48,7 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
+        "@plurnk/plurnk-contracts": "1.18.0",
         "@plurnk/plurnk-schemes": "1.18.0",
         "yaml": "^2.9.0"
     }

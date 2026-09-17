@@ -4867,7 +4867,9 @@ contributes nothing and is refused with 400.
 
 *Admission.* `add {alias, definition}` requires `alias = name`, a `source`,
 and a project root when `scope` is `project`; the workspace definition may
-shadow a service skill of the same name.
+shadow a service skill of the same name. The family's aliases use the standard
+skill-name grammar ({§agent-skills-name}), including digit-leading and Unicode
+names, rather than the coordinator's generic default.
 
 *Preparation.* For each enabled alias the adapter selects the host-provided
 tree for `service` scope or locates the directory at the filesystem scope;
@@ -4894,6 +4896,9 @@ The family exposes enabled, available {§agent-skills-tree} sources through
 `skill://<name>/`. The source owns its bytes; commons entries are demand-loaded
 projections, not writable installations. Filesystem skills retain their original
 directories; service-provided trees need no generated filesystem directory.
+The authority is the name's WHATWG URI representation, including percent-encoding
+for non-ASCII names. Installation names remain unchanged; a raw spelling and its
+serialized URI address the same resource, not separate skill identities.
 
 | Operation | Contract |
 | --- | --- |

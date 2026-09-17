@@ -1,5 +1,5 @@
-// {§skills-functionality} — standard Agent Skills through the shared Worker
-// Functionality lifecycle: the filesystem is installation truth, the Worker
+// {§skills-functionality} — standard Agent Skills through the shared workspace
+// Functionality lifecycle: the filesystem is installation truth, the workspace
 // owns enablement, discovery is inert, and the standard CLI is the installer.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -59,6 +59,57 @@ const registry = async (): Promise<{ url: string; queries: string[]; close(): Pr
         close: () => new Promise((accept, reject) => server.close((error) => error ? reject(error) : accept())),
     };
 };
+
+test("{§agent-skills-name} {§skills-resources}: discovery, installation and URI reads preserve skill identities", async (t) => {
+    const base = await mkdtemp(join(tmpdir(), "plurnk-skills-names-"));
+    const home = join(base, "home");
+    const project = join(base, "project");
+    const source = join(base, "source");
+    const names = ["3d-models", "café", "分析", "ｓｋｉｌｌ", "skill"];
+    await mkdir(home);
+    await mkdir(project);
+    for (const name of names) {
+        await writeSkill(source, name, `Guide for ${name}`);
+        await writeFile(join(source, name, "guide.md"), `Supporting source for ${name}.\n`);
+    }
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null, skills: {
+        hostPaths: new HostPaths({ home, env: {} }),
+        toolchain: new StandardSkillsToolchain({ PLURNK_SERVICE_SKILLS_CLI: `${process.execPath} ${FIXTURE_CLI}` }),
+    } });
+    t.after(async () => { await daemon.stop(); await db.close(); await rm(base, { recursive: true, force: true }); });
+    await daemon.start();
+    const workspace = await daemon.createWorkspace({ name: "skill-names", projectRoot: project });
+    const context = { scope: "workspace" as const, workspaceId: workspace.workspaceId };
+    const action = (verb: string, params: Record<string, unknown>) => daemon.invokeModuleAction(`workspace.skills.${verb}`, params, context);
+    const read = (target: string) => daemon.dispatchAsClient({ ...workspace, statement: readStmt(parsePath(target), { marks: [1, -1] }) });
+    const discovered = await action("discover", { source }) as { candidates: Array<{ alias: string; definition: unknown }> };
+    assert.deepEqual(new Set(discovered.candidates.map(({ alias }) => alias)), new Set(names));
+    for (const candidate of discovered.candidates) {
+        const result = await action("add", { alias: candidate.alias, definition: candidate.definition }) as { status: number };
+        assert.equal(result.status, 201);
+    }
+    const catalog = await daemon.dispatchAsClient({ ...workspace, statement: { ...findStmt(parsePath("skill://*/SKILL.md")), lineMarker: { marks: [1, -1] } } });
+    assert.equal(catalog.status, 200, JSON.stringify(catalog));
+    assert.ok(Array.isArray(catalog.results));
+    const paths = (catalog.results.flat() as Array<{ path: string }>).map(({ path }) => path);
+    for (const name of names) {
+        const target = `skill://${name}/SKILL.md`;
+        const canonical = new URL(target).href;
+        assert.ok(paths.includes(canonical), `${name} has a discoverable canonical URI in ${JSON.stringify(paths)}`);
+        for (const address of [target, canonical]) {
+            const result = await read(address);
+            assert.equal(result.status, 200, JSON.stringify(result));
+            assert.equal(result.content, skill(name, `Guide for ${name}`).slice(0, -1));
+        }
+        const sibling = new URL("guide.md", canonical).href;
+        assert.equal((await read(sibling)).content, `Supporting source for ${name}.`);
+        await action("disable", { alias: name });
+        assert.equal((await read(target)).status, 404);
+        await action("enable", { alias: name });
+        assert.equal((await read(sibling)).content, `Supporting source for ${name}.`);
+    }
+});
 
 test("{§module-workspace-quiescence}: a busy workspace refuses skill installation and removal before external effects", async (t) => {
     const base = await mkdtemp(join(tmpdir(), "plurnk-skills-busy-"));

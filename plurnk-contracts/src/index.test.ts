@@ -54,6 +54,7 @@ test("the package root exposes exactly the supported runtime values", () => {
         "Problems",
         "REASONING_POLICIES",
         "RUNTIME_TAG",
+        "SKILL_NAME",
         "TurnDisposition",
         "UNKNOWN_POSITION",
         "Validator",

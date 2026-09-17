@@ -37,6 +37,22 @@ test("{§agent-skills-directory} validates the standard discovery fields", () =>
     assert.throws(() => parse(`---\nname: sample\ndescription: ${"x".repeat(1025)}\n---\n`), /description exceeds 1024/);
 });
 
+test("{§agent-skills-name} accepts standard Unicode names without rewriting identity", () => {
+    for (const name of ["3d-models", "café", "分析", "𐐨-demo", "ⅳ", "ｓｋｉｌｌ", "skill", "𐐨".repeat(64)]) {
+        const raw = `---\nname: ${name}\ndescription: ${"🔍".repeat(1024)}\n---\nRead guide.md.\n`;
+        const doc = parseSkill(`/skills/${name}/SKILL.md`, name, raw);
+        assert.equal(doc.name, name);
+        assert.equal(doc.source, raw);
+    }
+    for (const name of ["CAFÉ", "ǅemo", "Ⅳ", "caf--é", "-café", "café-", "caf_e", "cafe\u0301", "hello world"]) {
+        assert.throws(() => parseSkill("/x/SKILL.md", name, `---\nname: ${name}\ndescription: x\n---\n`), /name .* is invalid/, name);
+    }
+    assert.throws(() => parseSkill("/x/SKILL.md", "café", "---\nname: cafe\ndescription: x\n---\n"), /must match folder "café"/);
+    assert.throws(() => parseSkill("/x/SKILL.md", "skill", "---\nname: ｓｋｉｌｌ\ndescription: x\n---\n"), /must match folder "skill"/);
+    assert.throws(() => parseSkill("/x/SKILL.md", "𐐨".repeat(65), `---\nname: ${"𐐨".repeat(65)}\ndescription: x\n---\n`), /name exceeds 64/);
+    assert.throws(() => parseSkill("/x/SKILL.md", "sample", `---\nname: sample\ndescription: ${"🔍".repeat(1025)}\n---\n`), /description exceeds 1024/);
+});
+
 test("{§agent-skills-disclosure} reads nested resources, scripts and binary assets from a live source tree", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-skill-directory-"));
     t.after(() => rm(root, { recursive: true, force: true }));

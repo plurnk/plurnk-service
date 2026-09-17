@@ -12,6 +12,7 @@ import { promisify, stripVTControlCharacters } from "node:util";
 import { SkillDirectory, type SkillTree } from "@plurnk/plurnk-agent-skills";
 import {
     Problems,
+    SKILL_NAME,
     Validator,
     type FunctionalityCandidate,
     type FunctionalityDiscoverQuery,
@@ -38,7 +39,6 @@ const execFileP = promisify(execFile);
 const SKILLS_FAMILY = "skills";
 const SKILLS_OWNER = "@plurnk/plurnk-core/skills";
 const DEFINITION = { $ref: "https://schemas.plurnk.xyz/v0/SkillDefinition.json" } as const satisfies JsonSchema;
-const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const DEFAULT_CLI = "npx --yes skills";
 const DEFAULT_REGISTRY = "https://skills.sh";
 const REGISTRY_LIMIT = 20;
@@ -200,6 +200,7 @@ export class StandardSkillsToolchain implements SkillsToolchain {
 
 export default class SkillsFunctionality implements FunctionalityAdapter {
     readonly family = SKILLS_FAMILY;
+    readonly aliasPattern = SKILL_NAME;
     readonly namespaceOwner = SKILLS_OWNER;
     readonly summary = "Manage Agent Skills";
     readonly definitionSchema: JsonSchema = DEFINITION;
@@ -476,7 +477,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
                 const tree = definition.scope === "service" ? provided.get(alias)
                     : await this.#loadInstalled(alias, definition, installed, projectRoot);
                 if (tree === undefined) throw actionError("skill-missing", 404, `Agent Skill '${alias}' is not provided by this service.`, { name: alias, retryable: false });
-                trees.set(alias, tree);
+                trees.set(new URL(`skill://${alias}/`).hostname, tree);
                 outcomes.set(alias, { state: "active", detail: {
                     scope: definition.scope,
                     ...(tree instanceof SkillDirectory ? { path: tree.directory } : {}),

@@ -21,10 +21,21 @@ import Validator, {
     InvalidProposalProjectionError,
     InvalidRangeExtentError,
     InvalidReasoningPolicyError,
+    InvalidSkillDefinitionError,
     InvalidTextRegionError,
 } from "./Validator.ts";
 import Problems from "./Problems.ts";
 import type { CapabilityPolicy, ClientDisplayCapabilities, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, RangeExtent } from "./types.generated.ts";
+
+test("{§agent-skills-name}: wire definitions admit Unicode and digit-leading names with exact identity", () => {
+    for (const name of ["3d-models", "café", "分析", "𐐨-demo", "ⅳ", "ｓｋｉｌｌ", "𐐨".repeat(64)]) {
+        const definition = { name, scope: "project" as const, source: "example/skills" };
+        assert.deepEqual(Validator.assertSkillDefinition(definition), definition);
+    }
+    for (const name of ["", "CAFÉ", "ǅemo", "Ⅳ", "caf--é", "-café", "café-", "caf_e", "cafe\u0301", "hello world", "𐐨".repeat(65)]) {
+        assert.throws(() => Validator.assertSkillDefinition({ name, scope: "project" }), InvalidSkillDefinitionError, name);
+    }
+});
 
 test("{§model-catalog-wire}: model routes and bounded catalog pages preserve readiness evidence", () => {
     const directRoute: unknown = { provider: "google", model: "gemini-3-flash" };
