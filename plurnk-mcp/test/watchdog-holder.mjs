@@ -11,8 +11,9 @@ process.env.PLURNK_MCP_CONNECT_TIMEOUT ??= "30000";
 process.env.PLURNK_MCP_REQUEST_TIMEOUT ??= "86400000";
 
 const fixture = process.argv[2];
-if (typeof fixture !== "string" || fixture.length === 0) {
-    console.error("holder: usage: holder.mjs <fixture-path>");
+const workingDirectory = process.argv[3];
+if (!fixture || !workingDirectory) {
+    console.error("holder: usage: holder.mjs <fixture-path> <working-directory>");
     process.exit(64);
 }
 const conn = new ServerConnection({
@@ -20,7 +21,7 @@ const conn = new ServerConnection({
     transport: "stdio",
     command: process.execPath,
     args: [fixture],
-}, process.env, {});
+}, process.env, { workingDirectory: async () => workingDirectory });
 try {
     const catalog = await conn.catalog();
     console.log(`HOLDER-READY tools=${catalog.tools.length} pid=${process.pid}`);

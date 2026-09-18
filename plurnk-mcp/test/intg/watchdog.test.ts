@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { workingDirectory } from "../working-directory.ts";
 
 const holder = fileURLToPath(new URL("../watchdog-holder.mjs", import.meta.url));
 const fixture = fileURLToPath(new URL("../../src/fixtures/echo-server.mjs", import.meta.url));
@@ -46,17 +47,22 @@ const alive = (pids: number[]): number[] => {
         .map(({ pid }) => pid);
 };
 
-test("{§mcp-stdio-process-ownership}: a SIGKILLed parent takes its stdio MCP server tree with it", { timeout: 30_000 }, async () => {
+test("{§mcp-stdio-process-ownership}: a SIGKILLed parent takes its stdio MCP server tree with it", { timeout: 30_000 }, async (t) => {
     // Pre-existing noise (e.g. this test file's own path in a ps line) is
     // excluded by matching only the fixture/watchdog/holder basenames above.
-    const child = spawn(process.execPath, ["--conditions=plurnk-dev", holder, fixture], {
+    const child = spawn(process.execPath, ["--conditions=plurnk-dev", holder, fixture, workingDirectory], {
         stdio: ["ignore", "pipe", "pipe"],
     });
+    t.after(() => {
+        if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    });
     let ready = "";
+    let errors = "";
     child.stdout.setEncoding("utf8").on("data", (chunk: string) => { ready += chunk; });
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => { errors += chunk; });
     const deadline = Date.now() + 15_000;
-    while (Date.now() < deadline && !ready.includes("HOLDER-READY")) await delay(100);
-    assert.ok(ready.includes("HOLDER-READY"), `holder never became ready (saw: ${ready.slice(0, 200)})`);
+    while (Date.now() < deadline && child.exitCode === null && !ready.includes("HOLDER-READY")) await delay(100);
+    assert.ok(ready.includes("HOLDER-READY"), `holder never became ready (stdout: ${ready.slice(0, 200)}; stderr: ${errors.slice(0, 200)})`);
 
     const owned = descendants(child.pid ?? 0);
     assert.ok(owned.length >= 2, `expected watchdog+server descendants, saw ${owned.length}`);
