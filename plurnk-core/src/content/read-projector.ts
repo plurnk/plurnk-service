@@ -380,12 +380,27 @@ export default class ReadProjector {
             const ordered = PatternEdits.lines(match.matches ?? [], null);
             visibleLines = visibleLines === undefined ? ordered : ordered.filter((line) => visibleLines!.includes(line));
         }
-        const resolved = await ReadResolve.resolve({
+        let resolved = await ReadResolve.resolve({
             content: selectedRepresentation.content,
             mimetype: selectedRepresentation.mimetype,
             lineMarker,
             ...(visibleLines === undefined ? {} : { visibleLines }),
         });
+        // {§read-past-end} — a plain line range starting past the end of nonempty content asks for
+        // more than there is: the answer is no lines with the extent, as an empty FIND page is (#759).
+        // A command's log row keeps its refusal: there the range is the address mistake, and the
+        // refusal names the stream below ({§log-range-miss-names-stream}).
+        const [first, last] = lineMarker?.marks.length === 2 ? lineMarker.marks : [];
+        if (resolved.status === 416 && visibleLines === undefined && streamOf(representation.attributes) === null
+            && resolved.range !== undefined && resolved.range.unit === "line" && resolved.range.total > 0
+            && typeof first === "number" && typeof last === "number" && first > resolved.range.total
+            && (last === -1 || last >= first)) {
+            resolved = { ...(await ReadResolve.resolve({
+                content: selectedRepresentation.content,
+                mimetype: selectedRepresentation.mimetype,
+                lineMarker: { marks: [-1] },
+            })), range: resolved.range };
+        }
         // A whole-resource pattern READ pages through every selected line; a scoped one renders
         // exactly the selected lines the scope holds.
         const matched = statement.matcher === null || visibleLines === undefined
@@ -393,11 +408,11 @@ export default class ReadProjector {
             : lineMarker === null ? visibleLines.length : (resolved.lineOrdinals?.length ?? 0);
         if (resolved.status >= 400) {
             if (resolved.problem !== undefined) {
-                // {§log-range-miss-names-stream} — an empty-extent 416 on a stream-bearing log
-                // execution item names the address that stays readable, exactly as its channel
-                // miss does ({§log-channel-miss-names-stream}); every other 416 passes through
-                // untouched because only engine-known state conditions the naming.
-                const stream = resolved.status === 416 && resolved.range?.total === 0
+                // {§log-range-miss-names-stream} — a 416 on a stream-bearing log execution item names
+                // the address that stays readable, exactly as its channel miss does
+                // ({§log-channel-miss-names-stream}): the range addressed the invocation, not its
+                // output (#759). Only engine-known state conditions the naming.
+                const stream = resolved.status === 416
                     ? streamOf(representation.attributes)
                     : null;
                 return Results.assertReadResult({

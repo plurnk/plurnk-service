@@ -536,7 +536,7 @@ test("Log.read: an empty-extent 416 without a recorded stream keeps the generic 
 
 // {§log-range-miss-names-stream} — an ordinary out-of-range miss against a real extent keeps
 // the generic problem even when the row records a stream.
-test("Log.read: an out-of-range 416 against a real extent keeps the generic slicer problem", async () => {
+test("Log.read: an out-of-range 416 against a command row's invocation names the stream (#759)", async () => {
     const { db, workspaceId, workerId, loopId, turnId } = await setup();
     try {
         await insertExecutionRow(db, { workerId, loopId, turnId }, 1, { stream: "sh:///0badcafe" }, "one\ntwo");
@@ -547,8 +547,8 @@ test("Log.read: an out-of-range 416 against a real extent keeps the generic slic
         assert.equal(miss.status, 416);
         assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
         assert.deepEqual(miss.problem?.range, { unit: "line", total: 2, requested: [9, 9] });
-        assert.equal(Object.hasOwn(miss.problem ?? {}, "stream"), false);
-        assert.equal(miss.problem?.recovery, "Choose a range within the available extent.");
-        assert.equal(miss.problem?.detail, "Line 9 is outside the available line range 1..2.");
+        assert.equal(miss.problem?.stream, "sh:///0badcafe");
+        assert.equal(miss.problem?.recovery, "READ sh:///0badcafe for the command's stream.");
+        assert.equal(miss.problem?.detail, "Line 9 is outside the available line range 1..2. The command's streams live at sh:///0badcafe.");
     } finally { db.close(); }
 });

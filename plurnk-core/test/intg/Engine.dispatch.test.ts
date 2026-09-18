@@ -369,6 +369,26 @@ test("{§anchor-offset} Engine.dispatch: an EDIT anchor offset applies the splic
     } finally { await db.close(); }
 });
 
+test("{§read-past-end} Engine.dispatch: a READ range starting past the end is an empty page with its extent; a single line past it is still refused (#759)", async () => {
+    const { db, engine, env } = await setup();
+    const target = urlPath("worker", "/thirteen.md");
+    try {
+        const content = Array.from({ length: 13 }, (_, index) => `line ${index + 1}`).join("\n");
+        assert.equal((await engine.dispatch({ statement: editStmt({ target, body: content }), ...env, sequence: 1, origin: "model" })).status, 201);
+        let sequence = 1;
+        for (const marks of [[90, -1], [85, 210], [14, -1]] as const) {
+            const read = await engine.dispatch({ statement: readStmt({ target, marker: { marks: [...marks] } }), ...env, sequence: ++sequence, origin: "model" });
+            assert.ok(read.status === 200 || read.status === 204, JSON.stringify(marks));
+            assert.equal((read as { content?: string }).content ?? "", "", JSON.stringify(marks));
+            assert.deepEqual((read as { range?: unknown }).range, { unit: "line", total: 13, requested: [...marks] }, JSON.stringify(marks));
+        }
+        for (const marks of [[90], [5, 3], [90, 50]] as const) {
+            const refused = await engine.dispatch({ statement: readStmt({ target, marker: { marks: [...marks] } }), ...env, sequence: ++sequence, origin: "model" });
+            assert.equal(refused.status, 416, JSON.stringify(marks));
+        }
+    } finally { await db.close(); }
+});
+
 test("Engine.dispatch: an EDIT anchor in a column slot names the accepted whole-line range", async () => {
     const { db, engine, env } = await setup();
     const target = urlPath("worker", "/invalid-anchor-region.md");

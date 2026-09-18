@@ -1946,7 +1946,7 @@ READ is the one fan-out core performs ({§read-fan-out}).
   when that differs from the channel's own mimetype the result names the
   channel's as `sourceMimetype`, so a consumer can still run the channel's
   handlers over a whole-resource `<1,-1>` read.
-- §log-range-miss-names-stream An empty-extent 416 on a log execution item is the range twin of its channel miss ({§log-channel-miss-names-stream}): the coordinate names a row whose readable projection is empty while the execution's output stays readable at the stream address the row records. When that stream link exists, the 416 gains it as `stream`, the detail appends where the command's streams live, and `recovery` is `READ <stream> for the command's stream.` Every other 416 — out-of-range against a real extent, empty content with no recorded stream — stays byte-identical to the generic slicer's.
+- §log-range-miss-names-stream A 416 on a log execution item is the range twin of its channel miss ({§log-channel-miss-names-stream}): the coordinate addresses the row's invocation (its authored call body, often empty or one line) while the execution's output stays readable at the stream address the row records. When that stream link exists, the 416 gains it as `stream`, the detail appends where the command's streams live, and `recovery` is `READ <stream> for the command's stream`, whether the invocation's extent is empty or merely shorter than the range (#759). A 416 on a row with no recorded stream stays byte-identical to the generic slicer's.
 - §read-pattern **A pattern selects the lines a READ renders.** With a heading
   matcher ({§matcher-option} in the contracts SPEC) an exact-target READ stays a
   READ: the matcher runs over the channel's text line by line — a regex anchors
@@ -2229,6 +2229,11 @@ generic body `lines` remains available on READ-shaped materialization notices
 that have no retrieval extent. FIND content weights follow {§log-wire-format};
 ordinary bounded bodies expose their displayed and complete extents as `preview`
 under {§packet-extent-metadata}.
+
+§read-past-end A line READ whose range starts past the end of nonempty content is
+answered like an empty FIND page: with no lines and its extent (`none of N lines`), not a 416; a
+single line past the end, a reversed range, empty content, a command's log row
+({§log-range-miss-names-stream}) and every write keep their refusal (#759).
 
 ### §turn-ops-entry The admitted turn program
 
