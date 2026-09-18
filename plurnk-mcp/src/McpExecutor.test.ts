@@ -492,6 +492,21 @@ test("invalid tool arguments carry the one-object recovery", async () => {
     }
 });
 
+test("{§mcp-trailing-aside} an HTML comment after the one JSON object is an aside, not arguments", async () => {
+    const { connection, executor } = configured();
+    try {
+        await executor.requireAvailable();
+        for (const body of ["{\"message\":\"a\"} <!-- echo it -->", "{\"message\":\"a\"}\n<!-- echo it --> <!-- twice -->"]) {
+            const result = await executor.run(harness({ target: "echo", body }).args);
+            assert.equal(result.status, 200, body);
+        }
+        const trailingProse = await executor.run(harness({ target: "echo", body: "{\"message\":\"a\"} and more" }).args);
+        assert.equal(trailingProse.problem?.type, "https://problems.plurnk.xyz/executor/mcp/invalid-tool-arguments");
+    } finally {
+        await connection.close();
+    }
+});
+
 test("{§mcp-result-content} the channel carries the result, never the envelope", async () => {
     const pretty = '[\n  {\n    "id": "PART-001"\n  }\n]';
     assert.deepEqual(await toolResultBody({ content: [{ type: "text", text: pretty }] }, "fixture"), { content: pretty, mimetype: "application/json" });

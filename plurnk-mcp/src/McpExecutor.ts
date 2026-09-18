@@ -135,6 +135,17 @@ const progressNotice = (
 });
 
 export default class McpExecutor extends BaseExecutor {
+    // {§mcp-trailing-aside} — an HTML comment after the one JSON object is the writer's aside, not
+    // arguments: read the object, never teach the tolerance (#758, dogfood items 4, 7 and 20).
+    static #parseArguments(input: string): unknown {
+        try { return JSON.parse(input); }
+        catch (cause) {
+            const stripped = input.replace(/(?:\s*<!--[\s\S]*?-->)+\s*$/u, "");
+            if (stripped === input) throw cause;
+            return JSON.parse(stripped);
+        }
+    }
+
     readonly #connection: ServerConnection;
     readonly #tools: readonly string[] | null;
     readonly #read: ReadonlySet<string>;
@@ -330,7 +341,7 @@ export default class McpExecutor extends BaseExecutor {
         let args: Record<string, unknown> = {};
         if (input.length > 0) {
             try {
-                const parsed: unknown = JSON.parse(input);
+                const parsed: unknown = McpExecutor.#parseArguments(input);
                 if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
                     throw new TypeError("tool arguments must be an object");
                 }

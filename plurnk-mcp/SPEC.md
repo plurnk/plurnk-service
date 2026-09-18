@@ -581,6 +581,12 @@ remote diagnostic as structured extensions. Their prose states only the failed
 boundary fact; it neither repeats those fields nor infers whether the remote
 effect occurred.
 
+§mcp-trailing-aside A tool call's body is one JSON object. HTML comments after
+that object are the writer's aside, not arguments: when the body does not parse
+as written, trailing `<!-- … -->` comments are removed and the object is read.
+Any other trailing text is still `invalid-tool-arguments`. Nothing teaches the
+tolerance (#758).
+
 ## §mcp-result-content Passive result content
 
 The default output channel carries the tool's result, not its transport envelope:
