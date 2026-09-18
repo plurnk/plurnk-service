@@ -189,6 +189,15 @@ export default class DigestRender {
             && rx.problem.type.startsWith("https://problems.plurnk.xyz/executor/");
     }
 
+    // {§loop-claim-latency} — claim to first model turn: a stall between them is a number, not a gap.
+    static #wakeLatency(loop: LoopRow, m: DigestModel): string | null {
+        if (loop.claimed_at === null) return null;
+        const first = (m.turnsByLoop.get(loop.id) ?? []).filter((t) => t.kind === "inference").sort((a, b) => a.sequence - b.sequence)[0];
+        if (first === undefined) return `Claimed: ${loop.claimed_at} · no model turn`;
+        const seconds = (Date.parse(first.timestamp) - Date.parse(loop.claimed_at)) / 1000;
+        return `Claimed: ${loop.claimed_at} · first model turn +${seconds.toFixed(1)} s`;
+    }
+
     static #loopHealth(loop: LoopRow, m: DigestModel): { errors: number; errorItems: number; verdict: string } {
         let errors = 0;
         let errorItems = 0;
@@ -362,6 +371,8 @@ export default class DigestRender {
                     lines.push(`#### Loop ${loop.sequence} (id=${loop.id}, status=${loop.status})${badge}`);
                     lines.push("");
                     lines.push(`Prompt: ${DigestRender.#summarize(loop.prompt, 160)}`);
+                    const wake = DigestRender.#wakeLatency(loop, m);
+                    if (wake !== null) lines.push(wake);
                     if (loop.status !== 200 && terminal?.problem?.detail !== undefined) {
                         lines.push(`Terminal${loop.terminated_by !== null ? ` (${loop.terminated_by})` : ""}: ${DigestRender.#summarize(terminal.problem.detail, 400)}`);
                     }
@@ -547,6 +558,7 @@ export default class DigestRender {
                 id: l.id, worker_id: l.worker_id, sequence: l.sequence, status: l.status,
                 prompt: l.prompt, policy: DigestRender.parseJson(l.policy, {}),
                 terminated_by: l.terminated_by,
+                claimed_at: l.claimed_at,
                 terminated_at: l.terminated_at,
                 result: DigestRender.#terminalResult(l),
                 accounting: DigestRender.#accounting(m.requestsByLoop.get(l.id) ?? []),

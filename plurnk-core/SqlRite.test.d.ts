@@ -346,6 +346,8 @@ export class SqlRiteSync {
 	test_insert_workspace: SqlRiteSyncPreparedStatements;
 	test_insert_worker: SqlRiteSyncPreparedStatements;
 	test_insert_loop: SqlRiteSyncPreparedStatements;
+	test_insert_queued_loop: SqlRiteSyncPreparedStatements;
+	test_get_loop_claimed_at: SqlRiteSyncPreparedStatements;
 	test_insert_turn: SqlRiteSyncPreparedStatements;
 	test_open_inference_turn: SqlRiteSyncPreparedStatements;
 	test_turn_items: SqlRiteSyncPreparedStatements;
@@ -923,6 +925,8 @@ export default class SqlRite {
 	test_insert_workspace: SqlRitePreparedStatements;
 	test_insert_worker: SqlRitePreparedStatements;
 	test_insert_loop: SqlRitePreparedStatements;
+	test_insert_queued_loop: SqlRitePreparedStatements;
+	test_get_loop_claimed_at: SqlRitePreparedStatements;
 	test_insert_turn: SqlRitePreparedStatements;
 	test_open_inference_turn: SqlRitePreparedStatements;
 	test_turn_items: SqlRitePreparedStatements;

@@ -875,6 +875,13 @@ next check. Restart reconciles obligations under {§worker-lifecycle-restart-rec
 Waking or terminalizing invalidates the old wait. Duplicate and racing wakes
 have one durable winner, and cancellation cannot be reversed by a timer.
 
+§loop-claim-latency **A loop's first claim is durable.** `loops.claimed_at` is
+stamped by trigger the first time a loop enters status 102, at insertion for a
+loop created running and on the move from queued otherwise; later re-claims never
+move it. The digest reports, per loop, the claim time and how long after it the
+first model turn started, so a stall between claim and inference (the moltbook
+heartbeat waited 7.5 h, #703) is a number rather than a gap.
+
 §loop-execution-allowance **One task has one execution allowance.** The first
 execution snapshots `PLURNK_SERVICE_LOOP_TIMEOUT` on the loop. Active segments
 consume that allowance cumulatively, measured with a monotonic clock; waits and

@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS loops (
     -- {§message-loop-containment}: one queued recovery loop may carry the
     -- complete unpublished message set of one concluded source loop.
     orphan_source_loop_id INTEGER,
+    -- {§loop-claim-latency}: the first time the loop was claimed to run (status 102), stamped by
+    -- trigger; its first model turn's start minus this is the wake latency a stall shows up as.
+    claimed_at       TEXT,
     -- {§worker-scheme} loop-termination delta: terminated_at is stamped by the trigger
     -- below when status crosses into terminal (every death-path, uniformly).
     terminated_at    TEXT,

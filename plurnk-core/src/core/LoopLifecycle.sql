@@ -111,6 +111,26 @@ WHERE loops.sequence > json_extract(cutoff.value, '$.cancelled_through_sequence'
   AND loops.status = 499 AND loops.terminated_by = 'cancel'
 ORDER BY loops.id;
 
+-- INIT: loops_stamp_claimed_at_insert
+-- {§loop-claim-latency}: a loop inserted running is claimed at its insertion; the first claim stays.
+DROP TRIGGER IF EXISTS loops_stamp_claimed_at_insert;
+CREATE TRIGGER loops_stamp_claimed_at_insert
+AFTER INSERT ON loops
+WHEN NEW.status = 102 AND NEW.claimed_at IS NULL
+BEGIN
+    UPDATE loops SET claimed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
+END;
+
+-- INIT: loops_stamp_claimed_at_update
+-- {§loop-claim-latency}: a queued loop is claimed when it first moves to 102.
+DROP TRIGGER IF EXISTS loops_stamp_claimed_at_update;
+CREATE TRIGGER loops_stamp_claimed_at_update
+AFTER UPDATE OF status ON loops
+WHEN NEW.status = 102 AND OLD.status <> 102 AND NEW.claimed_at IS NULL
+BEGIN
+    UPDATE loops SET claimed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
+END;
+
 -- INIT: loops_stamp_terminated_at
 -- {§worker-scheme}: a loop crossing into a terminal status stamps terminated_at, so sibling
 -- workers observe the terminal outcome uniformly across every conclusion path.

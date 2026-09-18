@@ -14,6 +14,12 @@ RETURNING id;
 -- PREP: test_insert_loop
 INSERT INTO loops (worker_id, sequence, prompt) VALUES ($worker_id, $sequence, $prompt) RETURNING id;
 
+-- PREP: test_insert_queued_loop
+INSERT INTO loops (worker_id, sequence, prompt, status) VALUES ($worker_id, $sequence, $prompt, 100) RETURNING id;
+
+-- PREP: test_get_loop_claimed_at
+SELECT claimed_at FROM loops WHERE id = $id;
+
 -- PREP: test_insert_turn
 -- Minimal turn with a caller-supplied packet state.
 INSERT INTO turns (loop_id, sequence, producer, kind, status, packet)
