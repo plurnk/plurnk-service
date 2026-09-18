@@ -22,8 +22,8 @@
 * FIND: list matching paths, or the match locations inside one path
 * READ: read files, entries, streams, or only the lines a pattern selects
 * EDIT: create a file or entry; replace existing text by scope or by pattern
-* COPY (from) <scope>? (to) <scope>?: copy files, entries, streams, or text regions
-* MOVE (from) <scope>? (to) <scope>?: move files, entries, streams, or text regions
+* COPY (path) <scope>? (path) <scope>?: copy files, entries, streams, or text regions
+* MOVE (path) <scope>? (path) <scope>?: move files, entries, streams, or text regions
 * KILL: delete, terminate, or curate the log
 
 * SEND: message clients, workers, and endpoints
