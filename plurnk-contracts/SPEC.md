@@ -389,6 +389,12 @@ header or recursively parsed. There is no implicit SEND: a reply is an explicit
 `SEND` block. (This replaces the retired unlabeled-fence SEND of the fences
 chapter, whose unlabeled fences turned displaced headings into silent messages.)
 
+§closer-aside A closing fence followed on its line by one aside and nothing else
+is the closer; the aside is outside text. Read as body, that line would be written
+into the edited resource (#758: a recorded EDIT deleting a line wrote
+```` ```` <!-- remove duplicated Result import --> ```` into a Python file). A
+closing fence followed by any other text is still body.
+
 §heading-slot-order A heading near-miss with exactly one reading is read as that
 reading, with no diagnostic and no teaching (#758):
 

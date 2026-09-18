@@ -249,6 +249,9 @@ private closingAt(offset: number): boolean {
     while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
     if (this.inputStream.LA(cursor) <= 0 || this.offsetAfterEol(cursor) !== null) return true;
     if (this.reasoning) return false;
+    // {§closer-aside} — a closer followed on its line by one aside and nothing else still closes;
+    // read as body, that line would be written into the edited resource (#758, dogfood item 17).
+    if (this.asideToLineEnd(cursor)) return true;
     // {§inline-chain} — a closer followed on its line by the next opener still closes.
     let ticks = 0;
     while (this.inputStream.LA(cursor + ticks) === 0x60) ticks++;
@@ -293,6 +296,22 @@ private headingAt(offset: number): boolean {
 private headingAfterEol(): boolean {
     const after = this.offsetAfterEol(1);
     return after !== null && this.balancedEnd() === null && this.headingAt(this.skipHorizontal(after));
+}
+
+// `<!-- … -->` at this offset, then only horizontal whitespace to the end of the line or input.
+private asideToLineEnd(at: number): boolean {
+    const open = [0x3C, 0x21, 0x2D, 0x2D];
+    if (!open.every((code, index) => this.inputStream.LA(at + index) === code)) return false;
+    let cursor = at + open.length;
+    for (;;) {
+        const c = this.inputStream.LA(cursor);
+        if (c <= 0 || c === 0x0A || c === 0x0D) return false;
+        if (c === 0x2D && this.inputStream.LA(cursor + 1) === 0x2D && this.inputStream.LA(cursor + 2) === 0x3E) break;
+        cursor++;
+    }
+    cursor += 3;
+    while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
+    return this.inputStream.LA(cursor) <= 0 || this.offsetAfterEol(cursor) !== null;
 }
 
 private closingAfterEol(): boolean {
