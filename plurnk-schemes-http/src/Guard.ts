@@ -6,6 +6,7 @@
 import dns from "node:dns/promises";
 import net from "node:net";
 import { requireNonNegativeIntegerEnv } from "./Config.ts";
+import HostPolicy from "./HostPolicy.ts";
 
 const BLOCKED = new net.BlockList();
 for (const [network, prefix] of [
@@ -117,7 +118,8 @@ export default class Guard {
         while (true) {
             let current: URL;
             try { current = new URL(target); } catch { throw new GuardBlockedError(target); }
-            if (!["http:", "https:"].includes(current.protocol) || !(await Guard.isPublicUrl(current.href))) {
+            // {§http-host-policy} — every hop, not just the first, stays inside the operator's hosts.
+            if (!["http:", "https:"].includes(current.protocol) || !HostPolicy.permits(current.href) || !(await Guard.isPublicUrl(current.href))) {
                 throw new GuardBlockedError(current.href);
             }
             const response = await fetch(current.href, { method, body, headers, signal, redirect: "manual" });

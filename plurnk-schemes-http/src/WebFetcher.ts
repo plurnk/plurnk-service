@@ -13,6 +13,7 @@ import { responseMimetype } from "./ContentType.ts";
 import MaterializerRegistry, { type HttpMaterializer } from "./Materializer.ts";
 import { requirePositiveIntegerEnv } from "./Config.ts";
 import ErrorDetail from "./ErrorDetail.ts";
+import HostPolicy from "./HostPolicy.ts";
 
 export const DEFAULT_WEB_UA =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
@@ -599,6 +600,8 @@ export default class WebFetcher {
     }): Promise<WebFetchResult | null> {
         opts?.signal?.throwIfAborted();
         const target = rewriteAcquisitionTarget(url);
+        // {§http-host-policy} — the entry check and, after unguarded redirects, the final URL.
+        if (!HostPolicy.permits(target)) return null;
         const requestHeaders = opts?.headers ?? [];
         const conditionalHeaders = opts?.conditionalHeaders ?? [];
         let transportHeaders: Array<[string, string]> = requestHeaders.map(
@@ -641,6 +644,10 @@ export default class WebFetcher {
                 : null;
         }
 
+        if (response.url !== "" && !HostPolicy.permits(response.url)) {
+            await response.body?.cancel();
+            return null;
+        }
         if (opts?.acceptHttpErrors !== true && !response.ok) {
             await response.body?.cancel();
             return null;

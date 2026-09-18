@@ -14,6 +14,7 @@ import { BODY, FETCHED_AT, HEADER, REQUEST_METHOD } from "./http-names.ts";
 import HttpGet from "./HttpGet.ts";
 import HttpRequester from "./HttpRequester.ts";
 import LiveAcquisitions from "./LiveAcquisitions.ts";
+import HostPolicy from "./HostPolicy.ts";
 
 // The channel the response body streams into, and the header metadata channel.
 // Package-owned metadata appended after untrusted origin headers. Readers take
@@ -501,6 +502,14 @@ export default class Http implements SchemeHandler {
                 target: address.url,
                 stage: "target-validation",
                 recovery: "Remove credentials from the URL and use request metadata where authorization is required.",
+                retryable: false,
+            });
+        }
+        // {§http-host-policy} — an operator-confined deployment refuses other hosts before any I/O.
+        if (!HostPolicy.permits(address.url)) {
+            return Http.#bad(403, "http", "host-not-permitted", `${new URL(address.url).hostname} is outside the operator's web host policy.`, {
+                target: address.url,
+                stage: "target-validation",
                 retryable: false,
             });
         }

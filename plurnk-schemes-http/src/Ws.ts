@@ -20,6 +20,7 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
+import HostPolicy from "./HostPolicy.ts";
 
 // The inbound-frame channel - every message the origin pushes streams here.
 const MESSAGES = "messages";
@@ -604,6 +605,14 @@ export default class Ws implements SchemeHandler {
                 target: address.url,
                 stage: "target-validation",
                 recovery: "Remove credentials from the URL.",
+                retryable: false,
+            });
+        }
+        // {§http-host-policy} — an operator-confined deployment refuses other hosts before any I/O.
+        if (!HostPolicy.permits(address.url)) {
+            return Ws.#bad(403, "host-not-permitted", `${new URL(address.url).hostname} is outside the operator's web host policy.`, {
+                target: address.url,
+                stage: "target-validation",
                 retryable: false,
             });
         }

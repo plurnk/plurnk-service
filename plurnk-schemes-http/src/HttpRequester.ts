@@ -6,6 +6,7 @@ import WebFetcher, { DEFAULT_WEB_UA, WebMaterializationError } from "./WebFetche
 import { responseMimetype } from "./ContentType.ts";
 import { BODY } from "./http-names.ts";
 import LiveAcquisitions from "./LiveAcquisitions.ts";
+import HostPolicy from "./HostPolicy.ts";
 
 export default class HttpRequester {
     readonly #manifest: SchemeManifest;
@@ -108,6 +109,15 @@ export default class HttpRequester {
                 signal: local.signal,
                 redirect: "follow",
             });
+            // {§http-host-policy} — a followed redirect may not leave the operator's hosts.
+            if (response.url !== "" && !HostPolicy.permits(response.url)) {
+                await response.body?.cancel();
+                return this.#bad(403, "http", "host-not-permitted", `${new URL(response.url).hostname} is outside the operator's web host policy.`, {
+                    target: url,
+                    stage: "acquisition",
+                    retryable: false,
+                });
+            }
 
             const responseMime = responseMimetype(response.headers.get("content-type"));
 

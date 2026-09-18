@@ -310,6 +310,19 @@ handler does not sniff or guess unknown bytes.
 | Required values       | Missing or invalid required values fail at readiness/owning read; code carries no hidden fallback        |
 | Materializer selection | `PLURNK_SCHEMES_HTTP_MATERIALIZER=` names a discovered materializer id; unset = local projection only |
 
+### §http-host-policy Operator web host policy
+
+`PLURNK_SCHEMES_HTTP_HOSTS` confines every web acquisition to named hosts. Unset
+or empty admits every host, as before. A JSON array admits exactly its members:
+`"example.com"` names that host, `"*.example.com"` any subdomain of it, and `[]`
+names none. A value that is not a JSON array of host names fails at first use.
+Direct HTTP operations and WebSocket connections are refused with 403
+`host-not-permitted` before any I/O, and a followed redirect that leaves the
+admitted hosts is cancelled with the same refusal. Automatic acquisition checks
+the target and every redirect hop, and a final URL outside the policy is the
+ordinary unavailable `null`. The policy is operator configuration, alias-free and
+not model teaching; an isolated benchmark sets `[]`.
+
 ### §automatic-fetch-check Automatic acquisition URL check
 
 `WebFetcher` is the sole caller of `Guard.fetch`. Before automatic byte
