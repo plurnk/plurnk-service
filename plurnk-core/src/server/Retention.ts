@@ -11,7 +11,14 @@ export interface RetentionPolicy {
     readonly collectPacketItems: boolean;
     readonly collectDerivations: boolean;
     readonly intervalMs: number;          // 0 = shutdown only
+    readonly autoVacuum: AutoVacuum;
+    readonly reclaimMinFreeBytes: number; // 0 = reclaim every pass
 }
+
+export type AutoVacuum = "incremental" | "none";
+
+// SQLite's PRAGMA auto_vacuum codes for the modes the daemon manages.
+const AUTO_VACUUM_CODE: Readonly<Record<AutoVacuum, number>> = Object.freeze({ none: 0, incremental: 2 });
 
 const readBound = (env: NodeJS.ProcessEnv, name: string, floor: number): number => {
     const raw = env[name];
@@ -20,6 +27,12 @@ const readBound = (env: NodeJS.ProcessEnv, name: string, floor: number): number 
         throw new Error(`${name} must be ${floor === -1 ? "-1 or a non-negative" : "a non-negative"} safe integer; got ${JSON.stringify(raw)}.`);
     }
     return value;
+};
+
+const readAutoVacuum = (env: NodeJS.ProcessEnv): AutoVacuum => {
+    const raw = env.PLURNK_SERVICE_AUTO_VACUUM;
+    if (raw !== "incremental" && raw !== "none") throw new Error(`PLURNK_SERVICE_AUTO_VACUUM must be incremental or none; got ${JSON.stringify(raw)}.`);
+    return raw;
 };
 
 const readFlag = (env: NodeJS.ProcessEnv, name: string): boolean => {
@@ -36,6 +49,8 @@ export const retentionPolicy = (env: NodeJS.ProcessEnv = process.env): Retention
     collectPacketItems: readFlag(env, "PLURNK_SERVICE_COLLECT_PACKET_ITEMS"),
     collectDerivations: readFlag(env, "PLURNK_SERVICE_COLLECT_DERIVATIONS"),
     intervalMs: readBound(env, "PLURNK_SERVICE_RETENTION_INTERVAL_MS", 0),
+    autoVacuum: readAutoVacuum(env),
+    reclaimMinFreeBytes: readBound(env, "PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES", 0),
 });
 
 export default class Retention {
@@ -52,20 +67,20 @@ export default class Retention {
 
     // One pass, in dependency order: compositions and response bodies retire first, then the
     // items and derivations nothing references. Each statement is a no-op under the default policy.
-    // {§db-space-reclamation} — once per open: a database not in incremental auto-vacuum mode is
-    // converted (the mode takes effect through one VACUUM). Runs before any drain, on a quiet writer.
+    // {§db-space-reclamation} — once per open: a database whose auto-vacuum mode differs from the
+    // policy's is converted (a mode change takes effect through one VACUUM). Runs before any drain.
     async prepareStorage(): Promise<{ converted: boolean; pagesBefore: number; pagesAfter: number }> {
         const before = await this.#pages();
         const mode = await this.#db.retention_auto_vacuum_mode.get<{ auto_vacuum: number }>({});
-        if (mode?.auto_vacuum === 2) return { converted: false, pagesBefore: before.pages, pagesAfter: before.pages };
-        await this.#db.retention_set_incremental.run({});
-        await this.#db.retention_vacuum.run({});
+        if (mode?.auto_vacuum === AUTO_VACUUM_CODE[this.#policy.autoVacuum]) return { converted: false, pagesBefore: before.pages, pagesAfter: before.pages };
+        if (this.#policy.autoVacuum === "incremental") await this.#db.retention_convert_incremental({});
+        else await this.#db.retention_convert_none({});
         const after = await this.#pages();
         return { converted: true, pagesBefore: before.pages, pagesAfter: after.pages };
     }
 
-    async #pages(): Promise<{ pages: number; free: number }> {
-        const row = await this.#db.retention_page_counts.get<{ pages: number; free: number }>({});
+    async #pages(): Promise<{ pages: number; free: number; pageSize: number }> {
+        const row = await this.#db.retention_page_counts.get<{ pages: number; free: number; pageSize: number }>({});
         if (row === undefined) throw new Error("page counts are unavailable");
         return row;
     }
@@ -76,12 +91,19 @@ export default class Retention {
         const responses = await this.#db.retention_retire_responses.run({ keep_turns: retainResponseTurns, keep_ms: retainResponseMs, now_ms: now });
         const items = await this.#db.retention_collect_packet_items.run({ collect: collectPacketItems ? 1 : 0 });
         const derivations = await this.#db.retention_collect_derivations.run({ collect: collectDerivations ? 1 : 0 });
-        // {§db-space-reclamation} — what the pass freed goes back to the OS.
-        const freed = (await this.#pages()).free;
+        const reclaimedPages = await this.#reclaim();
+        return { retiredPackets: packets.changes, retiredResponses: responses.changes, collectedItems: items.changes, collectedDerivations: derivations.changes, reclaimedPages };
+    }
+
+    // {§db-space-reclamation} — free pages go back to the OS once they reach the policy's floor;
+    // below it they stay for SQLite to reuse. Under auto_vacuum=none there is nothing to step.
+    async #reclaim(): Promise<number> {
+        if (this.#policy.autoVacuum === "none") return 0;
+        const { free, pageSize } = await this.#pages();
+        if (free === 0 || free * pageSize < this.#policy.reclaimMinFreeBytes) return 0;
         // SQLite frees one page per step of this pragma; stepping it to completion frees them all.
         await this.#db.retention_incremental_vacuum.all({});
-        const reclaimedPages = freed - (await this.#pages()).free;
-        return { retiredPackets: packets.changes, retiredResponses: responses.changes, collectedItems: items.changes, collectedDerivations: derivations.changes, reclaimedPages };
+        return free - (await this.#pages()).free;
     }
 
     // The cadence: unref'd so an idle daemon still exits; a pass that fails reports through the

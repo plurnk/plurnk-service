@@ -8,7 +8,7 @@ import type { DurablePacket } from "../../src/core/StoredPacket.ts";
 import { DEFAULT_MIMETYPES, insertLoop, insertPacketTurn, insertWorker, insertWorkspace, makeSchemeCtx, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
 
 const counts = ({ reclaimedPages: _reclaimed, ...rest }: Awaited<ReturnType<Retention["run"]>>) => rest;
-const DEFAULTS = { PLURNK_SERVICE_RETAIN_PACKET_TURNS: "-1", PLURNK_SERVICE_RETAIN_PACKET_MS: "-1", PLURNK_SERVICE_RETAIN_RESPONSE_TURNS: "-1", PLURNK_SERVICE_RETAIN_RESPONSE_MS: "-1", PLURNK_SERVICE_COLLECT_PACKET_ITEMS: "1", PLURNK_SERVICE_COLLECT_DERIVATIONS: "1", PLURNK_SERVICE_RETENTION_INTERVAL_MS: "3600000" };
+const DEFAULTS = { PLURNK_SERVICE_RETAIN_PACKET_TURNS: "-1", PLURNK_SERVICE_RETAIN_PACKET_MS: "-1", PLURNK_SERVICE_RETAIN_RESPONSE_TURNS: "-1", PLURNK_SERVICE_RETAIN_RESPONSE_MS: "-1", PLURNK_SERVICE_COLLECT_PACKET_ITEMS: "1", PLURNK_SERVICE_COLLECT_DERIVATIONS: "1", PLURNK_SERVICE_RETENTION_INTERVAL_MS: "3600000", PLURNK_SERVICE_AUTO_VACUUM: "incremental", PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES: "0" };
 const CAPACITY = JSON.stringify({ decision: "admit", contextWindow: 1001, maxInputTokens: null, maxOutputTokens: null, outputBudget: 1, reasoningBudget: null, inputCapacity: 1000, prompt: { kind: "exact", tokens: 10, source: "retention-fixture" } });
 const record = (n: number): string => `### log:///1/1/${n}/READ\n{"status":200}\n1:line ${n}`;
 const packet = (upTo: number): DurablePacket => {
@@ -18,9 +18,11 @@ const packet = (upTo: number): DurablePacket => {
 
 test("{§retention-policy}: the shipped defaults keep every packet and refuse malformed knobs", async () => {
     const policy = retentionPolicy(DEFAULTS);
-    assert.deepEqual(policy, { retainPacketTurns: -1, retainPacketMs: -1, retainResponseTurns: -1, retainResponseMs: -1, collectPacketItems: true, collectDerivations: true, intervalMs: 3_600_000 });
+    assert.deepEqual(policy, { retainPacketTurns: -1, retainPacketMs: -1, retainResponseTurns: -1, retainResponseMs: -1, collectPacketItems: true, collectDerivations: true, intervalMs: 3_600_000, autoVacuum: "incremental", reclaimMinFreeBytes: 0 });
     assert.throws(() => retentionPolicy({ ...DEFAULTS, PLURNK_SERVICE_RETAIN_PACKET_TURNS: "-2" }), /PLURNK_SERVICE_RETAIN_PACKET_TURNS must be -1 or a non-negative safe integer/);
     assert.throws(() => retentionPolicy({ ...DEFAULTS, PLURNK_SERVICE_COLLECT_DERIVATIONS: "yes" }), /PLURNK_SERVICE_COLLECT_DERIVATIONS must be 0 or 1/);
+    assert.throws(() => retentionPolicy({ ...DEFAULTS, PLURNK_SERVICE_AUTO_VACUUM: "full" }), /PLURNK_SERVICE_AUTO_VACUUM must be incremental or none/);
+    assert.throws(() => retentionPolicy({ ...DEFAULTS, PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES: "-1" }), /PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES must be a non-negative safe integer/);
     assert.throws(() => retentionPolicy({ ...DEFAULTS, PLURNK_SERVICE_RETENTION_INTERVAL_MS: undefined }), /PLURNK_SERVICE_RETENTION_INTERVAL_MS must be a non-negative safe integer/);
     const db = await openMigrated();
     try {
@@ -150,5 +152,42 @@ test("{§db-space-reclamation}: the daemon converts its database to incremental 
         const pass = await retention.run();
         assert.equal(pass.reclaimedPages, freed?.free, "the pass returns every freed page");
         assert.equal((await db.retention_page_counts.get<{ pages: number; free: number }>({}))?.free, 0);
+    } finally { await db.close(); }
+});
+
+const freeSomePages = async (db: Awaited<ReturnType<typeof openMigrated>>): Promise<number> => {
+    const workspaceId = await insertWorkspace(db, `reclaim-${crypto.randomUUID()}`);
+    const entries: number[] = [];
+    for (let index = 0; index < 40; index += 1) {
+        entries.push(await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: `/bulk-${index}.md`, channel: "body", content: "x".repeat(50_000), mimetype: "text/markdown" }));
+    }
+    for (const entryId of entries) await db.crud_delete_entry.run({ entry_id: entryId });
+    return (await db.retention_page_counts.get<{ free: number }>({}))!.free;
+};
+
+test("{§db-space-reclamation}: below the reclaim floor a pass leaves free pages for reuse", async () => {
+    const db = await openMigrated();
+    try {
+        const retention = new Retention(db, retentionPolicy({ ...DEFAULTS, PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES: String(1 << 30) }));
+        await retention.prepareStorage();
+        const free = await freeSomePages(db);
+        assert.ok(free > 0);
+        assert.equal((await retention.run()).reclaimedPages, 0, "a gigabyte floor is far above what the fixture frees");
+        assert.equal((await db.retention_page_counts.get<{ free: number }>({}))!.free, free);
+    } finally { await db.close(); }
+});
+
+test("{§db-space-reclamation}: auto_vacuum=none converts an incremental file back and never steps a vacuum", async () => {
+    const db = await openMigrated();
+    try {
+        await new Retention(db, retentionPolicy(DEFAULTS)).prepareStorage();
+        const retention = new Retention(db, retentionPolicy({ ...DEFAULTS, PLURNK_SERVICE_AUTO_VACUUM: "none" }));
+        assert.equal((await retention.prepareStorage()).converted, true);
+        assert.deepEqual(await db.retention_auto_vacuum_mode.get({}), { auto_vacuum: 0 });
+        assert.equal((await retention.prepareStorage()).converted, false);
+        const free = await freeSomePages(db);
+        assert.ok(free > 0);
+        assert.equal((await retention.run()).reclaimedPages, 0);
+        assert.equal((await db.retention_page_counts.get<{ free: number }>({}))!.free, free, "freed pages stay in the file");
     } finally { await db.close(); }
 });

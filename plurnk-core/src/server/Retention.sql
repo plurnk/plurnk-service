@@ -63,15 +63,20 @@ WHERE $collect = 1
 -- PREP: retention_auto_vacuum_mode
 PRAGMA auto_vacuum;
 
--- PREP: retention_set_incremental
+-- EXEC: retention_convert_incremental
+-- An auto_vacuum setter acts when SQLite PREPARES it, so a prepared setter would change the mode
+-- of whichever VACUUM runs next; executed here it pairs with its own VACUUM, which applies it.
 PRAGMA auto_vacuum = INCREMENTAL;
+VACUUM;
 
--- PREP: retention_vacuum
+-- EXEC: retention_convert_none
+PRAGMA auto_vacuum = NONE;
 VACUUM;
 
 -- PREP: retention_page_counts
 SELECT (SELECT page_count FROM pragma_page_count()) AS pages,
-       (SELECT freelist_count FROM pragma_freelist_count()) AS free;
+       (SELECT freelist_count FROM pragma_freelist_count()) AS free,
+       (SELECT page_size FROM pragma_page_size()) AS pageSize;
 
 -- PREP: retention_incremental_vacuum
 PRAGMA incremental_vacuum;
