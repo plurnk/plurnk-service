@@ -963,3 +963,48 @@ test("(#458) declared efforts union into the supported set under the models.dev-
     // (#474) "max" joined the portable vocabulary; "off" still requires a declared "none".
     assert.deepEqual(provider?.supportedReasoningPolicies, ["adaptive", "low", "high", "max"]);
 });
+
+test("{§provider-reasoning-style} {§google-reasoning-request}: a route-level thinking_config style asks Gemini behind Cloudflare's gateway for readable thoughts", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return new Response([
+            `data: ${JSON.stringify({
+                id: "gateway-gemini",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "gemini-3.8-flash",
+                choices: [{ index: 0, delta: { content: "done" }, finish_reason: "stop" }],
+            })}`,
+            "data: [DONE]",
+        ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
+    });
+    const gatewayEnv = {
+        ...env,
+        CLOUDFLARE_ACCOUNT_ID: "account",
+        CLOUDFLARE_API_KEY: "token",
+        PLURNK_PROVIDERS_CONTEXT_WINDOW: "1048576",
+        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_STYLE: "effort_required",
+        PLURNK_PROVIDERS_REASONING_STYLE: "thinking_config",
+    };
+    const model = "google-ai-studio/gemini-3.8-flash";
+    const adaptive = catalogProviderFromEnv("cloudflare-workers-ai", { ...gatewayEnv, PLURNK_PROVIDERS_REASONING: "adaptive" }, model);
+    assert.deepEqual(adaptive?.supportedReasoningPolicies, ["adaptive", "low", "medium", "high"]);
+    await adaptive?.generate({ workerId: "gemini-adaptive", messages: [{ role: "user", content: "hello" }] });
+    const high = catalogProviderFromEnv("cloudflare-workers-ai", { ...gatewayEnv, PLURNK_PROVIDERS_REASONING: "high" }, model);
+    await high?.generate({ workerId: "gemini-high", messages: [{ role: "user", content: "hello" }] });
+
+    assert.deepEqual(bodies.map((body) => body.extra_body), [
+        { google: { thinking_config: { include_thoughts: true } } },
+        { google: { thinking_config: { include_thoughts: true, thinking_level: "high" } } },
+    ]);
+    assert.ok(bodies.every((body) => !("reasoning_effort" in body)), "Gemini refuses reasoning_effort beside a thinking_config");
+    assert.throws(
+        () => catalogProviderFromEnv("cloudflare-workers-ai", { ...gatewayEnv, PLURNK_PROVIDERS_REASONING: "off" }, model),
+        /reasoning policy 'off' is unsupported; supported policies: adaptive, low, medium, high/,
+    );
+    assert.throws(
+        () => catalogProviderFromEnv("cloudflare-workers-ai", { ...gatewayEnv, PLURNK_PROVIDERS_REASONING_STYLE: "gemini" }, model),
+        /cloudflare-workers-ai provider: PLURNK_PROVIDERS_REASONING_STYLE has invalid value "gemini"/,
+    );
+});

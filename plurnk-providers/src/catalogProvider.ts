@@ -38,19 +38,25 @@ import type { LanguageModel } from "ai";
 import type { AiSdkProviderOptions, CacheAffinity } from "./AiSdkProvider.ts";
 import type { PluginAttribution, PluginAttributionContext } from "@plurnk/plurnk-meta";
 
+// {§provider-reasoning-style} — the provider-wide declaration, unless the bare knob (alias-scopable:
+// PLURNK_PROVIDERS_REASONING_STYLE_<alias>) names the wire for one route; one provider can serve
+// models whose reasoning controls differ (Cloudflare's gateway hosts `@cf/…` and Gemini alike).
 const reasoningStyleFromEnv = (
     env: NodeJS.ProcessEnv,
     name: string,
 ): ReasoningStyle | undefined => {
     const prefix = name.replaceAll(/[^a-zA-Z0-9]/g, "_").toUpperCase();
-    const value = env[`PLURNK_PROVIDERS_PROVIDER_${prefix}_REASONING_STYLE`];
+    const routeKey = "PLURNK_PROVIDERS_REASONING_STYLE";
+    const providerKey = `PLURNK_PROVIDERS_PROVIDER_${prefix}_REASONING_STYLE`;
+    const key = env[routeKey] !== undefined && env[routeKey].length > 0 ? routeKey : providerKey;
+    const value = env[key];
     if (value === undefined || value.length === 0) return undefined;
     const styles: readonly ReasoningStyle[] = [
         "none", "think", "include_reasoning", "effort",
-        "effort_explicit", "effort_required", "thinking_effort", "template", "anthropic",
+        "effort_explicit", "effort_required", "thinking_effort", "thinking_config", "template", "anthropic",
     ];
     if (!styles.includes(value as ReasoningStyle)) {
-        throw new Error(`${name} provider: PLURNK_PROVIDERS_PROVIDER_${prefix}_REASONING_STYLE has invalid value "${value}"`);
+        throw new Error(`${name} provider: ${key} has invalid value "${value}"`);
     }
     return value as ReasoningStyle;
 };
@@ -167,6 +173,9 @@ const supportedReasoningPolicies = ({
     // not, and a word the template does not know fails loudly on the first request.
     if (style === "template") return REASONING_POLICIES;
     if (info !== undefined && info.reasoning !== true) return activationPolicies;
+    // {§google-reasoning-request} — the declared wire's whole vocabulary: Gemini reasons
+    // unconditionally and takes exactly these levels.
+    if (style === "thinking_config") return reasoningWithoutOff;
     if (info?.reasoningOptions !== undefined) {
         return catalogSupportedReasoningPolicies({ info, native, style, declared });
     }

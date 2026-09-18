@@ -341,6 +341,41 @@ reasoning intent to its OpenAI-compatible controls:
 The direct API does not distinguish portable `low` or `medium` intent and
 therefore advertises only `off`, `adaptive`, and `high`.
 
+§provider-reasoning-style A reasoning style names the wire a compatible route's
+reasoning controls take. `PLURNK_PROVIDERS_PROVIDER_<PREFIX>_REASONING_STYLE`
+declares it for every route of a provider; `PLURNK_PROVIDERS_REASONING_STYLE`,
+alias-scopable like every bare knob, declares it for one route and wins. One
+provider can serve models whose controls differ: Cloudflare's AI Gateway
+serves its `@cf/…` models (`effort_required`) and Gemini
+(`thinking_config`) from the same compatible endpoint. The daemon never infers a
+style from a model name.
+
+§google-reasoning-request The `thinking_config` style maps the common
+reasoning intent to Gemini's OpenAI-compatible extension. Gemini refuses
+`reasoning_effort` beside a `thinking_config`, and returns readable thoughts
+only when asked ({§provider-readable-reasoning}):
+
+| PLURNK posture | Request body |
+| --- | --- |
+| `off` | Not admitted: Gemini cannot turn reasoning off |
+| `adaptive` | `extra_body.google.thinking_config: { include_thoughts: true }` |
+| `low` / `medium` / `high` | the same, with `thinking_level` set to the posture |
+
+Gemini refuses the levels `none`, `minimal`, `xhigh`, and `max` (probed
+2026-09-18), so the style admits exactly `adaptive`, `low`, `medium`, and `high`.
+
+§google-thought-response Gemini behind an OpenAI-compatible endpoint returns its
+readable thought summary as ordinary `content`, wrapped `<thought>…</thought>`
+and flagged `extra_content.google.thought: true`. Streamed, the flagged deltas
+carry the opening tag and the thought, and the first unflagged delta opens with
+the closing tag before the answer; every flagged delta, unwrapped, is observed
+and settled as reasoning and never reaches the emission, and the closing tag is
+dropped from the answer. Whole, the flagged message leads with the wrapper and
+the answer follows it; the wrapper's interior is reasoning and the remainder is
+content. Content is inspected for the wrapper only when Google's flag is
+present. The reading does not
+depend on the request style, because the flag is Google's own.
+
 The compatible transport is deliberately retained for:
 
 - `openai` local endpoints, including llama-server and vLLM;
