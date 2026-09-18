@@ -155,3 +155,17 @@ test("LineAnchors: unresolved model syntax fails hard at the scheme boundary", (
         /unresolved line anchor crossed the core-to-scheme boundary/,
     );
 });
+
+test("{§anchor-offset} LineAnchors: an offset mark resolves from its anchor's line; continuity checks the anchor itself (#749)", () => {
+    const content = "alpha\nbeta\ngamma\ndelta\n";
+    const anchors = LineAnchors.tokens(identity, content);
+    const [first, second] = [anchors[0]!, anchors[1]!];
+    assert.deepEqual(LineAnchors.resolve(anchors, { marks: [`${second}+1`] }), { ok: true, marker: { marks: [3] } });
+    assert.deepEqual(LineAnchors.resolve(anchors, { marks: [first, `${second}+2`] }), { ok: true, marker: { marks: [1, 4] } });
+    assert.deepEqual(LineAnchors.resolve(anchors, { marks: [`${second}-1`] }), { ok: true, marker: { marks: [1] } });
+    assert.deepEqual(LineAnchors.resolve(anchors, { marks: [`${first}-1`] }), { ok: false, failure: { kind: "invalid", anchor: `${first}-1` } });
+    assert.deepEqual(LineAnchors.checks({ marks: [first, `${second}+2`] }, { marks: [1, 4] }), [
+        { anchor: first, line: 1 },
+        { anchor: second, line: 2 },
+    ]);
+});

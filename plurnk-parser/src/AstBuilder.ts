@@ -624,7 +624,14 @@ export default class AstBuilder {
     }
 
     static #parseTextLineMarker(text: string, position?: Position): TextLineMarker {
-        if (!text.includes("@")) return AstBuilder.#parseLineMarker(text);
+        if (!text.includes("@")) {
+            // {§anchor-offset} — a bare `+N` counts only from an anchor (#749).
+            if (/[<,] ?\+/u.test(text)) {
+                throw new PlurnkParseError(position?.line ?? 0, position?.column ?? 0, "visitor",
+                    `invalid scope ${JSON.stringify(text)}; use numeric coordinates or \`@hash\` line anchors`);
+            }
+            return AstBuilder.#parseLineMarker(text);
+        }
         const marks = text.slice(1, -1).split(/, ?/).map((component) => {
             // {§anchor-digits} — `@210` is the line number 210 with the anchor's sigil, not a hash.
             if (/^@[0-9]{1,4}$/u.test(component)) {
@@ -646,6 +653,19 @@ export default class AstBuilder {
             }
             return component.startsWith("@") ? component : Number.parseFloat(component);
         });
+        // {§anchor-offset} — a bare `+N` counts from the anchor before it (`<@abcde,+1>`); anywhere
+        // else it names no line, so the scope is refused as before (#749).
+        const components = text.slice(1, -1).split(/, ?/);
+        for (const [index, component] of components.entries()) {
+            if (!component.startsWith("+")) continue;
+            const base = /^(@[0-9A-Za-z]{5})([+-][0-9]+)?$/u.exec(String(marks[index - 1] ?? ""));
+            if (base === null) {
+                throw new PlurnkParseError(position?.line ?? 0, position?.column ?? 0, "visitor",
+                    `invalid scope ${JSON.stringify(text)}; use numeric coordinates or \`@hash\` line anchors`);
+            }
+            const offset = Number(base[2] ?? 0) + Number(component.slice(1));
+            marks[index] = offset === 0 ? base[1]! : `${base[1]!}${offset > 0 ? "+" : ""}${offset}`;
+        }
         return { marks: marks as [number | string, ...(number | string)[]] };
     }
 

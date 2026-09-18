@@ -44,6 +44,15 @@ export default class LineAnchors {
     static readonly #TOKEN = /^@[0-9A-Za-z]{5}$/;
     static readonly #PREFIXED_LINE = /^@[0-9A-Za-z]{5} +[1-9]\d*:/;
 
+    // {§anchor-offset} — a scope mark may carry an offset from its anchor's line (`@abcde+1`): a
+    // tolerated extrapolation, resolved like the numeric line it names and never taught (#749).
+    static readonly #OFFSET_MARK = /^(@[0-9A-Za-z]{5})([+-][0-9]+)?$/;
+
+    static #markParts(mark: string): { anchor: string; offset: number } | null {
+        const parts = LineAnchors.#OFFSET_MARK.exec(mark);
+        return parts === null ? null : { anchor: parts[1]!, offset: parts[2] === undefined ? 0 : Number(parts[2]) };
+    }
+
     static isAnchor(value: unknown): value is string {
         return typeof value === "string" && LineAnchors.#TOKEN.test(value);
     }
@@ -210,7 +219,7 @@ export default class LineAnchors {
                     : new Set<number>();
         for (const index of anchorIndexes) {
             const anchor = marker.marks[index] as string;
-            if (!LineAnchors.isAnchor(anchor) || !permitted.has(index)) {
+            if (LineAnchors.#markParts(anchor) === null || !permitted.has(index)) {
                 return { ok: false, failure: { kind: "invalid", anchor } };
             }
         }
@@ -228,7 +237,7 @@ export default class LineAnchors {
 
         const resolved = [...marker.marks];
         for (const index of anchorIndexes) {
-            const anchor = marker.marks[index] as string;
+            const { anchor, offset } = LineAnchors.#markParts(marker.marks[index] as string)!;
             const carried = retained?.get(anchor);
             const found = carried?.length === 0 ? [] : [...new Set([...(matches.get(anchor) ?? []), ...(carried ?? [])])].sort((a, b) => a - b);
             if (found.length === 0) {
@@ -237,7 +246,9 @@ export default class LineAnchors {
             if (found.length > 1) {
                 return { ok: false, failure: { kind: "ambiguous", anchor, matches: found } };
             }
-            resolved[index] = found[0]!;
+            // An offset landing before the first line names no line; past the end is the ordinary range refusal.
+            if (found[0]! + offset < 1) return { ok: false, failure: { kind: "invalid", anchor: marker.marks[index] as string } };
+            resolved[index] = found[0]! + offset;
         }
         return {
             ok: true,
@@ -252,10 +263,12 @@ export default class LineAnchors {
         return authored.marks.flatMap((mark, index) => {
             if (typeof mark !== "string") return [];
             const line = resolved.marks[index];
-            if (!LineAnchors.isAnchor(mark) || typeof line !== "number") {
+            const parts = LineAnchors.#markParts(mark);
+            if (parts === null || typeof line !== "number") {
                 throw new TypeError("A line anchor did not lower to a numeric line.");
             }
-            return [{ anchor: mark, line }];
+            // {§anchor-offset} — continuity is checked on the anchor's own line, not the offset one.
+            return [{ anchor: parts.anchor, line: line - parts.offset }];
         });
     }
 }

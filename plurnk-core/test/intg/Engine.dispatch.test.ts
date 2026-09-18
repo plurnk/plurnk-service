@@ -349,6 +349,26 @@ test("Engine.dispatch: a current READ line anchor lowers to a numeric EDIT preco
     } finally { await db.close(); }
 });
 
+test("{§anchor-offset} Engine.dispatch: an EDIT anchor offset applies the splice of the numeric line it names (#749)", async () => {
+    const { db, engine, env } = await setup();
+    const original = "alpha\nbeta\ngamma\ndelta";
+    try {
+        const contents: string[] = [];
+        let sequence = 0;
+        for (const [name, marks] of [["offset", (identity: string) => [`${LineAnchors.token(identity, 2, original)}+1`]], ["numeric", () => [3]]] as const) {
+            const target = urlPath("worker", `/${name}.md`);
+            const identity = `worker:///${name}.md`;
+            assert.equal((await engine.dispatch({ statement: editStmt({ target, body: original }), ...env, sequence: ++sequence, origin: "model" })).status, 201);
+            const edited = await engine.dispatch({ statement: editStmt({ target, marker: { marks: marks(identity) as [number | string] }, body: "GAMMA" }), ...env, sequence: ++sequence, origin: "model" });
+            assert.equal(edited.status, 200, name);
+            const read = await engine.dispatch({ statement: readStmt({ target }), ...env, sequence: ++sequence, origin: "model" });
+            contents.push((read as { content?: string }).content ?? "");
+        }
+        assert.equal(contents[0], "alpha\nbeta\nGAMMA\ndelta");
+        assert.equal(contents[0], contents[1]);
+    } finally { await db.close(); }
+});
+
 test("Engine.dispatch: an EDIT anchor in a column slot names the accepted whole-line range", async () => {
     const { db, engine, env } = await setup();
     const target = urlPath("worker", "/invalid-anchor-region.md");
