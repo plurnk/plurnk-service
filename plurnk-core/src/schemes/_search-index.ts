@@ -12,7 +12,7 @@ import EntryFts from "./_entry-fts.ts";
 import LogBody from "../core/LogBody.ts";
 import LogEntryProjection from "../core/LogEntryProjection.ts";
 import LogVisibility from "../core/LogVisibility.ts";
-import matchSearchExclusion from "./_search-exclusion.ts";
+import matchSearchExclusion, { sizeExclusion } from "./_search-exclusion.ts";
 import { contentHash } from "../core/content-hash.ts";
 
 // {§derivation-dedup-parallel} — an entry channel is judged from stored identity; no body here.
@@ -269,7 +269,7 @@ export default class SearchIndex {
         // progress has a stable total. {§derivation-dedup-parallel}
         const pending: PendingDerivation[] = [];
         for (const c of candidates) {
-            const searchExcluded = matchSearchExclusion(c);
+            const searchExcluded = matchSearchExclusion(c) ?? sizeExclusion(c.content_length);
             const dispositionIdentity = searchExcluded === undefined ? "included" : `excluded:${searchExcluded}`;
             const binary = (await mimetypes.classify(c.mimetype)).binary;
             const projectionIdentity = await projectionIdentityFor(c.mimetype, c.content_length, binary, searchExcluded);

@@ -25,3 +25,16 @@ export default function matchSearchExclusion({ scheme, pathname }: SearchIdentit
     const basename = pathname.slice(pathname.lastIndexOf("/") + 1);
     return compile(raw).find(({ source, regex }) => regex.test(source.includes("/") ? pathname : basename))?.source;
 }
+
+// {§search-size-bound} — a body larger than PLURNK_SERVICE_SEARCH_MAX_BYTES is never parsed or
+// full-text indexed: nobody searches a 31 MB tokenizer vocabulary, and indexing one costs more than
+// the file itself (#729). Empty = unbounded. The reason names the bound.
+export function sizeExclusion(contentLength: number): string | undefined {
+    const raw = process.env.PLURNK_SERVICE_SEARCH_MAX_BYTES;
+    if (raw === undefined || raw.trim() === "") return undefined;
+    const bound = Number(raw);
+    if (!Number.isSafeInteger(bound) || bound <= 0) {
+        throw new RangeError(`PLURNK_SERVICE_SEARCH_MAX_BYTES must be a positive integer or empty; got ${JSON.stringify(raw)}`);
+    }
+    return contentLength > bound ? `larger than ${bound} bytes` : undefined;
+}

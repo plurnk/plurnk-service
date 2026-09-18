@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import matchSearchExclusion from "./_search-exclusion.ts";
+import matchSearchExclusion, { sizeExclusion } from "./_search-exclusion.ts";
 
 const KEY = "PLURNK_SERVICE_SEARCH_EXCLUDE";
 const prefix = `${KEY}=`;
@@ -82,5 +82,22 @@ test("{§search-exclusion} #91: absent or empty configuration has no hidden fall
         withExclusions(value, () => {
             assert.equal(matchSearchExclusion({ scheme: "file", pathname: "/repo/package-lock.json" }), undefined);
         });
+    }
+});
+
+test("{§search-size-bound} #729: a body longer than the bound is excluded with the bound as its reason; empty is unbounded", () => {
+    const prior = process.env.PLURNK_SERVICE_SEARCH_MAX_BYTES;
+    try {
+        process.env.PLURNK_SERVICE_SEARCH_MAX_BYTES = "1048576";
+        assert.equal(sizeExclusion(1_048_576), undefined);
+        assert.equal(sizeExclusion(31_285_705), "larger than 1048576 bytes");
+        process.env.PLURNK_SERVICE_SEARCH_MAX_BYTES = "";
+        assert.equal(sizeExclusion(31_285_705), undefined);
+        for (const invalid of ["0", "-5", "1.5", "big"]) {
+            process.env.PLURNK_SERVICE_SEARCH_MAX_BYTES = invalid;
+            assert.throws(() => sizeExclusion(10), /PLURNK_SERVICE_SEARCH_MAX_BYTES must be a positive integer or empty/);
+        }
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_SEARCH_MAX_BYTES; else process.env.PLURNK_SERVICE_SEARCH_MAX_BYTES = prior;
     }
 });
