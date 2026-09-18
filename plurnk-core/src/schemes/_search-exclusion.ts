@@ -27,8 +27,7 @@ export default function matchSearchExclusion({ scheme, pathname }: SearchIdentit
 }
 
 // {§search-size-bound} — a body larger than PLURNK_SERVICE_SEARCH_MAX_BYTES is never parsed or
-// full-text indexed: nobody searches a 31 MB tokenizer vocabulary, and indexing one costs more than
-// the file itself (#729). Empty = unbounded. The reason names the bound.
+// full-text indexed. Empty (the default) = unbounded. The reason names the bound.
 export function sizeExclusion(contentLength: number): string | undefined {
     const raw = process.env.PLURNK_SERVICE_SEARCH_MAX_BYTES;
     if (raw === undefined || raw.trim() === "") return undefined;

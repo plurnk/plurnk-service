@@ -1695,8 +1695,8 @@ empty setting excludes nothing, and the first match is the observable reason.
 | Log projection       | Always eligible; it has no repository-path membership.  |
 
 §search-size-bound Every search subject, whatever its scheme, is also bounded
-by size: a body longer than `PLURNK_SERVICE_SEARCH_MAX_BYTES` (default 1 MiB;
-empty = unbounded) is `excluded` with the reason `larger than N bytes`, before
+by size when the operator sets one: a body longer than
+`PLURNK_SERVICE_SEARCH_MAX_BYTES` (default empty = unbounded) is `excluded` with the reason `larger than N bytes`, before
 its body is read. It is neither parsed for symbols nor full-text indexed; READ,
 FIND by path, and membership are unaffected. The reason joins the derivation
 identity, so changing the bound re-derives the affected bodies and retention
