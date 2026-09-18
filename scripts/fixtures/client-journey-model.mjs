@@ -107,7 +107,7 @@ export const startClientJourneyModel = async () => {
             if (journey === "tui" && index === 1) {
                 const log = /(?:^|\n)## Log\n([\s\S]*?)(?=\n## |$)/u.exec(text)?.[1]?.trim() ?? "";
                 const messageRead = parseLogRecords(log).find((row) =>
-                    String(row.path).endsWith("/READ") && row.target === "log:///1/2/1/SEND");
+                    String(row.logPath).endsWith("/READ") && row.path === "log:///1/2/1/SEND");
                 assert.ok(messageRead, "installed TUI must READ its message from the arrival's log address");
                 assert.equal(messageRead.status ?? 200, 200, "the message READ succeeded");
                 assert.match(String(messageRead.body ?? ""), /^(?:@[0-9A-Za-z]{5} )?\s*1:Exercise the installed interactive terminal\./u,
@@ -116,7 +116,7 @@ export const startClientJourneyModel = async () => {
                     /(?:^|\n)@[0-9A-Za-z]{5} +\d+:````WORK \(worker:\/\/capital-checker\)/u,
                     /(?:^|\n)@[0-9A-Za-z]{5} +\d+:````node <!--/u,
                     /(?:^|\n) *\d+:.*\[Complete \.env\.defaults\]\(\.env\.defaults\)/u,
-                    /"target":"skill:\/\/plurnk\/\.env\.defaults"/u,
+                    /"path":"skill:\/\/plurnk\/\.env\.defaults"/u,
                 ]) {
                     if (!witness.test(text)) throw new Error(`installed reference READ omitted ${witness}`);
                 }
