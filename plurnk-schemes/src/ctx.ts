@@ -61,6 +61,7 @@ export interface EntryEditResult extends EditBatchResult {
 }
 
 export interface EntryReadResult extends SchemeResult {
+    readonly terminal?: boolean;
     readonly content: string | null;
     readonly mimetype: string | null;
     readonly channel: string | null;

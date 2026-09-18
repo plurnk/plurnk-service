@@ -38,8 +38,8 @@ test("script oracle recognizes actual shell terminal receipts through the daemon
 });
 const receipt = (output = "GREETING\n", exitCode = 0, source = stream): ScriptReceipt => ({
     scheme: "sh", pathname: new URL(source).pathname, fragment: "stdout",
-    tx: "{}", rx: JSON.stringify({ content: output, exitCode }),
-    attrs: JSON.stringify({ streamEnd: output.length, terminal: true }), status_rx: 200, origin: "_plurnk",
+    tx: "{}", rx: JSON.stringify({ content: output, exitCode, terminal: true }),
+    attrs: JSON.stringify({ streamEnd: output.length }), status_rx: 200, origin: "_plurnk",
 });
 
 test("script oracle accepts native script execution and shell commands with observed successful output", () => {
@@ -57,7 +57,7 @@ test("script oracle rejects claimed, unobserved, failed, unrelated and mismatche
         [[execution(null, "printf GREETING")], [receipt()]],
         [[execution("greet.sh")], [receipt("GREETING\n", 0, "sh:///1/2/4/sh")]],
         [[{ ...execution("greet.sh"), status_rx: 403 }], [receipt()]],
-        [[execution("greet.sh")], [{ ...receipt(), attrs: JSON.stringify({ terminal: false }) }]],
+        [[execution("greet.sh")], [{ ...receipt(), rx: JSON.stringify({ content: "GREETING\n", exitCode: 0, terminal: false }) }]],
         [[execution("greet.sh")], [{ ...receipt(), fragment: "stderr" }]],
     ];
     for (const [execs, reads] of cases) assert.equal(observedScriptExecution(execs, reads, "greet.sh", "GREETING"), false);

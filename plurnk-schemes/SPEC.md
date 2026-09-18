@@ -171,7 +171,9 @@ seeds those same canonical channels, opens a subscription, and may return `102`
 only while production remains live. Other statuses are exact terminal results.
 Per-channel producer status belongs durably on that channel as
 `producerResult`; no transient preparation result may carry content, channel
-selection, or channel outcomes. After `200`, core alone selects the authored
+selection, or channel outcomes. Neither preparation nor producer results supply
+the READ's `terminal` flag: core derives it from channel state under
+{§stream-observation-result}. After `200`, core alone selects the authored
 channel, applies tag/binary/text rules (including markerless `<1,16>`), and
 composes that channel's producer evidence. Cold and warm reads therefore have
 identical semantics.

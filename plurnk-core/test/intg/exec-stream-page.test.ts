@@ -66,6 +66,11 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             const asked = JSON.parse(read!.rx) as { content: string; startLine: number };
             assert.equal(asked.content, "38\n39\n40", "the channel keeps every line for a scoped READ");
             assert.equal(asked.startLine, 38);
+            const nextPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![3]! }))!.packet);
+            const explicit = logEntries(nextPacket).find((row) => row.target === terminal.stream);
+            assert.ok(explicit, "the requested tail reaches the next model request");
+            assert.equal(explicit.terminal, true, "a deliberate stream READ conveys the same liveness as the automatic observation");
+            assert.equal(explicit.exitCode, 0, "the subprocess exit code survives deliberate READ projection");
         } finally {
             ws.close();
         }

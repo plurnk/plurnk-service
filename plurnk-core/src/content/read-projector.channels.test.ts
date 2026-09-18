@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { type ReadStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest, StoredEntryData } from "@plurnk/plurnk-schemes";
+import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import ReadProjector from "./read-projector.ts";
 
 const manifest: SchemeManifest = {
@@ -13,6 +14,28 @@ const manifest: SchemeManifest = {
 const representation: StoredEntryData = {
     channels: { body: { content: "retained text", mimetype: "text/plain", state: "static" } },
 };
+const mimetypes = new Mimetypes();
+
+for (const mimetype of ["text/stream", "text/plain", "application/json"]) {
+    test(`{§stream-observation-result}: ${mimetype} READ liveness follows channel state`, async () => {
+        for (const state of ["static", "active", "closed", "errored"] as const) {
+            for (const content of ["", "[]"]) {
+                const result = await ReadProjector.project({
+                    statement: {
+                        op: "READ", target: parsePath("fixture:///entry"), matcher: null, body: null,
+                        metadata: null, lineMarker: null, aside: null, position: { line: 1, column: 1 },
+                    },
+                    manifest: { ...manifest, channels: { body: mimetype } },
+                    representation: { channels: { body: { content, mimetype, state } } },
+                    publishesLineAnchors: false, target: "fixture:///entry", identity: "fixture:///entry", mimetypes,
+                });
+                assert.ok(result.status < 400, JSON.stringify(result));
+                assert.equal(result.terminal, state === "static" ? undefined : state !== "active",
+                    `${state} channel with ${content.length} content characters has its own liveness`);
+            }
+        }
+    });
+}
 
 for (const channel of ["unknown", "stderr", "constructor", "__proto__"]) {
     test(`{§channel-selection-missing} READ reports absent #${channel}, not a missing entry or syntax error`, async () => {

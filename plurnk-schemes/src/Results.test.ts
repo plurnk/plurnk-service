@@ -113,6 +113,7 @@ test("representation preparation distinguishes ready, live, and terminal outcome
         { status: 201 },
         { status: 202 },
         { status: 200, channelOutcomes: { body: { status: 203 } } },
+        { status: 200, terminal: true },
     ]) {
         assert.throws(
             () => Results.assertRepresentationPreparation(result as never),
@@ -133,6 +134,7 @@ test("channel producer results are terminal and cannot preempt core projection",
         /nonterminal status 202/,
     );
     const projectionFields: Readonly<Record<string, unknown>> = {
+        terminal: true,
         content: "forbidden",
         mimetype: "text/plain",
         channel: "body",

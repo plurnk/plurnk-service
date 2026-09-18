@@ -63,6 +63,7 @@ interface RxView {
     matched?: unknown;
     channels?: unknown;
     answers?: unknown;
+    terminal?: unknown;
     exitCode?: unknown;
     mimetype?: unknown;
     startLine?: unknown;
@@ -163,7 +164,6 @@ interface RowIdentity {
     readonly path: string;
     readonly renderedLeaf: string;
     readonly target: string | null;
-    readonly terminalStream: boolean;
 }
 interface RowResultFacts {
     readonly findItems: number | null;
@@ -790,9 +790,10 @@ export default class PacketWire {
         // rendered under `stream` like the invocation's own link — never a `target`, which
         // the model would otherwise author into an execution slot (#425 F4).
         const terminalStream = op === "READ"
+            && e.origin === "_plurnk"
             && e.attrs !== null
             && typeof e.attrs === "object"
-            && (e.attrs as { terminal?: unknown }).terminal === true;
+            && Object.hasOwn(e.attrs, "streamEnd");
         if (op === "COPY" || op === "MOVE") {
             const source = PacketWire.#renderSelection(
                 tx?.source?.target,
@@ -831,14 +832,14 @@ export default class PacketWire {
         if (isExecutionOp(op) && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { stream?: unknown }).stream === "string") {
             meta.stream = (e.attrs as { stream: string }).stream;
         }
-        return { meta, op, tx, coordinate, path, renderedLeaf, target, terminalStream };
+        return { meta, op, tx, coordinate, path, renderedLeaf, target };
     }
 
     // The row's result facts from its rx: the terminal stream's exit, the Problem or detail, the
     // matcher, the retrieval extents, and the structured mutation receipts. Returns what the body
     // projection needs to know about the result.
     static #rowResultFacts(identity: RowIdentity, e: LogEntryView, rx: RxView | null): RowResultFacts {
-        const { meta, op, tx, terminalStream } = identity;
+        const { meta, op, tx } = identity;
         if (op === "SEND" && rx !== null && typeof rx === "object" && Array.isArray(rx.attachments) && rx.attachments.length > 0) {
             meta.attachments = rx.attachments.map(({ name, mediaType, target }) => ({ name, mediaType, target }));
         }
@@ -847,14 +848,16 @@ export default class PacketWire {
             && rx.resource.length > 0 && rx.resource !== meta.target && rx.resource !== meta.stream) {
             meta.resource = rx.resource;
         }
-        // {§exec-stream}: a terminal stream observation is self-sufficient
-        // even when its selected channel is empty. Preserve exact producer
-        // facts; do not manufacture a prose completion summary.
-        if (terminalStream) {
-            meta.terminal = true;
-            if (rx !== null && typeof rx === "object" && Object.hasOwn(rx, "exitCode")) {
+        // {§exec-stream}: explicit and automatic READs preserve the same
+        // durable liveness facts, including an empty active channel.
+        if (op === "READ" && rx !== null && typeof rx === "object" && Object.hasOwn(rx, "terminal")) {
+            if (typeof rx.terminal !== "boolean") {
+                throw new TypeError("A stream READ result carries a malformed terminal flag.");
+            }
+            meta.terminal = rx.terminal;
+            if (Object.hasOwn(rx, "exitCode")) {
                 if (typeof rx.exitCode !== "number" || !Number.isSafeInteger(rx.exitCode)) {
-                    throw new TypeError("A terminal stream result carries a malformed exitCode.");
+                    throw new TypeError("A stream READ result carries a malformed exitCode.");
                 }
                 meta.exitCode = rx.exitCode;
             }

@@ -23,10 +23,9 @@ export const observedScriptExecution = (
     const address = new URL(stream);
     return reads.some((read) => {
         if (read.status_rx !== 200 || read.rx === null) return false;
-        const attrs = JSON.parse(read.attrs);
         const result = JSON.parse(read.rx);
         return read.scheme === address.protocol.slice(0, -1) && read.pathname === address.pathname
-            && read.fragment === "stdout" && attrs.terminal === true
+            && read.fragment === "stdout" && result.terminal === true
             && result.exitCode === 0 && result.content?.trim() === marker;
     });
 });

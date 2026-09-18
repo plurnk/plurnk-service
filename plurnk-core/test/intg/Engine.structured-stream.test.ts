@@ -68,7 +68,7 @@ const setup = async (
             { role: "user" as const, content: "Continue." },
         ],
     });
-    return { db, workerId, entryId, subscriptionId, runTurn };
+    return { db, workerId, loopId, entryId, subscriptionId, runTurn };
 };
 
 const structuredRows = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number) =>
@@ -131,12 +131,13 @@ test("an atomic application/json channel remains hidden until its complete termi
         // {§exec-stream-page} — the conclusion is a markerless READ: first page, extent.
         assert.deepEqual(result, {
             status: 200,
+            terminal: true,
             content: '[{"n":1},{"n":2}]',
             mimetype: "application/json",
             startLine: 1,
             range: { unit: "line", total: 1, requested: [1, 16], returned: [1, 1] },
         });
-        assert.deepEqual(JSON.parse(row.attrs), { streamEnd: 17, terminal: true });
+        assert.deepEqual(JSON.parse(row.attrs), { streamEnd: 17 });
     } finally {
         await fixture.db.close();
     }
@@ -154,12 +155,13 @@ test("application/jsonl publishes nothing while active; its records arrive once,
         const terminalRow = await structuredRow(fixture, terminal.turnId);
         assert.deepEqual(JSON.parse(terminalRow.rx), {
             status: 200,
+            terminal: true,
             content: '{"n":1}\n{"n":2}\n',
             mimetype: "application/jsonl",
             startLine: 1,
             range: { unit: "line", total: 2, requested: [1, 16], returned: [1, 2] },
         });
-        assert.deepEqual(JSON.parse(terminalRow.attrs), { streamEnd: 16, terminal: true });
+        assert.deepEqual(JSON.parse(terminalRow.attrs), { streamEnd: 16 });
     } finally {
         await fixture.db.close();
     }
@@ -177,12 +179,13 @@ test("an active text channel publishes nothing; its content arrives once, at clo
         const terminalRow = await structuredRow(fixture, terminal.turnId);
         assert.deepEqual(JSON.parse(terminalRow.rx), {
             status: 200,
+            terminal: true,
             content: "event one\nevent two\n",
             mimetype: "text/plain; charset=utf-8",
             startLine: 1,
             range: { unit: "line", total: 2, requested: [1, 16], returned: [1, 2] },
         });
-        assert.deepEqual(JSON.parse(terminalRow.attrs), { streamEnd: 20, terminal: true });
+        assert.deepEqual(JSON.parse(terminalRow.attrs), { streamEnd: 20 });
     } finally {
         await fixture.db.close();
     }
@@ -200,12 +203,13 @@ test("a stream that closes with no new content still emits exactly one conclusio
         const terminalRow = await structuredRow(fixture, terminal.turnId);
         assert.deepEqual(JSON.parse(terminalRow.rx), {
             status: 200,
+            terminal: true,
             content: '{"n":1}\n',
             mimetype: "application/jsonl",
             startLine: 1,
             range: { unit: "line", total: 1, requested: [1, 16], returned: [1, 1] },
         });
-        assert.deepEqual(JSON.parse(terminalRow.attrs), { streamEnd: 8, terminal: true });
+        assert.deepEqual(JSON.parse(terminalRow.attrs), { streamEnd: 8 });
     } finally {
         await fixture.db.close();
     }
@@ -238,6 +242,32 @@ test("a published channel materializes its exact terminal result override", asyn
         assert.equal(result.problem?.detail, "The selected representation failed.");
         assert.equal(result.content, '{"ok":false}');
         assert.equal(result.mimetype, "application/json");
+    } finally {
+        await fixture.db.close();
+    }
+});
+
+test("{§stream-observation-result}: invalid result liveness cannot advance publication or leave a log row", async () => {
+    const fixture = await setup("text/plain", "output");
+    try {
+        const turn = await fixture.runTurn();
+        const channels = await fixture.db.engine_worker_stream_channels.all<{ publication_id: number }>({ worker_id: fixture.workerId });
+        assert.equal(channels.length, 1);
+        const before = await structuredRows(fixture.db, turn.turnId);
+        const publication = await fixture.db.test_subscription_publications.all({ id: fixture.subscriptionId });
+        for (const terminal of [undefined, null, "true", 1]) {
+            await assert.rejects(fixture.db.engine_insert_stream_delta.get({
+                worker_id: fixture.workerId, loop_id: fixture.loopId, turn_id: turn.turnId,
+                sequence: 100, subscription_publication_id: channels[0]!.publication_id,
+                source: null, scheme: "structured-fixture", hostname: null, port: null,
+                pathname: "/1/0/1", fragment: "results",
+                rx: JSON.stringify({ status: 200, content: "output", terminal }),
+                status: 200, weight: 3, attrs: JSON.stringify({ streamEnd: 6 }), folded: "[]",
+            }), /subscription publication requires one canonical stream observation/);
+            assert.deepEqual(await structuredRows(fixture.db, turn.turnId), before, "the invalid observation is rolled back");
+            assert.deepEqual(await fixture.db.test_subscription_publications.all({ id: fixture.subscriptionId }), publication,
+                "the invalid observation cannot consume a delivery");
+        }
     } finally {
         await fixture.db.close();
     }

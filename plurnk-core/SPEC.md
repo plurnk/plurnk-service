@@ -2171,7 +2171,8 @@ or `all`. FIND range cardinality replaces top-level `items`, `lines`, and
 `matchingPathCount`; line READ likewise omits the rendered-body `lines` count
 and its internally resolved whole-line region. Exact READ retains only its
 region. A failed retrieval's Problem owns its range extension rather than
-repeating it at top level. Generic `tokens` always weighs the rendered body;
+repeating it at top level. `logTokens` weighs the complete rendered record
+under {§packet-token-accounting};
 generic body `lines` remains available on READ-shaped materialization notices
 that have no retrieval extent. FIND content weights follow {§log-wire-format};
 ordinary bounded bodies expose their displayed and complete chunk extents there.
@@ -2902,6 +2903,15 @@ two states and no others:
 |---|---|
 | active | nothing in the Log. The `## Delegation` stream pointer names the stream with each channel's size and its growth since the last packet ({§child-orientation}); the model READs any range it wants, and every READ of a stream channel carries `terminal: false` while it runs and `terminal: true` once it has concluded, so an empty page is never mistaken for a finished command that printed nothing (operator, 2026-09-13). |
 | terminal | ONE `origin=_plurnk` READ at the execution's channel address, born visible, that is exactly a markerless READ of the channel — its bounded first page ({§read-selection-projection}, the whole channel when it fits, the channel's own mimetype), the `range` or `region`, terminal status and Problem, `terminal: true`, any producer-supplied integer `exitCode`, and `source: log:///<coord>/<runtime>` linking the causal invocation. The packet renders that address under `stream`, exactly as the invocation row links its output, never under `target`: a stream is observed, not a slot to author. |
+
+§stream-observation-result **One liveness fact.** The durable READ result owns
+`terminal`, derived from its selected channel's state, for explicit and automatic
+observations alike, independently of mimetype: `active` gives false, `closed` or
+`errored` gives true, and `static` has no streaming liveness field. Packet
+projection preserves that Boolean and any included
+integer `exitCode`, even for an empty body. An automatic observation's atomic
+publication transition consumes the same result flag; private log attributes
+retain only the publication offset, not a second liveness value.
 
 §exec-concurrency **Bounded admission per workspace (#389).** At most
 `PLURNK_SERVICE_EXEC_CONCURRENCY` executions run at once in one workspace (shipped `12`;

@@ -211,6 +211,7 @@ export default class TurnMaterialization {
             const emptySiblings = siblings.get(ch.publication_id) ?? {};
             const result = Results.assert({
                 ...terminal,
+                terminal: true,
                 ...(terminal.problem === undefined ? {} : { problem: { ...terminal.problem } }),
                 content: page.content ?? "",
                 mimetype: page.mimetype,
@@ -244,7 +245,7 @@ export default class TurnMaterialization {
                     mimetypeRx: "application/json",
                 }, this.#weighContent),
                 status: terminal.status,
-                attrs: JSON.stringify({ streamEnd: ch.content.length, terminal: true }),
+                attrs: JSON.stringify({ streamEnd: ch.content.length }),
                 folded: LogVisibility.serialize(LogVisibility.OPEN), // {§exec-stream} — the conclusion is initially visible
             });
             if (inserted === undefined) throw new Error(`stream publication ${ch.publication_id} produced no log row`);

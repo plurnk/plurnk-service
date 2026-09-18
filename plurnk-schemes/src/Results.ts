@@ -30,6 +30,7 @@ export interface SchemeResultBase extends SchemeResult {
 // projection fields are structurally unavailable: the consumer adds those only
 // after it selects this channel and projects the authored text scope.
 export interface ChannelProducerResult extends SchemeResultBase {
+    readonly terminal?: never;
     readonly content?: never;
     readonly mimetype?: never;
     readonly channel?: never;
@@ -200,7 +201,7 @@ export default class Results {
                 "representation preparation cannot carry transient channel outcomes",
             );
         }
-        const projectionFields = ["content", "mimetype", "channel", "startLine", "lineAnchorIdentity", "lineAnchors", "lineNumberWidth", "region", "matches", "range"];
+        const projectionFields = ["content", "mimetype", "channel", "terminal", "startLine", "lineAnchorIdentity", "lineAnchors", "lineNumberWidth", "region", "matches", "range"];
         const owned = projectionFields.find((field) => Object.hasOwn(exact, field));
         if (owned !== undefined) {
             throw new InvalidOperationResultError(
@@ -217,7 +218,7 @@ export default class Results {
                 `channel producer result cannot use nonterminal status ${exact.status}`,
             );
         }
-        const projectionFields = ["content", "mimetype", "channel", "startLine", "lineAnchorIdentity", "lineAnchors", "lineNumberWidth", "region", "matches", "range"];
+        const projectionFields = ["content", "mimetype", "channel", "terminal", "startLine", "lineAnchorIdentity", "lineAnchors", "lineNumberWidth", "region", "matches", "range"];
         const owned = projectionFields.find((field) => Object.hasOwn(exact, field));
         if (owned !== undefined) {
             throw new InvalidOperationResultError(

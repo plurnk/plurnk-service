@@ -161,22 +161,22 @@ BEGIN
     SELECT CASE WHEN
         NEW.origin != '_plurnk'
         OR NEW.op != 'READ'
-        OR json_type(NEW.attrs, '$.streamEnd') != 'integer'
+        OR json_type(NEW.attrs, '$.streamEnd') IS NOT 'integer'
         OR json_extract(NEW.attrs, '$.streamEnd') < 0
-        OR json_type(NEW.attrs, '$.terminal') NOT IN ('true', 'false')
+        OR coalesce(json_type(NEW.rx, '$.terminal'), '') NOT IN ('true', 'false')
     THEN RAISE(ABORT, 'subscription publication requires one canonical stream observation') END;
 
     UPDATE subscription_publications
     SET published_end = json_extract(NEW.attrs, '$.streamEnd'),
-        terminal_published = json_extract(NEW.attrs, '$.terminal'),
+        terminal_published = json_extract(NEW.rx, '$.terminal'),
         version = version + 1
     WHERE id = NEW.subscription_publication_id
       AND terminal_published = 0
       AND (
-          (json_extract(NEW.attrs, '$.terminal') = 0
+          (json_extract(NEW.rx, '$.terminal') = 0
               AND json_extract(NEW.attrs, '$.streamEnd') > published_end)
           OR
-          (json_extract(NEW.attrs, '$.terminal') = 1
+          (json_extract(NEW.rx, '$.terminal') = 1
               AND json_extract(NEW.attrs, '$.streamEnd') >= published_end)
       );
 

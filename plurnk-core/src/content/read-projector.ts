@@ -91,7 +91,9 @@ export default class ReadProjector {
         const producerResult = source?.producerResult;
         // {§read-content-wins}/{§exec-stream} — completed output stays readable, including failed commands.
         const contentDelivered = isStream && typeof projected.content === "string" && projected.content.length > 0;
-        const liveness = isStream ? { terminal: source?.state === "closed" || source?.state === "errored" } : {};
+        const liveness = source === undefined || source.state === "static"
+            ? {}
+            : { terminal: source.state !== "active" };
         return producerResult === undefined || (producerResult.status >= 400 && contentDelivered)
             ? { ...projected, ...liveness }
             : Results.assertReadResult({ ...producerResult, ...projected, ...liveness, status: producerResult.status }) as AnchoredReadResult;

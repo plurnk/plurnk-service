@@ -307,12 +307,13 @@ test("{§exec-stream}: a terminal stream observation states completion truth wit
         target: { scheme: "sh", pathname: "/1/1/3/sh", fragment: "stdout" },
         rx: {
             status: 200,
+            terminal: true,
             exitCode: 0,
             content: "",
             mimetype: "text/stream",
             range: { unit: "line", total: 0, requested: [1, 16] },
         },
-        attrs: { streamEnd: 0, terminal: true },
+        attrs: { streamEnd: 0 },
     }], tok);
     assert.match(out, /"exitCode":0/, "the executor's exact terminal fact survives packet projection");
     assert.match(out, /"source":"log:\/\/\/1\/1\/3\/sh"/, "the observation links to its causal invocation");
@@ -320,6 +321,31 @@ test("{§exec-stream}: a terminal stream observation states completion truth wit
     assert.match(out, /"stream":"sh:\/\/\/1\/1\/3\/sh#stdout"/, "the observed stream is a stream link, as on the invocation row (#425 F4)");
     assert.doesNotMatch(out, /"target":/, "a stream address is never offered as a target slot to author");
     assert.doesNotMatch(out, /completed|success/i, "the receipt exposes facts without adding presumptuous narration");
+});
+
+test("{§stream-observation-result}: malformed liveness facts fail at packet projection", () => {
+    const row = { coordinate: "1/2/1", op: "READ", status: 200, target: { scheme: "sh", pathname: "/abcdef12" } };
+    for (const terminal of [null, "false", 0, 1]) {
+        assert.throws(() => PacketWire.renderLog([{ ...row, rx: { terminal } }], tok),
+            /stream READ result carries a malformed terminal flag/);
+    }
+    for (const exitCode of [null, "0", 0.5, Number.MAX_SAFE_INTEGER + 1]) {
+        assert.throws(() => PacketWire.renderLog([{ ...row, rx: { terminal: true, exitCode } }], tok),
+            /stream READ result carries a malformed exitCode/);
+    }
+});
+
+test("{§stream-observation-result}: a harness-authored READ is not implicitly a subscription publication", () => {
+    const [row] = parseLogRecords(PacketWire.renderLog([{
+        coordinate: "1/1/1", origin: "_plurnk", op: "READ", status: 200,
+        target: { scheme: "sh", pathname: "/abcdef12" },
+        rx: { status: 200, terminal: true, exitCode: 0, content: "" },
+        attrs: {},
+    }], tok));
+    assert.equal(row?.target, "sh:///abcdef12");
+    assert.equal(row?.stream, undefined);
+    assert.equal(row?.terminal, true);
+    assert.equal(row?.exitCode, 0);
 });
 
 test("{§scheme-address-network}: a body-suppressed web identity renders https://host, never https:///host", () => {
