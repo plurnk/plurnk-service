@@ -234,11 +234,10 @@ ok(
         "Mimetypes",
         "Mock",
         "Paths",
-        "Prompt",
         "SchemeRegistry",
         "Skill",
     ]),
-    "the packed 1.x root compatibility barrel remains frozen",
+    "the packed root exports match {§service-package-exports} exactly",
 );
 ok(publicSurface.digestDefault === "function", "the packed digest subpath remains importable");
 ok(installedPackage.name === "@plurnk/plurnk-service", "the packed package.json subpath remains addressable");

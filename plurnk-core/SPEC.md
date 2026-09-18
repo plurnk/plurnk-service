@@ -210,9 +210,14 @@ inbound-A2A listeners and host hooks remain launcher-owned.
 
 | Export path                           | Current contract                                                                                                                                                        |
 |---------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `@plurnk/plurnk-service`              | Frozen 1.x compatibility barrel. It retains the previously published runtime and type surface, gains no new APIs, and is not the client boundary. Removal is SemVer-major. |
+| `@plurnk/plurnk-service`              | Frozen 1.x compatibility barrel of the exports below. It gains no new APIs and is not the client boundary. Removal is SemVer-major. |
 | `@plurnk/plurnk-service/digest`       | Supported programmatic forensic surface owned by {§digest-programmatic-surface}.                                                                                         |
 | `@plurnk/plurnk-service/package.json` | Supported package metadata surface.                                                                                                                                      |
+
+| Root exports | Names |
+|--------------|-------|
+| Runtime | `Daemon`, `Engine`, `EnvFlags`, `Exec`, `File`, `Log`, `Mimetypes`, `Mock`, `Paths`, `SchemeRegistry`, `Skill` |
+| Types | `ChatMessage`, `EditResult`, `FlagDescriptor`, `MockAssistant`, `MockResponse`, `OpenFoldResult`, `ReadResult` |
 
 New clients use AG-UI. A new library contract belongs in its owning package or
 an explicitly specified subpath, not in the frozen root barrel.
