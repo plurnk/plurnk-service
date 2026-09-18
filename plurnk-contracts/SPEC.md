@@ -418,6 +418,14 @@ line. An invoke with an unknown name or parameter leaves the whole emission as i
 was. An emission that already yields an operation is never rewritten. No
 diagnostic, notice or teaching mentions the reading (#760).
 
+§operation-attempt An emission with no operation is either prose, which a host may take
+as the model's answer, or an operation attempt. `PlurnkParser.operationAttempt(input,
+executors)` names the attempt: a line opening a four-backtick fence, a heading outside
+any fence ({§bare-heading-advisory}; a known executor's name is a heading only when a
+slot follows it), native tool-call markup that {§native-tool-calls} did not read, or
+echoed packet rows (`### log://…`). Anything else, three-backtick code blocks included,
+is prose (#761).
+
 §bare-heading-advisory An operation name that opens a line outside any block in the
 shape of a heading (`READ (…)`, `NOTE`, …) is prose and runs nothing. The parser
 emits one warning-severity advisory naming the fence form, placed after the parsed

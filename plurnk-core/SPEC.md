@@ -2672,9 +2672,18 @@ accounting and model-visible failure evidence remain separately owned by
   and answers no assignment implicitly. An unpublished arrival cannot be answered by the
   targetless shorthand. Failed delivery answers nothing. Reply accounting reads executed
   delivery evidence, never log visibility or the mere existence of a later SEND.
-- §empty-turn **A response with no operation is a turn, not a retry.** When the parser finds
-  no operation and no other hard error (prose, bare headings outside fences, an empty
-  response), the emission is admitted as an empty turn (operator, 2026-09-12): its text and
+- §prose-conclusion **Prose is the answer.** An admitted response whose content has no
+  operation, attempts none ({§operation-attempt}), was not cut at the output
+  allowance and is not empty is the model's answer (operator, 2026-09-18, #761): the engine
+  admits it as a targetless SEND whose body is the trimmed content, positioned on line 1. It
+  answers the open messages, reaches clients and a parent exactly as a SEND does, and meets the
+  completion barrier as a SEND does ({§completion-joins-live-work},
+  {§completion-defers-to-results}). Reasoning NOTEs ride with it. The model is taught
+  "respond without performing any OPs" and is never taught the SEND.
+- §empty-turn **A response with no operation that is not an answer is a turn, not a retry.**
+  When the parser finds no operation and no other hard error, and the response is not an
+  answer under {§prose-conclusion} — an operation attempt, prose cut at the output allowance,
+  or an empty response — it is admitted as an empty turn (operator, 2026-09-12): its text and
   reasoning are stored like any turn's (`ops://<worker>/`, `reasoning://<worker>/`), the model's own message
   stays in the next packet's history, that packet carries one `turn_no_operations` notice and
   any {§bare-heading-advisory} notices, the turn continues at 102, and the strike rail counts

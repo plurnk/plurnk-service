@@ -74,37 +74,70 @@ test("{§bare-heading-advisory}: a heading outside any fence draws a parse_advis
     } finally { await db.close(); }
 });
 
-// {§empty-turn} — a prose-only response is admitted as an empty turn: kept, noticed, struck once.
-test("{§empty-turn}: a prose-only response is an admitted turn with a turn_no_operations notice and one strike, never a resample", async () => {
+// {§prose-conclusion} — a response that is prose is the model's answer: a SEND to the open messages.
+test("{§prose-conclusion}: a prose response, code block and all, answers the open message and concludes", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `empty-turn-${crypto.randomUUID()}`);
+        const workspaceId = await insertWorkspace(db, `prose-conclusion-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Do the thing.");
-        const notices: Array<{ kind: string; message?: string }> = [];
-        const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "The findings give me precise integration points. Now I'll implement it.", reasoning: "thinking about it" } },
-            { assistant: { content: PlurnkParser.frame("SEND", "Done.") + "\n" + memory, reasoning: null } },
-        ] });
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
+        const loopId = await insertLoop(db, workerId, 1, "How do I run the tests?");
+        const answer = "The runner is configured in the package root:\n\n```ts\nexport default { timeout: 30_000 };\n```\n\nIt takes about a minute.";
+        const notices: Array<{ kind: string }> = [];
+        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: `\n${answer}\n`, reasoning: "simple question" } }] });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string }) });
         const result = await engine.runLoop({
-            provider,
-            workspaceId, workerId, loopId, maxTurns: 4, maxStrikes: 3,
-            messages: [{ role: "user", content: "Do the thing." }],
+            provider, workspaceId, workerId, loopId, maxTurns: 3, maxStrikes: 3,
+            messages: [{ role: "user", content: "How do I run the tests?" }],
         });
         assert.equal(result.result.status, 200);
-        assert.equal(result.turnIds.length, 3, "initialization, the empty turn, the concluding turn: no private resample");
+        assert.equal(provider.received.length, 1, "one model turn: the answer");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: result.turnIds.at(-1)! });
+        const sends = rows.filter(({ origin, op }) => origin === "model" && op === "SEND");
+        assert.deepEqual(sends.map(({ status_rx }) => status_rx), [200]);
+        assert.equal(JSON.parse(sends[0]!.tx).body.raw, answer, "the trimmed prose is the reply");
+        assert.equal(notices.filter(({ kind }) => kind === "turn_no_operations").length, 0, "an answer is not an empty turn");
         const rail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: loopId });
-        assert.equal(rail?.strike_streak, 0, "the concluding turn cleared the streak the empty turn earned");
-        const emptyTurn = result.turnIds[1]!;
-        const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: emptyTurn });
-        assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "admitted on its only attempt");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
-        assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "ops")?.content, "The findings give me precise integration points. Now I'll implement it.");
-        assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "reasoning")?.content, "thinking about it");
-        assert.ok(notices.some(({ kind }) => kind === "turn_no_operations"), "the packet says the turn emitted no operations");
+        assert.equal(rail?.strike_streak, 0);
     } finally { await db.close(); }
 });
+
+// {§empty-turn} — an operation attempt that did not parse, or prose cut at the allowance, is not an
+// answer: it is admitted as an empty turn — kept, noticed, struck once — and the loop continues.
+for (const [label, content, finishReason] of [
+    ["an operation heading outside a fence", "Let me check.\n\nREAD (worker:///notes.md)", "stop"],
+    ["prose cut at the output allowance", "The findings give me precise integration points. Now I'll", "length"],
+] as const) {
+    test(`{§empty-turn}: ${label} is an empty turn with a turn_no_operations notice and one strike, never an answer`, async () => {
+        const db = await openMigrated();
+        try {
+            const workspaceId = await insertWorkspace(db, `empty-turn-${crypto.randomUUID()}`);
+            const workerId = await insertWorker(db, workspaceId);
+            const loopId = await insertLoop(db, workerId, 1, "Do the thing.");
+            const notices: Array<{ kind: string }> = [];
+            const provider = new Mock({ contextWindow: 100_000, responses: [
+                { assistant: { content, reasoning: "thinking about it", finishReason } },
+                { assistant: { content: "Done.", reasoning: null } },
+            ] });
+            const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string }) });
+            const result = await engine.runLoop({
+                provider, workspaceId, workerId, loopId, maxTurns: 4, maxStrikes: 3,
+                messages: [{ role: "user", content: "Do the thing." }],
+            });
+            assert.equal(result.result.status, 200);
+            assert.equal(result.turnIds.length, 3, "initialization, the empty turn, the answer: no private resample");
+            const emptyTurn = result.turnIds[1]!;
+            const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: emptyTurn });
+            assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "admitted on its only attempt");
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+            assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "ops")?.content, content);
+            assert.ok(notices.some(({ kind }) => kind === "turn_no_operations"), "the packet says the turn emitted no operations");
+            const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds.at(-1)! });
+            assert.equal(JSON.parse(rows.find(({ op, origin }) => origin === "model" && op === "SEND")!.tx).body.raw, "Done.", "the later prose answered");
+            const rail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: loopId });
+            assert.equal(rail?.strike_streak, 0, "the answer cleared the streak the empty turn earned");
+        } finally { await db.close(); }
+    });
+}
 
 for (const finishReason of [undefined, "stop", "length"] as const) {
     test(`{§empty-turn}: reasoning without operations does not conclude settled work (finish=${finishReason ?? "absent"})`, async () => {

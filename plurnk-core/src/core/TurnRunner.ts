@@ -1784,6 +1784,20 @@ export default class TurnRunner {
                 parseErrors.push({ message: tail.reason, line: tail.from.line, column: tail.from.column, source: "grammar" });
             }
         }
+        // {§prose-conclusion} — a response whose content is prose (no operation, no attempt at one,
+        // not cut at the output allowance) is the model's answer: a SEND to the open messages.
+        const prose = assistant.content.trim();
+        const concludes = preParsedOps === undefined
+            && ops.length === 0
+            && !hasUnparsedTail
+            && prose.length > 0
+            && assistant.finishReason !== "length"
+            && parseErrors.every((error) => error.message === PlurnkParser.NO_VALID_OPERATION)
+            && PlurnkParser.operationAttempt(assistant.content, executors) === null;
+        if (concludes) {
+            parseErrors.length = 0;
+            ops.push({ op: "SEND", aside: null, target: null, metadata: null, lineMarker: null, body: { raw: prose, json: null }, position: { line: 1, column: 0 } } as PlurnkStatement);
+        }
         const reasoning = assistant.reasoning ?? null;
         const notes = reasoning === null ? [] : PlurnkParser.parseReasoningNotes(reasoning);
         ops.unshift(...notes);

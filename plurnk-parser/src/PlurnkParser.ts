@@ -103,6 +103,21 @@ export default class PlurnkParser {
         }).join("\n\n");
     }
 
+    // {§operation-attempt} — a response with no operation concludes only when it is prose. It is an
+    // operation attempt instead when a line opens a four-backtick fence, a heading stands outside
+    // any fence, native tool-call markup remains, or packet rows are echoed. Returns the kind.
+    static operationAttempt(input: string, executors: readonly string[] = []): string | null {
+        const helpers = ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "WORK", "FORK", "BARE", "KILL", "NOTE", "WAIT"];
+        const runtimes = executors.map((name) => name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"));
+        if (/^[ \t]*`{4,}/mu.test(input)) return "four-backtick fence";
+        // A runtime name alone on a line is ordinary prose; followed by a slot it is a heading.
+        const heading = [`(?:${helpers.join("|")})(?=\\s*(?:\\(|<|\\[|$))`, ...(runtimes.length === 0 ? [] : [`(?:${runtimes.join("|")})(?=\\s*(?:\\(|<|\\[))`])];
+        if (new RegExp(`^[ \\t]*(?:${heading.join("|")})`, "mu").test(input)) return "operation heading outside a fence";
+        if (/DSML|<\|?tool_call|<function_calls|<invoke\b/u.test(input)) return "native tool-call markup";
+        if (/^#{2,3} (?:log|ops|reasoning):\/\//mu.test(input)) return "echoed packet rows";
+        return null;
+    }
+
     // Parse one model turn. An omitted disposition is silent continuation; a present one
     // may sit anywhere in the turn ({§disposition-anywhere}) and the runtime executes it last.
     // Outside text never becomes a parse item. {§whitespace-contract} {§turn-shape}

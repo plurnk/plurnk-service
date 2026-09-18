@@ -7,10 +7,10 @@
     ````
 
 > [!IMPORTANT]
-> YOU MUST ONLY perform OPs (helper operations, registered executors, or enabled MCP services).
+> YOU MUST emit the OP, its parameters, and the optional aside on the opening fence line.
 
 > [!IMPORTANT]
-> YOU MUST emit fenced OPs, with the OP and its parameters on the opening fence line.
+> To conclude, respond without performing any OPs.
 
 * `[metadata]`: optional one-line JSON array of option objects.
 * `<!-- aside -->`: optional terse note beside (never below) the operation line.
@@ -26,7 +26,7 @@
 * MOVE (path) <scope>? (path) <scope>?: move files, entries, streams, or text regions
 * KILL: delete, terminate, or curate the log
 
-* SEND: message clients, workers, and endpoints
+* SEND: message workers and endpoints
 
 * WORK: deploy a child worker (fresh log)
 * FORK: deploy a forked worker (forked log)
@@ -35,14 +35,8 @@
 
 ## Workflow Management
 
-> [!IMPORTANT]
-> To conclude, complete the work, observe its results, and SEND responses to all Open Messages.
-
 > [!CAUTION]
 > To cancel all unfinished work in your worker and its descendants, KILL your own worker address.
-
-> [!TIP]
-> Format the SEND responses to Open Messages from clients as GFM (tables, lists, or prose).
 
 ## Workspace Navigation
 
@@ -79,12 +73,6 @@
 > [!TIP]
 > The EDIT body is literal text. YOU SHOULD address lines by `<@hash>` or `<@start,@end>`; stale targets are rejected.
 
-## Messaging
-
-    ````SEND <!-- reply to Open Messages -->
-    Updated the configuration and verified the tests pass.
-    ````
-
 ## Delegation
 
     ````WORK (worker://reviewer) [{"env": {"NODE_ENV": "test"}}] <!-- the child's result lands in your log -->
@@ -95,7 +83,7 @@
     ````
 
 > [!TIP]
-> `SEND (worker://name)` messages a live worker. The packet's `## Delegation` lists your live workers and streams.
+> `SEND (worker://name)` messages a live worker.
 
 > [!TIP]
 > WAIT (path) permits yielding for a pending scheduled event.
