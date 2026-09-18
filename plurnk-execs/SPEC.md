@@ -477,9 +477,12 @@ the documents, and exposes each Summary through ordinary FIND metadata. No
 executor table or executor-specific discovery protocol exists.
 
 §executor-input-schema-preview Schema-backed previews list only explicitly
-required top-level fields, with quoted names and declared broad JSON types.
-Nested objects and arrays stay opaque; an undeclared type is `unknown`. Optional
-fields, references, constraints, and conditional branches are not interpreted.
+required top-level fields, with quoted names and declared broad JSON types. A
+required field whose schema is a closed set of at most eight strings (`enum`) shows
+those values instead of `string` (`"method": "get" | "get_comments"`), because a
+bare `string` there invites a guess the tool refuses (#762). Nested objects and
+arrays stay opaque; an undeclared type is `unknown`. Optional fields, references,
+other constraints, and conditional branches are not interpreted.
 The preview is not a complete signature or validation promise. Its schema link
 provides the complete original schema, including descriptions, definitions,
 references, and constraints; repository-owned referenced schemas are included

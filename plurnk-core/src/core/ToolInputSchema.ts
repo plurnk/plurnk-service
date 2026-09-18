@@ -5,11 +5,20 @@ const objectOf = (value: unknown): JsonSchema =>
     typeof value === "object" && value !== null && !Array.isArray(value) ? value as JsonSchema : {};
 
 export default class ToolInputSchema {
+    static readonly #ENUM_LIMIT = 8;
+
     // {§executor-input-schema-preview} — a shallow field list, not a schema compiler.
     static preview(schema: JsonSchema): string {
         const properties = objectOf(schema.properties);
         const required = Array.isArray(schema.required) ? schema.required : [];
         const fields = required.map((name: string) => {
+            // {§executor-input-schema-preview} — a short closed set of strings is shown as its values:
+            // `string` there invites a guess the tool will refuse (#762, dogfood item 8).
+            const choices = objectOf(properties[name]).enum;
+            if (Array.isArray(choices) && choices.length > 0 && choices.length <= ToolInputSchema.#ENUM_LIMIT
+                && choices.every((choice) => typeof choice === "string")) {
+                return `${JSON.stringify(name)}: ${choices.map((choice) => JSON.stringify(choice)).join(" | ")}`;
+            }
             const type = objectOf(properties[name]).type;
             const declared = Array.isArray(type) ? type : [type];
             const broad = declared.filter((value): value is string => typeof value === "string" && TYPES.has(value));

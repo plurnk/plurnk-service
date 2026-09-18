@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Validator, type JsonSchema } from "@plurnk/plurnk-contracts";
 import ToolResources from "./ToolResources.ts";
+import ToolInputSchema from "./ToolInputSchema.ts";
 
 const schema = {
     type: "object",
@@ -42,7 +43,7 @@ test("{§executor-input-schema-preview} catalogs only required top-level fields 
     const [family, detail] = render();
     assert.equal(family?.pathname, "/_plurnk/tools/gitea.md");
     assert.equal(detail?.pathname, "/_plurnk/tools/gitea/issue%2Fread.md");
-    assert.match(family!.content, /```gitea \(issue\/read\) <!-- List issues\. Schema: worker:\/\/\/_plurnk\/tools\/gitea\/issue%2Fread\.md -->\n\{"repo_id": integer, "filter": object, "labels": array, "mode": string, "selector": unknown\}\n```/);
+    assert.match(family!.content, /```gitea \(issue\/read\) <!-- List issues\. Schema: worker:\/\/\/_plurnk\/tools\/gitea\/issue%2Fread\.md -->\n\{"repo_id": integer, "filter": object, "labels": array, "mode": "open" \| "all", "selector": unknown\}\n```/);
     assert.doesNotMatch(family!.content, /page|oneOf|Selection|minItems/);
     assert.ok(detail!.content.includes(description), "complete multiline description is preserved");
     assert.deepEqual(JSON.parse(detail!.content.split("## Input schema\n\n```json\n")[1]!.split("\n```", 1)[0]!), schema);
@@ -99,7 +100,7 @@ test("{§executor-input-schema-preview} general schema-backed runtimes also expo
     });
     assert.equal(detail!.pathname, "/_plurnk/plurnk/query/input.md");
     assert.ok(family!.content.includes(`Schema: worker://${detail!.pathname} -->`));
-    assert.ok(family!.content.includes('{"repo_id": integer, "filter": object, "labels": array, "mode": string, "selector": unknown}'));
+    assert.ok(family!.content.includes('{"repo_id": integer, "filter": object, "labels": array, "mode": "open" | "all", "selector": unknown}'));
     assert.ok(detail!.content.includes(JSON.stringify(schema, null, 2)));
 });
 
@@ -111,4 +112,20 @@ test("{§executor-input-schema-preview} includes original repository-owned refer
     assert.ok(detail!.content.includes(JSON.stringify(Validator.schemaByRef(ref), null, 2)));
     const external = { $ref: "https://not-a-server.invalid/schema.json" };
     assert.ok(render("external", external)[1]!.content.includes(JSON.stringify(external, null, 2)));
+});
+
+test("{§executor-input-schema-preview} a required closed set of strings shows its values; a long or mixed set keeps its type (#762)", () => {
+    assert.equal(ToolInputSchema.preview({
+        type: "object",
+        required: ["method", "owner", "issue_number"],
+        properties: {
+            method: { type: "string", enum: ["get", "get_comments", "get_labels"] },
+            owner: { type: "string" },
+            issue_number: { type: "number" },
+        },
+    }), '{"method": "get" | "get_comments" | "get_labels", "owner": string, "issue_number": number}');
+    assert.equal(ToolInputSchema.preview({
+        type: "object", required: ["a", "b"],
+        properties: { a: { type: "string", enum: Array.from({ length: 9 }, (_, i) => `v${i}`) }, b: { type: "string", enum: ["x", 1] } },
+    }), '{"a": string, "b": string}');
 });
