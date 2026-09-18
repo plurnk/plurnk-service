@@ -2,6 +2,7 @@ import { CharStream, CommonTokenStream, Token, type ParserRuleContext } from "an
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import { plurnkParser, type ClientStatementContext } from "./generated/plurnkParser.ts";
 import AstBuilder from "./AstBuilder.ts";
+import NativeToolCalls from "./NativeToolCalls.ts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
 import {
@@ -105,6 +106,19 @@ export default class PlurnkParser {
     // may sit anywhere in the turn ({§disposition-anywhere}) and the runtime executes it last.
     // Outside text never becomes a parse item. {§whitespace-contract} {§turn-shape}
     static parse(input: string, options: ParseOptions = {}): ParseResult {
+        const direct = PlurnkParser.#parseTurn(input, options);
+        if (direct.items.some((item) => item.kind === "statement")) return direct;
+        // {§native-tool-calls} — an emission with no operation may be native tool-call markup that
+        // names plurnk operations; read it as those operations, silently (#760).
+        const rewritten = NativeToolCalls.rewrite(input, options.executors ?? []);
+        if (rewritten === null) return direct;
+        const native = PlurnkParser.#parseTurn(rewritten, options);
+        return native.items.some((item) => item.kind === "statement") && !native.items.some((item) => item.kind === "error" && item.error.severity === "error")
+            ? native
+            : direct;
+    }
+
+    static #parseTurn(input: string, options: ParseOptions): ParseResult {
         const result = PlurnkParser.#run(input, (parser) => parser.document(), undefined, options);
         PlurnkParser.#adviseBareHeadings(input, result.items, options.executors ?? []);
         // Value-adds layered on ANTLR's diagnostics while the document boundary

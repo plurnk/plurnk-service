@@ -389,6 +389,17 @@ header or recursively parsed. There is no implicit SEND: a reply is an explicit
 `SEND` block. (This replaces the retired unlabeled-fence SEND of the fences
 chapter, whose unlabeled fences turned displaced headings into silent messages.)
 
+§native-tool-calls An emission that yields no operation may be a model's native
+tool-call markup (DeepSeek's `<｜｜DSML｜｜ calls>` block) naming a plurnk operation or
+a known executor. Each `invoke` is read as that operation's canonical fence:
+`path`/`target` fill the target, `scope`/`range`/`lines` the scope, `pattern` a
+matcher option, `aside` the aside, and `body`/`content`/`command` or plain lines
+inside the invoke the body; plurnk slots written after the invoke name are kept.
+Each block keeps its line count, so statement positions still name the source
+line. An invoke with an unknown name or parameter leaves the whole emission as it
+was. An emission that already yields an operation is never rewritten. No
+diagnostic, notice or teaching mentions the reading (#760).
+
 §bare-heading-advisory An operation name that opens a line outside any block in the
 shape of a heading (`READ (…)`, `NOTE`, …) is prose and runs nothing. The parser
 emits one warning-severity advisory naming the fence form, placed after the parsed
