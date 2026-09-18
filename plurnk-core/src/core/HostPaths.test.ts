@@ -43,13 +43,23 @@ test("{§host-path-layout} ignores relative XDG values instead of resolving them
         env: {
             XDG_CONFIG_HOME: "relative/config",
             XDG_DATA_HOME: "relative/data",
+            XDG_STATE_HOME: "relative/state",
+            XDG_CACHE_HOME: "relative/cache",
             XDG_RUNTIME_DIR: "relative/run",
         },
     });
     assert.equal(paths.configHome, "/home/ada/.config");
     assert.equal(paths.dataHome, "/home/ada/.local/share");
+    assert.equal(paths.stateHome, "/home/ada/.local/state");
+    assert.equal(paths.cacheHome, "/home/ada/.cache");
     assert.equal(paths.runtimeHome, null);
-    assert.deepEqual(paths.invalidXdg, ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_RUNTIME_DIR"]);
+    assert.deepEqual(paths.invalidXdg, ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR"]);
+});
+
+test("{§host-path-layout} empty XDG homes use the same defaults as unset homes", () => {
+    assert.deepEqual(new HostPaths({ home: "/home/ada", env: {
+        XDG_CONFIG_HOME: "", XDG_DATA_HOME: "", XDG_STATE_HOME: "", XDG_CACHE_HOME: "", XDG_RUNTIME_DIR: "",
+    } }), new HostPaths({ home: "/home/ada", env: {} }));
 });
 
 test("{§host-path-layout} expands only explicit Plurnk ~/ overrides", () => {
