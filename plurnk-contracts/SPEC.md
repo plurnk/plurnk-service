@@ -389,6 +389,18 @@ header or recursively parsed. There is no implicit SEND: a reply is an explicit
 `SEND` block. (This replaces the retired unlabeled-fence SEND of the fences
 chapter, whose unlabeled fences turned displaced headings into silent messages.)
 
+§heading-slot-order A heading near-miss with exactly one reading is read as that
+reading, with no diagnostic and no teaching (#758):
+
+- an aside written before the heading's remaining scope or JSON option block is
+  read after them (`READ (a.md) <!-- why --> <1,-1>`); an aside followed by a
+  target or a non-JSON block keeps its place and stays refused;
+- zero-width characters (U+200B–U+200D, U+2060, U+FEFF) on a heading line are skipped;
+- a matcher that begins with a sigil and is quoted in single backticks
+  (`` `^def test_` ``) is that matcher; quoted text without a sigil stays refused.
+
+Tokens keep their source positions; only their order in the stream changes.
+
 §native-tool-calls An emission that yields no operation may be a model's native
 tool-call markup (DeepSeek's `<｜｜DSML｜｜ calls>` block) naming a plurnk operation or
 a known executor. Each `invoke` is read as that operation's canonical fence:

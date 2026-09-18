@@ -151,6 +151,9 @@ export default class AstBuilder {
             break;
         }
         if (text === "") return null;
+        // {§heading-slot-order} — a sigil pattern quoted in single backticks is that pattern (#758).
+        const ticked = /^`([^`]+)`$/u.exec(text);
+        if (ticked !== null && AstBuilder.#SIGIL.test(ticked[1]!)) text = ticked[1]!;
         if (AstBuilder.#SIGIL.test(text)) return { text, aside, scope, metadata };
         if (!inline || (op !== "FIND" && op !== "READ" && op !== "KILL")) return null;
         return { text, aside, scope, metadata };

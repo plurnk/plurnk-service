@@ -1,7 +1,8 @@
-import { CharStream, CommonTokenStream, Token, type ParserRuleContext } from "antlr4ng";
+import { CharStream, CommonTokenStream, ListTokenSource, Token, type ParserRuleContext } from "antlr4ng";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import { plurnkParser, type ClientStatementContext } from "./generated/plurnkParser.ts";
 import AstBuilder from "./AstBuilder.ts";
+import HeadingTokens from "./HeadingTokens.ts";
 import NativeToolCalls from "./NativeToolCalls.ts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
@@ -222,7 +223,8 @@ export default class PlurnkParser {
         lexer.removeErrorListeners();
         lexer.addErrorListener(new RecordingListener("lexer", errors));
 
-        const tokenStream = new CommonTokenStream(lexer);
+        // {§heading-slot-order} — lex eagerly so heading near-misses can be put in canonical order.
+        const tokenStream = new CommonTokenStream(new ListTokenSource(HeadingTokens.normalize(lexer.getAllTokens())));
         const parser = new plurnkParser(tokenStream);
         parser.removeErrorListeners();
         parser.addErrorListener(new RecordingListener("parser", errors));

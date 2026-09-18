@@ -355,7 +355,7 @@ private noteInlineBody(): void {
     this.inlineBody = true;
     // {§naked-pattern} - a sigil is a matcher on any heading, and every heading-line word on FIND,
     // READ or KILL is one, so only a bodied operation's stray heading text is worth an advisory.
-    const first = this.text.charCodeAt(0);
+    const first = this.text.charCodeAt(0) === 0x60 ? this.inputStream.LA(1) : this.text.charCodeAt(0);
     if (first === 0x2F || first === 0x24 || first === 0x7E || first === 0x26 || first === 0x5E) return;
     if (this.openOp === "FIND" || this.openOp === "READ" || this.openOp === "KILL") return;
     this.inlineBodies.push({ line: this.getOpenTagLine(), column: this.getOpenTagColumn(), heading: this.getOpenHeading() });
@@ -419,6 +419,8 @@ mode SLOTS;
 // {§one-line-turn} - the next opener on a heading's own line ends this bodyless block and opens.
 SLOTS_NEXT_OPENER : { this.slotReady && this.openerFollows() }? [ \t]+ { this.inlineChain = true; } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_WS : [ \t]+ { this.slotReady = true; } -> skip ;
+// {§heading-slot-order} — zero-width characters on a heading line are invisible to the writer too (#758).
+SLOTS_INVISIBLE : [\u200B-\u200D\u2060\uFEFF]+ -> skip ;
 SLOTS_LPAREN : { this.slotReady }? '(' { this.targetDepth = 0; this.metadataReady = false; } -> type(LPAREN), mode(TARGET) ;
 SLOTS_LBRACKET : { this.slotReady && this.metadataReady }? '[' { this.metadataDepth = 0; } -> type(LBRACKET), mode(METADATA) ;
 // {§send-wait-scope} — whatever a WAIT names in its scope slot is skipped unread, never refused
@@ -437,6 +439,8 @@ SLOTS_ASIDE_OPEN : { this.slotReady && !this.asideClosesOnLine() }? '<!--' ~[\r\
 SLOTS_INLINE_CLOSER : { this.slotReady && this.closerWithHeadingAhead() }? FENCE [0-9]* [ \t]* { this.inlineCloserSeen = true; } -> skip ;
 SLOTS_END : { this.closingAt(1) }? FENCE [0-9]* [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_INLINE_BODY : { this.slotReady && this.inlineBodyAhead() }? ~[ \t\r\n[(<`] { this.noteInlineBody(); } -> type(BODY_TEXT), mode(BODY) ;
+// {§heading-slot-order} — a single backtick before a matcher sigil quotes that matcher, never a fence (#758).
+SLOTS_TICK_TEXT : { this.slotReady && this.inlineBodyAhead() && [0x2F, 0x24, 0x7E, 0x26, 0x5E].includes(this.inputStream.LA(2)) }? '`' { this.noteInlineBody(); } -> type(BODY_TEXT), mode(BODY) ;
 // {§transparent-inline-closer} — the block already met its closer, so its line ending ends it.
 SLOTS_CLOSED_EOL : { this.inlineCloserSeen }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_NEXT_HEADING : { this.fenceDelimiter === "" && this.headingAfterEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
