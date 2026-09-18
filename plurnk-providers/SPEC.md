@@ -710,7 +710,7 @@ deadline:
 | Layer | Operator knob | Boundary | Expiry |
 | --- | --- | --- | --- |
 | Operation | `PLURNK_PROVIDERS_OPERATION_TIMEOUT` | Complete logical call, including every attempt and retry delay. | Final `deadline_exceeded` Problem at 504 with `timeoutPhase=operation`; never retried. Enforced as a race, not only the advisory signal, so a wedged transport that never observes the abort cannot hang the loop past the deadline (#505); a well-behaved transport unwinds within a short grace and settles its own attempt evidence first. |
-| Attempt | `PLURNK_PROVIDERS_FETCH_TIMEOUT` | One physical generation request, including response consumption. | Surfaced `network_failure` with `timeoutPhase=attempt`; never transport-retried (#479) — the consumer's recovery owns re-issue. |
+| Attempt | `PLURNK_PROVIDERS_FETCH_TIMEOUT` | One physical generation request. A non-streamed request is bounded through response consumption; a streamed one only until its first semantic content, after which stream-idle catches a stall and the operation deadline bounds the whole, so a stream still producing (long reasoning) is never cut off. | Surfaced `network_failure` with `timeoutPhase=attempt`; never transport-retried (#479) — the consumer's recovery owns re-issue. |
 | First content | `PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT` | Response-stream start through first semantic model content; metadata, empty deltas, and transport activity do not satisfy it. | Surfaced `network_failure` with `timeoutPhase=first_content`; never transport-retried (#479). |
 | Stream idle | `PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT` | Silence between semantic content chunks after content begins. | Surfaced `network_failure` with `timeoutPhase=stream_idle`; never transport-retried (#479). |
 

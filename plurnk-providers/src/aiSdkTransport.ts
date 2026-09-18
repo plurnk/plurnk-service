@@ -445,6 +445,18 @@ const executeModelOnce = async (
             ? { role: "assistant", content: chatMessageText(message) }
             : { role: "system", content: chatMessageText(message) };
     });
+    // {§provider-connectivity} — a streamed attempt's deadline holds only until semantic content
+    // flows; after that, stream-idle catches a stall and the operation deadline bounds the whole.
+    // A healthy stream still producing (long reasoning) is never cut off and its tokens wasted.
+    const attemptDeadline = request.streaming && request.fetchTimeoutMs > 0 ? new AbortController() : null;
+    const attemptTimer = attemptDeadline === null ? null : setTimeout(
+        () => attemptDeadline.abort(new ProviderTimeoutError("attempt", request.fetchTimeoutMs)),
+        request.fetchTimeoutMs,
+    );
+    const liftAttemptDeadline = (): void => { if (attemptTimer !== null) clearTimeout(attemptTimer); };
+    const abortSignal = attemptDeadline === null
+        ? request.signal
+        : request.signal === undefined ? attemptDeadline.signal : AbortSignal.any([request.signal, attemptDeadline.signal]);
     const common = {
         model,
         ...(instructions.length === 0 ? {} : { instructions }),
@@ -454,10 +466,10 @@ const executeModelOnce = async (
         // AiSdkProvider owns retries so every physical request is independently
         // observed and accounted. The SDK transport executes exactly once.
         maxRetries: 0,
-        abortSignal: request.signal,
+        abortSignal,
         headers: request.headers,
         timeout: {
-            ...(request.fetchTimeoutMs > 0 ? { totalMs: request.fetchTimeoutMs } : {}),
+            ...(request.fetchTimeoutMs > 0 && !request.streaming ? { totalMs: request.fetchTimeoutMs } : {}),
             ...(request.streaming
                 && request.firstContentTimeoutMs !== undefined
                 && request.firstContentTimeoutMs > 0
@@ -536,6 +548,7 @@ const executeModelOnce = async (
             }
             if (part.type === "text-delta" && part.text.length > 0) {
                 outputObserved = true;
+                liftAttemptDeadline();
                 if (thoughtChunk) {
                     thoughtSeen = true;
                     const thought = unwrapThoughtDelta(part.text);
@@ -550,6 +563,7 @@ const executeModelOnce = async (
             }
             if (part.type === "reasoning-delta" && part.text.length > 0) {
                 outputObserved = true;
+                liftAttemptDeadline();
                 request.observeReasoning?.(part.text);
             }
             if (part.type === "error") streamError ??= part.error;
@@ -557,6 +571,8 @@ const executeModelOnce = async (
     } catch (error) {
         preserveStreamFailure(error, rawChunks, outputObserved);
         throw error;
+    } finally {
+        liftAttemptDeadline();
     }
     if (streamError !== undefined) {
         preserveStreamFailure(streamError, rawChunks, outputObserved);

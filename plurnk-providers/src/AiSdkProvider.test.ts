@@ -2922,3 +2922,40 @@ test("a response whose usage counters contradict each other is delivered with un
     const raw = response.assistantRaw as { usageRefusal?: { reason: string; usage: unknown } };
     assert.deepEqual(raw.usageRefusal, { reason: "provider usage.outputTokenDetails.textTokens must be a non-negative safe integer", usage }, "the durable response carries the refused counters");
 });
+
+test("{§provider-connectivity} a stream still producing content outlives the attempt deadline; stream-idle governs it instead", async () => {
+    const encoder = new TextEncoder();
+    const chunk = (content: string, finish: string | null = null) => `data: ${JSON.stringify({
+        id: "long", object: "chat.completion.chunk", created: 1, model: "m",
+        choices: [{ index: 0, delta: { content }, finish_reason: finish }],
+    })}\n\n`;
+    mock.method(globalThis, "fetch", async () => new Response(new ReadableStream({
+        async start(controller) {
+            for (let index = 0; index < 8; index += 1) {
+                controller.enqueue(encoder.encode(chunk(`part${index} `)));
+                await new Promise((resolve) => setTimeout(resolve, 25));
+            }
+            controller.enqueue(encoder.encode(chunk("", "stop")));
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+        },
+    }), { headers: { "content-type": "text/event-stream" } }));
+    try {
+        const p = testProvider({
+            model: "m",
+            url: "http://x/v1/chat/completions",
+            fetchTimeoutMs: 60,
+            streamIdleTimeoutMs: 1_000,
+            temperature: 0.2,
+            repeatPenalty: 1.15,
+            reasoning: { mode: "off", budget: null },
+            retryAttempts: 1,
+            source: "provider:test",
+            operationTimeoutMs: 5_000,
+        });
+        const response = await p.generate({ workerId: "long", messages: [] });
+        assert.equal(response.assistant.content, "part0 part1 part2 part3 part4 part5 part6 part7 ", "about 200 ms of streaming against a 60 ms attempt deadline completes");
+    } finally {
+        mock.restoreAll();
+    }
+});
