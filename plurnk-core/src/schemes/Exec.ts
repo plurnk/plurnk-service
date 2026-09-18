@@ -233,31 +233,9 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 { target },
             );
         }
-        if (terminal === 499) {
-            return Results.failure(
-                "scheme:exec",
-                "stream-already-killed",
-                410,
-                `Stream ${target} was already killed.`,
-                {},
-                {
-                    target,
-                    retryable: false,
-                },
-            );
-        }
-        return Results.failure(
-            "scheme:exec",
-            "stream-already-terminal",
-            409,
-            `${target} already concluded with status ${terminal}.`,
-            {},
-            {
-                target,
-                terminalStatus: terminal,
-                retryable: false,
-            },
-        );
+        // {§stream-control} — the process is already not running, which is what KILL asks for; the
+        // receipt says how it ended instead of refusing a cleanup that raced the exit (#757).
+        return { status: 200, terminalStatus: terminal };
     }
 
     // Execution handler — the model-facing entry point per plurnk.md.

@@ -3013,9 +3013,10 @@ remains pending until every selected channel's terminal READ crosses the next
 packet boundary. The execution row separately records the authored invocation.
 
 ```` ```KILL (<runtime>:///<eight-hex-id>) ```` cancels an active subprocess via
-the subscription registry's stored controller. A terminal stream is immutable:
-499 returns 410 (already killed), every other terminal status returns an RFC
-9457 409 Problem carrying `terminalStatus`, and an unknown address returns 404.
+the subscription registry's stored controller. A terminal stream is immutable,
+and KILL of one is satisfied rather than refused: it returns 200 carrying the
+recorded `terminalStatus` (499 when it was already killed); an unknown address
+returns 404 (#757).
 The runtime scheme participates in the durable lookup; a completed `sh:///`
 stream cannot fall through an internal `exec`-only query. {§stream-control}
 
@@ -3240,7 +3241,7 @@ Model sees lifecycle events in the `log` section per turn.
 ### §stream-control Stream control and writes
 
 - **Cancel:** ```` ```KILL (https://feed.example/x) ```` — the service invokes the handle registered by `subscriptions.open()` and aborts the composed subscription signal.
-- **Kill:** ```` ```KILL (sh:///ab3d5678) ```` — the model terminates the addressed workspace stream. This is stream control, not a write: the output scheme's `writableBy` never gates it. An already-killed stream answers 410; another terminal stream answers 409 with its recorded status ({§runtime-resource-binding}). A queued execution ({§exec-concurrency}) is cancelled the same way and never enters its executor.
+- **Kill:** ```` ```KILL (sh:///ab3d5678) ```` — the model terminates the addressed workspace stream. This is stream control, not a write: the output scheme's `writableBy` never gates it. A stream that already ended, killed or not, answers 200 with its recorded `terminalStatus`: the process is not running, which is what KILL asks for (#757); a stream that never existed answers 404 ({§runtime-resource-binding}). A queued execution ({§exec-concurrency}) is cancelled the same way and never enters its executor.
 - **WebSocket write:** ```` ```EDIT (wss://feed/x) ```` or ```` ```SEND (wss://feed/x) ```` with a body sends one whole text frame through the active owner. Either write can follow the opening READ in the same turn under {§op-execution-order}.
 - **Other stream write:** ```` ```SEND (…) ```` remains scheme-defined, including exec stdin.
 
