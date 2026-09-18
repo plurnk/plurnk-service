@@ -67,7 +67,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             assert.ok(automatic, "the automatic output observation names the resource actually read");
             assert.equal(automatic.source, undefined);
             assert.equal(automatic.stream, undefined);
-            assert.deepEqual(automatic.range, { unit: "line", total: 40, requested: [1, 16], returned: [1, 16] });
+            assert.equal(automatic.range, "<1,16> of 40 lines");
             assert.match(String(automatic.body), /16:result 16\n$/u);
             assert.doesNotMatch(String(automatic.body), /result 17/u);
 
@@ -87,7 +87,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             const recovery = await observe();
             const read = recovery.rows.find((row) => row.path === stream && row.origin === undefined);
             assert.ok(read, "the explicit READ reaches the next model packet");
-            assert.deepEqual(read.range, { unit: "line", total: 40, requested: [17, 40], returned: [17, 40] });
+            assert.equal(read.range, "<17,40> of 40 lines");
             assert.equal(read.terminal, true);
             assert.equal(read.exitCode, 0);
             assert.match(String(read.body), /40:result 40\n$/u);
@@ -103,7 +103,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             assert.equal(afterCuration.rows.some((row) => row.logPath === automatic.logPath || row.logPath === read.logPath), false);
             const reread = afterCuration.rows.find((row) => row.path === stream);
             assert.ok(reread, "the retained output is still readable after its observations are curated away");
-            assert.deepEqual(reread.range, { unit: "line", total: 40, requested: [1, -1], returned: [1, 40] });
+            assert.equal(reread.range, "40 lines");
             assert.match(String(reread.body), /1:result 1\n/u);
             assert.match(String(reread.body), /40:result 40\n$/u);
         } finally {

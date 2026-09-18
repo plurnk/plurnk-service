@@ -355,7 +355,7 @@ test("a reviewer-rewritten same-file MOVE reports its one landed replacement eff
         assert.equal(effects[0]?.receipt?.disposition, "superseded");
         assert.equal(effects[0]?.receipt?.requested, "<1,7,1,7>");
         const { context: landedContext, ...landed } = effects[0]?.receipt?.replacement ?? {};
-        assert.deepEqual(landed, { requested: "<1,-1>", source: "1", result: "1-2", removed: 1, inserted: 2 });
+        assert.deepEqual(landed, { requested: "<1,-1>", source: "<1>", result: "<1,2>", removed: 1, inserted: 2 });
         assert.match(String(landedContext), /^@[0-9A-Za-z]{5} +1:reviewer\n@[0-9A-Za-z]{5} +2:replacement$/);
     });
 });

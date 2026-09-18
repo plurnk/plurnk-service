@@ -12,6 +12,8 @@ import type {
     ReviewerReplacementEditBatchReceipt,
 } from "@plurnk/plurnk-schemes";
 import LineMarkerOps from "./line-marker.ts";
+import ScopeFormat from "./scope-format.ts";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 
 export interface ReceiptEdit {
     readonly marker: LineMarker;
@@ -279,7 +281,13 @@ const splitLines = (content: string): string[] => {
     return lines;
 };
 
-const markerText = ({ marks }: LineMarker): string => `<${marks.join(",")}>`;
+const emptyLineScope = (content: string, line: number): string => {
+    const coordinates = new TextCoordinates(content);
+    const offset = coordinates.logicalLines()[line - 1]?.start ?? content.length;
+    const region = coordinates.regionFromOffsets(offset, offset);
+    if (region === null) throw new Error("An EDIT join must have an exact text coordinate.");
+    return ScopeFormat.region(region);
+};
 
 const sourceLineRange = (
     marker: LineMarker,
@@ -300,6 +308,7 @@ const sourceLineRange = (
 
 const lineEffects = (
     original: string,
+    updated: string,
     edits: readonly ReceiptEdit[],
 ): EffectWithContextRange[] => {
     const before = splitLines(original);
@@ -320,17 +329,13 @@ const lineEffects = (
                 : resultStart + inserted - 1;
             offset += inserted - source.removed;
             effects[index] = {
-                requested: markerText(edit.marker),
+                requested: ScopeFormat.marker(edit.marker),
                 source: source.removed === 0
-                    ? `${source.start}^`
-                    : source.start === source.end
-                        ? `${source.start}`
-                        : `${source.start}-${source.end}`,
+                    ? emptyLineScope(original, source.start)
+                    : ScopeFormat.lines(source.start, source.end),
                 result: resultEnd < resultStart
-                    ? `${resultStart}^`
-                    : resultStart === resultEnd
-                        ? `${resultStart}`
-                        : `${resultStart}-${resultEnd}`,
+                    ? emptyLineScope(updated, resultStart)
+                    : ScopeFormat.lines(resultStart, resultEnd),
                 removed: source.removed,
                 inserted,
                 context: "",
@@ -362,16 +367,10 @@ const coordinateAt = (
     content: string,
     codePoints: number,
 ): { line: number; column: number } => {
-    const prefix = content.slice(0, jsOffsetFromCodePoints(content, codePoints));
-    const lines = prefix.split(/\r\n|\r|\n/);
-    return {
-        line: lines.length,
-        column: codePointCount(lines.at(-1) ?? "") + 1,
-    };
+    const position = TextCoordinates.positionAtOffset(content, jsOffsetFromCodePoints(content, codePoints));
+    if (position === null) throw new Error("An EDIT boundary must have an exact text coordinate.");
+    return position;
 };
-
-const coordinateText = ({ line, column }: { line: number; column: number }): string =>
-    `${line}:${column}`;
 
 const codePointEffects = (
     original: string,
@@ -388,7 +387,7 @@ const codePointEffects = (
                 edit.body,
             );
             if ("error" in replacement) {
-                throw new Error(`EDIT receipt could not resolve ${markerText(edit.marker)}: ${replacement.error}`);
+                throw new Error(`EDIT receipt could not resolve ${ScopeFormat.marker(edit.marker)}: ${replacement.error}`);
             }
             return {
                 edit,
@@ -410,13 +409,9 @@ const codePointEffects = (
             const updatedStart = coordinateAt(updated, resultStart);
             const updatedEnd = coordinateAt(updated, resultEnd);
             effects[effect.index] = {
-                requested: markerText(effect.edit.marker),
-                source: removed === 0
-                    ? `${coordinateText(sourceStart)}^`
-                    : `${coordinateText(sourceStart)}-${coordinateText(sourceEnd)}`,
-                result: effect.inserted === 0
-                    ? `${coordinateText(updatedStart)}^`
-                    : `${coordinateText(updatedStart)}-${coordinateText(updatedEnd)}`,
+                requested: ScopeFormat.marker(effect.edit.marker),
+                source: ScopeFormat.region({ startLine: sourceStart.line, startColumn: sourceStart.column, endLine: sourceEnd.line, endColumn: sourceEnd.column }),
+                result: ScopeFormat.region({ startLine: updatedStart.line, startColumn: updatedStart.column, endLine: updatedEnd.line, endColumn: updatedEnd.column }),
                 removed,
                 inserted: effect.inserted,
                 context: "",
@@ -506,7 +501,7 @@ export const editReceipt = (
         : "lines";
     const effects = unit === "codePoints"
         ? codePointEffects(original, updated, edits)
-        : lineEffects(original, edits);
+        : lineEffects(original, updated, edits);
     return {
         revision: createHash("sha256").update(updated).digest("hex"),
         unit,

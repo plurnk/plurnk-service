@@ -62,7 +62,7 @@ for (const body of [null, '{"query":"fixture"}']) {
         assert.ok(automatic);
         assert.equal(automatic.source, undefined);
         assert.equal(automatic.stream, undefined);
-        assert.deepEqual(automatic.range, { unit: "line", total: 40, requested: [1, 16], returned: [1, 16] });
+        assert.equal(automatic.range, "<1,16> of 40 lines");
         const failed = (await packet(3)).find((row) => row.path === invocation.logPath && row.status === 416);
         assert.ok(failed);
         assert.equal((failed.problem as { range: { total: number } }).range.total, body === null ? 0 : 1);
@@ -70,7 +70,7 @@ for (const body of [null, '{"query":"fixture"}']) {
         const explicit = (await packet(4)).find((row) => row.path === invocation.stream && row.origin === undefined);
         assert.ok(explicit, "the actual MCP output is read at the address advertised in the packet");
         assert.equal(explicit.terminal, true, "MCP's JSON channel declaration does not hide its lifecycle");
-        assert.deepEqual(explicit.range, { unit: "line", total: 40, requested: [17, 40], returned: [17, 40] });
+        assert.equal(explicit.range, "<17,40> of 40 lines");
         assert.match(String(explicit.body), /40:result 40\n$/u);
     });
 }

@@ -142,7 +142,8 @@ for (const limit of [-1, 0, 1, 8]) test(`{§reasoning-initial-read}: configured 
             assert.doesNotMatch(String(record.body), /Finding 1:/, "the model's original reasoning is not automatically pushed into the log");
             assert.doesNotMatch(String(record.body), /^@[A-Za-z0-9]+\s+\d+:/m, "the materialized read-only projection has no hashes");
             assert.equal(JSON.parse(reads[0]!.rx).status, 200);
-            assert.deepEqual(record.range, { unit: "line", total: 5, requested: [1, limit], returned: [1, limit === 1 ? 1 : 5] });
+            assert.equal(record.range, limit === 1 ? "<1> of 5 lines" : "5 lines");
+            assert.deepEqual(JSON.parse(reads[0]!.rx).range, { unit: "line", total: 5, requested: [1, limit], returned: [1, limit === 1 ? 1 : 5] }, "the source selection remains structured in durable evidence");
         }
     } finally {
         await db.close();

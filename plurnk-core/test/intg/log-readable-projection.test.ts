@@ -11,6 +11,7 @@ import SearchIndex from "../../src/schemes/_search-index.ts";
 import Log from "../../src/schemes/Log.ts";
 import { DEFAULT_MIMETYPES, makeSchemeCtx, openMigrated, readLog, seedEntryWithChannel, seedEnvelope, fixtureExecutors } from "./_helpers.ts";
 import { findStmt, readStmt, urlPath } from "./_dsl.ts";
+import { parseLogRecords } from "../LogRecords.ts";
 
 const runtime = async (t: TestContext) => {
     const db = await openMigrated();
@@ -77,6 +78,29 @@ test("{§log-readable-projection}: READ and COPY omit deliberate trims in origin
     assert.ok(original, "the recorded row is still there");
     assert.equal(original.active, 0, "retired from the active projection");
     assert.equal(JSON.parse(original.rx).content, "one\ntwo\nsecret\nfour\nfive", "curation never rewrites recorded evidence");
+});
+
+test("{§packet-extent-metadata}: a stored source slice and its curated log resource retain their own extents", async (t) => {
+    const { db, ids, dispatch } = await runtime(t);
+    const content = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`).join("\n");
+    await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, pathname: "/source.txt", content, mimetype: "text/plain" });
+    const original = await dispatch("```READ (worker:///source.txt) <17,18>```");
+    assert.equal(original.content, "line 17\nline 18");
+    assert.equal((await dispatch("```KILL (log:///1/1/1/READ) <1>```")).status, 200);
+    const reread = await dispatch("```READ (log:///1/1/1/READ) <1,-1>```");
+    assert.equal(reread.content, "line 18");
+    assert.deepEqual(reread.range, { unit: "line", total: 2, requested: [1, -1], returned: [2, 2] });
+    const recorded = await db.log_read_by_coordinate.get<{ rx: string; folded: string; status_rx: number }>({ worker_id: ids.workerId, loop_seq: 1, turn_seq: 1, sequence: 1 });
+    assert.ok(recorded);
+    assert.deepEqual(JSON.parse(recorded.rx), original, "curation did not modify the recorded acquisition");
+    const [row] = parseLogRecords(PacketWire.renderLog([{
+        coordinate: "1/1/1", op: "READ", status: recorded.status_rx,
+        target: { scheme: "worker", pathname: "/source.txt" }, rx: JSON.parse(recorded.rx), folded: recorded.folded,
+    }], contentWeight));
+    assert.equal(row?.range, "<17,18> of 30 lines");
+    assert.deepEqual(row?.trimmed, ["<1>"]);
+    assert.equal(row?.body, "18:line 18\n");
+    assert.equal((await dispatch("```READ (worker:///source.txt) <1,-1>```")).content, content, "the source still has every line");
 });
 
 test("{§log-readable-projection}: FIND prices retained bodies consistently in rows and folders", async (t) => {

@@ -2127,7 +2127,36 @@ its publication identity; an automatic stream READ does not copy the invocation'
 log address into its `source`. Actual actor/subsystem attribution remains governed
 by {§env-delta-attribution}.
 
-Coordinate-prefixed lines are the text currently in context; a metadata-only row contributes no text body. A partially trimmed row carries `"folded":["<scope>",...]`; coordinate gaps expose omissions without renumbering. A bounded projection carries `"chunk":"showing <selected> of <complete>"` in metadata. Complete-line extents use inclusive two-coordinate regions; a cut inside a line uses four-coordinate, start-inclusive and end-exclusive regions with 1-based Unicode code-point columns.
+Coordinate-prefixed lines are the text currently in context; a metadata-only row contributes no text body. Selection, preview, and curation metadata follow {§packet-extent-metadata}; coordinate gaps expose omissions without renumbering.
+
+§packet-extent-metadata **One scope notation, distinct coordinate owners.**
+
+| Field | Coordinate owner | Representation |
+|---|---|---|
+| `range` | The resource addressed by a successful READ/FIND | `<first,last> of N lines/resources/match locations/bytes`; singleton scopes use `<first>`. A complete dense selection reduces to `N units`; an empty selection from a nonempty extent is `none of N units`. |
+| `range` for exact text | The addressed text resource | `<startLine,startColumn,endLine,endColumn>`; no invented available extent. |
+| `preview` | The retained receipt body | Only when displayed incompletely: selected scope(s) `of N lines`, or exact selected region `of` complete region for an in-line cut. Replaces the body's otherwise redundant `lines` count. |
+| `trimmed` | The receipt's original physical body lines | Array of deliberately removed `<scope>`s on a partially visible row; initial suppression is not curation. |
+| `effect` | The mutation's source and landed revisions | Resolved `<source> -> <result>`; counts and complete-resource extent remain separate facts. |
+
+Scopes use the existing inclusive line/item/byte coordinates or start-inclusive,
+end-exclusive Unicode-code-point text regions ({§text-scope-semantics}). Sparse
+retrieval ranges are enclosing spans; body ordinals and matcher counts retain
+the gaps, and a sparse span covering both endpoints is not abbreviated as a
+complete acquisition. Sparse previews list their selected contiguous runs.
+Retrieval `range` records acquisition, not subsequent visibility: KILL changes
+the log projection, never the original source selection. A READ's source line
+numbers and its receipt's body-relative curation coordinates remain distinct
+({§log-kill-scope}). Byte ranges describe the hex selection, not native-media
+cropping ({§packet-attachment-parts}).
+
+Successful retrieval metadata omits requested coordinates; durable results and
+submitted programs retain them. Failed selections keep requested coordinates
+and available extent in their owning Problem. Projection never parses its
+display strings to recover typed facts. A hidden body has no `preview`; a
+complete non-retrieval body retains `lines` where no other field supplies its
+navigable extent. None of these spellings changes acquisition, delivery,
+curation, admission, or immutable evidence.
 
 Field absence carries defaults: `origin` is omitted for the owning model, `source` for the owning worker, and `status` for a routine 200. Dispositions always carry their lifecycle status, SEND its delivery status, KILL keeps an explicit 200, and every non-200 stays explicit. A present authored aside appears as `aside`. Every row's accounting follows {§packet-token-accounting}.
 
@@ -2164,29 +2193,30 @@ The packet projects one actionable owner for each retrieval fact:
 
 | Result mode | Extent | Result-body evidence | Additional aggregate fact |
 |---|---|---|---|
-| line READ | compact `line` range | none | none |
-| exact-coordinate READ | none | top-level `region` | none |
+| line READ | `range` in line scopes | none | none |
+| exact-coordinate READ | `range` in exact text coordinates | none | none |
 | READ-shaped materialization notice | none | none | generic body `lines` |
-| catalog/path FIND | compact `resource` range | none | none |
-| broad matcher FIND | compact `resource` range | per-resource match-location counts; a resource with exactly one match also carries that match's `locator`/`region` | nonzero complete `matchLocationCount` |
-| exact matcher FIND | compact `matchLocation` range | each row's locator/region; a regex or glob row also carries `matched`, the matched text | none |
-| pattern READ ({§read-pattern}) | compact `line` range over the physical lines | the selected lines with their ordinals and anchors | `matcher` and `matched`, the selected line count |
+| catalog/path FIND | `range` in resources | none | none |
+| broad matcher FIND | `range` in resources | per-resource match-location counts; a resource with exactly one match also carries that match's `locator`/`region` | nonzero complete `matchLocationCount` |
+| exact matcher FIND | `range` in match locations | each row's locator/region; a regex or glob row also carries `matched`, the matched text | none |
+| pattern READ ({§read-pattern}) | `range` over the physical lines | the selected lines with their ordinals and anchors | `matcher` and `matched`, the selected line count |
 
 Any row whose statement carried a heading pattern ({§matcher-option}) names it as
 `matcher`, and a pattern mutation ({§edit-pattern}, {§kill-pattern},
 {§copy-move-pattern}) carries its `matched` count beside its receipt, so a
 digest can show what a pattern selected and how much it touched.
 
-The compact range is `{ unit, total, requested: [first,last], returned?:
-[first,last] }` ({§range-extent}); empty results omit `returned`. An empty result
+The packet formats the typed {§range-extent} and {§text-region} facts under
+{§packet-extent-metadata}; the operation result retains its structured facts.
+An empty result
 set satisfies any well-formed page: zero matches is the answer, a 200 with no items,
 never a 416 (#425 F9). Transparent
 coordinates let the model determine whether more material exists and choose
 its own next request, so packet metadata never prescribes `next`, `complete`,
 or `all`. FIND range cardinality replaces top-level `items`, `lines`, and
 `matchingPathCount`; line READ likewise omits the rendered-body `lines` count
-and its internally resolved whole-line region. Exact READ retains only its
-region. A failed retrieval's Problem owns its range extension rather than
+and its internally resolved whole-line region. Exact READ formats its region
+as `range`. A failed retrieval's Problem owns its range extension rather than
 repeating it at top level. `logTokens` weighs the complete rendered record
 under {§packet-token-accounting};
 generic body `lines` remains available on READ-shaped materialization notices
@@ -2286,7 +2316,7 @@ per-operation projection on `rx`; the aggregate remains inside dispatch.
 | Full `revision`                        | not projected                                                     | SHA-256 identity of the complete landed channel body, retained for forensics. No operation takes a revision; it is neither a lookup nor a compare-and-swap token. |
 | `unit`, `before`, `after`              | `extent`                                                          | Whole-line batches use line counts. A batch containing any exact four-coordinate edit uses Unicode code-point counts.     |
 | `parseIssues.before`, `parseIssues.after` | `parseIssues` as `before→after`                                 | Parser-recovery counts for complete source and landed revisions; omitted when both are clean or either is unavailable.     |
-| `effect.requested`, `source`, `result` | `range`                                                           | The admitted marker and its normalized mapping from the common source snapshot into the landed body.                      |
+| `effect.source`, `result`             | `effect` as `<source> -> <result>`                                | Resolved scopes mapping the source snapshot into the landed body; the admitted marker stays in durable `requested` and `tx`. |
 | `effect.removed`, `inserted`           | `change`                                                          | Removed and inserted counts in the receipt unit. |
 | `effect.removedText`                   | `removed`                                                         | {§edit-receipt-removed-text}: a pure deletion's removed text, first 40 lines; absent when the edit inserted anything.                                                                          |
 | `effect.context`                       | Canonical row body                                                | Numbered physical lines at each landed boundary, bounded symmetrically by `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES`.   |
@@ -2296,8 +2326,8 @@ per-operation projection on `rx`; the aggregate remains inside dispatch.
 §edit-result-receipt-truth **Receipts describe committed state.** Each EDIT
 carries its own landed revision, extent, and optional `parseIssues` transition
 for its complete source and landed revisions. When the proposal lands
-unchanged, the row also carries its requested
-marker, source/result mapping, counts, and context. For configured count `C`,
+unchanged, the row carries its source/result mapping, counts, and context;
+the authored marker remains in durable evidence. For configured count `C`,
 the context contains up to `C` surrounding lines and the first and last `C`
 landed lines at the result boundaries. Overlapping windows coalesce; coordinate
 jumps expose an omitted middle. A deletion instead shows up to `C` lines on

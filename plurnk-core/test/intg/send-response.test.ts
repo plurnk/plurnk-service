@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, makeRawMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
-import { lastReply } from "./_helpers.ts";
+import { lastReply, logEntries } from "./_helpers.ts";
 
 // Every operation is on the line after its fence.
 const MISFENCED = [
@@ -117,6 +117,34 @@ test("{§send-response-receipt}: a delivered reply names the open messages it an
             assert.equal(answers.length, 1, "the receipt names the one open message");
             const source = await db.message_source_by_address.get<{ body: string }>({ workspace_id: (await db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: modelWorkerId }))!.workspace_id, path: answers[0]! });
             assert.equal(source?.body, "answer me", "the receipt names the durable message source");
+        } finally { ws.close(); }
+    });
+});
+
+test("{§packet-extent-metadata}: previewing a sent reply changes neither delivery nor its retained body", async () => {
+    const body = Array.from({ length: 40 }, (_, index) => `delivered line ${index + 1}`).join("\n");
+    const mock = new Mock({ contextWindow: 100_000, responses: [
+        makeMockResponse(`\`\`\`\`SEND\n${body}\n\`\`\`\``, 10),
+        makeMockResponse("````SEND\nNoted.\n````", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "send-preview" });
+            const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "Send the report.", policy: { proposals: "accept" } });
+            assert.equal(finalStatus, 200);
+            assert.equal(await lastReply(db, loopId), body, "the client receives every line");
+            const next = await runLoopToTerminal(ws, 3, { prompt: "Thanks.", workerId: modelWorkerId, policy: { proposals: "accept" } });
+            assert.equal(next.finalStatus, 200);
+            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnIds!.at(-1)! }))!.packet);
+            const reply = logEntries(packet).find((row) => Array.isArray(row.answers) && String(row.logPath).endsWith("/SEND"));
+            assert.ok(reply, "the next model request contains the ordinary sent-message receipt");
+            assert.equal(reply.preview, "<1,16> of 40 lines", JSON.stringify(reply));
+            assert.equal(reply.lines, undefined, "preview already supplies the receipt's full extent");
+            assert.match(String(reply.body), /16:delivered line 16\n$/u);
+            assert.doesNotMatch(String(reply.body), /delivered line 17/u);
+            const messages = await db.test_log_entries_by_loop.all<{ op: string; origin: string; tx: string }>({ loop_id: loopId });
+            assert.ok(messages.some((row) => row.op === "SEND" && row.origin === "model" && row.tx.includes("delivered line 40")), "the complete submitted reply remains recorded");
         } finally { ws.close(); }
     });
 });

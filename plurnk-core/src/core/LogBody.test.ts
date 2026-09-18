@@ -14,8 +14,8 @@ const receipt = (context: string, requested = "<2>") => ({
     after: 2,
     effect: {
         requested,
-        source: "2",
-        result: "2",
+        source: "<2>",
+        result: "<2>",
         removed: 1,
         inserted: 1,
         context,
@@ -29,8 +29,8 @@ const creationReceipt = (context: string) => {
         after: 1,
         effect: {
             ...base.effect,
-            source: "1^",
-            result: "1",
+            source: "<1,1,1,1>",
+            result: "<1>",
             removed: 0,
             inserted: 1,
         },
@@ -83,8 +83,8 @@ test("LogBody resolves built-in result-backed bodies", () => {
                     requested: "<2>",
                     replacement: {
                         requested: "<1,-1>",
-                        source: "1-4",
-                        result: "1-2",
+                        source: "<1,4>",
+                        result: "<1,2>",
                         removed: 4,
                         inserted: 2,
                         context: "1:reviewer\n2:replacement",

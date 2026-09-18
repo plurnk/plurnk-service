@@ -146,8 +146,8 @@ const receipt = (context: string, requested = "<2>") => ({
     after: 5,
     effect: {
         requested,
-        source: "2",
-        result: "2-3",
+        source: "<2>",
+        result: "<2,3>",
         removed: 1,
         inserted: 2,
         context,
@@ -161,8 +161,8 @@ const creationReceipt = (context: string) => {
         after: 2,
         effect: {
             ...base.effect,
-            source: "1^",
-            result: "1-2",
+            source: "<1,1,1,1>",
+            result: "<1,2>",
             removed: 0,
             inserted: 2,
         },
@@ -494,7 +494,7 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
     assert.doesNotMatch(out, /"path":"worker:\/\/\/source"/);
     assert.match(
         out,
-        /"effects":\[\{"path":"worker:\/\/\/draft","action":"update","extent":"lines 4->5","parseIssues":"0→3","change":"-1 \+2","range":"<2> 2->2-3"\}\]/,
+        /"effects":\[\{"path":"worker:\/\/\/draft","action":"update","extent":"lines 4->5","parseIssues":"0→3","change":"-1 \+2","effect":"<2> -> <2,3>"\}\]/,
     );
     assert.match(
         out,
@@ -565,7 +565,7 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
     }], tok);
     assert.match(created, /"from":"worker:\/\/\/source<2,3>"/);
     assert.match(created, /"to":"worker:\/\/\/created"/);
-    assert.match(created, /"action":"create"[^}]*"range":"<1,-1> 1\^->1-2"/);
+    assert.match(created, /"action":"create"[^}]*"effect":"<1,1,1,1> -> <1,2>"/);
     assert.match(created, /1:two\n2:three/);
 
     const unchanged = PacketWire.renderLog([{
@@ -660,8 +660,8 @@ test("a reviewer-rewritten same-resource MOVE renders one replacement effect and
                     requested: "<1,7,1,7>",
                     replacement: {
                         requested: "<1,-1>",
-                        source: "1",
-                        result: "1-2",
+                        source: "<1>",
+                        result: "<1,2>",
                         removed: 1,
                         inserted: 2,
                         context: "1:reviewer\n2:replacement",
@@ -675,7 +675,7 @@ test("a reviewer-rewritten same-resource MOVE renders one replacement effect and
     assert.match(out, /"to":"worker:\/\/\/document<1,7,1,7>"/);
     assert.match(
         out,
-        /"effects":\[\{"path":"worker:\/\/\/document","action":"update","extent":"lines 1->2","disposition":"superseded","requested":"<1,7,1,7>","change":"-1 \+2","replacement":"<1,-1> 1->1-2"\}\]/,
+        /"effects":\[\{"path":"worker:\/\/\/document","action":"update","extent":"lines 1->2","disposition":"superseded","requested":"<1,7,1,7>","change":"-1 \+2","replacement":"<1> -> <1,2>"\}\]/,
     );
     assert.equal(out.match(/1:reviewer/g)?.length, 1);
     assert.equal(out.match(/2:replacement/g)?.length, 1);
@@ -782,7 +782,7 @@ test("log render: a scoped READ preserves its complete source TextRegion", () =>
     }], tok);
     assert.match(
         out,
-        /"region":\{"startLine":1,"startColumn":2,"endLine":1,"endColumn":3\}/,
+        /"range":"<1,2,1,3>"/,
     );
     assert.equal(parseLogRecords(out)[0]?.body, "1:😀\n");
 });
@@ -892,7 +892,7 @@ test("log render: a matcher FIND exposes surgical coordinates", () => {
     assert.doesNotMatch(out, /"matchingPathCount":/);
     assert.doesNotMatch(out, /"matchLocationCount":/);
     assert.doesNotMatch(out, /"items":|"lines":/);
-    assert.match(out, /"unit":"matchLocation"/);
+    assert.match(out, /"range":"2 match locations"/);
     assert.match(String(parseLogRecords(out)[0]?.body), /^1:\[\{"region":\{"startLine":143/);
 });
 
@@ -1009,29 +1009,23 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
     });
     const [lineRead, exactRead, catalogFind, broadFind, exactFind, emptyFind, failedRead] = metadata;
 
-    assert.deepEqual(lineRead?.range, { unit: "line", total: 600, requested: [17, 18], returned: [17, 18] });
+    assert.equal(lineRead?.range, "<17,18> of 600 lines");
     assert.equal(Object.hasOwn(lineRead ?? {}, "region"), false, "a whole-line region does not compete with its range");
     assert.equal(Object.hasOwn(lineRead ?? {}, "lines"), false, "a terminal blank line cannot create a second visible count");
-    assert.deepEqual(exactRead?.region, region);
-    assert.equal(Object.hasOwn(exactRead ?? {}, "range"), false);
+    assert.equal(exactRead?.range, "<2,1,2,6>");
+    assert.equal(Object.hasOwn(exactRead ?? {}, "region"), false);
     assert.equal(Object.hasOwn(exactRead ?? {}, "lines"), false);
 
-    assert.deepEqual(catalogFind?.range, {
-        unit: "resource", total: 1, requested: [1, 16], returned: [1, 1],
-    });
+    assert.equal(catalogFind?.range, "1 resource");
     assert.equal(catalogFind?.itemsTokenTotal, 80);
     assert.equal(Object.hasOwn(catalogFind ?? {}, "returnedItemsTokenTotal"), false);
-    assert.deepEqual(broadFind?.range, {
-        unit: "resource", total: 20, requested: [1, 16], returned: [1, 16],
-    });
+    assert.equal(broadFind?.range, "<1,16> of 20 resources");
     assert.equal(broadFind?.matchLocationCount, 42);
     assert.equal(broadFind?.returnedItemsTokenTotal, 400);
-    assert.deepEqual(exactFind?.range, {
-        unit: "matchLocation", total: 1, requested: [1, 16], returned: [1, 1],
-    });
+    assert.equal(exactFind?.range, "1 match location");
     assert.equal(Object.hasOwn(exactFind ?? {}, "matchLocationCount"), false);
     assert.equal(Object.hasOwn(exactFind ?? {}, "returnedItemsTokenTotal"), false);
-    assert.deepEqual(emptyFind?.range, { unit: "resource", total: 0, requested: [1, 16] });
+    assert.equal(emptyFind?.range, "0 resources");
     for (const find of [catalogFind, broadFind, exactFind, emptyFind]) {
         assert.equal(Object.hasOwn(find ?? {}, "items"), false);
         assert.equal(Object.hasOwn(find ?? {}, "lines"), false);
@@ -1044,17 +1038,9 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
         unit: "line", total: 8, requested: [99, 99],
     });
     assert.equal(Object.hasOwn(failedRead ?? {}, "range"), false, "the Problem owns a failed retrieval's extent");
-    for (const extent of [
-        lineRead?.range,
-        catalogFind?.range,
-        broadFind?.range,
-        exactFind?.range,
-        emptyFind?.range,
-        (failedRead?.problem as { range?: unknown } | undefined)?.range,
-    ]) {
-        assert.equal(extent !== null && typeof extent === "object", true);
+    for (const row of metadata) {
         for (const redundant of ["available", "complete", "next", "all"]) {
-            assert.equal(Object.hasOwn(extent as object, redundant), false);
+            assert.equal(Object.hasOwn(row, redundant), false);
         }
     }
 
@@ -1062,7 +1048,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
     if (tokenizer === null) throw new Error("The bundled Gemma tokenizer is required for the metadata budget contract.");
     assert.equal(tokenizer.tokenizerId, "5f7eee611703c5ce");
     const metadataTokens = await tokenizer.countTokens(metadata.map((row) => JSON.stringify(row)).join("\n"));
-    assert.equal(metadataTokens, 389, "canonical retrieval metadata has one reviewed Gemma-token count after the single logTokens field");
+    assert.equal(metadataTokens, 303, "canonical retrieval metadata uses the reviewed scope projection (previously 389 Gemma tokens)");
 
     assert.throws(
         () => PacketWire.renderLog([{
@@ -1131,7 +1117,7 @@ test("log render: model EDIT receipt renders revision and bounded join context v
     assert.doesNotMatch(out, /"rev"/, "the receipt carries no revision token");
     assert.match(out, /"extent":"lines 4->5"/);
     assert.match(out, /"change":"-1 \+2"/);
-    assert.match(out, /"range":"<2> 2->2-3"/);
+    assert.match(out, /"effect":"<2> -> <2,3>"/);
     assert.match(out, /3:2\.5/);
     assert.doesNotMatch(out, new RegExp(revision));
 });
@@ -1139,8 +1125,8 @@ test("log render: model EDIT receipt renders revision and bounded join context v
 test("reviewer-replaced EDIT rows render authored dispositions and one landed replacement", () => {
     const replacement = {
         requested: "<1,-1>",
-        source: "1-4",
-        result: "1-2",
+        source: "<1,4>",
+        result: "<1,2>",
         removed: 4,
         inserted: 2,
         context: "1:reviewer\n2:replacement",
@@ -1179,7 +1165,7 @@ test("reviewer-replaced EDIT rows render authored dispositions and one landed re
     assert.equal(out.match(/"disposition":"superseded"/g)?.length, 2);
     assert.match(out, /"requested":"<2>"/);
     assert.match(out, /"requested":"<4>"/);
-    assert.match(out, /"replacement":"<1,-1> 1-4->1-2"/);
+    assert.match(out, /"replacement":"<1,4> -> <1,2>"/);
     assert.match(out, /"change":"-4 \+2"/);
     assert.equal(out.match(/1:reviewer/g)?.length, 1);
     assert.equal(out.match(/2:replacement/g)?.length, 1);
@@ -1226,7 +1212,7 @@ test("an oversized automatically visible terminal stream READ renders its comple
     }], tok);
     assert.match(rendered, /1:stream line 1/, "the terminal output arrives visible");
     assert.match(rendered, /40:stream line 40/, "READ observations are never silently projected again");
-    assert.doesNotMatch(rendered, /"chunk"/, "READ owns its selected result bound");
+    assert.doesNotMatch(rendered, /"preview"/, "READ owns its selected result bound");
 });
 
 test("READ bodies render copyable Base62 line anchors while other numbered bodies remain numeric", () => {
@@ -1270,7 +1256,7 @@ test("partially suppressed log bodies preserve source coordinates and expose onl
         lineNumberWidth: 2,
     }], tok);
     assert.equal(typeof parseLogRecords(rendered)[0]?.body, "string", "a visible row carries coordinate lines — presence IS the state (#338)");
-    assert.match(rendered, /"folded":\["<2,3>"\]/);
+    assert.match(rendered, /"trimmed":\["<2,3>"\]/);
     assert.match(rendered, /@00001 17:one/);
     assert.match(rendered, /@00004 20:four/);
     assert.doesNotMatch(rendered, /18:two|19:three/);
@@ -1428,7 +1414,7 @@ test("{§body-projection}: scoped program READs bypass previews, not curation or
         };
         const complete = parseLogRecords(PacketWire.renderLog([entry], tok))[0]!;
         assert.equal(complete.body, `${numbered.join("\n")}\n`, `${origin} source exceeds both preview bounds without clipping`);
-        assert.equal(complete.chunk, undefined);
+        assert.equal(complete.preview, undefined);
         assert.equal(complete.logTokens, tok(PacketWire.renderLog([entry], tok)), "accounting includes the complete rendered program and metadata");
 
         const trimmed = parseLogRecords(PacketWire.renderLog([{ ...entry, folded: [[3, 4]] }], tok))[0]!;
@@ -1436,7 +1422,7 @@ test("{§body-projection}: scoped program READs bypass previews, not curation or
             "deliberate curation still removes source lines without renumbering the survivors");
         const suppressed = parseLogRecords(PacketWire.renderLog([{ ...entry, initial_folded: [[1, -1]] }], tok))[0]!;
         assert.equal(suppressed.body, undefined);
-        assert.equal(suppressed.chunk, undefined);
+        assert.equal(suppressed.preview, undefined);
         assert.ok(Number(suppressed.logTokens) < Number(complete.logTokens), "suppression no longer charges the absent program body");
         const withheld = parseLogRecords(PacketWire.renderLog([{ ...entry, output_withheld: true }], tok))[0]!;
         assert.equal(withheld.body, undefined);
@@ -1574,7 +1560,7 @@ test("NOTE/READ/FIND bodies bypass the ordinary preview", () => {
         { coordinate: "1/1/1", origin: "model", op: "NOTE", status: 200, target: { scheme: null, pathname: "" }, tx: { body: "Tidy context, then read the loader." } },
     ], tok);
     assert.match(shortOut, /Tidy context, then read the loader\./, "a short NOTE renders in full");
-    assert.doesNotMatch(shortOut, /"chunk"/, "a complete body needs no chunk extent");
+    assert.doesNotMatch(shortOut, /"preview"/, "a complete body needs no preview extent");
 
     // NOTE is the model's working memory. Its visible projection is
     // complete even when it exceeds the ordinary body preview.
@@ -1582,7 +1568,7 @@ test("NOTE/READ/FIND bodies bypass the ordinary preview", () => {
         { coordinate: "1/1/1", origin: "model", op: "NOTE", status: 200, target: { scheme: null, pathname: "" }, tx: { body: long } },
     ], tok);
     assert.match(planOut, /line 30 of a runaway/, "the model receives its complete NOTE text");
-    assert.doesNotMatch(planOut, /"chunk"/, "a NOTE never carries an ordinary preview cut");
+    assert.doesNotMatch(planOut, /"preview"/, "a NOTE never carries an ordinary preview cut");
 
     // System-narrated environment spans have no intrinsic receipt bound.
     const numberedSpan = Array.from({ length: 30 }, (_, i) => `${i + 1}:span line ${i + 1}`).join("\n");
@@ -1590,26 +1576,26 @@ test("NOTE/READ/FIND bodies bypass the ordinary preview", () => {
         { coordinate: "1/1/2", origin: "model", op: "EDIT", status: 200, target: { scheme: "worker", pathname: "/x" }, rx: { span: numberedSpan } },
     ], tok);
     assert.doesNotMatch(editOut, /span line 30/, "an environment-delta EDIT span cannot bypass the preview");
-    assert.equal(parseLogRecords(editOut)[0]?.chunk, "showing <1,16> of <1,30>", "the system-narrated EDIT preview states its displayed and complete line extents in metadata");
+    assert.equal(parseLogRecords(editOut)[0]?.preview, "<1,16> of 30 lines", "the system-narrated EDIT preview states its displayed and complete line extents in metadata");
 
     // READ and FIND deliver RETRIEVED content — full, even when long (the exemption).
     const readOut = PacketWire.renderLog([
         { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, target: { scheme: null, pathname: "/big.txt" }, rx: { content: long, mimetype: "text/plain", startLine: 1 } },
     ], tok);
     assert.match(readOut, /line 30 of a runaway/, "a long READ delivers full content — retrieval is exempt");
-    assert.doesNotMatch(readOut, /"chunk"/, "no preview cut on READ");
+    assert.doesNotMatch(readOut, /"preview"/, "no preview cut on READ");
 
     const findOut = PacketWire.renderLog([
         { coordinate: "1/1/4", origin: "model", op: "FIND", status: 200, target: { scheme: null, pathname: "" }, rx: { content: long, mimetype: "text/plain", startLine: 1 } },
     ], tok);
     assert.match(findOut, /line 30 of a runaway/, "a long FIND renders its full result — retrieval is exempt");
-    assert.doesNotMatch(findOut, /"chunk"/, "no preview cut on FIND");
+    assert.doesNotMatch(findOut, /"preview"/, "no preview cut on FIND");
 
     const pushedRead = PacketWire.renderLog([
         { coordinate: "1/1/5", origin: "_plurnk", op: "READ", status: 200, target: { scheme: "sh", pathname: "/1/1/1/sh" }, rx: { content: long, mimetype: "text/plain", startLine: 1 } },
     ], tok);
     assert.match(pushedRead, /line 30 of a runaway/, "an engine-observed READ receives the same complete projection");
-    assert.doesNotMatch(pushedRead, /"chunk"/, "provenance does not introduce a hidden READ bound");
+    assert.doesNotMatch(pushedRead, /"preview"/, "provenance does not introduce a hidden READ bound");
 });
 
 test("{§body-projection}: NOTE reaches the next model packet as literal authored text", () => {
@@ -1640,13 +1626,13 @@ test("every ordinary bounded body producer uses the same addressable preview", (
         const rendered = PacketWire.renderLog([{ coordinate, status: 200, ...entry }], tok);
         assert.doesNotMatch(rendered, /producer line 30/, `${entry.op} cannot bypass the preview`);
         assert.ok(
-            rendered.includes(`"chunk":"showing <1,16> of <1,30>"`),
+            rendered.includes(`"preview":"<1,16> of 30 lines"`),
             `${entry.op} exposes the same selected and complete line extents`,
         );
     });
 });
 
-test("partial curation precedes automatic preview and chunk coordinates remain canonical", () => {
+test("partial curation precedes automatic preview and preview coordinates remain canonical", () => {
     const content = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`).join("\n");
     const rendered = PacketWire.renderLog([{
         coordinate: "1/2/1",
@@ -1659,8 +1645,8 @@ test("partial curation precedes automatic preview and chunk coordinates remain c
     }], tok);
     assert.match(rendered, /20:line 20/, "later visible lines enter the bounded projection");
     assert.doesNotMatch(rendered, /21:line 21/);
-    assert.match(rendered, /"folded":\["<11,14>"\]/);
-    assert.match(rendered, /"chunk":"showing <1,10>,<15,20> of <1,30>"/);
+    assert.match(rendered, /"trimmed":\["<11,14>"\]/);
+    assert.match(rendered, /"preview":"<1,10>,<15,20> of 30 lines"/);
 });
 
 test("structured mutation receipts bypass a second generic preview", () => {
@@ -1675,8 +1661,8 @@ test("structured mutation receipts bypass a second generic preview", () => {
         after: 30,
         effect: {
             ...baseReceipt.effect,
-            source: "6",
-            result: "6-25",
+            source: "<6>",
+            result: "<6,25>",
             removed: 1,
             inserted: 20,
         },
@@ -1734,7 +1720,7 @@ test("structured mutation receipts bypass a second generic preview", () => {
         }], tok);
         assert.match(rendered, /30:receipt line 30/, `${entry.op} preserves its complete pre-bounded receipt context`);
         assert.doesNotMatch(rendered, /11:receipt/, "the source-coordinate jump remains the omission signal");
-        assert.doesNotMatch(rendered, /"chunk"/, `${entry.op} does not describe receipt coordinates as a partial READ`);
+        assert.doesNotMatch(rendered, /"preview"/, `${entry.op} does not describe receipt coordinates as a partial READ`);
     });
 });
 
@@ -1750,7 +1736,7 @@ test("{§message-projection}: exterior arrival rows share one explicit projectio
     assert.equal(weights.length, 2);
     assert.ok(weights.every((weight) => weight > 0), "each arriving frame receives a visible share");
     assert.ok(weights.reduce((sum, weight) => sum + weight, 0) <= budget, "the aggregate prompt body weight stays within the shared allowance");
-    assert.equal([...rendered.matchAll(/"chunk":"showing /g)].length, 2, "both partial frames state their exact displayed and complete extents");
+    assert.equal([...rendered.matchAll(/"preview":/g)].length, 2, "both partial frames state their exact displayed and complete extents");
 });
 
 test("{§log-wire-format}: a character preview never cuts a numbered body inside its next line prefix", () => {
@@ -1770,7 +1756,7 @@ test("{§log-wire-format}: a character preview never cuts a numbered body inside
 
         assert.match(rendered, /1:abcdefghijklmnopqrst/, "the complete line before the character boundary remains visible");
         assert.doesNotMatch(rendered, /\n2\n"/, "the preview does not manufacture a dangling line-number prefix");
-        assert.equal(parseLogRecords(rendered)[0]?.chunk, "showing <1,1> of <1,2>");
+        assert.equal(parseLogRecords(rendered)[0]?.preview, "<1> of 2 lines");
     } finally {
         if (previousLines === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_LINES;
         else process.env.PLURNK_SERVICE_PREVIEW_LINES = previousLines;
@@ -1795,7 +1781,7 @@ test("{§log-wire-format}: a character-bound chunk uses exact Unicode text coord
 
         assert.equal(parseLogRecords(rendered)[0]?.body, "1:😀ab\n", "the character ceiling counts code points and never splits a surrogate pair");
         assert.doesNotMatch(rendered, /1:😀abc/);
-        assert.equal(parseLogRecords(rendered)[0]?.chunk, "showing <1,1,1,4> of <1,1,1,8>", "an in-line cut reports exact start-inclusive, end-exclusive coordinates");
+        assert.equal(parseLogRecords(rendered)[0]?.preview, "<1,1,1,4> of <1,1,1,8>", "an in-line cut reports exact start-inclusive, end-exclusive coordinates");
     } finally {
         if (previousLines === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_LINES;
         else process.env.PLURNK_SERVICE_PREVIEW_LINES = previousLines;
@@ -1821,7 +1807,7 @@ test("{§body-projection}: a character ceiling treats CRLF as one indivisible se
         assert.equal(parseLogRecords(rendered)[0]?.body, "1:ab\n", "the preview retains the complete first physical line");
         assert.doesNotMatch(rendered, /\r2:\n/, "line numbering cannot split the CRLF pair");
         assert.doesNotMatch(rendered, /2:cdef/);
-        assert.match(rendered, /"chunk":"showing <1,1> of <1,2>"/);
+        assert.match(rendered, /"preview":"<1> of 2 lines"/);
     } finally {
         if (previousLines === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_LINES;
         else process.env.PLURNK_SERVICE_PREVIEW_LINES = previousLines;
@@ -1845,7 +1831,7 @@ test("{§log-wire-format}: a suppressed bounded body does not claim to display a
     const [row] = parseLogRecords(rendered);
     assert.equal(row?.logTokens, tok(rendered), "the retained metadata is the only charge");
     assert.equal(row?.body, undefined, "the suppressed body is absent");
-    assert.equal(row?.chunk, undefined, "chunk describes displayed content, not hidden canonical content");
+    assert.equal(row?.preview, undefined, "preview describes displayed content, not hidden canonical content");
 });
 
 test("preview bounds are exact and reject invalid configuration", () => {
@@ -1862,7 +1848,7 @@ test("preview bounds are exact and reject invalid configuration", () => {
             status: 200,
             tx: { body: sixteenTerminatedLines },
         }], tok);
-        assert.doesNotMatch(exact, /"chunk"/, "a trailing newline does not invent a seventeenth line");
+        assert.doesNotMatch(exact, /"preview"/, "a trailing newline does not invent a seventeenth line");
 
         process.env.PLURNK_SERVICE_PREVIEW_LINES = "0";
         assert.throws(

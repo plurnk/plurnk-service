@@ -30,8 +30,8 @@ const editReceipt: EditBatchReceipt = {
     after: 4,
     effects: [{
         requested: "<1,2,1,2>",
-        source: "1:2-1:2",
-        result: "1:2-1:3",
+        source: "<1,2,1,2>",
+        result: "<1,2,1,3>",
         removed: 0,
         inserted: 1,
         context: "1:xay",

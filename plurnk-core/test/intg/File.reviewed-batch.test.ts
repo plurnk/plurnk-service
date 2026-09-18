@@ -110,7 +110,7 @@ test("{§edit-execution}: reviewer replacement supersedes only its EDIT; the nex
                     ],
                 );
                 const { context: replacementContext, ...replacement } = edits[0]?.rx.receipt?.replacement ?? {};
-                assert.deepEqual(replacement, { requested: "<1,-1>", source: "1-4", result: "1-2", removed: 4, inserted: 2 });
+                assert.deepEqual(replacement, { requested: "<1,-1>", source: "<1,4>", result: "<1,2>", removed: 4, inserted: 2 });
                 assert.match(String(replacementContext), /^@[0-9A-Za-z]{5} +1:reviewer\n@[0-9A-Za-z]{5} +2:replacement$/, "{§edit-receipt-anchored-context} the landed context is anchored");
                 assert.equal(edits[1]?.rx.receipt?.replacement, undefined);
                 assert.equal(edits[1]?.rx.receipt, undefined, "a rejected operation has no landed effect receipt");

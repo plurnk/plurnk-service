@@ -19,6 +19,7 @@ import LogBody, { type ResolvedLogBody } from "./LogBody.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
 import LogVisibility, { type LogFoldRanges } from "./LogVisibility.ts";
 import BodyPreview from "../content/body-preview.ts";
+import ScopeFormat from "../content/scope-format.ts";
 import {
     assertEditReceipt,
     assertResourceEffects,
@@ -151,6 +152,7 @@ interface VisibleLogBody {
     readonly readableContent: string;
     readonly readableOrdinals: readonly number[];
     readonly folded: LogFoldRanges;
+    readonly trimmed: LogFoldRanges;
     readonly totalLines: number;
     readonly fullyFolded: boolean;
 }
@@ -167,6 +169,7 @@ interface RowIdentity {
 }
 interface RowResultFacts {
     readonly findItems: number | null;
+    readonly range: RangeExtent | null;
     readonly structuredMutationReceipt: boolean;
 }
 interface RowBody {
@@ -425,7 +428,7 @@ export default class PacketWire {
             return {
                 ...head,
                 change: `-${receipt.effect.removed} +${receipt.effect.inserted}`,
-                range: `${receipt.effect.requested} ${receipt.effect.source}->${receipt.effect.result}`,
+                effect: `${receipt.effect.source} -> ${receipt.effect.result}`,
                 // {§edit-receipt-removed-text} — what a deletion took, so it can be put back from the receipt.
                 ...(receipt.effect.removedText === undefined ? {} : { removed: receipt.effect.removedText }),
             };
@@ -438,7 +441,7 @@ export default class PacketWire {
                 ? {}
                 : {
                     change: `-${receipt.replacement.removed} +${receipt.replacement.inserted}`,
-                    replacement: `${receipt.replacement.requested} ${receipt.replacement.source}->${receipt.replacement.result}`,
+                    replacement: `${receipt.replacement.source} -> ${receipt.replacement.result}`,
                 }),
         };
     }
@@ -457,21 +460,7 @@ export default class PacketWire {
         return endsWithLineBreak ? body.replace(/(?:\r\n|\r|\n)$/, "") : body;
     }
 
-    // Render one Log entry → a single bullet line carrying the meta JSON.
-    // No body, no fence — every meaningful field is in the JSON. Naming
-    // follows the uniform principle: `path` is identity (this log row's
-    // own URI), `target` is the URI in the statement's target slot. COPY/MOVE
-    // retain their source and destination selections separately from ordered
-    // applied `effects`.
-    //
-    // On error, status >= 400 signals the failure; Problem Details live on
-    // this durable row and the next packet's Errors section points here.
-    //
-    // Per-entry render: one meta JSON line plus the row's canonical body.
-    // LogBody owns tx/rx storage interpretation; packet projection owns only
-    // visibility, previewing, mimetype rendering, and metadata.
-    // The log:/// handle the model sees for an entry.
-    // ({§log-kill-scope}).
+    // {§log-address-metadata} — row identity belongs to the H3, not its operand metadata.
     static #entryPath(coordinate: string | null, leaf: string): string {
         if (coordinate === null) throw new TypeError("A packet log row requires an addressable coordinate.");
         return `log:///${coordinate}/${leaf}`;
@@ -493,10 +482,6 @@ export default class PacketWire {
         };
     }
 
-    static #formatRegion(region: TextRegion): string {
-        return `<${region.startLine},${region.startColumn},${region.endLine},${region.endColumn}>`;
-    }
-
     static #chunk(
         coordinates: TextCoordinates,
         lines: readonly TextLine[],
@@ -506,12 +491,11 @@ export default class PacketWire {
         const finalCompleteLine = lines.findIndex((line) =>
             line.separator.length > 0 && line.end === end);
         if (finalCompleteLine !== -1) {
-            const selected = `<1,${finalCompleteLine + 1}>`;
-            const complete = `<1,${lines.length}>`;
-            if (selected === complete) {
+            const selected = ScopeFormat.lines(1, finalCompleteLine + 1);
+            if (finalCompleteLine + 1 === lines.length) {
                 throw new Error("a bounded body chunk must differ from its complete line extent");
             }
-            return `showing ${selected} of ${complete}`;
+            return `${selected} of ${ScopeFormat.count("line", lines.length)}`;
         }
 
         const selectedRegion = coordinates.regionFromOffsets(0, end);
@@ -519,12 +503,12 @@ export default class PacketWire {
         if (selectedRegion === null || completeRegion === null) {
             throw new Error("a character-bound body chunk must resolve to exact text coordinates");
         }
-        const selected = PacketWire.#formatRegion(selectedRegion);
-        const complete = PacketWire.#formatRegion(completeRegion);
+        const selected = ScopeFormat.region(selectedRegion);
+        const complete = ScopeFormat.region(completeRegion);
         if (selected === complete) {
             throw new Error("a bounded body chunk must differ from its complete text extent");
         }
-        return `showing ${selected} of ${complete}`;
+        return `${selected} of ${complete}`;
     }
 
     static #sparseChunk(
@@ -549,8 +533,8 @@ export default class PacketWire {
                     previous[1] = ordinal;
                 }
             }
-            const selected = runs.map(([start, finish]) => `<${start},${finish}>`).join(",");
-            return `showing ${selected} of <1,${TextCoordinates.logicalLines(completeContent).length}>`;
+            const selected = runs.map(([start, finish]) => ScopeFormat.lines(start, finish)).join(",");
+            return `${selected} of ${ScopeFormat.count("line", TextCoordinates.logicalLines(completeContent).length)}`;
         }
 
         const local = coordinates.regionFromOffsets(0, end);
@@ -564,11 +548,11 @@ export default class PacketWire {
         if (startLine === undefined || endLine === undefined) {
             throw new Error("a sparse character-bound chunk must map to canonical body lines");
         }
-        return `showing ${PacketWire.#formatRegion({
+        return `${ScopeFormat.region({
             ...local,
             startLine,
             endLine,
-        })} of ${PacketWire.#formatRegion(complete)}`;
+        })} of ${ScopeFormat.region(complete)}`;
     }
 
     static #promptProjection(
@@ -649,6 +633,7 @@ export default class PacketWire {
             readableContent: select(readableOrdinals),
             readableOrdinals,
             folded: clipped,
+            trimmed: LogVisibility.clipped(trimmed, totalLines),
             totalLines,
             fullyFolded: LogVisibility.fullyFolded(clipped, totalLines),
         };
@@ -748,7 +733,7 @@ export default class PacketWire {
             const identity = PacketWire.#rowIdentity(e, options);
             // Parse rx once — reused for the matcher/items enrichment and the body.
             const rx = (typeof e.rx === "string" ? PacketWire.#safeParse(e.rx) : e.rx) as RxView | null;
-            const facts = PacketWire.#rowResultFacts(identity, e, rx);
+            const facts = PacketWire.#rowResultFacts(identity, e, rx, bodies[index]!);
             const projected = PacketWire.#rowBody(identity, e, bodies[index]!, visibility[index]!, facts, promptProjectionWeights.get(index), weighContent);
             return PacketWire.#rowAccounting(identity, e, bodies[index]!, visibility[index]!, projected, weighContent, options);
         });
@@ -831,7 +816,7 @@ export default class PacketWire {
     // The row's result facts from its rx: the terminal stream's exit, the Problem or detail, the
     // matcher, the retrieval extents, and the structured mutation receipts. Returns what the body
     // projection needs to know about the result.
-    static #rowResultFacts(identity: RowIdentity, e: LogEntryView, rx: RxView | null): RowResultFacts {
+    static #rowResultFacts(identity: RowIdentity, e: LogEntryView, rx: RxView | null, fullBody: ResolvedLogBody): RowResultFacts {
         const { meta, op, tx } = identity;
         if (op === "SEND" && rx !== null && typeof rx === "object" && Array.isArray(rx.attachments) && rx.attachments.length > 0) {
             meta.attachments = rx.attachments.map(({ name, mediaType, target }) => ({ name, mediaType, path: target }));
@@ -879,6 +864,7 @@ export default class PacketWire {
         // {§retrieval-packet-metadata}: one extent/coordinate owner plus
         // only FIND aggregates that add information beyond that extent.
         let findItems: number | null = null;
+        let range: RangeExtent | null = null;
         const patterned = tx !== null && tx !== undefined && typeof tx === "object" && tx.matcher !== null && typeof tx.matcher === "object" && typeof tx.matcher.raw === "string";
         if (patterned) {
             meta.matcher = (tx as { matcher: { raw: string } }).matcher.raw;
@@ -898,9 +884,9 @@ export default class PacketWire {
                 const parsed = PacketWire.#safeParse(rx.content);
                 if (Array.isArray(parsed)) findItems = parsed.length;
             }
-            const range = rx !== null && typeof rx === "object" && rx.range !== undefined
-                ? rx.range
-                : undefined;
+            range = rx !== null && typeof rx === "object" && rx.range !== undefined
+                ? Validator.assertRangeExtent(rx.range as RangeExtent)
+                : null;
             const problemOwnsRange = typeof e.status === "number"
                 && e.status >= 400
                 && meta.problem !== null
@@ -909,10 +895,15 @@ export default class PacketWire {
             if (problemOwnsRange) {
                 Validator.assertRangeExtent((meta.problem as { range: RangeExtent }).range);
             }
-            if (range !== undefined && !problemOwnsRange) {
-                meta.range = Validator.assertRangeExtent(range as RangeExtent);
-            } else if (op === "READ" && rx !== null && typeof rx === "object" && rx.region !== undefined) {
-                meta.region = Validator.assertTextRegion(rx.region as TextRegion);
+            if (range !== null && !problemOwnsRange) {
+                const sparse = fullBody.lineOrdinals !== undefined
+                    && range.returned !== undefined
+                    && fullBody.lineOrdinals.length !== range.returned[1] - range.returned[0] + 1;
+                meta.range = typeof e.status === "number" && e.status >= 400
+                    ? range
+                    : ScopeFormat.range(range, sparse);
+            } else if (range === null && !problemOwnsRange && op === "READ" && rx !== null && typeof rx === "object" && rx.region !== undefined) {
+                meta.range = ScopeFormat.region(Validator.assertTextRegion(rx.region as TextRegion));
             }
             // These are underlying selected-content weights, distinct from
             // the emitted body's generic `tokens` measurement.
@@ -932,9 +923,7 @@ export default class PacketWire {
             if (
                 op === "FIND"
                 && patterned
-                && range !== null
-                && typeof range === "object"
-                && (range as { unit?: unknown }).unit === "resource"
+                && range?.unit === "resource"
                 && rx !== null
                 && typeof rx === "object"
                 && typeof rx.matchLocationCount === "number"
@@ -968,7 +957,7 @@ export default class PacketWire {
             }));
             structuredMutationReceipt = effects.some((effect) => effect.receipt !== undefined);
         }
-        return { findItems, structuredMutationReceipt };
+        return { findItems, range, structuredMutationReceipt };
     }
 
     // The body the row shows: the canonical full body is shared with log READ, log FIND, and
@@ -1000,9 +989,7 @@ export default class PacketWire {
         if (lineAnchors !== null) {
             LineAnchors.assertProjection(fullBody.content, lineAnchors);
         }
-        const findRange = op === "FIND" && meta.range !== null && typeof meta.range === "object"
-            ? meta.range as RangeExtent
-            : null;
+        const findRange = op === "FIND" ? facts.range : null;
         const bodyStartLine = findRange?.returned?.[0] ?? fullBody.startLine;
         const numericLineNumberWidth = findRange === null
             ? bodyStartLine === null || bodyVisibility.totalLines === 0
@@ -1052,8 +1039,8 @@ export default class PacketWire {
             meta.lines = bodyVisibility.totalLines;
         }
 
-        if (bodyVisibility.folded.length > 0 && !bodyVisibility.fullyFolded) {
-            meta.folded = LogVisibility.format(bodyVisibility.folded);
+        if (bodyVisibility.trimmed.length > 0 && !bodyVisibility.fullyFolded) {
+            meta.trimmed = LogVisibility.format(bodyVisibility.trimmed);
         }
 
         const display = bodyVisibility.readableContent.length === 0
@@ -1073,7 +1060,10 @@ export default class PacketWire {
                 projection.text,
             )
             : projection.chunk;
-        if (display === "open" && projectedChunk !== null) meta.chunk = projectedChunk;
+        if (display === "open" && projectedChunk !== null) {
+            meta.preview = projectedChunk;
+            delete meta.lines;
+        }
         return { body, projectedLineCount, display };
     }
 

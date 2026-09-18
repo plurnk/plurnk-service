@@ -26,8 +26,8 @@ test("editReceipt correlates disjoint edits to one bounded resulting revision", 
     assert.match(receipt.revision, /^[a-f0-9]{64}$/);
     assert.deepEqual({ unit: receipt.unit, before: receipt.before, after: receipt.after }, { unit: "lines", before: 8, after: 9 });
     assert.deepEqual(receipt.effects.map(({ requested, source, result, removed, inserted }) => ({ requested, source, result, removed, inserted })), [
-        { requested: "<2>", source: "2", result: "2-3", removed: 1, inserted: 2 },
-        { requested: "<8>", source: "8", result: "9", removed: 1, inserted: 1 },
+        { requested: "<2>", source: "<2>", result: "<2,3>", removed: 1, inserted: 2 },
+        { requested: "<8>", source: "<8>", result: "<9>", removed: 1, inserted: 1 },
     ]);
     assert.match(receipt.effects[0]?.context ?? "", /1:one\n2:TWO\n3:2\.5\n4:three/);
     assert.match(receipt.effects[1]?.context ?? "", /7:six\n8:seven\n9:EIGHT/);
@@ -92,8 +92,8 @@ test("editReceipt preserves authored statement correlation while computing snaps
         ],
     );
     assert.deepEqual(receipt.effects.map(({ requested, source, result }) => ({ requested, source, result })), [
-        { requested: "<4>", source: "4", result: "5" },
-        { requested: "<2>", source: "2", result: "2-3" },
+        { requested: "<4>", source: "<4>", result: "<5>" },
+        { requested: "<2>", source: "<2>", result: "<2,3>" },
     ]);
 });
 
@@ -114,8 +114,8 @@ test("reviewerReplacementReceipt separates one landed replacement from supersede
     assert.deepEqual(reviewed.superseded, ["<2>", "<4>"]);
     assert.deepEqual(reviewed.replacement, {
         requested: "<1,-1>",
-        source: "1-4",
-        result: "1-2",
+        source: "<1,4>",
+        result: "<1,2>",
         removed: 4,
         inserted: 2,
         context: "1:reviewer\n2:replacement",
@@ -145,10 +145,14 @@ test("reviewerReplacementReceipt separates one landed replacement from supersede
 
 test("editReceipt reports creation, prepend, append, and deletion boundaries explicitly", () => {
     const cases = [
-        { original: "", updated: "a\nb", marker: { marks: [1, -1] as [number, number] }, body: "a\nb", expected: { source: "1^", result: "1-2", removed: 0, inserted: 2 } },
-        { original: "b", updated: "a\nb", marker: { marks: [0] as [number] }, body: "a", expected: { source: "1^", result: "1", removed: 0, inserted: 1 } },
-        { original: "a", updated: "a\nb", marker: { marks: [-1] as [number] }, body: "b", expected: { source: "2^", result: "2", removed: 0, inserted: 1 } },
-        { original: "a\nb", updated: "a", marker: { marks: [2] as [number] }, body: "", expected: { source: "2", result: "2^", removed: 1, inserted: 0 } },
+        { original: "", updated: "a\nb", marker: { marks: [1, -1] as [number, number] }, body: "a\nb", expected: { source: "<1,1,1,1>", result: "<1,2>", removed: 0, inserted: 2 } },
+        { original: "b", updated: "a\nb", marker: { marks: [0] as [number] }, body: "a", expected: { source: "<1,1,1,1>", result: "<1>", removed: 0, inserted: 1 } },
+        { original: "a", updated: "a\nb", marker: { marks: [-1] as [number] }, body: "b", expected: { source: "<1,2,1,2>", result: "<2>", removed: 0, inserted: 1 } },
+        { original: "a\nb", updated: "a", marker: { marks: [2] as [number] }, body: "", expected: { source: "<2>", result: "<1,2,1,2>", removed: 1, inserted: 0 } },
+        { original: "A😀", updated: "A😀\nb", marker: { marks: [-1] as [number] }, body: "b", expected: { source: "<1,3,1,3>", result: "<2>", removed: 0, inserted: 1 } },
+        { original: "A😀\r\n", updated: "A😀\r\nb\r\n", marker: { marks: [-1] as [number] }, body: "b", expected: { source: "<2,1,2,1>", result: "<2>", removed: 0, inserted: 1 } },
+        { original: "a\r\nb\r\n", updated: "a\r\n", marker: { marks: [2] as [number] }, body: "", expected: { source: "<2>", result: "<2,1,2,1>", removed: 1, inserted: 0 } },
+        { original: "a", updated: "", marker: { marks: [1] as [number] }, body: "", expected: { source: "<1>", result: "<1,1,1,1>", removed: 1, inserted: 0 } },
     ];
     for (const { original, updated, marker, body, expected } of cases) {
         const effect = editReceipt(original, updated, [{ marker, body }]).effects[0];
@@ -178,8 +182,8 @@ test("editReceipt reports exact regions in Unicode code points and line-column c
         })),
         [{
             requested: "<1,2,1,3>",
-            source: "1:2-1:3",
-            result: "1:2-1:3",
+            source: "<1,2,1,3>",
+            result: "<1,2,1,3>",
             removed: 1,
             inserted: 1,
         }],
@@ -200,8 +204,8 @@ test("editReceipt maps multiline exact insertion endpoints in the resulting revi
             inserted,
         })),
         [{
-            source: "1:2^",
-            result: "1:2-2:2",
+            source: "<1,2,1,2>",
+            result: "<1,2,2,2>",
             removed: 0,
             inserted: 3,
         }],
@@ -226,8 +230,8 @@ test("editReceipt reports mixed line and exact edits in one code-point coordinat
             inserted,
         })),
         [
-            { source: "1:2-1:3", result: "1:2-1:3", removed: 1, inserted: 1 },
-            { source: "3:1-4:1", result: "3:1-4:1", removed: 6, inserted: 6 },
+            { source: "<1,2,1,3>", result: "<1,2,1,3>", removed: 1, inserted: 1 },
+            { source: "<3,1,4,1>", result: "<3,1,4,1>", removed: 6, inserted: 6 },
         ],
     );
 });

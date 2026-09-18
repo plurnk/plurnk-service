@@ -290,7 +290,7 @@ test("{§retrieval-packet-metadata}: exact matcher FIND shows flat surgical coor
         const log = packetSection(await getPacket(db, second.turnId), "log");
 
         assert.match(log, /"matcher":"\/target\/"/);
-        assert.match(log, /"range":\{"unit":"matchLocation","total":2,"requested":\[1,16\],"returned":\[1,2\]\}/);
+        assert.match(log, /"range":"2 match locations"/);
         assert.doesNotMatch(log, /"matchLocationCount":2/);
         assert.doesNotMatch(log, /"matchingPathCount":1/);
         // A regex row carries its matched text ({§find-result-projection}).
@@ -352,7 +352,7 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
         assert.equal(Object.hasOwn(effect ?? {}, "rev"), false, "no revision token in the packet");
         assert.equal(effect?.extent, "lines 0->2");
         assert.equal(effect?.change, "-0 +2");
-        assert.equal(effect?.range, "<1,-1> 1^->1-2");
+        assert.equal(effect?.effect, "<1,1,1,1> -> <1,2>");
         assert.ok(copies[0] !== undefined && "body" in copies[0], "the landed materialization is open (body present, #338)");
         assert.equal(copies[1]?.from, "worker:///src.md<2,3>");
         assert.equal(copies[1]?.to, "worker:///slice.md");

@@ -409,7 +409,7 @@ test("Worker.edit result carries a bounded effect receipt with revision identity
         assert.ok(r2.editReceipt !== null && r2.editReceipt !== undefined && "effects" in r2.editReceipt);
         assert.deepEqual(
             r2.editReceipt.effects.map(({ requested, source, result, removed, inserted }) => ({ requested, source, result, removed, inserted })),
-            [{ requested: "<1,-1>", source: "1-3", result: "1-3", removed: 3, inserted: 3 }],
+            [{ requested: "<1,-1>", source: "<1,3>", result: "<1,3>", removed: 3, inserted: 3 }],
         );
         assert.match(r2.editReceipt.effects[0]?.context ?? "", /@[0-9A-Za-z]{5} 1:alpha\n@[0-9A-Za-z]{5} 2:BETA\n@[0-9A-Za-z]{5} 3:gamma/);
     } finally { await db.close(); }

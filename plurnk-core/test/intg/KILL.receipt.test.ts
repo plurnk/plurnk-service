@@ -66,9 +66,9 @@ Continue the task.
                     assert.equal(receipt.extent, "lines 20->18");
                     assert.equal(receipt.change, "-2 +0");
                     assert.equal(receipt.removed, "line 10\nline 11");
-                    assert.equal(receipt.range, `${rx.receipt.effect.requested} ${rx.receipt.effect.source}->${rx.receipt.effect.result}`);
+                    assert.equal(receipt.effect, `${rx.receipt.effect.source} -> ${rx.receipt.effect.result}`);
                     assert.equal(receipt.body, `${rx.receipt.effect.context}\n`);
-                    assert.equal(receipt.chunk, undefined, "bounded mutation context is not previewed again");
+                    assert.equal(receipt.preview, undefined, "bounded mutation context is not previewed again");
                     assert.ok(kill.weight > 0, "canonical receipt content participates in body accounting");
                     assert.ok(Number(receipt.logTokens) > 0, "packet accounting includes the complete visible receipt");
                     const recalled = await daemon.engine.look({

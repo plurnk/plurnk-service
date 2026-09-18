@@ -60,6 +60,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             assert.equal(terminal.source, undefined);
             assert.equal(terminal.terminal, true);
             assert.equal(terminal.exitCode, 0);
+            assert.equal(terminal.range, "<1,16> of 40 lines");
             // {§exec-stream} — the empty stderr channel is a fact on the stdout conclusion, never a row of its own.
             const emptyTerminal = logEntries(packet).find((e) => String(e.logPath).endsWith("/READ") && String(e.path ?? "").includes("stderr"));
             assert.equal(emptyTerminal, undefined, "an empty sibling channel lands no row");
@@ -74,6 +75,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             assert.ok(explicit, "the requested tail reaches the next model request");
             assert.equal(explicit.terminal, true, "a deliberate stream READ conveys the same liveness as the automatic observation");
             assert.equal(explicit.exitCode, 0, "the subprocess exit code survives deliberate READ projection");
+            assert.equal(explicit.range, "<38,40> of 40 lines");
         } finally {
             ws.close();
         }
@@ -115,6 +117,7 @@ for (const specimen of [
         preview: JSON.stringify({ index: 0, text: "x".repeat(1900) }),
         range: { unit: "line", total: 10, requested: [1, 1], returned: [1, 1] },
         region: undefined,
+        packetRange: "<1> of 10 lines",
     },
     {
         name: "a long Unicode line",
@@ -122,6 +125,7 @@ for (const specimen of [
         preview: "😀".repeat(2560),
         range: undefined,
         region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 2561 },
+        packetRange: "<1,1,1,2561>",
     },
 ]) test(`{§exec-stream-page}: automatic ${specimen.name} shares the character bound; explicit READ retains the full stream`, async () => {
     const { content } = specimen;
@@ -144,12 +148,14 @@ waiting
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![2]! }))!.packet);
             const delivery = logEntries(packet).find((row) => row.terminal === true && String(row.path).endsWith("#stdout"));
             assert.ok(delivery, "the model receives the automatic terminal observation");
-            assert.deepEqual(delivery.range, specimen.range);
-            assert.deepEqual(delivery.region, specimen.region);
+            assert.equal(delivery.range, specimen.packetRange);
+            assert.equal(delivery.region, undefined);
             assert.equal(String(delivery.body).trimStart(), `1:${specimen.preview}\n`, "the packet contains exactly the selected line or Unicode region");
             const delivered = await db.test_log_entries_by_turn.all<{ origin: string; op: string; rx: string }>({ turn_id: turnIds![2]! });
             const automatic = delivered.find((row) => row.origin === "_plurnk" && row.op === "READ" && JSON.parse(row.rx).content === specimen.preview);
             assert.ok(automatic, "the bounded result is stored before rendering, not cut from a complete READ afterward");
+            assert.deepEqual(JSON.parse(automatic.rx).range, specimen.range, "the durable range keeps requested and returned coordinates");
+            assert.deepEqual(JSON.parse(automatic.rx).region, specimen.region, "the durable exact region remains structured");
             const rows = await db.test_log_entries_by_turn.all<{ origin: string; op: string; rx: string }>({ turn_id: turnIds![2]! });
             const explicit = rows.find((row) => row.origin === "model" && row.op === "READ");
             assert.equal(JSON.parse(explicit?.rx ?? "null")?.content, content, "the full source remains available on deliberate READ");

@@ -230,7 +230,7 @@ test("{§read-bytes} {§packet-attachment-parts} a ranged byte READ returns its 
     const text = user.content.find((part) => part.type === "text");
     const image = user.content.find((part) => part.type === "file" && part.mediaType === "image/png");
     assert.ok(text?.type === "text");
-    assert.match(text.text, /"range":\{"unit":"byte","total":\d+,"requested":\[1,16\],"returned":\[1,16\]\}/u);
+    assert.match(text.text, new RegExp(`"range":"<1,16> of ${PNG.length} bytes"`, "u"));
     assert.match(text.text, /\n\s*1:\s*89\n/u, "the requested byte slice remains visible as hexadecimal");
     assert.match(text.text, /\n16:\s*52(?:\n|$)/u, "the byte projection stops at the requested endpoint");
     assert.ok(image?.type === "file" && Buffer.from(image.data).equals(PNG), "the full source image rides beside the slice");
@@ -240,7 +240,7 @@ test("{§read-bytes} {§packet-attachment-parts} a ranged byte READ remains the 
     const requests = await runLoop([], "```READ (file:///logo.png#bytes) <1,16>```");
     const user = requests[1]?.find((message) => message.role === "user");
     assert.ok(user !== undefined && typeof user.content === "string", "a text-only route receives no native part");
-    assert.match(user.content, /"range":\{"unit":"byte","total":\d+,"requested":\[1,16\],"returned":\[1,16\]\}/u);
+    assert.match(user.content, new RegExp(`"range":"<1,16> of ${PNG.length} bytes"`, "u"));
     assert.match(user.content, /\n\s*1:\s*89\n/u);
     assert.match(user.content, /\n16:\s*52(?:\n|$)/u);
 });

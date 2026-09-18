@@ -1,6 +1,7 @@
 import type { TextLineMarker } from "@plurnk/plurnk-contracts";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import LineAnchors from "../content/line-anchors.ts";
+import ScopeFormat from "../content/scope-format.ts";
 
 export type LogFoldRange = readonly [startLine: number, endLine: number];
 export type LogFoldRanges = readonly LogFoldRange[];
@@ -189,8 +190,7 @@ export default class LogVisibility {
     }
 
     static format(ranges: LogFoldRanges): readonly string[] {
-        return LogVisibility.parse(ranges).map(([start, end]) =>
-            start === end ? `<${start}>` : `<${start},${end}>`);
+        return LogVisibility.parse(ranges).map(([start, end]) => ScopeFormat.lines(start, end));
     }
 
     static #end(end: number): number {

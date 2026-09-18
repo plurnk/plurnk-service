@@ -290,6 +290,13 @@ interface EditBatchResult extends SchemeResult {
 | Applied as proposed                  | `effects[N]` describes authored EDIT `N`          | One truthful effect per authored EDIT                                 |
 | Resolver replaced the proposed body  | `superseded[N]` retains authored marker `N`       | One `replacement` effect describes the bytes that actually landed     |
 
+`requested` retains the admitted scope. `source` and `result` are resolved
+scope strings using {§text-scope-semantics}: `<line>`, `<first,last>`, or
+`<startLine,startColumn,endLine,endColumn>`. Empty selections use an exact
+zero-width region at the source insertion point or landed deletion join;
+they never invent a line beyond an unterminated EOF. Producers resolve these
+coordinates from the respective revision, not from another formatted receipt.
+
 The replacement form is not a heuristic attribution. An arbitrary resolver
 body supersedes every authored EDIT because its correspondence to those edits
 cannot be known. The consumer projects the replacement once on the durable

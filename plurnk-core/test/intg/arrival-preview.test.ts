@@ -33,7 +33,7 @@ test("a short message lands as one inbound SEND row", async () => {
     });
 });
 
-test("a jumbo message renders an adaptive chunk and Open Messages points to its complete log body", async () => {
+test("a jumbo message renders an adaptive preview and Open Messages points to its complete log body", async () => {
     await withDaemon(mock(), async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -51,12 +51,12 @@ test("a jumbo message renders an adaptive chunk and Open Messages points to its 
             assert.match(logSection?.content ?? "", /prompt line 1/, "the prompt projection reaches the model");
             assert.match(logSection?.content ?? "", /prompt line 17/, "prompt initialization is not clipped by the ordinary sixteen-line preview");
             assert.doesNotMatch(logSection?.content ?? "", /prompt line 4000:/, "content beyond the adaptive projection remains outside the packet");
-            const chunk = /"chunk":"showing <1,(\d+)> of <1,4000>"/.exec(logSection?.content ?? "");
+            const chunk = /"preview":"<1,(\d+)> of 4000 lines"/.exec(logSection?.content ?? "");
             assert.ok(chunk, "the projection states its displayed and complete extents");
             assert.ok(Number(chunk[1]) > Number(process.env.PLURNK_SERVICE_PREVIEW_LINES), "the dynamic prompt projection exceeds the unrelated ordinary preview bound");
             const projectedPrompt = logEntries(packet).find((entry) =>
                 typeof entry.logPath === "string" && entry.logPath.endsWith("/SEND"));
-            assert.equal(projectedPrompt?.chunk, `showing <1,${chunk[1]}> of <1,4000>`, "the independent packet parser retains the following member");
+            assert.equal(projectedPrompt?.preview, `<1,${chunk[1]}> of 4000 lines`, "the independent packet parser retains the following member");
             const budgetSection = (packet.sections ?? []).find((sec) => sec.name === "budget")?.content ?? "";
             const ceiling = Number(/"logTokensMax":\s*(\d+)/.exec(budgetSection)?.[1]);
             const projectionPercent = Number(/^([0-9]+(?:\.[0-9]+)?)%$/.exec(process.env.PLURNK_SERVICE_PROMPT_PROJECTION ?? "")?.[1]);
@@ -97,7 +97,7 @@ test("an oversized deliverable renders the universal preview and log recovery ad
     const [projected] = parseLogRecords(rendered);
     assert.match(String(projected?.body), /^ *1:deranged output line 1/m, "the preview head is visible");
     assert.doesNotMatch(String(projected?.body), /deranged output line 30/, "content beyond the preview is withheld");
-    assert.equal(projected?.chunk, "showing <1,16> of <1,400>", "the chunk states its displayed and complete line extents");
+    assert.equal(projected?.preview, "<1,16> of 400 lines", "the preview states its displayed and complete line extents");
 });
 
 test("a single-line body is constrained by the independent character bound", () => {
@@ -112,7 +112,7 @@ test("a single-line body is constrained by the independent character bound", () 
     const [projected] = parseLogRecords(rendered);
     const bodyChars = (String(projected?.body).match(/x+/g) ?? []).reduce((n, m) => Math.max(n, m.length), 0);
     assert.ok(bodyChars <= Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS), `the character knob bounds the single-line body (longest run ${bodyChars})`);
-    assert.equal(projected?.chunk, "showing <1,1,1,2561> of <1,1,1,20001>", "the in-line cut is exact and addressable");
+    assert.equal(projected?.preview, "<1,1,1,2561> of <1,1,1,20001>", "the in-line cut is exact and addressable");
 });
 
 test("a small deliverable rides whole — whole-when-small is the common case, untouched", () => {
@@ -124,7 +124,7 @@ test("a small deliverable rides whole — whole-when-small is the common case, u
     };
     const rendered = PacketWire.renderLog([row], countTokens);
     assert.ok(rendered.includes("answer: 42") && rendered.includes("notes: none"), "the whole deliverable rides");
-    assert.ok(!rendered.includes("\"chunk\""), "an in-bounds body has no chunk extent");
+    assert.ok(!rendered.includes("\"preview\""), "an in-bounds body has no preview extent");
 });
 
 test("a single-line jumbo prompt uses the adaptive prompt allowance rather than the ordinary character preview", async () => {
@@ -141,7 +141,7 @@ test("a single-line jumbo prompt uses the adaptive prompt allowance rather than 
             const longestHayRun = (log.match(/(?:hay )+/g) ?? []).reduce((n, m) => Math.max(n, m.length), 0);
             assert.ok(longestHayRun > Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS), "prompt initialization is independent of the ordinary character preview");
             assert.ok(longestHayRun < bomb.length, "the jumbo single line is still projected rather than stuffed whole into the packet");
-            const chunk = /"chunk":"showing <1,1,1,(\d+)> of <1,1,1,(\d+)>"/.exec(log);
+            const chunk = /"preview":"<1,1,1,(\d+)> of <1,1,1,(\d+)>"/.exec(log);
             assert.ok(Number(chunk?.[1]) > Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS) + 1);
             assert.equal(chunk?.[2], String(Array.from(bomb).length + 1), "the prompt states the exact complete character extent");
         } finally { ws.close(); }
