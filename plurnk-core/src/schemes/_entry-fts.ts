@@ -1,5 +1,6 @@
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "../core/Db.ts";
+import { contentHash } from "../core/content-hash.ts";
 import type { MatchEvidence, ProblemDetails } from "@plurnk/plurnk-schemes";
 import Results from "../core/results.ts";
 import type { CandidateMatch } from "../content/matcher.ts";
@@ -8,9 +9,11 @@ import type { SearchCandidate } from "./_search-candidate.ts";
 type RankedRow = { key: string; content: string; highlighted: string };
 
 export default class EntryFts {
+    // {§content-store}: an artifact indexes a text by pointing at it in the content store; empty = nothing.
     static async index(db: Db, derivationId: number, content: string): Promise<void> {
-        await db.fts_delete.run({ derivation_id: derivationId });
-        if (content.length > 0) await db.fts_insert.run({ derivation_id: derivationId, content });
+        const hash = content.length > 0 ? contentHash(content) : null;
+        if (hash !== null) await db.fts_intern.run({ hash, content });
+        await db.fts_attach.run({ derivation_id: derivationId, hash });
     }
 
     // SQLite owns parsing, tokenization and matching; highlight only locates its matches.

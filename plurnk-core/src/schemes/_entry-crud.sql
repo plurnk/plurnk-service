@@ -14,8 +14,11 @@ SELECT name, content, mimetype, state, producer_result FROM entry_channels WHERE
 
 -- PREP: crud_read_entry
 -- {§crud} One read snapshot covers metadata and every channel.
-SELECT e.id, e.attributes, c.name, c.content, c.mimetype, c.state, c.producer_result
-FROM entries e LEFT JOIN entry_channels c ON c.entry_id = e.id
+-- An outer join cannot flatten the entry_channels view, so this one reads its tables ({§content-store}).
+SELECT e.id, e.attributes, c.name, COALESCE(c.buffer, b.content) AS content, c.mimetype, c.state, c.producer_result
+FROM entries e
+LEFT JOIN entry_channel_rows c ON c.entry_id = e.id
+LEFT JOIN contents b ON b.id = c.content_id
 WHERE e.workspace_id = $workspace_id AND e.scheme = $scheme
   AND e.authority = $authority AND e.pathname = $pathname;
 
@@ -215,19 +218,18 @@ UPDATE entries SET membership_origin = $membership_origin WHERE id = $entry_id A
 -- Accept-time incorporation may fall back from Git staging to an exact pick.
 UPDATE entries SET membership_origin = $membership_origin WHERE id = $entry_id;
 
--- PREP: crud_upsert_readable_channel
+-- PREP: crud_insert_readable_channel
 -- {§readable-channel} — the derived `readable` sibling of a source channel lands or refreshes
 -- with the source; it is never written by an operation.
 INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, content_hash, state, producer_result)
-VALUES ($entry_id, 'readable', $content, $mimetype, $weight, $content_hash, 'static', NULL)
-ON CONFLICT (entry_id, name) DO UPDATE SET
-    content = excluded.content,
-    mimetype = excluded.mimetype,
-    weight = excluded.weight,
-    content_hash = excluded.content_hash,
-    state = 'static',
-    producer_result = NULL
-WHERE entry_channels.content_hash IS NOT excluded.content_hash;
+SELECT $entry_id, 'readable', $content, $mimetype, $weight, $content_hash, 'static', NULL
+WHERE NOT EXISTS (SELECT 1 FROM entry_channel_rows WHERE entry_id = $entry_id AND name = 'readable');
+
+-- PREP: crud_refresh_readable_channel
+UPDATE entry_channels
+SET content = $content, mimetype = $mimetype, weight = $weight, content_hash = $content_hash,
+    state = 'static', producer_result = NULL
+WHERE entry_id = $entry_id AND name = 'readable' AND content_hash IS NOT $content_hash;
 
 -- PREP: crud_delete_readable_channel
 DELETE FROM entry_channels WHERE entry_id = $entry_id AND name = 'readable';
@@ -238,10 +240,10 @@ DELETE FROM entry_channels WHERE entry_id = $entry_id AND name = 'readable';
 -- path, including model EDIT, plugin channel capabilities, and streams.
 DROP TRIGGER IF EXISTS entry_channels_invalidate_derivation;
 CREATE TRIGGER entry_channels_invalidate_derivation
-AFTER UPDATE OF content, mimetype ON entry_channels
-WHEN OLD.content IS NOT NEW.content OR OLD.mimetype IS NOT NEW.mimetype
+AFTER UPDATE OF content_id, buffer, mimetype ON entry_channel_rows
+WHEN OLD.content_id IS NOT NEW.content_id OR OLD.buffer IS NOT NEW.buffer OR OLD.mimetype IS NOT NEW.mimetype
 BEGIN
-    UPDATE entry_channels
+    UPDATE entry_channel_rows
     SET deep_hash = NULL
     WHERE entry_id = NEW.entry_id AND name = NEW.name AND deep_hash IS NOT NULL;
 END;
@@ -253,7 +255,7 @@ END;
 -- turns. Content hashes and search attachments are private metadata, not touches.
 DROP TRIGGER IF EXISTS entries_touch_on_channel_write;
 CREATE TRIGGER entries_touch_on_channel_write
-AFTER INSERT ON entry_channels
+AFTER INSERT ON entry_channel_rows
 BEGIN
     UPDATE entries SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.entry_id;
 END;
@@ -261,7 +263,7 @@ END;
 -- INIT: entries_touch_on_channel_update
 DROP TRIGGER IF EXISTS entries_touch_on_channel_update;
 CREATE TRIGGER entries_touch_on_channel_update
-AFTER UPDATE OF content, mimetype, weight, state, producer_result ON entry_channels
+AFTER UPDATE OF content_id, buffer, mimetype, weight, state, producer_result ON entry_channel_rows
 BEGIN
     UPDATE entries SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.entry_id;
 END;

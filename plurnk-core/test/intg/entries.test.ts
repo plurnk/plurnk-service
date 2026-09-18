@@ -193,12 +193,14 @@ test("entries: owner-keyed identity index exists", async () => {
     } finally { await db.close(); }
 });
 
-test("entry_channels: table is STRICT and WITHOUT ROWID", async () => {
+test("entry_channels: rows are STRICT and WITHOUT ROWID; bodies are STRICT ({§content-store})", async () => {
     const db = await openMigrated();
     try {
-        const row = await db.test_entries_table_sql.get<{ sql: string }>({ name: "entry_channels" });
+        const row = await db.test_entries_table_sql.get<{ sql: string }>({ name: "entry_channel_rows" });
         assert.match(row?.sql ?? "", /STRICT/);
         assert.match(row?.sql ?? "", /WITHOUT ROWID/);
+        const contents = await db.test_entries_table_sql.get<{ sql: string }>({ name: "contents" });
+        assert.match(contents?.sql ?? "", /STRICT/);
     } finally { await db.close(); }
 });
 
@@ -302,15 +304,15 @@ test("entry_channels: NOT NULL on name, content, mimetype", async () => {
         const entryId = await insertEntry(db, "worker", "x");
         await assert.rejects(
             () => db.test_entry_channels_insert_missing_name.run({ entry_id: entryId }),
-            /NOT NULL constraint failed: entry_channels\.name/,
+            /NOT NULL constraint failed: entry_channel_rows\.name/,
         );
         await assert.rejects(
             () => db.test_entry_channels_insert_missing_content.run({ entry_id: entryId }),
-            /NOT NULL constraint failed: entry_channels\.content/,
+            /a channel requires content/,
         );
         await assert.rejects(
             () => db.test_entry_channels_insert_missing_mimetype.run({ entry_id: entryId }),
-            /NOT NULL constraint failed: entry_channels\.mimetype/,
+            /NOT NULL constraint failed: entry_channel_rows\.mimetype/,
         );
     } finally { await db.close(); }
 });

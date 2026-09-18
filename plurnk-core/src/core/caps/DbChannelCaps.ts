@@ -39,8 +39,8 @@ export default class DbChannelCaps implements ChannelCaps {
     async append(pathname: string, channel: string, content: string): Promise<SchemeResult> {
         const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, this.#authority, pathname);
         if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${renderAddress({ scheme: this.#scheme, authority: this.#authority, pathname })}.`, pathname);
-        const r = await this.#ctx.db.append_to_channel.run({ chunk: content, entry_id: entryId, channel });
-        return r.changes > 0
+        const r = await this.#ctx.db.append_to_channel.all({ chunk: content, entry_id: entryId, channel });
+        return r.length > 0
             ? Results.assert({ status: 200 })
             : this.#failure("channel-not-found", `Entry ${renderAddress({ scheme: this.#scheme, authority: this.#authority, pathname })} has no '${channel}' channel.`, pathname, channel);
     }
@@ -50,10 +50,10 @@ export default class DbChannelCaps implements ChannelCaps {
         if (weigh === undefined) throw new Error("DbChannelCaps.replace: ctx.weigh is required for token accounting");
         const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, this.#authority, pathname);
         if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${renderAddress({ scheme: this.#scheme, authority: this.#authority, pathname })}.`, pathname);
-        const r = await this.#ctx.db.replace_channel_content.run({
+        const r = await this.#ctx.db.replace_channel_content.all({
             content, weight: weigh(content), entry_id: entryId, channel,
         });
-        return r.changes > 0
+        return r.length > 0
             ? Results.assert({ status: 200 })
             : this.#failure("channel-not-found", `Entry ${renderAddress({ scheme: this.#scheme, authority: this.#authority, pathname })} has no '${channel}' channel.`, pathname, channel);
     }
@@ -61,8 +61,8 @@ export default class DbChannelCaps implements ChannelCaps {
     async setState(pathname: string, channel: string, state: ChannelState): Promise<SchemeResult> {
         const entryId = await CapsResolve.entryId(this.#ctx, this.#scheme, this.#authority, pathname);
         if (entryId === null) return this.#failure("entry-not-found", `No entry exists at ${renderAddress({ scheme: this.#scheme, authority: this.#authority, pathname })}.`, pathname);
-        const r = await this.#ctx.db.set_channel_state.run({ state, entry_id: entryId, channel });
-        return r.changes > 0
+        const r = await this.#ctx.db.set_channel_state.all({ state, entry_id: entryId, channel });
+        return r.length > 0
             ? Results.assert({ status: 200 })
             : this.#failure("channel-not-found", `Entry ${renderAddress({ scheme: this.#scheme, authority: this.#authority, pathname })} has no '${channel}' channel.`, pathname, channel);
     }

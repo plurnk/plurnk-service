@@ -33,12 +33,14 @@ export default class EntryReadable {
             await db.crud_delete_readable_channel.run({ entry_id: entryId });
             return;
         }
-        await db.crud_upsert_readable_channel.run({
+        const readable = {
             entry_id: entryId,
             content: projected.content,
             mimetype: EntryReadable.MIMETYPE,
             weight: weigh(projected.content),
             content_hash: contentHash(projected.content),
-        });
+        };
+        await db.crud_insert_readable_channel.run(readable);
+        await db.crud_refresh_readable_channel.run(readable);
     }
 }

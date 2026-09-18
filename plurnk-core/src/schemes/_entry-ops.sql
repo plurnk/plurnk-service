@@ -15,8 +15,8 @@ RETURNING id;
 -- The creation half of EDIT's atomic landing. A concurrent creator wins cleanly;
 -- the caller translates an empty RETURNING set to the shared edit-collision.
 INSERT INTO entry_channels (entry_id, name, content, mimetype, weight, content_hash, state, producer_result)
-VALUES ($entry_id, $name, $content, $mimetype, $weight, $content_hash, 'static', NULL)
-ON CONFLICT (entry_id, name) DO NOTHING
+SELECT $entry_id, $name, $content, $mimetype, $weight, $content_hash, 'static', NULL
+WHERE NOT EXISTS (SELECT 1 FROM entry_channel_rows WHERE entry_id = $entry_id AND name = $name)
 RETURNING name;
 
 -- PREP: ops_update_channel_if_content

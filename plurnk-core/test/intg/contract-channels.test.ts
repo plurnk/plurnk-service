@@ -10,6 +10,7 @@ import Exec from "../../src/schemes/Exec.ts";
 import EntryFind from "../../src/schemes/_entry-find.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import DbChannelCaps from "../../src/core/caps/DbChannelCaps.ts";
+import { contentHash } from "../../src/core/content-hash.ts";
 import type { Db } from "../../src/core/Db.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -326,7 +327,7 @@ test("{§persistent-search-index}: changing one channel invalidates and re-deriv
             before.find(({ name }) => name === "stdout")?.deep_hash,
         );
         assert.equal(invalidated.find(({ name }) => name === "stderr")?.deep_hash, null);
-        assert.equal(invalidated.find(({ name }) => name === "stderr")?.content_hash, null);
+        assert.equal(invalidated.find(({ name }) => name === "stderr")?.content_hash, contentHash("changed stderr"), "a settled body carries its stored identity ({§content-store})");
 
         await SearchIndex.maintain(ctx);
         const after = await db.test_channel_hashes_for_entry.all<{

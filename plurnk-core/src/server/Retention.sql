@@ -54,9 +54,17 @@ WHERE $collect = 1
 -- and derivations_delete_fts drops its full-text shadow.
 DELETE FROM derivations
 WHERE $collect = 1
-  AND NOT EXISTS (SELECT 1 FROM entry_channels c WHERE c.deep_hash = derivations.deep_hash)
+  AND NOT EXISTS (SELECT 1 FROM entry_channel_rows c WHERE c.deep_hash = derivations.deep_hash)
   AND NOT EXISTS (SELECT 1 FROM turn_sources s WHERE s.deep_hash = derivations.deep_hash)
   AND NOT EXISTS (SELECT 1 FROM log_entries le WHERE le.deep_hash = derivations.deep_hash);
+
+-- PREP: retention_collect_contents
+-- {§content-store}: a body no channel holds and no derivation indexes is transient data. Runs
+-- after the collectors above, which release what they held.
+DELETE FROM contents
+WHERE $collect = 1
+  AND NOT EXISTS (SELECT 1 FROM entry_channel_rows r WHERE r.content_id = contents.id)
+  AND NOT EXISTS (SELECT 1 FROM derivations d WHERE d.content_id = contents.id);
 
 -- {§db-space-reclamation} The daemon keeps its own file healthy: freed pages go back to the OS.
 

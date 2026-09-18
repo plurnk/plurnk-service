@@ -10,6 +10,7 @@ export interface RetentionPolicy {
     readonly retainResponseMs: number;    // -1 = no age limit
     readonly collectPacketItems: boolean;
     readonly collectDerivations: boolean;
+    readonly collectContents: boolean;
     readonly intervalMs: number;          // 0 = shutdown only
     readonly autoVacuum: AutoVacuum;
     readonly reclaimMinFreeBytes: number; // 0 = reclaim every pass
@@ -48,6 +49,7 @@ export const retentionPolicy = (env: NodeJS.ProcessEnv = process.env): Retention
     retainResponseMs: readBound(env, "PLURNK_SERVICE_RETAIN_RESPONSE_MS", -1),
     collectPacketItems: readFlag(env, "PLURNK_SERVICE_COLLECT_PACKET_ITEMS"),
     collectDerivations: readFlag(env, "PLURNK_SERVICE_COLLECT_DERIVATIONS"),
+    collectContents: readFlag(env, "PLURNK_SERVICE_COLLECT_CONTENTS"),
     intervalMs: readBound(env, "PLURNK_SERVICE_RETENTION_INTERVAL_MS", 0),
     autoVacuum: readAutoVacuum(env),
     reclaimMinFreeBytes: readBound(env, "PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES", 0),
@@ -85,14 +87,15 @@ export default class Retention {
         return row;
     }
 
-    async run(now: number = Date.now()): Promise<{ retiredPackets: number; retiredResponses: number; collectedItems: number; collectedDerivations: number; reclaimedPages: number }> {
-        const { retainPacketTurns, retainPacketMs, retainResponseTurns, retainResponseMs, collectPacketItems, collectDerivations } = this.#policy;
+    async run(now: number = Date.now()): Promise<{ retiredPackets: number; retiredResponses: number; collectedItems: number; collectedDerivations: number; collectedContents: number; reclaimedPages: number }> {
+        const { retainPacketTurns, retainPacketMs, retainResponseTurns, retainResponseMs, collectPacketItems, collectDerivations, collectContents } = this.#policy;
         const packets = await this.#db.retention_retire_packets.run({ keep_turns: retainPacketTurns, keep_ms: retainPacketMs, now_ms: now });
         const responses = await this.#db.retention_retire_responses.run({ keep_turns: retainResponseTurns, keep_ms: retainResponseMs, now_ms: now });
         const items = await this.#db.retention_collect_packet_items.run({ collect: collectPacketItems ? 1 : 0 });
         const derivations = await this.#db.retention_collect_derivations.run({ collect: collectDerivations ? 1 : 0 });
+        const contents = await this.#db.retention_collect_contents.run({ collect: collectContents ? 1 : 0 });
         const reclaimedPages = await this.#reclaim();
-        return { retiredPackets: packets.changes, retiredResponses: responses.changes, collectedItems: items.changes, collectedDerivations: derivations.changes, reclaimedPages };
+        return { retiredPackets: packets.changes, retiredResponses: responses.changes, collectedItems: items.changes, collectedDerivations: derivations.changes, collectedContents: contents.changes, reclaimedPages };
     }
 
     // {§db-space-reclamation} — free pages go back to the OS once they reach the policy's floor;

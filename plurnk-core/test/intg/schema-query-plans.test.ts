@@ -12,9 +12,12 @@ import { openMigrated } from "./_helpers.ts";
 
 const PROJECT_ROOT = resolve(import.meta.dirname, "../..");
 // Tables that grow with use and are never pruned ({§db-schema-baseline} has no retention today).
-const GROWING = new Set(["log_entries", "entries", "entry_channels", "subscriptions", "workers", "loops", "turns", "symbol_defs", "symbol_refs", "derivations", "ambient_events", "provider_requests", "inference_calls", "model_calls", "turn_attempts", "log_entry_projections", "native_contents", "client_interactions", "turn_sources", "packet_items", "turn_sections", "turn_section_items"]);
+const GROWING = new Set(["log_entries", "entries", "entry_channel_rows", "contents", "subscriptions", "workers", "loops", "turns", "symbol_defs", "symbol_refs", "derivations", "ambient_events", "provider_requests", "inference_calls", "model_calls", "turn_attempts", "log_entry_projections", "native_contents", "client_interactions", "turn_sources", "packet_items", "turn_sections", "turn_section_items"]);
 // Statements that read a whole table on purpose (forensic digest, startup recovery, whole-workspace listings).
 // A retention collector considers every row of its table by definition ({§retention-policy}).
+// A write through the entry_channels view ({§content-store}) plans as a SEARCH of its rows plus a
+// SCAN of the matched rows SQLite has already copied aside; the view itself is not a table.
+const VIEWS = new Set(["entry_channels"]);
 const WHOLE_TABLE_BY_DESIGN = /^(digest_|recovery_|test_|envelope_list_|retention_collect_|drain_scheduled_loops$|drain_claim_next_loop$|drain_ready_loop$)/;
 
 const collectStatements = async (): Promise<Array<{ name: string; file: string; sql: string }>> => {
@@ -71,6 +74,7 @@ test("{§db-schema-baseline}: no registry statement scans a growing table withou
                 const scan = /^SCAN (\S+)/.exec(detail);
                 if (scan === null) continue;
                 const table = scan[1]!;
+                if (VIEWS.has(table)) continue;
                 if (GROWING.has(table) && !/USING (COVERING )?INDEX/.test(detail)) offenders.push(`${file} ${name}: ${detail}`);
             }
         }

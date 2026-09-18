@@ -1,5 +1,8 @@
 -- Channel-write SQL for streaming schemes. SPEC {§channel-state} + {§subscriptions} + {§notifications}.
 
+-- Writes go through the entry_channels view ({§content-store}); SQLite counts no changes for a
+-- view, so a write that must know whether its channel exists returns the channel's name.
+
 -- PREP: channel_meta
 SELECT e.workspace_id, e.scheme, e.authority, e.pathname, ec.state, ec.mimetype, length(ec.content) AS contentLength
 FROM entry_channels ec
@@ -12,12 +15,14 @@ SET content = content || $chunk,
     weight = content_weight(content || $chunk),
     content_hash = NULL,
     producer_result = NULL
-WHERE entry_id = $entry_id AND name = $channel;
+WHERE entry_id = $entry_id AND name = $channel
+RETURNING name;
 
 -- PREP: set_channel_state
 UPDATE entry_channels
 SET state = $state
-WHERE entry_id = $entry_id AND name = $channel;
+WHERE entry_id = $entry_id AND name = $channel
+RETURNING name;
 
 -- PREP: set_channel_mimetype
 -- A dynamic scheme may supply the body's per-call type. Conditional so
@@ -31,7 +36,8 @@ WHERE entry_id = $entry_id AND name = $channel AND mimetype != $mimetype;
 -- the same curation weight append_to_channel computes inside its atomic update.
 UPDATE entry_channels
 SET content = $content, weight = $weight, content_hash = NULL, producer_result = NULL
-WHERE entry_id = $entry_id AND name = $channel;
+WHERE entry_id = $entry_id AND name = $channel
+RETURNING name;
 
 -- PREP: open_subscription
 -- turn_scoped COALESCEs to 0 so a caller binding the raw prep without it (an unbounded stream) is

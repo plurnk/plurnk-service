@@ -140,8 +140,8 @@ export default class ChannelWrite {
         db: Db,
         { entryId, producerWorkerId, channel, chunk, notify, coordinate, mimetype }: { entryId: number; producerWorkerId: number; channel: string; chunk: string; notify?: StreamEventNotify; coordinate?: StreamCoordinate; mimetype?: string },
     ): Promise<void> {
-        const result = await ChannelWrite.#appendStmt(db).run({ chunk, entry_id: entryId, channel });
-        if (result.changes === 0) return;
+        const result = await ChannelWrite.#appendStmt(db).all({ chunk, entry_id: entryId, channel });
+        if (result.length === 0) return;
         // A dynamic scheme may supply the body's per-call type; persist it only
         // when it changes. {§channel-mimetype}
         if (mimetype !== undefined) await ChannelWrite.#mimetypeStmt(db).run({ mimetype, entry_id: entryId, channel });
@@ -157,8 +157,8 @@ export default class ChannelWrite {
         db: Db,
         { entryId, producerWorkerId, channel, state, notify, coordinate }: { entryId: number; producerWorkerId: number; channel: string; state: ChannelState; notify?: StreamEventNotify; coordinate?: StreamCoordinate },
     ): Promise<void> {
-        const result = await ChannelWrite.#stateStmt(db).run({ state, entry_id: entryId, channel });
-        if (result.changes === 0) return;
+        const result = await ChannelWrite.#stateStmt(db).all({ state, entry_id: entryId, channel });
+        if (result.length === 0) return;
         if (notify === undefined) return;
         const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
         if (meta === undefined) return;
