@@ -65,6 +65,8 @@ import type {
     DerivationStateRow,
     DigestModel,
     DigestOptions,
+    StorageRow,
+    StorageTableRow,
 } from "./digest-rows.ts";
 
 const describeNonError = (value: unknown): string => {
@@ -148,10 +150,15 @@ export default class Digest {
             derivationState: (db.digest_derivation_state as SyncPrep<DerivationStateRow>).get(),
             dispositionCounts: (db.digest_channel_disposition_counts as SyncPrep<DispositionCountRow>).all(),
             dispositions: (db.digest_channel_dispositions as SyncPrep<DispositionRow>).all(),
+            storage: (db.digest_storage as SyncPrep<StorageRow>).get(),
+            storageTables: (db.digest_storage_tables as SyncPrep<StorageTableRow>).all(),
         }));
-        let { workspaces, workers, loops, inferenceCalls, modelCalls, turnAttempts, providerRequests,
+        let { workspaces, workers, inferenceCalls, modelCalls, turnAttempts, providerRequests,
             logEntries, curationEffects, workerRollupRows, opMixRows } = rows;
-        const { environmentRows, searchState, derivationState, dispositionCounts, dispositions } = rows;
+        const { environmentRows, searchState, derivationState, dispositionCounts, dispositions, storageTables } = rows;
+        let loops = rows.loops.map((loop): LoopRow => ({ ...loop, claimed_at: loop.claimed_at ?? null }));
+        if (rows.storage === undefined) throw new Error("digest: the database reported no storage facts");
+        const storage = { ...rows.storage, tables: storageTables };
         let turns = rows.turns
             .map((turn): TurnRow => {
                 const { packet_bag, ...stored } = turn;
@@ -245,7 +252,7 @@ export default class Digest {
         for (const o of opMixRows) { const arr = opMixByWorker.get(o.worker_id) ?? []; arr.push(o); opMixByWorker.set(o.worker_id, arr); }
 
         const m: DigestModel = {
-            dbPath, digestDir, workspaces, workers, loops, turns, inferenceCalls, modelCalls, turnAttempts, providerRequests, logEntries, curationEffects,
+            dbPath, storage, digestDir, workspaces, workers, loops, turns, inferenceCalls, modelCalls, turnAttempts, providerRequests, logEntries, curationEffects,
             workersByWorkspace, loopsByWorker, turnsByLoop, attemptsByTurn,
             requestsByInferenceCall, requestsByAttempt, requestsByTurn, requestsByLoop, requestsByWorker, requestsByWorkspace,
             logEntriesByTurn, environments, loopsById, workersById,

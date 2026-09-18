@@ -189,6 +189,13 @@ export default class DigestRender {
             && rx.problem.type.startsWith("https://problems.plurnk.xyz/executor/");
     }
 
+    // {§digest-storage} — size, free pages, vacuum mode and the largest tables, one line.
+    static #storageLine(storage: DigestModel["storage"]): string {
+        const mb = (bytes: number) => `${(bytes / 1_048_576).toFixed(1)} MB`;
+        const mode = ["off", "full", "incremental"][storage.auto_vacuum] ?? String(storage.auto_vacuum);
+        return `Storage: ${mb(storage.bytes)} (free ${mb(storage.free_bytes)}, auto_vacuum ${mode}) · largest: ${storage.tables.map(({ name, bytes }) => `${name} ${mb(bytes)}`).join(", ")}`;
+    }
+
     // {§loop-claim-latency} — claim to first model turn: a stall between them is a number, not a gap.
     static #wakeLatency(loop: LoopRow, m: DigestModel): string | null {
         if (loop.claimed_at === null) return null;
@@ -324,6 +331,7 @@ export default class DigestRender {
         lines.push(`# plurnk-service digest`);
         lines.push("");
         lines.push(`DB: ${m.dbPath}`);
+        lines.push(DigestRender.#storageLine(m.storage));
         const rejectedAttempts = m.turnAttempts.filter((attempt) => attempt.accepted === 0).length;
         const erroredCalls = m.inferenceCalls.filter((call) => call.state === "error").length;
         const pendingCalls = m.inferenceCalls.filter((call) => call.state === "pending").length;
@@ -542,6 +550,7 @@ export default class DigestRender {
     static json(m: DigestModel): string {
         return JSON.stringify({
             dbPath: m.dbPath,
+            storage: m.storage,
             search: m.search,
             workspaces: m.workspaces.map((s) => ({
                 id: s.id,

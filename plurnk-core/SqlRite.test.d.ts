@@ -165,6 +165,8 @@ export class SqlRiteSync {
 	digest_channel_dispositions: SqlRiteSyncPreparedStatements;
 	digest_derivation_state: SqlRiteSyncPreparedStatements;
 	digest_execution_environments: SqlRiteSyncPreparedStatements;
+	digest_storage: SqlRiteSyncPreparedStatements;
+	digest_storage_tables: SqlRiteSyncPreparedStatements;
 	engine_log_selection_high_water: SqlRiteSyncPreparedStatements;
 	engine_turn_packet_boundaries: SqlRiteSyncPreparedStatements;
 	engine_worker_has_undelivered_stream_term: SqlRiteSyncPreparedStatements;
@@ -744,6 +746,8 @@ export default class SqlRite {
 	digest_channel_dispositions: SqlRitePreparedStatements;
 	digest_derivation_state: SqlRitePreparedStatements;
 	digest_execution_environments: SqlRitePreparedStatements;
+	digest_storage: SqlRitePreparedStatements;
+	digest_storage_tables: SqlRitePreparedStatements;
 	engine_log_selection_high_water: SqlRitePreparedStatements;
 	engine_turn_packet_boundaries: SqlRitePreparedStatements;
 	engine_worker_has_undelivered_stream_term: SqlRitePreparedStatements;

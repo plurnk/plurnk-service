@@ -11,9 +11,8 @@ SELECT * FROM workspaces ORDER BY id;
 SELECT * FROM workers ORDER BY id;
 
 -- PREP: digest_loops
-SELECT id, worker_id, sequence, status, prompt, policy, terminated_by, terminal_result,
-       claimed_at, terminated_at
-FROM loops ORDER BY worker_id, sequence;
+-- `*` so a database made before {§loop-claim-latency} still digests; its loops simply carry no claim.
+SELECT * FROM loops ORDER BY worker_id, sequence;
 
 -- PREP: digest_turns
 -- {§packet-items}: turn_packets assembles each packet's sections back into its bag; the bag as
@@ -150,3 +149,14 @@ FROM derivations;
 SELECT e.workspace_id, (e.scheme || '://' || e.pathname) AS stream, json_extract(e.attributes, '$.env') AS env
 FROM entries e
 WHERE e.output = 1 AND json_type(e.attributes, '$.env') = 'object';
+
+-- PREP: digest_storage
+-- {§digest-storage} The file's health: its size, the free pages it holds, and its vacuum mode.
+SELECT pc.page_count * ps.page_size AS bytes,
+       fc.freelist_count * ps.page_size AS free_bytes,
+       av.auto_vacuum AS auto_vacuum
+FROM pragma_page_count() pc, pragma_page_size() ps, pragma_freelist_count() fc, pragma_auto_vacuum() av;
+
+-- PREP: digest_storage_tables
+-- {§digest-storage} The largest tables and indexes by allocated bytes.
+SELECT name, SUM(pgsize) AS bytes FROM dbstat GROUP BY name ORDER BY bytes DESC LIMIT 6;

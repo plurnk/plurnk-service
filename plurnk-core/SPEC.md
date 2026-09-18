@@ -882,6 +882,12 @@ move it. The digest reports, per loop, the claim time and how long after it the
 first model turn started, so a stall between claim and inference (the moltbook
 heartbeat waited 7.5 h, #703) is a number rather than a gap.
 
+§digest-storage **The digest states the file's health.** Beside the database path it
+reports the file size, the free pages it holds, its `auto_vacuum` mode, and the six
+largest tables and indexes by allocated bytes (`dbstat`), so growth is a number in
+every digest (#764). The digest reads loops as stored, so a database made before a
+lifecycle column was added still digests.
+
 §loop-execution-allowance **One task has one execution allowance.** The first
 execution snapshots `PLURNK_SERVICE_LOOP_TIMEOUT` on the loop. Active segments
 consume that allowance cumulatively, measured with a monotonic clock; waits and

@@ -158,8 +158,11 @@ export interface DerivationStateRow {
 }
 // Loaded snapshot + derived index maps, threaded through the renderers so the
 // data flow is explicit (no hidden module-level state).
+export interface StorageRow { bytes: number; free_bytes: number; auto_vacuum: number }
+export interface StorageTableRow { name: string; bytes: number }
 export interface DigestModel {
     dbPath: string;
+    storage: StorageRow & { tables: StorageTableRow[] };
     digestDir: string;
     workspaces: WorkspaceRow[];
     workers: WorkerRow[];
