@@ -329,6 +329,7 @@ export class SqlRiteSync {
 	worker_module_state_put: SqlRiteSyncPreparedStatements;
 	worker_module_state_delete: SqlRiteSyncPreparedStatements;
 	workspace_get_settings: SqlRiteSyncPreparedStatements;
+	workspace_storage_key: SqlRiteSyncPreparedStatements;
 }
 
 export default class SqlRite {
@@ -610,4 +611,5 @@ export default class SqlRite {
 	worker_module_state_put: SqlRitePreparedStatements;
 	worker_module_state_delete: SqlRitePreparedStatements;
 	workspace_get_settings: SqlRitePreparedStatements;
+	workspace_storage_key: SqlRitePreparedStatements;
 }

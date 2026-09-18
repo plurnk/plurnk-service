@@ -1,3 +1,4 @@
+import { workingDirectory } from "../test/working-directory.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { access, mkdtemp, rm } from "node:fs/promises";
@@ -26,6 +27,7 @@ const configured = (): {
     const connection = new ServerConnection({
         name: "echo",
         transport: "stdio",
+        cwd: workingDirectory,
         command: process.execPath,
         args: [fixture],
         tools: ["echo"],
@@ -246,6 +248,7 @@ test("MCP executor keeps elicitation on its generic client interaction sink", as
     const connection = new ServerConnection({
         name: "interaction",
         transport: "stdio",
+        cwd: workingDirectory,
         command: process.execPath,
         args: [interactionFixture],
         tools: ["batch"],
@@ -285,6 +288,7 @@ test("{§mcp-result-content} every passive content variant is preserved lossless
     const connection = new ServerConnection({
         name: "rich",
         transport: "stdio",
+        cwd: workingDirectory,
         command: process.execPath,
         args: [fixture],
         env: { PLURNK_MCP_TEST_EXTENDED: "1" },
@@ -355,6 +359,7 @@ test("MCP progress and cancellation remain on the owning execution lifecycle ove
     const connection = new ServerConnection({
         name: "lifecycle",
         transport: "stdio",
+        cwd: workingDirectory,
         command: process.execPath,
         args: [fixture],
         env: {

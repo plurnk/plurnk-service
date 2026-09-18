@@ -36,7 +36,8 @@ import Skill from "../schemes/Skill.ts";
 import MembersFunctionality from "./MembersFunctionality.ts";
 import EnvFunctionality, { ENV_OWNER } from "./EnvFunctionality.ts";
 import type { WorkspaceCapabilityPublication } from "./DaemonModule.ts";
-import type HostPaths from "../core/HostPaths.ts";
+import HostPaths from "../core/HostPaths.ts";
+import WorkspaceStorage from "./WorkspaceStorage.ts";
 import Fork from "../core/fork.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
@@ -122,19 +123,21 @@ export default class Daemon implements ApplicationPort {
     #eventSubscribers = new Set<(workspaceId: number | null, method: string, params: unknown) => void>();
     readonly #workerModels: WorkerModelResolver;
     readonly #reads: ClientReads;
+    readonly #storage: WorkspaceStorage;
 
     constructor({
-        db, schemes, mimetypes, provider, nodeModulesPath, skills }: {
+        db, schemes, mimetypes, provider, nodeModulesPath, hostPaths = new HostPaths(), skills }: {
         db: Db;
         schemes?: SchemeRegistry;
         mimetypes?: Mimetypes;
         provider?: Provider | null;
         nodeModulesPath?: string;
-        // {§skills-functionality} — the host roots and standard machinery beneath
-        // the Skills family; the service passes its HostPaths, tests substitute both.
-        skills?: { hostPaths?: HostPaths; toolchain?: SkillsToolchain };
+        hostPaths?: HostPaths;
+        // {§skills-functionality} — standard skill machinery, replaceable in tests.
+        skills?: { toolchain?: SkillsToolchain };
     }) {
         this.#db = db;
+        this.#storage = new WorkspaceStorage(db, hostPaths);
         this.#lifecycle = new LoopLifecycle(db);
         this.#schemes = schemes ?? new SchemeRegistry();
         this.#provider = provider ?? null;
@@ -183,6 +186,7 @@ export default class Daemon implements ApplicationPort {
         // {§skills-functionality} — Core's own family: standard Agent Skills.
         this.#skills = new SkillsFunctionality({
             db,
+            hostPaths,
             ...skills,
             provided: async () => {
                 const tree = await PlurnkSkill.load(this.#nodeModulesPath);
@@ -1419,6 +1423,10 @@ export default class Daemon implements ApplicationPort {
     async readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv> {
         const snapshot = await EnvFunctionality.workspace(this.#db, workspaceId);
         return (ambient) => snapshot(ambient).env;
+    }
+
+    workspaceStateDirectory(workspaceId: number, namespaceOwner: string): Promise<string> {
+        return this.#storage.directory(workspaceId, namespaceOwner);
     }
 
     async readWorkerEnvironment(workspaceId: number, workerId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv> {

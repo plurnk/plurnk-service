@@ -140,7 +140,7 @@ const skillsFamily = async (): Promise<Family> => {
         unreachable: { alias: "ghost", definition: { name: "ghost", scope: "project", source: sourceA }, probe: probe("ghost") },
         discover: { source: sourceA },
         boot: async (db, provider) => {
-            const daemon = new Daemon({ db, provider, skills: { hostPaths, toolchain } });
+            const daemon = new Daemon({ db, provider, hostPaths, skills: { toolchain } });
             return { daemon };
         },
         close: () => rm(base, { recursive: true, force: true }),

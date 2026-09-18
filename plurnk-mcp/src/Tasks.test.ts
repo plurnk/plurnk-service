@@ -1,3 +1,4 @@
+import { workingDirectory } from "../test/working-directory.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
@@ -372,6 +373,7 @@ test("{§tasks-lifetime} closing the owning connection abandons an in-process ta
     const paused = new ServerConnection({
         name: "tasks-stdio",
         transport: "stdio",
+        cwd: workingDirectory,
         command: process.execPath,
         args: [stdioFixture],
         env: { PLURNK_TASK_PAUSE: "1" },
@@ -395,6 +397,7 @@ test("{§tasks-lifetime} closing the owning connection abandons an in-process ta
     const fresh = new ServerConnection({
         name: "tasks-stdio",
         transport: "stdio",
+        cwd: workingDirectory,
         command: process.execPath,
         args: [stdioFixture],
     }, env);
@@ -420,6 +423,7 @@ test("the same current Task lifecycle composes over a plain stdio endpoint", asy
     const connection = new ServerConnection({
         name: "tasks-stdio",
         transport: "stdio",
+        cwd: workingDirectory,
         command: process.execPath,
         args: [stdioFixture],
     }, env);

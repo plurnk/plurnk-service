@@ -221,6 +221,8 @@ export interface ModuleSetupSeam {
     // {§workspace-env} Apply the workspace layer to admitted ambient values, or to
     // a provider's own reference-resolution environment. Never includes worker overrides.
     readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
+    // {§module-workspace-directory} Core owns placement; modules own their contents.
+    workspaceStateDirectory(workspaceId: number, namespaceOwner: string): Promise<string>;
     // {§workspace-env} The same layers with the Worker's own overrides on top ({§functionality-scope}):
     // what a command of that Worker runs under, for a family that reads the environment on a
     // Worker's behalf.

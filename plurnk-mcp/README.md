@@ -152,6 +152,13 @@ whitespace. Arguments are a JSON array; the module never parses or invokes a
 shell command. `${NAME}` references resolve from the daemon's inherited
 environment only while preparing a connection.
 
+Without `CWD`, a local server uses its own workspace directory under
+`$XDG_STATE_HOME/plurnk` (normally `~/.local/state/plurnk`), not the daemon's
+launch directory. State survives reconnects and disable/remove; discovery
+scratch is removed after its probe closes. Use absolute project paths or an
+explicit `CWD` for servers that operate on a project. This default does not
+confine arbitrary subprocess writes.
+
 `PLURNK_MCP_<server>_TOOLS` is an optional JSON array of exact names. Absence
 enables every listed server tool; an array enables exactly those names; `[]`
 enables none. `PLURNK_MCP_<server>_READ` is an exact enabled-tool subset whose

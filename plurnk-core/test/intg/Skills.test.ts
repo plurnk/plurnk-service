@@ -73,8 +73,7 @@ test("{§agent-skills-name} {§skills-resources}: discovery, installation and UR
         await writeFile(join(source, name, "guide.md"), `Supporting source for ${name}.\n`);
     }
     const db = await openMigrated();
-    const daemon = new Daemon({ db, provider: null, skills: {
-        hostPaths: new HostPaths({ home, env: {} }),
+    const daemon = new Daemon({ db, provider: null, hostPaths: new HostPaths({ home, env: {} }), skills: {
         toolchain: new StandardSkillsToolchain({ PLURNK_SERVICE_SKILLS_CLI: `${process.execPath} ${FIXTURE_CLI}` }),
     } });
     t.after(async () => { await daemon.stop(); await db.close(); await rm(base, { recursive: true, force: true }); });
@@ -123,7 +122,7 @@ test("{§module-workspace-quiescence}: a busy workspace refuses skill installati
     const hostPaths = new HostPaths({ home, env: {} });
     const toolchain = new StandardSkillsToolchain({ PLURNK_SERVICE_SKILLS_CLI: `${process.execPath} ${FIXTURE_CLI}` });
     const db = await openMigrated();
-    const daemon = new Daemon({ db, provider: null, skills: { hostPaths, toolchain } });
+    const daemon = new Daemon({ db, provider: null, hostPaths, skills: { toolchain } });
     t.after(async () => { await daemon.stop(); await db.close(); await rm(base, { recursive: true, force: true }); });
     await daemon.start();
     const workspace = await daemon.createWorkspace({ name: "skills-busy", projectRoot: project });
@@ -190,7 +189,7 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
     const workspaceId = await insertWorkspace(db, `skills-${crypto.randomUUID()}`);
     await db.test_set_workspace_root.run({ id: workspaceId, project_root: project });
     const client = await insertWorker(db, workspaceId, null, "client", "client");
-    let daemon = new Daemon({ db, provider: null, skills: { hostPaths, toolchain } });
+    let daemon = new Daemon({ db, provider: null, hostPaths, skills: { toolchain } });
     await daemon.start();
     const context = { scope: "workspace" as const, workspaceId };
     const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>): Promise<T> =>
@@ -296,7 +295,7 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
 
         // Restart: the workspace's own definition survives and is located, not reinstalled.
         await daemon.stop();
-        daemon = new Daemon({ db, provider: null, skills: { hostPaths, toolchain } });
+        daemon = new Daemon({ db, provider: null, hostPaths, skills: { toolchain } });
         await daemon.start();
         assert.deepEqual(await states(), [
             "alpha:workspace:active:project",
@@ -329,7 +328,7 @@ test("{§skills-functionality} a headless workspace exposes its service skill bu
     const db: Db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `skills-headless-${crypto.randomUUID()}`);
     const client = await insertWorker(db, workspaceId, null, "client", "client");
-    const daemon = new Daemon({ db, provider: null, skills: { hostPaths } });
+    const daemon = new Daemon({ db, provider: null, hostPaths });
     await daemon.start();
     const context = { scope: "workspace" as const, workspaceId };
     try {

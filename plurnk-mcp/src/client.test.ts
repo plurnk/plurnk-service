@@ -1,3 +1,4 @@
+import { workingDirectory } from "../test/working-directory.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
@@ -14,6 +15,7 @@ test("client pins the current MCP revision and exercises tools and resources", a
     const connection = new ServerConnection({
         name: "echo",
         transport: "stdio",
+        cwd: workingDirectory,
         command: process.execPath,
         args: [fixture],
     }, env);
@@ -68,6 +70,7 @@ test("active request accounting retires a cancelled request", async () => {
     const connection = new ServerConnection({
         name: "echo",
         transport: "stdio",
+        cwd: workingDirectory,
         command: process.execPath,
         args: [fixture],
         env: { PLURNK_MCP_TEST_EXTENDED: "1" },
@@ -80,6 +83,55 @@ test("active request accounting retires a cancelled request", async () => {
         controller.abort(new Error("test request settled"));
         await assert.rejects(pending, /test request settled/);
         assert.equal(connection.activeRequests, 0);
+    } finally {
+        await connection.close();
+    }
+});
+
+test("{§mcp-working-storage} stdio cannot inherit the host CWD by omission", async () => {
+    const connection = new ServerConnection({ name: "echo", transport: "stdio", command: process.execPath, args: [fixture] }, env);
+    try {
+        await assert.rejects(connection.connect(), /requires an absolute working directory/);
+    } finally {
+        await connection.close();
+    }
+});
+
+test("{§mcp-working-storage} concurrent callers share directory preparation and one connection", async () => {
+    let preparations = 0;
+    const ready = Promise.withResolvers<string>();
+    const connection = new ServerConnection({ name: "echo", transport: "stdio", command: process.execPath, args: [fixture] }, env, {
+        workingDirectory: () => { preparations++; return ready.promise; },
+    });
+    try {
+        const calls = [connection.connect(), connection.connect()];
+        assert.equal(preparations, 1);
+        ready.resolve(workingDirectory);
+        const [first, second] = await Promise.all(calls);
+        assert.equal(first, second);
+    } finally {
+        await connection.close();
+    }
+});
+
+test("{§mcp-working-storage} closing during directory preparation prevents launch", async () => {
+    const ready = Promise.withResolvers<string>();
+    const connection = new ServerConnection({ name: "echo", transport: "stdio", command: process.execPath, args: [fixture] }, env, {
+        workingDirectory: () => ready.promise,
+    });
+    const connecting = connection.connect();
+    const rejected = assert.rejects(connecting, /connection is closed/);
+    const closing = connection.close();
+    ready.resolve(workingDirectory);
+    await Promise.all([closing, rejected]);
+});
+
+test("{§mcp-working-storage} explicit CWD bypasses host directory allocation", async () => {
+    const connection = new ServerConnection({ name: "echo", transport: "stdio", command: process.execPath, args: [fixture], cwd: workingDirectory }, env, {
+        workingDirectory: async () => { throw new Error("explicit CWD must not allocate managed state"); },
+    });
+    try {
+        assert.equal((await connection.catalog()).server?.name, "current-echo");
     } finally {
         await connection.close();
     }

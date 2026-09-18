@@ -21,17 +21,17 @@ schema when you need more detail. One fenced call runs one tool.
 
 `discover` takes `{"source": "<URL or command line>"}`: the server is
 connected once, its tool list is read, and one inert candidate comes back
-carrying the exact definition to add. Discovery persists and enables nothing.
+carrying the exact definition to add. Discovery never persists or enables a server definition.
 
 ````mcp (discover) <!-- inspect before adding -->
-{"source": "npx -y @modelcontextprotocol/server-filesystem ."}
+{"source": "npx -y @modelcontextprotocol/server-filesystem /absolute/project/path"}
 ````
 
 `add` persists the definition for this workspace, connects, and enables it
 atomically. It is a host effect: it proposes and runs only on acceptance.
 
 ````mcp (add)
-{"alias": "files", "definition": {"name": "files", "transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]}}
+{"alias": "files", "definition": {"name": "files", "transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/project/path"]}}
 ````
 
 A `stdio` definition carries `command` and optional `args`, `cwd`; an
@@ -40,6 +40,12 @@ enabled tool set and `read` names the tools that are read-only (every other
 tool keeps the conservative `host` effect and proposes before it runs). A
 credential is a symbolic reference such as `"${TOKEN}"` to the operator's
 environment, never a pasted secret.
+
+Local servers start in their workspace's server directory under `XDG_STATE_HOME`
+(normally `~/.local/state/plurnk`), not in the project. Use absolute paths for
+project inputs and outputs, or set `cwd` explicitly when a server requires it.
+State survives reconnects and disable/remove; a discovery probe uses a temporary
+directory removed after it closes. This is file placement, not a sandbox.
 
 ## Environment
 

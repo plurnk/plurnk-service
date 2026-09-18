@@ -1,3 +1,4 @@
+import { workingDirectory } from "../test/working-directory.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -16,6 +17,7 @@ const env = {
 const configured = (): ServerConnection => new ServerConnection({
     name: "interaction",
     transport: "stdio",
+    cwd: workingDirectory,
     command: process.execPath,
     args: [fixture],
 }, env);

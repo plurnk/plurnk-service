@@ -5,6 +5,8 @@
 // teardown. The coordinator owns the lifecycle, durable workspace state, atomic
 // publication, and both the client and model projections.
 import { fileURLToPath } from "node:url";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
 import type {
     RuntimeAvailability,
     RuntimeDecl,
@@ -136,6 +138,7 @@ interface FunctionalityFamilyHandle {
 
 interface ModuleSetupSeam {
     readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
+    workspaceStateDirectory(workspaceId: number, namespaceOwner: string): Promise<string>;
     registerModuleAction(registration: {
         readonly name: string;
         readonly scope: "worldless" | "workspace" | "worker";
@@ -346,6 +349,7 @@ const catalogDetail = (executor: McpExecutor): object => {
 export default class Module {
     readonly #env: NodeJS.ProcessEnv;
     #workspaceEnvironment!: ModuleSetupSeam["readWorkspaceEnvironment"];
+    #workspaceDirectory!: (workspaceId: number) => Promise<string>;
     readonly #summaries: { servers: Map<string, string>; tools: Map<string, string> };
     readonly #expanded: Set<string>;
     readonly #defaults: ReadonlyMap<string, McpServerDefinition>;
@@ -378,12 +382,13 @@ export default class Module {
 
     async setup(seam: ModuleSetupSeam): Promise<void> {
         this.#workspaceEnvironment = (workspaceId) => seam.readWorkspaceEnvironment(workspaceId);
+        this.#workspaceDirectory = (workspaceId) => seam.workspaceStateDirectory(workspaceId, OWNER);
         this.#handle = seam.registerFunctionalityAdapter({
             family: FAMILY,
             namespaceOwner: OWNER,
             summary: "Manage MCP servers",
             definitionSchema: MCP_DEFINITION,
-            example: { alias: "files", definition: { name: "files", transport: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", "."] } },
+            example: { alias: "files", definition: { name: "files", transport: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/project/path"] } },
             docsDir: fileURLToPath(new URL("..", import.meta.url)),
             discovery: {
                 details: "`source` is one MCP server URL or command line; the server is inspected without being attached, and the candidate carries the exact definition to add.",
@@ -492,13 +497,16 @@ export default class Module {
                 : { name: "discovered", transport: "stdio", command, args }, options);
             Validator.assertMcpServerDefinition(definition);
             const environment = await this.#workspaceEnvironment(identity.workspaceId);
+            let directory: string | undefined;
             const connection = new ServerConnection(definition, environment(this.#env), {
                 environment: environment(),
+                workingDirectory: async () => directory ??= await mkdtemp(join(await this.#workspaceDirectory(identity.workspaceId), "discover-")),
                 onCatalogChanged: () => undefined,
                 onInfrastructureError: () => undefined,
             });
             this.#connections.add(connection);
             const executor = new McpExecutor({ runtime: "discovered", glyph: "🔌" }, connection, () => () => undefined);
+            let failure: unknown;
             try {
                 await executor.requireAvailable();
                 const catalog = executor.catalog;
@@ -518,11 +526,17 @@ export default class Module {
                         summary: "The server requires authorization before it can be inspected; add it and complete the authorization.",
                     });
                 } else {
-                    throw actionError("discover-failed", 502, `MCP target '${source}' could not be inspected.`, { source, retryable: true }, cause);
+                    failure = actionError("discover-failed", 502, `MCP target '${source}' could not be inspected.`, { source, retryable: true }, cause);
                 }
-            } finally {
-                await this.#closeOwned([connection]);
             }
+            try {
+                await this.#closeOwned([connection]);
+                if (directory !== undefined) await rm(directory, { recursive: true, force: true });
+            } catch (cause) {
+                if (failure !== undefined) throw new AggregateError([failure, cause], "MCP discovery and cleanup failed.");
+                throw cause;
+            }
+            if (failure !== undefined) throw failure;
         }
         if (query.query !== undefined && query.source === undefined && query.configuration === undefined) {
             throw actionError(
@@ -570,6 +584,11 @@ export default class Module {
         const environment = await this.#workspaceEnvironment(workspaceId);
         const candidate = connection ?? new ServerConnection(definition, environment(this.#env), {
             environment: environment(),
+            workingDirectory: async () => {
+                const directory = join(await this.#workspaceDirectory(workspaceId), "servers", definition.name);
+                await mkdir(directory, { recursive: true, mode: 0o700 });
+                return directory;
+            },
             onCatalogChanged: (error) => {
                 if (error !== null) {
                     console.error(`MCP server '${definition.name}' catalog refresh failed:`, error);

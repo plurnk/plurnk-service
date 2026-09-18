@@ -1,3 +1,4 @@
+import { workingDirectory } from "../test/working-directory.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -29,6 +30,7 @@ const configured = async (): Promise<{
     const connection = new ServerConnection({
         name: "echo",
         transport: "stdio",
+        cwd: workingDirectory,
         command: process.execPath,
         args: [fixture],
     }, env);
@@ -98,6 +100,7 @@ const interactionResources = async (): Promise<{
     const connection = new ServerConnection({
         name: "interaction",
         transport: "stdio",
+        cwd: workingDirectory,
         command: process.execPath,
         args: [interactionFixture],
     }, env);

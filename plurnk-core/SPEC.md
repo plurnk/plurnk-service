@@ -3359,7 +3359,7 @@ and is ignored rather than resolved against the working directory.
 |---|---|---|
 | Configuration | `$XDG_CONFIG_HOME` (default `~/.config`) | `plurnk/.env`, `plurnk/AGENTS.md` |
 | Durable user data | `$XDG_DATA_HOME` (default `~/.local/share`) | `plurnk/plurnk.db` and SQLite sidecars |
-| Persistent operational state | `$XDG_STATE_HOME` (default `~/.local/state`) | Reserved; no directory is created without an owned artifact. |
+| Persistent operational state | `$XDG_STATE_HOME` (default `~/.local/state`) | On-demand workspace/module directories ({§module-workspace-directory}). |
 | Reproducible cache | `$XDG_CACHE_HOME` (default `~/.cache`) | Reserved; no directory is created without an owned artifact. |
 | Shared global Agent Skills | User home | `.agents/skills/<name>/SKILL.md` |
 
@@ -3634,8 +3634,20 @@ flowchart LR
 | §module-workspace-provider `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` | Registers one extension-unique Functionality provider. `activate({ workspaceId, retain })` reconstructs the workspace snapshot; idempotent `deactivate({ workspaceId })` releases process resources. Core coalesces demand and supplies residency leases for work that outlives its caller. |
 | §module-workspace-state `readWorkspaceModuleState(workspaceId, namespaceOwner)` | Reads one nullable JSON state value per workspace and provider. Core owns storage and lifecycle; the provider owns its schema. Store symbolic credential references, not copied secrets. A worker-scoped family's coordinator reads and replaces the same shape per worker in `worker_module_state` ({§functionality-scope}). |
 | `readWorkspaceEnvironment(workspaceId)` | Captures the workspace env layer ({§workspace-env}) and returns its composer. No argument uses admitted host values; a supplied environment supplies a module's reference-resolution context. Both apply the same captured values and masks, without worker overrides. |
+| §module-workspace-directory `workspaceStateDirectory(workspaceId, namespaceOwner)` | Returns and creates the module's absolute operational-state directory under the daemon's XDG state home. Core owns path resolution and a stable random workspace storage key in its own `workspace_module_state` row. The key survives workspace renames and daemon restarts; independently created workspaces, including in other databases, receive different keys. The module owns its contents and child-directory lifetimes. |
 | §module-functionality-adapter `registerFunctionalityAdapter(adapter)` | Registers one family beneath the shared coordinator ({§functionality-coordinator}). |
 | §module-workspace-capabilities `replaceWorkspaceCapabilities({ workspaceId, namespaceOwner, state, runtimes })` | Atomically replaces one provider's durable state and runtime/scheme snapshot at the workspace operation boundary. Namespace claims are validated before mutation. Failure restores the prior state and publication. |
+
+Module directory allocation is lazy, atomic in SQLite, and independent of the
+project root, daemon CWD, and workspace/worker environment overrides. New
+directories use mode `0700`; existing permissions are not rewritten. Module
+names occupy a single encoded path component. Missing workspaces, invalid
+stored keys, and filesystem failures are errors, never a fallback to CWD.
+Allocated state is not erased on cooling, disable, removal, or shutdown: its
+contents may be persistent or referenced by retained results. Deleting a
+workspace forgets its storage key through the existing foreign key; old disk
+state is not reassigned or automatically purged. A database copy preserves its
+storage identities; the directory is operational state, not a backup of it.
 
 §workspace-environment-sharing **The workspace owns its shared environment.**
 Workers own their logs; delegation retains its existing lifecycle.

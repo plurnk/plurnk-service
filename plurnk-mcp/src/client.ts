@@ -1,3 +1,4 @@
+import { isAbsolute, resolve } from "node:path";
 import {
     OAuthClientFlowError,
     OAuthError,
@@ -106,6 +107,8 @@ type ResolvedDefinition = ResolvedStdioDefinition | ResolvedHttpDefinition;
 export interface ServerConnectionOptions {
     // {§mcp-launch-environment} Exact admitted environment, separate from reference resolution.
     readonly environment?: NodeJS.ProcessEnv;
+    // {§mcp-working-storage} Lazy, absolute host-owned CWD when none is configured.
+    readonly workingDirectory?: () => Promise<string>;
     readonly onCatalogChanged?: (error: Error | null) => void;
     readonly onInfrastructureError?: (error: Error) => void;
 }
@@ -170,7 +173,7 @@ const resolveDefinition = (
                 expandReferences(argument, environ, `${definition.name}.args[${index}]`)),
             ...(definition.cwd === undefined
                 ? {}
-                : { cwd: expandReferences(definition.cwd, environ, `${definition.name}.cwd`) }),
+                : { cwd: resolve(expandReferences(definition.cwd, environ, `${definition.name}.cwd`)) }),
             ...(definition.env === undefined
                 ? {}
                 : { env: expandedRecord(definition.env, environ, `${definition.name}.env`) }),
@@ -315,6 +318,9 @@ const openTransport = (
                 },
             },
         );
+    }
+    if (definition.cwd === undefined || !isAbsolute(definition.cwd)) {
+        throw new Error("A stdio MCP connection requires an absolute working directory.");
     }
     // {§mcp-stdio-process-ownership} — stdio servers spawn through the
     // parent-death watchdog wrapper: the real server runs detached (own
@@ -590,14 +596,16 @@ export default class ServerConnection {
             throw new AuthorizationRequiredError(this.#pendingAuthorization.authorizationUrl);
         }
         if (this.#client !== undefined) return this.#client;
-        const transport = openTransport(this.#resolved, this.#options.environment);
-        this.#openingTransport = transport;
-        const pending = openClient(
-            this.#resolved,
-            this.#environ,
-            this.#options,
-            transport,
-        ).catch((cause: unknown) => {
+        let transport: StdioClientTransport | StreamableHTTPClientTransport | undefined;
+        const pending = (async () => {
+            const definition = this.#resolved.transport === "stdio" && this.#resolved.cwd === undefined
+                ? { ...this.#resolved, cwd: await this.#options.workingDirectory?.() }
+                : this.#resolved;
+            if (this.#closed) throw new Error(`MCP server '${this.#definition.name}' connection is closed.`);
+            transport = openTransport(definition, this.#options.environment);
+            this.#openingTransport = transport;
+            return openClient(definition, this.#environ, this.#options, transport);
+        })().catch((cause: unknown) => {
             if (
                 cause instanceof AuthorizationRequiredError
                 && this.#resolved.transport === "http"

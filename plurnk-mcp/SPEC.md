@@ -327,6 +327,26 @@ HTTP authorization/header references may use workspace values. A running server 
 its launch environment. Use ordinary `disable` and `enable` to restart it after an env
 change; there is no automatic restart or stale-configuration state.
 
+§mcp-working-storage **A local server never implicitly inherits the daemon's
+working directory.** The common connection boundary requires an explicit CWD
+or a host-supplied default. Missing or unusable storage fails connection
+preparation; it never falls back to the project.
+
+| Connection | Working directory and lifetime |
+| --- | --- |
+| Attached stdio server without `cwd` | `servers/<alias>` under the module directory from {§module-workspace-directory}; created lazily with mode `0700`, retained across disable/enable, removal, cooling, and daemon restart. |
+| Direct stdio discovery | A unique `discover-*` directory beneath that same module root; removed only after the probe connection closes, including unsuccessful probes. It is never persisted in the candidate definition. |
+| Explicit `cwd` | Honored without creation or cleanup. Relative values resolve against the launcher's CWD, not the default storage directory. |
+| HTTP | No local working directory is allocated. |
+
+Host-owned storage does not replace `HOME`, credentials, XDG environment values,
+tool arguments, or the project CWD of ordinary executors. Executables and file
+arguments needing a particular project must name it explicitly or configure
+`cwd`. Stored streams/resources retain their existing ownership. This is a
+default-placement contract, not filesystem confinement or a promise to
+redirect a third-party server's absolute writes. No server-specific flags or
+deprecated roots capability are introduced.
+
 §mcp-management-actions MCP is one family of workspace Functionality
 ({§functionality-coordinator}): the coordinator publishes `workspace.mcp.list |
 discover | add | enable | disable | remove` and the model's `mcp` executable fence

@@ -5,7 +5,7 @@
 // the coordinator and are covered where it composes with this module.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -22,6 +22,7 @@ import { serveMcpHttp } from "../test/http-fixture.ts";
 import type McpExecutor from "./McpExecutor.ts";
 import { getDefaultEnvironment } from "@modelcontextprotocol/client/stdio";
 import Module, { closeConnections } from "./Module.ts";
+import { workingDirectory } from "../test/working-directory.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
 const legacyFixture = fileURLToPath(new URL("./fixtures/legacy-server.mjs", import.meta.url));
@@ -75,6 +76,7 @@ interface ActionRegistration {
 // decides nothing about lifecycle semantics — tests choose the enabled set.
 const harness = (env: Record<string, string> = {}) => {
     const module = Module.init({ env: { ...floor, ...env } });
+    const storage = join(workingDirectory, crypto.randomUUID());
     const actions = new Map<string, ActionRegistration>();
     const snapshots = new Map<number, { enabled: Map<string, object>; prepared: Prepared | null }>();
     let adapter: Adapter | undefined;
@@ -93,6 +95,11 @@ const harness = (env: Record<string, string> = {}) => {
         return prepared;
     };
     const seam = {
+        workspaceStateDirectory: async (workspaceId: number, namespaceOwner: string) => {
+            const directory = join(storage, String(workspaceId), encodeURIComponent(namespaceOwner));
+            await mkdir(directory, { recursive: true });
+            return directory;
+        },
         readWorkspaceEnvironment: async () => (ambient = getDefaultEnvironment()) => ({ ...ambient }),
         registerModuleAction: (registration: ActionRegistration): void => { actions.set(registration.name, registration); },
         registerFunctionalityAdapter: (candidate: Adapter) => {

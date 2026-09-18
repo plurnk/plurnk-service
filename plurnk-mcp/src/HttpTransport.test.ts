@@ -31,7 +31,9 @@ test("{§mcp-connection-shutdown} closing a connection interrupts unfinished neg
         await new Promise<void>((resolve) => request.signal.addEventListener("abort", () => resolve(), { once: true }));
         return new Response(null, { status: 503 });
     });
-    const connection = new ServerConnection({ name: "opening", transport: "http", url: served.url }, floor);
+    const connection = new ServerConnection({ name: "opening", transport: "http", url: served.url }, floor, {
+        workingDirectory: async () => { throw new Error("HTTP must not allocate local process storage"); },
+    });
     t.after(() => connection.close());
     const rejected = assert.rejects(() => connection.catalog(), /connection failed/u);
     await negotiating.promise;
