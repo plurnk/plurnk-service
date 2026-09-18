@@ -1461,6 +1461,11 @@ export default class Daemon implements ApplicationPort {
     async start(): Promise<void> {
         if (this.#started) throw new Error("daemon already started");
         this.#started = true;
+        // {§db-space-reclamation} — the file is converted to incremental auto-vacuum before any work.
+        const storage = await this.#retention.prepareStorage();
+        if (storage.converted) {
+            console.error(`database: converted to incremental auto-vacuum (${storage.pagesBefore} → ${storage.pagesAfter} pages)`);
+        }
         this.#drains.start();
         this.#retention.start((cause) => { console.error("retention pass failed:", cause instanceof Error ? cause.message : String(cause)); });
 

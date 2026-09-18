@@ -57,3 +57,21 @@ WHERE $collect = 1
   AND NOT EXISTS (SELECT 1 FROM entry_channels c WHERE c.deep_hash = derivations.deep_hash)
   AND NOT EXISTS (SELECT 1 FROM turn_sources s WHERE s.deep_hash = derivations.deep_hash)
   AND NOT EXISTS (SELECT 1 FROM log_entries le WHERE le.deep_hash = derivations.deep_hash);
+
+-- {§db-space-reclamation} The daemon keeps its own file healthy: freed pages go back to the OS.
+
+-- PREP: retention_auto_vacuum_mode
+PRAGMA auto_vacuum;
+
+-- PREP: retention_set_incremental
+PRAGMA auto_vacuum = INCREMENTAL;
+
+-- PREP: retention_vacuum
+VACUUM;
+
+-- PREP: retention_page_counts
+SELECT (SELECT page_count FROM pragma_page_count()) AS pages,
+       (SELECT freelist_count FROM pragma_freelist_count()) AS free;
+
+-- PREP: retention_incremental_vacuum
+PRAGMA incremental_vacuum;

@@ -7,6 +7,7 @@ import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { DurablePacket } from "../../src/core/StoredPacket.ts";
 import { DEFAULT_MIMETYPES, insertLoop, insertPacketTurn, insertWorker, insertWorkspace, makeSchemeCtx, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
 
+const counts = ({ reclaimedPages: _reclaimed, ...rest }: Awaited<ReturnType<Retention["run"]>>) => rest;
 const DEFAULTS = { PLURNK_SERVICE_RETAIN_PACKET_TURNS: "-1", PLURNK_SERVICE_RETAIN_PACKET_MS: "-1", PLURNK_SERVICE_RETAIN_RESPONSE_TURNS: "-1", PLURNK_SERVICE_RETAIN_RESPONSE_MS: "-1", PLURNK_SERVICE_COLLECT_PACKET_ITEMS: "1", PLURNK_SERVICE_COLLECT_DERIVATIONS: "1", PLURNK_SERVICE_RETENTION_INTERVAL_MS: "3600000" };
 const CAPACITY = JSON.stringify({ decision: "admit", contextWindow: 1001, maxInputTokens: null, maxOutputTokens: null, outputBudget: 1, reasoningBudget: null, inputCapacity: 1000, prompt: { kind: "exact", tokens: 10, source: "retention-fixture" } });
 const record = (n: number): string => `### log:///1/1/${n}/READ\n{"status":200}\n1:line ${n}`;
@@ -28,7 +29,7 @@ test("{§retention-policy}: the shipped defaults keep every packet and refuse ma
         const turns = [];
         for (let sequence = 1; sequence <= 3; sequence += 1) turns.push(await insertPacketTurn(db, loopId, sequence, packet(sequence), 200));
         const pass = await new Retention(db, policy).run();
-        assert.deepEqual(pass, { retiredPackets: 0, retiredResponses: 0, collectedItems: 0, collectedDerivations: 0 }, "nothing that is information leaves under the defaults");
+        assert.deepEqual(counts(pass), { retiredPackets: 0, retiredResponses: 0, collectedItems: 0, collectedDerivations: 0 }, "nothing that is information leaves under the defaults");
         for (const id of turns) assert.equal((await db.test_turn_sections_count.get<{ n: number }>({ turn_id: id }))!.n, 1);
     } finally { await db.close(); }
 });
@@ -43,7 +44,7 @@ test("{§retention-policy}: a count policy keeps the newest packets of each loop
         const live = await db.test_open_inference_turn.get<{ id: number }>({ loop_id: loopId, sequence: 5 });
         assert.ok(live);
         const pass = await new Retention(db, retentionPolicy({ ...DEFAULTS, PLURNK_SERVICE_RETAIN_PACKET_TURNS: "2" })).run();
-        assert.deepEqual(pass, { retiredPackets: 2, retiredResponses: 0, collectedItems: 0, collectedDerivations: 0 }, "turns 1 and 2 retire; every one of their records is still cited by turns 3 and 4");
+        assert.deepEqual(counts(pass), { retiredPackets: 2, retiredResponses: 0, collectedItems: 0, collectedDerivations: 0 }, "turns 1 and 2 retire; every one of their records is still cited by turns 3 and 4");
         assert.deepEqual(await Promise.all(turns.map(async (id) => (await db.test_turn_sections_count.get<{ n: number }>({ turn_id: id }))!.n)), [0, 0, 1, 1]);
         const bag = await db.test_bag_of_turn.get<{ packet: string | null }>({ id: turns[0]! });
         assert.ok(bag?.packet, "the retired turn keeps its bag: weight, attributions, and any admitted response");
@@ -51,10 +52,10 @@ test("{§retention-policy}: a count policy keeps the newest packets of each loop
         assert.deepEqual(JSON.parse(assembled!.packet).sections, [], "a retired packet reads back with no sections");
 
         const again = await new Retention(db, retentionPolicy({ ...DEFAULTS, PLURNK_SERVICE_RETAIN_PACKET_TURNS: "0" })).run();
-        assert.deepEqual(again, { retiredPackets: 2, retiredResponses: 0, collectedItems: 4, collectedDerivations: 0 }, "keeping none retires the rest; the four records nothing cites now leave");
+        assert.deepEqual(counts(again), { retiredPackets: 2, retiredResponses: 0, collectedItems: 4, collectedDerivations: 0 }, "keeping none retires the rest; the four records nothing cites now leave");
         assert.equal((await db.test_packet_item_count.get<{ n: number }>({}))!.n, 0);
         const keep = await new Retention(db, retentionPolicy({ ...DEFAULTS, PLURNK_SERVICE_RETAIN_PACKET_TURNS: "0", PLURNK_SERVICE_COLLECT_PACKET_ITEMS: "0" })).run();
-        assert.deepEqual(keep, { retiredPackets: 0, retiredResponses: 0, collectedItems: 0, collectedDerivations: 0 }, "the open turn is never retired");
+        assert.deepEqual(counts(keep), { retiredPackets: 0, retiredResponses: 0, collectedItems: 0, collectedDerivations: 0 }, "the open turn is never retired");
     } finally { await db.close(); }
 });
 
@@ -98,7 +99,7 @@ test("{§retention-policy}: an age policy retires by completion time, and a disa
         await db.test_complete_turn_at.run({ id: old, completed_at: "2026-01-01T00:00:00.000Z" });
         const policy = retentionPolicy({ ...DEFAULTS, PLURNK_SERVICE_RETAIN_PACKET_MS: String(7 * 24 * 3_600_000), PLURNK_SERVICE_COLLECT_PACKET_ITEMS: "0" });
         const pass = await new Retention(db, policy).run(Date.parse("2026-09-12T00:00:00.000Z"));
-        assert.deepEqual(pass, { retiredPackets: 1, retiredResponses: 0, collectedItems: 0, collectedDerivations: 0 });
+        assert.deepEqual(counts(pass), { retiredPackets: 1, retiredResponses: 0, collectedItems: 0, collectedDerivations: 0 });
         assert.equal((await db.test_turn_sections_count.get<{ n: number }>({ turn_id: old }))!.n, 0);
         assert.equal((await db.test_turn_sections_count.get<{ n: number }>({ turn_id: fresh }))!.n, 1);
         assert.equal((await db.test_packet_item_count.get<{ n: number }>({}))!.n, 2, "the collector is off: the shared record and the fresh record stay, nothing else existed");
@@ -126,5 +127,28 @@ test("{§retention-policy}: a superseded derivation and its full-text shadow are
         assert.equal((await db.test_derivation_state_counts.get<{ complete: number }>({}))!.complete, 1);
         assert.equal((await db.test_fts_count.get<{ n: number }>({}))!.n, 1, "its full-text row left with it through derivations_delete_fts");
         assert.deepEqual(await db.test_fts_search.all({ query: "second", workspace_id: workspaceId }), [{ pathname: "/notes.md" }], "the cited edition still searches");
+    } finally { await db.close(); }
+});
+
+test("{§db-space-reclamation}: the daemon converts its database to incremental auto-vacuum once, and every pass returns freed pages", async () => {
+    const db = await openMigrated();
+    try {
+        const retention = new Retention(db, retentionPolicy(DEFAULTS));
+        const first = await retention.prepareStorage();
+        assert.equal(first.converted, true, "a fresh SQLite file starts with auto_vacuum off");
+        assert.deepEqual(await db.retention_auto_vacuum_mode.get({}), { auto_vacuum: 2 });
+        assert.equal((await retention.prepareStorage()).converted, false, "conversion happens once");
+
+        const workspaceId = await insertWorkspace(db, `reclaim-${crypto.randomUUID()}`);
+        const entries: number[] = [];
+        for (let index = 0; index < 40; index += 1) {
+            entries.push(await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: `/bulk-${index}.md`, channel: "body", content: "x".repeat(50_000), mimetype: "text/markdown" }));
+        }
+        for (const entryId of entries) await db.crud_delete_entry.run({ entry_id: entryId });
+        const freed = await db.retention_page_counts.get<{ pages: number; free: number }>({});
+        assert.ok((freed?.free ?? 0) > 0, "deleting the bodies leaves free pages in the file");
+        const pass = await retention.run();
+        assert.equal(pass.reclaimedPages, freed?.free, "the pass returns every freed page");
+        assert.equal((await db.retention_page_counts.get<{ pages: number; free: number }>({}))?.free, 0);
     } finally { await db.close(); }
 });

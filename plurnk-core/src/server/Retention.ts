@@ -52,13 +52,36 @@ export default class Retention {
 
     // One pass, in dependency order: compositions and response bodies retire first, then the
     // items and derivations nothing references. Each statement is a no-op under the default policy.
-    async run(now: number = Date.now()): Promise<{ retiredPackets: number; retiredResponses: number; collectedItems: number; collectedDerivations: number }> {
+    // {§db-space-reclamation} — once per open: a database not in incremental auto-vacuum mode is
+    // converted (the mode takes effect through one VACUUM). Runs before any drain, on a quiet writer.
+    async prepareStorage(): Promise<{ converted: boolean; pagesBefore: number; pagesAfter: number }> {
+        const before = await this.#pages();
+        const mode = await this.#db.retention_auto_vacuum_mode.get<{ auto_vacuum: number }>({});
+        if (mode?.auto_vacuum === 2) return { converted: false, pagesBefore: before.pages, pagesAfter: before.pages };
+        await this.#db.retention_set_incremental.run({});
+        await this.#db.retention_vacuum.run({});
+        const after = await this.#pages();
+        return { converted: true, pagesBefore: before.pages, pagesAfter: after.pages };
+    }
+
+    async #pages(): Promise<{ pages: number; free: number }> {
+        const row = await this.#db.retention_page_counts.get<{ pages: number; free: number }>({});
+        if (row === undefined) throw new Error("page counts are unavailable");
+        return row;
+    }
+
+    async run(now: number = Date.now()): Promise<{ retiredPackets: number; retiredResponses: number; collectedItems: number; collectedDerivations: number; reclaimedPages: number }> {
         const { retainPacketTurns, retainPacketMs, retainResponseTurns, retainResponseMs, collectPacketItems, collectDerivations } = this.#policy;
         const packets = await this.#db.retention_retire_packets.run({ keep_turns: retainPacketTurns, keep_ms: retainPacketMs, now_ms: now });
         const responses = await this.#db.retention_retire_responses.run({ keep_turns: retainResponseTurns, keep_ms: retainResponseMs, now_ms: now });
         const items = await this.#db.retention_collect_packet_items.run({ collect: collectPacketItems ? 1 : 0 });
         const derivations = await this.#db.retention_collect_derivations.run({ collect: collectDerivations ? 1 : 0 });
-        return { retiredPackets: packets.changes, retiredResponses: responses.changes, collectedItems: items.changes, collectedDerivations: derivations.changes };
+        // {§db-space-reclamation} — what the pass freed goes back to the OS.
+        const freed = (await this.#pages()).free;
+        // SQLite frees one page per step of this pragma; stepping it to completion frees them all.
+        await this.#db.retention_incremental_vacuum.all({});
+        const reclaimedPages = freed - (await this.#pages()).free;
+        return { retiredPackets: packets.changes, retiredResponses: responses.changes, collectedItems: items.changes, collectedDerivations: derivations.changes, reclaimedPages };
     }
 
     // The cadence: unref'd so an idle daemon still exits; a pass that fails reports through the
