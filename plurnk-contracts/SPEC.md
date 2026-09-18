@@ -560,8 +560,10 @@ may attach one pending event; targets without a wait handler leave bare WAIT
 behavior unchanged. Scope and metadata are discarded without diagnostics,
 including structured scopes. The body, aside, and exact submitted program
 remain intact. WAIT neither creates a schedule nor restricts which ordinary
-events may awaken the loop. Ordinary malformed-header and duplicate-WAIT rules
-still apply.
+events may awaken the loop. A scope slot's content is skipped unread whatever it
+holds (`<sh:///…>` included; #756). Ordinary malformed-header and duplicate-WAIT
+rules still apply: a second WAIT is the signature of a fabricated continuation
+(the model writing further turns past its own park), so the attempt is rejected.
 
 §send-directed-scope A recipient SEND carries an optional numeric scope after
 its target and metadata through to the addressed owner, which assigns its

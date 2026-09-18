@@ -421,6 +421,9 @@ SLOTS_NEXT_OPENER : { this.slotReady && this.openerFollows() }? [ \t]+ { this.in
 SLOTS_WS : [ \t]+ { this.slotReady = true; } -> skip ;
 SLOTS_LPAREN : { this.slotReady }? '(' { this.targetDepth = 0; this.metadataReady = false; } -> type(LPAREN), mode(TARGET) ;
 SLOTS_LBRACKET : { this.slotReady && this.metadataReady }? '[' { this.metadataDepth = 0; } -> type(LBRACKET), mode(METADATA) ;
+// {§send-wait-scope} — whatever a WAIT names in its scope slot is skipped unread, never refused
+// (#756): the park needs no selection. An aside (`<!--`) is not a scope.
+SLOTS_WAIT_SCOPE : { this.slotReady && this.openOp === "WAIT" }? '<' (~[!\r\n>] ~[\r\n>]*)? '>' -> skip ;
 SLOTS_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? TEXT_L_PATTERN -> type(L_MARKER) ;
 SLOTS_L : { this.slotReady }? L_PATTERN -> type(L_MARKER) ;
 // {§combined-anchor-tolerance} — `<@abcde 42>` is the anchor with its displayed line number; the builder drops the number.

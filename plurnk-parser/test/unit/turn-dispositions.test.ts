@@ -67,3 +67,18 @@ test("{§interstitial-fence} an unlabeled fence between operations does not hide
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
 });
+
+test("{§send-wait-scope} any WAIT scope is skipped unread; the WAIT keeps its target and aside (#756)", () => {
+    for (const [source, aside] of [
+        [PlurnkParser.frame("WAIT <sh:///468a112b> <!-- waiting for core test suite to finish -->", null), "waiting for core test suite to finish"],
+        [PlurnkParser.frame("WAIT <> <5,1>", null), null],
+        [PlurnkParser.frame("WAIT <result range>", null), null],
+    ] as const) {
+        const result = PlurnkParser.parse(source);
+        assert.deepEqual(result.items.filter((item) => item.kind === "error"), [], source);
+        const waits = result.items.flatMap((item) => item.kind === "statement" && item.statement.op === "WAIT" ? [item.statement] : []);
+        assert.equal(waits.length, 1, source);
+        assert.equal(waits[0].aside, aside, source);
+        assert.equal(waits[0].lineMarker, null, source);
+    }
+});

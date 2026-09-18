@@ -215,10 +215,12 @@ test("{§error-shape} scope diagnostics do not borrow another operation's contra
     }
     assert.equal(firstError(section("SEND", " (worker://peer) <later>")).message,
         "invalid SEND scope \"<later>\"; use a numeric scope supported by the recipient");
-    for (const op of ["BARE", "WORK", "FORK", "WAIT"] as const) {
+    for (const op of ["BARE", "WORK", "FORK"] as const) {
         assert.equal(firstError(section(op, " <result range>")).message,
             `invalid ${op} scope "<result range>"; this operation takes no scope`);
     }
+    // {§send-wait-scope} — a WAIT scope is skipped unread, never refused (#756).
+    assert.deepEqual(PlurnkParser.parse(section("WAIT", " <result range>")).items.filter((item) => item.kind === "error"), []);
     assert.equal(firstError(section("FIND", " (src/*.ts) <result range>", undefined)).message,
         "invalid FIND scope \"<result range>\"; use numeric result positions, e.g. `<1,16>`");
 });
