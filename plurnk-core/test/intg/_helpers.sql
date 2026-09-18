@@ -843,3 +843,6 @@ ORDER BY id DESC LIMIT 1;
 
 -- PREP: test_content_store_count
 SELECT COUNT(*) AS n, SUM(length(content)) AS bytes FROM contents;
+
+-- PREP: test_loop_termination_events
+SELECT rx FROM ambient_events WHERE kind = 'loop_termination' AND recipient_worker_id = $recipient_worker_id ORDER BY id;

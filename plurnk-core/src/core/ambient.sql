@@ -72,7 +72,12 @@ BEGIN
     SELECT w.workspace_id, NEW.worker_id, w.parent_worker_id,
            0, 'loop_termination', NEW.id, NULL,
            'READ', 'loop', w.name, '/' || NEW.sequence, NULL,
-           '', 'text/plain', NEW.terminal_result, 'application/json',
+           '', 'text/plain',
+           -- {§loop-answer} a concluded child points its parent at what it said.
+           CASE WHEN json_extract(NEW.terminal_result, '$.status') BETWEEN 200 AND 299
+                THEN json_set(NEW.terminal_result, '$.answer', 'ops://' || w.name || '/' || NEW.sequence)
+                ELSE NEW.terminal_result END,
+           'application/json',
            json_extract(NEW.terminal_result, '$.status'), 'resolved', NEW.terminated_by,
            '{}'
     FROM workers w

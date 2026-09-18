@@ -69,6 +69,7 @@ export default class AdmittedTurnExecutor {
         failOnOperationError = false,
         recoverableParseErrors = [],
         emptyTurn = false,
+        proseAnswer = null,
         bare,
         signal,
         onDispatch,
@@ -87,6 +88,7 @@ export default class AdmittedTurnExecutor {
         failOnOperationError?: boolean;
         recoverableParseErrors?: readonly ParseErrorInfo[];
         emptyTurn?: boolean;
+        proseAnswer?: PlurnkStatement | null;
         bare?: BareExecution;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
@@ -264,6 +266,7 @@ export default class AdmittedTurnExecutor {
                             origin,
                             logSelectionMaxId,
                             editSequence,
+                            ...(statement === proseAnswer ? { proseAnswer: true } : {}),
                             onDispatch,
                             onSettled,
                         });

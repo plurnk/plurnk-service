@@ -2679,7 +2679,16 @@ accounting and model-visible failure evidence remain separately owned by
   answers the open messages, reaches clients and a parent exactly as a SEND does, and meets the
   completion barrier as a SEND does ({§completion-joins-live-work},
   {§completion-defers-to-results}). Reasoning NOTEs ride with it. The model is taught
-  "respond without performing any OPs" and is never taught the SEND.
+  "respond without performing any OPs" and is never taught the SEND. Its row is stored as the
+  SEND that delivers it (reply accounting, delivery and clients read SEND rows) but carries
+  `attrs.answer = "prose"` and `resource: ops://<worker>/<loop>`, and is addressed and rendered
+  under the leaf `answer` (`log:///1/2/2/answer`), never as a SEND the model did not write.
+- §loop-answer **A loop's address is what it said.** READ `ops://<worker>/<loop>` resolves to
+  the latest reply the loop gave to the message that started it: a prose conclusion's text or
+  the body of a SEND that targeted that message. A running loop without one is 425; a loop that
+  ended without one is its terminal problem (404 when it ended 2xx). `ops://<worker>/<loop>/<turn>`
+  remains that turn's emission. A concluded child's `loop_termination` row to its parent carries
+  `answer: ops://<child>/<loop>` beside its status. Witness: `test/intg/loop-answer.test.ts`.
 - §empty-turn **A response with no operation that is not an answer is a turn, not a retry.**
   When the parser finds no operation and no other hard error, and the response is not an
   answer under {§prose-conclusion} — an operation attempt, prose cut at the output allowance,

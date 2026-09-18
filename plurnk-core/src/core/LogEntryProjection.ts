@@ -33,6 +33,9 @@ export default class LogEntryProjection {
         const op = LogEntryProjection.op(row);
         // An execution row's leaf is its runtime: the op as written.
         if (isExecutionOp(op)) return op;
+        // {§loop-answer} a prose answer is stored as the SEND that delivers it, but it is not a SEND
+        // the model wrote: it is addressed as an answer.
+        if (op === "SEND" && (LogEntryProjection.#decode(row.attrs, "attrs") as { answer?: unknown } | null)?.answer === "prose") return "answer";
         if (op !== null) return op;
         LogBody.actionlessKind({ op, attrs: row.attrs });
         return "attempt";

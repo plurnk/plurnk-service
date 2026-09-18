@@ -21,6 +21,19 @@ WHERE w.workspace_id = $workspace_id AND w.name = $worker_name
   AND l.sequence = $loop_seq AND t.sequence = $turn_seq
   AND ($kind != 'note' OR s.turn_id IS NOT NULL);
 
+-- PREP: turn_source_loop_answer
+-- {§loop-answer} A loop's answer is the latest reply its own loop gave to its originating message
+-- (ordinal 1): a prose conclusion or a SEND that targeted it. The loop's status says whether an
+-- absent answer is still to come.
+SELECT l.status, l.terminal_result,
+       (SELECT r.content
+        FROM log_responses r, json_each(r.rx, '$.answers') a
+        WHERE r.loop_id = l.id AND a.value = m.path
+        ORDER BY r.id DESC LIMIT 1) AS answer
+FROM loops l JOIN workers w ON w.id = l.worker_id
+LEFT JOIN message_sources m ON m.loop_id = l.id AND m.ordinal = 1
+WHERE w.workspace_id = $workspace_id AND w.name = $worker_name AND l.sequence = $loop_seq;
+
 -- PREP: turn_source_candidates
 SELECT s.turn_id, s.kind, s.sequence, w.name AS authority,
        '/' || l.sequence || '/' || t.sequence || CASE WHEN s.kind = 'note' THEN '/' || s.sequence ELSE '' END AS pathname,

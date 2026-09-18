@@ -320,6 +320,7 @@ export class SqlRiteSync {
 	engine_worker_has_inference_history: SqlRiteSyncPreparedStatements;
 	turn_source_record: SqlRiteSyncPreparedStatements;
 	turn_source_read: SqlRiteSyncPreparedStatements;
+	turn_source_loop_answer: SqlRiteSyncPreparedStatements;
 	turn_source_candidates: SqlRiteSyncPreparedStatements;
 	turn_source_derivations: SqlRiteSyncPreparedStatements;
 	turn_source_attach_derivation: SqlRiteSyncPreparedStatements;
@@ -611,6 +612,7 @@ export default class SqlRite {
 	engine_worker_has_inference_history: SqlRitePreparedStatements;
 	turn_source_record: SqlRitePreparedStatements;
 	turn_source_read: SqlRitePreparedStatements;
+	turn_source_loop_answer: SqlRitePreparedStatements;
 	turn_source_candidates: SqlRitePreparedStatements;
 	turn_source_derivations: SqlRitePreparedStatements;
 	turn_source_attach_derivation: SqlRitePreparedStatements;

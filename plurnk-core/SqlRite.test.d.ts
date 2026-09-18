@@ -328,6 +328,7 @@ export class SqlRiteSync {
 	engine_worker_has_inference_history: SqlRiteSyncPreparedStatements;
 	turn_source_record: SqlRiteSyncPreparedStatements;
 	turn_source_read: SqlRiteSyncPreparedStatements;
+	turn_source_loop_answer: SqlRiteSyncPreparedStatements;
 	turn_source_candidates: SqlRiteSyncPreparedStatements;
 	turn_source_derivations: SqlRiteSyncPreparedStatements;
 	turn_source_attach_derivation: SqlRiteSyncPreparedStatements;
@@ -514,6 +515,7 @@ export class SqlRiteSync {
 	test_strike_streak: SqlRiteSyncPreparedStatements;
 	test_last_loop_reply: SqlRiteSyncPreparedStatements;
 	test_content_store_count: SqlRiteSyncPreparedStatements;
+	test_loop_termination_events: SqlRiteSyncPreparedStatements;
 	test_context_insert_turn: SqlRiteSyncPreparedStatements;
 	test_context_insert_failed_model_call: SqlRiteSyncPreparedStatements;
 	test_context_fail_model_call: SqlRiteSyncPreparedStatements;
@@ -912,6 +914,7 @@ export default class SqlRite {
 	engine_worker_has_inference_history: SqlRitePreparedStatements;
 	turn_source_record: SqlRitePreparedStatements;
 	turn_source_read: SqlRitePreparedStatements;
+	turn_source_loop_answer: SqlRitePreparedStatements;
 	turn_source_candidates: SqlRitePreparedStatements;
 	turn_source_derivations: SqlRitePreparedStatements;
 	turn_source_attach_derivation: SqlRitePreparedStatements;
@@ -1098,6 +1101,7 @@ export default class SqlRite {
 	test_strike_streak: SqlRitePreparedStatements;
 	test_last_loop_reply: SqlRitePreparedStatements;
 	test_content_store_count: SqlRitePreparedStatements;
+	test_loop_termination_events: SqlRitePreparedStatements;
 	test_context_insert_turn: SqlRitePreparedStatements;
 	test_context_insert_failed_model_call: SqlRitePreparedStatements;
 	test_context_fail_model_call: SqlRitePreparedStatements;

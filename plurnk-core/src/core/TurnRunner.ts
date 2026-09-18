@@ -147,6 +147,8 @@ type SplitProviderResponse = {
     parseNotices: Notice[];
     emissionValid: boolean;
     emptyTurn: boolean;
+    // {§prose-conclusion} the targetless SEND admitted for a prose answer, or null.
+    proseAnswer: PlurnkStatement | null;
 };
 
 type MaterializedModelRequest = {
@@ -1695,6 +1697,7 @@ export default class TurnRunner {
             maxCommands,
             recoverableParseErrors: split.recoverableParseErrors,
             emptyTurn: split.emptyTurn,
+            proseAnswer: split.proseAnswer,
             bare: {
                 provider: childProvider,
                 loopSequence: request.loopSeq,
@@ -1794,9 +1797,12 @@ export default class TurnRunner {
             && assistant.finishReason !== "length"
             && parseErrors.every((error) => error.message === PlurnkParser.NO_VALID_OPERATION)
             && PlurnkParser.operationAttempt(assistant.content, executors) === null;
-        if (concludes) {
+        const proseAnswer = concludes
+            ? { op: "SEND", aside: null, target: null, metadata: null, lineMarker: null, body: { raw: prose, json: null }, position: { line: 1, column: 0 } } as PlurnkStatement
+            : null;
+        if (proseAnswer !== null) {
             parseErrors.length = 0;
-            ops.push({ op: "SEND", aside: null, target: null, metadata: null, lineMarker: null, body: { raw: prose, json: null }, position: { line: 1, column: 0 } } as PlurnkStatement);
+            ops.push(proseAnswer);
         }
         const reasoning = assistant.reasoning ?? null;
         const notes = reasoning === null ? [] : PlurnkParser.parseReasoningNotes(reasoning);
@@ -1838,6 +1844,7 @@ export default class TurnRunner {
             parseErrors,
             recoverableParseErrors: emissionValid && !emptyTurn ? recoverableParseErrors : [],
             emptyTurn,
+            proseAnswer,
             parseNotices,
             // The ANTLR model-turn parser is authoritative. At least one source
             // operation is required; lifecycle omission continues silently. Bounded

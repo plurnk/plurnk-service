@@ -2,6 +2,7 @@ import { PathSyntax, type FindStatement, type ParsedPath, type UrlPath } from "@
 import type { SchemeManifest } from "@plurnk/plurnk-schemes";
 import { CoreSchemeAdapterBase, type CoreRepresentationProvider, type CoreRepresentationResolution, type CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results from "../core/results.ts";
+import type { Db } from "../core/Db.ts";
 import { contentWeight } from "../core/content-weight.ts";
 import LogVisibility from "../core/LogVisibility.ts";
 import Matcher, { type CandidateMatch } from "../content/matcher.ts";
@@ -43,6 +44,8 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
     async resolveCoreRepresentation(target: ParsedPath | null, context: CoreSchemeCallContext): Promise<CoreRepresentationResolution> {
         const { db, workspaceId } = this.coreContext(context);
         const pathname = target?.kind === "url" ? target.pathname : target?.raw;
+        const loop = this.#kind === "ops" ? /^\/(\d+)\/?$/.exec(pathname ?? "") : null;
+        if (loop !== null && this.#named(target)) return await this.#answer(target, Number(loop[1]), db, workspaceId);
         const coordinate = (this.#kind === "note" ? /^\/(\d+)\/(\d+)\/(\d+)\/?$/ : /^\/(\d+)\/(\d+)\/?$/).exec(pathname ?? "");
         if (!this.#named(target) || coordinate === null) return { result: this.#failure(
             400, "coordinate-malformed", `Use ${this.#kind}://<worker>/<loop>/<turn>${this.#kind === "note" ? "/<item>" : ""}, without userinfo, a port, or a query.`,
@@ -58,6 +61,28 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
         return {
             identity: renderAddress({ scheme: this.#kind, authority: target.hostname, pathname: `/${coordinate.slice(1).join("/")}` }),
             representation: { channels: { body: { content: row.content ?? "", mimetype: this.#mimetype, state: "static" } } },
+        };
+    }
+
+    // {§loop-answer} ops://<worker>/<loop> is what the loop said: the latest reply to the message
+    // that started it. Still running without one is 425; ended without one is the loop's outcome.
+    async #answer(target: UrlPath & { hostname: string }, loopSeq: number, db: Db, workspaceId: number): Promise<CoreRepresentationResolution> {
+        const row = await db.turn_source_loop_answer.get<{ status: number; terminal_result: string | null; answer: string | null }>({
+            workspace_id: workspaceId, worker_name: target.hostname, loop_seq: loopSeq,
+        });
+        if (row === undefined) return { result: this.#failure(404, "entry-not-found", `No loop exists at ${target.raw}.`) };
+        if (row.answer === null && [100, 102, 202].includes(row.status)) {
+            return { result: this.#failure(425, "loop-running", `${target.raw} has not answered yet; its loop is still running.`) };
+        }
+        if (row.answer === null) {
+            const problem = row.terminal_result === null ? null : (JSON.parse(row.terminal_result) as { problem?: { detail?: string; title?: string } }).problem;
+            return { result: row.status >= 400
+                ? this.#failure(row.status, "loop-unanswered", problem?.detail ?? problem?.title ?? `${target.raw} ended with status ${row.status} and no answer.`)
+                : this.#failure(404, "loop-unanswered", `${target.raw} ended without answering the message that started it.`) };
+        }
+        return {
+            identity: renderAddress({ scheme: this.#kind, authority: target.hostname, pathname: `/${loopSeq}` }),
+            representation: { channels: { body: { content: row.answer, mimetype: "text/markdown", state: "static" } } },
         };
     }
 

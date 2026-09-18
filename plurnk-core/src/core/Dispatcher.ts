@@ -65,6 +65,8 @@ export type DispatchContext = {
     // execution. Direct single-operation dispatch captures its own boundary.
     logSelectionMaxId?: number;
     editSequence?: EditSequence;
+    // {§prose-conclusion} this targetless SEND is the model's prose answer, not a SEND it wrote.
+    proseAnswer?: boolean;
     // Durable identity is available before a proposal can be resolved; the
     // terminal row becomes externally visible only after that proposal settles.
     onDispatch?: (logEntryId: number) => void;
@@ -535,6 +537,7 @@ export default class Dispatcher {
                     result = await this.#resourceMutations.edit(statement, schemeCtx, context.editSequence);
                 } else if (statement.op === "SEND" && statement.target === null) {
                     result = await this.#respond(statement, schemeCtx, origin, workerId, loopId);
+                    if (context.proseAnswer === true && result.status === 200) result = await this.#answered(result, workerId, loopId);
                 } else if (statement.op === "NOTE") {
                     await Turn.recordSource(this.#db, turnId, "note", statement.body ?? "", { sequence });
                     const coordinate = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({ loop_id: loopId, turn_id: turnId });
@@ -1215,6 +1218,15 @@ export default class Dispatcher {
         return result;
     }
 
+
+    // {§loop-answer} a prose answer's row names where the answer lives, ops://<worker>/<loop>, and
+    // renders under its own leaf ({§log-coordinate-hierarchy}) rather than as a SEND.
+    async #answered(result: DispatchResult, workerId: number, loopId: number): Promise<DispatchResult> {
+        const loop = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
+        if (loop === undefined) throw new Error(`prose answer has no loop sequence for loop ${loopId}`);
+        const resource = renderAddress({ scheme: "ops", authority: await WorkerName.forId(this.#db, workerId), pathname: `/${loop.sequence}` });
+        return { ...result, resource, attrs: { ...(result.attrs ?? {}), answer: "prose" } };
+    }
 
     // {§send-response-receipt} {§send-looks-like-operation}
     async #respond(statement: SendStatement, schemeCtx: PlurnkSchemeContext, origin: WriterTier, workerId: number, loopId: number): Promise<DispatchResult> {
