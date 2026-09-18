@@ -150,14 +150,14 @@ test("Log.read: an exact /OP delimiter must agree with the addressed row", async
 test("{§log-coordinate-hierarchy}: rejected attempts retain exact canonical leaves and shorthand addressing", async () => {
     const { db, workerId, loopId, turnId, workspaceId } = await setup();
     try {
-        await insertActionless(db, { workerId, loopId, turnId }, 1, "emissionAttempt", "```NOTE\nContinue the task.\n```");
+        await insertActionless(db, { workerId, loopId, turnId }, 1, "emissionAttempt", "````NOTE\nContinue the task.\n````");
         await insertActionless(db, { workerId, loopId, turnId }, 2, "emissionAttempt", "malformed response");
         const ctx = makeSchemeCtx({ db, workspaceId, workerId });
 
         const ops = await readLog(readStmt(urlPath("log", "/1/1/1/attempt")), ctx);
         const attempt = await readLog(readStmt(urlPath("log", "/1/1/2/attempt")), ctx);
         assert.equal(ops.status, 200);
-        assert.match(ops.content ?? "", /```NOTE/);
+        assert.match(ops.content ?? "", /````NOTE/);
         assert.equal(attempt.status, 200);
         assert.equal(attempt.content, "malformed response");
 

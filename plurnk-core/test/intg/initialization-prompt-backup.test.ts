@@ -4,7 +4,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string | null; pathname: string; scheme: string | null; origin: string; status_rx: number };
-const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\ndone\n```", 50)] });
+const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("````SEND\ndone\n````", 50)] });
 
 // {§worker-initialization-entry} — the retained message needs no scratch archive.
 test("{§worker-initialization-entry}: turn 0 does not copy the retained message into scratch", async () => {

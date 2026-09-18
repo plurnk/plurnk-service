@@ -212,9 +212,9 @@ test("{§functionality-coordinator} registration, client lifecycle, documents, p
     const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>): Promise<T> =>
         daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId)) as Promise<T>;
     const exec = (tag: string, workerId = client) =>
-        daemon.dispatchAsClient({ workspaceId, workerId, statement: parseOne(`\`\`\`${tag}
+        daemon.dispatchAsClient({ workspaceId, workerId, statement: parseOne(`\`\`\`\`${tag}
 fixture
-\`\`\``) });
+\`\`\`\``) });
     const states = async () =>
         (await invoke<{ definitions: Array<{ alias: string; origin: string; state: string }> }>("list", {})).definitions
             .map(({ alias, origin, state }) => `${alias}:${origin}:${state}`);
@@ -280,7 +280,7 @@ fixture
 
         // Family documents reconcile with the snapshot under the generated subtree.
         await invoke("add", { alias: "docy", definition: { kind: "doc" } });
-        await daemon.look({ workspaceId, workerId: model, statement: parseOne("```READ (worker:///_plurnk/fx/docy.md)```") });
+        await daemon.look({ workspaceId, workerId: model, statement: parseOne("````READ (worker:///_plurnk/fx/docy.md)````") });
         const document = await db.test_entries_by_coordinate_workspaces.all<{ workspace_id: number; content: string }>({ scheme: "worker", authority: "", pathname: "/_plurnk/fx/docy.md" });
         assert.deepEqual(document.map(({ workspace_id }) => workspace_id), [workspaceId], "both active readers use one shared family document");
         for (const { content } of document) assert.match(content, /fixture document/);
@@ -317,7 +317,7 @@ test("{§functionality-publication} a failed publication restores state, runtime
     const workerId = await insertWorker(db, workspaceId, null, "reader", "client");
     const daemon = await boot(db, []);
     t.after(async () => { await daemon.stop(); await db.close(); });
-    await daemon.look({ workspaceId, workerId, statement: parseOne("```READ (worker:///_plurnk/plurnk/fx.md) <1,-1>```") });
+    await daemon.look({ workspaceId, workerId, statement: parseOne("````READ (worker:///_plurnk/plurnk/fx.md) <1,-1>````") });
     const materialize = LoopDocs.materialize;
     const cause = new Error("fixture document publication failed");
     let failed = false;
@@ -355,7 +355,7 @@ test("{§functionality-publication} a management stream reports publication refu
         if (method === "loop/proposal") proposal.resolve((params as { logEntryId: number }).logEntryId);
     });
     t.after(unsubscribe);
-    const pending = daemon.dispatchAsClient({ workspaceId, workerId, statement: parseOne("```fx (add)\n{\"alias\":\"candidate\",\"definition\":{\"kind\":\"ok\"}}\n```") });
+    const pending = daemon.dispatchAsClient({ workspaceId, workerId, statement: parseOne("````fx (add)\n{\"alias\":\"candidate\",\"definition\":{\"kind\":\"ok\"}}\n````") });
     await daemon.resolveProposal(await proposal.promise, { decision: "accept" });
     await pending;
     assert.deepEqual(await awaitExecOutcome(db, { workspaceId, scheme: "fx" }), refused,
@@ -425,7 +425,7 @@ test("{§functionality-model-mutation} execution verbs are the same owner: read 
     };
     try {
         // read verbs run ungated.
-        const listed = await operate("```fx (list)```");
+        const listed = await operate("````fx (list)````");
         assert.equal(listed.status, 200, "list is a read effect and starts ungated");
         assert.equal(proposals.length, 0, "no proposal was raised for a read verb");
         const listing = await verbResult();
@@ -433,30 +433,30 @@ test("{§functionality-model-mutation} execution verbs are the same owner: read 
 
         // A host verb proposes; acceptance runs the same coordinator method and
         // the capability is live before the next operation.
-        const added = await accepted("```fx (add)\n{\"alias\":\"viaexec\",\"definition\":{\"kind\":\"ok\"}}\n```", "accept");
+        const added = await accepted("````fx (add)\n{\"alias\":\"viaexec\",\"definition\":{\"kind\":\"ok\"}}\n````", "accept");
         // An accepted settlement replaces the 202 with 200 ({§proposal-accept-applies});
         // the verb's own 201 and outcome ride in the results channel.
         assert.equal(added.status, 200, "the accepted add settled inside the turn");
-        assert.equal((await operate("```viaexec\nfixture\n```")).status, 200, "publication settled at the turn boundary, before the next operation");
+        assert.equal((await operate("````viaexec\nfixture\n````")).status, 200, "publication settled at the turn boundary, before the next operation");
         assert.deepEqual((await states()).map(({ alias, state }) => `${alias}:${state}`), ["svc:active", "viaexec:active"]);
 
         // An operation's failed preparation publishes enabled-but-unavailable with its Problem.
-        const down = await accepted("```fx (add)\n{\"alias\":\"down\",\"definition\":{\"kind\":\"fail\"}}\n```", "accept");
+        const down = await accepted("````fx (add)\n{\"alias\":\"down\",\"definition\":{\"kind\":\"fail\"}}\n````", "accept");
         assert.equal(down.status, 200);
-        await operate("```fx (list)```");
+        await operate("````fx (list)````");
         const downState = (await states()).find(({ alias }) => alias === "down");
         assert.equal(downState?.state, "unavailable");
         assert.equal(downState?.problem?.status, 502, "the enabled definition keeps its exact Problem");
 
         // Rejection performs nothing: no preparation, no state.
         log.length = 0;
-        const rejected = await accepted("```fx (add)\n{\"alias\":\"nope\",\"definition\":{\"kind\":\"ok\"}}\n```", "reject");
+        const rejected = await accepted("````fx (add)\n{\"alias\":\"nope\",\"definition\":{\"kind\":\"ok\"}}\n````", "reject");
         assert.equal(rejected.status, 400);
         assert.equal(log.some((entry) => entry.startsWith("prepare:") && entry.includes("nope")), false, "a rejected proposal never prepares");
         assert.equal((await states()).some(({ alias }) => alias === "nope"), false);
 
         // An unregistered verb is refused by the family registry (body refusals are the manager's own unit contract).
-        assert.equal((await operate("```fx (destroy)```")).status, 404, "an unregistered verb is refused by the family registry with the verb list");
+        assert.equal((await operate("````fx (destroy)````")).status, 404, "an unregistered verb is refused by the family registry with the verb list");
 
     } finally {
         unsubscribe();

@@ -25,10 +25,10 @@ test("{§op-look}: a look reads as the perspective worker and leaves the convers
             const loopsBefore = (await db.test_count_loops_by_worker.get<{ n: number }>({ worker_id: model }))!.n;
             const segmentsBefore = (await db.test_count_loops_by_worker.get<{ n: number }>({ worker_id: clientWorker.id }))!.n;
 
-            const asConnection = await daemon.look({ workspaceId: created.id, workerId: clientWorker.id, statement: parseOne(`\`\`\`READ (${coordinate})\`\`\``) });
+            const asConnection = await daemon.look({ workspaceId: created.id, workerId: clientWorker.id, statement: parseOne(`\`\`\`\`READ (${coordinate})\`\`\`\``) });
             assert.equal(asConnection.status, 404, `as the connection's own worker the coordinate names nothing: ${JSON.stringify(asConnection)}`);
 
-            const asConversation = await daemon.look({ workspaceId: created.id, workerId: clientWorker.id, perspectiveWorkerId: model, statement: parseOne(`\`\`\`READ (${coordinate})\`\`\``) });
+            const asConversation = await daemon.look({ workspaceId: created.id, workerId: clientWorker.id, perspectiveWorkerId: model, statement: parseOne(`\`\`\`\`READ (${coordinate})\`\`\`\``) });
             assert.equal(asConversation.status, 200, `as the conversation: ${JSON.stringify(asConversation)}`);
             assert.equal(typeof asConversation.content, "string", "the look reads the row as the model would");
 
@@ -38,7 +38,7 @@ test("{§op-look}: a look reads as the perspective worker and leaves the convers
             assert.equal(status?.lifecycle, "completed", "the conversation's lifecycle is its own loop's, untouched by inspection");
 
             await assert.rejects(
-                () => daemon.look({ workspaceId: created.id, workerId: clientWorker.id, perspectiveWorkerId: 999999, statement: parseOne("```READ (worker:///x)```") }),
+                () => daemon.look({ workspaceId: created.id, workerId: clientWorker.id, perspectiveWorkerId: 999999, statement: parseOne("````READ (worker:///x)````") }),
                 /does not exist/,
                 "a perspective must be a workspace worker",
             );

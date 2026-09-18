@@ -1293,7 +1293,7 @@ test("log render: EDIT@200 with no tx → meta line only (defensive — tx is al
         }],
     };
     const out = PacketWire.renderLog(system.log, tok);
-    assert.doesNotMatch(out, /```EDIT \(/);
+    assert.doesNotMatch(out, /````EDIT \(/);
 });
 
 test("notice render: message and content-offset share one bounded line, no snippet fence", () => {
@@ -1367,7 +1367,7 @@ test("a suppressed program READ receipt keeps its address and readable extent", 
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "model", op: "READ", status: 200, initial_folded: [[1, -1]],
         target: { scheme: "ops", hostname: "alice", pathname: "/1/1" },
-        rx: { content: "\n```NOTE\nInitialized\n```", mimetype: "text/vnd.plurnk" },
+        rx: { content: "\n````NOTE\nInitialized\n````", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /^### log:\/\/\/1\/1\/1\/READ\n\{"path":"ops:\/\/alice\/1\/1",/, "the READ receipt identifies the immutable source");
     assert.doesNotMatch(out, /"kind":/, "the canonical path does not duplicate source identity as metadata");
@@ -1392,12 +1392,12 @@ test("a program READ presents exact source, line-numbered", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "_plurnk", op: "READ", status: 200, folded: [],
         target: { scheme: "ops", hostname: "alice", pathname: "/1/1" },
-        rx: { content: "\n```NOTE\nInitialized\n```", mimetype: "text/vnd.plurnk" },
+        rx: { content: "\n````NOTE\nInitialized\n````", mimetype: "text/vnd.plurnk" },
     }], tok);
     assert.match(out, /^### log:\/\/\/1\/1\/1\/READ$/m, "the heading owns the canonical address; lines counts the navigable body");
     assert.doesNotMatch(out, /"kind":/, "the open source uses the same canonical leaf without duplicate metadata");
     assert.match(out, /"origin":"_plurnk"/, "the item identifies its actual producer");
-    assert.match(out, /1:\n2:```NOTE\n3:Initialized\n4:```/, "the entire source, including the initial blank line, remains line-addressable");
+    assert.match(out, /1:\n2:````NOTE\n3:Initialized\n4:````/, "the entire source, including the initial blank line, remains line-addressable");
 });
 
 test("{§body-projection}: scoped program READs bypass previews, not curation or output withholding", () => {
@@ -1443,10 +1443,10 @@ test("initialization renders a program READ alongside its other real operation o
         {
             coordinate: "1/1/3", origin: "_plurnk", op: "READ", status: 200, folded: [],
             tags: ["_plurnk", "init"], target: { scheme: "ops", hostname: "alice", pathname: "/1/1" },
-            rx: { content: `\`\`\`FIND (*)\`\`\`
-\`\`\`NOTE
+            rx: { content: `\`\`\`\`FIND (*)\`\`\`\`
+\`\`\`\`NOTE
 Address the message.
-\`\`\``, mimetype: "text/vnd.plurnk" },
+\`\`\`\``, mimetype: "text/vnd.plurnk" },
         },
     ], tok);
     assert.match(out, /^### log:\/\/\/1\/1\/1\/FIND$/m, "the survey has an operation coordinate");
@@ -1462,7 +1462,7 @@ test("{§log-wire-format}: the Log is standard Markdown framing plus strict one-
         { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, initial_folded: [[1, -1]], target: { scheme: null, pathname: "/a.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } }, // suppressed: body hidden
         { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: [], target: { scheme: null, pathname: "/b.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } }, // visible: coordinate lines
     ], tok);
-    assert.doesNotMatch(out, /```|"logPath"|"body"/, "the projection needs no fence or duplicate identity/body fields");
+    assert.doesNotMatch(out, /````|"logPath"|"body"/, "the projection needs no fence or duplicate identity/body fields");
     const arr = parseLogRecords(out) as Array<{ body?: string; logTokens: number }>;
     assert.deepEqual(arr.map((row) => "body" in row), [false, false, true], "coordinate-line presence determines what is in context");
     assert.doesNotMatch(out, /tokensBody|"display"/);

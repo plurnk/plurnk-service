@@ -32,7 +32,7 @@ test("{§turn-source-resources}: initialization reads its real program; later so
             { assistant: { content: program("Continue."), reasoning: null } },
         ] });
         const first = await engine.runTurn({ ...context, provider: model, messages: [] });
-        const read = (target: string, scope = "<1,-1>") => engine.look({ ...context, statement: statement(`\`\`\`READ (${target}) ${scope}\`\`\``) });
+        const read = (target: string, scope = "<1,-1>") => engine.look({ ...context, statement: statement(`\`\`\`\`READ (${target}) ${scope}\`\`\`\``) });
         const initialization = await read("ops://analyst/1/1");
         assert.equal(initialization.status, 200);
         assert.ok("content" in initialization && typeof initialization.content === "string");
@@ -63,7 +63,7 @@ test("{§turn-source-resources}: initialization reads its real program; later so
         const rows = await db.test_log_entries_by_worker.all<{ op: string | null }>({ worker_id: workerId });
         assert.ok(!rows.some(({ op }) => op === null), "admitted programs produce no actionless log artifacts");
         const killed = await engine.dispatch({ ...context, turnId: next.turnId, sequence: 50, origin: "model",
-            statement: statement("```KILL (log:///**/READ)```"),
+            statement: statement("````KILL (log:///**/READ)````"),
         });
         assert.ok(killed.status < 400);
         for (const [scheme, expected] of [["ops", source], ["reasoning", reasoning]]) {
@@ -73,7 +73,7 @@ test("{§turn-source-resources}: initialization reads its real program; later so
         }
         const child = await Fork.fork(db, workerId, "branch");
         for (const [scheme, expected] of [["ops", source], ["reasoning", reasoning]]) {
-            const inherited = await engine.look({ ...context, workerId: child, statement: statement(`\`\`\`READ (${scheme}://branch/${coordinate}) <1,-1>\`\`\``) });
+            const inherited = await engine.look({ ...context, workerId: child, statement: statement(`\`\`\`\`READ (${scheme}://branch/${coordinate}) <1,-1>\`\`\`\``) });
             assert.equal(inherited.status, 200);
             assert.ok("content" in inherited);
             assert.equal(inherited.content, expected, "forked history keeps the same local coordinate");
@@ -120,24 +120,24 @@ test("{§turn-source-resources}: every producer reads the same named sources wit
             const dispatch = (source: string) => engine.dispatch({ ...context, turnId: turn.id, sequence: sequence++, origin, statement: statement(source) });
             for (const kind of ["ops", "reasoning"] as const) {
                 const target = `${kind}://analyst/1/${sourceTurn.sequence}`;
-                const read = await dispatch(`\`\`\`READ (${target}) <1,-1>\`\`\``);
+                const read = await dispatch(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\``);
                 assert.equal(read.status, 200);
                 assert.ok("content" in read);
                 assert.equal(read.content, sources[kind]);
                 for (const operation of [
-                    `\`\`\`EDIT (${target})\nReplacement.\n\`\`\``,
-                    `\`\`\`KILL (${target})\`\`\``,
-                    `\`\`\`COPY (${target}) (${target})\`\`\``,
-                    `\`\`\`MOVE (${target}) (worker:///moved-${kind}.md)\`\`\``,
+                    `\`\`\`\`EDIT (${target})\nReplacement.\n\`\`\`\``,
+                    `\`\`\`\`KILL (${target})\`\`\`\``,
+                    `\`\`\`\`COPY (${target}) (${target})\`\`\`\``,
+                    `\`\`\`\`MOVE (${target}) (worker:///moved-${kind}.md)\`\`\`\``,
                 ]) {
                     const result = await dispatch(operation);
                     assert.equal(result.status, 403, `${origin}: ${operation}`);
                     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden");
                 }
-                const unqualified = await dispatch(`\`\`\`READ (${kind}:///1/${sourceTurn.sequence})\`\`\``);
+                const unqualified = await dispatch(`\`\`\`\`READ (${kind}:///1/${sourceTurn.sequence})\`\`\`\``);
                 assert.equal(unqualified.status, 400);
                 assert.equal(unqualified.problem?.type, `https://problems.plurnk.xyz/scheme/${kind}/coordinate-malformed`);
-                const absent = await dispatch(`\`\`\`READ (${kind}://analyst/99/99)\`\`\``);
+                const absent = await dispatch(`\`\`\`\`READ (${kind}://analyst/99/99)\`\`\`\``);
                 assert.equal(absent.status, 404);
                 assert.equal(absent.problem?.type, `https://problems.plurnk.xyz/scheme/${kind}/entry-not-found`);
             }
@@ -168,9 +168,9 @@ test("{§turn-source-resources}: FIND uses ordinary folder, page and indexed-con
             assert.ok("results" in result);
             return result as FindResult;
         };
-        assert.deepEqual(resourcePaths(await query("```FIND (ops://analyst/1/) <1,-1>```")), ["ops://analyst/1/1", "ops://analyst/1/2", "ops://analyst/1/3"]);
-        assert.deepEqual(resourcePaths(await query("```FIND (ops://analyst/*/*) <2,2>```")), ["ops://analyst/1/2"]);
-        assert.deepEqual(resourcePaths(await query("```FIND (ops://analyst/1/*) <1,-1> [{\"pattern\":\"~needle\"}]```")), ["ops://analyst/1/1", "ops://analyst/1/2", "ops://analyst/1/3"]);
+        assert.deepEqual(resourcePaths(await query("````FIND (ops://analyst/1/) <1,-1>````")), ["ops://analyst/1/1", "ops://analyst/1/2", "ops://analyst/1/3"]);
+        assert.deepEqual(resourcePaths(await query("````FIND (ops://analyst/*/*) <2,2>````")), ["ops://analyst/1/2"]);
+        assert.deepEqual(resourcePaths(await query("````FIND (ops://analyst/1/*) <1,-1> [{\"pattern\":\"~needle\"}]````")), ["ops://analyst/1/1", "ops://analyst/1/2", "ops://analyst/1/3"]);
         const indexed = await db.test_turn_sources.all<{ deep_hash: string | null }>({ worker_id: workerId });
         assert.ok(indexed.every(({ deep_hash }) => deep_hash !== null), "history uses the persistent shared derivation index");
     } finally { await db.close(); }

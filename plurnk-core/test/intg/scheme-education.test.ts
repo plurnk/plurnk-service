@@ -25,7 +25,7 @@ test("{§schemes-directory}: stored packets carry language and policy without an
                 volatile: false,
                 modelVisible: true,
                 glyph: "GLYPH_MUST_STAY_CLIENT_SIDE",
-                documentation: "# Glyph test\n\n## Summary\n\nDiscover glyph-test resources.\n\n```READ (glyph-test:///example)```",
+                documentation: "# Glyph test\n\n## Summary\n\nDiscover glyph-test resources.\n\n````READ (glyph-test:///example)````",
             },
         });
         const engine = new Engine({ db, schemes: registry });
@@ -44,7 +44,7 @@ test("{§schemes-directory}: stored packets carry language and policy without an
         assert.doesNotMatch(JSON.stringify(system), /glyph-test|GLYPH_MUST_STAY_CLIENT_SIDE/, "neither references nor client glyphs are injected");
         const reference = (await engine.referenceEntries(workspaceId))
             .find(({ pathname }) => pathname === "/_plurnk/plurnk/glyph-test.md");
-        assert.match(reference?.content ?? "", /```READ \(glyph-test:\/\/\/example\)/, "the example remains available in its pull reference without a separate manifest example");
+        assert.match(reference?.content ?? "", /````READ \(glyph-test:\/\/\/example\)/, "the example remains available in its pull reference without a separate manifest example");
     } finally {
         await db.close();
     }

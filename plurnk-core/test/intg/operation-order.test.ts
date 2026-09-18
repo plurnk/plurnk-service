@@ -17,64 +17,64 @@ const anchors = LineAnchors.tokens(target, content);
 const cases = [
     {
         name: "READs observe the state at their authored position, not a future EDIT",
-        ops: [`\`\`\`READ (${target}) <1,-1>\`\`\``, `\`\`\`EDIT (${target}) <2>
+        ops: [`\`\`\`\`READ (${target}) <1,-1>\`\`\`\``, `\`\`\`\`EDIT (${target}) <2>
 TWO
 extra
-\`\`\``, `\`\`\`READ (${target}) <1,-1>\`\`\``, `\`\`\`EDIT (${target}) <4>
+\`\`\`\``, `\`\`\`\`READ (${target}) <1,-1>\`\`\`\``, `\`\`\`\`EDIT (${target}) <4>
 THREE
-\`\`\``, `\`\`\`READ (${target}) <1,-1>\`\`\``],
+\`\`\`\``, `\`\`\`\`READ (${target}) <1,-1>\`\`\`\``],
         order: ["READ", "EDIT", "READ", "EDIT", "READ"],
         reads: [content, "one\nTWO\nextra\nthree\nfour\nfive\nsix", "one\nTWO\nextra\nTHREE\nfour\nfive\nsix"],
         statuses: [200, 200],
     },
     {
         name: "an EDIT can create a resource and a later EDIT can change it in the same turn",
-        ops: ["```EDIT (worker:///new.md)\nalpha\nbeta\n```", "```EDIT (worker:///new.md) <2>\nBETA\n```", "```READ (worker:///new.md) <1,-1>```"],
+        ops: ["````EDIT (worker:///new.md)\nalpha\nbeta\n````", "````EDIT (worker:///new.md) <2>\nBETA\n````", "````READ (worker:///new.md) <1,-1>````"],
         order: ["EDIT", "EDIT", "READ"],
         reads: ["alpha\nBETA"],
         statuses: [201, 200],
     },
     {
         name: "an invalid EDIT does not roll back an earlier effect or suppress a later one",
-        ops: [`\`\`\`EDIT (${target}) <1>
+        ops: [`\`\`\`\`EDIT (${target}) <1>
 ONE
-\`\`\``, `\`\`\`EDIT (${target}) <99>
+\`\`\`\``, `\`\`\`\`EDIT (${target}) <99>
 invalid
-\`\`\``, `\`\`\`EDIT (${target}) <2>
+\`\`\`\``, `\`\`\`\`EDIT (${target}) <2>
 TWO
-\`\`\``, `\`\`\`READ (${target}) <1,-1>\`\`\``],
+\`\`\`\``, `\`\`\`\`READ (${target}) <1,-1>\`\`\`\``],
         order: ["EDIT", "EDIT", "EDIT", "READ"],
         reads: ["ONE\nTWO\nthree\nfour\nfive\nsix"],
         statuses: [200, 416, 200],
     },
     {
         name: "a surviving hash follows its target through an adjacent numeric insertion",
-        ops: [`\`\`\`EDIT (${target}) <0>
+        ops: [`\`\`\`\`EDIT (${target}) <0>
 prefix
-\`\`\``, `\`\`\`READ (${target}) <1,-1>\`\`\``, `\`\`\`EDIT (${target}) <${anchors[1]}>
+\`\`\`\``, `\`\`\`\`READ (${target}) <1,-1>\`\`\`\``, `\`\`\`\`EDIT (${target}) <${anchors[1]}>
 TWO
-\`\`\``, `\`\`\`READ (${target}) <1,-1>\`\`\``],
+\`\`\`\``, `\`\`\`\`READ (${target}) <1,-1>\`\`\`\``],
         order: ["EDIT", "READ", "EDIT", "READ"],
         reads: [`prefix\n${content}`, "prefix\none\nTWO\nthree\nfour\nfive\nsix"],
         statuses: [200, 200],
     },
     {
         name: "an overwritten hash target is not rebound to replacement content",
-        ops: [`\`\`\`EDIT (${target}) <${anchors[1]}>
+        ops: [`\`\`\`\`EDIT (${target}) <${anchors[1]}>
 replacement
-\`\`\``, `\`\`\`EDIT (${target}) <${anchors[1]}>
+\`\`\`\``, `\`\`\`\`EDIT (${target}) <${anchors[1]}>
 wrong
-\`\`\``, `\`\`\`READ (${target}) <1,-1>\`\`\``],
+\`\`\`\``, `\`\`\`\`READ (${target}) <1,-1>\`\`\`\``],
         order: ["EDIT", "EDIT", "READ"],
         reads: ["one\nreplacement\nthree\nfour\nfive\nsix"],
         statuses: [200, 409],
     },
     {
         name: "an untouched hash range survives a preceding scoped entry KILL",
-        ops: [`\`\`\`KILL (${target}) <1>\`\`\``, `\`\`\`EDIT (${target}) <${anchors[2]},${anchors[3]}>
+        ops: [`\`\`\`\`KILL (${target}) <1>\`\`\`\``, `\`\`\`\`EDIT (${target}) <${anchors[2]},${anchors[3]}>
 THREE
 FOUR
-\`\`\``, `\`\`\`READ (${target}) <1,-1>\`\`\``],
+\`\`\`\``, `\`\`\`\`READ (${target}) <1,-1>\`\`\`\``],
         order: ["KILL", "EDIT", "READ"],
         reads: ["two\nTHREE\nFOUR\nfive\nsix"],
         statuses: [200],
@@ -83,17 +83,17 @@ FOUR
 
 for (const fixture of cases) test(`{§op-execution-order}: ${fixture.name}`, async () => {
     const mock = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse(`\`\`\`EDIT (${target})
+        makeMockResponse(`\`\`\`\`EDIT (${target})
 ${content}
-\`\`\`
-\`\`\`NOTE
+\`\`\`\`
+\`\`\`\`NOTE
 created
-\`\`\``, 10),
+\`\`\`\``, 10),
         makeMockResponse(`${fixture.ops.join("\n")}
-\`\`\`NOTE
+\`\`\`\`NOTE
 verify
-\`\`\``, 10),
-        makeMockResponse("```SEND\ndone\n```", 10),
+\`\`\`\``, 10),
+        makeMockResponse("````SEND\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -117,16 +117,16 @@ for (const origin of ["client", "_plurnk"] as const) for (const hasNote of [fals
             const env = await seedEnvelope(db, `ordered-${origin}`, { producer: origin });
             env.turnId = (await Turn.open(db, { loopId: env.loopId, producer: origin, kind: "operation" })).id;
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
-            const source = `\`\`\`EDIT (${target})
+            const source = `\`\`\`\`EDIT (${target})
 ${content}
-\`\`\`
-\`\`\`READ (${target}) <1,-1>\`\`\`
-\`\`\`EDIT (${target}) <99>
+\`\`\`\`
+\`\`\`\`READ (${target}) <1,-1>\`\`\`\`
+\`\`\`\`EDIT (${target}) <99>
 invalid
-\`\`\`
-\`\`\`EDIT (${target}) <2>
+\`\`\`\`
+\`\`\`\`EDIT (${target}) <2>
 TWO
-\`\`\`${hasNote ? "\n```NOTE\nContinue the task.\n```" : ""}`;
+\`\`\`\`${hasNote ? "\n````NOTE\nContinue the task.\n````" : ""}`;
             const execution = engine.executeAdmittedTurn({
                 ...env, origin, source, statements: TurnOps.parseInternal(source),
                 fromSequence: 1, failOnOperationError,

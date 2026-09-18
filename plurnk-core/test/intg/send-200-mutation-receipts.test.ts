@@ -6,10 +6,10 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } fro
 
 for (const curate of [false, true]) {
     test(`{§completion-defers-to-results}: mutation receipts require observation, including when curated=${curate}`, async () => {
-        const extra = curate ? "```READ (worker:///notes.md)\n```\n```READ (worker:///notes.md)\n```\n```KILL (log:///**/EDIT)\n```\n" : "";
+        const extra = curate ? "````READ (worker:///notes.md)\n````\n````READ (worker:///notes.md)\n````\n````KILL (log:///**/EDIT)\n````\n" : "";
         const mock = new Mock({ contextWindow: 16384, responses: [
-            makeMockResponse("```EDIT (worker:///notes.md)\nhello\n```\n" + extra + "```SEND\nWritten.\n```"),
-            makeMockResponse("```NOTE\nObserved the operation results.\n```"),
+            makeMockResponse("````EDIT (worker:///notes.md)\nhello\n````\n" + extra + "````SEND\nWritten.\n````"),
+            makeMockResponse("````NOTE\nObserved the operation results.\n````"),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

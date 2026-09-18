@@ -23,7 +23,7 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
             responses: [{
                 assistant: {
                     // ops deliberately absent: the engine must parse this content.
-                    content: "\n```SEND\nobserved.\n```",
+                    content: "\n````SEND\nobserved.\n````",
                     reasoning: null,
                 },
             }],

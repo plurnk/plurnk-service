@@ -22,12 +22,12 @@ const withSettlement = async (ms: string, fn: () => Promise<void>): Promise<void
 for (const command of ["true", "hostname"]) {
     for (const earlyReply of [false, true]) test(`a successful ${command} reaches the next packet, early reply=${earlyReply}`, async () => {
         const answer = command === "hostname" ? hostname() : "The command completed successfully.";
-        const reply = earlyReply ? "\n```SEND\nThe hostname is plurnk-sandbox.\n```" : "";
+        const reply = earlyReply ? "\n````SEND\nThe hostname is plurnk-sandbox.\n````" : "";
         const provider = new Mock({
             contextWindow: 100_000,
             responses: [
-                makeMockResponse(`\`\`\`sh\n${command}\n\`\`\`${reply}`),
-                makeMockResponse(`\`\`\`SEND\n${answer}\n\`\`\``),
+                makeMockResponse(`\`\`\`\`sh\n${command}\n\`\`\`\`${reply}`),
+                makeMockResponse(`\`\`\`\`SEND\n${answer}\n\`\`\`\``),
             ],
         });
         await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -66,8 +66,8 @@ test("{§completion-defers-to-results}: a successful execution receipt defers co
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("```sh\ntrue\n```\n```SEND\nCompleted.\n```"),
-            makeMockResponse("```NOTE\nThe observed command succeeded; the delivered answer remains correct.\n```"),
+            makeMockResponse("````sh\ntrue\n````\n````SEND\nCompleted.\n````"),
+            makeMockResponse("````NOTE\nThe observed command succeeded; the delivered answer remains correct.\n````"),
         ],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -93,8 +93,8 @@ test("{§completion-defers-to-results}: a failed same-turn stream defers complet
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("```sh\nexit 3\n```\n```SEND\nconcluding blind\n```"),
-            makeMockResponse("```SEND\nconcluding after reading the failure\n```"),
+            makeMockResponse("````sh\nexit 3\n````\n````SEND\nconcluding blind\n````"),
+            makeMockResponse("````SEND\nconcluding after reading the failure\n````"),
         ],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {

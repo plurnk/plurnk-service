@@ -20,7 +20,7 @@ test("{§interstitial-fence}: an unlabeled fence is transparent; a fenced operat
         await seedEntryWithChannel(db, { workspaceId, pathname: "/quoted.md", content: "Keep this one too." });
         const source = [
             "An unlabeled fence around an operation changes nothing:",
-            "````\n```KILL (worker:///notes.md)```\n````",
+            "```\n````KILL (worker:///notes.md)````\n```",
             "A delimited SEND is how an example is quoted:",
             "````42SEND\n````KILL (worker:///quoted.md)````\n````42",
             memory,

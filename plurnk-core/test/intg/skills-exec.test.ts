@@ -28,8 +28,8 @@ test("{§skills-hotload} retargeting an installed symlink refreshes its source b
     const installed = join(root, ".agents", "skills", "sample");
     await symlink(join(root, "versions", "first"), installed);
     const responses = [
-        { assistant: { content: "```READ (skill://sample/guide.md) <1,-1>```\n```NOTE\nInspect the source.\n```", reasoning: null } },
-        { assistant: { content: "```SEND\nDone.\n```", reasoning: null } },
+        { assistant: { content: "````READ (skill://sample/guide.md) <1,-1>````\n````NOTE\nInspect the source.\n````", reasoning: null } },
+        { assistant: { content: "````SEND\nDone.\n````", reasoning: null } },
     ];
     const provider = new PacketCapturingMock({ contextWindow: 32768, responses: [...responses, ...responses] });
     await withDaemon(provider, async (_db, _daemon, addr) => {
@@ -56,9 +56,9 @@ test("{§skills-hotload} turn admission refreshes skills mutated between loops",
     const provider = new PacketCapturingMock({
         contextWindow: 16384,
         responses: [
-            { assistant: { content: "\n```SEND\nobserved.\n```", reasoning: null } },
-            { assistant: { content: "\n```READ (skill://review/SKILL.md) <1,-1>```\n```NOTE\nRead the skill.\n```", reasoning: null } },
-            { assistant: { content: "\n```SEND\nobserved.\n```", reasoning: null } },
+            { assistant: { content: "\n````SEND\nobserved.\n````", reasoning: null } },
+            { assistant: { content: "\n````READ (skill://review/SKILL.md) <1,-1>````\n````NOTE\nRead the skill.\n````", reasoning: null } },
+            { assistant: { content: "\n````SEND\nobserved.\n````", reasoning: null } },
         ],
     });
     try {

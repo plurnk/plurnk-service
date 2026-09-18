@@ -12,13 +12,13 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flus
 
 // The brief is created by the parent in the same turn (a creation is a member), then handed to the child by path.
 const parentThenChild = (brief: string, work: string) => new Mock({ contextWindow: 16384, responses: [
-    makeMockResponse(`\`\`\`EDIT (brief.md)\n${brief}\`\`\`\n\n${work}
+    makeMockResponse(`\`\`\`\`EDIT (brief.md)\n${brief}\`\`\`\`\n\n${work}
 
-\`\`\`WAIT
+\`\`\`\`WAIT
 delegated
-\`\`\``, 10),
-    makeMockResponse("```SEND\nchild done\n```", 10),
-    makeMockResponse("```SEND\nparent done\n```", 10),
+\`\`\`\``, 10),
+    makeMockResponse("````SEND\nchild done\n````", 10),
+    makeMockResponse("````SEND\nparent done\n````", 10),
 ] });
 
 const childPrompts = async (db: Db, parentWorkerId: number) => {
@@ -33,7 +33,7 @@ const childPrompts = async (db: Db, parentWorkerId: number) => {
 test("{§worker-spawn-prompt-resource}: a file path on WORK is the child's prompt, and the child is auto-named", async () => {
     const root = await mkdtemp(join(tmpdir(), "spawn-prompt-"));
     try {
-        const mock = parentThenChild("Count the lines in every file.\n", "```WORK (brief.md)\n```");
+        const mock = parentThenChild("Count the lines in every file.\n", "````WORK (brief.md)\n````");
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -57,7 +57,7 @@ test("{§worker-spawn-prompt-resource}: a file path on WORK is the child's promp
 test("{§worker-spawn-prompt-resource}: resource then body, joined by a blank line, as BARE composes them", async () => {
     const root = await mkdtemp(join(tmpdir(), "spawn-prompt-"));
     try {
-        const mock = parentThenChild("The brief.\n", "```WORK (brief.md)\nAlso report the total.\n```");
+        const mock = parentThenChild("The brief.\n", "````WORK (brief.md)\nAlso report the total.\n````");
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -76,8 +76,8 @@ test("{§worker-spawn-prompt-resource}: a missing resource is the operation's fa
     const root = await mkdtemp(join(tmpdir(), "spawn-prompt-"));
     try {
         const mock = new Mock({ contextWindow: 16384, responses: [
-            makeMockResponse("```WORK (missing.md)\n```\n\n```WORK (worker://bad/path)\nx\n```\n\n```NOTE\ntried\n```", 10),
-            makeMockResponse("```SEND\ngiving up\n```", 10),
+            makeMockResponse("````WORK (missing.md)\n````\n\n````WORK (worker://bad/path)\nx\n````\n\n````NOTE\ntried\n````", 10),
+            makeMockResponse("````SEND\ngiving up\n````", 10),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

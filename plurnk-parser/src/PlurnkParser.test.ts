@@ -23,7 +23,7 @@ test("{§statement-rendering}: inline input remains legal but is never the canon
 });
 
 test("{§statement-rendering}: programs separate fenced operations without changing body whitespace", () => {
-    const body = "# Example\n\n```sh\necho 42\n```\n";
+    const body = "# Example\n\n````sh\necho 42\n````\n";
     const blocks = [
         PlurnkParser.frame("READ (note.md)", null),
         PlurnkParser.frame("EDIT (example.md)", body),
@@ -47,7 +47,7 @@ test("framing a large body does not spread its backtick runs into function argum
 
 // {§fence-boundary}
 test("quoted programs are exact body content without speculative diagnostics", () => {
-    const body = "```sh\necho hello\n```\n## PLAN_\n### READ_ (example.md)";
+    const body = "````sh\necho hello\n````\n## PLAN_\n### READ_ (example.md)";
     const input = PlurnkParser.frame("SEND", body) + "\n" + PlurnkParser.frame("NOTE", "Example delivered.");
     const parsed = PlurnkParser.parse(input);
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
@@ -56,7 +56,7 @@ test("quoted programs are exact body content without speculative diagnostics", (
 });
 
 test("an unfinished outer body never dispatches a shorter inner program; it is that body", () => {
-    const input = "```READ (before.md)```\n````EDIT (notes.md)\n```sh\nrm notes.md\n```";
+    const input = "````READ (before.md)````\n````EDIT (notes.md)\n```sh\nrm notes.md\n```";
     const parsed = PlurnkParser.parseStatements(input);
     assert.deepEqual(parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "EDIT"]);
     assert.equal(parsed.unparsedTail, undefined);
@@ -73,4 +73,16 @@ test("{§operation-attempt}: prose with code blocks concludes; every operation a
     assert.equal(PlurnkParser.operationAttempt("sh [{\"cwd\":\"/\"}]", executors), "operation heading outside a fence");
     assert.equal(PlurnkParser.operationAttempt("<function_calls><invoke name=\"x\"></invoke></function_calls>", executors), "native tool-call markup");
     assert.equal(PlurnkParser.operationAttempt("### log:///1/2/3/READ\n{}", executors), "echoed packet rows");
+});
+
+test("{§four-backtick-operations}: a three-backtick fence is markdown; one naming an operation says it needs four", () => {
+    const warnings = (input: string) => PlurnkParser.parse(input, { executors: ["sh"] }).items.flatMap((item) =>
+        item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
+    const statements = (input: string) => PlurnkParser.parse(input, { executors: ["sh"] }).items.filter((item) => item.kind === "statement").length;
+    assert.equal(statements("```READ (notes.md)\n```\n\n```sh\nnpm test\n```"), 0, "three backticks never open an operation");
+    assert.deepEqual(warnings("```READ (notes.md)\n```"), ["`READ` needs four backticks to run; the three-backtick block was read as prose and nothing ran."]);
+    assert.deepEqual(warnings("```sh\nnpm test\n```"), ["`sh` needs four backticks to run; the three-backtick block was read as prose and nothing ran."]);
+    assert.deepEqual(warnings("The config:\n\n```ts\nexport default {};\n```"), [], "an ordinary code block draws nothing");
+    assert.deepEqual(warnings("````typo (x)\n````"), ["`typo` is not an operation or a known executor here; the block was read as prose and nothing ran."]);
+    assert.equal(statements("````READ (notes.md)\n````"), 1);
 });

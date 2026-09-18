@@ -51,14 +51,14 @@ const statement = (
 const parsedRead = (target: string, metadata: readonly string[] = []): ReadStatement => {
     const modifiers = metadata.map((block) => ` [${block}]`).join("");
     const parsed = PlurnkParser.parse(`
-\`\`\`READ (${target})${modifiers}\`\`\`
-\`\`\`NOTE
+\`\`\`\`READ (${target})${modifiers}\`\`\`\`
+\`\`\`\`NOTE
 acquisition pending
-\`\`\``, { executors: fixtureExecutors(`
-\`\`\`READ (${target})${modifiers}\`\`\`
-\`\`\`NOTE
+\`\`\`\``, { executors: fixtureExecutors(`
+\`\`\`\`READ (${target})${modifiers}\`\`\`\`
+\`\`\`\`NOTE
 acquisition pending
-\`\`\``) });
+\`\`\`\``) });
     const item = parsed.items.find(
         (candidate) => candidate.kind === "statement" && candidate.statement.op === "READ",
     );
@@ -215,7 +215,7 @@ for (const mode of ["complete", "oversize", "interrupted"] as const) {
             start(controller) { controller.enqueue(pdf.subarray(0, 4)); },
             pull(controller) { controller.error(new Error("connection interrupted")); },
         }) : pdf, { headers: { "content-type": "application/pdf", "x-response-id": "mutation" } }));
-        const send = PlurnkParser.parseStatements("```SEND (https://93.184.216.34/paper.pdf)\ncreate\n```").items[0];
+        const send = PlurnkParser.parseStatements("````SEND (https://93.184.216.34/paper.pdf)\ncreate\n````").items[0];
         assert.ok(send?.kind === "statement");
         const result = await new Http().send(send.statement as SendStatement, handlerCtx);
         assert.equal(result.status, mode === "complete" ? 102 : mode === "oversize" ? 413 : 500);

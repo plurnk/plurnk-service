@@ -36,23 +36,23 @@ test("{§http-json-presentation}: READ, FIND, COPY and previews share formatted 
         return JSON.parse(row.rx);
     };
     try {
-        const preview = await dispatch(`\`\`\`READ (${target})\`\`\``);
+        const preview = await dispatch(`\`\`\`\`READ (${target})\`\`\`\``);
         assert.equal(preview.status, 200);
         assert.equal(preview.content, formatted.split("\n").slice(0, 16).join("\n"));
-        const scoped = await dispatch(`\`\`\`READ (${target}) <20,22>\`\`\``);
+        const scoped = await dispatch(`\`\`\`\`READ (${target}) <20,22>\`\`\`\``);
         assert.equal(scoped.content, formatted.split("\n").slice(19, 22).join("\n"));
-        const found = await dispatch(`\`\`\`FIND (${target}) [{"pattern":"/value19/"}]\`\`\``);
+        const found = await dispatch(`\`\`\`\`FIND (${target}) [{"pattern":"/value19/"}]\`\`\`\``);
         assert.equal(found.status, 200);
         const locations = JSON.parse(found.content);
         assert.ok(locations.length > 0);
         assert.equal(locations[0].region.startLine, 21);
-        assert.equal((await dispatch(`\`\`\`COPY (${target}) <20,22> (worker:///selection.json)\`\`\``)).status, 201);
-        const copied = await dispatch("```READ (worker:///selection.json) <1,-1>```");
+        assert.equal((await dispatch(`\`\`\`\`COPY (${target}) <20,22> (worker:///selection.json)\`\`\`\``)).status, 201);
+        const copied = await dispatch("````READ (worker:///selection.json) <1,-1>````");
         assert.equal(copied.content, scoped.content);
-        assert.equal((await dispatch(`\`\`\`EDIT (worker:///literal.json)
+        assert.equal((await dispatch(`\`\`\`\`EDIT (worker:///literal.json)
 ${source}
-\`\`\``)).status, 201);
-        assert.equal((await dispatch("```READ (worker:///literal.json) <1,-1>```")).content, source, "literal JSON resource coordinates and bytes are untouched");
+\`\`\`\``)).status, 201);
+        assert.equal((await dispatch("````READ (worker:///literal.json) <1,-1>````")).content, source, "literal JSON resource coordinates and bytes are untouched");
     } finally {
         await mimetypes.dispose();
         await db.close();

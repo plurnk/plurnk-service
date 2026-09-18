@@ -7,13 +7,13 @@ unregistered handle. It does not test provider networking.
 
 From `plurnk-core`, with OpenTelemetry Weaver 0.26.1 installed separately:
 
-```sh
+````sh
 node --conditions=plurnk-dev --import=./test/setup.ts test/fixtures/genai-spans.ts > /tmp/plurnk-genai-spans.json
 weaver registry live-check \
   --registry 'https://github.com/open-telemetry/semantic-conventions-genai.git@c88d504ab3d9879f8e50d3cc87e69775e11db234[model]' \
   --v2 --input-source /tmp/plurnk-genai-spans.json --input-format json \
   --format json --no-stream --output /tmp/plurnk-genai-report
-```
+````
 
 The complete report is intentionally not filtered into a green result.
 Against this pinned registry, the 33 spans produce these findings:

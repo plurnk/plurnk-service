@@ -48,7 +48,7 @@ test("Mock.provider: exhausted queue throws", async () => {
 test("Mock.provider: assistant and request accounting remain separate", async () => {
     const r: MockResponse = {
         assistant: {
-            content: "```SEND\ndone\n```",
+            content: "````SEND\ndone\n````",
             ops: [sendStmt(null, "done")],
             reasoning: "thought about it",
             finishReason: "stop",
@@ -58,7 +58,7 @@ test("Mock.provider: assistant and request accounting remain separate", async ()
     };
     const mock = new Mock({ contextWindow: 10_000, responses: [r] });
     const result = await mock.generate({ messages: [{ role: "user", content: "x" }] });
-    assert.equal(result.assistant.content, "```SEND\ndone\n```");
+    assert.equal(result.assistant.content, "````SEND\ndone\n````");
     assert.equal(result.accounting[0]?.usage?.outputTokens, 42);
     assert.equal(result.accounting[0]?.usage?.inputTokens, 100);
     assert.equal(result.accounting[0]?.usage?.totalTokens, 142);
@@ -124,7 +124,7 @@ test("Mock.provider: multi-op response (the typical loop turn)", async () => {
         editStmt("b", "2"),
         noteStmt("continuing"),
     ];
-    const content = "```EDIT (worker:///a)\n1\n```\n\n```EDIT (worker:///b)\n2\n```\n\n```NOTE\ncontinuing\n```";
+    const content = "````EDIT (worker:///a)\n1\n````\n\n````EDIT (worker:///b)\n2\n````\n\n````NOTE\ncontinuing\n````";
     const mock = new Mock({ contextWindow: 10_000, responses: [response(content, ops)] });
     const result = await mock.generate({ messages: [] });
     assert.equal(result.assistant.ops?.length, 3);

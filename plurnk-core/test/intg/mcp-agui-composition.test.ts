@@ -92,12 +92,12 @@ test("{§functionality-model-projection} an absent MCP source has the same Probl
     const provider = new PacketCapturingMock({
         contextWindow: 1_000_000,
         responses: [
-            makeMockResponse(`\`\`\`mcp (discover)\n${JSON.stringify({ source })}
-\`\`\`
-\`\`\`NOTE
+            makeMockResponse(`\`\`\`\`mcp (discover)\n${JSON.stringify({ source })}
+\`\`\`\`
+\`\`\`\`NOTE
 Inspect the discovery outcome.
-\`\`\``),
-            makeMockResponse("```SEND\nThe source could not be inspected.\n```"),
+\`\`\`\``),
+            makeMockResponse("````SEND\nThe source could not be inspected.\n````"),
         ],
     });
     const db = await openMigrated();
@@ -150,15 +150,15 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
     const provider = new PacketCapturingMock({
         contextWindow: 1_000_000,
         responses: [
-            makeMockResponse("\n```READ (worker:///_plurnk/tools/fixture.md) <1,-1>```\n```NOTE\nSelect and inspect the echo contract linked from the family document.\n```"),
-            makeMockResponse("\n```READ (worker:///_plurnk/tools/fixture/echo.md) <1,-1>```\n```NOTE\nInvoke the documented observation tool.\n```"),
-            makeMockResponse("\n```fixture (echo)\nhello from MCP\n```\n\n```NOTE\nInspect the attributable tool failure.\n```"),
-            makeMockResponse("\n```KILL (log:///**/READ)```\n```fixture (echo)\n{\"message\":\"hello from MCP\"}\n```\n\n```NOTE\nInspect the corrected tool result.\n```"),
-            makeMockResponse("\n```FIND (fixture:///**) <1,-1> [{\"pattern\":\"invalid-tool-arguments\"}]```\n\n```NOTE\nInspect the source's durable terminal result.\n```"),
-            makeMockResponse("```SEND\nThe MCP echo returned hello from MCP and its earlier failure remains inspectable at the source.\n```"),
-            makeMockResponse("\n```READ (worker:///_plurnk/tools/fixture.md) <1,-1>```\n```NOTE\nInvoke the documented host tool.\n```"),
-            makeMockResponse("\n```fixture (fail)```\n```NOTE\nInspect the failure.\n```"),
-            makeMockResponse("```SEND\nThe MCP server reported its expected tool error; recovery is complete.\n```"),
+            makeMockResponse("\n````READ (worker:///_plurnk/tools/fixture.md) <1,-1>````\n````NOTE\nSelect and inspect the echo contract linked from the family document.\n````"),
+            makeMockResponse("\n````READ (worker:///_plurnk/tools/fixture/echo.md) <1,-1>````\n````NOTE\nInvoke the documented observation tool.\n````"),
+            makeMockResponse("\n````fixture (echo)\nhello from MCP\n````\n\n````NOTE\nInspect the attributable tool failure.\n````"),
+            makeMockResponse("\n````KILL (log:///**/READ)````\n````fixture (echo)\n{\"message\":\"hello from MCP\"}\n````\n\n````NOTE\nInspect the corrected tool result.\n````"),
+            makeMockResponse("\n````FIND (fixture:///**) <1,-1> [{\"pattern\":\"invalid-tool-arguments\"}]````\n\n````NOTE\nInspect the source's durable terminal result.\n````"),
+            makeMockResponse("````SEND\nThe MCP echo returned hello from MCP and its earlier failure remains inspectable at the source.\n````"),
+            makeMockResponse("\n````READ (worker:///_plurnk/tools/fixture.md) <1,-1>````\n````NOTE\nInvoke the documented host tool.\n````"),
+            makeMockResponse("\n````fixture (fail)````\n````NOTE\nInspect the failure.\n````"),
+            makeMockResponse("````SEND\nThe MCP server reported its expected tool error; recovery is complete.\n````"),
         ],
     });
     const db = await openMigrated();
@@ -277,7 +277,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
                 plurnk: {
                     workspace,
                     projectRoot,
-                    action: { kind: "op.parse", text: "```fixture (fail)\n{}\n```" },
+                    action: { kind: "op.parse", text: "````fixture (fail)\n{}\n````" },
                 },
             },
         })));
@@ -316,15 +316,15 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.match(firstPacket, /Echo tools for transport testing\./);
         assert.doesNotMatch(firstPacket, /Pass the message field unchanged/, "full server instructions are not pushed into turn0");
         assert.match(firstPacket, /"path":"worker:\/\/\/_plurnk\/tools\/fixture\.md"/);
-        assert.match(firstPacket, /```fixture \(echo\)/);
-        assert.doesNotMatch(firstPacket, /```fixture \([^)]*fail/);
+        assert.match(firstPacket, /````fixture \(echo\)/);
+        assert.doesNotMatch(firstPacket, /````fixture \([^)]*fail/);
         assert.doesNotMatch(firstPacket, /"path":"worker:\/\/\/_plurnk\/tools\/fixture\/echo\.md"/, "without PLURNK_MCP_EXPANDED, turn 0 surveys family documents only");
         const familyContract = packet(provider.requests, 1);
         assert.match(familyContract, /Pass the message field unchanged\./, "READ of the family document retrieves the full authored instructions");
-        assert.match(familyContract, /```fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.md -->/);
-        assert.doesNotMatch(familyContract, /```fixture \(fail\)/);
+        assert.match(familyContract, /````fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.md -->/);
+        assert.doesNotMatch(familyContract, /````fixture \(fail\)/);
         const echoContract = packet(provider.requests, 2);
-        assert.match(echoContract, /```fixture \(echo\)/);
+        assert.match(echoContract, /````fixture \(echo\)/);
         assert.match(echoContract, /## Input schema/);
         assert.match(echoContract, /"additionalProperties": false/, "the linked document preserves constraints omitted from the preview");
         assert.match(echoContract, /"required": \[/);
@@ -390,7 +390,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.equal((resumed.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
         const failContract = packet(provider.requests, 7);
         assert.match(failContract, /Return a deterministic tool error\./);
-        assert.match(failContract, /```fixture \(fail\)/);
+        assert.match(failContract, /````fixture \(fail\)/);
         const recoveryPacket = packet(provider.requests, 8);
         assert.match(recoveryPacket, /tool-reported-error/);
         assert.match(recoveryPacket, /The MCP tool reported an error\./);
@@ -449,14 +449,14 @@ test(
         const provider = new PacketCapturingMock({
             contextWindow: 1_000_000,
             responses: [
-                makeMockResponse("\n```READ (worker:///_plurnk/tools/kubernetes.md) <1,-1>```\n```NOTE\nSelect the configuration tool linked from the family document.\n```"),
-                makeMockResponse("\n```READ (worker:///_plurnk/tools/kubernetes/configuration_view.md) <1,-1>```\n```NOTE\nUse the exact contract after reading it.\n```"),
-                makeMockResponse("\n```kubernetes (configuration_view)\n{\"minified\":true}\n```\n\n```NOTE\nInspect the returned configuration.\n```"),
-                makeMockResponse("```SEND\nThe current Kubernetes context is specimen.\n```"),
-                makeMockResponse("\n```READ (worker:///_plurnk/tools/goji.md) <1,-1>```\n```NOTE\nSelect the terminology tool linked from the family document.\n```"),
-                makeMockResponse("\n```READ (worker:///_plurnk/tools/goji/goji_explain_term.md) <1,-1>```\n```NOTE\nUse the documented tool and resource.\n```"),
-                makeMockResponse("\n```goji (goji_explain_term)\n{\"term\":\"AEO\"}\n```\n\n```READ (goji:///resources/goji%3A%2F%2Fabout)```\n```NOTE\nInspect both remote results.\n```"),
-                makeMockResponse("```SEND\nGOJI defines AEO as Answer Engine Optimisation and identifies itself as a Melbourne digital agency.\n```"),
+                makeMockResponse("\n````READ (worker:///_plurnk/tools/kubernetes.md) <1,-1>````\n````NOTE\nSelect the configuration tool linked from the family document.\n````"),
+                makeMockResponse("\n````READ (worker:///_plurnk/tools/kubernetes/configuration_view.md) <1,-1>````\n````NOTE\nUse the exact contract after reading it.\n````"),
+                makeMockResponse("\n````kubernetes (configuration_view)\n{\"minified\":true}\n````\n\n````NOTE\nInspect the returned configuration.\n````"),
+                makeMockResponse("````SEND\nThe current Kubernetes context is specimen.\n````"),
+                makeMockResponse("\n````READ (worker:///_plurnk/tools/goji.md) <1,-1>````\n````NOTE\nSelect the terminology tool linked from the family document.\n````"),
+                makeMockResponse("\n````READ (worker:///_plurnk/tools/goji/goji_explain_term.md) <1,-1>````\n````NOTE\nUse the documented tool and resource.\n````"),
+                makeMockResponse("\n````goji (goji_explain_term)\n{\"term\":\"AEO\"}\n````\n\n````READ (goji:///resources/goji%3A%2F%2Fabout)````\n````NOTE\nInspect both remote results.\n````"),
+                makeMockResponse("````SEND\nGOJI defines AEO as Answer Engine Optimisation and identifies itself as a Melbourne digital agency.\n````"),
             ],
         });
         const db = await openMigrated();
@@ -578,7 +578,7 @@ test(
             assert.match(kubernetesFamily, /worker:\/\/\/_plurnk\/tools\/kubernetes\/configuration_view\.md/);
             assert.doesNotMatch(kubernetesFamily, /pods_list/, "disabled remote tools stay out of the family contract");
             const kubernetesContract = packet(provider.requests, 2);
-            assert.match(kubernetesContract, /```kubernetes \(configuration_view\)/);
+            assert.match(kubernetesContract, /````kubernetes \(configuration_view\)/);
             assert.doesNotMatch(kubernetesContract, /pods_list/, "one exact document carries only its selected tool contract");
             assert.match(packet(provider.requests, 3), /current-context: specimen/);
 
@@ -591,7 +591,7 @@ test(
             }));
             assert.equal((gojiRun.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
             assert.match(packet(provider.requests, 5), /worker:\/\/\/_plurnk\/tools\/goji\/goji_explain_term\.md/);
-            assert.match(packet(provider.requests, 6), /```goji \(goji_explain_term\)/);
+            assert.match(packet(provider.requests, 6), /````goji \(goji_explain_term\)/);
             const remoteResults = packet(provider.requests, 7);
             assert.match(remoteResults, /Answer Engine Optimisation/);
             assert.match(remoteResults, /Melbourne-based full-service digital agency/);

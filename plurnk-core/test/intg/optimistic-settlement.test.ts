@@ -135,11 +135,11 @@ class ControlledWorkerProvider implements Provider {
         await this.#childReleases[index].promise;
         signal?.throwIfAborted();
         await settle?.(requestAccounting);
-        return response(`\`\`\`SEND
+        return response(`\`\`\`\`SEND
 child ${index + 1} done
-\`\`\`
-\`\`\`SEND
-\`\`\``, capacity, grammar);
+\`\`\`\`
+\`\`\`\`SEND
+\`\`\`\``, capacity, grammar);
     }
 
     releaseChild(index: number): void {
@@ -157,10 +157,10 @@ test("near-simultaneous child conclusions share one parent provider turn", async
     const provider = new ControlledWorkerProvider({
         childCount: 2,
         parentTurns: [
-            "```WORK (worker://first)\nfinish first\n\n```\n"
-            + "```WORK (worker://second)\nfinish second\n\n```\n"
-            + "```WAIT\nwaiting for both\n```",
-            "```SEND\nboth children landed\n```",
+            "````WORK (worker://first)\nfinish first\n\n````\n"
+            + "````WORK (worker://second)\nfinish second\n\n````\n"
+            + "````WAIT\nwaiting for both\n````",
+            "````SEND\nboth children landed\n````",
         ],
     });
     try {
@@ -222,8 +222,8 @@ test("a lone child conclusion resumes immediately without paying the settlement 
     const provider = new ControlledWorkerProvider({
         childCount: 1,
         parentTurns: [
-            "```WORK (worker://only)\nfinish the only job\n```\n\n```WAIT\nwaiting\n```",
-            "```SEND\nonly child landed\n```",
+            "````WORK (worker://only)\nfinish the only job\n````\n\n````WAIT\nwaiting\n````",
+            "````SEND\nonly child landed\n````",
         ],
     });
     try {
@@ -274,11 +274,11 @@ test("stream conclusions coalesce across the same worker-local settlement window
         contextWindow: 100_000,
         responses: [
             makeMockResponse(
-                "```sh\nsleep 0.25; echo first-stream\n\n```\n"
-                + "```sh\nsleep 0.40; echo second-stream\n\n```\n"
-                + "```WAIT\nwaiting for both streams\n```",
+                "````sh\nsleep 0.25; echo first-stream\n\n````\n"
+                + "````sh\nsleep 0.40; echo second-stream\n\n````\n"
+                + "````WAIT\nwaiting for both streams\n````",
             ),
-            makeMockResponse("```SEND\nboth streams landed\n```"),
+            makeMockResponse("````SEND\nboth streams landed\n````"),
         ],
     });
     try {
@@ -308,10 +308,10 @@ test("a child and stream conclusion share the same settlement window", async () 
     const provider = new ControlledWorkerProvider({
         childCount: 1,
         parentTurns: [
-            "```WORK (worker://child)\nfinish independently\n\n```\n"
-            + "```sh\nsleep 0.50; echo stream-done\n\n```\n"
-            + "```WAIT\nwaiting for child and stream\n```",
-            "```SEND\nchild and stream landed\n```",
+            "````WORK (worker://child)\nfinish independently\n\n````\n"
+            + "````sh\nsleep 0.50; echo stream-done\n\n````\n"
+            + "````WAIT\nwaiting for child and stream\n````",
+            "````SEND\nchild and stream landed\n````",
         ],
     });
     try {
@@ -359,12 +359,12 @@ test("the settlement deadline is bounded and does not slide on later conclusions
     const provider = new ControlledWorkerProvider({
         childCount: 3,
         parentTurns: [
-            "```WORK (worker://first)\nfinish first\n\n```\n"
-            + "```WORK (worker://second)\nfinish second\n\n```\n"
-            + "```WORK (worker://third)\nfinish third\n\n```\n"
-            + "```WAIT\nwaiting for all three\n```",
-            "```WAIT\ntwo landed; still waiting\n```",
-            "```SEND\nall three landed\n```",
+            "````WORK (worker://first)\nfinish first\n\n````\n"
+            + "````WORK (worker://second)\nfinish second\n\n````\n"
+            + "````WORK (worker://third)\nfinish third\n\n````\n"
+            + "````WAIT\nwaiting for all three\n````",
+            "````WAIT\ntwo landed; still waiting\n````",
+            "````SEND\nall three landed\n````",
         ],
     });
     try {

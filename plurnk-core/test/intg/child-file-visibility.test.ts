@@ -27,24 +27,24 @@ const gitRoot = async (): Promise<string> => {
 const bareRoot = async (): Promise<string> => mkdtemp(join(tmpdir(), "plurnk-child-file-bare-"));
 
 const CASES: Array<{ name: string; root: () => Promise<string>; read: string }> = [
-    { name: "git root, unscoped READ", root: gitRoot, read: "```READ (count.txt)```" },
-    { name: "git root, scoped READ <1,-1>", root: gitRoot, read: "```READ (count.txt) <1,-1>```" },
-    { name: "bare directory, scoped READ <1,-1>", root: bareRoot, read: "```READ (count.txt) <1,-1>```" },
+    { name: "git root, unscoped READ", root: gitRoot, read: "````READ (count.txt)````" },
+    { name: "git root, scoped READ <1,-1>", root: gitRoot, read: "````READ (count.txt) <1,-1>````" },
+    { name: "bare directory, scoped READ <1,-1>", root: bareRoot, read: "````READ (count.txt) <1,-1>````" },
 ];
 
 for (const c of CASES) {
     test(`a child's new file is readable by its parent by bare path right after child completion (${c.name})`, async () => {
         const root = await c.root();
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("```WORK (worker://counter)\nWrite the number 3 to count.txt and conclude.\n```\n\n```WAIT\nwaiting\n```", 10),
-            makeMockResponse("```EDIT (count.txt)\n3\n```\n\n```NOTE\nwrote\n```", 10),
-            makeMockResponse("```SEND\nwritten\n```", 10),
+            makeMockResponse("````WORK (worker://counter)\nWrite the number 3 to count.txt and conclude.\n````\n\n````WAIT\nwaiting\n````", 10),
+            makeMockResponse("````EDIT (count.txt)\n3\n````\n\n````NOTE\nwrote\n````", 10),
+            makeMockResponse("````SEND\nwritten\n````", 10),
             makeMockResponse(`${c.read}
 
-\`\`\`NOTE
+\`\`\`\`NOTE
 reading
-\`\`\``, 10),
-            makeMockResponse("```SEND\ndone\n```", 10),
+\`\`\`\``, 10),
+            makeMockResponse("````SEND\ndone\n````", 10),
         ] });
         try {
             await withDaemon(mock, async (db, _daemon, addr) => {
@@ -87,9 +87,9 @@ reading
 // space by name. The root worker has no such section.
 test("a child's packet names its parent worker; the root's packet does not", async () => {
     const mock = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse("```WORK (worker://counter)\nReply with the number 3.\n```\n\n```WAIT\nwaiting\n```", 10),
-        makeMockResponse("```SEND\n3\n```", 10),
-        makeMockResponse("```SEND\ndone\n```", 10),
+        makeMockResponse("````WORK (worker://counter)\nReply with the number 3.\n````\n\n````WAIT\nwaiting\n````", 10),
+        makeMockResponse("````SEND\n3\n````", 10),
+        makeMockResponse("````SEND\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

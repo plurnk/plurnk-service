@@ -47,14 +47,14 @@ test("{§fence-closer}: a shorter inner fence is body and an equal or longer bar
     assert.deepEqual(errors(equal), []);
     assert.deepEqual(statements(equal).map(writtenOp), ["SEND", "WAIT"]);
     assert.equal(bodyText(statements(equal)[0]), "Code:");
-    const longer = PlurnkParser.parse("```SEND\nCode:\n`````\n" + task);
+    const longer = PlurnkParser.parse("````SEND\nCode:\n`````\n" + task);
     assert.deepEqual(errors(longer), []);
     assert.equal(bodyText(statements(longer)[0]), "Code:");
 });
 
 test("{§numeric-delimiter}: nesting preserves exact bodies across widths, depths, newlines, and operation families", () => {
     for (const header of ["SEND", "EDIT (notes.md)", "sh", "BARE", "WORK", "FORK"]) {
-        for (const width of [3, 4, 8]) {
+        for (const width of [4, 5, 8]) {
             for (const depth of [1, 2, 8]) {
                 for (const newline of ["\n", "\r\n"]) {
                     const fence = "`".repeat(width);

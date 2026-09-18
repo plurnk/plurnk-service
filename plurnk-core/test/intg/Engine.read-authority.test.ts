@@ -36,7 +36,7 @@ const runtime = async (t: TestContext) => {
             sequence: ++sequence, origin, statement: item.statement as PlurnkStatement });
     };
     const read = async (target: string, origin: "model" | "_plurnk" = "model") =>
-        Results.assertReadResult(await run(`\`\`\`READ (${target}) <1,-1>\`\`\``, origin)) as AnchoredReadResult;
+        Results.assertReadResult(await run(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\``, origin)) as AnchoredReadResult;
     const seed = async (ownerId: number, target: string) => {
         const result = await new Worker().edit(editStmt(parsePath(target), source), makeSchemeCtx({
             db, workspaceId: ids.workspaceId, workerId: ownerId, writer: "_plurnk",
@@ -111,11 +111,11 @@ for (const { target, editable, problem } of [
         for (const origin of ["model", "_plurnk"] as const) assertProjection(await read(target, origin), editable);
         if (editable) {
             const anchor = (await read(target)).lineAnchors![1];
-            assert.equal((await run(`\`\`\`EDIT (${target}) <${anchor}>\nchanged\n\`\`\``)).status, 200);
+            assert.equal((await run(`\`\`\`\`EDIT (${target}) <${anchor}>\nchanged\n\`\`\`\``)).status, 200);
             assert.equal((await read(target)).content, "first\nchanged\nthird");
         } else {
             for (const scope of ["<1>", "<@abcde>"]) {
-                const denied = await run(`\`\`\`EDIT (${target}) ${scope}\nchanged\n\`\`\``);
+                const denied = await run(`\`\`\`\`EDIT (${target}) ${scope}\nchanged\n\`\`\`\``);
                 assert.equal(denied.status, 403);
                 assert.equal(denied.problem?.type, `https://problems.plurnk.xyz/scheme/worker/${problem}`);
             }
@@ -132,7 +132,7 @@ test("{§line-anchors}: harness edits retain internal coordinate validation and 
     assertProjection(original, true);
     assert.equal(typeof original.lineAnchorIdentity, "string");
     const anchor = LineAnchors.tokens(original.lineAnchorIdentity!, source)[1];
-    const changed = await run(`\`\`\`EDIT (${target}) <${anchor}>\nupdated\n\`\`\``, "_plurnk");
+    const changed = await run(`\`\`\`\`EDIT (${target}) <${anchor}>\nupdated\n\`\`\`\``, "_plurnk");
     assert.equal(changed.status, 200);
     const current = await read(target);
     assert.equal(current.content, "first\nupdated\nthird");
@@ -160,7 +160,7 @@ test("{§line-anchors}: file READ and EDIT share root and mounted-member write a
         } }, ctx, "file");
         assertProjection(await read(path), editable);
         if (!editable) {
-            const denied = await run(`\`\`\`EDIT (${path}) <@abcde>\nchanged\n\`\`\``);
+            const denied = await run(`\`\`\`\`EDIT (${path}) <@abcde>\nchanged\n\`\`\`\``);
             assert.equal(denied.status, 403);
             assert.equal(denied.problem?.type, "https://problems.plurnk.xyz/scheme/file/member-read-only");
             const killed = await run(PlurnkParser.frame(`KILL (${path})`, null));

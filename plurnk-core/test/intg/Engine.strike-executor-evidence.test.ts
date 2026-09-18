@@ -13,14 +13,14 @@ test("{§engine-rails} consecutive failed commands never strike the loop out", a
     assert.ok(Number.isInteger(maxStrikes) && maxStrikes > 0, "PLURNK_SERVICE_MAX_STRIKES must be set for the witness");
     const failing = maxStrikes + 2;
     const mock = new Mock({ contextWindow: 100000, responses: [
-        ...Array.from({ length: failing }, (_, i) => makeMockResponse(`\`\`\`sh
+        ...Array.from({ length: failing }, (_, i) => makeMockResponse(`\`\`\`\`sh
 echo attempt-${i} >&2; exit 1
-\`\`\`
+\`\`\`\`
 
-\`\`\`NOTE
+\`\`\`\`NOTE
 fixing the tests
-\`\`\``, 10)),
-        makeMockResponse("```SEND\ngreen\n```", 10),
+\`\`\`\``, 10)),
+        makeMockResponse("````SEND\ngreen\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

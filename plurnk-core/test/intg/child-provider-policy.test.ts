@@ -68,16 +68,16 @@ test("{§methods-loop-run-child-provider}: a smaller WORK provider carries throu
     const parent = new Mock({
         contextWindow: 32768,
         responses: [
-            makeMockResponse("```WORK (worker://child)\ndelegate once\n```\n\n```WAIT\nwaiting\n```"),
-            makeMockResponse("```SEND\ntree complete\n```"),
+            makeMockResponse("````WORK (worker://child)\ndelegate once\n````\n\n````WAIT\nwaiting\n````"),
+            makeMockResponse("````SEND\ntree complete\n````"),
         ],
     });
     const child = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("```WORK (worker://grandchild)\ndelegate again\n```\n\n```WAIT\nwaiting\n```"),
-            makeMockResponse("```SEND\nleaf complete\n```"),
-            makeMockResponse("```SEND\nchild complete\n```"),
+            makeMockResponse("````WORK (worker://grandchild)\ndelegate again\n````\n\n````WAIT\nwaiting\n````"),
+            makeMockResponse("````SEND\nleaf complete\n````"),
+            makeMockResponse("````SEND\nchild complete\n````"),
         ],
     });
     ProviderInstantiate.registerInstance(parent, parentSpec);
@@ -128,13 +128,13 @@ test("{§methods-loop-run-child-provider}: the configured child alias supplies a
     const parent = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("```WORK (worker://child)\nuse configured child\n```\n\n```WAIT\nwaiting\n```"),
-            makeMockResponse("```SEND\nparent complete\n```"),
+            makeMockResponse("````WORK (worker://child)\nuse configured child\n````\n\n````WAIT\nwaiting\n````"),
+            makeMockResponse("````SEND\nparent complete\n````"),
         ],
     });
     const child = new Mock({
         contextWindow: 8192,
-        responses: [makeMockResponse("```SEND\nchild complete\n```")],
+        responses: [makeMockResponse("````SEND\nchild complete\n````")],
     });
     ProviderInstantiate.registerInstance(parent, parentSpec);
     ProviderInstantiate.registerInstance(child, childSpec);
@@ -168,8 +168,8 @@ test("{§bare-inference}: BARE consumes the loop's durable child provider withou
     const parent = new Mock({
         contextWindow: 16_384,
         responses: [
-            makeMockResponse("\n```BARE\nWhat is the capital of Germany?\n```\n\n```NOTE\nReview the answer.\n```"),
-            makeMockResponse("```SEND\nThe isolated answer was reviewed.\n```"),
+            makeMockResponse("\n````BARE\nWhat is the capital of Germany?\n````\n\n````NOTE\nReview the answer.\n````"),
+            makeMockResponse("````SEND\nThe isolated answer was reviewed.\n````"),
         ],
     });
     const child = new Mock({
@@ -209,9 +209,9 @@ test("{§methods-loop-run-child-provider}: explicit inherit overrides configurat
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("```WORK (worker://child)\ndo it\n```\n\n```WAIT\nwaiting\n```"),
-            makeMockResponse("```SEND\nchild complete\n```"),
-            makeMockResponse("```SEND\nparent complete\n```"),
+            makeMockResponse("````WORK (worker://child)\ndo it\n````\n\n````WAIT\nwaiting\n````"),
+            makeMockResponse("````SEND\nchild complete\n````"),
+            makeMockResponse("````SEND\nparent complete\n````"),
         ],
     });
     ProviderInstantiate.registerInstance(mock, spec);
@@ -247,8 +247,8 @@ test("{§methods-loop-run-child-provider}: an oversized FORK fails as an ordinar
     const parent = new Mock({
         contextWindow: 32768,
         responses: [
-            makeMockResponse("```FORK (worker://branch)\ncontinue with inherited history\n```\n\n```WAIT\nwaiting\n```"),
-            makeMockResponse("```SEND\nobserved child failure\n```"),
+            makeMockResponse("````FORK (worker://branch)\ncontinue with inherited history\n````\n\n````WAIT\nwaiting\n````"),
+            makeMockResponse("````SEND\nobserved child failure\n````"),
         ],
     });
     const child = new Mock({ contextWindow: 4096, responses: [] });

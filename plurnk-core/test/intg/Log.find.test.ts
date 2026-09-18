@@ -82,7 +82,7 @@ test("{§log-coordinate-hierarchy}: FIND projects and filters actionless rows by
     const { db, workerId, loopId, turnId, workspaceId } = await setup();
     try {
         for (const [sequence, kind, content] of [
-            [4, "emissionAttempt", "```NOTE\nContinue the task.\n```"],
+            [4, "emissionAttempt", "````NOTE\nContinue the task.\n````"],
             [5, "emissionAttempt", "broken output"],
         ] as const) {
             await db.engine_insert_log_entry.get({

@@ -39,9 +39,9 @@ const estimatedCost = (usage: ProviderUsage) => ({
 const valid = (body = "done", usage?: ProviderUsage): MockResponse => ({
     assistant: {
         content: `
-\`\`\`SEND
+\`\`\`\`SEND
 ${body}
-\`\`\`
+\`\`\`\`
 `,
         reasoning: null,
     },
@@ -51,10 +51,10 @@ ${body}
 const continuing = (body = "continue"): MockResponse => ({
     assistant: {
         content: `
-\`\`\`FIND (log:///**) <1,1>\`\`\`
-\`\`\`NOTE
+\`\`\`\`FIND (log:///**) <1,1>\`\`\`\`
+\`\`\`\`NOTE
 ${body}
-\`\`\``,
+\`\`\`\``,
         reasoning: null,
     },
 });
@@ -146,7 +146,7 @@ test("{§provider-connectivity}: one model call durably settles a transient requ
                         },
                     );
                 }
-                const content = "\n```SEND\nrecovered\n```";
+                const content = "\n````SEND\nrecovered\n````";
                 const body = [
                     `data: ${JSON.stringify({
                         id: "connectivity-response",
@@ -219,7 +219,7 @@ test("{§provider-connectivity}: one model call durably settles a transient requ
 test("separator-free provider preamble does not reject a complete model turn", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
-        const content = "harmless status.```SEND\ndone\n```";
+        const content = "harmless status.````SEND\ndone\n````";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [invalid(content)],
@@ -304,7 +304,7 @@ test("invalid emissions retry beneath one turn against the identical packet, the
             contextWindow: 100_000,
             responses: [
                 invalid("````READ (worker:///prose-without-a-turn", requestUsage(10, 2, 1, 4)),
-                invalid("```READ (worker:///broken", requestUsage(20, 3, 2, 5)),
+                invalid("````READ (worker:///broken", requestUsage(20, 3, 2, 5)),
                 valid("accepted", requestUsage(30, 4, 3, 6)),
             ],
         });
@@ -353,7 +353,7 @@ test("invalid emissions retry beneath one turn against the identical packet, the
         );
         const turn = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(turn?.packet ?? "{}") as { assistant?: { content?: string } };
-        assert.equal(packet.assistant?.content, "\n```SEND\naccepted\n```\n");
+        assert.equal(packet.assistant?.content, "\n````SEND\naccepted\n````\n");
         assert.doesNotMatch(JSON.stringify(packet), /prose without|worker:\/\/\/broken/, "rejected emissions never enter packet history");
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string }>({ turn_id: result.turnId });
@@ -381,7 +381,7 @@ test("{§turn-shape} a valid operation without a lifecycle verb is admitted once
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
-            responses: [invalid("```EDIT (worker:///proof.md)\nlanded\n```")],
+            responses: [invalid("````EDIT (worker:///proof.md)\nlanded\n````")],
         });
 
         const result = await engine.runTurn({
@@ -513,10 +513,10 @@ test("finish=length is forensic evidence: an unfinished modifier retries wholesa
     try {
         const rejectedPrefix = [
             "",
-            "```READ (worker:///missing)```",
-            "```EDIT (worker:///notes.md",
+            "````READ (worker:///missing)````",
+            "````EDIT (worker:///notes.md",
         ].join("\n");
-        const accepted = "\n```SEND\ndone\n```";
+        const accepted = "\n````SEND\ndone\n````";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
@@ -582,7 +582,7 @@ test("finish=length is forensic evidence: an unfinished modifier retries wholesa
 test("{§lifecycle-slots}: a malformed continuation heading preserves siblings without authorizing completion", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
-        const rejected = "```EDIT (worker:///proof.md)\nthe valid sibling is written\n```\n```NOTE [{\"content\":\"keep\nthis\",\"status\":\"pending\"}]\n```";
+        const rejected = "````EDIT (worker:///proof.md)\nthe valid sibling is written\n````\n````NOTE [{\"content\":\"keep\nthis\",\"status\":\"pending\"}]\n````";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [invalid(rejected)],
@@ -626,12 +626,12 @@ test("{§lifecycle-slots}: a malformed continuation heading preserves siblings w
 test("a syntactically legal $fC matcher failure is bounded, admitted once, and made model-visible (#12/#16)", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
-        const malformed = "\n```FIND (worker:///x) [{\"pattern\":\"$fC\"}]```\n\n```NOTE\ninspect the results next\n```";
+        const malformed = "\n````FIND (worker:///x) [{\"pattern\":\"$fC\"}]````\n\n````NOTE\ninspect the results next\n````";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
                 invalid(malformed),
-                invalid("\n```SEND\nthe matcher was malformed\n```"),
+                invalid("\n````SEND\nthe matcher was malformed\n````"),
             ],
         });
 
@@ -725,12 +725,12 @@ test("#409: a READ carrying pasted READ lines as a body dispatches without it; o
             contextWindow: 100_000,
             responses: [
                 invalid([
-                    `\`\`\`READ (evaluator/functions.go) <2286,2292>
+                    `\`\`\`\`READ (evaluator/functions.go) <2286,2292>
 ${renderedRead}
-\`\`\``,
-                    "```NOTE\ninspect the result\n```",
+\`\`\`\``,
+                    "````NOTE\ninspect the result\n````",
                 ].join("\n\n")),
-                invalid("\n```SEND\ndone\n```"),
+                invalid("\n````SEND\ndone\n````"),
             ],
         });
 
@@ -792,7 +792,7 @@ test("a bounded malformed operation defers same-turn completion until the model 
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("\n```FIND (**) [{\"pattern\":\"/unterminated[\"}]```\n\n```SEND\ndone\n```"),
+                invalid("\n````FIND (**) [{\"pattern\":\"/unterminated[\"}]````\n\n````SEND\ndone\n````"),
             ],
         });
 
@@ -888,7 +888,7 @@ test("{§transfer-resource-selections} a malformed COPY destination cannot dispa
         });
         const provider = new AttemptWitness({
             contextWindow: 100_000,
-            responses: [invalid("```COPY (worker:///src.md) <2,3> (worker:///slice.md) <0>:```\n```NOTE\ninspect the copy result\n```")],
+            responses: [invalid("````COPY (worker:///src.md) <2,3> (worker:///slice.md) <0>:````\n````NOTE\ninspect the copy result\n````")],
         });
 
         const result = await engine.runTurn({
@@ -935,8 +935,8 @@ test("duplicate dispositions destroy the single-turn boundary and retry wholesal
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("```WAIT\nWait.\n```\n```WAIT\nContinue the task.\n```\n\n```EDIT (worker:///must-not-exist)\nvalue\n```"),
-                invalid("```READ (worker:///anything)```\n```WAIT\nWait.\n```\n```WAIT\nAnother turn cannot begin here.\n```\n```EDIT (worker:///must-not-exist)\nvalue\n```"),
+                invalid("````WAIT\nWait.\n````\n````WAIT\nContinue the task.\n````\n\n````EDIT (worker:///must-not-exist)\nvalue\n````"),
+                invalid("````READ (worker:///anything)````\n````WAIT\nWait.\n````\n````WAIT\nAnother turn cannot begin here.\n````\n````EDIT (worker:///must-not-exist)\nvalue\n````"),
                 valid("accepted retry"),
             ],
         });
@@ -1014,7 +1014,7 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     const latestRejected = [
         "",
-        "```READ (file:///main.go",
+        "````READ (file:///main.go",
         "",
         "continue after inspection",
     ].join("\n");
@@ -1058,11 +1058,11 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
         assert.equal(new Set(provider.packets.slice(0, 3)).size, 1, "private attempts retain one exact packet");
         assert.notEqual(provider.packets[3], provider.packets[2], "the informed recovery has its own packet");
         assert.match(provider.packets[3]!, /Response rejected before dispatch; no operations were performed\./);
-        assert.match(provider.packets[3]!, /2:```READ \(file:\/\/\/main\.go\\n3:.*\\n4:continue after inspection/);
+        assert.match(provider.packets[3]!, /2:````READ \(file:\/\/\/main\.go\\n3:.*\\n4:continue after inspection/);
         assert.doesNotMatch(provider.packets[3]!, /first private invalid|second private invalid/);
         // {§invalid-emission-attempts} — the informed turn carries the parser's diagnostic and position.
         assert.match(provider.packets[3]!, /Parser: .+ @ \d+:\d+/, "the parser's diagnosis reaches the informed turn");
-        assert.doesNotMatch(provider.packets[4]!, /2:```READ \(file:\/\/\/main\.go\\n3:.*\\n4:continue after inspection/, "the rejected emission is projected only into its recovery packet");
+        assert.doesNotMatch(provider.packets[4]!, /2:````READ \(file:\/\/\/main\.go\\n3:.*\\n4:continue after inspection/, "the rejected emission is projected only into its recovery packet");
 
         const [, failedTurnId, recoveryTurnId, finalTurnId] = result.turnIds;
         const failedTurn = await db.test_get_turn.get<{ status: number; packet: string }>({ id: failedTurnId });
@@ -1092,7 +1092,7 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
         assert.equal(rejectedMirror.turn_seq, 2, "the rejected emission belongs to the first packet-bearing turn");
         assert.equal(rejectedMirror.initial_folded, "[[1,-1]]", "the rejected model item remains durably body-suppressed");
         assert.equal(rejectedMirror.folded, "[]", "the rejected program remains readable");
-        assert.match(rejectedMirror.rx, /```READ \(file:\/\/\/main\.go/);
+        assert.match(rejectedMirror.rx, /````READ \(file:\/\/\/main\.go/);
         assert.equal(rows.filter((row) => row.origin === "model" && row.op === "READ").length, 0, "no rejected operation dispatches");
         assert.equal(rows.filter((row) => row.op === "error").length, 0, "the lifeline does not fabricate an operation failure");
     } finally {
@@ -1122,7 +1122,7 @@ test("{§engine-rails} Contract Strikes: one invalid provider response strikes; 
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new GarbageProvider(1, [
-            { assistant: { content: "\n```SEND\ndone\n```", reasoning: null } },
+            { assistant: { content: "\n````SEND\ndone\n````", reasoning: null } },
         ]);
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId,
@@ -1138,7 +1138,7 @@ test("{§engine-rails} Contract Strikes: three consecutive invalid provider resp
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new GarbageProvider(3, [
-            { assistant: { content: "\n```SEND\nnever reached\n```", reasoning: null } },
+            { assistant: { content: "\n````SEND\nnever reached\n````", reasoning: null } },
         ]);
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId,
@@ -1157,11 +1157,11 @@ test("{§engine-rails} Contract Strikes: consecutive emission exhaustions strike
         // {§unparsed-tail-boundary} — an unfinished target at the end of the input is the exhaustion shape now that prose is an empty turn.
         const cut = { assistant: { content: "````READ (worker:///no-ops-here", reasoning: null } };
         const good = (body: string) => ({ assistant: { content: `
-\`\`\`FIND (log:///**) <1,1>\`\`\`
-\`\`\`NOTE
+\`\`\`\`FIND (log:///**) <1,1>\`\`\`\`
+\`\`\`\`NOTE
 ${body}
-\`\`\``, reasoning: null } });
-        const done = { assistant: { content: "\n```SEND\nfinished\n```", reasoning: null } };
+\`\`\`\``, reasoning: null } });
+        const done = { assistant: { content: "\n````SEND\nfinished\n````", reasoning: null } };
         // Two exhaustions (3 attempts each), a clean turn clearing the streak,
         // then three consecutive exhaustions striking out on the third.
         const provider = new AttemptWitness({
@@ -1196,8 +1196,8 @@ test("{§invalid-emission-attempts} a frame exhaustion shares prior contract str
             contextWindow: 100_000,
             responses: [
                 // Two admitted turns each struck by a bounded matcher failure (an empty NOTE is valid).
-                invalid("```READ (worker:///absent)```\n```FIND (worker:///x) [{\"pattern\":\"$fC\"}]```"),
-                invalid("```READ (worker:///absent)```\n```FIND (worker:///x) [{\"pattern\":\"$fC\"}]```"),
+                invalid("````READ (worker:///absent)````\n````FIND (worker:///x) [{\"pattern\":\"$fC\"}]````"),
+                invalid("````READ (worker:///absent)````\n````FIND (worker:///x) [{\"pattern\":\"$fC\"}]````"),
                 invalid(rejected), invalid(rejected), invalid(rejected),
                 valid("Not requested."),
             ],
@@ -1261,7 +1261,7 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
         );
         assert.equal(
             await readFile(join(digestDir, "packet001.assistant.md"), "utf8"),
-            "\n```SEND\naccepted bytes\n```\n",
+            "\n````SEND\naccepted bytes\n````\n",
         );
         const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
         assert.match(markdown, /rejected-emissions=1\/2/);
@@ -1489,7 +1489,7 @@ test("Core rejects a ProviderError whose accounting differs from its observed ph
 test("#161 {§provider-recovery}: a complete-looking resource-interrupted attempt is persisted, never admitted or replayed, and the call is re-issued", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
-        const content = "\n```SEND\nmust never dispatch\n```";
+        const content = "\n````SEND\nmust never dispatch\n````";
         const requestAccounting: ProviderRequestAccounting = {
             provider: "provider:mock",
             model: "interrupted-model",
@@ -1676,13 +1676,13 @@ test("a valid turn with a failed operation remains recoverable and model-visible
             responses: [
                 {
                     assistant: {
-                        content: "\n```EDIT (sealed:///x)\nvalue\n```\n\n```SEND\ndone\n```",
+                        content: "\n````EDIT (sealed:///x)\nvalue\n````\n\n````SEND\ndone\n````",
                         reasoning: null,
                     },
                 },
                 {
                     assistant: {
-                        content: "\n```SEND\ncannot write that resource\n```",
+                        content: "\n````SEND\ncannot write that resource\n````",
                         reasoning: null,
                     },
                 },
@@ -1713,8 +1713,8 @@ test("(#478) a length finish surfaces the output allowance on the next packet, n
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                { assistant: { content: "```SEND\nbig write, cut mid-wo\n```", reasoning: null, finishReason: "length" } },
-                { assistant: { content: "\n```SEND\ndone\n```", reasoning: null, finishReason: "stop" } },
+                { assistant: { content: "````SEND\nbig write, cut mid-wo\n````", reasoning: null, finishReason: "length" } },
+                { assistant: { content: "\n````SEND\ndone\n````", reasoning: null, finishReason: "stop" } },
             ],
         });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "go" }] });

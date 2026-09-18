@@ -8,8 +8,8 @@ import { lastReply } from "./_helpers.ts";
 for (const cancel of [false, true]) {
     test(`{§completion-defers-to-results}: a failed operation is observed before ${cancel ? "scope cancellation" : "automatic completion"}`, async () => {
         const mock = new Mock({ contextWindow: 16384, responses: [
-            makeMockResponse("\n```KILL (worker:///no-such-entry)\n```\n```SEND\nThe requested entry does not exist.\n```"),
-            makeMockResponse(cancel ? "```KILL (worker://alice)\n```" : "```NOTE\nThe missing entry was observed.\n```"),
+            makeMockResponse("\n````KILL (worker:///no-such-entry)\n````\n````SEND\nThe requested entry does not exist.\n````"),
+            makeMockResponse(cancel ? "````KILL (worker://alice)\n````" : "````NOTE\nThe missing entry was observed.\n````"),
         ] });
         await withDaemon(mock, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: "failed-op-observation" });

@@ -114,7 +114,7 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
 test("{§turn-ops-admission-path}: initialization and inference preserve turnOps beside ordinary operation outcomes", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        const source = "```SEND\ndone\n```";
+        const source = "````SEND\ndone\n````";
         const provider = new Mock({
             contextWindow: 100000,
             responses: [contentResp(source)],
@@ -521,12 +521,12 @@ test("Engine.runLoop: three consecutive hard failures abandon at 500 with strike
         const provider = new Mock({
             contextWindow: 100000,
             responses: Array.from({ length: 5 }, (_, i) => contentResp([
-                "```EDIT (sealed:///x-" + (i) + ")",
+                "````EDIT (sealed:///x-" + (i) + ")",
                 "v",
-                "```",
-                "```NOTE",
+                "````",
+                "````NOTE",
                 "going",
-                "```",
+                "````",
             ].join("\n"))),
         });
         const result = await engine.runLoop({
@@ -652,7 +652,7 @@ test("{§engine-cycle-evidence} creation differs from repeated period-1 no-op ed
         // Creation returns 201; only the following 304 results repeat.
         const provider = new Mock({
             contextWindow: 100000,
-            responses: Array.from({ length: 8 }, () => contentResp("```EDIT (worker:///fixed) <1,-1>\nv\n```\n```NOTE\ngo\n```")),
+            responses: Array.from({ length: 8 }, () => contentResp("````EDIT (worker:///fixed) <1,-1>\nv\n````\n````NOTE\ngo\n````")),
         });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, messages: [], maxTurns: 20, maxStrikes: 3, minCycles: 3, maxCyclePeriod: 4,
@@ -1023,7 +1023,7 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
         // non-executable, while the SEND after it still parses and dispatches.
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [{ assistant: { content: "Just thinking out loud here.\n\n```SEND\ndone\n```", reasoning: null } }],
+            responses: [{ assistant: { content: "Just thinking out loud here.\n\n````SEND\ndone\n````", reasoning: null } }],
         });
         const result = await engine.runTurn({
             provider, workspaceId, workerId, loopId,

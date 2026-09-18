@@ -296,7 +296,7 @@ test("{§proposal-202-pauses}: a WAIT over live work parks without a proposal", 
         const proposed: number[] = [];
         ctx.engine.onProposalPending((event) => { proposed.push(event.logEntryId); });
 
-        const sendParked = parseDsl("```WAIT\nawaiting your reply\n```").find((s) => s.op === "WAIT");
+        const sendParked = parseDsl("````WAIT\nawaiting your reply\n````").find((s) => s.op === "WAIT");
         assert.ok(sendParked, "fixture: the broadcast park parsed as a statement");
         const parkDeferred = deferred<number>();
         const parkResult = await ctx.engine.dispatch({

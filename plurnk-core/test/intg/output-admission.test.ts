@@ -27,7 +27,7 @@ const providerAt = (capacity: number, responses: MockResponse[]): Mock => {
         else process.env.PLURNK_PROVIDERS_REASONING_BUDGET = reasoning;
     }
 };
-const continuing = "```NOTE\nReview the evidence.\n```";
+const continuing = "````NOTE\nReview the evidence.\n````";
 
 test("{§context-output-admission}: oversized output is withheld in the same inference turn, retained READable, and never replaces NOTE", async () => {
     const db = await openMigrated();
@@ -39,13 +39,13 @@ test("{§context-output-admission}: oversized output is withheld in the same inf
         const content = Array.from({ length: 600 }, (_, i) => `${i + 1}: ${"evidence ".repeat(30)}`).join("\n");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/large.md", content });
         const first = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 1,
-            provider: providerAt(999_000, [response(`\`\`\`READ (worker:///large.md) <1,-1>\`\`\`\n${continuing}`)]),
+            provider: providerAt(999_000, [response(`\`\`\`\`READ (worker:///large.md) <1,-1>\`\`\`\`\n${continuing}`)]),
         });
         const original = await db.test_log_entries_by_turn.all<{ id: number; sequence: number; op: string; rx: string; tx: string; folded: string }>({ turn_id: first.turnId });
         const read = original.find(({ op }) => op === "READ")!;
         const firstTurn = await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId });
         const path = `/1/${firstTurn!.sequence}/${read.sequence}/READ`;
-        const provider = providerAt(12_000, [response(continuing), response(`\`\`\`READ (log://${path}) <2,3>\`\`\`\n${continuing}`), response(continuing)]);
+        const provider = providerAt(12_000, [response(continuing), response(`\`\`\`\`READ (log://${path}) <2,3>\`\`\`\`\n${continuing}`), response(continuing)]);
         const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 2, provider });
         assert.equal(provider.remaining, 2, "withholding admits the same model request, without an extra recovery turn");
         assert.equal(second.producer, "model");
@@ -107,7 +107,7 @@ test("{§context-output-receipt}: scoped KILL precedes admission and FIND retain
         const content = Array.from({ length: 600 }, (_, i) => `row-${i + 1} ${"evidence ".repeat(30)}`).join("\n");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/large.md", content });
         const first = await engine.runTurn({ workspaceId, workerId, loopId, messages,
-            provider: providerAt(999_000, [response("```READ (worker:///large.md) <1,-1>```\n" + continuing)]),
+            provider: providerAt(999_000, [response("````READ (worker:///large.md) <1,-1>````\n" + continuing)]),
         });
         const trimming = await Turn.open(db, { loopId, producer: "_plurnk", kind: "operation" });
         const trim = await engine.dispatch({ workspaceId, workerId, loopId, turnId: trimming.id, sequence: 1, origin: "_plurnk",
@@ -149,7 +149,7 @@ test("{§context-output-warning}: repeated output batches escalate independently
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         await seedEntryWithChannel(db, { workspaceId, pathname: "/large.md", content: "evidence ".repeat(10_000) });
-        const read = response("```READ (worker:///large.md) <1,-1>```\n" + continuing);
+        const read = response("````READ (worker:///large.md) <1,-1>````\n" + continuing);
         const provider = providerAt(12_000, [read, read, response(continuing), response(continuing)]);
         await engine.runTurn({ workspaceId, workerId, loopId, messages, provider });
         for (const count of [1, 2]) {
@@ -197,7 +197,7 @@ test("{§context-output-selection}: prior admitted output and an oversized autho
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const note = "Remember ".repeat(5000);
-        const wide = providerAt(999_000, [response(`\`\`\`NOTE\n${note}\n\`\`\``)]);
+        const wide = providerAt(999_000, [response(`\`\`\`\`NOTE\n${note}\n\`\`\`\``)]);
         const first = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: wide });
         const before = await db.engine_render_log.all({ worker_id: workerId });
         const small = providerAt(12_000, [response(continuing)]);

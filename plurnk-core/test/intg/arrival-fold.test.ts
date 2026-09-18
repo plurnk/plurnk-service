@@ -9,7 +9,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { origin: string; op: string; pathname: string; scheme: string; folded: string; turn_id: number };
-const mock = () => new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("```SEND\ndone\n```", 50)] });
+const mock = () => new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````SEND\ndone\n````", 50)] });
 
 test("the arrival row and a normal same-turn op are both born open", async () => {
     await withDaemon(mock(), async (db, _daemon, addr) => {

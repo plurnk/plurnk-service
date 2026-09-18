@@ -428,7 +428,7 @@ test("assembled packet: the skills foist surfaces the Worker's materialized skil
         const loopId = await insertLoop(db, workerId, 1, "go");
         // A materialized scheme doc is an ordinary entry owned by the Worker
         // whose effective Functionality it describes.
-        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/_plurnk/plurnk/worker.md", channel: "body", content: "# worker\n\n## Summary\n\nManage shared worker entries.\n\n## Invocation\n\n```EDIT (worker:///notes.md)\nNotes.\n```", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/_plurnk/plurnk/worker.md", channel: "body", content: "# worker\n\n## Summary\n\nManage shared worker entries.\n\n## Invocation\n\n````EDIT (worker:///notes.md)\nNotes.\n````", mimetype: "text/markdown" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(null)] } }] });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });

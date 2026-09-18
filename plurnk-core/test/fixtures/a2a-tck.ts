@@ -21,24 +21,24 @@ class TckProvider extends Mock {
         process.stderr.write(`${JSON.stringify({ scenario, call: count + 1 })}\n`);
         if (scenario.startsWith("tck-artifact-file") && !scenario.startsWith("tck-artifact-file-url")) {
             const content = count === 0
-                ? ["```EDIT (worker:///output.txt)", "tck", "```", "```NOTE", "Send the file.", "```"].join("\n")
-                : ["```SEND [{\"attachments\":[\"worker:///output.txt\"]}]", "```", "```SEND", "```"].join("\n");
+                ? ["````EDIT (worker:///output.txt)", "tck", "````", "````NOTE", "Send the file.", "````"].join("\n")
+                : ["````SEND [{\"attachments\":[\"worker:///output.txt\"]}]", "````", "````SEND", "````"].join("\n");
             return new Mock({ contextWindow: 1_000_000, responses: [{ assistant: { content, reasoning: null } }] }).generate(args);
         }
         const awaitingInput = scenario.startsWith("tck-input-required") && (count === 0
             || (source.includes("TCK history message") && !source.includes("TCK complete after history")));
         const content = awaitingInput
             ? [
-                "```question",
+                "````question",
                 JSON.stringify({ message: "Please provide the requested input.", requestedSchema: { type: "string" } }),
-                "```",
-                "```WAIT",
+                "````",
+                "````WAIT",
                 "Await the caller's input.",
-                "```",
+                "````",
             ].join("\n")
             : [
-                "```SEND", scenario.startsWith("tck-artifact-text") ? "Generated text content" : "Hello from TCK", "```",
-                "```SEND", "```",
+                "````SEND", scenario.startsWith("tck-artifact-text") ? "Generated text content" : "Hello from TCK", "````",
+                "````SEND", "````",
             ].join("\n");
         return new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse(content)] }).generate(args);
     }

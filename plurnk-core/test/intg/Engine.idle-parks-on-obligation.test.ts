@@ -14,18 +14,18 @@ test("{§send-idle-turn} NOTE-only turns continue with or without a stream; only
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "100";
     try {
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse(`\`\`\`sh
+            makeMockResponse(`\`\`\`\`sh
 while [ ! -f '${releasePath}' ]; do sleep 0.05; done; printf finished
-\`\`\`
+\`\`\`\`
 
-\`\`\`NOTE
+\`\`\`\`NOTE
 started
-\`\`\``, 50),
-            makeMockResponse("```NOTE\nReview the independent work\n```", 50),
-            makeMockResponse("```WAIT\nAwait the command\n```", 50),
-            makeMockResponse("```SEND\ndone\n```", 50),
-            makeMockResponse("```NOTE\nnothing to wait on\n```", 50),
-            makeMockResponse("```SEND\nconcluded\n```", 50),
+\`\`\`\``, 50),
+            makeMockResponse("````NOTE\nReview the independent work\n````", 50),
+            makeMockResponse("````WAIT\nAwait the command\n````", 50),
+            makeMockResponse("````SEND\ndone\n````", 50),
+            makeMockResponse("````NOTE\nnothing to wait on\n````", 50),
+            makeMockResponse("````SEND\nconcluded\n````", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

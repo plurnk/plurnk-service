@@ -55,7 +55,7 @@ const staticProvider = (response: Omit<ProviderResponse, "accounting" | "capacit
 const recordingProvider = (): { provider: Provider; calls: Array<{ grammar?: string }> } => {
     const calls: Array<{ grammar?: string }> = [];
     const base = new Mock({ contextWindow: 100000, responses: [
-        { assistant: { content: "```SEND\nok\n```", reasoning: null } },
+        { assistant: { content: "````SEND\nok\n````", reasoning: null } },
     ] });
     // plain delegation — a Proxy breaks Mock's private-field getters (#contextWindow via Reflect)
     const provider = {
@@ -185,7 +185,7 @@ test("{§operator-grammar} the turn records whether the grammar reached the wire
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const { workspaceId, workerId, loopId } = await envelope(db);
         // The emission does not match the grammar at all; nothing in the service cares.
-        const content = "```SEND\ndone\n```";
+        const content = "````SEND\ndone\n````";
         const transported = staticProvider({
             assistant: { content, reasoning: null, finishReason: "stop", model: "fake" },
             assistantRaw: {},

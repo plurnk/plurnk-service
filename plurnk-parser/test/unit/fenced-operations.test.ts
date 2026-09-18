@@ -20,13 +20,13 @@ const statements = (source: string) => {
 };
 
 test("fenced operations: empty single-line and multiline blocks have the same semantics", () => {
-    const [inline, multiline] = statements("```READ (example.txt) <1,16>```\n```READ (example.txt) <1,16>\n```");
+    const [inline, multiline] = statements("````READ (example.txt) <1,16>````\n````READ (example.txt) <1,16>\n````");
     assert.deepEqual({ ...inline, position: null }, { ...multiline, position: null });
     assert.equal(inline.op, "READ");
 });
 
 test("fenced operations: executor and MCP names lower to the execution shape", () => {
-    const [shell, mcp] = statements('```bash\necho "Hello world";\n```\n```gitea (issue_list)\n{"issue_id":42}\n```');
+    const [shell, mcp] = statements('````bash\necho "Hello world";\n````\n````gitea (issue_list)\n{"issue_id":42}\n````');
     assert.equal(isExecution(shell), true);
     assert.equal(isExecution(mcp), true);
     if (!isExecution(shell) || !isExecution(mcp)) return;
@@ -38,7 +38,7 @@ test("fenced operations: executor and MCP names lower to the execution shape", (
 });
 
 test("fenced operations: native keywords take precedence over executor names", () => {
-    const [find, edit] = statements('```FIND (src/**) [{"pattern": "~retry"}]```\n```EDIT (example.txt) <@abcde>\napples\n```');
+    const [find, edit] = statements('````FIND (src/**) [{"pattern": "~retry"}]````\n````EDIT (example.txt) <@abcde>\napples\n````');
     assert.equal(find.op, "FIND");
     assert.equal(edit.op, "EDIT");
     if (edit.op !== "EDIT") return;
@@ -54,7 +54,7 @@ test("fenced operations: inner programs and different-length fences remain exact
 });
 
 test("fenced operations: shorter and longer runs stay literal for independently chosen fence counts", () => {
-    for (const count of [3, 4, 5, 8, 16, 33]) {
+    for (const count of [4, 5, 8, 16, 33]) {
         const fence = "`".repeat(count);
         for (const newline of ["\n", "\r\n"]) {
             const body = [1, 2, 3, 4, 5, 8, 16, 33, 64]
@@ -70,7 +70,7 @@ test("fenced operations: shorter and longer runs stay literal for independently 
 });
 
 test("fenced operations: a longer backtick run closes a heading or body; an unfinished slot still loses the boundary", () => {
-    for (const count of [3, 4, 7]) {
+    for (const count of [4, 5, 7]) {
         const fence = "`".repeat(count);
         for (const extra of [1, 4]) {
             const longer = "`".repeat(count + extra);
@@ -93,7 +93,7 @@ test("fenced operations: a longer backtick run closes a heading or body; an unfi
 });
 
 test("fenced operations: a longer run after an inline body closes the block and what follows is prose", () => {
-    const result = PlurnkParser.parseStatements("```EDIT (notes.md) text````\ncontinued\n```");
+    const result = PlurnkParser.parseStatements("````EDIT (notes.md) text`````\ncontinued\n````");
     assert.equal(result.unparsedTail, undefined);
     const admitted = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     assert.equal(admitted.length, 1);
@@ -107,7 +107,7 @@ test("fenced operations: a longer run after an inline body closes the block and 
 
 test("fenced operations: framing excludes only its own newlines, preserving CRLF and whitespace", () => {
     for (const body of ["a", " a ", "\na\n\n", "a\r\nb\r\n", "é 🦊\n  "]) {
-        const [edit] = statements(`\`\`\`EDIT (example.txt) <1,-1>\r\n${body}\r\n\`\`\``);
+        const [edit] = statements(`\`\`\`\`EDIT (example.txt) <1,-1>\r\n${body}\r\n\`\`\`\``);
         assert.equal(edit.op, "EDIT");
         if (edit.op !== "EDIT") return;
         assert.equal(edit.body, body);
@@ -115,7 +115,7 @@ test("fenced operations: framing excludes only its own newlines, preserving CRLF
 });
 
 test("fenced operations: transfer operands and opaque metadata keep their contracts", () => {
-    const [copy, exec] = statements('```COPY (a) <@abcde> (b) <0>```\n```gitea (issue_list) [{"headers": {"x": "]"}}] <1,0.1> <!-- list issues -->\n{}\n```');
+    const [copy, exec] = statements('````COPY (a) <@abcde> (b) <0>````\n````gitea (issue_list) [{"headers": {"x": "]"}}] <1,0.1> <!-- list issues -->\n{}\n````');
     assert.equal(copy.op, "COPY");
     assert.equal(isExecution(exec), true);
     if (copy.op !== "COPY" || !isExecution(exec)) return;
@@ -137,7 +137,7 @@ test("{§scheme-metadata-modifier}: targetless SEND retains message metadata and
 });
 
 test("fenced operations: an unfinished block keeps a shorter inner executor block as body, never as a statement", () => {
-    const result = PlurnkParser.parse('```READ (safe.txt)```\n````EDIT (victim.txt)\n```sh\necho not-an-operation\n```');
+    const result = PlurnkParser.parse('````READ (safe.txt)````\n````EDIT (victim.txt)\n```sh\necho not-an-operation\n```');
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(result.items.filter((item) => item.kind === "statement").map((item) => item.statement.op), ["READ", "EDIT"]);
     const edit = result.items.find((item) => item.kind === "statement" && item.statement.op === "EDIT");
@@ -145,7 +145,7 @@ test("fenced operations: an unfinished block keeps a shorter inner executor bloc
 });
 
 test("fenced operations: closed malformed blocks do not discard later valid operations", () => {
-    const result = PlurnkParser.parse("```FIND (src/**) <~retry>\n```\n```READ (a.txt)```\n```NOTE\nInspect the results.\n```");
+    const result = PlurnkParser.parse("````FIND (src/**) <~retry>\n````\n````READ (a.txt)````\n````NOTE\nInspect the results.\n````");
     assert.equal(result.unparsedTail, undefined);
     assert.equal(result.items.filter((item) => item.kind === "error").length, 1);
     assert.deepEqual(result.items.filter((item) => item.kind === "statement").map((item) => item.statement.op), ["READ", "NOTE"]);
@@ -163,7 +163,7 @@ test("fenced operations: a message may contain literal executable examples witho
 });
 
 test("fenced operations: canonical serialization retains bodies, operands, and executor selection without suffix state", () => {
-    const before = statements("```gitea (issue_list)\n{\"issue_id\":42}\n```\n```COPY (a) <@abcde> (b) <0>```\n````EDIT (README.md) <1,-1>\n```sh\necho hello\n```\n\n````");
+    const before = statements("````gitea (issue_list)\n{\"issue_id\":42}\n````\n````COPY (a) <@abcde> (b) <0>````\n````EDIT (README.md) <1,-1>\n```sh\necho hello\n```\n\n````");
     const rendered = PlurnkParser.stringify(before);
     const after = statements(rendered);
     const withoutPosition = (ops: typeof before) => ops.map((op) => ({ ...op, position: null }));
@@ -173,7 +173,7 @@ test("fenced operations: canonical serialization retains bodies, operands, and e
 
 test("fenced operations: inherited JavaScript property names are ordinary executor names", () => {
     for (const name of ["constructor", "toString", "valueOf"]) {
-        const [statement] = statements(`\`\`\`${name}\n{}\n\`\`\``);
+        const [statement] = statements(`\`\`\`\`${name}\n{}\n\`\`\`\``);
         assert.equal(isExecution(statement), true);
         if (isExecution(statement)) assert.equal(statement.runtime, name.toLowerCase(), "the AST carries the canonical lowercase tag");
     }
@@ -182,8 +182,8 @@ test("fenced operations: inherited JavaScript property names are ordinary execut
 test("fenced operations: a closed malformed target or metadata stays local to its block", () => {
     for (const header of ["READ (broken", 'sh [{"cwd": "broken"', "READ (a) <oops>"]) {
         const result = PlurnkParser.parseStatements(header.startsWith("sh")
-            ? `\`\`\`${header}\`\`\`\n\`\`\`READ (safe.md)\`\`\``
-            : `\`\`\`${header}\n\`\`\`\n\`\`\`READ (safe.md)\`\`\``);
+            ? `\`\`\`\`${header}\`\`\`\`\n\`\`\`\`READ (safe.md)\`\`\`\``
+            : `\`\`\`\`${header}\n\`\`\`\`\n\`\`\`\`READ (safe.md)\`\`\`\``);
         assert.equal(result.unparsedTail, undefined, header);
         assert.ok(result.items.some((item) => item.kind === "error"), header);
         const admitted = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);

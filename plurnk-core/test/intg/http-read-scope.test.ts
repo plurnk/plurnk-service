@@ -129,11 +129,11 @@ test("#283: a scoped READ of a materialized https page's source returns exactly 
             statement, ...ids, sequence: ++sequence, origin: "model",
         })) as { status: number; rowsWritten?: number };
 
-        const acquired = await dispatch(parseRead(`\`\`\`READ (https://${HOST}/scoped)\`\`\``));
+        const acquired = await dispatch(parseRead(`\`\`\`\`READ (https://${HOST}/scoped)\`\`\`\``));
         assert.equal(acquired.status, 200, "materialization read succeeds");
 
         // {§readable-channel} — a page's server source is its default channel.
-        const scoped = await dispatch(parseRead(`\`\`\`READ (https://${HOST}/scoped) <3,16>\`\`\``));
+        const scoped = await dispatch(parseRead(`\`\`\`\`READ (https://${HOST}/scoped) <3,16>\`\`\`\``));
         assert.equal(scoped.status, 200, "scoped source read succeeds");
         const result = await readContent(db, ids, sequence);
         assert.equal(
@@ -141,7 +141,7 @@ test("#283: a scoped READ of a materialized https page's source returns exactly 
             windowOf(page, 3, 16),
             "the source read returns exactly lines 3..16 — not the complete page",
         );
-        const projection = await dispatch(parseRead(`\`\`\`READ (https://${HOST}/scoped#readable) <1,-1>\`\`\``));
+        const projection = await dispatch(parseRead(`\`\`\`\`READ (https://${HOST}/scoped#readable) <1,-1>\`\`\`\``));
         assert.equal(projection.status, 200, "the readable projection is one fragment away");
     } finally {
         globalThis.fetch = originalFetch;
@@ -165,10 +165,10 @@ test("#283: a scoped READ of a materialized https entry's body channel returns e
             statement, ...ids, sequence: ++sequence, origin: "model",
         })) as { status: number; rowsWritten?: number };
 
-        const acquired = await dispatch(parseRead(`\`\`\`READ (https://${HOST}/scoped-body)\`\`\``));
+        const acquired = await dispatch(parseRead(`\`\`\`\`READ (https://${HOST}/scoped-body)\`\`\`\``));
         assert.equal(acquired.status, 200, "materialization read succeeds");
 
-        const scoped = await dispatch(parseRead(`\`\`\`READ (https://${HOST}/scoped-body) <3,16>\`\`\``));
+        const scoped = await dispatch(parseRead(`\`\`\`\`READ (https://${HOST}/scoped-body) <3,16>\`\`\`\``));
         assert.equal(scoped.status, 200, "scoped read succeeds");
         const result = await readContent(db, ids, sequence);
         assert.equal(
@@ -202,7 +202,7 @@ test("#283: a scoped READ of a project file still returns exactly the window", a
             ...ids, sequence: ++sequence, origin: "model",
         }) as { status: number };
         assert.equal(seeded.status, 201, "seed edit succeeds");
-        await dispatch(parseRead(`\`\`\`READ (worker:///scope.md) <3,16>\`\`\``));
+        await dispatch(parseRead(`\`\`\`\`READ (worker:///scope.md) <3,16>\`\`\`\``));
         const result = await readContent(db, ids, sequence);
         assert.equal(
             result.content,
@@ -238,7 +238,7 @@ test("#287: matcher FIND locations name the channel they address", async () => {
         let sequence = 0;
         const parseFind = (dsl: string): ReadStatement => {
             const found = PlurnkParser.parse(`${dsl}`, { executors: fixtureExecutors(`${dsl}`) }).items.find(
-                (item) => item.kind === "statement" && item.statement.op === (dsl.startsWith("```READ") ? "READ" : "FIND"),
+                (item) => item.kind === "statement" && item.statement.op === (dsl.startsWith("````READ") ? "READ" : "FIND"),
             );
             if (found === undefined) throw new Error(`no statement parsed from: ${dsl}`);
             return (found as { kind: "statement"; statement: ReadStatement }).statement;
@@ -247,10 +247,10 @@ test("#287: matcher FIND locations name the channel they address", async () => {
             statement: parseFind(dsl), ...ids, sequence: ++sequence, origin: "model",
         })) as unknown as { status: number };
 
-        const acquired = await dispatch("```READ (https://93.184.216.34/channel-facts)```");
+        const acquired = await dispatch("````READ (https://93.184.216.34/channel-facts)````");
         assert.equal(acquired.status, 200, "materialization read succeeds");
 
-        await dispatch("```FIND (https://93.184.216.34/channel-facts) [{\"pattern\":\"/v[0-9.]+/i\"}]```");
+        await dispatch("````FIND (https://93.184.216.34/channel-facts) [{\"pattern\":\"/v[0-9.]+/i\"}]````");
         const bodyFind = await readContent(db, ids, sequence);
         const bodyLocations = JSON.parse(String(bodyFind.content ?? "[]")) as Array<{ channel?: string }>;
         assert.ok(bodyLocations.length > 0, "the default-channel FIND reports match locations");
@@ -258,7 +258,7 @@ test("#287: matcher FIND locations name the channel they address", async () => {
             assert.equal(location.channel, "body", "a default-channel match names the body channel");
         }
 
-        await dispatch("```FIND (https://93.184.216.34/channel-facts#readable) [{\"pattern\":\"/v[0-9.]+/i\"}]```");
+        await dispatch("````FIND (https://93.184.216.34/channel-facts#readable) [{\"pattern\":\"/v[0-9.]+/i\"}]````");
         const readableFind = await readContent(db, ids, sequence);
         const readableLocations = JSON.parse(String(readableFind.content ?? "[]")) as Array<{ channel?: string }>;
         assert.ok(readableLocations.length > 0, "the #readable-channel FIND reports match locations");

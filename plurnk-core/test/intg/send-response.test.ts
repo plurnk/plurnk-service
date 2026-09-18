@@ -50,7 +50,7 @@ test("{§balanced-fences}: a complete nested reply reaches the client without ex
 test("{§empty-turn}: operations on the line after a bare fence make an empty turn with the advisories as notices; nothing runs", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeRawMockResponse(MISFENCED, 10),
-        makeMockResponse("```SEND\nthe answer\n```", 10),
+        makeMockResponse("````SEND\nthe answer\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -95,7 +95,7 @@ test("{§send-looks-like-operation}: prose that merely starts with an operation 
 
 test("{§send-response-receipt}: a delivered reply names the open messages it answered", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("```SEND\nthe answer\n```", 10),
+        makeMockResponse("````SEND\nthe answer\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

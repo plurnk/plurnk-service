@@ -989,8 +989,8 @@ test("{§join-blocking-collect} READ of a running child does not override a cont
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "```READ (worker://worker)\n```\n```NOTE\nKeep working.\n```", reasoning: null } },
-            { assistant: { content: "```WAIT\nAwait the child.\n```", reasoning: null } },
+            { assistant: { content: "````READ (worker://worker)\n````\n````NOTE\nKeep working.\n````", reasoning: null } },
+            { assistant: { content: "````WAIT\nAwait the child.\n````", reasoning: null } },
         ] });
         const run = () => engine.runTurn({ provider, workspaceId, workerId: parent, loopId: parentLoop, messages: [] });
         const continued = await run();
@@ -1059,7 +1059,7 @@ test("WAIT: a live obligation parks; an empty join continues without inventing c
         const child = await insertWorker(db, s1, parent, "worker");
         await insertLoop(db, child, 1, "work"); // a live child (latest loop 102)
         const eng1 = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "```WAIT\nAwait the child.\n```", reasoning: null } }] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````WAIT\nAwait the child.\n````", reasoning: null } }] });
         const blocked = await eng1.runTurn({ provider, workspaceId: s1, workerId: parent, loopId: pLoop, messages: [] });
         assert.equal(blocked.status, 202, "202 with a live child blocks on the join");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: pLoop }))?.status, 202, "the loop is blocked at 202");
@@ -1104,7 +1104,7 @@ test("an empty join cannot manufacture a terminal deliverable from its inventory
         const reader = await insertWorker(db, workspaceId);
         const collected = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
         assert.equal(collected.status, 425);
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "```SEND\n```", reasoning: null } }] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````SEND\n````", reasoning: null } }] });
         const completed = await engine.runTurn({ provider, workspaceId, workerId: worker, loopId: wLoop, messages: [] });
         assert.equal(completed.status, 200);
         const done = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));

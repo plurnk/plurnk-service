@@ -50,7 +50,7 @@ test("{§whitespace-contract}: the topology witness ignores a model-written resu
 
 test("{§tier-entrypoints}: every parser tier ignores outside text without changing body bytes or source positions", () => {
     for (const newline of ["\n", "\r\n"]) {
-        const body = ["literal text", "```READ (not-executed.md)```", "3", ""].join(newline);
+        const body = ["literal text", "````READ (not-executed.md)````", "3", ""].join(newline);
         const source = [
             "Prelude 🌱",
             PlurnkParser.frame("EDIT (note.md)", body),

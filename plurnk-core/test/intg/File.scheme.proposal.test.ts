@@ -93,15 +93,15 @@ for (const decision of ["accept", "reject", "replace", "drift"] as const) test(`
         assert.equal(read.status, 200);
         const anchors = read.lineAnchors as string[];
         assert.ok(anchors.length >= 3);
-        const source = `\`\`\`EDIT (${target}) <2>
+        const source = `\`\`\`\`EDIT (${target}) <2>
 TWO
-\`\`\`
-\`\`\`EDIT (file:///${target}) <${anchors[2]}>
+\`\`\`\`
+\`\`\`\`EDIT (file:///${target}) <${anchors[2]}>
 THREE
-\`\`\`
-\`\`\`NOTE
+\`\`\`\`
+\`\`\`\`NOTE
 Continue the task.
-\`\`\``;
+\`\`\`\``;
         const first = deferred<number>();
         const second = deferred<number>();
         let firstId = 0;

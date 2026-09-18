@@ -184,14 +184,14 @@ test("{§bare-inference}: resource prompts bypass line and size preview caps aft
         const result = await engine.runTurn({
             workspaceId, workerId, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "```EDIT (worker:///prompt.md)",
+                "````EDIT (worker:///prompt.md)",
                 "" + (prompt) + "",
-                "```",
-                "```BARE (worker:///prompt.md)```",
-                "```BARE (worker:///prompt.md)",
+                "````",
+                "````BARE (worker:///prompt.md)````",
+                "````BARE (worker:///prompt.md)",
                 "Compare these findings.",
-                "```",
-                "```NOTE\nContinue the task.\n```",
+                "````",
+                "````NOTE\nContinue the task.\n````",
             ].join("\n"))] }),
         });
         assert.equal(result.status, 102);
@@ -211,13 +211,13 @@ test("{§bare-inference}: missing resources preserve the source error without ca
         const result = await engine.runTurn({
             workspaceId, workerId, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "```BARE (worker:///missing.md)",
+                "````BARE (worker:///missing.md)",
                 "Do not infer from this tail alone.",
-                "```",
-                "```BARE",
+                "````",
+                "````BARE",
                 "survivor",
-                "```",
-                "```NOTE\nContinue the task.\n```",
+                "````",
+                "````NOTE\nContinue the task.\n````",
             ].join("\n"))] }),
         });
         assert.deepEqual(child.completions, ["survivor"]);
@@ -254,14 +254,14 @@ test("{§bare-inference}: cancellation during source preparation leaves no unsta
         await assert.rejects(engine.runTurn({
             workspaceId, workerId, loopId, messages: [], childProvider: child, signal: controller.signal,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "```BARE",
+                "````BARE",
                 "first prompt",
-                "```",
-                "```BARE (interrupted-prompt:///question.md)```",
-                "```BARE",
+                "````",
+                "````BARE (interrupted-prompt:///question.md)````",
+                "````BARE",
                 "last prompt",
-                "```",
-                "```NOTE\nContinue the task.\n```",
+                "````",
+                "````NOTE\nContinue the task.\n````",
             ].join("\n"))] }),
         }), (error: unknown) => error === cancellation);
         assert.equal(child.calls.length, 0);
@@ -288,13 +288,13 @@ for (const [denied, target] of [
             const result = await engine.runTurn({
                 workspaceId, workerId, loopId, messages: [], childProvider: child,
                 provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                    "```EDIT (worker:///prompt.md)",
+                    "````EDIT (worker:///prompt.md)",
                     "secret prompt",
-                    "```",
-                    "```BARE" + target,
+                    "````",
+                    "````BARE" + target,
                     "inline prompt",
-                    "```",
-                    "```NOTE\nContinue the task.\n```",
+                    "````",
+                    "````NOTE\nContinue the task.\n````",
                 ].join("\n"))] }),
             });
             assert.equal(child.calls.length, 0);
@@ -311,13 +311,13 @@ test("{§bare-inference}: a log prompt uses only retained source lines", async (
         const first = await engine.runTurn({
             workspaceId, workerId, loopId, messages: [],
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "```EDIT (worker:///source.md)",
+                "````EDIT (worker:///source.md)",
                 "first",
                 "superseded",
                 "last",
-                "```",
-                "```READ (worker:///source.md) <1,-1>```",
-                "```NOTE\nContinue the task.\n```",
+                "````",
+                "````READ (worker:///source.md) <1,-1>````",
+                "````NOTE\nContinue the task.\n````",
             ].join("\n"))] }),
         });
         const rows = await db.test_log_entries_by_turn.all<{ op: string; sequence: number }>({ turn_id: first.turnId });
@@ -330,9 +330,9 @@ test("{§bare-inference}: a log prompt uses only retained source lines", async (
         const second = await engine.runTurn({
             workspaceId, workerId, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "```KILL (" + (address) + ") <2>```",
-                "```BARE (" + (address) + ")```",
-                "```NOTE\nContinue the task.\n```",
+                "````KILL (" + (address) + ") <2>````",
+                "````BARE (" + (address) + ")````",
+                "````NOTE\nContinue the task.\n````",
             ].join("\n"))] }),
         });
         assert.deepEqual(second.outcomes.filter(({ op }) => op === "BARE"), [{ op: "BARE", status: 200, problemType: null }]);
@@ -352,12 +352,12 @@ for (const [target, status, problem] of [
             const result = await engine.runTurn({
                 workspaceId, workerId, loopId, messages: [], childProvider: child,
                 provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                    "```EDIT (worker:///prompt.md)",
+                    "````EDIT (worker:///prompt.md)",
                     "source prompt",
-                    "```",
-                    "```BARE" + (target === null ? "" : ` (${target})`),
-                    "```",
-                    "```NOTE\nContinue the task.\n```",
+                    "````",
+                    "````BARE" + (target === null ? "" : ` (${target})`),
+                    "````",
+                    "````NOTE\nContinue the task.\n````",
                 ].join("\n"))] }),
             });
             const [bare] = result.outcomes.filter(({ op }) => op === "BARE");
@@ -381,7 +381,7 @@ test("{§bare-inference}: an intervening operation separates concurrent BARE gro
         };
         const result = await engine.runTurn({
             workspaceId, workerId, loopId, messages: [], childProvider: child,
-            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse("```BARE\nbefore\n```\n```EDIT (worker:///between)\nwritten\n```\n```BARE\nafter\n```\n```NOTE\nContinue the task.\n```")] }),
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse("````BARE\nbefore\n````\n````EDIT (worker:///between)\nwritten\n````\n````BARE\nafter\n````\n````NOTE\nContinue the task.\n````")] }),
         });
         assert.equal(result.status, 102);
         assert.deepEqual(observed, [undefined, "written"]);
@@ -396,7 +396,7 @@ test("BARE calls receive only their body prompts, run in parallel, and commit in
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse("```BARE\nslow\n```\n\n```BARE\nfast\n```\n\n```NOTE\nObserve both responses next turn.\n```")],
+            responses: [mainResponse("````BARE\nslow\n````\n\n````BARE\nfast\n````\n\n````NOTE\nObserve both responses next turn.\n````")],
         });
         const child = new BareWitness(2);
 
@@ -476,7 +476,7 @@ test("loop cancellation reaches every concurrent BARE call before the batch esca
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse("```BARE\nfirst\n```\n\n```BARE\nsecond\n```\n\n```NOTE\ncontinue\n```")],
+            responses: [mainResponse("````BARE\nfirst\n````\n\n````BARE\nsecond\n````\n\n````NOTE\ncontinue\n````")],
         });
         const child = new CancellingBareWitness(2);
         const controller = new AbortController();
@@ -508,7 +508,7 @@ test("one BARE provider failure is an ordered operation result and does not canc
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse("```BARE\nfail\n```\n\n```BARE\nok\n```\n\n```NOTE\nInspect the isolated failure and success.\n```")],
+            responses: [mainResponse("````BARE\nfail\n````\n\n````BARE\nok\n````\n\n````NOTE\nInspect the isolated failure and success.\n````")],
         });
         const child = new BareWitness(2, "fail");
 
@@ -539,7 +539,7 @@ test("a same-turn BARE response is unseen retrieval work and defers completion",
     try {
         const parent = new Mock({
             contextWindow: 32_768,
-            responses: [mainResponse("```BARE\nquestion\n```\n\n```SEND\ndone\n```")],
+            responses: [mainResponse("````BARE\nquestion\n````\n\n````SEND\ndone\n````")],
         });
         const child = new BareWitness(1);
         const result = await engine.runTurn({
@@ -568,11 +568,11 @@ for (const state of ["WAIT", "SEND"] as const) {
             const result = await engine.runTurn({
                 provider: new Mock({
                     contextWindow: 32_768,
-                    responses: [mainResponse(`\`\`\`${state}
-\`\`\`
-\`\`\`BARE
+                    responses: [mainResponse(`\`\`\`\`${state}
+\`\`\`\`
+\`\`\`\`BARE
 question
-\`\`\``)],
+\`\`\`\``)],
                 }),
                 childProvider: child,
                 workspaceId,

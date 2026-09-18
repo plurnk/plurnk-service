@@ -33,15 +33,15 @@ test("{§exec-timeout} a detached spawn is observed once, then outlives its loop
     try {
         const mock = new Mock({
             contextWindow: viableWindow(),
-            responses: [mockTurn(`\`\`\`sh <-1>
+            responses: [mockTurn(`\`\`\`\`sh <-1>
 ${heartbeat(file)}
-\`\`\`
+\`\`\`\`
 
-\`\`\`SEND
+\`\`\`\`SEND
 the server stays up
-\`\`\`
-\`\`\`SEND
-\`\`\``), mockTurn("```SEND\n```")],
+\`\`\`\`
+\`\`\`\`SEND
+\`\`\`\``), mockTurn("````SEND\n````")],
         });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

@@ -73,9 +73,9 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
         }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
         const served = await serveMcpHttp(t, handler);
         const provider = new ResourceReader({ contextWindow: 1_000_000, inputModalities: modalities, responses: [
-            turn(`\`\`\`fixture (observe)\n{}\n\`\`\`\n\n${step("WAIT")}`),
-            ...(form === "multipart" ? [turn(`\`\`\`READ ($RESOURCE)\`\`\`\n\n${step("NOTE")}`)] : []),
-            turn(`\`\`\`READ ($RESOURCE${form === "inline" || form === "link" ? "#bytes" : ""}) <1,3>\`\`\`\n\n${step("NOTE")}`),
+            turn(`\`\`\`\`fixture (observe)\n{}\n\`\`\`\`\n\n${step("WAIT")}`),
+            ...(form === "multipart" ? [turn(`\`\`\`\`READ ($RESOURCE)\`\`\`\`\n\n${step("NOTE")}`)] : []),
+            turn(`\`\`\`\`READ ($RESOURCE${form === "inline" || form === "link" ? "#bytes" : ""}) <1,3>\`\`\`\`\n\n${step("NOTE")}`),
             turn(step("NOTE")),
             turn(step("SEND")),
         ] });

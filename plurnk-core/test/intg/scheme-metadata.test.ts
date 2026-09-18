@@ -124,7 +124,7 @@ test("scheme metadata remains outside the target and reaches only an opted-in sc
 
     try {
         const supported = read(
-            "```READ (opaque:///record) [{\"first\": {\"nested\": true}}] [{\"second\": \"duplicate\"}]```",
+            "````READ (opaque:///record) [{\"first\": {\"nested\": true}}] [{\"second\": \"duplicate\"}]````",
         );
         assert.equal(supported.target?.raw, "opaque:///record");
         assert.deepEqual(supported.metadata, ['{"first": {"nested": true}}', '{"second": "duplicate"}']);
@@ -138,7 +138,7 @@ test("scheme metadata remains outside the target and reaches only an opted-in sc
         assert.deepEqual(supportedMetadata, ['{"first": {"nested": true}}', '{"second": "duplicate"}']);
 
         const routedAlias = await engine.dispatch({
-            statement: read("```READ (http://example.test/record) [{\"Accept\": \"text/plain\"}]```"),
+            statement: read("````READ (http://example.test/record) [{\"Accept\": \"text/plain\"}]````"),
             ...env,
             sequence: 2,
             origin: "model",
@@ -147,7 +147,7 @@ test("scheme metadata remains outside the target and reaches only an opted-in sc
         assert.deepEqual(routedAliasMetadata, ['{"Accept": "text/plain"}']);
 
         const rejected = await engine.dispatch({
-            statement: read("```READ (plain:///record) [{\"anything\": \"the scheme might define\"}]```"),
+            statement: read("````READ (plain:///record) [{\"anything\": \"the scheme might define\"}]````"),
             ...env,
             sequence: 3,
             origin: "model",
@@ -189,7 +189,7 @@ for (const op of ["COPY", "MOVE"] as const) {
                 await seedEntryWithChannel(db, { workspaceId: env.workspaceId, scheme: "opaque", pathname, content });
             }
             const parsed = PlurnkParser.parseStatements(
-                `\`\`\`${op} (opaque:///source) <2> [{"source": "true"}] (opaque:///destination) <2> [{"destination": "true"}]\`\`\``,
+                `\`\`\`\`${op} (opaque:///source) <2> [{"source": "true"}] (opaque:///destination) <2> [{"destination": "true"}]\`\`\`\``,
             );
             assert.equal(parsed.unparsedTail, undefined);
             assert.equal(parsed.items.length, 1);

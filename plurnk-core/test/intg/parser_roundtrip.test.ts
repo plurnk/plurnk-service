@@ -36,7 +36,7 @@ test("parser roundtrip: EDIT writes the resource", async () => {
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-edit");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const stmt = parseOne("```EDIT (worker:///countries/france/capital)\nParis\n```") as EditStatement;
+        const stmt = parseOne("````EDIT (worker:///countries/france/capital)\nParis\n````") as EditStatement;
         const result = await engine.dispatch({
             statement: stmt,
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
@@ -60,8 +60,8 @@ test("parser roundtrip: an empty EDIT section performs a scoped deletion", async
         const env = await seedEnvelope(db, "ws-roundtrip-empty-edit");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const statements = [
-            parseOne("```EDIT (worker:///scoped-delete)\nalpha\nbeta\ngamma\n```"),
-            parseOne("```EDIT (worker:///scoped-delete) <2>```"),
+            parseOne("````EDIT (worker:///scoped-delete)\nalpha\nbeta\ngamma\n````"),
+            parseOne("````EDIT (worker:///scoped-delete) <2>````"),
         ];
 
         assert.deepEqual(await dispatch(engine, env, statements), [201, 200]);
@@ -75,17 +75,17 @@ test("parser roundtrip: multi-statement text parses + dispatches in order", asyn
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-multi");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const text = `\`\`\`EDIT (worker:///a)
+        const text = `\`\`\`\`EDIT (worker:///a)
 first
-\`\`\`
+\`\`\`\`
 
-\`\`\`EDIT (worker:///b)
+\`\`\`\`EDIT (worker:///b)
 second
-\`\`\`
+\`\`\`\`
 
-\`\`\`EDIT (worker:///c)
+\`\`\`\`EDIT (worker:///c)
 third
-\`\`\``;
+\`\`\`\``;
         const statements = parseAll(text);
         assert.equal(statements.length, 3);
         const statuses = await dispatch(engine, env, statements);
@@ -105,13 +105,13 @@ test("parser roundtrip: EDIT followed by READ reads back what was written", asyn
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
         await engine.dispatch({
-            statement: parseOne("```EDIT (worker:///france)\nThe capital is Paris.\n```") as EditStatement,
+            statement: parseOne("````EDIT (worker:///france)\nThe capital is Paris.\n````") as EditStatement,
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
 
         const readResult = await engine.dispatch({
-            statement: parseOne("```READ (worker:///france)```") as ReadStatement,
+            statement: parseOne("````READ (worker:///france)````") as ReadStatement,
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
@@ -126,7 +126,7 @@ test("parser roundtrip: HTTP-shape path still decomposes authority correctly", a
         const env = await seedEnvelope(db, "ws-roundtrip-http");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
-        const stmt = parseOne("```READ (https://en.wikipedia.org/wiki/Paris)```") as ReadStatement;
+        const stmt = parseOne("````READ (https://en.wikipedia.org/wiki/Paris)````") as ReadStatement;
         await engine.dispatch({
             statement: stmt,
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
@@ -145,7 +145,7 @@ test("parser roundtrip: real DSL preserves serialized query + fragment on opaque
         const env = await seedEnvelope(db, "ws-roundtrip-params");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
-        const stmt = parseOne("```READ (worker:///france?lang=fr#History)```") as ReadStatement;
+        const stmt = parseOne("````READ (worker:///france?lang=fr#History)````") as ReadStatement;
         await engine.dispatch({
             statement: stmt,
             workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
@@ -174,14 +174,14 @@ for (const [header, body] of [
 ]) {
     test(`parser: fence length does not change the AST (${header})`, () => {
         const lines = body === "" ? "" : `${body}\n`;
-        const short = parseOne(`\`\`\`${header}\n${lines}\`\`\``);
+        const short = parseOne(`\`\`\`\`${header}\n${lines}\`\`\`\``);
         const long = parseOne(`\`\`\`\`\`${header}\n${lines}\`\`\`\`\``);
         assert.deepEqual(stripVolatile(short), stripVolatile(long));
     });
 }
 
 test("parser: a 3-backtick block stays literal in a 4-backtick body ({§fence-closer})", () => {
-    const body = "quoted section:\n```EDIT (worker:///inner)\nhello\n```";
+    const body = "quoted section:\n````EDIT (worker:///inner)\nhello\n````";
     const stmts = parseAll(`\`\`\`\`EDIT (worker:///demo)\n${body}\n\`\`\`\``);
     assert.equal(stmts.length, 1, "a shorter inner fence never closes the body");
     assert.equal(stmts[0]?.op, "EDIT");
@@ -190,10 +190,10 @@ test("parser: a 3-backtick block stays literal in a 4-backtick body ({§fence-cl
 
 test("parser: a balanced 4-backtick example inside a 3-backtick body stays literal ({§balanced-fences} {§numeric-delimiter})", () => {
     const body = "quoted section:\n````EDIT (worker:///inner)\nhello\n````";
-    const bare = parseAll(`\`\`\`EDIT (worker:///demo)\n${body}\n\`\`\``);
+    const bare = parseAll(`\`\`\`\`EDIT (worker:///demo)\n${body}\n\`\`\`\``);
     assert.deepEqual(bare.map(({ op }) => op), ["EDIT"], "a quoted edit does not become a real mutation");
     assert.equal((bare[0] as EditStatement).body, body);
-    const delimited = parseAll(`\`\`\`42EDIT (worker:///demo)\n${body}\n\`\`\`42`);
+    const delimited = parseAll(`\`\`\`\`42EDIT (worker:///demo)\n${body}\n\`\`\`\`42`);
     assert.equal(delimited.length, 1, "the delimiter keeps the quoted heading as body");
     assert.equal((delimited[0] as EditStatement).body, body);
 });

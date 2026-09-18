@@ -21,8 +21,8 @@ class CapturingMock extends Mock {
 
 const turn = (ops: string, terminal = false) => ({
     assistant: { content: `${ops}
-\`\`\`${terminal ? "SEND" : "NOTE"}
-\`\`\``, reasoning: null },
+\`\`\`\`${terminal ? "SEND" : "NOTE"}
+\`\`\`\``, reasoning: null },
 });
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
@@ -106,7 +106,7 @@ test("{§skills-resources} live trees preserve authority isolation, pattern comp
         assert.match(String((await dispatch(readStmt(target))).content), /alpha current guidance/);
         await writeFile(join(root, ".agents", "skills", "alpha", "references", "guide.md"), "Changed on disk.\n");
         assert.match(String((await dispatch(readStmt(target))).content), /Changed on disk/);
-        for (const op of ["```EDIT (skill://alpha/references/guide.md) <1,-1>\nchanged\n```", "```KILL (skill://alpha/references/guide.md)```"]) {
+        for (const op of ["````EDIT (skill://alpha/references/guide.md) <1,-1>\nchanged\n````", "````KILL (skill://alpha/references/guide.md)````"]) {
             const parsed = PlurnkParser.parseStatements(op, { executors: fixtureExecutors(op) });
             const item = parsed.items.find((item) => item.kind === "statement");
             assert.ok(item?.kind === "statement");
@@ -151,7 +151,7 @@ for (const [proposals, withOptions] of [
             'console.log("NATIVE_EXEC_COMPLETE");',
         ].join("\n"));
         const provider = new CapturingMock({ contextWindow: 32768, responses: [
-            turn("```READ (skill://sample/scripts/main.mjs) <1,-1>```"),
+            turn("````READ (skill://sample/scripts/main.mjs) <1,-1>````"),
             turn(PlurnkParser.frame(`node (skill://sample/scripts/main.mjs)${withOptions ? ` [${JSON.stringify({ cwd: "output folder", args: argv })}]` : ""}`, withOptions ? stdin : null)),
             turn("", true),
         ] });
@@ -183,7 +183,7 @@ test("{§skills-resources} {§packet-attachment-parts} a sliced skill asset READ
     await writeFile(join(dir, "SKILL.md"), "---\nname: sample\ndescription: Inspect an image\n---\nSee assets/image.png.\n");
     await writeFile(join(dir, "assets", "image.png"), PNG);
     const provider = new CapturingMock({ contextWindow: 32768, inputModalities: ["image"], responses: [
-        turn("```READ (skill://sample/assets/image.png#bytes) <1,3>```"),
+        turn("````READ (skill://sample/assets/image.png#bytes) <1,3>````"),
         turn(""),
         turn("", true),
     ] });
@@ -225,8 +225,8 @@ test("{§skills-functionality} a model discovers a skill and reads its original 
     await writeFile(join(dir, "references", "nested", "rules.md"), "NESTED_SENTINEL\n");
     await writeFile(join(dir, "assets", "sample.bin"), Buffer.from([0x00, 0xff, 0x81]));
     const provider = new CapturingMock({ contextWindow: 32768, responses: [
-        turn("```READ (skill://sample/SKILL.md) <1,-1>```"),
-        turn("```FIND (skill://sample/references/**) <1,-1>```\n```READ (skill://sample/references/guide.md) <1,-1>```\n```READ (skill://sample/references/nested/rules.md) <1,-1>```\n```READ (skill://sample/assets/sample.bin) <1,-1>```"),
+        turn("````READ (skill://sample/SKILL.md) <1,-1>````"),
+        turn("````FIND (skill://sample/references/**) <1,-1>````\n````READ (skill://sample/references/guide.md) <1,-1>````\n````READ (skill://sample/references/nested/rules.md) <1,-1>````\n````READ (skill://sample/assets/sample.bin) <1,-1>````"),
         turn("", true),
     ] });
     await withDaemon(provider, async (_db, _daemon, addr) => {

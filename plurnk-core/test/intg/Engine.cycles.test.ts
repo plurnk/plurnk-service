@@ -8,8 +8,8 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_help
 
 const turn = (operation: string, op: string | null = "NOTE") => ({
     assistant: { content: op === null ? operation : `${operation}
-\`\`\`${op}
-\`\`\``, reasoning: null },
+\`\`\`\`${op}
+\`\`\`\``, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
 
@@ -23,9 +23,9 @@ for (const identical of [false, true]) {
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             const lines = Array.from({ length: 6 }, (_, index) => `completed step ${identical ? "same" : index + 1}`);
             const provider = new Mock({ contextWindow: 100000, responses: [
-                ...lines.map((line) => turn(`\`\`\`EDIT (worker:///journal) <-1>
+                ...lines.map((line) => turn(`\`\`\`\`EDIT (worker:///journal) <-1>
 ${line}
-\`\`\``)),
+\`\`\`\``)),
                 turn("", "SEND"),
             ] });
             const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10 });
@@ -68,7 +68,7 @@ for (const changing of [false, true]) {
             schemes.register("observed-content", source);
             const engine = new Engine({ db, schemes });
             const provider = new Mock({ contextWindow: 100000, responses: [
-                ...Array.from({ length: 6 }, () => turn("```READ (observed-content:///latest)```", status)),
+                ...Array.from({ length: 6 }, () => turn("````READ (observed-content:///latest)````", status)),
                 turn("", "SEND"),
             ] });
             const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10 });
@@ -90,7 +90,7 @@ test("{§engine-cycle-evidence} repeated misses cycle despite unique Problem occ
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Read a missing resource.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 7 }, () => turn("```READ (worker:///missing)```")) });
+        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 7 }, () => turn("````READ (worker:///missing)````")) });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10 });
         assert.equal(result.result.status, 508, JSON.stringify(result.result));
         const misses = (await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: loopId }))

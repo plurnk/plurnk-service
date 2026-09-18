@@ -37,7 +37,7 @@ private openerFollows(): boolean {
     while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
     let ticks = 0;
     while (this.inputStream.LA(cursor) === 0x60) { ticks++; cursor++; }
-    if (ticks < 3) return false;
+    if (ticks < 4) return false;
     while (this.inputStream.LA(cursor) >= 0x30 && this.inputStream.LA(cursor) <= 0x39) cursor++;
     let name = "";
     for (;;) {
@@ -84,7 +84,7 @@ private metadataDepth: number = 0;
 private metadataReady: boolean = false;
 private inlineBody: boolean = false;
 private inlineBodies: Array<{ line: number; column: number; heading: string }> = [];
-private unknownTags: Array<{ line: number; column: number; tag: string }> = [];
+private unknownTags: Array<{ line: number; column: number; tag: string; short: boolean }> = [];
 
 // {§interstitial-fence} - only a native operation or a known executor opens a block.
 private knownHeading(): boolean {
@@ -93,11 +93,18 @@ private knownHeading(): boolean {
     return Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutor(name);
 }
 
+// {§four-backtick-operations} - a three-backtick block is markdown: only one that names an
+// operation or executor is worth a word (it needed four); a longer fence with an unknown name
+// is a misspelled heading.
 private noteUnknownTag(): void {
-    this.unknownTags.push({ line: (this as any).currentTokenStartLine, column: (this as any).currentTokenColumn, tag: this.text.replace(/^\x60+[0-9]*/, "") });
+    const tag = this.text.replace(/^\x60+[0-9]*/, "");
+    const short = /^\x60{3}(?!\x60)/.test(this.text);
+    const known = Object.hasOwn(plurnkLexer.OPERATIONS, tag) || this.knownExecutor(tag);
+    if (short && !known) return;
+    this.unknownTags.push({ line: (this as any).currentTokenStartLine, column: (this as any).currentTokenColumn, tag, short });
 }
 
-public takeUnknownTags(): Array<{ line: number; column: number; tag: string }> {
+public takeUnknownTags(): Array<{ line: number; column: number; tag: string; short: boolean }> {
     const taken = this.unknownTags;
     this.unknownTags = [];
     return taken;
@@ -255,7 +262,7 @@ private closingAt(offset: number): boolean {
     // {§inline-chain} — a closer followed on its line by the next opener still closes.
     let ticks = 0;
     while (this.inputStream.LA(cursor + ticks) === 0x60) ticks++;
-    if (ticks < 3) return false;
+    if (ticks < 4) return false;
     let at = cursor + ticks;
     while (this.inputStream.LA(at) >= 0x30 && this.inputStream.LA(at) <= 0x39) at++;
     let name = "";
@@ -346,7 +353,7 @@ private closerWithHeadingAhead(): boolean {
 private openerFollowsAt(at: number): boolean {
     let ticks = 0;
     while (this.inputStream.LA(at + ticks) === 0x60) ticks++;
-    if (ticks < 3) return false;
+    if (ticks < 4) return false;
     let cursor = at + ticks;
     while (this.inputStream.LA(cursor) >= 0x30 && this.inputStream.LA(cursor) <= 0x39) cursor++;
     let name = "";
@@ -401,6 +408,8 @@ public isTextCoordinateOp(): boolean {
 }
 
 fragment FENCE : '```' '`'* ;
+// {§four-backtick-operations} - an operation opens with four or more backticks; fewer is markdown.
+fragment OPENER_FENCE : '````' '`'* ;
 fragment NAME : [A-Za-z0-9_.+-]+ ;
 fragment NUM : '-'? [0-9]+ ('.' [0-9]+)? ;
 fragment L_PATTERN : '<' NUM (('-' | ',' ' '?) NUM)* '>' ;
@@ -419,7 +428,7 @@ fragment EOL : '\r'? '\n' ;
 
 // {§fence-boundary} - only top-level fences can open statements. The first
 // block may terminate a provider preamble without an intervening newline.
-OPEN : { this.atLineStart() || !this.reasoning && (!this.started || this.inlineChain) }? FENCE [0-9]* NAME { this.knownHeading() }? { this.open(); } -> mode(SLOTS) ;
+OPEN : { this.atLineStart() || !this.reasoning && (!this.started || this.inlineChain) }? OPENER_FENCE [0-9]* NAME { this.knownHeading() }? { this.open(); } -> mode(SLOTS) ;
 // {§reasoning-notes} — an enclosing code fence is quotation, including unknown tags and tildes.
 REASONING_QUOTE : { this.reasoning && this.atLineStart() }? (FENCE [0-9]* NAME? | '~~~' '~'* NAME?) { !this.knownHeading() }? { this.open(); } -> type(TEXT), channel(HIDDEN), mode(QUOTATION) ;
 // {§interstitial-fence} - a fence naming nothing known, or nothing at all, is prose outside a block.

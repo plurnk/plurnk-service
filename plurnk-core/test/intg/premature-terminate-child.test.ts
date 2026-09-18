@@ -170,7 +170,7 @@ test("{§send-wait-scope} a decorated WAIT keeps its sibling, source evidence, a
         const loopId = await insertLoop(db, workerId, 1, "read the note");
         await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.txt", channel: "body", content: "the note", mimetype: "text/plain", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const content = "```READ (worker:///note.txt)```\n```WAIT (sh:///missing) <60> [{\"timeout\":42}]\nstanding by\n```";
+        const content = "````READ (worker:///note.txt)````\n````WAIT (sh:///missing) <60> [{\"timeout\":42}]\nstanding by\n````";
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content, reasoning: null } }] }),
             workspaceId, workerId, loopId,

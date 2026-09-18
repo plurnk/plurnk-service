@@ -12,7 +12,7 @@ import NativeContent from "../../src/core/NativeContent.ts";
 
 process.env.PLURNK_MEMBERS_TASK = "**";
 process.env.PLURNK_MEMBERS_ENABLED = '["task"]';
-const next = "```NOTE\nInspect the audio.\n```";
+const next = "````NOTE\nInspect the audio.\n````";
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
 
 for (const modalities of [["audio"], []] as InputModality[][]) {
@@ -21,11 +21,11 @@ for (const modalities of [["audio"], []] as InputModality[][]) {
         const bytes = wav();
         await writeFile(join(root, "clip.wav"), bytes);
         const provider = new Mock({ contextWindow: viableWindow(), inputModalities: modalities, responses: [
-            turn(`\`\`\`READ (clip.wav#bytes) <1,4>\`\`\`\n${next}`),
-            turn(`\`\`\`KILL (clip.wav)\`\`\`\n${next}`),
-            turn(`\`\`\`READ (log:///1/2/2/READ)\`\`\`\n${next}`),
-            turn(`\`\`\`KILL (log:///1/2/2/READ) <42>\`\`\`\n${next}`),
-            turn("```SEND\n```"),
+            turn(`\`\`\`\`READ (clip.wav#bytes) <1,4>\`\`\`\`\n${next}`),
+            turn(`\`\`\`\`KILL (clip.wav)\`\`\`\`\n${next}`),
+            turn(`\`\`\`\`READ (log:///1/2/2/READ)\`\`\`\`\n${next}`),
+            turn(`\`\`\`\`KILL (log:///1/2/2/READ) <42>\`\`\`\`\n${next}`),
+            turn("````SEND\n````"),
         ] });
         try {
             await withDaemon(provider, async (db, _daemon, addr) => {

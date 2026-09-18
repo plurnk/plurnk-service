@@ -10,16 +10,16 @@ import { openMigrated } from "./_helpers.ts";
 import { waitForDb } from "./_rpc.ts";
 
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
-const next = "```NOTE\nDeliver selected resources.\n```";
-const done = "```SEND\n```";
+const next = "````NOTE\nDeliver selected resources.\n````";
+const done = "````SEND\n````";
 
 test("{§send-resource-attachments}: outbound A2A snapshots only selected resources and a failed source sends nothing", async () => {
     const remote = await startDemoAgent("direct-message");
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 100_000, responses: [
-        turn(`\`\`\`EDIT (worker:///selected.md)\noriginal\n\`\`\`\n\`\`\`EDIT (worker:///private.md)\nunselected\n\`\`\`\n${next}`),
-        turn(`\`\`\`SEND (a2a://peer) [{"attachments":["worker:///selected.md","worker:///missing.md"]}]\nDo not deliver a partial message.\n\`\`\`\n${next}`),
-        turn(`\`\`\`SEND (a2a://peer) [{"attachments":["worker:///selected.md"]}]\nReview this.\n\`\`\`\n\`\`\`EDIT (worker:///selected.md) <1,-1>\nchanged\n\`\`\`\n${next}`),
+        turn(`\`\`\`\`EDIT (worker:///selected.md)\noriginal\n\`\`\`\`\n\`\`\`\`EDIT (worker:///private.md)\nunselected\n\`\`\`\`\n${next}`),
+        turn(`\`\`\`\`SEND (a2a://peer) [{"attachments":["worker:///selected.md","worker:///missing.md"]}]\nDo not deliver a partial message.\n\`\`\`\`\n${next}`),
+        turn(`\`\`\`\`SEND (a2a://peer) [{"attachments":["worker:///selected.md"]}]\nReview this.\n\`\`\`\`\n\`\`\`\`EDIT (worker:///selected.md) <1,-1>\nchanged\n\`\`\`\`\n${next}`),
         turn(done),
     ] });
     const daemon = new Daemon({ db, provider });
@@ -62,7 +62,7 @@ test("{§send-resource-attachments}: worker SEND carries a snapshot as a normal 
             return { ...response, assistant: { ...response.assistant, content: response.assistant.content.replace("$RESOURCE", path) } };
         }
     }
-    const provider = new Reader({ contextWindow: 100_000, responses: [turn(`\`\`\`READ ($RESOURCE) <1,-1>\n\`\`\`\n${next}`), turn(done)] });
+    const provider = new Reader({ contextWindow: 100_000, responses: [turn(`\`\`\`\`READ ($RESOURCE) <1,-1>\n\`\`\`\`\n${next}`), turn(done)] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider });
     try {
@@ -70,7 +70,7 @@ test("{§send-resource-attachments}: worker SEND carries a snapshot as a normal 
         const { workspaceId } = await daemon.createWorkspace({ name: "worker-attachments", projectRoot: null });
         const sender = await daemon.createConversationWorker({ workspaceId, name: "sender" });
         const receiver = await daemon.createConversationWorker({ workspaceId, name: "receiver" });
-        const program = PlurnkParser.parseStatements('```EDIT (worker:///report.md)\noriginal peer report\n```\n```SEND (worker://receiver) [{"attachments":42}]\nDo not deliver invalid input.\n```\n```SEND (worker://receiver) [{"attachments":["worker:///report.md"]}]\nInspect this.\n```\n```EDIT (worker:///report.md) <1,-1>\nchanged\n```');
+        const program = PlurnkParser.parseStatements('````EDIT (worker:///report.md)\noriginal peer report\n````\n````SEND (worker://receiver) [{"attachments":42}]\nDo not deliver invalid input.\n````\n````SEND (worker://receiver) [{"attachments":["worker:///report.md"]}]\nInspect this.\n````\n````EDIT (worker:///report.md) <1,-1>\nchanged\n````');
         assert.ok(program.items.every((item) => item.kind === "statement"));
         const results = await daemon.dispatchClientAction({ workspaceId, workerId: sender.workerId,
             statements: program.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []) });

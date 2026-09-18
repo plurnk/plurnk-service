@@ -178,7 +178,7 @@ export const parseDsl = (text: string): PlurnkStatement[] => {
 
 // A response the parser admits nothing from (prose, bare headings): ops stay empty by design.
 export const makeRawMockResponse = (text: string, completion: number = 0): MockResponse => ({
-    ...makeMockResponse("```NOTE\n```", completion),
+    ...makeMockResponse("````NOTE\n````", completion),
     // No pre-parsed ops: the engine parses the content itself and rejects it on its own terms.
     assistant: { content: text, reasoning: null } as MockResponse["assistant"],
 });

@@ -76,7 +76,7 @@ test("a delivered answer cannot complete before the just-concluded child is obse
         const r = await engine.executeAdmittedTurn({ statements: [sendStmt(null, "done")], source: null, workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, fromSequence: 1, origin: "model" });
         assert.equal(r.status, 102, "concluding over an undelivered worker result is deferred, never refused");
         assert.deepEqual(r.outcomes, [{ op: "SEND", status: 200, problemType: null }]);
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "```SEND\nThe observed value is 42.\n```", reasoning: null } }] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````SEND\nThe observed value is 42.\n````", reasoning: null } }] });
         const observed = await engine.runTurn({ provider, workspaceId, workerId: parent, loopId: parentLoop, messages: [] });
         assert.equal(observed.status, 200);
         assert.match(JSON.stringify(provider.received[0]), /the value is 42/);

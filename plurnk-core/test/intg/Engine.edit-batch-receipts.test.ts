@@ -72,8 +72,8 @@ for (const fixture of cases) test(`{§edit-batch-receipt} ${fixture.name}`, asyn
         // mock's third response is filled in once those anchors are known.
         const pending: { batch: string | null } = { batch: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("```READ (file:///doc.md) <1,-1>```\n```NOTE\nreading\n```", 50),
-            makeMockResponse("```SEND\nread\n```", 50),
+            makeMockResponse("````READ (file:///doc.md) <1,-1>````\n````NOTE\nreading\n````", 50),
+            makeMockResponse("````SEND\nread\n````", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
@@ -81,10 +81,10 @@ for (const fixture of cases) test(`{§edit-batch-receipt} ${fixture.name}`, asyn
             calls += 1;
             if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`${pending.batch}
 
-\`\`\`NOTE
+\`\`\`\`NOTE
 editing
-\`\`\``, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("```SEND\nedited\n```", 50)] }).generate(args);
+\`\`\`\``, 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````SEND\nedited\n````", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -101,16 +101,16 @@ editing
                 await writeFile(join(root, "doc.md"), fixture.current);
                 const unresolved = fixture.unresolved(anchors);
                 const statements = [
-                    `\`\`\`EDIT (file:///doc.md) <${anchors[0]}>
+                    `\`\`\`\`EDIT (file:///doc.md) <${anchors[0]}>
 ONE
-\`\`\``,
-                    `\`\`\`EDIT (file:///doc.md) <${anchors[1]}>
+\`\`\`\``,
+                    `\`\`\`\`EDIT (file:///doc.md) <${anchors[1]}>
 TWO
-\`\`\``,
-                    "```EDIT (file:///doc.md) <3>\nTHREE\n```",
-                    ...fixture.scopes(anchors).map((marks) => `\`\`\`EDIT (file:///doc.md) <${marks.join(",")}>
+\`\`\`\``,
+                    "````EDIT (file:///doc.md) <3>\nTHREE\n````",
+                    ...fixture.scopes(anchors).map((marks) => `\`\`\`\`EDIT (file:///doc.md) <${marks.join(",")}>
 replacement
-\`\`\``),
+\`\`\`\``),
                 ];
                 pending.batch = statements.join("\n\n");
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit", policy: { proposals: "accept" } });

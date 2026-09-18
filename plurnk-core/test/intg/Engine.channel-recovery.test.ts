@@ -7,8 +7,8 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_help
 
 const response = (operation: string, op = "NOTE") => ({
     assistant: { content: `${operation}
-\`\`\`${op}
-\`\`\``, reasoning: null },
+\`\`\`\`${op}
+\`\`\`\``, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
 
@@ -20,19 +20,19 @@ test("{§channel-selection-missing} channel exploration across operation owners 
         const loopId = await insertLoop(db, workerId, 1, "Retrieve the retained text.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const misses = [
-            "```READ (worker:///note#stdout)```",
-            "```FIND (worker:///note#stderr)```",
-            "```COPY (worker:///note#results) (worker:///copy)```",
-            "```COPY (worker:///note) (worker:///copy#results)```",
-            "```MOVE (worker:///note#stdout) (worker:///moved)```",
-            "```MOVE (worker:///note) (worker:///moved#stdout)```",
-            "```EDIT (worker:///note#extra) <1>\nreplacement\n```",
-            "```EDIT (worker:///note#constructor) <1>\nreplacement\n```",
+            "````READ (worker:///note#stdout)````",
+            "````FIND (worker:///note#stderr)````",
+            "````COPY (worker:///note#results) (worker:///copy)````",
+            "````COPY (worker:///note) (worker:///copy#results)````",
+            "````MOVE (worker:///note#stdout) (worker:///moved)````",
+            "````MOVE (worker:///note) (worker:///moved#stdout)````",
+            "````EDIT (worker:///note#extra) <1>\nreplacement\n````",
+            "````EDIT (worker:///note#constructor) <1>\nreplacement\n````",
         ];
         const provider = new Mock({ contextWindow: 100000, responses: [
-            response("```EDIT (worker:///note)\nretained text\n```"),
+            response("````EDIT (worker:///note)\nretained text\n````"),
             ...misses.map((operation) => response(operation)),
-            response("```READ (worker:///note)```"),
+            response("````READ (worker:///note)````"),
             response("", "SEND"),
         ] });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 15 });

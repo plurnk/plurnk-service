@@ -7,9 +7,9 @@ import { connect, makeMockResponse, rpcCall, withDaemon } from "./_rpc.ts";
 for (const cancelled of [false, true]) {
     test(`{§loop-response-messages} the live harness retains the last SEND across ${cancelled ? "cancellation" : "completion"}`, async () => {
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            makeMockResponse("```FIND (worker:///)\n```\n```SEND\nFirst answer.\n```"),
-            makeMockResponse("```FIND (worker:///)\n```\n```SEND\nSecond answer.\n```"),
-            makeMockResponse(cancelled ? "```KILL (worker://root)\n```" : "```NOTE\nThe observed results confirm the answer.\n```"),
+            makeMockResponse("````FIND (worker:///)\n````\n````SEND\nFirst answer.\n````"),
+            makeMockResponse("````FIND (worker:///)\n````\n````SEND\nSecond answer.\n````"),
+            makeMockResponse(cancelled ? "````KILL (worker://root)\n````" : "````NOTE\nThe observed results confirm the answer.\n````"),
         ] });
         await withDaemon(provider, async (db, daemon, addr) => {
             const ws = await connect(addr);
@@ -28,7 +28,7 @@ for (const cancelled of [false, true]) {
 
 test("{§loop-response-messages} the live harness does not invent text for blank SEND", async () => {
     const provider = new Mock({ contextWindow: 100_000, responses: [
-        makeMockResponse("```SEND\n```"),
+        makeMockResponse("````SEND\n````"),
     ] });
     await withDaemon(provider, async (db, _daemon, addr) => {
         const ws = await connect(addr);

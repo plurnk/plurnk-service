@@ -145,8 +145,8 @@ test("{§agui-run-source}: a collaborator's exact reply reaches the assigned con
         }
     }
     const provider = new PausedModel({ contextWindow: 32768, responses: [
-        makeMockResponse("```NOTE\nWorking on the request.\n```"),
-        makeMockResponse("```NOTE\nThe collaborator's reply has answered the request.\n```"),
+        makeMockResponse("````NOTE\nWorking on the request.\n````"),
+        makeMockResponse("````NOTE\nThe collaborator's reply has answered the request.\n````"),
     ] });
     const db = await openTestDatabase();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
@@ -205,12 +205,12 @@ test("{§agui-run-source}: a curated arrival remains readable, copyable and repl
         contextWindow: 32768,
         responses: [
             makeMockResponse([
-                "```KILL (log:///**/SEND)\n```",
-                `\`\`\`READ (${expected}) <1,-1>\n\`\`\``,
-                `\`\`\`COPY (${expected}) (worker:///retained-message.md)\n\`\`\``,
-                `\`\`\`SEND (${expected})\nNamed.\n\`\`\``,
+                "````KILL (log:///**/SEND)\n````",
+                `\`\`\`\`READ (${expected}) <1,-1>\n\`\`\`\``,
+                `\`\`\`\`COPY (${expected}) (worker:///retained-message.md)\n\`\`\`\``,
+                `\`\`\`\`SEND (${expected})\nNamed.\n\`\`\`\``,
             ].join("\n\n"), 10),
-            makeMockResponse("```NOTE\nThe retained message was read and copied; its reply was delivered.\n```", 10),
+            makeMockResponse("````NOTE\nThe retained message was read and copied; its reply was delivered.\n````", 10),
         ],
     });
     const db = await openTestDatabase();

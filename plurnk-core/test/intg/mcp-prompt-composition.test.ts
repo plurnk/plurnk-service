@@ -49,8 +49,8 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             return server;
         }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
         const provider = new PromptReader({ contextWindow: 1_000_000, inputModalities: modalities, responses: [
-            turn(`\`\`\`READ (fixture:///prompts/inspect) <1,-1>\n\`\`\`\n\n${step("NOTE")}`),
-            turn(`\`\`\`READ ($RESOURCE#bytes) <1,3>\n\`\`\`\n\n${step("NOTE")}`),
+            turn(`\`\`\`\`READ (fixture:///prompts/inspect) <1,-1>\n\`\`\`\`\n\n${step("NOTE")}`),
+            turn(`\`\`\`\`READ ($RESOURCE#bytes) <1,3>\n\`\`\`\`\n\n${step("NOTE")}`),
             turn(step("NOTE")),
             turn(step("SEND")),
         ] });

@@ -189,7 +189,7 @@ test("Engine.runLoop: repeated identical NOTE-only turns remain subject to the c
         const provider = new Mock({
             contextWindow: 100000,
             responses: Array.from({ length: 5 }, () => contentResponse(
-                "\n```NOTE\nidling\n```",
+                "\n````NOTE\nidling\n````",
             )),
         });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
@@ -362,10 +362,10 @@ test("a strike-threshold abandonment names itself in its exact terminal Problem"
         // A bounded matcher failure is a hard 400 (an empty NOTE is valid); distinct paths keep
         // the failures out of cycle detection.
         const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 5 }, (_, i) => contentResponse(
-            `\`\`\`FIND (worker:///note-${i}) [{"pattern":"$fC"}]\`\`\`
-\`\`\`NOTE
+            `\`\`\`\`FIND (worker:///note-${i}) [{"pattern":"$fC"}]\`\`\`\`
+\`\`\`\`NOTE
 going
-\`\`\``,
+\`\`\`\``,
         )) });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
         assert.equal(result.result.status, 500, "struck out to the engine's 500");

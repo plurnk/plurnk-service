@@ -7,8 +7,8 @@ import { makeMockResponse, waitForDb, withDaemon } from "./_rpc.ts";
 
 test("{§send-directed-scope}: a scoped worker SEND is refused and admits no task", async () => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("```SEND (worker://scheduler) <0,60>\nUnadmitted scheduled instruction.\n```\n```NOTE\nInspect the refusal.\n```"),
-        makeMockResponse("```SEND\nThe scope was refused.\n```"),
+        makeMockResponse("````SEND (worker://scheduler) <0,60>\nUnadmitted scheduled instruction.\n````\n````NOTE\nInspect the refusal.\n````"),
+        makeMockResponse("````SEND\nThe scope was refused.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "send-scope" });

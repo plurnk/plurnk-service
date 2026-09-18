@@ -221,19 +221,19 @@ test("{§transparent-inline-closer}: a closing fence mid-heading reads as if it 
         ["READ (a.md)", " /fn resolve_/"],
     ];
     for (const [heading, tail] of pairs) {
-        const bare = one("```" + heading + tail + "\n");
-        const closed = one("```" + heading + "```" + tail + "\n");
+        const bare = one("````" + heading + tail + "\n");
+        const closed = one("````" + heading + "````" + tail + "\n");
         assert.deepEqual(markerOf(closed.op), markerOf(bare.op), heading + tail + ": scope agrees");
         assert.deepEqual(closed.op.matcher ?? null, bare.op.matcher ?? null, heading + tail + ": matcher agrees");
         assert.deepEqual(closed.op.aside ?? null, bare.op.aside ?? null, heading + tail + ": aside agrees");
         assert.deepEqual(closed.op.metadata ?? null, bare.op.metadata ?? null, heading + tail + ": option block agrees");
     }
     // The block still ends with its line: a following operation is its own statement, not a body.
-    const following = PlurnkParser.parseStatements("```EDIT (a.md)``` <1,2>\n```READ (b.md)\n```\n");
+    const following = PlurnkParser.parseStatements("````EDIT (a.md)```` <1,2>\n````READ (b.md)\n````\n");
     const ops = following.items.filter((item) => item.kind === "statement").map((item) => item.statement.op);
     assert.deepEqual(ops, ["EDIT", "READ"], "the closed heading does not swallow the next operation as a body");
     // {§inline-chain} still owns a closer followed by the next opener.
-    const chained = PlurnkParser.parseStatements("```EDIT (a.md)``` ```READ (b.md)\n");
+    const chained = PlurnkParser.parseStatements("````EDIT (a.md)```` ````READ (b.md)\n");
     assert.deepEqual(
         chained.items.filter((item) => item.kind === "statement").map((item) => item.statement.op),
         ["EDIT", "READ"],

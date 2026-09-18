@@ -44,54 +44,54 @@ test("{§reasoning-history}: model sources are read-only and hash-free; log obse
         let sequence = 50;
         const dispatch = (source: string) => engine.dispatch({ ...context, statement: statement(source), turnId: next.turnId, sequence: sequence++, origin: "model" });
         const copy = "worker://alice/reasoning-notes.txt";
-        assert.equal((await dispatch(`\`\`\`COPY (${target}) (${copy})\`\`\``)).status, 201);
+        assert.equal((await dispatch(`\`\`\`\`COPY (${target}) (${copy})\`\`\`\``)).status, 201);
         const copied = await db.test_get_channel_by_pathname.get<{ content: string; mimetype: string }>({ pathname: "/reasoning-notes.txt", name: "body" });
         assert.equal(copied?.content, original);
         assert.equal(copied?.mimetype, "text/markdown", "COPY uses the destination type without rewriting reasoning text");
-        assert.equal((await dispatch(`\`\`\`COPY (${target}) <2,3> (worker://alice/reasoning-slice.md)\`\`\``)).status, 201);
+        assert.equal((await dispatch(`\`\`\`\`COPY (${target}) <2,3> (worker://alice/reasoning-slice.md)\`\`\`\``)).status, 201);
         const slice = await db.test_get_channel_by_pathname.get<{ content: string; mimetype: string }>({ pathname: "/reasoning-slice.md", name: "body" });
         assert.equal(slice?.content, "Finding 2: evidence 2.\nFinding 3: evidence 3.\n", "COPY includes the selected lines' original terminators");
         assert.equal(slice?.mimetype, "text/markdown");
         for (const program of [
-            `\`\`\`EDIT (${target}) <1>
+            `\`\`\`\`EDIT (${target}) <1>
 Revised determination.
-\`\`\``,
-            "```EDIT (reasoning://alice/9/9)\nInvented history.\n```",
-            `\`\`\`KILL (${target})\`\`\``,
-            `\`\`\`KILL (${target}) <2>\`\`\``,
-            `\`\`\`COPY (${copy}) (${target}) <1,-1>\`\`\``,
-            `\`\`\`MOVE (${target}) (worker://alice/moved-reasoning.txt)\`\`\``,
-            `\`\`\`MOVE (${copy}) (${target}) <1,-1>\`\`\``,
+\`\`\`\``,
+            "````EDIT (reasoning://alice/9/9)\nInvented history.\n````",
+            `\`\`\`\`KILL (${target})\`\`\`\``,
+            `\`\`\`\`KILL (${target}) <2>\`\`\`\``,
+            `\`\`\`\`COPY (${copy}) (${target}) <1,-1>\`\`\`\``,
+            `\`\`\`\`MOVE (${target}) (worker://alice/moved-reasoning.txt)\`\`\`\``,
+            `\`\`\`\`MOVE (${copy}) (${target}) <1,-1>\`\`\`\``,
         ]) {
             const denied = await dispatch(program);
             assert.equal(denied.status, 403, program);
             assert.equal(denied.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden", program);
         }
         assert.deepEqual(await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId }), resources);
-        const explicit = await dispatch(`\`\`\`READ (${target}) <2,3>\`\`\``);
+        const explicit = await dispatch(`\`\`\`\`READ (${target}) <2,3>\`\`\`\``);
         assert.equal(explicit.status, 200);
         assert.ok("content" in explicit);
         assert.equal(explicit.content, original.split("\n").slice(1, 3).join("\n"));
         assert.equal(Object.hasOwn(explicit, "lineAnchors"), false);
-        const anchored = await dispatch(`\`\`\`READ (${target}) <@abcde>\`\`\``);
+        const anchored = await dispatch(`\`\`\`\`READ (${target}) <@abcde>\`\`\`\``);
         assert.equal(anchored.status, 400);
         assert.equal(anchored.problem?.type, "https://problems.plurnk.xyz/scheme/reasoning/line-anchor-unsupported");
-        const editable = await engine.look({ ...context, statement: statement(`\`\`\`READ (${copy}) <1,-1>\`\`\``) });
+        const editable = await engine.look({ ...context, statement: statement(`\`\`\`\`READ (${copy}) <1,-1>\`\`\`\``) });
         assert.equal(editable.status, 200, "a denied MOVE preserves its writable source");
         assert.ok("lineAnchors" in editable && Array.isArray(editable.lineAnchors));
         assert.equal(editable.lineAnchors.length, 30, "an ordinary editable copy still publishes anchors");
-        const history = await engine.look({ ...context, statement: statement(`\`\`\`READ (${receipt}) <1,-1>\`\`\``) });
+        const history = await engine.look({ ...context, statement: statement(`\`\`\`\`READ (${receipt}) <1,-1>\`\`\`\``) });
         assert.ok("content" in history && "lineAnchors" in history && Array.isArray(history.lineAnchors));
         assert.equal(history.content, original);
         assert.equal(history.lineAnchors.length, 30, "explicit log READs retain anchors for line curation");
-        assert.equal((await dispatch(`\`\`\`KILL (${receipt}) <${history.lineAnchors[1]}>\`\`\``)).status, 200);
-        assert.equal((await dispatch(`\`\`\`KILL (${receipt}) <17,-1>\`\`\``)).status, 200);
+        assert.equal((await dispatch(`\`\`\`\`KILL (${receipt}) <${history.lineAnchors[1]}>\`\`\`\``)).status, 200);
+        assert.equal((await dispatch(`\`\`\`\`KILL (${receipt}) <17,-1>\`\`\`\``)).status, 200);
         const curtailed = (await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).find(({ id }) => id === read.id);
         assert.ok(curtailed);
         assert.equal(curtailed.active, 1);
         assert.notEqual(curtailed.folded, "[]", "scoped log curation changes its projection");
         assert.equal(JSON.parse(curtailed.rx).content, original, "curation preserves durable observations");
-        assert.equal((await dispatch(`\`\`\`KILL (${receipt})\`\`\``)).status, 200);
+        assert.equal((await dispatch(`\`\`\`\`KILL (${receipt})\`\`\`\``)).status, 200);
         assert.deepEqual(await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId }), resources);
         await engine.runTurn({ ...context, provider: provider(), messages: [] });
         const after = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
@@ -120,7 +120,7 @@ for (const limit of [-1, 0, 1, 8]) test(`{§reasoning-initial-read}: configured 
         if (limit === 0) {
             const resource = (await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!;
             const explicit = await engine.dispatch({ ...context, turnId: next.turnId, sequence: 80, origin: "model",
-                statement: statement(`\`\`\`READ (reasoning://alice${resource.pathname}) <17,30>\`\`\``),
+                statement: statement(`\`\`\`\`READ (reasoning://alice${resource.pathname}) <17,30>\`\`\`\``),
             });
             assert.equal(explicit.status, 200);
             assert.ok("content" in explicit);
@@ -178,15 +178,15 @@ test("{§reasoning-history}: immutable sources support search, FORK, restart, an
             await Turn.complete(db, turn.id, result.status);
             return result;
         };
-        const shared = await engine.look({ ...context, workerId: unrelatedId, statement: statement(`\`\`\`READ (${target}) <1,-1>\`\`\``) });
+        const shared = await engine.look({ ...context, workerId: unrelatedId, statement: statement(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\``) });
         assert.equal(shared.status, 200);
         assert.equal(shared.content, original, "an explicit source address identifies the same evidence for every workspace worker");
-        assert.equal((await engine.look({ ...context, statement: statement("```READ (reasoning://unrelated/1/2)```") })).status, 404,
+        assert.equal((await engine.look({ ...context, statement: statement("````READ (reasoning://unrelated/1/2)````") })).status, 404,
             "an address never substitutes another worker's history for a missing source");
-        assert.equal((await clientDispatch(`\`\`\`EDIT (${target}) <1>
+        assert.equal((await clientDispatch(`\`\`\`\`EDIT (${target}) <1>
 Retained determination.
-\`\`\``)).status, 403);
-        const found = await dispatch(`\`\`\`FIND (${target}) [{"pattern":"~\\"Finding 2\\""}]\`\`\``);
+\`\`\`\``)).status, 403);
+        const found = await dispatch(`\`\`\`\`FIND (${target}) [{"pattern":"~\\"Finding 2\\""}]\`\`\`\``);
         assert.equal(found.status, 200, JSON.stringify(found));
         assert.ok("matchLocationCount" in found);
         assert.equal(found.matchLocationCount, 1);
@@ -197,11 +197,11 @@ Retained determination.
         await engine.runTurn({ ...forkContext, provider: provider(), messages: [] });
         assert.equal((await db.test_reasoning_reads.all<Read>({ worker_id: forkId })).filter(({ pathname }) => pathname === "/1/2").length, 1,
             "the fork inherits the existing ordinary observation without requesting another");
-        assert.equal((await clientDispatch(`\`\`\`EDIT (${target}) <1>
+        assert.equal((await clientDispatch(`\`\`\`\`EDIT (${target}) <1>
 Branch-only decision.
-\`\`\``, forkContext)).status, 403);
+\`\`\`\``, forkContext)).status, 403);
         assert.equal((await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId }))[0]!.content, original);
-        const stillFound = await dispatch(`\`\`\`FIND (${target}) [{"pattern":"~\\"Finding 2\\""}]\`\`\``);
+        const stillFound = await dispatch(`\`\`\`\`FIND (${target}) [{"pattern":"~\\"Finding 2\\""}]\`\`\`\``);
         assert.equal(stillFound.status, 200, "denied writes leave indexed source unchanged");
         const next = await engine.runTurn({ ...context, provider: provider(), messages: [] });
         const observations = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
@@ -209,7 +209,7 @@ Branch-only decision.
         assert.ok(read, "the parent's deliberate READ retains its own observation identity");
         assert.equal(JSON.parse(read.rx).content, original);
         assert.equal((await engine.dispatch({ ...context, turnId: next.turnId, sequence: 30, origin: "model",
-            statement: statement(`\`\`\`KILL (log:///${read.loop_seq}/${read.turn_seq}/${read.sequence}/READ)\`\`\``),
+            statement: statement(`\`\`\`\`KILL (log:///${read.loop_seq}/${read.turn_seq}/${read.sequence}/READ)\`\`\`\``),
         })).status, 200);
         const forkAfterRead = await Fork.fork(db, workerId, "already-observed");
         await db.close();
@@ -221,7 +221,7 @@ Branch-only decision.
         await engine.runTurn({ workspaceId, workerId: forkAfterRead, loopId: secondForkLoop.id, provider: provider(), messages: [] });
         assert.equal((await db.test_reasoning_reads.all<Read>({ worker_id: forkAfterRead })).filter(({ pathname, ambient_event_id }) => pathname === "/1/2" && ambient_event_id === null).length, 1,
             "fork and restart never automatically reread a KILLed observation");
-        assert.equal((await clientDispatch(`\`\`\`KILL (${target})\`\`\``)).status, 403);
+        assert.equal((await clientDispatch(`\`\`\`\`KILL (${target})\`\`\`\``)).status, 403);
         const ids = await db.test_log_entries_by_turn.all<{ id: number }>({ turn_id: producing.turnId });
         const journal = await Promise.all(ids.map(({ id }) => LogEntry.fetchLogEntry(db, id)));
         const snapshot = new Translator({ threadId: "history", runId: "reattach" }).replay(journal)
@@ -249,7 +249,7 @@ test("{§reasoning-history}: only exposed final reasoning becomes a resource at 
         const context = { workspaceId, workerId, loopId, messages: [] };
         for (const reasoning of [null, ""]) await engine.runTurn({ ...context, provider: provider(reasoning) });
         assert.deepEqual(await db.test_model_reasoning_resources.all({ worker_id: workerId }), []);
-        const source = "```NOTE\nContinue.\n```";
+        const source = "````NOTE\nContinue.\n````";
         const admitted = await engine.runTurn({ ...context, provider: new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "````READ (worker:///invalid-program", reasoning: "Private rejected reasoning." } },
             { assistant: { content: source, reasoning: "Admitted reasoning." } },
@@ -289,16 +289,16 @@ test("{§turn-source-resources}: an existing turn without provider reasoning rea
         const own = (await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).find(({ pathname, turn_id }) => pathname === "/1/2" && turn_id === silent.turnId);
         assert.ok(own, "the model's READ of its own reasoning coordinate produced a receipt");
         const look = (source: string) => engine.look({ ...context, statement: statement(source) });
-        const empty = await look("```READ (reasoning://alice/1/2) <1,-1>```");
+        const empty = await look("````READ (reasoning://alice/1/2) <1,-1>````");
         assert.equal(empty.status, 204, "an existing turn with nothing from the provider reads as the ordinary empty resource");
         assert.ok("content" in empty);
         assert.equal(empty.content, "");
-        const program = await look("```READ (ops://alice/1/2) <1,-1>```");
+        const program = await look("````READ (ops://alice/1/2) <1,-1>````");
         assert.equal(program.status, 200);
         assert.ok("content" in program && typeof program.content === "string" && program.content.includes("READ (reasoning://alice/1/2)"), "the same turn's admitted program is present");
-        const future = await look("```READ (reasoning://alice/1/9) <1,-1>```");
+        const future = await look("````READ (reasoning://alice/1/9) <1,-1>````");
         assert.equal(future.status, 404, "a turn that has not happened is missing, not empty");
         assert.equal(future.problem?.type, "https://problems.plurnk.xyz/scheme/reasoning/entry-not-found");
-        assert.equal((await look("```READ (reasoning://alice/2/1) <1,-1>```")).status, 404, "so is a loop that does not exist");
+        assert.equal((await look("````READ (reasoning://alice/2/1) <1,-1>````")).status, 404, "so is a loop that does not exist");
     } finally { await db.close(); }
 });

@@ -76,22 +76,22 @@ test("{§exec-input}: SEND reaches an invocation-local plugin receiver without a
     const executor = new Dialogue();
     const f = await fixture(executor);
     try {
-        assert.equal((await f.dispatch("```dialogue\nstart\n```")).status, 200);
+        assert.equal((await f.dispatch("````dialogue\nstart\n````")).status, 200);
         await executor.started.promise;
-        const result = await f.dispatch(`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)}) [{"custom": "exact"}]\nraw {JSON} and newline\n\n\`\`\``);
+        const result = await f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)}) [{"custom": "exact"}]\nraw {JSON} and newline\n\n\`\`\`\``);
         assert.equal(result.status, 200);
         assert.equal(result.accepted, true);
         assert.deepEqual(executor.received, [{ body: "raw {JSON} and newline\n", metadata: ['{"custom": "exact"}'] }]);
         assert.deepEqual(f.schemes.manifestFor("dialogue", f.workspaceId)?.writableBy, ["plugin"]);
-        assert.equal((await f.dispatch(`\`\`\`EDIT (${await executionAddress(f.db, f.turnId, 1)})\nnot input\n\`\`\``)).status, 403);
-        assert.equal((await f.dispatch(`\`\`\`READ (${await executionAddress(f.db, f.turnId, 1)}) [{"custom": "exact"}]\`\`\``)).status, 400);
-        assert.equal((await f.dispatch("```FIND (dialogue:///*) [{\"custom\": \"exact\"}]```")).status, 400);
+        assert.equal((await f.dispatch(`\`\`\`\`EDIT (${await executionAddress(f.db, f.turnId, 1)})\nnot input\n\`\`\`\``)).status, 403);
+        assert.equal((await f.dispatch(`\`\`\`\`READ (${await executionAddress(f.db, f.turnId, 1)}) [{"custom": "exact"}]\`\`\`\``)).status, 400);
+        assert.equal((await f.dispatch("````FIND (dialogue:///*) [{\"custom\": \"exact\"}]````")).status, 400);
         executor.finished.resolve();
         await (f.schemes.get("exec") as Exec).idle();
-        const closed = await f.dispatch(`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\ntoo late\n\`\`\``);
+        const closed = await f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\ntoo late\n\`\`\`\``);
         assert.equal(closed.status, 410);
         assert.equal(executor.received.length, 1);
-        assert.equal((await f.dispatch("```SEND (dialogue:///99/99/99/dialogue)\nmissing\n```")).status, 404);
+        assert.equal((await f.dispatch("````SEND (dialogue:///99/99/99/dialogue)\nmissing\n````")).status, 404);
     } finally { executor.finished.resolve(); await f.close(); }
 });
 
@@ -101,16 +101,16 @@ test("{§exec-input}: queued input returns promptly and never steals the running
     const executor = new Dialogue();
     const f = await fixture(executor);
     try {
-        await f.dispatch("```dialogue\nfirst\n```");
+        await f.dispatch("````dialogue\nfirst\n````");
         await executor.started.promise;
-        assert.equal((await f.dispatch("```dialogue\nqueued\n```")).status, 202);
-        const result = await f.dispatch(`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 2)})\nnot delivered\n\`\`\``);
+        assert.equal((await f.dispatch("````dialogue\nqueued\n````")).status, 202);
+        const result = await f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 2)})\nnot delivered\n\`\`\`\``);
         assert.equal(result.status, 409);
         assert.match(result.problem?.type ?? "", /input-unavailable$/);
         assert.equal(executor.received.length, 0);
-        assert.equal((await f.dispatch(`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nfirst only\n\`\`\``)).status, 200);
+        assert.equal((await f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nfirst only\n\`\`\`\``)).status, 200);
         assert.equal(executor.received.length, 1);
-        await f.dispatch(`\`\`\`KILL (${await executionAddress(f.db, f.turnId, 2)})\`\`\``);
+        await f.dispatch(`\`\`\`\`KILL (${await executionAddress(f.db, f.turnId, 2)})\`\`\`\``);
     } finally {
         executor.finished.resolve();
         await f.close();
@@ -123,7 +123,7 @@ test("{§exec-input}: workspace peers share input while SEND and original runtim
     const executor = new Dialogue();
     const f = await fixture(executor);
     try {
-        await f.dispatch("```dialogue\nfirst\n```");
+        await f.dispatch("````dialogue\nfirst\n````");
         await executor.started.promise;
         const peer = await insertWorker(f.db, f.workspaceId, null, "input-peer");
         const peerLoop = await insertLoop(f.db, peer, 1);
@@ -134,7 +134,7 @@ test("{§exec-input}: workspace peers share input while SEND and original runtim
         assert.deepEqual(executor.received.map(({ body }) => body), ["shared"]);
         for (const deny of [{ operation: "SEND" }, { runtime: "dialogue" }]) {
             await f.db.workspace_capability_policy_update.run({ workspace_id: f.workspaceId, policy: JSON.stringify({ deny: [deny] }) });
-            const result = await f.dispatch(`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nno\n\`\`\``);
+            const result = await f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nno\n\`\`\`\``);
             assert.equal(result.status, 403);
             assert.match(result.problem?.type ?? "", /capability-denied$/);
         }
@@ -154,9 +154,9 @@ test("{§exec-input}: host input proposes before delivery; rejection and stale a
         return pending;
     };
     try {
-        assert.equal((await resolve("```dialogue\nstart\n```", "accept")).status, 200);
+        assert.equal((await resolve("````dialogue\nstart\n````", "accept")).status, 200);
         await executor.started.promise;
-        const send = `\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nhello\n\`\`\``;
+        const send = `\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nhello\n\`\`\`\``;
         const rejected = await resolve(send, "reject", async () => { assert.equal(executor.received.length, 0); });
         assert.equal(rejected.status, 400);
         assert.equal(rejected.problem?.type, "https://problems.plurnk.xyz/proposal/rejected");
@@ -177,12 +177,12 @@ test("{§exec-input}: capability revocation while input awaits approval prevents
     const f = await fixture(executor);
     try {
         const startId = Promise.withResolvers<number>();
-        const start = f.dispatch("```dialogue\nstart\n```", startId.resolve);
+        const start = f.dispatch("````dialogue\nstart\n````", startId.resolve);
         f.engine.resolveProposal(await startId.promise, { decision: "accept" });
         assert.equal((await start).status, 200);
         await executor.started.promise;
         const inputId = Promise.withResolvers<number>();
-        const pending = f.dispatch(`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nnot delivered\n\`\`\``, inputId.resolve);
+        const pending = f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nnot delivered\n\`\`\`\``, inputId.resolve);
         const logId = await inputId.promise;
         await f.db.workspace_capability_policy_update.run({ workspace_id: f.workspaceId, policy: JSON.stringify({ deny: [{ runtime: "dialogue" }] }) });
         f.engine.resolveProposal(logId, { decision: "accept" });
@@ -204,11 +204,11 @@ test("{§exec-input}: real node launch, SEND, EOF, and READ compose through the 
         assert.equal(sent.bytesAccepted, Buffer.byteLength("exact α\n"));
         assert.equal(sent.inputClosed, true);
         await (f.schemes.get("exec") as Exec).idle();
-        const read = await f.dispatch(`\`\`\`READ (${await executionAddress(f.db, f.turnId, 1)}) <1,-1>\`\`\``);
+        const read = await f.dispatch(`\`\`\`\`READ (${await executionAddress(f.db, f.turnId, 1)}) <1,-1>\`\`\`\``);
         assert.equal(read.status, 200);
         assert.match(String(read.content), /exact α/);
     } finally {
-        await f.dispatch(`\`\`\`KILL (${await executionAddress(f.db, f.turnId, 1)})\`\`\``);
+        await f.dispatch(`\`\`\`\`KILL (${await executionAddress(f.db, f.turnId, 1)})\`\`\`\``);
         await f.close();
     }
 });
@@ -218,12 +218,12 @@ test("{§exec-input}: withdrawing a runtime while input awaits approval is not s
     const f = await fixture(executor, true);
     try {
         const startId = Promise.withResolvers<number>();
-        const start = f.dispatch("```dialogue\nstart\n```", startId.resolve);
+        const start = f.dispatch("````dialogue\nstart\n````", startId.resolve);
         f.engine.resolveProposal(await startId.promise, { decision: "accept" });
         assert.equal((await start).status, 200);
         await executor.started.promise;
         const inputId = Promise.withResolvers<number>();
-        const pending = f.dispatch(`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nno\n\`\`\``, inputId.resolve);
+        const pending = f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nno\n\`\`\`\``, inputId.resolve);
         const logId = await inputId.promise;
         await f.withdraw();
         f.engine.resolveProposal(logId, { decision: "accept" });
@@ -238,10 +238,10 @@ test("{§exec-input}: execution KILL retires its receiver before further SEND ca
     const executor = new Dialogue();
     const f = await fixture(executor);
     try {
-        await f.dispatch("```dialogue\nstart\n```");
+        await f.dispatch("````dialogue\nstart\n````");
         await executor.started.promise;
-        assert.equal((await f.dispatch(`\`\`\`KILL (${await executionAddress(f.db, f.turnId, 1)})\`\`\``)).status, 200);
-        const result = await f.dispatch(`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nnever\n\`\`\``);
+        assert.equal((await f.dispatch(`\`\`\`\`KILL (${await executionAddress(f.db, f.turnId, 1)})\`\`\`\``)).status, 200);
+        const result = await f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nnever\n\`\`\`\``);
         assert.equal(result.status, 410);
         assert.match(result.problem?.type ?? "", /input-closed$/);
         assert.equal(executor.received.length, 0);
@@ -252,14 +252,14 @@ test("{§exec-input}: a running executor without an input receiver rejects SEND 
     const executor = new Dialogue("read", false);
     const f = await fixture(executor);
     try {
-        assert.equal((await f.dispatch("```dialogue\nstart\n```")).status, 200);
+        assert.equal((await f.dispatch("````dialogue\nstart\n````")).status, 200);
         await executor.started.promise;
-        const result = await f.dispatch(`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nnot delivered\n\`\`\``);
+        const result = await f.dispatch(`\`\`\`\`SEND (${await executionAddress(f.db, f.turnId, 1)})\nnot delivered\n\`\`\`\``);
         assert.equal(result.status, 409);
         assert.match(result.problem?.type ?? "", /input-unavailable$/);
         assert.equal(executor.received.length, 0);
         for (const operand of [`(${await executionAddress(f.db, f.turnId, 1)}#results)`, `(${await executionAddress(f.db, f.turnId, 1)}) <1>`]) {
-            const invalid = await f.dispatch(`\`\`\`SEND ${operand}\nx\n\`\`\``);
+            const invalid = await f.dispatch(`\`\`\`\`SEND ${operand}\nx\n\`\`\`\``);
             assert.equal(invalid.status, 400);
             assert.match(invalid.problem?.type ?? "", /invalid-input-target$/);
         }

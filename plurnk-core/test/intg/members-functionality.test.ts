@@ -136,7 +136,7 @@ test("{§members-functionality} client and model share one surface; the ceiling,
             assert.equal(await memberOf(db, workspaceId, "docs/guide.md"), true, "an enabled service definition projects onto the overlay");
             assert.ok((await rows(db, workspaceId)).includes("include docs/** members"), "a human-authored definition projects with source members");
             assert.deepEqual((await definitions())[0]?.detail, { effect: "include", pattern: "docs/**", matched: 1, files: ["docs/guide.md"], ignored: 0 });
-            await daemon.look({ workspaceId, workerId: model, statement: parseOne("```READ (worker:///_plurnk/members/docs.md) <1,-1>```") });
+            await daemon.look({ workspaceId, workerId: model, statement: parseOne("````READ (worker:///_plurnk/members/docs.md) <1,-1>````") });
             const doc = (await db.engine_list_workspace_entries.all<{ scheme: string; pathname: string; channel: string; content: string }>({ workspace_id: workspaceId }))
                 .find((row) => row.scheme === "worker" && row.pathname === "/_plurnk/members/docs.md" && row.channel === "body");
             assert.ok(doc !== undefined, "an enabled definition is one generated document under worker:///_plurnk/members/");
@@ -169,7 +169,7 @@ test("{§members-functionality} client and model share one surface; the ceiling,
             assert.deepEqual((await definitions()).find((d) => d.alias === "loose")?.detail, { effect: "include", pattern: "loose.md", matched: 1, files: ["loose.md"], ignored: 0 });
 
             // The model's add under the shipped ceiling (none) is refused up front, naming git add.
-            const { result: refused, outcome } = await accepted("```members (add)\n{\"alias\":\"grab\",\"definition\":{\"glob\":\"loose2.md\"}}\n```");
+            const { result: refused, outcome } = await accepted("````members (add)\n{\"alias\":\"grab\",\"definition\":{\"glob\":\"loose2.md\"}}\n````");
             assert.equal(refused.status, 200, "the accepted proposal settled inside the turn; the verb's own outcome rides the results channel");
             assert.equal(outcome.status, 403);
             assert.equal(outcome.problem?.type, "https://problems.plurnk.xyz/members/functionality/model-scope");
@@ -180,12 +180,12 @@ test("{§members-functionality} client and model share one surface; the ceiling,
             // Under scope root the model's glob is admitted and projected as source model; a model
             // glob over an ignored path admits nothing, and list says so.
             process.env.PLURNK_SERVICE_MEMBERS_MODEL_SCOPE = "root";
-            const granted = await accepted("```members (add)\n{\"alias\":\"grab\",\"definition\":{\"glob\":\"loose2.md\"}}\n```");
+            const granted = await accepted("````members (add)\n{\"alias\":\"grab\",\"definition\":{\"glob\":\"loose2.md\"}}\n````");
             assert.equal(granted.outcome.status, 201, "the model's definition is added and enabled");
             await daemon.settleFunctionality(workspaceId);
             assert.equal(await memberOf(db, workspaceId, "loose2.md"), true, "a model glob inside the root is a member under scope root");
             assert.ok((await rows(db, workspaceId)).includes("include loose2.md model"), "a model-proposed definition projects with source model");
-            assert.equal((await accepted("```members (add)\n{\"alias\":\"sneak\",\"definition\":{\"glob\":\"ignored.log\"}}\n```")).outcome.status, 201);
+            assert.equal((await accepted("````members (add)\n{\"alias\":\"sneak\",\"definition\":{\"glob\":\"ignored.log\"}}\n````")).outcome.status, 201);
             await daemon.settleFunctionality(workspaceId);
             assert.equal(await memberOf(db, workspaceId, "ignored.log"), false, "a model glob never passes .gitignore");
             assert.deepEqual((await definitions()).find((d) => d.alias === "sneak")?.detail, { effect: "include", pattern: "ignored.log", matched: 0, files: [], ignored: 1 });

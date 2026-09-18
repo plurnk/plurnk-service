@@ -90,8 +90,8 @@ test("a quoted turn remains one exact literal body", () => {
 test("{§whitespace-contract}: exact closing fences bound bodies before ignored outside text", () => {
     for (const newline of ["\n", "\r\n"]) {
         for (const { source, names, bodies } of [
-            { source: "```READ (note.md)```\nOutside.", names: ["READ"], bodies: [null] },
-            { source: "```READ (first.md)```\n````sh\necho 42\n````\n\nOutside.", names: ["READ", "sh"], bodies: [null, "echo 42"] },
+            { source: "````READ (note.md)````\nOutside.", names: ["READ"], bodies: [null] },
+            { source: "````READ (first.md)````\n`````sh\necho 42\n`````\n\nOutside.", names: ["READ", "sh"], bodies: [null, "echo 42"] },
             { source: "```````READ (note.md)\n```````\nOutside.", names: ["READ"], bodies: [null] },
         ]) {
             const parsed = PlurnkParser.parse((source + "\n" + task("Done.")).replaceAll("\n", newline));
@@ -105,13 +105,13 @@ test("{§whitespace-contract}: exact closing fences bound bodies before ignored 
 
 test("{§balanced-fences}: complete same-width examples remain body with or without an explicit delimiter", () => {
     for (const newline of ["\n", "\r\n"]) {
-        const bare = PlurnkParser.parse("```SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```\n".replaceAll("\n", newline) + task("Done."));
+        const bare = PlurnkParser.parse("````SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n````\n".replaceAll("\n", newline) + task("Done."));
         assert.equal(bare.unparsedTail, undefined);
         assert.deepEqual(errors(bare), []);
         assert.deepEqual(ops(bare).map(writtenOp), ["SEND", "WAIT"]);
         const bareSend = ops(bare)[0];
         assert.equal(bareSend.op === "SEND" ? bareSend.body?.raw : null, "Code:\n```ts\nconst value = 42;\n```\nVerified.".replaceAll("\n", newline), "the complete nesting preserves the example and the following prose");
-        const delimited = PlurnkParser.parse("```42SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n```42\n".replaceAll("\n", newline) + task("Done."));
+        const delimited = PlurnkParser.parse("````42SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n````42\n".replaceAll("\n", newline) + task("Done."));
         assert.deepEqual(errors(delimited), []);
         const delimitedSend = ops(delimited)[0];
         assert.equal(delimitedSend.op === "SEND" ? delimitedSend.body?.raw : null, "Code:\n```ts\nconst value = 42;\n```\nVerified.".replaceAll("\n", newline));
@@ -126,7 +126,7 @@ test("{§whitespace-contract}: a text-only statement list is empty", () => {
 
 // {§tier-entrypoints}
 test("parseStatements retains consecutive turns with independently chosen fence lengths", () => {
-    const source = "```SEND\nOne.\n```\n```WAIT\n```\n\n`````SEND\nTwo.\n`````\n`````WAIT\n`````";
+    const source = "````SEND\nOne.\n````\n````WAIT\n````\n\n`````SEND\nTwo.\n`````\n`````WAIT\n`````";
     const parsed = PlurnkParser.parseStatements(source);
     assert.deepEqual(errors(parsed), []);
     assert.deepEqual(ops(parsed).map(writtenOp), ["SEND", "WAIT", "SEND", "WAIT"]);

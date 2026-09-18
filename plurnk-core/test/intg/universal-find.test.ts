@@ -100,7 +100,7 @@ test("data schemes inherit standard FIND after their optional preparation hook",
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
-            statement: parseFind("```FIND (prepared:///*.md) [{\"pattern\":\"*forty-two*\"}]```"),
+            statement: parseFind("````FIND (prepared:///*.md) [{\"pattern\":\"*forty-two*\"}]````"),
             workspaceId,
             workerId,
             loopId,
@@ -133,7 +133,7 @@ test("exact matcher FIND invokes preparation, then returns flat match locations"
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
-            statement: parseFind("```FIND (prepared:///fact.md) [{\"pattern\":\"*forty-two*\"}]```"),
+            statement: parseFind("````FIND (prepared:///fact.md) [{\"pattern\":\"*forty-two*\"}]````"),
             workspaceId,
             workerId,
             loopId,
@@ -178,7 +178,7 @@ test("{§find-channel-selection}: exact FIND composes the selected channel's pro
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
-            statement: parseFind("```FIND (prepared:///fact.md#details) [{\"pattern\":\"*exact needle*\"}]```"),
+            statement: parseFind("````FIND (prepared:///fact.md#details) [{\"pattern\":\"*exact needle*\"}]````"),
             workspaceId,
             workerId,
             loopId,
@@ -222,7 +222,7 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
-            statement: parseFind(`\`\`\`FIND (${url}) [{"pattern":"/Zhannetta/"}]\`\`\``),
+            statement: parseFind(`\`\`\`\`FIND (${url}) [{"pattern":"/Zhannetta/"}]\`\`\`\``),
             workspaceId,
             workerId,
             loopId,
@@ -237,7 +237,7 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
         assert.doesNotMatch(String(result.content), /Zhannetta Nikolaevna Lotnik was his spouse/);
 
         const reused = await engine.dispatch({
-            statement: parseFind(`\`\`\`FIND (${url})\`\`\``),
+            statement: parseFind(`\`\`\`\`FIND (${url})\`\`\`\``),
             workspaceId,
             workerId,
             loopId,
@@ -251,7 +251,7 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
         assert.doesNotMatch(String(reused.content), /Zhannetta Nikolaevna Lotnik was his spouse/);
 
         const surveyed = await engine.dispatch({
-            statement: parseFind("```FIND (https://93.184.216.34/*) [{\"pattern\":\"/spouse/\"}]```"),
+            statement: parseFind("````FIND (https://93.184.216.34/*) [{\"pattern\":\"/spouse/\"}]````"),
             workspaceId,
             workerId,
             loopId,
@@ -266,7 +266,7 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
         assert.doesNotMatch(String(surveyed.content), /Zhannetta Nikolaevna Lotnik was his spouse/);
 
         const dead = await engine.dispatch({
-            statement: parseFind(`\`\`\`FIND (${deadUrl})\`\`\``),
+            statement: parseFind(`\`\`\`\`FIND (${deadUrl})\`\`\`\``),
             workspaceId,
             workerId,
             loopId,
@@ -279,7 +279,7 @@ test("exact URL FIND acquires live HTTP resources, reuses them, and rejects dead
         assert.deepEqual(requests, [url, deadUrl]);
 
         const reusedDead = await engine.dispatch({
-            statement: parseFind(`\`\`\`FIND (${deadUrl})\`\`\``),
+            statement: parseFind(`\`\`\`\`FIND (${deadUrl})\`\`\`\``),
             workspaceId,
             workerId,
             loopId,
@@ -333,10 +333,10 @@ test("HTTP mutation responses cannot satisfy later READ or exact FIND acquisitio
             origin: "model",
         });
 
-        assert.equal((await dispatch(parseSend(`\`\`\`SEND (${readUrl})
+        assert.equal((await dispatch(parseSend(`\`\`\`\`SEND (${readUrl})
 update
-\`\`\``), 1)).status, 102);
-        assert.equal((await dispatch(parseRead(`\`\`\`READ (${readUrl})\`\`\``), 2)).status, 200);
+\`\`\`\``), 1)).status, 102);
+        assert.equal((await dispatch(parseRead(`\`\`\`\`READ (${readUrl})\`\`\`\``), 2)).status, 200);
         const readEntry = await db.test_get_entry_by_coordinate.get<{ id: number }>({
             scheme: "https",
             authority: "93.184.216.34",
@@ -346,10 +346,10 @@ update
         const readChannels = await db.entry_read_channels.all<{ name: string; content: string }>({ entry_id: readEntry.id });
         assert.equal(readChannels.find(({ name }) => name === "body")?.content, `current GET representation for ${readUrl}`);
 
-        assert.equal((await dispatch(parseSend(`\`\`\`SEND (${findUrl})
+        assert.equal((await dispatch(parseSend(`\`\`\`\`SEND (${findUrl})
 update
-\`\`\``), 3)).status, 102);
-        const found = await dispatch(parseFind(`\`\`\`FIND (${findUrl}) [{"pattern":"/current GET/"}]\`\`\``), 4);
+\`\`\`\``), 3)).status, 102);
+        const found = await dispatch(parseFind(`\`\`\`\`FIND (${findUrl}) [{"pattern":"/current GET/"}]\`\`\`\``), 4);
         assert.equal(found.status, 200);
         assert.equal((JSON.parse(String(found.content)) as unknown[]).length, 1);
         assert.deepEqual(requests, [
@@ -386,7 +386,7 @@ test("non-data schemes without FIND remain honestly unsupported", async () => {
         const loopId = await insertLoop(db, workerId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
-            statement: parseFind("```FIND (control-only:///**)```"),
+            statement: parseFind("````FIND (control-only:///**)````"),
             workspaceId,
             workerId,
             loopId,

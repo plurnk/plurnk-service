@@ -16,7 +16,7 @@ const response = (operation: string, op: string, timing = "") => ({
     ].join("\n"), reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
-const invalidFind = "```FIND (worker:///x) [{\"pattern\":\"$fC\"}]```";
+const invalidFind = "````FIND (worker:///x) [{\"pattern\":\"$fC\"}]````";
 
 test("{§loop-rail-continuity}: a resumed task retains its strike streak across a wait and engine reconstruction", async (t) => {
     const db = await openMigrated();

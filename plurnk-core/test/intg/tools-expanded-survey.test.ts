@@ -51,7 +51,7 @@ test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodi
 test("{§tools-resource-materialization} turn 0 surveys an expanded server's tools without narrating its self-describing target", { timeout: 30_000 }, async () => {
     const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
-    const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("```SEND\nsurveyed\n```")] });
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("````SEND\nsurveyed\n````")] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules") });
     daemon.registerModule(McpModule.init({
@@ -98,11 +98,11 @@ test("{§tools-resource-materialization} turn 0 surveys an expanded server's too
 test("{§functionality-model-projection} the model READs the complete installed MCP add schema with its transport and auth contracts", { timeout: 30_000 }, async () => {
     const target = "worker:///_plurnk/plurnk/mcp/add.md";
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        makeMockResponse(`\`\`\`READ (${target}) <1,-1>\`\`\`
-\`\`\`NOTE
+        makeMockResponse(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\`
+\`\`\`\`NOTE
 Read the input schema.
-\`\`\``),
-        makeMockResponse("```SEND\nInspected.\n```"),
+\`\`\`\``),
+        makeMockResponse("````SEND\nInspected.\n````"),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules") });

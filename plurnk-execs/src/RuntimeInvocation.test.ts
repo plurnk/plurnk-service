@@ -79,7 +79,7 @@ test("{§executor-invocation} rejects incomplete, ambiguous, and typo-bearing de
 });
 
 test("{§executor-invocation} literal nested programs remain body text in generated invocations", () => {
-    const value = { body: { role: "query", required: true }, example: { body: "```READ (elsewhere)```" } };
+    const value = { body: { role: "query", required: true }, example: { body: "````READ (elsewhere)````" } };
     assert.equal(assertInvocation(value).example?.body, value.example.body);
 });
 

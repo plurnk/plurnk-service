@@ -28,8 +28,8 @@ test("{§line-anchors} anchors rendered before an insertion above still resolve 
 
         const pending: { batch: string | null } = { batch: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("```READ (file:///doc.md) <1,-1>```\n```NOTE\nreading\n```", 50),
-            makeMockResponse("```SEND\nread\n```", 50),
+            makeMockResponse("````READ (file:///doc.md) <1,-1>````\n````NOTE\nreading\n````", 50),
+            makeMockResponse("````SEND\nread\n````", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
@@ -37,10 +37,10 @@ test("{§line-anchors} anchors rendered before an insertion above still resolve 
             calls += 1;
             if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`${pending.batch}
 
-\`\`\`NOTE
+\`\`\`\`NOTE
 editing
-\`\`\``, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("```SEND\nedited\n```", 50)] }).generate(args);
+\`\`\`\``, 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````SEND\nedited\n````", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -58,12 +58,12 @@ editing
                 // neighborhood two ordinals lower and their anchors follow them.
                 await writeFile(join(root, "doc.md"), `zero-a\nzero-b\n${V1}`);
                 pending.batch = [
-                    `\`\`\`EDIT (file:///doc.md) <${anchors[2]},${anchors[3]}>
+                    `\`\`\`\`EDIT (file:///doc.md) <${anchors[2]},${anchors[3]}>
 THREE-FOUR
-\`\`\``,
-                    `\`\`\`EDIT (file:///doc.md) <${anchors[4]}>
+\`\`\`\``,
+                    `\`\`\`\`EDIT (file:///doc.md) <${anchors[4]}>
 FIVE
-\`\`\``,
+\`\`\`\``,
                 ].join("\n\n");
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit", policy: { proposals: "accept" } });
                 assert.equal(second.result.status, 200);

@@ -254,7 +254,7 @@ for (const specimen of [
             assert.equal(completed.status, 102, "closed but unobserved: the completion defers to the next packet");
             assert.deepEqual(completed.outcomes, [{ op: "SEND", status: 200, problemType: null }]);
             const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: {
-                content: "```SEND\nObserved the actual execution result.\n```", reasoning: null,
+                content: "````SEND\nObserved the actual execution result.\n````", reasoning: null,
             } }] });
             const observed = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
             assert.equal(observed.status, 200);

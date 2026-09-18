@@ -204,12 +204,12 @@ test("parsePath: ws:// and wss:// decompose as UrlPath (scheme, host, port, quer
 
 test("parsePath: the ws op trio (READ open+stream, SEND push, KILL close) parses to url targets", () => {
     const src = [
-        "```READ (ws://api.example.com/feed)```",
-        "```SEND (wss://api.example.com/feed)",
+        "````READ (ws://api.example.com/feed)````",
+        "````SEND (wss://api.example.com/feed)",
         "hello",
-        "```",
+        "````",
         "",
-        "```KILL (ws://api.example.com/feed)```",
+        "````KILL (ws://api.example.com/feed)````",
     ].join("\n");
     const result = PlurnkParser.parseStatements(src);
     assert.equal(result.items.filter((i) => i.kind === "error").length, 0);

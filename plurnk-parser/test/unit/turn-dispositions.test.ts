@@ -62,7 +62,7 @@ test("{§turn-shape} SEND does not conclude a turn or manufacture a disposition"
 });
 
 test("{§interstitial-fence} an unlabeled fence between operations does not hide WAIT", () => {
-    const result = PlurnkParser.parse("```READ (notes.md)\n```\n```\n```WAIT\nDone.\n```");
+    const result = PlurnkParser.parse("````READ (notes.md)\n````\n```\n````WAIT\nDone.\n````");
     assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "WAIT"]);
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);

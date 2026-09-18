@@ -118,7 +118,7 @@ const completed = (events: readonly Event[], provider: Mock, expected: RegExp): 
 
 for (const cancel of [false, true]) {
     test(`{§mcp-host-composition}: AG-UI batch elicitation ${cancel ? "cancellation" : "accept/decline"} survives reconnect`, { timeout: 20_000 }, async (t) => {
-        const { provider, post, start, reconnect } = await setup(t, '```fixture (batch)\n{}\n```');
+        const { provider, post, start, reconnect } = await setup(t, '````fixture (batch)\n{}\n````');
         const first = interaction(await start(), ["profile", "approval"]);
         assert.equal(provider.received.length, 1);
         const resurfaced = interaction(await reconnect(), ["profile", "approval"]);
@@ -137,7 +137,7 @@ for (const cancel of [false, true]) {
 }
 
 test("{§mcp-host-composition}: AG-UI URL elicitation preserves its browser action and returns to the server", { timeout: 20_000 }, async (t) => {
-    const { provider, post, start } = await setup(t, '```fixture (url)\n{}\n```');
+    const { provider, post, start } = await setup(t, '````fixture (url)\n{}\n````');
     const events = await start();
     const pending = interaction(events, ["authorize"]);
     const args = events.filter((event) => event.type === "TOOL_CALL_ARGS" && event.toolCallId === pending.id)
@@ -149,7 +149,7 @@ test("{§mcp-host-composition}: AG-UI URL elicitation preserves its browser acti
 });
 
 test("{§mcp-host-composition}: two MRTR rounds stay on the originating operation across AG-UI Runs", { timeout: 20_000 }, async (t) => {
-    const { provider, post, start, reconnect } = await setup(t, '```fixture (round-trip)\n{}\n```');
+    const { provider, post, start, reconnect } = await setup(t, '````fixture (round-trip)\n{}\n````');
     const first = interaction(await start(), ["name"]);
     const second = interaction(await post({ resume: [{ interruptId: first.id, status: "resolved", payload: {
         name: { action: "accept", content: { name: "Ada" } },
@@ -166,7 +166,7 @@ test("{§mcp-host-composition}: two MRTR rounds stay on the originating operatio
 });
 
 test("{§mcp-host-composition}: a schema-invalid AG-UI answer preserves the pending MCP request for correction", { timeout: 20_000 }, async (t) => {
-    const { provider, post, start, reconnect } = await setup(t, '```fixture (batch)\n{}\n```');
+    const { provider, post, start, reconnect } = await setup(t, '````fixture (batch)\n{}\n````');
     const pending = interaction(await start(), ["profile", "approval"]);
     const invalid = await post({ resume: [{ interruptId: pending.id, status: "resolved", payload: {
         profile: { action: "accept", content: { name: 42 } },
@@ -187,7 +187,7 @@ for (const { path, key, expected } of [
     { path: "prompts/guarded?topic=MCP", key: "prompt", expected: /MCP:accept/u },
 ]) {
     test(`{§mcp-host-composition}: a ${key} READ completes its elicitation through AG-UI`, { timeout: 20_000 }, async (t) => {
-        const { provider, post, start } = await setup(t, `\`\`\`READ (fixture:///${path}) <1,-1>\`\`\``);
+        const { provider, post, start } = await setup(t, `\`\`\`\`READ (fixture:///${path}) <1,-1>\`\`\`\``);
         const pending = interaction(await start(), [key]);
         completed(await post({ resume: [{ interruptId: pending.id, status: "resolved", payload: {
             [key]: { action: "accept", content: { confirm: true } },
@@ -196,7 +196,7 @@ for (const { path, key, expected } of [
 }
 
 test("{§mcp-host-composition}: a standard Task completes the same operation through AG-UI", { timeout: 20_000 }, async (t) => {
-    const { provider, start } = await setup(t, '```fixture (stdio-defer)\n{"topic":"MCP"}\n```', {
+    const { provider, start } = await setup(t, '````fixture (stdio-defer)\n{"topic":"MCP"}\n````', {
         PLURNK_MCP_FIXTURE: process.execPath,
         PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixturePath("task-server.mjs")]),
         PLURNK_MCP_FIXTURE_READ: '["stdio-defer"]',
@@ -207,7 +207,7 @@ test("{§mcp-host-composition}: a standard Task completes the same operation thr
 test("{§mcp-host-composition}: HTTP MRTR and Task input return through AG-UI before the terminal notification wakes inference", { timeout: 20_000 }, async (t) => {
     const fixture = taskHandler();
     const served = await serveMcpHttp(t, fixture.handler, fixture.route);
-    const { provider, post, start, reconnect } = await setup(t, '```fixture (deferred-review)\n{"topic":"MCP"}\n```', {
+    const { provider, post, start, reconnect } = await setup(t, '````fixture (deferred-review)\n{"topic":"MCP"}\n````', {
         PLURNK_MCP_FIXTURE: served.url,
         PLURNK_MCP_FIXTURE_READ: '["deferred-review"]',
     });
@@ -281,7 +281,7 @@ for (const stage of ["MRTR", "Task"] as const) {
             t.after(() => owner?.stop());
             const fixture = taskHandler();
             const served = await serveMcpHttp(t, fixture.handler, fixture.route);
-            const { provider, post, start, daemon } = await setup(t, '```fixture (deferred-review)\n{"topic":"MCP"}\n```', {
+            const { provider, post, start, daemon } = await setup(t, '````fixture (deferred-review)\n{"topic":"MCP"}\n````', {
                 PLURNK_MCP_FIXTURE: served.url,
                 PLURNK_MCP_FIXTURE_READ: '["deferred-review"]',
             });
@@ -329,7 +329,7 @@ test("{§mcp-host-composition}: withdrawing an attachment cannot interrupt its p
     t.after(() => owner?.stop());
     const fixture = taskHandler();
     const served = await serveMcpHttp(t, fixture.handler, fixture.route);
-    const { provider, post, start, reconnect, daemon } = await setup(t, '```fixture (deferred-review)\n{"topic":"MCP"}\n```', {
+    const { provider, post, start, reconnect, daemon } = await setup(t, '````fixture (deferred-review)\n{"topic":"MCP"}\n````', {
         PLURNK_MCP_FIXTURE: served.url,
         PLURNK_MCP_FIXTURE_READ: '["deferred-review"]',
     });
@@ -367,9 +367,9 @@ for (const source of ["MRTR", "Task", "resource", "prompt"] as const) {
         const tool = source === "MRTR" || source === "Task";
         const fixture = tool ? taskHandler() : undefined;
         const served = fixture === undefined ? undefined : await serveMcpHttp(t, fixture.handler, fixture.route);
-        const operation = tool ? '```fixture (deferred-review)\n{"topic":"MCP"}\n```'
-            : source === "resource" ? "```READ (fixture:///resources/fixture%3A%2F%2Fguarded) <1,-1>```"
-                : "```READ (fixture:///prompts/guarded?topic=MCP) <1,-1>```";
+        const operation = tool ? '````fixture (deferred-review)\n{"topic":"MCP"}\n````'
+            : source === "resource" ? "````READ (fixture:///resources/fixture%3A%2F%2Fguarded) <1,-1>````"
+                : "````READ (fixture:///prompts/guarded?topic=MCP) <1,-1>````";
         const { provider, post, start, reconnect, daemon } = await setup(t, operation, {
             PLURNK_MCP_REQUEST_TIMEOUT: "1000",
             ...(served === undefined ? {

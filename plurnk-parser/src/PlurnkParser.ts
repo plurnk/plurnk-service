@@ -284,12 +284,14 @@ export default class PlurnkParser {
             });
         }
         // {§interstitial-fence} — a tagged fence that opened nothing is prose; say so once, as a
-        // warning, so a misspelled executor is never a silent loss.
+        // warning, so a misspelled executor or an under-fenced operation is never a silent loss.
         for (const note of lexer.takeUnknownTags()) {
             items.push({
                 kind: "error",
                 error: new PlurnkParseError(note.line, note.column, "parser",
-                    `\`${note.tag}\` is not an operation or a known executor here; the block was read as prose and nothing ran.`,
+                    note.short
+                        ? `\`${note.tag}\` needs four backticks to run; the three-backtick block was read as prose and nothing ran.`
+                        : `\`${note.tag}\` is not an operation or a known executor here; the block was read as prose and nothing ran.`,
                     "warning"),
             });
         }

@@ -12,7 +12,7 @@ import { readStmt, urlPath } from "./_dsl.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 
-const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```SEND\ndone\n```", 40)] });
+const mock = (): Mock => new Mock({ contextWindow: 100000, responses: [makeMockResponse("````SEND\ndone\n````", 40)] });
 
 type LogRow = { op: string; origin: string; scheme: string | null; pathname: string | null; lineMarker: string | null; tx: string | null; rx: string | null; status_rx: number };
 

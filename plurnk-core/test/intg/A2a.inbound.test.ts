@@ -90,9 +90,9 @@ test("{§a2a-inbound-exposure}: an unrelated addressed reply is not an A2A artif
             unrelatedAddress = `message://${task.name}/abcdef12`;
             await daemon.runLoop({ workspaceId: workspace.workspaceId, workerId: task.id,
                 prompt: "An unrelated native request.", messageAddress: unrelatedAddress });
-            program = "```NOTE\nObserve the new request before replying.\n```";
+            program = "````NOTE\nObserve the new request before replying.\n````";
         } else {
-            program = `\`\`\`SEND (${protocolAddress})\nThe A2A answer.\n\`\`\`\n\n\`\`\`SEND (${unrelatedAddress})\nThe unrelated answer.\n\`\`\``;
+            program = `\`\`\`\`SEND (${protocolAddress})\nThe A2A answer.\n\`\`\`\`\n\n\`\`\`\`SEND (${unrelatedAddress})\nThe unrelated answer.\n\`\`\`\``;
         }
         return new Mock({ contextWindow: 100_000, responses: [makeMockResponse(program)] }).generate(args);
     });
@@ -122,10 +122,10 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("```SEND\nfirst composed result\n```"),
-            makeMockResponse("```SEND\nsecond composed result\n```"),
+            makeMockResponse("````SEND\nfirst composed result\n````"),
+            makeMockResponse("````SEND\nsecond composed result\n````"),
             makeMockResponse([
-                "```question",
+                "````question",
                 "" + (JSON.stringify({
                     message: "Which branch should I use?",
                     requestedSchema: {
@@ -135,14 +135,14 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
                         additionalProperties: false,
                     },
                 })) + "",
-                "```",
-                "```WAIT",
+                "````",
+                "````WAIT",
                 "Waiting for the branch selection.",
-                "```",
+                "````",
             ].join("\n")),
-            makeMockResponse("```SEND\nselected branch\n```"),
-            makeMockResponse("```SEND\nuppercase context result\n```"),
-            makeMockResponse("```SEND\nlowercase context result\n```"),
+            makeMockResponse("````SEND\nselected branch\n````"),
+            makeMockResponse("````SEND\nuppercase context result\n````"),
+            makeMockResponse("````SEND\nlowercase context result\n````"),
         ],
     });
     const daemon = new Daemon({ db, provider });
@@ -348,7 +348,7 @@ test("{§a2a-lazy-workspace}: discovery and Task observations are passive until 
         db,
         provider: new Mock({
             contextWindow: 100_000,
-            responses: [makeMockResponse("```SEND\nlazy workspace result\n```")],
+            responses: [makeMockResponse("````SEND\nlazy workspace result\n````")],
         }),
     });
     const workspaceName = `a2a-lazy-${crypto.randomUUID()}`;
@@ -425,7 +425,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
         db,
         provider: new Mock({
             contextWindow: 100_000,
-            responses: [makeMockResponse("```SEND\nfirst durable result\n```")],
+            responses: [makeMockResponse("````SEND\nfirst durable result\n````")],
         }),
     });
     const workspace = await daemon.createWorkspace({
@@ -465,7 +465,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
             db,
             provider: new Mock({
                 contextWindow: 100_000,
-                responses: [makeMockResponse("```SEND\nsecond durable result\n```")],
+                responses: [makeMockResponse("````SEND\nsecond durable result\n````")],
             }),
         });
         let secondListener: A2aModule | null = null;

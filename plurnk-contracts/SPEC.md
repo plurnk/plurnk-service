@@ -264,7 +264,7 @@ input
 `````
 
 §section-boundary Every statement is one backtick block. Its header occupies one
-physical line: a fence of at least three backticks, an optional numeric delimiter
+physical line: a fence of at least four backticks ({§four-backtick-operations}), an optional numeric delimiter
 ({§numeric-delimiter}), then the name and its slots. A closer is shown by
 convention and never demanded ({§fence-closer}, {§closer-fallback}). There are no
 operation suffixes or heading levels. Complete nested matches take precedence
@@ -297,11 +297,18 @@ The delimiter is syntax, never AST or persistence
 state; `PlurnkParser.frame` chooses one when the body it wraps holds a heading line
 of four or more backticks ({§statement-rendering}).
 
+§four-backtick-operations **An operation opens with four backticks.** A heading is a fence of
+four or more backticks; a three-backtick fence is markdown wherever it stands, so an answer's
+code blocks (```` ```sh ````, ```` ```ts ````) are prose and never run (operator,
+2026-09-18, #761). A three-backtick fence naming an operation or known executor draws one warning that it
+needs four backticks; any other three-backtick fence draws none. `plurnk.md` teaches exactly
+four; longer fences are tolerated, not taught.
+
 §fence-heading-in-body Outside a complete nested block ({§balanced-fences}), a fence
 line of four or more backticks, optional digits, and a name that is a native operation
 or a known executor is a heading. Inside an open block it ends that block without closing it
 ({§closer-fallback}) and opens the next statement. Fence lines of fewer than four
-backticks are headings only outside any block. Known executors are `sh` plus what
+backticks are never headings ({§four-backtick-operations}). Known executors are `sh` plus what
 the host names in `ParseOptions.executors`. Consequences: a closer glued to the next
 opener (eight backticks then `READ`) can never swallow an unbalanced turn, and a numeric
 delimiter preserves quoted headings even when their own fences are incomplete.
@@ -342,7 +349,7 @@ text there is the heading's own and is read under {§transparent-inline-closer}.
 closing fence on a heading line followed by more of that heading — a `<scope>`, an
 `[option block]`, a `<!-- aside -->`, or a naked matcher — does not end the reading: the
 heading keeps taking its slots under {§trailing-slots} and {§naked-pattern}, exactly as though
-the closer were absent, so ```READ (a.md)``` `<1,2>` is the same operation as `READ (a.md) <1,2>`.
+the closer were absent, so ````` ````READ (a.md)```` ````` `<1,2>` is the same operation as `READ (a.md) <1,2>`.
 The closer is still a closer: the block ends with that physical line and never reaches down for
 the next operation, which is what a bare heading carrying a matcher would do. A closer followed
 by the next opener is {§inline-chain}, and by nothing is the ordinary {§fence-closer}. There is
@@ -1557,6 +1564,6 @@ runtime constructs this; the parser provides the fields):
     "column": 12,
     "source": "parser",
     "severity": "error",
-    "message": "READ block opened at line 1 but was not closed with 3 backticks"
+    "message": "READ block opened at line 1 but was not closed with 4 backticks"
 }
 ```

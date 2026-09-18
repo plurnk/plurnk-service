@@ -228,7 +228,7 @@ test("{§runtime-resource-binding}: READ, FIND, COPY, execution, and BARE use th
         };
         const read = (uri: string) => engine.look({
             workspaceId, workerId: alice, loopId,
-            statement: parse(`\`\`\`READ (${uri}) <1,-1>\`\`\``),
+            statement: parse(`\`\`\`\`READ (${uri}) <1,-1>\`\`\`\``),
         });
         assert.equal((await read("myserver:///resources/item")).content, "shared's resource");
         assert.equal((await read("myserver:///resources/item")).content, "shared's resource");
@@ -242,10 +242,10 @@ test("{§runtime-resource-binding}: READ, FIND, COPY, execution, and BARE use th
             workspaceId, workerId: alice, loopId, turnId, sequence: sequence++, origin: "model",
             statement: parse(body),
         });
-        const found = await dispatch("```FIND (myserver:///resources/*) <1,-1>```");
+        const found = await dispatch("````FIND (myserver:///resources/*) <1,-1>````");
         assert.equal(found.status, 200, JSON.stringify(found));
         assert.match(JSON.stringify(found.results), /myserver:\/\/\/resources\/item/);
-        const copied = await dispatch("```COPY (myserver:///resources/item) (worker:///copy.txt)```");
+        const copied = await dispatch("````COPY (myserver:///resources/item) (worker:///copy.txt)````");
         assert.equal(copied.status, 201, JSON.stringify(copied));
         const copy = await read("worker:///copy.txt");
         assert.equal(copy.content, "shared's resource");

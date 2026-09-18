@@ -40,8 +40,8 @@ test("core preserves opaque state only in provider evidence while readable reaso
             body: "go", open_paths: "[]", evidence: "{}" });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            { assistant: { content: "```SEND\nProgress.\n```\n```READ (ops://alice/1/1)\n```\n```NOTE\none\n```", reasoning: "readable provider reasoning", reasoningEncrypted: [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }] } },
-            { assistant: { content: "```SEND\ndone\n```", reasoning: null } },
+            { assistant: { content: "````SEND\nProgress.\n````\n````READ (ops://alice/1/1)\n````\n````NOTE\none\n````", reasoning: "readable provider reasoning", reasoningEncrypted: [{ id: "rs_1", subtype: "message", encrypted: [{ data: BLOB, format: "openai-responses-v1" }] }] } },
+            { assistant: { content: "````SEND\ndone\n````", reasoning: null } },
         ] as never });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
 
@@ -96,7 +96,7 @@ test("multiple encrypted-reasoning items remain distinct forensic evidence witho
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const A = `${BLOB}-A`, B = `${BLOB}-B`;
         const provider = new Mock({ contextWindow: 100000, responses: [
-            { assistant: { content: "```SEND\ndone\n```", reasoning: null, reasoningEncrypted: [
+            { assistant: { content: "````SEND\ndone\n````", reasoning: null, reasoningEncrypted: [
                 { id: "rs_a", subtype: "message", encrypted: [{ data: A, format: "openai-responses-v1" }] },
                 { id: "rs_b", subtype: "message", encrypted: [{ data: B, format: "openai-responses-v1" }] },
             ] } },

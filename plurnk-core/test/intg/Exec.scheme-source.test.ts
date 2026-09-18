@@ -185,7 +185,7 @@ test("{§op-execution-order}: create, launch, and delete are ordered without wai
     const gate = Promise.withResolvers<void>();
     const ctx = await wire(() => gate.promise);
     try {
-        const source = "```EDIT (worker:///script)\nsource code\n```\n```tool (worker:///script)```\n```KILL (worker:///script)```\n```NOTE\nContinue the task.\n```";
+        const source = "````EDIT (worker:///script)\nsource code\n````\n````tool (worker:///script)````\n````KILL (worker:///script)````\n````NOTE\nContinue the task.\n````";
         const result = await ctx.engine.runTurn({
             workspaceId: ctx.workspaceId, workerId: ctx.root.workerId, loopId: ctx.root.loopId,
             messages: [], provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),

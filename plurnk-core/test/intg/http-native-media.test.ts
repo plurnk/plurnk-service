@@ -46,10 +46,10 @@ for (const enabled of [true, false]) {
         assert.ok(address && typeof address !== "string");
         const url = `http://127.0.0.1:${address.port}/media`;
         const provider = new Mock({ contextWindow: 100_000, inputModalities: enabled ? [sample.kind as InputModality] : [], responses: [
-            turn(`\`\`\`READ (${url}) <1,3>\`\`\`\n${step()}`),
-            turn(`\`\`\`READ (${url}#readable)\`\`\`\n${step()}`),
-            turn(`\`\`\`READ (${url}#bytes) <2,3>\`\`\`\n${step()}`),
-            turn(`\`\`\`READ (${url}#header)\`\`\`\n${step()}`),
+            turn(`\`\`\`\`READ (${url}) <1,3>\`\`\`\`\n${step()}`),
+            turn(`\`\`\`\`READ (${url}#readable)\`\`\`\`\n${step()}`),
+            turn(`\`\`\`\`READ (${url}#bytes) <2,3>\`\`\`\`\n${step()}`),
+            turn(`\`\`\`\`READ (${url}#header)\`\`\`\`\n${step()}`),
             turn(step("SEND")),
         ] });
         await run(provider);
@@ -91,9 +91,9 @@ test("{§http-binary-source} 304 revalidation preserves bytes and later replacem
     assert.ok(address && typeof address !== "string");
     const url = `http://127.0.0.1:${address.port}/sound.wav`;
     const provider = new Mock({ contextWindow: 100_000, inputModalities: ["audio"], responses: [
-        turn(`\`\`\`READ (${url}) <1,2>\`\`\`\n${step()}`),
-        turn(`\`\`\`READ (${url}#readable)\`\`\`\n${step()}`),
-        turn(`\`\`\`READ (${url}#bytes) <1,2>\`\`\`\n${step()}`),
+        turn(`\`\`\`\`READ (${url}) <1,2>\`\`\`\`\n${step()}`),
+        turn(`\`\`\`\`READ (${url}#readable)\`\`\`\`\n${step()}`),
+        turn(`\`\`\`\`READ (${url}#bytes) <1,2>\`\`\`\`\n${step()}`),
         turn(step("SEND")),
     ] });
     await run(provider);

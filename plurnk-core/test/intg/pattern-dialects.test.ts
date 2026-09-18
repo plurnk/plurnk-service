@@ -93,32 +93,32 @@ const PROBES: Probe[] = [
 
 test("{§mimetype-query}: every pattern dialect answers the model from one seeded corpus", async () => {
     const seed = [
-        `\`\`\`EDIT (worker:///docs/guide.md)
+        `\`\`\`\`EDIT (worker:///docs/guide.md)
 ${GUIDE}
-\`\`\``,
-        `\`\`\`EDIT (worker:///data/config.json)
+\`\`\`\``,
+        `\`\`\`\`EDIT (worker:///data/config.json)
 ${CONFIG}
-\`\`\``,
-        `\`\`\`EDIT (worker:///data/feed.xml)
+\`\`\`\``,
+        `\`\`\`\`EDIT (worker:///data/feed.xml)
 ${FEED}
-\`\`\``,
-        `\`\`\`EDIT (worker:///notes.txt)
+\`\`\`\``,
+        `\`\`\`\`EDIT (worker:///notes.txt)
 ${NOTES}
-\`\`\``,
+\`\`\`\``,
     ].join("\n\n");
-    const finds = PROBES.map(({ target, pattern }) => `\`\`\`FIND (${target}) [${JSON.stringify({ pattern })}]\`\`\``).join("\n\n");
+    const finds = PROBES.map(({ target, pattern }) => `\`\`\`\`FIND (${target}) [${JSON.stringify({ pattern })}]\`\`\`\``).join("\n\n");
     const mock = new Mock({ contextWindow: 65536, responses: [
         makeMockResponse(`${seed}
 
-\`\`\`NOTE
+\`\`\`\`NOTE
 seeded
-\`\`\``, 10),
+\`\`\`\``, 10),
         makeMockResponse(`${finds}
 
-\`\`\`NOTE
+\`\`\`\`NOTE
 searched
-\`\`\``, 10),
-        makeMockResponse("```SEND\ndone\n```", 10),
+\`\`\`\``, 10),
+        makeMockResponse("````SEND\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

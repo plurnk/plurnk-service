@@ -26,13 +26,13 @@ const contentResponse = (content: string): MockResponse => ({
 
 // A complete, admitted draining turn. Its only job is to run so the model's
 // next packet drains the notices buffer on read.
-const drainTurn = contentResponse("```SEND\ndrained\n```");
+const drainTurn = contentResponse("````SEND\ndrained\n````");
 
 // A provider transport anomaly notice: the provider notice path carries observations
 // such as a decode escaping into a discarded channel ({§operator-grammar} grades nothing).
 // `extraDrains` clean turns follow so the buffer can be observed draining.
-const NOTICE_CONTENT = "\n```SEND\nnoted\n```";
-const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("```SEND") + 3)).length;
+const NOTICE_CONTENT = "\n````SEND\nnoted\n````";
+const NOTICE_POS = Array.from(NOTICE_CONTENT.slice(0, NOTICE_CONTENT.indexOf("````SEND") + 3)).length;
 const noticeProvider = (extraDrains: number) => {
     const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: extraDrains }, () => drainTurn) });
     const real = provider.generate.bind(provider);
@@ -353,7 +353,7 @@ test("a parser warning remains advisory while the independently invalid mutation
                 broadcasts.push({ payload: payload as { loopId: number; notice: Record<string, unknown> } });
             },
         });
-        const emission = "\n```EDIT (src/example.ts<1,-1>)\nbody\n```\n\n```SEND\ndone\n```";
+        const emission = "\n````EDIT (src/example.ts<1,-1>)\nbody\n````\n\n````SEND\ndone\n````";
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
@@ -375,7 +375,7 @@ test("a parser warning remains advisory while the independently invalid mutation
         assert.match(String(advisories[0]!.payload.notice.message), /The scope was inside the target slot; it was applied as the operation scope\./);
         assert.deepEqual(
             advisories[0]!.payload.notice.position,
-            { type: "content-offset", line: 2, column: 23 },
+            { type: "content-offset", line: 2, column: 24 },
             "the Notice retains the parser's typed source position",
         );
         const [failedEdit] = await db.test_log_entries_by_worker_op_full.all<{
@@ -434,8 +434,8 @@ test("a notice broadcasts structured and drains as its terse model-facing projec
 test("{§fence-boundary}: literal programs inside a longer fence produce no spurious parse advisory", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        const emission = "````EDIT (worker:///a.md) <!-- first note -->\nalpha\n```EDIT (worker:///b.md) <!-- literal example -->\nbeta\n```\n```EDIT (worker:///c.md)\ngamma\n```\n````\n```NOTE\ncontinue\n```";
-        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("```SEND\ndone\n```")] });
+        const emission = "`````EDIT (worker:///a.md) <!-- first note -->\nalpha\n````EDIT (worker:///b.md) <!-- literal example -->\nbeta\n````\n````EDIT (worker:///c.md)\ngamma\n````\n`````\n````NOTE\ncontinue\n````";
+        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("````SEND\ndone\n````")] });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(t1.emissionAttempts, 1);
         const edits = t1.outcomes.filter(({ op }) => op === "EDIT");

@@ -13,8 +13,8 @@ const response = (content: string) => ({
     assistant: { content, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
-const collect = "```READ (worker://child)```\n```WAIT\nCollect the child result.\n```";
-const invalidFind = "```FIND (worker:///x) [{\"pattern\":\"$fC\"}]```";
+const collect = "````READ (worker://child)````\n````WAIT\nCollect the child result.\n````";
+const invalidFind = "````FIND (worker:///x) [{\"pattern\":\"$fC\"}]````";
 
 for (const priorStrike of [false, true]) {
     test(`{§join-blocking-collect} a complete-loop collect parks without a strike${priorStrike ? " after prior failure" : " at maxStrikes=1"}`, async (t) => {
@@ -27,13 +27,13 @@ for (const priorStrike of [false, true]) {
         const childLoop = await insertLoop(db, childId, 1, "Compute the answer.");
         const provider = new Mock({ contextWindow: 100000, responses: [
             ...(priorStrike ? [response(`${invalidFind}
-\`\`\`WAIT
+\`\`\`\`WAIT
 Await results.
-\`\`\``)] : []),
+\`\`\`\``)] : []),
             response(collect),
             response(collect),
             response(collect),
-            response("```SEND\n42\n```"),
+            response("````SEND\n42\n````"),
         ] });
         const run = () => new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
             workspaceId, workerId, loopId, provider, messages: [], maxTurns: 8, maxStrikes: priorStrike ? 2 : 1,
@@ -94,10 +94,10 @@ test("{§engine-rails} a valid join does not excuse another operation's contract
 
 test("{§join-blocking-collect} the daemon wakes a collecting parent on actual child completion without consuming a strike", async () => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response("```WAIT\nAwait instructions.\n```"),
+        response("````WAIT\nAwait instructions.\n````"),
         response(collect),
-        response("```SEND\nChild answer: 42.\n```"),
-        response("```SEND\nChild answer received: 42.\n```"),
+        response("````SEND\nChild answer: 42.\n````"),
+        response("````SEND\nChild answer received: 42.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "join-wake-rails" });

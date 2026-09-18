@@ -27,7 +27,7 @@ const assertDelivery = async (workerName: string): Promise<void> => {
     ]);
     const provider = new Mock({
         contextWindow: 32768,
-        responses: [makeMockResponse("```SEND\nBeat taken.\n```", 10)],
+        responses: [makeMockResponse("````SEND\nBeat taken.\n````", 10)],
     });
     const artifacts = resolve(import.meta.dirname, ".tmp");
     const db = await openMigrated(join(artifacts, `db-${crypto.randomUUID()}.db`));

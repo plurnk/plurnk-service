@@ -7,7 +7,7 @@ import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { withDaemon } from "./_rpc.ts";
 
-const invalidFind = "```FIND (worker:///x) [{\"pattern\":\"$fC\"}]```";
+const invalidFind = "````FIND (worker:///x) [{\"pattern\":\"$fC\"}]````";
 const response = (dsl: string) => ({
     assistant: { content: `${dsl}`, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
@@ -19,16 +19,16 @@ for (const wake of ["message", "same-drain", "restart"] as const) {
             // The waits park on live work the fixture holds; a restart wakes them through recovery.
             const provider = new Mock({ contextWindow: 100000, responses: [
                 response(`${invalidFind}
-\`\`\`WAIT
+\`\`\`\`WAIT
 Await results.
-\`\`\``),
+\`\`\`\``),
                 response(`${invalidFind}
-\`\`\`WAIT
+\`\`\`\`WAIT
 Await results.
-\`\`\``),
+\`\`\`\``),
                 response(`${invalidFind}
-\`\`\`${last}\`\`\``),
-                response("```SEND\nMust not reach a fourth model call.\n```"),
+\`\`\`\`${last}\`\`\`\``),
+                response("````SEND\nMust not reach a fourth model call.\n````"),
             ] });
             const seen: Array<number | undefined> = [];
             const generate = provider.generate.bind(provider);
@@ -99,8 +99,8 @@ Await results.
 
 test("{§engine-cycle-evidence}: actual parks end repetition windows even when wakes stay in one drain", async (t) => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        ...Array.from({ length: 6 }, () => response("```READ (worker:///missing)```\n```WAIT\nAwait results.\n```")),
-        response("```SEND\nObservation complete.\n```"),
+        ...Array.from({ length: 6 }, () => response("````READ (worker:///missing)````\n````WAIT\nAwait results.\n````")),
+        response("````SEND\nObservation complete.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "wait-cycle-windows" });

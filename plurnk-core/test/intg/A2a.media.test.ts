@@ -12,7 +12,7 @@ import { waitForDb } from "./_rpc.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
-const task = "```NOTE\nInspect the received media.\n```";
+const task = "````NOTE\nInspect the received media.\n````";
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 
@@ -58,13 +58,13 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
         contextWindow: 1_000_000,
         inputModalities: supported ? [media.modality] : [],
         responses: [
-            turn("```SEND (a2a://remote)\nProvide the evidence.\n```\n```WAIT\nAwait evidence.\n```"),
-            turn(`\`\`\`READ ($PARENT) <1,-1>\n\`\`\`\n${task}`),
-            turn(`\`\`\`READ ($RESOURCE) <1,3>\n\`\`\`\n${task}`),
+            turn("````SEND (a2a://remote)\nProvide the evidence.\n````\n````WAIT\nAwait evidence.\n````"),
+            turn(`\`\`\`\`READ ($PARENT) <1,-1>\n\`\`\`\`\n${task}`),
+            turn(`\`\`\`\`READ ($RESOURCE) <1,3>\n\`\`\`\`\n${task}`),
             turn(task),
-            turn(`\`\`\`KILL (log:///*/*/*/READ) <1,-1>\n\`\`\`\n${task}`),
-            turn(`\`\`\`READ ($RESOURCE#bytes) <1,3>\n\`\`\`\n${task}`),
-            turn("```SEND\n```"),
+            turn(`\`\`\`\`KILL (log:///*/*/*/READ) <1,-1>\n\`\`\`\`\n${task}`),
+            turn(`\`\`\`\`READ ($RESOURCE#bytes) <1,3>\n\`\`\`\`\n${task}`),
+            turn("````SEND\n````"),
         ],
     });
     const db = await openMigrated();

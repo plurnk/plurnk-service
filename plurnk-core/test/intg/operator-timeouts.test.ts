@@ -78,7 +78,7 @@ test("{§operator-config-loop-timeout}: waiting preserves one execution allowanc
         await insertLoop(db, childId, 1, "Live child work the wait joins.");
         const first = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeMockResponse("```WAIT\nWait before continuing.\n```"),
+            makeMockResponse("````WAIT\nWait before continuing.\n````"),
         ] });
         const generate = provider.generate.bind(provider);
         t.mock.method(provider, "generate", async (...args: Parameters<Mock["generate"]>) => {

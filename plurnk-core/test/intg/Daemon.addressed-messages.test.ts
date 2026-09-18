@@ -11,8 +11,8 @@ process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "100";
 
 test("{§message-reply-delivery}: a client-authored answer wakes its assigned worker without making another request", async () => {
     const provider = new Mock({ contextWindow: 100_000, responses: [
-        makeMockResponse("```WAIT\nA collaborator may answer the request.\n```"),
-        makeMockResponse("```WAIT\nThe collaborator answered; the held child is still running.\n```"),
+        makeMockResponse("````WAIT\nA collaborator may answer the request.\n````"),
+        makeMockResponse("````WAIT\nThe collaborator answered; the held child is still running.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "client-answer-wake" });

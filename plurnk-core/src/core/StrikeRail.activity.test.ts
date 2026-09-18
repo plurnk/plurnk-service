@@ -17,23 +17,23 @@ const fingerprint = (source: string, results?: readonly OperationResult[]) =>
 
 test("{§engine-cycle-evidence} every operational operand distinguishes activity", () => {
     for (const [first, second] of [
-        ["```EDIT (notes.md) <1>\none\n```", "```EDIT (notes.md) <1>\ntwo\n```"],
-        ["```EDIT (notes.md) <1>\none\n```", "```EDIT (notes.md) <2>\none\n```"],
-        ["```COPY (a) <1> (b) <0>```", "```COPY (a) <1> (c) <0>```"],
-        ["```MOVE (a) <1> (b) <0>```", "```MOVE (a) <2> (b) <0>```"],
-        ["```COPY (a) <1> (b) <0>```", "```COPY (a) <1> (b) <-1>```"],
-        ["```READ (https://example.test/) [{\"Accept\": \"text/plain\"}]```", "```READ (https://example.test/) [{\"Accept\": \"application/json\"}]```"],
-        ["```SEND (worker://child)\none\n```", "```SEND (worker://child)\ntwo\n```"],
-        ["```WORK (worker://child)\none\n```", "```WORK (worker://child)\ntwo\n```"],
-        ["```READ (a)```\n```EDIT (b) <1>\nx\n```", "```EDIT (b) <1>\nx\n```\n```READ (a)```"],
+        ["````EDIT (notes.md) <1>\none\n````", "````EDIT (notes.md) <1>\ntwo\n````"],
+        ["````EDIT (notes.md) <1>\none\n````", "````EDIT (notes.md) <2>\none\n````"],
+        ["````COPY (a) <1> (b) <0>````", "````COPY (a) <1> (c) <0>````"],
+        ["````MOVE (a) <1> (b) <0>````", "````MOVE (a) <2> (b) <0>````"],
+        ["````COPY (a) <1> (b) <0>````", "````COPY (a) <1> (b) <-1>````"],
+        ["````READ (https://example.test/) [{\"Accept\": \"text/plain\"}]````", "````READ (https://example.test/) [{\"Accept\": \"application/json\"}]````"],
+        ["````SEND (worker://child)\none\n````", "````SEND (worker://child)\ntwo\n````"],
+        ["````WORK (worker://child)\none\n````", "````WORK (worker://child)\ntwo\n````"],
+        ["````READ (a)````\n````EDIT (b) <1>\nx\n````", "````EDIT (b) <1>\nx\n````\n````READ (a)````"],
     ]) {
         assert.notEqual(fingerprint(first!), fingerprint(second!), `${first} differs from ${second}`);
     }
 });
 
 test("{§engine-cycle-evidence} source decoration does not disguise a cycle", () => {
-    assert.equal(fingerprint("```READ (a) <1>```\n```NOTE\ncontinue\n```"),
-        fingerprint("\n```READ (a) <1> <!-- another aside -->```\n```NOTE\ncontinue\n```"));
+    assert.equal(fingerprint("````READ (a) <1>````\n````NOTE\ncontinue\n````"),
+        fingerprint("\n````READ (a) <1> <!-- another aside -->````\n````NOTE\ncontinue\n````"));
 });
 
 test("{§engine-cycle-evidence} note content and lifecycle changes distinguish authored activity", () => {
@@ -52,7 +52,7 @@ test("{§engine-cycle-evidence} a note's assigned storage coordinate does not di
 });
 
 test("{§engine-cycle-evidence} changing observations distinguish otherwise identical requests", () => {
-    const source = "```READ (notes.md)```";
+    const source = "````READ (notes.md)````";
     assert.notEqual(fingerprint(source, [{ status: 200, content: "one" }]),
         fingerprint(source, [{ status: 200, content: "two" }]));
     assert.notEqual(fingerprint(source, [{ status: 200, content: "one" }]),
@@ -62,7 +62,7 @@ test("{§engine-cycle-evidence} changing observations distinguish otherwise iden
 });
 
 test("{§engine-cycle-evidence} engine-assigned problem instances do not conceal repeated failures", () => {
-    const source = "```READ (missing.md)```";
+    const source = "````READ (missing.md)````";
     const failure = (instance: string): OperationResult => ({
         status: 404,
         problem: { type: "https://problems.plurnk.xyz/scheme/file/entry-not-found", title: "Not found", status: 404, detail: "No entry exists.", instance },
@@ -74,5 +74,5 @@ test("{§engine-cycle-evidence} engine-assigned problem instances do not conceal
 });
 
 test("{§engine-cycle-evidence} dispatch results must correspond to the executed statements", () => {
-    assert.throws(() => fingerprint("```READ (a)```", []), /cycle evidence requires one result per executed operation/);
+    assert.throws(() => fingerprint("````READ (a)````", []), /cycle evidence requires one result per executed operation/);
 });

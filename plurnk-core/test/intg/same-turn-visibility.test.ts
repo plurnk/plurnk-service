@@ -7,8 +7,8 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flus
 
 test("{§turn-ops-selection-snapshot}: log KILL selects the pre-program snapshot, not rows emitted earlier by its own program", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        { assistant: { content: "```FIND (worker:///*)```\n```KILL (log:///1/2/*)```\n```NOTE\nContinue after curating the observed pre-program row.\n```", reasoning: null } },
-        { assistant: { content: "```SEND\ndone\n```", reasoning: null } },
+        { assistant: { content: "````FIND (worker:///*)````\n````KILL (log:///1/2/*)````\n````NOTE\nContinue after curating the observed pre-program row.\n````", reasoning: null } },
+        { assistant: { content: "````SEND\ndone\n````", reasoning: null } },
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -46,8 +46,8 @@ test("{§op-execution-order}: FIND observes an entry created by EDIT in the same
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Turn 1: write, then read-back in the same turn; continue (same-turn completion would
         // — correctly — trip the weigh-before-conclude 409; that gate is not under test here).
-        makeMockResponse("\n```EDIT (worker:///abs/module-loader-spec.md)\nthe spec body\n```\n\n```FIND (worker:///abs/**)```\n```NOTE\nwrote and listed\n```", 10),
-        makeMockResponse("```SEND\ndone\n```", 10),
+        makeMockResponse("\n````EDIT (worker:///abs/module-loader-spec.md)\nthe spec body\n````\n\n````FIND (worker:///abs/**)````\n````NOTE\nwrote and listed\n````", 10),
+        makeMockResponse("````SEND\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -68,9 +68,9 @@ test("{§op-execution-order}: FIND observes an entry created by EDIT in the same
 
 test("{§edit-execution}: each EDIT records its own revision; an earlier READ retains its snapshot", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("\n```EDIT (worker:///mode.md)\none\ntwo\nthree\nfour\n```\n\n```NOTE\nfixture created\n```", 10),
-        makeMockResponse("\n```READ (worker:///mode.md)```\n```EDIT (worker:///mode.md) <4>\nFOUR\n```\n\n```EDIT (worker:///mode.md) <2>\nTWO\n2.5\n```\n\n```NOTE\nmutated and observed\n```", 10),
-        makeMockResponse("\n```SEND\ndone\n```", 10),
+        makeMockResponse("\n````EDIT (worker:///mode.md)\none\ntwo\nthree\nfour\n````\n\n````NOTE\nfixture created\n````", 10),
+        makeMockResponse("\n````READ (worker:///mode.md)````\n````EDIT (worker:///mode.md) <4>\nFOUR\n````\n\n````EDIT (worker:///mode.md) <2>\nTWO\n2.5\n````\n\n````NOTE\nmutated and observed\n````", 10),
+        makeMockResponse("\n````SEND\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -105,9 +105,9 @@ test("{§edit-execution}: each EDIT records its own revision; an earlier READ re
 
 test("{§edit-execution}: overlapping numeric EDITs apply to successive resource states", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("```EDIT (worker:///atomic.md)\none\ntwo\nthree\n```\n\n```NOTE\nfixture\n```", 10),
-        makeMockResponse("```EDIT (worker:///atomic.md) <1,2>\nchanged\n```\n\n```EDIT (worker:///atomic.md) <2,3>\nalso changed\n```\n\n```READ (worker:///atomic.md)```\n```NOTE\nchecked\n```", 10),
-        makeMockResponse("```SEND\ndone\n```", 10),
+        makeMockResponse("````EDIT (worker:///atomic.md)\none\ntwo\nthree\n````\n\n````NOTE\nfixture\n````", 10),
+        makeMockResponse("````EDIT (worker:///atomic.md) <1,2>\nchanged\n````\n\n````EDIT (worker:///atomic.md) <2,3>\nalso changed\n````\n\n````READ (worker:///atomic.md)````\n````NOTE\nchecked\n````", 10),
+        makeMockResponse("````SEND\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -129,14 +129,14 @@ test("{§edit-line-anchors}: a two-anchor whole-line range survives the composed
     const content = "alpha\nbeta\ngamma\ndelta";
     const [alpha, beta] = LineAnchors.tokens("worker:///anchored-range.md", content);
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("\n```EDIT (worker:///anchored-range.md)\nalpha\nbeta\ngamma\ndelta\n```\n\n```NOTE\ncreated\n```", 10),
+        makeMockResponse("\n````EDIT (worker:///anchored-range.md)\nalpha\nbeta\ngamma\ndelta\n````\n\n````NOTE\ncreated\n````", 10),
         makeMockResponse(`
-\`\`\`EDIT (worker:///anchored-range.md) <${alpha},${beta}>\`\`\`
-\`\`\`READ (worker:///anchored-range.md)\`\`\`
-\`\`\`NOTE
+\`\`\`\`EDIT (worker:///anchored-range.md) <${alpha},${beta}>\`\`\`\`
+\`\`\`\`READ (worker:///anchored-range.md)\`\`\`\`
+\`\`\`\`NOTE
 verify
-\`\`\``, 10),
-        makeMockResponse("\n```SEND\ndone\n```", 10),
+\`\`\`\``, 10),
+        makeMockResponse("\n````SEND\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -159,24 +159,24 @@ test("{§edit-execution}: an invalid anchored EDIT leaves the earlier effect int
     );
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse(`
-\`\`\`EDIT (worker:///anchor-batch.md)
+\`\`\`\`EDIT (worker:///anchor-batch.md)
 ${content}
-\`\`\`
+\`\`\`\`
 
-\`\`\`NOTE
+\`\`\`\`NOTE
 created
-\`\`\``, 10),
+\`\`\`\``, 10),
         makeMockResponse(`
-\`\`\`EDIT (worker:///anchor-batch.md) <${one},${two}>\`\`\`
-\`\`\`EDIT (worker:///anchor-batch.md) <${three},${four},${five},${six},${seven},${eight}>
+\`\`\`\`EDIT (worker:///anchor-batch.md) <${one},${two}>\`\`\`\`
+\`\`\`\`EDIT (worker:///anchor-batch.md) <${three},${four},${five},${six},${seven},${eight}>
 replacement
-\`\`\`
+\`\`\`\`
 
-\`\`\`READ (worker:///anchor-batch.md)\`\`\`
-\`\`\`NOTE
+\`\`\`\`READ (worker:///anchor-batch.md)\`\`\`\`
+\`\`\`\`NOTE
 verify
-\`\`\``, 10),
-        makeMockResponse("\n```SEND\ndone\n```", 10),
+\`\`\`\``, 10),
+        makeMockResponse("\n````SEND\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

@@ -45,7 +45,7 @@ for (const [name, parse] of [
 
 test("{§balanced-fences}: exact bodies survive nested widths, indentation, Unicode, newlines and operation families", () => {
     for (const header of ["SEND", "EDIT (notes.md)", "sh", "NOTE", "BARE", "WORK", "FORK"]) {
-        for (const width of [3, 4, 7]) {
+        for (const width of [4, 5, 7]) {
             for (const newline of ["\n", "\r\n"]) {
                 for (const indent of ["", " \t  "]) {
                     const fence = "`".repeat(width);

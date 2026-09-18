@@ -10,7 +10,7 @@
 > YOU MUST emit the OP, its parameters, and the optional aside on the opening fence line.
 
 > [!IMPORTANT]
-> To conclude, respond without performing any OPs.
+> To conclude, respond without performing any OPs in the response.
 
 * `[metadata]`: optional one-line JSON array of option objects.
 * `<!-- aside -->`: optional terse note beside (never below) the operation line.
@@ -66,7 +66,7 @@
 
     ````42EDIT (edit-example.md) <!-- resolve nested OP conflicts with matching numeric delimiters after fencing -->
     ````EDIT (edit-example.md)
-    An edit example.
+    OPs always begin and end with exactly four backticks, both immediately after a newline.
     ````
     ````42
 

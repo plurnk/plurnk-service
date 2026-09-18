@@ -16,9 +16,9 @@ const arrivalBody = (row: { tx: string }): string => (JSON.parse(row.tx) as { bo
 const sendOnly = (dsl: string) => makeMockResponse(dsl);
 
 test("loop.run: enqueues + drains + returns first loop's result", async () => {
-    const dsl = "```EDIT (worker:///x)\nhello\n```\n\n```SEND\ndone\n```";
+    const dsl = "````EDIT (worker:///x)\nhello\n````\n\n````SEND\ndone\n````";
     // {§send-premature-terminate} — the EDIT receipt lands next packet; [200] concludes on the second turn.
-    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl), makeMockResponse("```SEND\ndone\n```", 0)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl), makeMockResponse("````SEND\ndone\n````", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -39,8 +39,8 @@ test("{§worker-lifecycle-single-drain}: concurrent idle injections claim distin
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```SEND\nfirst concurrent loop\n```"),
-            sendOnly("```SEND\nsecond concurrent loop\n```"),
+            sendOnly("````SEND\nfirst concurrent loop\n````"),
+            sendOnly("````SEND\nsecond concurrent loop\n````"),
         ],
     });
 
@@ -88,7 +88,7 @@ test("{§worker-lifecycle-single-drain}: concurrent idle injections claim distin
 test("{§worker-delegation-inherits-policy}: a fresh injection persists delegated authority as its loop policy", async () => {
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [sendOnly("```SEND\ndone\n```")],
+        responses: [sendOnly("````SEND\ndone\n````")],
     });
     await withDaemon(mock, async (db, daemon) => {
         const workspace = await daemon.createWorkspace({ name: `fresh-loop-policy-${crypto.randomUUID()}` });
@@ -125,9 +125,9 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```sh\nsleep 30\n```\n\n```NOTE\nrunning\n```"),
-            sendOnly("```SEND\ndone\n```"),
-            sendOnly("```SEND\ndone\n```"),
+            sendOnly("````sh\nsleep 30\n````\n\n````NOTE\nrunning\n````"),
+            sendOnly("````SEND\ndone\n````"),
+            sendOnly("````SEND\ndone\n````"),
         ],
     });
 
@@ -174,7 +174,7 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
 });
 
 test("loop.cancel: no active drain → cancelled=false", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly("```SEND\ndone\n```")] });
+    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly("````SEND\ndone\n````")] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -194,10 +194,10 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```sh\nsleep 30\n```\n\n```NOTE\nrunning\n```"),
-            sendOnly("```SEND\ndone\n```"),
-            sendOnly("```SEND\ndone\n```"),
-            sendOnly("```SEND\ndone\n```"),
+            sendOnly("````sh\nsleep 30\n````\n\n````NOTE\nrunning\n````"),
+            sendOnly("````SEND\ndone\n````"),
+            sendOnly("````SEND\ndone\n````"),
+            sendOnly("````SEND\ndone\n````"),
         ],
     });
 
@@ -250,8 +250,8 @@ test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths i
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```sh\ntrue\n```\n\n```NOTE\ncontinue after review\n```"), // proposal pauses before the required disposition
-            sendOnly("```SEND\ndone\n```"),      // turn 2 consumes the injected prompt, ends
+            sendOnly("````sh\ntrue\n````\n\n````NOTE\ncontinue after review\n````"), // proposal pauses before the required disposition
+            sendOnly("````SEND\ndone\n````"),      // turn 2 consumes the injected prompt, ends
         ],
     });
 
@@ -319,8 +319,8 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```sh\nsleep 30\n```\n\n```WAIT\npark\n```"),
-            sendOnly("```SEND\ndone with the parked work\n```\n```KILL (worker://parked)\n```"),
+            sendOnly("````sh\nsleep 30\n````\n\n````WAIT\npark\n````"),
+            sendOnly("````SEND\ndone with the parked work\n````\n````KILL (worker://parked)\n````"),
         ],
     });
     const parkedBoundary = Promise.withResolvers<void>();
@@ -397,8 +397,8 @@ test("{§message-loop-containment}: an injection crossing the park transition is
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```sh\nsleep 30\n```\n\n```WAIT\npark\n```"),
-            sendOnly("```SEND\ndone with the injected prompt\n```\n```KILL (worker://parked)\n```"),
+            sendOnly("````sh\nsleep 30\n````\n\n````WAIT\npark\n````"),
+            sendOnly("````SEND\ndone with the injected prompt\n````\n````KILL (worker://parked)\n````"),
         ],
     });
     const parking = Promise.withResolvers<void>();
@@ -470,8 +470,8 @@ test("{§message-loop-containment}: every orphaned message is recovered in order
             // The frames arrive during turn 1, so a model terminal over them defers
             // ({§completion-defers-to-messages}); loop 1 ends turn 1 at its turn ceiling instead
             // (maxTurns 1 → 429), which no barrier gates: the orphan premise holds.
-            sendOnly("```sh\ntrue\n```\n\n```SEND\nloop 1 reaches its turn ceiling\n```"),
-            sendOnly("```SEND\nreconciled loop ran\n```"),                              // the promoted loop
+            sendOnly("````sh\ntrue\n````\n\n````SEND\nloop 1 reaches its turn ceiling\n````"),
+            sendOnly("````SEND\nreconciled loop ran\n````"),                              // the promoted loop
         ],
     });
 
@@ -572,8 +572,8 @@ test("loop.cancel reaps the worker's open streams by the subscription registry (
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```sh\nsleep 30\n```\n\n```WAIT\nbackgrounded\n```"),
-            sendOnly("```SEND\ndone\n```"),
+            sendOnly("````sh\nsleep 30\n````\n\n````WAIT\nbackgrounded\n````"),
+            sendOnly("````SEND\ndone\n````"),
         ],
     });
 
@@ -612,8 +612,8 @@ test("a cancelled worker is not revived by its straggler stream's conclusion", a
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("```sh\nsleep 30\n```\n\n```WAIT\nbackgrounded\n```"),
-            sendOnly("```SEND\nshould never run\n```"),
+            sendOnly("````sh\nsleep 30\n````\n\n````WAIT\nbackgrounded\n````"),
+            sendOnly("````SEND\nshould never run\n````"),
         ],
     });
 
@@ -680,8 +680,8 @@ test("{§completion-defers-to-messages}: prompts that arrive during a completing
     const mock = new GatedMock(gate, {
         contextWindow: 16384,
         responses: [
-            sendOnly("```SEND\nfirst answer, before the follow-ups\n```"),
-            sendOnly("```SEND\nanswered both follow-ups\n```"),
+            sendOnly("````SEND\nfirst answer, before the follow-ups\n````"),
+            sendOnly("````SEND\nanswered both follow-ups\n````"),
         ],
     });
     await withDaemon(mock, async (db, _daemon, addr) => {

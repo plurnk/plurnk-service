@@ -96,7 +96,7 @@ test("{§tools-resource-discovery} retains authored non-schema invocations and s
         /^````gitea \(issue\/read\) <!-- Read one issue and its discussion\. -->\n\{"owner": string, "repo": string, "index": integer\}\n````$/m,
     );
     assert.doesNotMatch(family, /Schema: worker:/, "no schema is fabricated for authored signatures");
-    assert.doesNotMatch(family, /```FIND/);
+    assert.doesNotMatch(family, /````FIND/);
     assert.doesNotMatch(family, /tool_name/, "the family document cannot advertise a rejected generic target");
     // A tool's details are a SECTION of the family document, its headings demoted.
     assert.match(family, /^## `issue\/read`$/m);
@@ -177,7 +177,7 @@ test("a large family's inventory summary names every tool", () => {
 });
 
 test("{§tools-resource-discovery} keeps a concrete invocation's multiline body on one summary line", () => {
-    const summary = "```fixture (echo) <!-- Echo structured input -->```";
+    const summary = "````fixture (echo) <!-- Echo structured input -->````";
     const body = '{\n  "message": "hello"\n}';
     const resources = ToolResources.render({
         runtime: "fixture", summary, details: "",
@@ -193,7 +193,7 @@ test("{§tools-resource-discovery} keeps a concrete invocation's multiline body 
     });
     const document = resources[0]!.content;
     const renderedSummary = document.split("## Summary\n\n")[1]!.split("\n\n")[0];
-    assert.equal(renderedSummary, `\`${summary.slice(0, -3)}\\n${body.replaceAll("\n", "\\n")}\\n\`\`\`\``);
+    assert.equal(renderedSummary, `${summary.slice(0, -4)}\\n${body.replaceAll("\n", "\\n")}\\n\`\`\`\``);
     assert.ok(document.includes(`\`\`\`\`fixture (echo) <!-- Echo structured input. -->
 ${body}
 \`\`\`\``), "the full invocation retains its physical newlines");

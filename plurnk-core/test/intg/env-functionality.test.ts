@@ -116,10 +116,10 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         // WORK owns its heading slot ({§env-option}): a key it does not take and a reserved name are
         // refused by name, before any child exists.
         const problemOf = (result: { status: number }): string => String((result as { problem?: { type?: string } }).problem?.type);
-        const foreignKey = await daemon.dispatchAsClient({ workspaceId, workerId: alice, statement: parseOne("```WORK (worker://nope) [{\"nope\": 1}]\nx\n```") });
+        const foreignKey = await daemon.dispatchAsClient({ workspaceId, workerId: alice, statement: parseOne("````WORK (worker://nope) [{\"nope\": 1}]\nx\n````") });
         assert.equal(foreignKey.status, 400);
         assert.match(problemOf(foreignKey), /metadata-unsupported$/u);
-        const reservedName = await daemon.dispatchAsClient({ workspaceId, workerId: alice, statement: parseOne("```WORK (worker://nope) [{\"env\": {\"PLURNK_SERVICE_DB_PATH\": \"x\"}}]\nx\n```") });
+        const reservedName = await daemon.dispatchAsClient({ workspaceId, workerId: alice, statement: parseOne("````WORK (worker://nope) [{\"env\": {\"PLURNK_SERVICE_DB_PATH\": \"x\"}}]\nx\n````") });
         assert.equal(reservedName.status, 400);
         assert.match(problemOf(reservedName), /env\/functionality\/name-reserved$/u);
         assert.equal(await db.worker_resolve_by_name.get({ workspace_id: workspaceId, name: "nope" }), undefined, "nothing was created");
@@ -157,12 +157,12 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
             const { status } = await daemon.dispatchAsClient({ workspaceId, workerId, statement: parseOne(program) });
             return { status, result: () => awaitExecOutcome(db, { workspaceId, scheme: "env", after, timeoutMs: 10_000 }) };
         };
-        const aliceList = await exec(alice, "```env (list)```");
+        const aliceList = await exec(alice, "````env (list)````");
         assert.equal(aliceList.status, 200);
         const aliceView = await aliceList.result() as unknown as FunctionalityListResult;
         assert.equal(aliceView.definitions.find(({ alias }) => alias === "CARGO_TARGET_DIR")?.origin, "worker");
         assert.equal(aliceView.definitions.find(({ alias }) => alias === "ENV_WITNESS")?.state, "disabled");
-        const bobView = await (await exec(bob, "```env (list)```")).result() as unknown as FunctionalityListResult;
+        const bobView = await (await exec(bob, "````env (list)````")).result() as unknown as FunctionalityListResult;
         assert.equal(bobView.definitions.some(({ alias }) => alias === "CARGO_TARGET_DIR"), false, "the binding is per operation: bob's list is bob's");
         assert.equal(bobView.definitions.find(({ alias }) => alias === "ENV_WITNESS")?.state, "active");
 
@@ -195,14 +195,14 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         };
         try {
             const before = await outputs();
-            const added = await accepted(bob, `\`\`\`env (add)\n${JSON.stringify({ alias: "BOB_ONLY", definition: { value: "1" } })}\n\`\`\``);
+            const added = await accepted(bob, `\`\`\`\`env (add)\n${JSON.stringify({ alias: "BOB_ONLY", definition: { value: "1" } })}\n\`\`\`\``);
             assert.equal(added.status, 200, "the accepted add settled inside the operation");
             const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "env", after: before, timeoutMs: 10_000 }) as unknown as FunctionalityMutationResult;
             assert.equal(outcome.definition?.origin, "worker");
             assert.equal(await stateOf(bob, "BOB_ONLY"), "worker:active", "an accepted model add persisted for the invoking worker");
             assert.equal(await stateOf(alice, "BOB_ONLY"), undefined);
 
-            const command = "```sh\necho \"target=[$CARGO_TARGET_DIR] witness=[$ENV_WITNESS] bob=[$BOB_ONLY]\"\n```";
+            const command = "````sh\necho \"target=[$CARGO_TARGET_DIR] witness=[$ENV_WITNESS] bob=[$BOB_ONLY]\"\n````";
             // The record lives on the spawn's output entry ({§execution-output-identity}), never on the
             // model's own log row.
             const recorded = async (logEntryId: number) => {
@@ -239,7 +239,7 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
             await invoke(bob, "add", { alias: "ENV_WITNESS", definition: { value: "worker" } });
             const localRun = await accepted(bob, command);
             assert.match(await stdoutOf(localRun.logEntryId), /witness=\[worker\]/u);
-            const modifierRun = await accepted(bob, "```sh [{\"env\":{\"ENV_WITNESS\":\"modifier\"}}]\necho witness=[$ENV_WITNESS]\n```");
+            const modifierRun = await accepted(bob, "````sh [{\"env\":{\"ENV_WITNESS\":\"modifier\"}}]\necho witness=[$ENV_WITNESS]\n````");
             assert.match(await stdoutOf(modifierRun.logEntryId), /witness=\[modifier\]/u);
             assert.deepEqual((await recorded(modifierRun.logEntryId)).ENV_WITNESS, { source: "modifier", value: "modifier" });
         } finally {

@@ -457,44 +457,44 @@ const skillBoot = await bootStart({ PLURNK_SERVICE_DB_PATH: packedSkillDb }, asy
     const anchorWorkspace = await aguiAction(address, "workspace.create", { name: "packed-anchor-range" });
     const sourceTarget = "worker:///installed.py";
     await aguiAction(address, "op.parse", {
-        text: `\`\`\`EDIT (${sourceTarget})
+        text: `\`\`\`\`EDIT (${sourceTarget})
 def target():
     return 1
-\`\`\``,
+\`\`\`\``,
     }, anchorWorkspace.name);
     const sourceLookup = (await aguiAction(address, "op.parse", {
-        text: `\`\`\`READ (${sourceTarget})
+        text: `\`\`\`\`READ (${sourceTarget})
 //function_definition
-\`\`\``,
+\`\`\`\``,
     }, anchorWorkspace.name)).results[0];
     const sourceRead = (await aguiAction(address, "op.parse", {
-        text: `\`\`\`READ (${sourceTarget}) <1,1,2,13>\`\`\``,
+        text: `\`\`\`\`READ (${sourceTarget}) <1,1,2,13>\`\`\`\``,
     }, anchorWorkspace.name)).results[0];
     const anchorTarget = "worker:///packed-anchor.md";
     const anchorContent = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight";
     await aguiAction(address, "op.parse", {
-        text: `\`\`\`EDIT (${anchorTarget})
+        text: `\`\`\`\`EDIT (${anchorTarget})
 ${anchorContent}
-\`\`\``,
+\`\`\`\``,
     }, anchorWorkspace.name);
     const anchoredRead = (await aguiAction(address, "op.parse", {
-        text: `\`\`\`READ (${anchorTarget})\`\`\``,
+        text: `\`\`\`\`READ (${anchorTarget})\`\`\`\``,
     }, anchorWorkspace.name)).results[0];
     const [one, two] = anchoredRead.lineAnchors;
     const applied = await aguiAction(address, "op.parse", {
-        text: `\`\`\`EDIT (${anchorTarget}) <${one},${two}>\`\`\``,
+        text: `\`\`\`\`EDIT (${anchorTarget}) <${one},${two}>\`\`\`\``,
     }, anchorWorkspace.name);
     const landed = (await aguiAction(address, "op.parse", {
-        text: `\`\`\`READ (${anchorTarget})\`\`\``,
+        text: `\`\`\`\`READ (${anchorTarget})\`\`\`\``,
     }, anchorWorkspace.name)).results[0];
     const [three, four, five, six, seven, eight] = landed.lineAnchors;
     const rejected = await aguiAction(address, "op.parse", {
-        text: `\`\`\`EDIT (${anchorTarget}) <${three},${four},${five},${six},${seven},${eight}>
+        text: `\`\`\`\`EDIT (${anchorTarget}) <${three},${four},${five},${six},${seven},${eight}>
 replacement
-\`\`\``,
+\`\`\`\``,
     }, anchorWorkspace.name);
     const unchanged = (await aguiAction(address, "op.parse", {
-        text: `\`\`\`READ (${anchorTarget})\`\`\``,
+        text: `\`\`\`\`READ (${anchorTarget})\`\`\`\``,
     }, anchorWorkspace.name)).results[0];
     return {
         primary,
@@ -579,29 +579,29 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
     const afterDemand = markerCount(mcpStartMarker);
     await aguiAction(address, "workspace.mcp.list", {}, attached.name);
     const skillCatalog = (await aguiAction(address, "op.parse", {
-        text: "```FIND (skill://*/SKILL.md) <1,-1>```",
+        text: "````FIND (skill://*/SKILL.md) <1,-1>````",
     }, attached.name)).results[0];
     const skillRead = (await aguiAction(address, "op.parse", {
-        text: "```READ (skill://inspect/SKILL.md) <1,-1>```",
+        text: "````READ (skill://inspect/SKILL.md) <1,-1>````",
     }, attached.name)).results[0];
     const ownSkillReads = [];
     for (const pathname of ["SKILL.md", ".env.defaults", "references/configuration.md", "references/copy-move.md", "references/models.md"]) {
         ownSkillReads.push((await aguiAction(address, "op.parse", {
-            text: `\`\`\`READ (skill://plurnk/${pathname}) <1,-1>\`\`\``,
+            text: `\`\`\`\`READ (skill://plurnk/${pathname}) <1,-1>\`\`\`\``,
         }, attached.name)).results[0]);
     }
     await aguiAction(address, "workspace.skills.disable", { alias: "plurnk" }, attached.name);
     const disabledSkillRead = (await aguiAction(address, "op.parse", {
-        text: "```READ (skill://plurnk/.env.defaults) <1,-1>```",
+        text: "````READ (skill://plurnk/.env.defaults) <1,-1>````",
     }, attached.name)).results[0];
     await aguiAction(address, "workspace.skills.enable", { alias: "plurnk" }, attached.name);
     const proposed = await aguiRun(address, {
         workspace: attached.name,
         action: {
             kind: "op.parse",
-            text: `\`\`\`node (skill://inspect/scripts/main.mjs) [{"cwd": "run directory", "args": ${JSON.stringify(packedSkillArgs)}}]
+            text: `\`\`\`\`node (skill://inspect/scripts/main.mjs) [{"cwd": "run directory", "args": ${JSON.stringify(packedSkillArgs)}}]
 raw stdin
-\`\`\``,
+\`\`\`\``,
         },
     });
     const interrupts = proposed.events.find((event) => event.type === "RUN_FINISHED")?.outcome?.interrupts;
@@ -722,13 +722,13 @@ const searchBoot = await bootStart({
 }, async (address) => {
     const workspace = await aguiAction(address, "workspace.create", { name: "installed-fulltext" });
     await aguiAction(address, "op.parse", {
-        text: "```EDIT (worker:///search.md)\nA reliable connection supports native search.\n```",
+        text: "````EDIT (worker:///search.md)\nA reliable connection supports native search.\n````",
     }, workspace.name);
     const found = await aguiAction(address, "op.parse", {
-        text: "```FIND (worker:///*.md)\n~\"reliable connection\"\n```",
+        text: "````FIND (worker:///*.md)\n~\"reliable connection\"\n````",
     }, workspace.name);
     const locations = await aguiAction(address, "op.parse", {
-        text: "```FIND (worker:///search.md)\n~\"reliable connection\"\n```",
+        text: "````FIND (worker:///search.md)\n~\"reliable connection\"\n````",
     }, workspace.name);
     return { found: found.results[0], locations: locations.results[0] };
 });

@@ -16,18 +16,18 @@ for (const scheme of ["file", "worker"]) for (const anchored of [false, true]) {
         const target = `${scheme}:///notes.md`;
         try {
             const mock = new Mock({ contextWindow: 32768, responses: [
-                makeMockResponse(`\`\`\`EDIT (${target})
+                makeMockResponse(`\`\`\`\`EDIT (${target})
 ${source}
-\`\`\`
-\`\`\`NOTE
+\`\`\`\`
+\`\`\`\`NOTE
 Continue the task.
-\`\`\``, 10),
-                makeMockResponse(`\`\`\`READ (${target}) <1,-1>\`\`\`
-\`\`\`NOTE
+\`\`\`\``, 10),
+                makeMockResponse(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\`
+\`\`\`\`NOTE
 Continue the task.
-\`\`\``, 10),
-                makeMockResponse("```NOTE\ncontinue\n```", 10),
-                makeMockResponse("```SEND\ndone\n```", 10),
+\`\`\`\``, 10),
+                makeMockResponse("````NOTE\ncontinue\n````", 10),
+                makeMockResponse("````SEND\ndone\n````", 10),
             ] });
             await withDaemon(mock, async (db, daemon, addr) => {
                 const generate = mock.generate.bind(mock);
@@ -39,10 +39,10 @@ Continue the task.
                         const end = packet.match(/^(@[A-Za-z0-9]{5}) +11:line 11$/m)?.[1];
                         assert.ok(start && end, "the preceding READ published the coordinates used by KILL");
                         const scope = anchored ? `${start},${end}` : "10,11";
-                        return new Mock({ contextWindow: 32768, responses: [makeMockResponse(`\`\`\`KILL (${target}) <${scope}>\`\`\`
-\`\`\`NOTE
+                        return new Mock({ contextWindow: 32768, responses: [makeMockResponse(`\`\`\`\`KILL (${target}) <${scope}>\`\`\`\`
+\`\`\`\`NOTE
 Continue the task.
-\`\`\``, 10)] }).generate(args);
+\`\`\`\``, 10)] }).generate(args);
                     }
                     return generate(args);
                 };
@@ -85,9 +85,9 @@ Continue the task.
 
 test("whole-entry KILL has a bodyless result, not an invented text mutation receipt", async () => {
     const mock = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse("```EDIT (worker:///doomed)\ncontent\n```\n```NOTE\nContinue the task.\n```", 10),
-        makeMockResponse("```KILL (worker:///doomed)```\n```NOTE\nContinue the task.\n```", 10),
-        makeMockResponse("```SEND\ndone\n```", 10),
+        makeMockResponse("````EDIT (worker:///doomed)\ncontent\n````\n````NOTE\nContinue the task.\n````", 10),
+        makeMockResponse("````KILL (worker:///doomed)````\n````NOTE\nContinue the task.\n````", 10),
+        makeMockResponse("````SEND\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

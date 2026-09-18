@@ -11,8 +11,8 @@ import { openMigrated } from "./_helpers.ts";
 import { makeMockResponse } from "./_rpc.ts";
 
 const completed = (content: string) => makeMockResponse([
-    "```SEND", content, "```",
-    "```SEND", "```",
+    "````SEND", content, "````",
+    "````SEND", "````",
 ].join("\n"));
 
 const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof makeMockResponse>[]) => {
@@ -82,7 +82,7 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof makeM
 test("{§a2a-task-listing}: HTTP clients page by status-update order, not Worker creation order", async (t) => {
     const { request, send } = await fixture(t, [
         makeMockResponse([
-            "```question",
+            "````question",
             JSON.stringify({
                 message: "Which branch?",
                 requestedSchema: {
@@ -92,10 +92,10 @@ test("{§a2a-task-listing}: HTTP clients page by status-update order, not Worker
                     additionalProperties: false,
                 },
             }),
-            "```",
-            "```WAIT",
+            "````",
+            "````WAIT",
             "Await the branch selection.",
-            "```",
+            "````",
         ].join("\n")),
         completed("second Task"),
         completed("first Task"),
@@ -226,8 +226,8 @@ test("{§send-resource-attachments}: attachment-only Messages and replies round-
             assert.equal(targets.length, 2, "both binary Parts have independently readable addresses");
             assert.match(targets[1]!, /\/[a-f0-9]{8}$/u, "an unnamed Part receives an eight-character name");
             return { ...response, assistant: { ...response.assistant, content: [
-                `\`\`\`SEND [${JSON.stringify({ attachments: targets })}]`, "```",
-                "```SEND", "```",
+                `\`\`\`\`SEND [${JSON.stringify({ attachments: targets })}]`, "````",
+                "````SEND", "````",
             ].join("\n") } };
         }
     }
@@ -249,7 +249,7 @@ test("{§send-resource-attachments}: attachment-only Messages and replies round-
 });
 
 test("{§send-resource-attachments}: image READ and explicit report SEND preserve send-time bytes after mutation and curation", async (t) => {
-    const continuing = "```NOTE\nPrepare the report.\n```";
+    const continuing = "````NOTE\nPrepare the report.\n````";
     class Reader extends Mock {
         override async generate(...args: Parameters<Mock["generate"]>) {
             const response = await super.generate(...args);
@@ -261,9 +261,9 @@ test("{§send-resource-attachments}: image READ and explicit report SEND preserv
         }
     }
     const provider = new Reader({ contextWindow: 100_000, inputModalities: ["image"], responses: [
-        { assistant: { content: `\`\`\`READ ($IMAGE) <1,3>\n\`\`\`\n${continuing}`, reasoning: null } },
-        { assistant: { content: `\`\`\`EDIT (worker:///report.md)\nOriginal report.\n\`\`\`\n${continuing}`, reasoning: null } },
-        { assistant: { content: `\`\`\`SEND [{"attachments":["worker:///report.md"]}]\nHere is the report.\n\`\`\`\n\`\`\`EDIT (worker:///report.md) <1,-1>\nChanged after sending.\n\`\`\`\n\`\`\`KILL (log:///*/*/*/SEND) <1,-1>\n\`\`\`\n${continuing}`, reasoning: null } },
+        { assistant: { content: `\`\`\`\`READ ($IMAGE) <1,3>\n\`\`\`\`\n${continuing}`, reasoning: null } },
+        { assistant: { content: `\`\`\`\`EDIT (worker:///report.md)\nOriginal report.\n\`\`\`\`\n${continuing}`, reasoning: null } },
+        { assistant: { content: `\`\`\`\`SEND [{"attachments":["worker:///report.md"]}]\nHere is the report.\n\`\`\`\`\n\`\`\`\`EDIT (worker:///report.md) <1,-1>\nChanged after sending.\n\`\`\`\`\n\`\`\`\`KILL (log:///*/*/*/SEND) <1,-1>\n\`\`\`\`\n${continuing}`, reasoning: null } },
         completed("Report delivered."),
     ] });
     const { request, restart } = await fixture(t, provider);
@@ -319,10 +319,10 @@ test("{§a2a-inbound-exposure}: a Part without content fails before Worker admis
 test("{§a2a-inbound-exposure}: a rejected answer leaves the Task awaiting a valid answer", async (t) => {
     const provider = new Mock({ contextWindow: 100_000, responses: [
         makeMockResponse([
-            "```question",
+            "````question",
             JSON.stringify({ message: "Choose 42.", requestedSchema: { type: "integer", const: 42 } }),
-            "```",
-            "```WAIT", "Await input.", "```",
+            "````",
+            "````WAIT", "Await input.", "````",
         ].join("\n")),
         completed("received 42"),
     ] });
