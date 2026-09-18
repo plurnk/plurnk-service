@@ -586,7 +586,7 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
         text: "```READ (skill://inspect/SKILL.md) <1,-1>```",
     }, attached.name)).results[0];
     const ownSkillReads = [];
-    for (const pathname of ["SKILL.md", ".env.defaults", "references/configuration.md", "references/models.md"]) {
+    for (const pathname of ["SKILL.md", ".env.defaults", "references/configuration.md", "references/copy-move.md", "references/models.md"]) {
         ownSkillReads.push((await aguiAction(address, "op.parse", {
             text: `\`\`\`READ (skill://plurnk/${pathname}) <1,-1>\`\`\``,
         }, attached.name)).results[0]);
@@ -664,9 +664,10 @@ ok(
 );
 const packedSkills = readPackedCapabilityDocs();
 ok(
-    dormantBoot.probeResult?.ownSkillReads?.length === 4
+    dormantBoot.probeResult?.ownSkillReads?.length === 5
         && dormantBoot.probeResult.ownSkillReads.every((result) => result.status === 200)
-        && dormantBoot.probeResult.ownSkillReads[1].content === configDefaults.stdout.trimEnd(),
+        && dormantBoot.probeResult.ownSkillReads[1].content === configDefaults.stdout.trimEnd()
+        && dormantBoot.probeResult.ownSkillReads[3].content === readFileSync(resolve(import.meta.dirname, "../docs/copy-move.md"), "utf8").trimEnd(),
     "the installed Plurnk skill exposes every chapter and exactly the operator's complete defaults catalog",
 );
 ok(
