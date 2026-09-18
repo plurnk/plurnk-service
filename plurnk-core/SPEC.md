@@ -1940,6 +1940,7 @@ READ is the one fan-out core performs ({§read-fan-out}).
   when that differs from the channel's own mimetype the result names the
   channel's as `sourceMimetype`, so a consumer can still run the channel's
   handlers over a whole-resource `<1,-1>` read.
+- §log-range-miss-names-stream An empty-extent 416 on a log execution item is the range twin of its channel miss ({§log-channel-miss-names-stream}): the coordinate names a row whose readable projection is empty while the execution's output stays readable at the stream address the row records. When that stream link exists, the 416 gains it as `stream`, the detail appends where the command's streams live, and `recovery` is `READ <stream> for the command's stream.` Every other 416 — out-of-range against a real extent, empty content with no recorded stream — stays byte-identical to the generic slicer's.
 - §read-pattern **A pattern selects the lines a READ renders.** With a heading
   matcher ({§matcher-option} in the contracts SPEC) an exact-target READ stays a
   READ: the matcher runs over the channel's text line by line — a regex anchors

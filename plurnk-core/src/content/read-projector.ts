@@ -391,8 +391,23 @@ export default class ReadProjector {
             : lineMarker === null ? visibleLines.length : (resolved.lineOrdinals?.length ?? 0);
         if (resolved.status >= 400) {
             if (resolved.problem !== undefined) {
+                // {§log-range-miss-names-stream} — an empty-extent 416 on a stream-bearing log
+                // execution item names the address that stays readable, exactly as its channel
+                // miss does ({§log-channel-miss-names-stream}); every other 416 passes through
+                // untouched because only engine-known state conditions the naming.
+                const stream = resolved.status === 416 && resolved.range?.total === 0
+                    ? streamOf(representation.attributes)
+                    : null;
                 return Results.assertReadResult({
                     ...resolved,
+                    ...(stream === null ? {} : {
+                        problem: {
+                            ...resolved.problem,
+                            stream,
+                            detail: `${resolved.problem.detail} The command's streams live at ${stream}.`,
+                            recovery: `READ ${stream} for the command's stream.`,
+                        },
+                    }),
                     content: null,
                     channel,
                 }) as EntryReadResult;

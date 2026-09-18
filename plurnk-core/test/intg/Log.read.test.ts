@@ -77,6 +77,46 @@ const insertActionless = async (
     });
 };
 
+// {§log-range-miss-names-stream} — a real dispatch writes its authored command text, so the
+// bodiless and out-of-range observables are inserted directly, carrying the stream link the
+// dispatcher would have recorded on an execution row.
+const insertExecutionRow = async (
+    db: Awaited<ReturnType<typeof openMigrated>>,
+    envelope: { workerId: number; loopId: number; turnId: number },
+    sequence: number,
+    attrs: Record<string, unknown>,
+    body: string | null,
+): Promise<void> => {
+    await db.engine_insert_log_entry.get({
+        worker_id: envelope.workerId,
+        loop_id: envelope.loopId,
+        turn_id: envelope.turnId,
+        sequence,
+        origin: "model",
+        source: null,
+        model_call_id: null,
+        op: "sh",
+        scheme: null,
+        username: null,
+        password: null,
+        hostname: null,
+        port: null,
+        pathname: null,
+        query: null,
+        fragment: null,
+        lineMarker: null,
+        tx: body === null ? "" : JSON.stringify({ body }),
+        mimetype_tx: body === null ? "text/plain" : "application/json",
+        rx: "",
+        mimetype_rx: "text/plain",
+        status_rx: 200,
+        weight: body === null ? 0 : body.length,
+        state: "resolved",
+        outcome: null,
+        attrs: JSON.stringify(attrs),
+    });
+};
+
 test("Log.read: EDIT op log entry returns its canonical effect receipt", async () => {
     const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
     try {
@@ -414,5 +454,101 @@ test("Log.read: #channel on an execution log item names the command's stream add
         });
         assert.equal(stream.status, 200);
         assert.match(String((stream as { content?: unknown }).content), /hello/);
+    } finally { db.close(); }
+});
+
+// {§log-range-miss-names-stream} — the range twin of the channel miss above: an empty-extent
+// 416 on a log execution item names the recorded stream address, and that address reads.
+test("Log.read: an empty-extent 416 on an execution log item names the command's stream address", async () => {
+    const { db, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        const schemes = new SchemeRegistry();
+        const executors = await testExecutors();
+        schemes.registerRuntimeSchemes(executors);
+        const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
+        engine.setExecutors(executors);
+        let logEntryId = 0;
+        const dispatched = new Promise<number>((settle) => {
+            void engine.dispatch({
+                statement: {
+                    metadata: null, runtime: "sh", aside: null,
+                    target: null, lineMarker: null, body: "echo hello", position: { line: 1, column: 1 },
+                },
+                workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+                onDispatch: (id) => { logEntryId = id; settle(id); },
+            }).then((result) => assert.equal(result.status, 200, "the command started"));
+        });
+        await dispatched;
+        engine.resolveProposal(logEntryId, { decision: "accept" });
+        // Let the short command conclude so the stream carries its output.
+        for (let i = 0; i < 100; i++) {
+            const row = await db.test_get_log_entry_by_id.get<{ state: string }>({ id: logEntryId });
+            if (row?.state === "resolved") break;
+            await new Promise((r) => setTimeout(r, 50));
+        }
+
+        // The bodiless sibling shares the real execution's stream link, the way a drained or
+        // bodiless call receipt does while its output stays readable at the stream address.
+        const address = await executionAddress(db, turnId, 1);
+        await insertExecutionRow(db, { workerId, loopId, turnId }, 2, { stream: address }, null);
+
+        const miss = await readLog(
+            { ...readStmt(urlPath("log", "/1/1/2/sh")), lineMarker: { marks: [2, 3] } },
+            makeSchemeCtx({ db, workspaceId, workerId }),
+        );
+        assert.equal(miss.status, 416);
+        assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
+        assert.deepEqual(miss.problem?.range, { unit: "line", total: 0, requested: [2, 3] });
+        assert.equal(miss.problem?.stream, address, "the receipt carries the stream link the row already records");
+        assert.equal(miss.problem?.recovery, `READ ${address} for the command's stream.`);
+        assert.equal(miss.problem?.detail, `Range 2,3 cannot select from empty content. The command's streams live at ${address}.`);
+        assert.equal(miss.problem?.retryable, false);
+
+        // The named address is real: the same READ against it returns the output.
+        const stream = await engine.look({
+            statement: readStmt({ ...urlPath("sh", new URL(address).pathname), raw: `${address}#stdout`, fragment: "stdout" }),
+            workspaceId, workerId, loopId, origin: "model",
+        });
+        assert.equal(stream.status, 200);
+        assert.match(String((stream as { content?: unknown }).content), /hello/);
+    } finally { db.close(); }
+});
+
+// {§log-range-miss-names-stream} — no recorded stream, no naming: the generic slicer problem
+// is byte-identical, the condition the augmentation must not disturb.
+test("Log.read: an empty-extent 416 without a recorded stream keeps the generic slicer problem", async () => {
+    const { db, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        await insertExecutionRow(db, { workerId, loopId, turnId }, 1, {}, null);
+        const miss = await readLog(
+            { ...readStmt(urlPath("log", "/1/1/1/sh")), lineMarker: { marks: [2, 3] } },
+            makeSchemeCtx({ db, workspaceId, workerId }),
+        );
+        assert.equal(miss.status, 416);
+        assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
+        assert.deepEqual(miss.problem?.range, { unit: "line", total: 0, requested: [2, 3] });
+        assert.equal(Object.hasOwn(miss.problem ?? {}, "stream"), false);
+        assert.equal(miss.problem?.recovery, "Choose a range within the available extent.");
+        assert.equal(miss.problem?.detail, "Range 2,3 cannot select from empty content.");
+        assert.equal(miss.problem?.retryable, false);
+    } finally { db.close(); }
+});
+
+// {§log-range-miss-names-stream} — an ordinary out-of-range miss against a real extent keeps
+// the generic problem even when the row records a stream.
+test("Log.read: an out-of-range 416 against a real extent keeps the generic slicer problem", async () => {
+    const { db, workspaceId, workerId, loopId, turnId } = await setup();
+    try {
+        await insertExecutionRow(db, { workerId, loopId, turnId }, 1, { stream: "sh:///0badcafe" }, "one\ntwo");
+        const miss = await readLog(
+            { ...readStmt(urlPath("log", "/1/1/1/sh")), lineMarker: { marks: [9] } },
+            makeSchemeCtx({ db, workspaceId, workerId }),
+        );
+        assert.equal(miss.status, 416);
+        assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
+        assert.deepEqual(miss.problem?.range, { unit: "line", total: 2, requested: [9, 9] });
+        assert.equal(Object.hasOwn(miss.problem ?? {}, "stream"), false);
+        assert.equal(miss.problem?.recovery, "Choose a range within the available extent.");
+        assert.equal(miss.problem?.detail, "Line 9 is outside the available line range 1..2.");
     } finally { db.close(); }
 });
