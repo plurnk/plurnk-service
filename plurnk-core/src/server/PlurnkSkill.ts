@@ -14,6 +14,7 @@ export default class PlurnkSkill implements SkillTree {
     readonly #files = new Map([
         ["SKILL.md", Paths.teachingSource(TEACHING_CORPUS.skill)],
         ["references/configuration.md", Paths.configuration],
+        ["references/copy-move.md", resolve(dirname(Paths.configuration), "docs/copy-move.md")],
         ["references/models.md", resolve(dirname(fileURLToPath(import.meta.resolve("@plurnk/plurnk-providers/package.json"))), "docs/models.md")],
     ]);
 

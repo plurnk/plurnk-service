@@ -5028,7 +5028,7 @@ An uninstalled Git skill is not manufactured by repository detection.
 
 §plurnk-skill **Plurnk's own reference is an ordinary service-provided skill.**
 `skill://plurnk/SKILL.md` is the standard frontmatter entry point, catalogued with
-other enabled skills. It links package-owned configuration and model chapters,
+other enabled skills. It links package-owned configuration, model, and COPY/MOVE chapters,
 the complete `.env.defaults` aggregate at `skill://plurnk/.env.defaults`, and the
 Worker's existing tool/resource references. No chapter or defaults body is
 injected merely because the skill is enabled. The defaults bytes come from the

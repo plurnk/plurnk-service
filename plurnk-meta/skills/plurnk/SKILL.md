@@ -8,6 +8,7 @@ description: Configure Plurnk, select and tune models, and look up its worker an
 | Need | Reference |
 | --- | --- |
 | Configuration cascade, persistence, permissions, skills | [Configuration](references/configuration.md) |
+| COPY/MOVE operands, source regions, destination placement | [Copy and move](references/copy-move.md) |
 | Model routes, reasoning, context, local endpoints | [Models](references/models.md) |
 | Every installed package's settings and defaults | [Complete .env.defaults](.env.defaults) |
 | Worker hierarchy, messaging, and delegation | [Worker reference](worker:///_plurnk/plurnk/worker.md) |

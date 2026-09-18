@@ -81,7 +81,7 @@ test("{§skills-resources} live trees preserve authority isolation, pattern comp
         assert.deepEqual((await find("skill://*/references/*")).map(({ path }) => path), [
             "skill://alpha/references/guide.md", "skill://alpha/references/nested/**",
             "skill://beta/references/guide.md", "skill://beta/references/nested/**",
-            "skill://plurnk/references/configuration.md", "skill://plurnk/references/models.md",
+            "skill://plurnk/references/configuration.md", "skill://plurnk/references/copy-move.md", "skill://plurnk/references/models.md",
         ]);
         assert.deepEqual((await find("skill://{alpha,beta}/SKILL.md")).map(({ path }) => path), [
             "skill://alpha/SKILL.md", "skill://beta/SKILL.md",

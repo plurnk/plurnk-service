@@ -13,6 +13,7 @@ const projections = new Map([
         required: [
             "dist/core/content_weight.js",
             "INSTALL.md",
+            "docs/copy-move.md",
         ],
         forbiddenPrefixes: [
             "dist/core/world-state.",

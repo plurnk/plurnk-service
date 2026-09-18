@@ -3,12 +3,54 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { parsePath } from "@plurnk/plurnk-parser";
+import { writtenOp } from "@plurnk/plurnk-contracts";
+import { parsePath, PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import EnvDefaults from "../../src/core/env-defaults.ts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { insertWorker } from "./_helpers.ts";
-import { copyStmt, findStmt, readStmt, regex } from "./_dsl.ts";
+import { copyStmt, editStmt, findStmt, readStmt, regex } from "./_dsl.ts";
+
+test("{§plurnk-skill} the discoverable COPY/MOVE chapter provides executable operand examples", async (t) => {
+    await withDaemon(new Mock({ contextWindow: 32768, responses: [] }), async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        t.after(() => ws.close());
+        const created = await rpcCall(ws, 1, "workspace.create", { name: "transfer-reference" });
+        const workspaceId = (created.result as { id: number }).id;
+        const workerId = await insertWorker(db, workspaceId, null, "client", "client");
+        const dispatch = (statement: Parameters<typeof daemon.dispatchAsClient>[0]["statement"]) =>
+            daemon.dispatchAsClient({ workspaceId, workerId, statement });
+        const read = (uri: string) => dispatch(readStmt(parsePath(uri), { marks: [1, -1] }));
+        const uri = "skill://plurnk/references/copy-move.md";
+        const found = await dispatch(findStmt(parsePath("skill://plurnk/references/*"), regex("COPY")));
+        assert.equal(found.status, 200);
+        assert.ok(Array.isArray(found.results));
+        assert.ok((found.results.flat() as Array<{ path: string }>).some(({ path }) => path === uri),
+            "ordinary skill search discovers the chapter by the operation the model needs");
+        assert.match(String((await read("skill://plurnk/SKILL.md")).content), /references\/copy-move\.md/u);
+        const chapter = await read(uri);
+        assert.equal(chapter.status, 200);
+        assert.equal(chapter.content, (await readFile("docs/copy-move.md", "utf8")).trimEnd(), "the skill exposes its owning source verbatim");
+        const parsed = PlurnkParser.parseStatements(String(chapter.content));
+        assert.equal(parsed.unparsedTail, undefined);
+        assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
+        const examples = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+        assert.deepEqual(examples.map(writtenOp), ["COPY", "COPY", "MOVE"]);
+        assert.equal((await dispatch(editStmt(parsePath("worker:///src.md"), "one\ntwo\nthree\nfour\n"))).status, 201);
+        for (const [index, statement] of examples.entries()) {
+            const result = await dispatch(statement);
+            assert.equal(result.status, index === 1 ? 200 : 201, JSON.stringify(result));
+        }
+        assert.equal((await read("worker:///archive.md")).content, "two\nthree\none");
+        assert.equal((await read("worker:///src.md")).content, "one\ntwo\nthree\nfour");
+        const content = async (pathname: string) => (await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname, name: "body" }))?.content;
+        assert.equal(await content("/archive.md"), "two\nthree\none\n", "transfers retain source line separators, not the READ projection");
+        assert.equal(await content("/src.md"), "one\ntwo\nthree\nfour\n", "COPY leaves source bytes unchanged");
+        const moved = await read("worker:///slice.md");
+        assert.equal(moved.status, 404, "MOVE removes the transferred source channel");
+        assert.equal((moved.problem as { type: string }).type, "https://problems.plurnk.xyz/scheme/worker/entry-not-found");
+    });
+});
 
 test("{§plurnk-skill} defaults are the operator catalog through ordinary READ and Worker enablement", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-own-skill-"));
@@ -90,6 +132,7 @@ test("{§plurnk-skill} Turn0 catalogs the skill; only a requested READ adds defa
         assert.doesNotMatch(provider.requests[0]!, /# Plurnk installed configuration defaults/);
         const chapterHeading = (await readFile("INSTALL.md", "utf8")).split("\n")[0]!;
         assert.ok(!provider.requests[0]!.includes(chapterHeading), "the configuration chapter is not startup teaching");
+        assert.doesNotMatch(provider.requests[0]!, /# COPY and MOVE/u, "the transfer chapter is also pull-only");
         assert.match(provider.requests[1]!, /# Plurnk installed configuration defaults/);
     });
 });
