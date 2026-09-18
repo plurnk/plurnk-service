@@ -238,10 +238,14 @@ test("{§error-shape} scope excerpts stop at a delimiter, line ending, or bounde
 
 test("COPY and MOVE require exactly two singular path operands", () => {
     for (const op of ["COPY", "MOVE"] as const) {
-        const statement = oneStatement(section(op, " (brief.md) (drafts/brief.md)"));
-        if (statement.op !== op) assert.fail(`expected ${op}`);
-        assert.equal(statement.source.target.raw, "brief.md");
-        assert.equal(statement.destination.target.raw, "drafts/brief.md");
+        for (const [source, destination] of [["", ""], [" <2,3>", ""], ["", " <0>"], [" <2,3>", " <0>"]]) {
+            const statement = oneStatement(section(op, ` (brief.md)${source} (drafts/brief.md)${destination}`));
+            if (statement.op !== op) assert.fail(`expected ${op}`);
+            assert.equal(statement.source.target.raw, "brief.md");
+            assert.equal(statement.destination.target.raw, "drafts/brief.md");
+            assert.deepEqual(statement.source.lineMarker?.marks ?? null, source ? [2, 3] : null);
+            assert.deepEqual(statement.destination.lineMarker?.marks ?? null, destination ? [0] : null);
+        }
 
         assert.ok(errorsOf(section(op, " (brief.md)", "drafts/brief.md")).length >= 1, `${op} rejects a destination body`);
         assert.ok(errorsOf(section(op, " (brief.md) (drafts/brief.md) (extra.md)")).length >= 1, `${op} rejects a third path`);
@@ -249,7 +253,16 @@ test("COPY and MOVE require exactly two singular path operands", () => {
 
     const read = PlurnkParser.parseStatements(section("READ", " (brief.md) (drafts/brief.md)"));
     const readErrors = read.items.filter((item) => item.kind === "error");
-    assert.equal(readErrors[0]?.error.message, "a heading takes exactly one `(path)` slot; a pattern belongs in the heading as `[{\"pattern\": \"…\"}]`");
+    assert.match(readErrors[0]?.error.message ?? "", /^unexpected `\(` \(`\(path\)` slot opener\)/u);
+});
+
+test("{§extra-path-slot}: parentheses in bodies remain literal text, not operand slots", () => {
+    const body = "(source.md) (destination.md) (extra.md)";
+    for (const [op, slots] of [["NOTE", ""], ["EDIT", " (example.txt)"], ["SEND", ""], ["sh", ""]]) {
+        const statement = oneStatement(section(op, slots, body));
+        assert.ok("body" in statement && statement.body !== null);
+        assert.equal(typeof statement.body === "string" ? statement.body : statement.body.raw, body);
+    }
 });
 
 test("{§bare-statement} BARE accepts a prompt resource, inline input, or both", () => {

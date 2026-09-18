@@ -769,17 +769,17 @@ matching.
   statement-level error the parser discards the rest of that statement and resumes at the
   next heading; the turn shape is decided locally (a turn disposition is recognized by its own
   token, never by a whole-turn alternative), so one malformed heading costs one
-  diagnostic and every later statement, the turn disposition included, stands on its own. Any
-  other second path slot names the one-slot rule.
+  diagnostic and every later statement, the turn disposition included, stands on its own.
 - §scope-slot-tolerance A line scope written inside a path slot (```` ```COPY (worker:///src.md<2,3>) ````)
   is read as `(worker:///src.md) <2,3>` — `<` and `>` are not URI characters, so a `<…>` right
   before a slot's closing paren can only be a scope; every path slot of a statement is repaired
   the same way — and the slip is one warning-severity advisory at the `<`, placed right after its
   statement, stating the `(path) <scope>` form that was used. The statement runs; a warning is
   never a strike. A `<` anywhere else in the slot remains the lexer's refusal.
-- §second-path-slot A second `(path)` on a heading that already closed one is a parser
-  error at the second paren stating the one-slot rule and that a pattern belongs in the
-  `[{"pattern": …}]` option; the statement is dropped and its siblings run.
+- §extra-path-slot A path slot beyond the operation's admitted operands is a parser
+  error at its opening paren. Report the unexpected slot and the grammar's expected
+  alternatives when available, without inferring pattern intent or imposing another
+  operation's operand count. The statement is dropped and its siblings run.
 
 | Prefix    | Dialect  | Canonical form                       | Typed admission                   | Runtime owner       |
 |-----------|----------|--------------------------------------|-----------------------------------|---------------------|

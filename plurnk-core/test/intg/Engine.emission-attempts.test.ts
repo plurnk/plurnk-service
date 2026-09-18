@@ -11,7 +11,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Digest from "../../src/digest/Digest.ts";
 import { ProviderAccountingIntegrityError } from "../../src/core/ModelCall.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection, seedEntryWithChannel, testProviderCapacity } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, logEntries, packetSection, seedEntryWithChannel, testProviderCapacity } from "./_helpers.ts";
 
 const requestUsage = (
     inputTokens: number,
@@ -832,6 +832,48 @@ test("a bounded malformed operation defers same-turn completion until the model 
     } finally {
         await db.close();
     }
+});
+
+test("{§extra-path-slot}: a third COPY operand preserves siblings, source evidence, and the actual parser diagnostic", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        await seedEntryWithChannel(db, {
+            workspaceId, scheme: "worker", pathname: "/src.md",
+            content: "one\ntwo\nthree", mimetype: "text/markdown",
+        });
+        const source = [
+            "Unexecuted interstitial text.",
+            PlurnkParser.frame("READ (worker:///src.md) <1>", null),
+            PlurnkParser.frame("COPY (worker:///src.md) <2,3> (to) (worker:///slice.md)", null),
+            PlurnkParser.frame("READ (worker:///src.md) <3>", null),
+        ].join("\n\n");
+        const provider = new AttemptWitness({ contextWindow: 100_000, responses: [invalid(source), valid()] });
+        const context = { workspaceId, workerId, loopId };
+        const first = await engine.runTurn({ ...context, provider, messages: [] });
+        assert.equal(first.status, 102);
+        assert.deepEqual(first.outcomes.map(({ op, status }) => [op, status]), [["READ", 200], ["READ", 200], [null, 400]]);
+        const { sequence } = (await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId }))!;
+        const [readSource] = PlurnkParser.parseStatements(PlurnkParser.frame(`READ (ops://subject/1/${sequence}) <1,-1>`, null)).items;
+        assert.ok(readSource.kind === "statement");
+        const retained = await engine.look({ ...context, statement: readSource.statement });
+        assert.equal(retained.status, 200);
+        assert.ok("content" in retained);
+        assert.equal(retained.content, source, "recovery never rewrites the original submitted program");
+        const entries = await db.test_list_entries_by_workspace_workspace_pathname.all<{ pathname: string }>({ workspace_id: workspaceId });
+        assert.equal(entries.some(({ pathname }) => pathname === "/slice.md" || pathname === "/to"), false);
+
+        const next = await engine.runTurn({ ...context, provider, messages: [] });
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
+        const failures = logEntries(packet).filter(({ status }) => status === 400);
+        assert.equal(failures.length, 1);
+        const problem = failures[0].problem as Record<string, unknown>;
+        assert.equal(problem.type, "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax");
+        assert.equal(problem.detail,
+            "unexpected `(` (`(path)` slot opener); expected operation fence header, operation-heading line ending, or closing fence");
+        assert.equal(problem.siblingsRetained, true);
+        assert.equal(problem.line, 6);
+        assert.equal(problem.column, 39);
+    } finally { await db.close(); }
 });
 
 test("{§transfer-resource-selections} a malformed COPY destination cannot dispatch or materialize", async () => {

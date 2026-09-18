@@ -132,12 +132,34 @@ test("bracket metadata belongs to a target, executor, or targetless SEND", () =>
     assert.deepEqual(statements(r).map(writtenOp), ["sh", "WAIT"]);
 });
 
-test("a second path on a one-path operation names the slot contract", () => {
-    const r = PlurnkParser.parse(turn(frame("FIND (/needle/) (src/) <1,-1>", null)));
-    assert.equal(errors(r).length, 1);
-    assert.equal(errors(r)[0].message, "a heading takes exactly one `(path)` slot; a pattern belongs in the heading as `[{\"pattern\": \"…\"}]`");
-    assert.deepEqual(statements(r).map(writtenOp), ["WAIT"]);
-});
+for (const header of [
+    "FIND (/needle/) (src/) <1,-1>",
+    "READ (a.md) <2,3> (extra.md)",
+    "EDIT (a.md) (extra.md)",
+    "KILL (a.md) (extra.md)",
+    "SEND (worker://child) (extra.md)",
+    "BARE (a.md) (extra.md)",
+    "WORK (worker://child) (extra.md)",
+    "FORK (worker://child) (extra.md)",
+    "COPY (worker:///src.md) <2,3> (to) (worker:///slice.md)",
+    "MOVE (😀.md) <2,3> (dest.md) <0> (extra.md)",
+]) {
+    test(`{§extra-path-slot}: ${header} reports its unexpected slot without assuming intent`, () => {
+        for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
+            const r = parse(turn(frame(header, null)));
+            const [error] = errors(r);
+            assert.equal(errors(r).length, 1);
+            assert.equal(error.severity, "error");
+            assert.equal(error.source, "parser");
+            assert.equal(error.line, 1);
+            assert.equal(error.column, 4 + Array.from(header.slice(0, header.lastIndexOf("("))).length);
+            assert.match(error.message, /^unexpected `\(` \(`\(path\)` slot opener\)/u);
+            assert.doesNotMatch(error.message, /pattern|exactly one|OPEN_|LPAREN|RPAREN/u);
+            assert.equal(r.unparsedTail, undefined);
+            assert.deepEqual(statements(r).map(writtenOp), ["WAIT"]);
+        }
+    });
+}
 
 test("a plus-prefixed path is still a path, alone or as an extglob", () => {
     for (const [header, target] of [["READ (+page.svelte) <1,-1>", "+page.svelte"], ["READ (+diff) <1,-1>", "+diff"], ["FIND (src/+(a|b).ts) <1,-1>", "src/+(a|b).ts"]]) {

@@ -174,21 +174,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         return `${names.slice(0, -1).join(", ")}, or ${names[names.length - 1]}`;
     }
 
-    // A second `(` on a heading that already closed a `(path)`: the heading has one path slot
-    // and a matcher belongs beneath it.
-    static #secondPathSlotMessage(recognizer: Parser, tok: Token | null): { message: string; at: Token } | null {
-        if (tok?.type !== plurnkParser.LPAREN) return null;
-        const stream = recognizer.tokenStream;
-        for (let i = tok.tokenIndex - 1; i >= 0; i -= 1) {
-            const prior = stream.get(i);
-            if (prior.line !== tok.line) return null;
-            if (prior.type === plurnkParser.RPAREN) {
-                return { at: tok, message: 'a heading takes exactly one `(path)` slot; a pattern belongs in the heading as `[{"pattern": "…"}]`' };
-            }
-        }
-        return null;
-    }
-
     // {§matcher-prefix-claims} Recovery resumes at the next top-level operation fence;
     // later statements, including the disposition, are judged independently.
     static #HEADING_BOUNDARY: ReadonlySet<number> = new Set([
@@ -229,12 +214,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         if (this.inErrorRecoveryMode(recognizer)) return;
         this.beginErrorCondition(recognizer);
 
-        const secondSlot = PlurnkErrorStrategy.#secondPathSlotMessage(recognizer, e.offendingToken);
-        if (secondSlot !== null) {
-            recognizer.notifyErrorListeners(secondSlot.message, secondSlot.at, e);
-            return;
-        }
-
         const got = PlurnkErrorStrategy.#describeToken(e.offendingToken);
         const expected = PlurnkErrorStrategy.#describeExpected(e);
 
@@ -271,11 +250,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         if (this.inErrorRecoveryMode(recognizer)) return;
         this.beginErrorCondition(recognizer);
         const tok = recognizer.getCurrentToken();
-        const secondSlot = PlurnkErrorStrategy.#secondPathSlotMessage(recognizer, tok);
-        if (secondSlot !== null) {
-            recognizer.notifyErrorListeners(secondSlot.message, secondSlot.at, null);
-            return;
-        }
         const got = PlurnkErrorStrategy.#describeToken(tok);
         const expectedTokens = this.getExpectedTokens(recognizer);
         const expectedNames = [...new Set(
