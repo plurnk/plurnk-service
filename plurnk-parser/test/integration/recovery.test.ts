@@ -5,8 +5,8 @@ import { PlurnkParser } from "../../src/index.ts";
 import AstBuilder from "../../src/AstBuilder.ts";
 import { writtenOp } from "@plurnk/plurnk-contracts";
 
-const statements = (r: ReturnType<typeof PlurnkParser.parse>) => r.items.flatMap((i) => i.kind === "statement" ? [i.statement] : []);
-const errors = (r: ReturnType<typeof PlurnkParser.parse>) => r.items.flatMap((i) => i.kind === "error" ? [i.error] : []);
+const statements = (r: ReturnType<typeof PlurnkParser.parseClient>) => r.items.flatMap((i) => i.kind === "statement" ? [i.statement] : []);
+const errors = (r: ReturnType<typeof PlurnkParser.parseClient>) => r.items.flatMap((i) => i.kind === "error" ? [i.error] : []);
 const frame = PlurnkParser.frame;
 const task = (op = "WAIT") => frame(op, "Observe the results.");
 const turn = (...blocks: string[]) => [...blocks, task()].join("\n");
