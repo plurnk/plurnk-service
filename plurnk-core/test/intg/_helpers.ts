@@ -349,7 +349,7 @@ export const packetSection = (packet: unknown, name: string): string =>
     PacketWire.sectionContent(packet as Parameters<typeof PacketWire.sectionContent>[0], name);
 
 // Parse the model's actual Markdown-framed log view for field-precise assertions.
-// The H3 owns `path`, the next line is ordinary JSON metadata, and any remaining
+// The H3 supplies the test reader's `logPath`; the next line is metadata, and any remaining
 // coordinate-prefixed lines are the visible body ({§log-wire-format}).
 export const logEntries = (packet: unknown): Array<Record<string, unknown>> => {
     return parseLogRecords(packetSection(packet, "log"));

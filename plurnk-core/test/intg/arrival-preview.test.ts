@@ -55,7 +55,7 @@ test("a jumbo message renders an adaptive chunk and Open Messages points to its 
             assert.ok(chunk, "the projection states its displayed and complete extents");
             assert.ok(Number(chunk[1]) > Number(process.env.PLURNK_SERVICE_PREVIEW_LINES), "the dynamic prompt projection exceeds the unrelated ordinary preview bound");
             const projectedPrompt = logEntries(packet).find((entry) =>
-                typeof entry.path === "string" && entry.path.endsWith("/SEND"));
+                typeof entry.logPath === "string" && entry.logPath.endsWith("/SEND"));
             assert.equal(projectedPrompt?.chunk, `showing <1,${chunk[1]}> of <1,4000>`, "the independent packet parser retains the following member");
             const budgetSection = (packet.sections ?? []).find((sec) => sec.name === "budget")?.content ?? "";
             const ceiling = Number(/"logTokensMax":\s*(\d+)/.exec(budgetSection)?.[1]);
@@ -63,7 +63,7 @@ test("a jumbo message renders an adaptive chunk and Open Messages points to its 
             assert.ok(Number.isFinite(ceiling) && Number.isFinite(projectionPercent));
             const projectedBody = String(projectedPrompt?.body ?? "").trimEnd().split("\n").map((line) => line.replace(/^\s*\d+:/u, "")).join("\n");
             assert.ok(contentWeight(projectedBody) <= Math.floor(ceiling * projectionPercent / 100), "the projected body stays within its configured quarter-window allowance");
-            const bodyTarget = typeof projectedPrompt?.path === "string" ? projectedPrompt.path : undefined;
+            const bodyTarget = typeof projectedPrompt?.logPath === "string" ? projectedPrompt.logPath : undefined;
             assert.match(bodyTarget ?? "", /^log:\/\/\/1\/2\/\d+\/SEND$/,
                 "the message body is addressed in the first packet-bearing turn");
             const worker = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId });

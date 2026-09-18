@@ -10,7 +10,7 @@ const logSection = (packet: string): string => {
     return parsed.sections?.find((s) => s.name === "log")?.content ?? packet;
 };
 const rows = (log: string, op: string): Array<Record<string, unknown>> =>
-    parseLogRecords(log).filter(({ path }) => typeof path === "string" && path.endsWith(`/${op}`));
+    parseLogRecords(log).filter(({ logPath: path }) => typeof path === "string" && path.endsWith(`/${op}`));
 const row = (log: string, op: string): Record<string, unknown> | undefined => rows(log, op)[0];
 
 test("{§log-kill-meta-operation} successful log KILL receipts never render; errors, resource KILLs, and forensic evidence remain", async () => {
@@ -31,20 +31,20 @@ test("{§log-kill-meta-operation} successful log KILL receipts never render; err
             const packetOf = async (index: number) => logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[index]! }))!.packet);
             const afterCuration = await packetOf(3);
             const kills = rows(afterCuration, "KILL");
-            assert.deepEqual(kills.map(({ target, status }) => ({ target, status })), [
+            assert.deepEqual(kills.map(({ path: target, status }) => ({ target, status })), [
                 { target: "log:///9/9/9", status: 404 },
             ], "the first packet after curation contains the failed KILL, not successful receipts");
             assert.ok(kills[0].problem, "the failed KILL retains its corrective Problem");
             assert.equal(row(afterCuration, "EDIT"), undefined, "the killed EDIT row is retired from the projection");
-            const trimmed = rows(afterCuration, "READ").find(({ target }) => target === "worker:///note");
+            const trimmed = rows(afterCuration, "READ").find(({ path: target }) => target === "worker:///note");
             assert.match(String(trimmed?.body), /first line/u, "scoped curation retains the untrimmed line");
             assert.doesNotMatch(String(trimmed?.body), /second line/u, "scoped curation removes the requested line");
             const afterRepeat = await packetOf(4);
-            assert.deepEqual(rows(afterRepeat, "KILL").map(({ target, status }) => ({ target, status })), [
+            assert.deepEqual(rows(afterRepeat, "KILL").map(({ path: target, status }) => ({ target, status })), [
                 { target: "log:///9/9/9", status: 404 },
                 { target: "worker:///note", status: 200 },
             ], "the no-op receipt is also suppressed; the error and resource deletion stay visible");
-            assert.ok(rows(afterRepeat, "READ").some(({ target }) => target === "log:///1/3/1/KILL"), "explicit READ of a suppressed receipt remains an ordinary visible operation");
+            assert.ok(rows(afterRepeat, "READ").some(({ path: target }) => target === "log:///1/3/1/KILL"), "explicit READ of a suppressed receipt remains an ordinary visible operation");
             const history = await db.test_log_entries_by_loop.all<{
                 op: string | null; pathname: string | null; scheme: string | null;
                 status_rx: number; rx: string; active: number;

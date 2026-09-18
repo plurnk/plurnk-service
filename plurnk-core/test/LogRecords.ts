@@ -15,11 +15,11 @@ export const parseLogRecords = (source: string): Array<Record<string, unknown>> 
         assert.notEqual(metadataLine, undefined, "packet log record is missing its metadata line");
         const metadata: unknown = JSON.parse(metadataLine!);
         assert.ok(metadata !== null && typeof metadata === "object" && !Array.isArray(metadata), "packet log metadata must be one JSON object");
-        assert.equal(Object.hasOwn(metadata, "path"), false, "the Markdown heading is the sole path owner");
+        assert.equal(Object.hasOwn(metadata, "logPath"), false, "logPath is the test reader's heading identity, not packet metadata");
         assert.equal(Object.hasOwn(metadata, "body"), false, "coordinate lines are the sole visible-body owner");
         assert.ok(lines.every((line) => COORDINATE.test(line)), "packet log body line is missing its coordinate prefix");
         return {
-            path: heading[1],
+            logPath: heading[1],
             ...(metadata as Record<string, unknown>),
             ...(lines.length === 0 ? {} : { body: `${lines.join("\n")}\n` }),
         };

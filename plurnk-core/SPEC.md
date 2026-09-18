@@ -2109,13 +2109,29 @@ The `## Log` section is a sequence of ordinary Markdown records separated by one
 <coordinate-prefixed body lines when visible>
 ```
 
-The H3 is the row's complete model-facing identity and canonical READ target; metadata never duplicates `path` or `op`. The following line is one strict JSON object: every receipt puts `target` first and `aside` second when present; all remaining members use stable alphabetical order. Absent fields are not invented. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
+The H3 is the row's complete model-facing identity and canonical READ address; metadata never repeats that identity or its operation. The following line is one strict JSON object: addressed operands ({§log-address-metadata}) precede `aside`, then all remaining members use stable alphabetical order. Absent fields are not invented. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
+
+§log-address-metadata **Addresses name their relationship, not the row's producer.**
+
+| Metadata | Meaning | Order |
+|---|---|---|
+| `path` | The operation's addressed operand, matching `OP (path)`: read resource, mutation subject, message recipient, awaited event, or executor operand. Explicit and automatic READs use the same field. Pathless operations omit it. | First |
+| `from`, `to` | COPY/MOVE's two operand selections, each retaining its optional scope; neither replaces actor attribution or is repeated as `path`. | First, in that order |
+| `stream` | An executor invocation's separately created output address, never a READ's alternative spelling of `path`. | Remaining facts |
+| `resource` | A distinct returned resource under {§operation-resource-receipt}. | Remaining facts |
+
+Nested mutation effects and delivered attachments name their resource with `path`.
+These packet spellings do not rename the submitted AST, durable operation results,
+or client protocol fields. Invocation correlation remains on the subscription and
+its publication identity; an automatic stream READ does not copy the invocation's
+log address into its `source`. Actual actor/subsystem attribution remains governed
+by {§env-delta-attribution}.
 
 Coordinate-prefixed lines are the text currently in context; a metadata-only row contributes no text body. A partially trimmed row carries `"folded":["<scope>",...]`; coordinate gaps expose omissions without renumbering. A bounded projection carries `"chunk":"showing <selected> of <complete>"` in metadata. Complete-line extents use inclusive two-coordinate regions; a cut inside a line uses four-coordinate, start-inclusive and end-exclusive regions with 1-based Unicode code-point columns.
 
 Field absence carries defaults: `origin` is omitted for the owning model, `source` for the owning worker, and `status` for a routine 200. Dispositions always carry their lifecycle status, SEND its delivery status, KILL keeps an explicit 200, and every non-200 stays explicit. A present authored aside appears as `aside`. Every row's accounting follows {§packet-token-accounting}.
 
-- §operation-resource-receipt A result's nonempty `resource` address remains visible in receipt metadata when distinct from its `target` and `stream`. It identifies returned material without replacing the authored target or injecting that material into context; ordinary READ acquires it.
+- §operation-resource-receipt A result's nonempty `resource` address remains visible in receipt metadata when distinct from its `path` and `stream`. It identifies returned material without replacing the addressed operand or injecting that material into context; ordinary READ acquires it.
 - §packet-attachment-parts A successful READ of an attachable resource carries projection facts with its
   result ({§mimetype-projection-facts}): an image ({§mimetype-image}) as
   `image: { mimetype, width, height, bytes }`, a PDF ({§mimetype-pdf-facts}) as
@@ -2902,7 +2918,7 @@ two states and no others:
 | state | what the model receives |
 |---|---|
 | active | nothing in the Log. The `## Delegation` stream pointer names the stream with each channel's size and its growth since the last packet ({§child-orientation}); the model READs any range it wants, and every READ of a stream channel carries `terminal: false` while it runs and `terminal: true` once it has concluded, so an empty page is never mistaken for a finished command that printed nothing (operator, 2026-09-13). |
-| terminal | ONE `origin=_plurnk` READ at the execution's channel address, born visible, that is exactly a markerless READ of the channel — its bounded first page ({§read-selection-projection}, the whole channel when it fits, the channel's own mimetype), the `range` or `region`, terminal status and Problem, `terminal: true`, any producer-supplied integer `exitCode`, and `source: log:///<coord>/<runtime>` linking the causal invocation. The packet renders that address under `stream`, exactly as the invocation row links its output, never under `target`: a stream is observed, not a slot to author. |
+| terminal | ONE `origin=_plurnk` READ at the execution's channel address, born visible, that is exactly a markerless READ of the channel — its bounded first page ({§read-selection-projection}, the whole channel when it fits, the channel's own mimetype), the `range` or `region`, terminal status and Problem, `terminal: true`, and any producer-supplied integer `exitCode`. The packet identifies the read resource with `path`, exactly as an explicit READ does ({§log-address-metadata}). |
 
 §stream-observation-result **One liveness fact.** The durable READ result owns
 `terminal`, derived from its selected channel's state, for explicit and automatic
@@ -4432,7 +4448,7 @@ ordinary operation evidence still reaches that child's direct parent.
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `worker_id` | The worker whose self-contained log owns the materialized row.                                                                                                                          |
 | `origin`    | The actor tier that wrote the row; a materialized delta is `_plurnk`.                                                                                                                   |
-| `source`    | The immediate causal identity in this log: a lineage or commons observation uses canonical `worker://<producer>`, a terminal stream observation uses its causal `log:///<coord>/<runtime>`, and a subsystem observation may use its stable token (for example `file`). Self-authored rows omit it. |
+| `source`    | The attributed actor or subsystem: a lineage or commons observation uses canonical `worker://<producer>`; a subsystem observation may use its stable token (for example `file`). Self-authored rows omit it. Stream invocation correlation belongs to the subscription/publication relationship, not this field. |
 
 §env-delta-no-coalescing **Activity is never coalesced.** Each eligible child
 action and each commons mutation has one occurrence identity. Combining
@@ -5253,7 +5269,7 @@ An EDIT or scoped entry KILL log row renders its bounded effect receipt (`rx.rec
 metadata and join context, not its input statement. Proposal-gated file EDITs
 compute the accepted receipt from what actually lands. Environment-delta EDITs
 render their resulting `rx.span`. COPY/MOVE rows render compact ordered
-`source` and `destination` selections, compact ordered `effects` metadata, and
+`from` and `to` selections ({§log-address-metadata}), compact ordered `effects` metadata, and
 any scoped textual receipt contexts under their `log:///` address, never under
 one operand's resource address. All generated bodies remain under
 {§body-projection}. {§edit-result-render}

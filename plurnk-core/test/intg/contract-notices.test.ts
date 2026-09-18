@@ -164,8 +164,8 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
 
-        const read = logEntries(packet).find(({ path, body }) =>
-            typeof path === "string" && path.endsWith("/READ") && String(body).includes("2:beta"));
+        const read = logEntries(packet).find(({ logPath, body }) =>
+            typeof logPath === "string" && logPath.endsWith("/READ") && String(body).includes("2:beta"));
         assert.match(String(read?.body), /^@[0-9A-Za-z]{5} 2:beta\n@[0-9A-Za-z]{5} 3:gamma\n$/);
         assert.equal(
             packetSection(packet, "notices"),

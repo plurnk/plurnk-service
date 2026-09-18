@@ -106,12 +106,12 @@ export const assertOverflowEvidence = async ({ db, daemon, workspaceId, workerId
     assert.equal(await readFile(join(fixture.workspace, "incident.txt"), "utf8"), fixture.content, "curation never alters the source file");
 
     const projected = logEntries(JSON.parse(firstModel.packet));
-    const visibleRead = projected.find((row) => row.path === `log://${path}`);
+    const visibleRead = projected.find((row) => row.logPath === `log://${path}`);
     assert.ok(visibleRead, "the first recovery packet retains the READ receipt");
     assert.equal("body" in visibleRead, false, "the oversized body is absent from that packet");
     assert.equal(visibleRead.overflow, "2 output lines not shown; the log exceeded logTokensMax when this row was withheld");
     assert.match(packetSection(JSON.parse(firstModel.packet), "budget"), /> \[!WARNING\]\n> YOU MUST ONLY KILL/u);
-    assert.ok(!projected.some((row) => String(row.path).endsWith("/NOTE") && String(row.body).includes("YOU MUST ONLY")), "the warning is not an invented assignment");
+    assert.ok(!projected.some((row) => String(row.logPath).endsWith("/NOTE") && String(row.body).includes("YOU MUST ONLY")), "the warning is not an invented assignment");
     return {
         overflowRequests: overflowRequests.length,
         modelTurns: turns.filter(({ kind }) => kind === "inference").length,

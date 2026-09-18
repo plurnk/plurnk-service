@@ -58,8 +58,8 @@ runs. Output then streams under the receipt's `stream` address, such as
 `## Delegation` streams list reports each channel's size and growth and READ can
 inspect any range. On
 completion, the harness adds one `_plurnk` READ per channel: its first page
-(up to 16 lines), `range` extent, and terminal exit status. READ the `stream`
-address for more; the `log:///…/READ` item holds only its recorded page:
+(up to 16 lines), `range` extent, and terminal exit status. READ that observation's
+`path` for more; the `log:///…/READ` item holds only its recorded page:
 
 ````READ (sh:///ab3d5678#stdout) <17,40>
 ````

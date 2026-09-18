@@ -42,8 +42,8 @@ test("{§exec-stream}: a stream READ carries terminal: false while the command r
             initialMessages: [], gitStatus: null,
         });
         const rows = logEntries(packet);
-        const liveRow = rows.find((row) => row.target === "sh:///1/1/1/sh");
-        const doneRow = rows.find((row) => row.target === "sh:///1/1/2/sh");
+        const liveRow = rows.find((row) => row.path === "sh:///1/1/1/sh");
+        const doneRow = rows.find((row) => row.path === "sh:///1/1/2/sh");
         assert.ok(liveRow, "the dispatched live READ reaches the assembled packet");
         assert.ok(doneRow, "the dispatched completed READ reaches the assembled packet");
         assert.equal(liveRow.terminal, false, "the packet preserves the empty stream's active state");

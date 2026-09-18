@@ -167,7 +167,7 @@ test("{§env-delta-child-activity}: child log curation stays with the child, inc
             workspaceId, workerId: parent, loopId: parentLoop, messages: MESSAGES,
         });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet);
-        const kills = logEntries(packet).filter(({ path }) => String(path).endsWith("/KILL"));
+        const kills = logEntries(packet).filter(({ logPath: path }) => String(path).endsWith("/KILL"));
         assert.deepEqual(kills, [], "neither successful nor failed log curation becomes parent activity");
         const observations = await db.test_log_entries_by_worker.all<{ op: string; source: string; status_rx: number }>({ worker_id: parent });
         assert.deepEqual(observations.filter(({ op }) => op === "KILL"), []);
@@ -209,7 +209,7 @@ test("a worker learns a sibling's edit through its own log — pulled from the s
         assert.equal(delta!.folded, "[]", "the broadcast does not trim the readable delta");
 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet);
-        const packetDelta = logEntries(packet).find((entry) => entry.target === "worker:///shared.md" && String(entry.path).endsWith("/EDIT"));
+        const packetDelta = logEntries(packet).find((entry) => entry.path === "worker:///shared.md" && String(entry.logPath).endsWith("/EDIT"));
         assert.equal(packetDelta?.source, "worker://sibling", "the model sees the same worker identity used by worker control");
     } finally {
         await db.close();

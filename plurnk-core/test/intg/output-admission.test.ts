@@ -52,7 +52,7 @@ test("{§context-output-admission}: oversized output is withheld in the same inf
         assert.equal(second.kind, "inference");
         const stored = await db.test_get_turn.get<{ packet: string; producer: string; kind: string }>({ id: second.turnId });
         const packet = JSON.parse(stored!.packet);
-        const omitted = logEntries(packet).find((row) => row.path === `log://${path}`)!;
+        const omitted = logEntries(packet).find((row) => row.logPath === `log://${path}`)!;
         assert.equal(omitted.overflow, "600 output lines not shown; the log exceeded logTokensMax when this row was withheld");
         assert.equal(omitted.body, undefined);
         assert.equal(omitted.problem, undefined, "packet omission does not fabricate an operation failure");
@@ -61,7 +61,7 @@ test("{§context-output-admission}: oversized output is withheld in the same inf
         assert.equal((warning.match(/YOU MUST/gu) ?? []).length, 1);
         assert.ok(packet.weight <= 12_000, "warning and omission metadata fit within the measured budget");
         assert.equal(packetSection(packet, "notices"), "");
-        const task = logEntries(packet).find((row) => String(row.path).startsWith(`log:///1/${firstTurn!.sequence}/`) && String(row.path).endsWith("/NOTE"))!;
+        const task = logEntries(packet).find((row) => String(row.logPath).startsWith(`log:///1/${firstTurn!.sequence}/`) && String(row.logPath).endsWith("/NOTE"))!;
         assert.match(String(task.body), /Review the evidence/);
         assert.doesNotMatch(String(task.body), /KILL/);
         const retained = await engine.look({ statement: readStmt(urlPath("log", path), { marks: [2, 3] }), workspaceId, workerId, loopId });
@@ -71,11 +71,11 @@ test("{§context-output-admission}: oversized output is withheld in the same inf
         assert.deepEqual(unchanged, original, "no operation, input, result, or deliberate curation changed");
         const third = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 3, provider });
         const later = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: third.turnId }))!.packet);
-        assert.equal(logEntries(later).find((row) => row.path === `log://${path}`)!.body, undefined, "omitted output does not silently reappear");
+        assert.equal(logEntries(later).find((row) => row.logPath === `log://${path}`)!.body, undefined, "omitted output does not silently reappear");
         assert.doesNotMatch(packetSection(later, "budget"), /YOU MUST ONLY/u, "historical omissions do not retrigger escalation");
         const fourth = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 4, provider });
         const reread = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: fourth.turnId }))!.packet);
-        const slice = logEntries(reread).find((row) => row.target === `log://${path}`)!;
+        const slice = logEntries(reread).find((row) => row.path === `log://${path}`)!;
         assert.ok(slice, "an explicit scoped READ returns the omitted content as a fresh occurrence");
         assert.match(String(slice.body), /2:2: evidence/u);
         assert.match(String(slice.body), /3:3: evidence/u);
@@ -124,7 +124,7 @@ test("{§context-output-receipt}: scoped KILL precedes admission and FIND retain
             provider: providerAt(12_000, [response(continuing)]),
         });
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: second.turnId }))!.packet);
-        const omitted = logEntries(packet).find((row) => row.path === `log://${path}`)!;
+        const omitted = logEntries(packet).find((row) => row.logPath === `log://${path}`)!;
         assert.equal(omitted.overflow, "590 output lines not shown; the log exceeded logTokensMax when this row was withheld");
         assert.equal(omitted.body, undefined);
         const searching = await Turn.open(db, { loopId, producer: "_plurnk", kind: "operation" });
@@ -155,7 +155,7 @@ test("{§context-output-warning}: repeated output batches escalate independently
         for (const count of [1, 2]) {
             const turn = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider });
             const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: turn.turnId }))!.packet);
-            const outputs = logEntries(packet).filter((row) => row.target === "worker:///large.md");
+            const outputs = logEntries(packet).filter((row) => row.path === "worker:///large.md");
             assert.equal(outputs.length, count);
             assert.ok(outputs.every((row) => row.overflow !== undefined && row.body === undefined));
             assert.equal((packetSection(packet, "budget").match(/YOU MUST ONLY/gu) ?? []).length, 1);
@@ -242,7 +242,7 @@ for (const origin of ["plugin", "_plurnk"] as const) test(`{§context-output-sel
         const next = await new Engine({ db, schemes }).runTurn({ workspaceId, workerId, loopId: laterLoop, messages, provider });
         assert.equal(provider.remaining, 0);
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: next.turnId }))!.packet);
-        const row = logEntries(packet).find(({ path }) => path === `log:///1/${earlier.sequence}/1/READ`)!;
+        const row = logEntries(packet).find(({ logPath: path }) => path === `log:///1/${earlier.sequence}/1/READ`)!;
         assert.equal(row.status, 503, "withholding does not restamp the actual operation result");
         assert.equal((row.problem as { detail: string }).detail, "Connection closed.");
         assert.equal(row.overflow, "1 output lines not shown; the log exceeded logTokensMax when this row was withheld");

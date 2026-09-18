@@ -269,7 +269,7 @@ test("entry() materializes an https resource as plurnk narration rows", async ()
         const countTokens = (t: string): number => Math.ceil(t.length / 4);
         const foldedLine = PacketWire.renderLog(view([[1, -1]]), countTokens);
         const [folded] = parseLogRecords(foldedLine);
-        assert.equal(folded?.path, "log:///1/1/2/READ", "machine acquisition presents the resulting readable resource at the projected operation handle");
+        assert.equal(folded?.logPath, "log:///1/1/2/READ", "machine acquisition presents the resulting readable resource at the projected operation handle");
         assert.equal(folded?.logTokens, countTokens(foldedLine), "metadata-only observations still report their full context cost");
         assert.equal(Object.hasOwn(folded ?? {}, "body"), false, "the suppressed body is withheld");
         assert.equal(folded?.lines, 1, "metadata carries the line count for slice planning");

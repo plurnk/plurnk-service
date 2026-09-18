@@ -42,11 +42,11 @@ test("{§turn-source-resources}: initialization reads its real program; later so
             && JSON.stringify(item.statement.lineMarker?.marks) === "[1,-1]"), "the program contains its own ordinary full READ");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: first.turnId }))!.packet);
         const records = logEntries(packet);
-        const selfRead = records.find((row: Record<string, unknown>) => row.target === "ops://analyst/1/1");
+        const selfRead = records.find((row: Record<string, unknown>) => row.path === "ops://analyst/1/1");
         assert.ok(selfRead, "the actual initialization READ is visible to the first model request");
         assert.equal(selfRead.origin, "_plurnk");
         assert.ok(typeof selfRead.body === "string" && selfRead.body.includes("ops://analyst/1/1"));
-        assert.ok(!records.some((row: Record<string, unknown>) => String(row.path).endsWith("/ops")));
+        assert.ok(!records.some((row: Record<string, unknown>) => String(row.logPath).endsWith("/ops")));
         const turn = (await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId }))!;
         const coordinate = `1/${turn.sequence}`;
         const ops = await read(`ops://analyst/${coordinate}`);

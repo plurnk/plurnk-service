@@ -37,7 +37,7 @@ test("{§log-coordinate-hierarchy}: executor receipts keep one identity through 
                 const row = await db.test_get_packet.get<{ packet: string }>({ id });
                 return JSON.parse(row!.packet);
             }));
-            const invocation = logEntries(packets[0]).find((entry) => entry.path === path);
+            const invocation = logEntries(packets[0]).find((entry) => entry.logPath === path);
             assert.ok(invocation, "the failure is recorded under its invoked executor, including digits and hyphens");
             assert.equal(invocation.status, 400);
             assert.equal(invocation.stream, undefined, "an unknown executor did not allocate an output resource");
@@ -48,9 +48,9 @@ test("{§log-coordinate-hierarchy}: executor receipts keep one identity through 
             const retrievals = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: turnIds![2]! });
             assert.equal(retrievals.find((row) => row.op === "READ")?.status_rx, 200);
             assert.equal(retrievals.find((row) => row.op === "FIND")?.status_rx, 200);
-            assert.match(JSON.stringify(logEntries(packets[1]).filter((entry) => String(entry.path).endsWith("/FIND"))), /log:\/\/\/1\/2\/2\/search-api2/,
+            assert.match(JSON.stringify(logEntries(packets[1]).filter((entry) => String(entry.logPath).endsWith("/FIND"))), /log:\/\/\/1\/2\/2\/search-api2/,
                 "full-text search and path-glob selection return the same canonical leaf");
-            assert.equal(logEntries(packets[2]).some((entry) => entry.path === path), false,
+            assert.equal(logEntries(packets[2]).some((entry) => entry.logPath === path), false,
                 "KILL selects that exact executor family and retires the receipt from context");
         } finally { ws.close(); }
     });
@@ -73,7 +73,7 @@ test("{§log-coordinate-hierarchy}: rejected executor proposals use the same rec
             assert.equal(problem.instance, "log:///1/2/2/sh");
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![2]! });
             const packet = JSON.parse(row!.packet);
-            assert.ok(logEntries(packet).some((entry) => entry.path === problem.instance));
+            assert.ok(logEntries(packet).some((entry) => entry.logPath === problem.instance));
         } finally { ws.close(); }
     });
 });
@@ -105,8 +105,8 @@ test("regression: a model's execution result surfaces visibly in the next turn w
             // into the next turn (origin=_plurnk), visible because the channel closed: the model SEES
             // its output, it never has to find+pull it. This is the loop the live demo exposed.
             assert.ok(
-                entries.some((e) => String(e.path).endsWith("/READ") && e.origin === "_plurnk" && String(e.stream ?? "").includes("stdout")),
-                `turn-2 must foist a READ of the exec stdout; got ${JSON.stringify(entries.map((e) => ({ path: e.path, origin: e.origin, stream: e.stream })))}`,
+                entries.some((e) => String(e.logPath).endsWith("/READ") && e.origin === "_plurnk" && String(e.path ?? "").includes("stdout")),
+                `turn-2 must foist a READ of the exec stdout; got ${JSON.stringify(entries.map((e) => ({ logPath: e.logPath, path: e.path, origin: e.origin })))}`,
             );
             assert.match(packetSection(packet, "log"), /plurnk-index-probe/, "the foisted delta surfaces the actual stdout, open");
         } finally { ws.close(); }
@@ -154,7 +154,7 @@ test("a generated JSON result publishes its first page with the extent through t
             const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
             const packet = JSON.parse(packetRow!.packet);
             const entry = logEntries(packet).find((candidate) =>
-                String(candidate.path).endsWith("/READ") && String(candidate.stream ?? "").startsWith("sqlite:///"));
+                String(candidate.logPath).endsWith("/READ") && String(candidate.path ?? "").startsWith("sqlite:///"));
             assert.ok(entry, "the model-facing packet contains the structured observation");
             assert.equal(entry.overflow, undefined, "READ receives no second hidden preview bound");
             assert.match(packetSection(packet, "log"), /1:\[\{"n":1,/, "the document's head is what the model sees");
@@ -200,7 +200,7 @@ test("a failed execution reaches the model as the executor's exact Problem on it
                 && row.scheme === "sh"
                 && row.status_rx === 500);
             assert.ok(terminal !== undefined, "the next turn contains a failed terminal READ, not a synthetic success");
-            assert.match(terminal.source ?? "", /^log:\/\/\/\d+\/\d+\/\d+\/sh$/, "the failed observation names its causal invocation");
+            assert.equal(terminal.source, null, "failed observations do not mislabel the invocation as an actor");
 
             const result = JSON.parse(terminal.rx) as {
                 status: number;
@@ -226,9 +226,10 @@ test("a failed execution reaches the model as the executor's exact Problem on it
             const packetRow = await db.test_get_packet.get<{ packet: string }>({ id: turn2 });
             const packet = JSON.parse(packetRow?.packet ?? "{}");
             const rendered = packetSection(packet, "log");
-            const renderedTerminal = logEntries(packet).find((entry) => entry.path === result.problem?.instance);
+            const renderedTerminal = logEntries(packet).find((entry) => entry.logPath === result.problem?.instance);
             assert.ok(renderedTerminal, "the exact failed terminal row remains addressable");
-            assert.equal(renderedTerminal.source, terminal.source);
+            assert.equal(renderedTerminal.source, undefined);
+            assert.match(String(renderedTerminal.path), /^sh:\/\/\/[a-f0-9]{8}#(?:stdout|stderr)$/);
             assert.equal(renderedTerminal.terminal, true);
             assert.equal(renderedTerminal.exitCode, 3);
             assert.match(rendered, /'sh' exited with code 3\./, "the model-facing packet states the executor's diagnostic");
@@ -260,12 +261,12 @@ test("the cursor-terminal race: a one-burst stream consumed before its close sti
             const row = await db.test_get_packet.get<{ packet: string }>({ id: last });
             const packet = JSON.parse(row?.packet ?? "{}");
             const entries = logEntries(packet);
-            const deltas = entries.filter((e) => String(e.path).endsWith("/READ") && e.origin === "_plurnk" && String(e.stream ?? "").includes("stdout"));
+            const deltas = entries.filter((e) => String(e.logPath).endsWith("/READ") && e.origin === "_plurnk" && String(e.path ?? "").includes("stdout"));
             assert.ok(deltas.length >= 1, "the stream's deltas surfaced");
             const log = packetSection(packet, "log");
             assert.match(log, /burst-payload/, "the burst content was delivered visibly as the terminal observation");
             // {§exec-stream} — the empty stderr channel is a fact on the stdout conclusion, never a row.
-            const stderrConclusion = entries.filter((e) => e.origin === "_plurnk" && String(e.stream ?? "").includes("stderr"));
+            const stderrConclusion = entries.filter((e) => e.origin === "_plurnk" && String(e.path ?? "").includes("stderr"));
             assert.equal(stderrConclusion.length, 0, "an empty sibling channel lands no row of its own");
             assert.deepEqual(deltas[0]?.channels, { "#stderr": 0 }, "the surviving conclusion names the empty sibling");
         } finally { ws.close(); }
@@ -287,7 +288,7 @@ test("a command that prints nothing on any channel lands exactly one bodyless co
             assert.equal(finalStatus, 200, "completion was never blocked by an undelivered termination");
             const last = turnIds![turnIds!.length - 1];
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: last }))?.packet ?? "{}");
-            const conclusions = logEntries(packet).filter((e) => e.origin === "_plurnk" && String(e.stream ?? "").startsWith("sh:///"));
+            const conclusions = logEntries(packet).filter((e) => e.origin === "_plurnk" && String(e.path ?? "").startsWith("sh:///"));
             assert.equal(conclusions.length, 1, "one bodyless conclusion row for a silent stream");
             assert.equal(conclusions[0]?.terminal, true);
             assert.deepEqual(conclusions[0]?.channels, { "#stderr": 0 });

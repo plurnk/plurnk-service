@@ -23,7 +23,7 @@ for (const limit of [-1, 0]) test(`{§worker-initialization-entry}: program and 
         const result = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(result.status, 102, "the initialization NOTEs do not change implicit continuation");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
-        const initial = logEntries(packet).find((row) => row.target === "reasoning://alice/3/1");
+        const initial = logEntries(packet).find((row) => row.path === "reasoning://alice/3/1");
         const reads = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
         if (limit === 0) {
             assert.equal(initial, undefined);
@@ -46,7 +46,7 @@ for (const limit of [-1, 0]) test(`{§worker-initialization-entry}: program and 
         if (limit !== 0) assert.match(source.content, /READ \(reasoning:\/\/alice\/3\/1\)/);
         assert.match(source.content, /READ \(ops:\/\/alice\/3\/1\)/);
         assert.doesNotMatch(source.content, /READ \(prompt:\/\//, "the prompt arrives as its row, never as a second READ");
-        const notes = logEntries(packet).filter((row) => /^log:\/\/\/3\/1\/\d+\/NOTE$/.test(String(row.path)));
+        const notes = logEntries(packet).filter((row) => /^log:\/\/\/3\/1\/\d+\/NOTE$/.test(String(row.logPath)));
         assert.deepEqual(notes.map((row) => row.resource), ["note://alice/3/1/1", "note://alice/3/1/2"]);
         const bodies = [
             "NOTE is the only operation that is also parsed and persisted from within reasoning.",
@@ -92,7 +92,7 @@ test("{§reasoning-history}: a model READ of its own reasoning settles in that t
         const firstPacket = (await db.test_get_packet.get<{ packet: string }>({ id: produced.turnId }))!.packet;
         const observed = await engine.runTurn({ ...context, provider, messages: [] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: observed.turnId }))!.packet);
-        const receipt = logEntries(packet).find((row) => row.target === "reasoning://alice/1/2");
+        const receipt = logEntries(packet).find((row) => row.path === "reasoning://alice/1/2");
         assert.ok(receipt);
         assert.equal(receipt.aside, "retain this determination");
         assert.match(String(receipt.body), /selected reasoning/);

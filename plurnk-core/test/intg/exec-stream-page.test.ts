@@ -35,10 +35,12 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             await rpcCall(ws, 1, "workspace.create", { name: "exec-stream-page" });
             const { finalStatus, turnIds, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "count", policy: { proposals: "accept" } });
             const turn2 = turnIds![2]!;
-            const rows = await db.test_log_entries_by_turn.all<{ scheme: string; op: string; origin: string; source: string | null; fragment: string | null; rx: string }>({ turn_id: turn2 });
+            const rows = await db.test_log_entries_by_turn.all<{ id: number; scheme: string; op: string; origin: string; source: string | null; fragment: string | null; rx: string }>({ turn_id: turn2 });
             const foisted = rows.find((r) => r.scheme === "sh" && r.op === "READ" && r.origin === "_plurnk" && r.fragment === "stdout");
             assert.ok(foisted, "the stream's terminal observation was foisted");
-            assert.equal(foisted.source, "log:///1/2/2/sh", "the observation names the executor that produced the stream");
+            assert.equal(foisted.source, null, "invocation correlation is not copied into actor attribution");
+            assert.equal((await db.test_stream_observation_source.get<{ source: string }>({ id: foisted.id }))?.source,
+                "log:///1/2/2/sh", "publication identity retains the exact durable invocation relationship");
             const rx = JSON.parse(foisted.rx) as { exitCode: number; content: string; mimetype: string; startLine: number; range: { unit: string; total: number; returned: [number, number] } };
             assert.equal(rx.exitCode, 0, "the exact subprocess conclusion remains durable");
             assert.equal(rx.content.split("\n").filter((l) => l !== "").length, DEFAULT_RETRIEVAL_LIMIT, "exactly the retrieval page");
@@ -51,14 +53,15 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             const log = packetSection(packet, "log");
             assert.match(log, /\s1:1\n/, "line 1 is delivered");
             assert.doesNotMatch(log, /\s40:40\n/, "line 40 is not delivered unasked");
-            const terminal = logEntries(packet).find((e) => String(e.path).endsWith("/READ") && String(e.stream ?? "").includes("stdout"));
-            assert.ok(terminal, "the terminal observation names its stream under `stream` (#425 F4)");
-            assert.equal(terminal.target, undefined, "a stream address is never a target slot");
-            assert.equal(terminal.source, "log:///1/2/2/sh");
+            const terminal = logEntries(packet).find((e) => String(e.logPath).endsWith("/READ") && String(e.path ?? "").includes("stdout"));
+            assert.ok(terminal, "the terminal observation names the read resource under path");
+            assert.equal(terminal.target, undefined);
+            assert.equal(terminal.stream, undefined);
+            assert.equal(terminal.source, undefined);
             assert.equal(terminal.terminal, true);
             assert.equal(terminal.exitCode, 0);
             // {§exec-stream} — the empty stderr channel is a fact on the stdout conclusion, never a row of its own.
-            const emptyTerminal = logEntries(packet).find((e) => String(e.path).endsWith("/READ") && String(e.stream ?? "").includes("stderr"));
+            const emptyTerminal = logEntries(packet).find((e) => String(e.logPath).endsWith("/READ") && String(e.path ?? "").includes("stderr"));
             assert.equal(emptyTerminal, undefined, "an empty sibling channel lands no row");
             assert.deepEqual(terminal.channels, { "#stderr": 0 }, "the surviving conclusion names the empty sibling");
             assert.equal(finalStatus, 200, "the scoped READ turn concluded");
@@ -67,7 +70,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
             assert.equal(asked.content, "38\n39\n40", "the channel keeps every line for a scoped READ");
             assert.equal(asked.startLine, 38);
             const nextPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![3]! }))!.packet);
-            const explicit = logEntries(nextPacket).find((row) => row.target === terminal.stream);
+            const explicit = logEntries(nextPacket).find((row) => row.path === terminal.path && row.origin === undefined);
             assert.ok(explicit, "the requested tail reaches the next model request");
             assert.equal(explicit.terminal, true, "a deliberate stream READ conveys the same liveness as the automatic observation");
             assert.equal(explicit.exitCode, 0, "the subprocess exit code survives deliberate READ projection");
@@ -98,7 +101,7 @@ test("an active stream reaches the model only as a Delegation stream pointer wit
             const pointers = packetSection(packet, "delegation");
             assert.match(pointers, /"status":"active","path":"sh:\/\/\/[a-f0-9]{8}","detail":"[^"]*stdout 5 lines \(\+\d+ bytes\)/, "the pointer carries size and growth");
             const log = packetSection(packet, "log");
-            assert.doesNotMatch(log, /"(target|stream)":"sh:\/\/\/[a-f0-9]{8}#stdout"/, "nothing of the stream enters the Log while it is active");
+            assert.doesNotMatch(log, /"path":"sh:\/\/\/[a-f0-9]{8}#stdout"/, "nothing of the stream enters the Log while it is active");
         } finally {
             ws.close();
         }
@@ -139,7 +142,7 @@ waiting
             const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the result.", policy: { proposals: "accept" } });
             assert.equal(finalStatus, 200);
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![2]! }))!.packet);
-            const delivery = logEntries(packet).find((row) => row.terminal === true && String(row.stream).endsWith("#stdout"));
+            const delivery = logEntries(packet).find((row) => row.terminal === true && String(row.path).endsWith("#stdout"));
             assert.ok(delivery, "the model receives the automatic terminal observation");
             assert.deepEqual(delivery.range, specimen.range);
             assert.deepEqual(delivery.region, specimen.region);

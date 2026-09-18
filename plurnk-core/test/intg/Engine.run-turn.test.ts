@@ -158,7 +158,7 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         assert.ok(initializationRows.some(({ op }) => op === "READ"), "initialization observes its actual program");
         assert.ok(initializationRows.some(({ op }) => op === "NOTE"), "source retention does not replace executed results");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
-        const opsReceipt = logEntries(packet).find(({ target }) => target === "ops://subject/1/1");
+        const opsReceipt = logEntries(packet).find(({ path: target }) => target === "ops://subject/1/1");
         assert.match(String(opsReceipt?.body), /\d+:````READ [^\n]+\n[ \t]*\d+:````\n/, "the model sees the same multiline examples through turn0's ordinary READ");
 
         const inferenceRows = await rowsFor(turns[1]!.id);
@@ -857,14 +857,14 @@ test("Engine.runTurn: the first turn's log section contains the arrival row", as
         const inbox = (await db.test_messages_by_loop.all({ loop_id: loopId })) as Array<{ ordinal: number; log_entry_id: number | null }>;
         assert.deepEqual(inbox.map(({ ordinal }) => ordinal), [1], "the loop's one message");
         assert.ok(inbox[0]!.log_entry_id !== null, "the inbox row was stamped with the row it became");
-        const prompt = log.find((e) => String(e.path).endsWith("/SEND"));
+        const prompt = log.find((e) => String(e.logPath).endsWith("/SEND"));
         assert.ok(prompt, "the arrival row is in the log");
         // {§message-causal-source} — an arrival is always harness-published, so the rendered row omits
         // the constant origin and carries only a causal source when another actor supplied one (#706).
         assert.equal(prompt.origin, undefined, "the rendered arrival row carries no constant origin");
         assert.equal(prompt.source, undefined, "the owner caused this message: no source");
-        assert.equal("target" in prompt, false, "an arrival has no target");
-        assert.match(String(prompt.path), /\/SEND$/, "the path owns the SEND delimiter");
+        assert.equal("path" in prompt, false, "an arrival has no addressed operand");
+        assert.match(String(prompt.logPath), /\/SEND$/, "the path owns the SEND delimiter");
     } finally { await db.close(); }
 });
 
@@ -886,12 +886,12 @@ test("Engine.runTurn: the second turn's log section captures prior actions", asy
         // EDIT and a SEND). Found by identity (an untargeted SEND without a reply receipt),
         // robust to the turn-0 initialization ({§worker-initialization-entry}) and a
         // catalog-preview foist that shift coordinates between the arrival and the model's ops.
-        assert.ok(log.find((e) => String(e.path).endsWith("/SEND") && !("target" in e) && !("answers" in e)), "arrival row logged");
-        const edit = log.find((e) => (e.origin ?? "model") === "model" && String(e.path).endsWith("/EDIT"));
+        assert.ok(log.find((e) => String(e.logPath).endsWith("/SEND") && !("path" in e) && !("answers" in e)), "arrival row logged");
+        const edit = log.find((e) => (e.origin ?? "model") === "model" && String(e.logPath).endsWith("/EDIT"));
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
-        assert.equal(edit.target, "worker:///a");
-        const send = log.find((e) => (e.origin ?? "model") === "model" && String(e.path).endsWith("/NOTE"));
+        assert.equal(edit.path, "worker:///a");
+        const send = log.find((e) => (e.origin ?? "model") === "model" && String(e.logPath).endsWith("/NOTE"));
         assert.ok(send, "model NOTE logged");
         assert.match(String(send.body), /keep going/);
     } finally { await db.close(); }
@@ -913,7 +913,7 @@ test("Engine.runTurn: the log section parses an application/json rx body", async
         const packet = JSON.parse(row?.packet ?? "{}");
         const log = logEntries(packet);
         // Found by identity, robust to a turn-0 catalog-preview foist.
-        const edit = log.find((e) => (e.origin ?? "model") === "model" && String(e.path).endsWith("/EDIT"));
+        const edit = log.find((e) => (e.origin ?? "model") === "model" && String(e.logPath).endsWith("/EDIT"));
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
         // The EDIT's result span renders as an anchored coordinate line —

@@ -39,7 +39,7 @@ for (const outcome of ["success", "failure", "cancel"] as const) {
         const reply = before.entries.filter(({ answers }) => Array.isArray(answers));
         assert.equal(reply.length, 1);
         assert.match(String(reply[0]!.body), /The answer is 42\./);
-        assert.equal(before.entries.filter(({ target }) => target === "loop://child/1").length, 0, "a reply does not imply completion");
+        assert.equal(before.entries.filter(({ path: target }) => target === "loop://child/1").length, 0, "a reply does not imply completion");
 
         const result = outcome === "success"
             ? { status: 200 }
@@ -49,9 +49,9 @@ for (const outcome of ["success", "failure", "cancel"] as const) {
         assert.equal(exact.content, undefined, "lifecycle outcomes do not copy a prior reply");
         const after = await f.run(f.parent, f.parentLoop);
         const observations = after.entries.filter(({ source }) => source === "worker://child");
-        assert.deepEqual(observations.map(({ path }) => String(path).split("/").at(-1)), ["SEND", "READ"]);
+        assert.deepEqual(observations.map(({ logPath: path }) => String(path).split("/").at(-1)), ["SEND", "READ"]);
         const completion = observations[1]!;
-        assert.equal(completion.target, "loop://child/1");
+        assert.equal(completion.path, "loop://child/1");
         assert.equal(completion.origin, "_plurnk");
         assert.equal(completion.answers, undefined, "observation is not another answer");
         if (outcome === "success") {
@@ -81,10 +81,10 @@ test("{§env-delta-child-termination}: delayed observation preserves each comple
     assert.equal(await f.lifecycle.status(thirdLoop), 102);
 
     const observed = await f.run(f.parent, f.parentLoop);
-    const completions = observed.entries.filter(({ target }) => String(target).startsWith("loop://child/"));
+    const completions = observed.entries.filter(({ path: target }) => String(target).startsWith("loop://child/"));
     assert.equal(completions.length, 2);
-    assert.ok(completions.every(({ path }) => String(path).endsWith("/READ")));
-    assert.deepEqual(completions.map(({ target }) => target), ["loop://child/1", "loop://child/2"]);
+    assert.ok(completions.every(({ logPath: path }) => String(path).endsWith("/READ")));
+    assert.deepEqual(completions.map(({ path: target }) => target), ["loop://child/1", "loop://child/2"]);
     assert.match(String(completions[0]!.body), /First result line 16/);
     assert.doesNotMatch(String(completions[0]!.body), /First result line 17/, "automatic observation obeys the ordinary READ preview");
     assert.match(String(completions[1]!.body), /Second loop failed\./);
@@ -92,8 +92,8 @@ test("{§env-delta-child-termination}: delayed observation preserves each comple
     assert.equal((await f.db.engine_worker_has_undelivered_child_term.get({ worker_id: f.parent })), undefined);
 
     const curated = await f.run(f.parent, f.parentLoop,
-        frame(`READ (${completions[0]!.target}) <1,-1>`) + "\n\n"
-        + frame(`KILL (${completions[0]!.path}) <2,-1>`));
+        frame(`READ (${completions[0]!.path}) <1,-1>`) + "\n\n"
+        + frame(`KILL (${completions[0]!.logPath}) <2,-1>`));
     const rows = await f.db.test_log_entries_by_loop.all<{ turn_id: number; op: string; status_rx: number; rx: string }>({ loop_id: f.parentLoop });
     const actions = rows.filter(({ turn_id }) => turn_id === curated.result.turnId);
     assert.deepEqual(actions.map(({ op, status_rx }) => [op, status_rx]), [["READ", 200], ["KILL", 200]]);
@@ -101,5 +101,5 @@ test("{§env-delta-child-termination}: delayed observation preserves each comple
     assert.equal((await f.lifecycle.result(f.childLoop))?.content, first, "curation never changes the producer's result");
     assert.deepEqual((await f.lifecycle.result(secondLoop))?.problem, failure.problem);
     const again = await f.run(f.parent, f.parentLoop);
-    assert.equal(again.entries.filter(({ source, target }) => source === "worker://child" && String(target).startsWith("loop://child/")).length, 2, "observing again creates no duplicate occurrences");
+    assert.equal(again.entries.filter(({ source, path }) => source === "worker://child" && String(path).startsWith("loop://child/")).length, 2, "observing again creates no duplicate occurrences");
 });

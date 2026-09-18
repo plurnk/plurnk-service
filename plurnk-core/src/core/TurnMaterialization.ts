@@ -160,7 +160,7 @@ export default class TurnMaterialization {
             subscription_id: number; publication_id: number; published_end: number;
             runtime: string; authority: string; coord: string; channel: string; content: string;
             mimetype: string; state: string; producer_result: string | null; published_channel: string | null;
-            source: string | null; default_channel: string;
+            default_channel: string;
         }>({ worker_id: workerId });
         const entryIds: number[] = [];
         // {§exec-stream} — a concluded stream lands one row per channel that has content; an empty
@@ -206,7 +206,6 @@ export default class TurnMaterialization {
             if (skipped.has(ch.publication_id)) continue;
             const terminal = Results.assert(JSON.parse(ch.producer_result ?? "null") as SchemeResult);
             const sequence = fromSequence + entryIds.length;
-            const source = ch.source;
             const page = await ReadResolve.resolve({ content: ch.content, mimetype: ch.mimetype, lineMarker: null });
             const emptySiblings = siblings.get(ch.publication_id) ?? {};
             const result = Results.assert({
@@ -232,7 +231,6 @@ export default class TurnMaterialization {
             const inserted = await this.#db.engine_insert_stream_delta.get<{ id: number }>({
                 worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
                 subscription_publication_id: ch.publication_id,
-                source,
                 scheme: ch.runtime, hostname: targetParts.hostname, port: targetParts.port,
                 pathname: ch.coord, fragment: visibleFragment,
                 rx,

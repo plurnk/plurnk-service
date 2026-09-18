@@ -24,7 +24,7 @@ SELECT s.id AS subscription_id, sp.id AS publication_id,
     e.scheme AS runtime, e.authority, e.pathname AS coord,
     ec.name AS channel, ec.content AS content, ec.mimetype AS mimetype,
     ec.state AS state, ec.producer_result AS producer_result,
-    s.published_channel, s.source, e.default_channel
+    s.published_channel, e.default_channel
 FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
 JOIN subscription_publications sp ON sp.subscription_id = s.id
@@ -46,15 +46,15 @@ WHERE id = $publication_id
 -- PREP: engine_insert_stream_delta
 -- {§exec-stream} / {§env-delta} — materialize a channel's next publishable content as a
 -- foisted READ row (the model READs the stream it never typed). origin=_plurnk; fragment is
--- the channel; source links an EXEC observation to its causal invocation;
+-- the channel; subscription_publication_id retains the invocation relationship;
 -- attrs.streamEnd is the next turn's cursor; rx.terminal owns the observation's liveness. Only terminal observations
 -- materialize here, initially visible; active progress stays in the Delegation streams list. {§exec-stream}
 INSERT INTO log_entries (
-    worker_id, loop_id, turn_id, sequence, origin, source, model_call_id,
+    worker_id, loop_id, turn_id, sequence, origin, model_call_id,
     subscription_publication_id,
     op, scheme, hostname, port, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, attrs, initial_folded
 ) VALUES (
-    $worker_id, $loop_id, $turn_id, $sequence, '_plurnk', $source, NULL,
+    $worker_id, $loop_id, $turn_id, $sequence, '_plurnk', NULL,
     $subscription_publication_id,
     'READ', $scheme, $hostname, $port, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $weight, $attrs, $folded
 )

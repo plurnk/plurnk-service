@@ -257,8 +257,8 @@ test("an upstream 413 withholds the automatic prompt body and retries without sp
 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
         const entries = logEntries(packet);
-        assert.equal(entries.find(({ path }) => String(path).endsWith("/SEND"))?.body, undefined, "the arrival row's body is withheld");
-        assert.equal(entries.find(({ path, target }) => String(path).endsWith("/READ") && /\/SEND$/u.test(String(target))), undefined, "no second copy of the message exists to fall back on; the row itself is the source");
+        assert.equal(entries.find(({ logPath: path }) => String(path).endsWith("/SEND"))?.body, undefined, "the arrival row's body is withheld");
+        assert.equal(entries.find(({ logPath: path, path: target }) => String(path).endsWith("/READ") && /\/SEND$/u.test(String(target))), undefined, "no second copy of the message exists to fall back on; the row itself is the source");
         assert.match(packetSection(packet, "errors"), /"status":413,"path":"log:\/\/\/[^"]+\/error"/, "the recovered rejection remains visible to the model");
     } finally {
         await db.close();

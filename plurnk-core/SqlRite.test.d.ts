@@ -377,6 +377,7 @@ export class SqlRiteSync {
 	test_get_channel_terminal: SqlRiteSyncPreparedStatements;
 	test_get_subscription: SqlRiteSyncPreparedStatements;
 	test_subscription_reassign_source: SqlRiteSyncPreparedStatements;
+	test_stream_observation_source: SqlRiteSyncPreparedStatements;
 	test_get_subscription_by_entry: SqlRiteSyncPreparedStatements;
 	test_count_active_subscriptions: SqlRiteSyncPreparedStatements;
 	test_count_open_subs_by_scheme: SqlRiteSyncPreparedStatements;
@@ -948,6 +949,7 @@ export default class SqlRite {
 	test_get_channel_terminal: SqlRitePreparedStatements;
 	test_get_subscription: SqlRitePreparedStatements;
 	test_subscription_reassign_source: SqlRitePreparedStatements;
+	test_stream_observation_source: SqlRitePreparedStatements;
 	test_get_subscription_by_entry: SqlRitePreparedStatements;
 	test_count_active_subscriptions: SqlRitePreparedStatements;
 	test_count_open_subs_by_scheme: SqlRitePreparedStatements;

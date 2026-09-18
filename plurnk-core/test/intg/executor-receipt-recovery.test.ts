@@ -58,21 +58,23 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             assert.deepEqual(started.outcomes.map(({ op, status }) => [op, status]), [["receiptfixture", 200]]);
             await quiesceExecs(schemes);
             const observed = await observe();
-            const invocation = observed.rows.find((row) => String(row.path).endsWith("/receiptfixture"));
+            const invocation = observed.rows.find((row) => String(row.logPath).endsWith("/receiptfixture"));
             assert.ok(invocation, "the real invocation has its own log identity");
-            assert.equal(invocation.target, "inspect");
+            assert.equal(invocation.path, "inspect");
             assert.match(String(invocation.stream), /^receiptfixture:\/\/\/[a-f0-9]{8}$/u);
             assert.equal(invocation.lines, body === null ? undefined : 1, "invocation lines describe arguments, never output");
-            const automatic = observed.rows.find((row) => row.source === invocation.path && String(row.path).endsWith("/READ"));
-            assert.ok(automatic, "the automatic output observation links to the real invocation");
+            const automatic = observed.rows.find((row) => row.path === `${String(invocation.stream)}#results` && String(row.logPath).endsWith("/READ"));
+            assert.ok(automatic, "the automatic output observation names the resource actually read");
+            assert.equal(automatic.source, undefined);
+            assert.equal(automatic.stream, undefined);
             assert.deepEqual(automatic.range, { unit: "line", total: 40, requested: [1, 16], returned: [1, 16] });
             assert.match(String(automatic.body), /16:result 16\n$/u);
             assert.doesNotMatch(String(automatic.body), /result 17/u);
 
-            const mistaken = await turn(frame(`READ (${String(invocation.path)}) <17,40>`, null));
+            const mistaken = await turn(frame(`READ (${String(invocation.logPath)}) <17,40>`, null));
             assert.equal(mistaken.outcomes[0]?.status, 416, "reading invocation arguments cannot retrieve execution output");
             const diagnosed = await observe();
-            const failure = diagnosed.rows.find((row) => row.target === invocation.path && row.status === 416);
+            const failure = diagnosed.rows.find((row) => row.path === invocation.logPath && row.status === 416);
             assert.ok(failure, "the model sees the exact failed READ");
             const problem = failure.problem as { range: { total: number }; stream?: string; recovery?: string };
             assert.equal(problem.range.total, body === null ? 0 : 1, "the diagnostic reports the invocation's true extent");
@@ -83,7 +85,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             const recovered = await turn(frame(`READ (${String(stream)}) <17,40>`, null));
             assert.equal(recovered.outcomes[0]?.status, 200);
             const recovery = await observe();
-            const read = recovery.rows.find((row) => row.target === stream && row.origin === undefined);
+            const read = recovery.rows.find((row) => row.path === stream && row.origin === undefined);
             assert.ok(read, "the explicit READ reaches the next model packet");
             assert.deepEqual(read.range, { unit: "line", total: 40, requested: [17, 40], returned: [17, 40] });
             assert.equal(read.terminal, true);
@@ -91,15 +93,15 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             assert.match(String(read.body), /40:result 40\n$/u);
 
             const revisited = await turn([
-                frame(`KILL (${String(automatic.path)})`, null),
-                frame(`KILL (${String(read.path)})`, null),
+                frame(`KILL (${String(automatic.logPath)})`, null),
+                frame(`KILL (${String(read.logPath)})`, null),
                 frame(`READ (${String(stream)}) <1,-1>`, null),
             ].join("\n\n"));
             assert.deepEqual(revisited.outcomes.map(({ op, status }) => [op, status]),
                 [["KILL", 200], ["KILL", 200], ["READ", 200]]);
             const afterCuration = await observe();
-            assert.equal(afterCuration.rows.some((row) => row.path === automatic.path || row.path === read.path), false);
-            const reread = afterCuration.rows.find((row) => row.target === stream);
+            assert.equal(afterCuration.rows.some((row) => row.logPath === automatic.logPath || row.logPath === read.logPath), false);
+            const reread = afterCuration.rows.find((row) => row.path === stream);
             assert.ok(reread, "the retained output is still readable after its observations are curated away");
             assert.deepEqual(reread.range, { unit: "line", total: 40, requested: [1, -1], returned: [1, 40] });
             assert.match(String(reread.body), /1:result 1\n/u);

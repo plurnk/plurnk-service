@@ -14,7 +14,7 @@ import Engine from "../../src/core/Engine.ts";
 import Fork from "../../src/core/fork.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { copyStmt, editStmt, fullReplace, moveStmt } from "./_dsl.ts";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertLoop, insertTurn, insertWorker, insertWorkspace, logEntries, openMigrated } from "./_helpers.ts";
 
 const messages = [
     { role: "system" as const, content: "You are an agent." },
@@ -309,9 +309,22 @@ test("commons mutations broadcast one occurrence identity and deduplicate the di
         const late = await insertWorker(db, workspaceId, null, "late");
         const lateLoop = await insertLoop(db, late, 1, "observe");
         const provider = new Mock({ contextWindow: 100_000, responses: [continueResponse(), continueResponse(), continueResponse()] });
-        await engine.runTurn({ provider, workspaceId, workerId: parent, loopId: parentLoop, messages, turnNumber: 1 });
+        const parentTurn = await engine.runTurn({ provider, workspaceId, workerId: parent, loopId: parentLoop, messages, turnNumber: 1 });
         await engine.runTurn({ provider, workspaceId, workerId: independent, loopId: independentLoop, messages, turnNumber: 1 });
         await engine.runTurn({ provider, workspaceId, workerId: late, loopId: lateLoop, messages, turnNumber: 1 });
+
+        // {§log-address-metadata}: the real parent packet retains both operands and the actor.
+        const storedPacket = await db.test_get_packet.get<{ packet: string }>({ id: parentTurn.turnId });
+        const activity = logEntries(JSON.parse(storedPacket!.packet)).filter(({ source }) => source === "worker://child");
+        for (const [op, from, to] of [["COPY", "source", "copy"], ["MOVE", "copy", "moved"]]) {
+            const receipt = activity.find(({ logPath }) => String(logPath).endsWith(`/${op}`));
+            assert.ok(receipt, `the parent sees the child's ${op}`);
+            assert.equal(receipt.source, "worker://child");
+            assert.equal(receipt.from, `worker:///${from}`);
+            assert.equal(receipt.to, `worker:///${to}`);
+            assert.equal(receipt.path, undefined);
+            assert.equal(receipt.destination, undefined);
+        }
 
         type Row = { op: string; origin: string; source: string | null; ambient_event_id: number | null; status_rx: number };
         const mutations = async (workerId: number) => (await db.test_log_entries_by_worker.all<Row>({ worker_id: workerId }))

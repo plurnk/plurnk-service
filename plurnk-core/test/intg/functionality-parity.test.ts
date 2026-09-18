@@ -351,7 +351,7 @@ const matrix = async (family: Family): Promise<void> => {
         // maintenance receipts never ride the packet (#338 — a receipt answers
         // an asker, and reconciliation turns have none).
         const afterAdd = await nextPacket();
-        assert.equal(packetLogRecords(afterAdd).some(({ path, target }) =>
+        assert.equal(packetLogRecords(afterAdd).some(({ logPath: path, path: target }) =>
             typeof path === "string" && path.endsWith("/EDIT") && target === family.documentOf(family.addable.alias)), false, "no reconciliation EDIT receipt rides the packet");
         assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: family.addable.alias })).definition.state, "disabled");
         assert.equal(await live(family.addable), false, "disable withdraws the definition before the next operation");
@@ -359,7 +359,7 @@ const matrix = async (family: Family): Promise<void> => {
         if (family.family === "mcp") assert.equal(await documentPresent(context(), "/_plurnk/tools/extra/echo.md"), 404,
             "disable withdraws the child schema as well as its family catalog");
         const afterDisable = await nextPacket();
-        assert.equal(packetLogRecords(afterDisable).some(({ path }) => typeof path === "string" && path.endsWith("/KILL")), false, "no reconciliation KILL receipt rides the packet (#338)");
+        assert.equal(packetLogRecords(afterDisable).some(({ logPath: path }) => typeof path === "string" && path.endsWith("/KILL")), false, "no reconciliation KILL receipt rides the packet (#338)");
         assert.equal((await invoke<{ definition: { state: string } }>("enable", { alias: family.addable.alias })).definition.state, "active");
         if (family.family === "mcp") assert.equal(await documentPresent(context(), "/_plurnk/tools/extra/echo.md"), 200);
         assert.equal(await live(family.addable), true);

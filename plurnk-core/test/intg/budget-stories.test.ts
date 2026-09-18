@@ -175,7 +175,7 @@ test("{§tokenomics-pressure-inventory}: a pressured composed packet points to i
         const [largest] = inventory;
         assert.match(largest.path, /^log:\/\/\/\d+\/\d+\/\d+\/[A-Z]+$/u);
         assert.equal(typeof largest.logTokens, "number");
-        const advised = logEntries(stored.packet).find((row) => row.path === largest.path);
+        const advised = logEntries(stored.packet).find((row) => row.logPath === largest.path);
         assert.equal(largest.logTokens, advised?.logTokens, "inventory and receipt use the same complete-row charge");
         assert.equal(typeof advised?.body, "string", "the advised row is currently open in the same packet");
         assert.equal(object.logTokensTotal, stored.weight, "conditional advice participates in exact packet accounting");

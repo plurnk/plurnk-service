@@ -26,7 +26,7 @@ test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodi
         const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the available tools." });
         assert.equal(finalStatus, 200);
         const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![1]! });
-        const survey = logEntries(JSON.parse(row!.packet)).find((entry) => entry.target === "worker:///_plurnk/plurnk/*.md");
+        const survey = logEntries(JSON.parse(row!.packet)).find((entry) => entry.path === "worker:///_plurnk/plurnk/*.md");
         assert.ok(survey && typeof survey.body === "string", "turn 0 carries the generated tool catalog");
         const body = survey.body.replace(/^ *\d+:/gm, "");
         const groups = JSON.parse(body) as Array<Array<{ path: string; aside?: string }>>;
@@ -75,9 +75,9 @@ test("{§tools-resource-materialization} turn 0 surveys an expanded server's too
             const row = await db.test_get_packet.get<{ packet: string }>({ id: first });
             const packet = JSON.parse(row!.packet);
             const entries = logEntries(packet);
-            const survey = entries.find((e) => e.target === "worker:///_plurnk/tools/fixture.md");
-            assert.ok(survey, `the expanded server is surveyed; got ${JSON.stringify(entries.map((e) => [e.path, e.target]))}`);
-            assert.match(String(survey.path), /\/FIND$/, "the survey is a FIND, not a document READ");
+            const survey = entries.find((e) => e.path === "worker:///_plurnk/tools/fixture.md");
+            assert.ok(survey, `the expanded server is surveyed; got ${JSON.stringify(entries.map((e) => [e.logPath, e.path]))}`);
+            assert.match(String(survey.logPath), /\/FIND$/, "the survey is a FIND, not a document READ");
             assert.equal(survey.aside, undefined, "the target and +tools classification already orient the survey");
             const log = packetSection(packet, "log");
             assert.match(log, /"matched":"````fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.md -->\\n\{\\"message\\": string\}\\n````"/, "one row per tool: opening fence, aside, preview, schema link, closing fence");
@@ -114,7 +114,7 @@ Read the input schema.
         const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the MCP add input schema." });
         assert.equal(finalStatus, 200);
         const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds!.at(-1)! });
-        const read = logEntries(JSON.parse(row!.packet)).find((entry) => entry.target === target);
+        const read = logEntries(JSON.parse(row!.packet)).find((entry) => entry.path === target);
         assert.ok(read && typeof read.body === "string", "ordinary READ delivers the linked input document to the next model packet");
         const body = read.body.replace(/^(?: *\d+:|@[0-9A-Za-z]{5} +\d+:)/gm, "");
         const schemas = [...body.matchAll(/^```json\n([\s\S]*?)\n```/gm)].map((match) => JSON.parse(match[1]!));

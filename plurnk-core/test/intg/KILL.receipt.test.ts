@@ -60,9 +60,9 @@ Continue the task.
                     assert.equal(rx.receipt.effect.removedText, "line 10\nline 11");
                     const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: run.turnIds!.at(-1)! }))!.packet);
                     const log = (packet.sections as Array<{ name: string; content: string }>).find(({ name }) => name === "log")!.content;
-                    const receipt = parseLogRecords(log).find((row) => String(row.path).endsWith("/KILL"));
+                    const receipt = parseLogRecords(log).find((row) => String(row.logPath).endsWith("/KILL"));
                     assert.ok(receipt, "the packet retains the KILL identity");
-                    assert.equal(receipt.target, scheme === "file" ? "notes.md" : target);
+                    assert.equal(receipt.path, scheme === "file" ? "notes.md" : target);
                     assert.equal(receipt.extent, "lines 20->18");
                     assert.equal(receipt.change, "-2 +0");
                     assert.equal(receipt.removed, "line 10\nline 11");
@@ -73,7 +73,7 @@ Continue the task.
                     assert.ok(Number(receipt.logTokens) > 0, "packet accounting includes the complete visible receipt");
                     const recalled = await daemon.engine.look({
                         workspaceId, workerId: run.modelWorkerId!, loopId: run.loopId,
-                        statement: { op: "READ", aside: null, metadata: null, target: parsePath(String(receipt.path)), lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: { line: 1, column: 0 } },
+                        statement: { op: "READ", aside: null, metadata: null, target: parsePath(String(receipt.logPath)), lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: { line: 1, column: 0 } },
                     });
                     assert.equal(recalled.status, 200);
                     assert.equal(recalled.content, rx.receipt.effect.context, "log READ and packet share one canonical receipt body");
@@ -97,10 +97,10 @@ test("whole-entry KILL has a bodyless result, not an invented text mutation rece
             assert.equal(run.finalStatus, 200);
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: run.turnIds!.at(-1)! }))!.packet);
             const log = (packet.sections as Array<{ name: string; content: string }>).find(({ name }) => name === "log")!.content;
-            const receipt = parseLogRecords(log).find((row) => String(row.path).endsWith("/KILL"));
+            const receipt = parseLogRecords(log).find((row) => String(row.logPath).endsWith("/KILL"));
             assert.ok(receipt);
             assert.equal(receipt.status, 200);
-            assert.equal(receipt.target, "worker:///doomed");
+            assert.equal(receipt.path, "worker:///doomed");
             for (const field of ["body", "extent", "change", "removed", "range", "tokensBody"]) {
                 assert.equal(receipt[field], undefined, `whole-entry deletion has no ${field}`);
             }

@@ -259,7 +259,7 @@ test("{§stream-observation-result}: invalid result liveness cannot advance publ
             await assert.rejects(fixture.db.engine_insert_stream_delta.get({
                 worker_id: fixture.workerId, loop_id: fixture.loopId, turn_id: turn.turnId,
                 sequence: 100, subscription_publication_id: channels[0]!.publication_id,
-                source: null, scheme: "structured-fixture", hostname: null, port: null,
+                scheme: "structured-fixture", hostname: null, port: null,
                 pathname: "/1/0/1", fragment: "results",
                 rx: JSON.stringify({ status: 200, content: "output", terminal }),
                 status: 200, weight: 3, attrs: JSON.stringify({ streamEnd: 6 }), folded: "[]",

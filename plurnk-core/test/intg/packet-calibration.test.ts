@@ -93,18 +93,18 @@ test("{§packet-token-accounting} non-unit calibration preserves one ruler for R
     const packet = await f.build(provider);
     const state = budgetOf(packet);
     const rows = logEntries(packet);
-    const read = rows.find(({ path }) => path === "log:///1/1/2/READ")!;
+    const read = rows.find(({ logPath: path }) => path === "log:///1/1/2/READ")!;
     assert.ok(Number(read.logTokens) < state.logTokensTotal, "a visible READ cannot outweigh its complete packet");
     assert.equal(state.logTokensTotal, packet.weight, "the total retains the measured curation ruler");
     assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, { content }) => sum + contentWeight(content), 0));
     assert.equal(state.logTokensMax, Math.floor(provider.inputCapacity! / factor));
     assert.equal(state.tokensResponseMax, provider.outputBudget! - provider.reasoningBudget!);
     assert.deepEqual(rows, logEntries(uncalibrated), "neither receipt nor FIND item costs are rewritten by calibration");
-    const find = rows.find(({ path }) => path === "log:///1/1/3/FIND")!;
+    const find = rows.find(({ logPath: path }) => path === "log:///1/1/3/FIND")!;
     assert.ok(Number(find.itemsTokenTotal) > 0, "the FIND witness has real resource accounting");
-    assert.ok(state.logTokensLargest?.some(({ path }) => path === read.path), "pressure identifies the dominant body");
+    assert.ok(state.logTokensLargest?.some(({ path }) => path === read.logPath), "pressure identifies the dominant body");
     for (const item of state.logTokensLargest!) {
-        const row = rows.find(({ path }) => path === item.path)!;
+        const row = rows.find(({ logPath: path }) => path === item.path)!;
         assert.equal(item.logTokens, row.logTokens, "the same row has the same cost in the pressure inventory");
         assert.equal(item.tokensBody, row.tokensBody);
     }
@@ -120,7 +120,7 @@ test("{§tokenomics-prompt-projection-share} new shared-model samples cannot res
     });
     const persisted = (await f.db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet;
     const before = await f.build(provider);
-    const arrival = logEntries(before).find(({ path }) => String(path).endsWith("/SEND"));
+    const arrival = logEntries(before).find(({ logPath: path }) => String(path).endsWith("/SEND"));
     assert.ok(arrival && typeof arrival.body === "string" && arrival.body.length > 16 && arrival.body.length < prompt.length);
     assert.ok(arrival.chunk, "the cached message is genuinely bounded, not a vacuous short fixture");
     await recordSamples(f);
@@ -235,13 +235,13 @@ test("{§packet-token-accounting} scoped and whole KILL reclaim stable costs wit
     await recordSamples(f);
     const raw = await f.db.tok_log_weight.get<{ rx: string; weight: number }>({ id: readId });
     const before = await f.build();
-    const read = logEntries(before).find(({ path }) => path === "log:///1/1/2/READ")!;
+    const read = logEntries(before).find(({ logPath: path }) => path === "log:///1/1/2/READ")!;
     assert.equal((await f.engine.dispatch({ ...args, sequence: 5, statement: killStmt(urlPath("log", "/1/1/2/READ"), { marks: [1, -1] }) })).status, 200);
     const trimmed = await f.build();
-    const trimmedRead = logEntries(trimmed).find(({ path }) => path === read.path)!;
+    const trimmedRead = logEntries(trimmed).find(({ logPath: path }) => path === read.logPath)!;
     assert.equal(trimmedRead.body, undefined);
     const renderedRead = (packet: RequestPacket) => packetSection(packet, "log")
-        .split("\n\n").find((row) => row.startsWith(`### ${String(read.path)}\n`))!;
+        .split("\n\n").find((row) => row.startsWith(`### ${String(read.logPath)}\n`))!;
     assert.equal(read.logTokens, contentWeight(renderedRead(before)));
     assert.equal(read.tokensBody, undefined);
     assert.equal(Number(read.logTokens) - Number(trimmedRead.logTokens),
@@ -250,7 +250,7 @@ test("{§packet-token-accounting} scoped and whole KILL reclaim stable costs wit
     assert.ok(trimmed.weight < before.weight, "the large body removal more than pays for its receipt");
     assert.equal((await f.engine.dispatch({ ...args, sequence: 6, statement: killStmt(urlPath("log", "/1/1/2/READ")) })).status, 200);
     const killed = await f.build();
-    assert.equal(logEntries(killed).some(({ path }) => path === read.path), false);
+    assert.equal(logEntries(killed).some(({ logPath: path }) => path === read.logPath), false);
     for (const packet of [before, trimmed, killed]) {
         assert.equal(budgetOf(packet).logTokensTotal, packet.weight);
         assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, { content }) => sum + contentWeight(content), 0));

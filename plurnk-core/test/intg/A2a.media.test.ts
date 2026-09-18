@@ -99,7 +99,7 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
         const restoredText = provider.received[6]!.map(chatMessageText).join("\n");
         const log = /(?:^|\n)## Log\n\n([\s\S]*?)(?=\n\n## |$)/u.exec(restoredText)?.[1];
         assert.ok(log, "the provider packet contains the materialized Log section");
-        const restoredRead = parseLogRecords(log).find((row) => row.target === `${resource}#bytes`);
+        const restoredRead = parseLogRecords(log).find((row) => row.path === `${resource}#bytes`);
         assert.ok(restoredRead, "the reacquired source has an ordinary byte READ receipt");
         assert.equal(restoredRead.body, Array.from(media.bytes.subarray(0, 3), (byte, index) =>
             `${index + 1}:${byte.toString(16).padStart(2, "0")}\n`).join(""), "text-only and native routes expose the same exact selected octets");

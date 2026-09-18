@@ -15,9 +15,9 @@ export default class StreamMock extends Mock {
             const log = /(?:^|\n)## Log\n([\s\S]*?)(?=\n## |$)/u.exec(text)?.[1];
             assert.ok(log, "the actual request contains the log");
             const runtime = new URL(stream).protocol.slice(0, -1);
-            const invocation = parseLogRecords(log.trim()).find((row) => row.stream === stream && String(row.path).endsWith(`/${runtime}`));
+            const invocation = parseLogRecords(log.trim()).find((row) => row.stream === stream && String(row.logPath).endsWith(`/${runtime}`));
             assert.ok(invocation, "the next program follows the invocation's actual log address");
-            content = content.replaceAll("$INVOCATION", String(invocation.path));
+            content = content.replaceAll("$INVOCATION", String(invocation.logPath));
         }
         const { ops: _ops, ...assistant } = response.assistant;
         return { ...response, assistant: { ...assistant, content } };

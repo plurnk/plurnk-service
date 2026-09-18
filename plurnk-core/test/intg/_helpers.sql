@@ -226,6 +226,12 @@ FROM subscriptions WHERE id = $id;
 -- PREP: test_subscription_reassign_source
 UPDATE subscriptions SET source = $source WHERE id = $id;
 
+-- PREP: test_stream_observation_source
+SELECT s.source FROM log_entries le
+JOIN subscription_publications sp ON sp.id = le.subscription_publication_id
+JOIN subscriptions s ON s.id = sp.subscription_id
+WHERE le.id = $id;
+
 -- PREP: test_get_subscription_by_entry
 SELECT id, worker_id, entry_id, scheme, handle, closed_at, close_status, close_result, channel_results
 FROM subscriptions WHERE worker_id = $worker_id AND entry_id = $entry_id;

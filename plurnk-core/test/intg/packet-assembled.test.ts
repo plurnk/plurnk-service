@@ -60,7 +60,7 @@ test("{§worker-auto-name}: assembled receipts and child inventory identify anon
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
-        const receipts = logEntries(packet).filter(({ path }) => /\/(WORK|FORK)$/.test(String(path)));
+        const receipts = logEntries(packet).filter(({ logPath: path }) => /\/(WORK|FORK)$/.test(String(path)));
         assert.equal(receipts.length, 2);
         const names = await Promise.all(children.map(async (id) => (await db.worker_get.get<{ name: string }>({ id }))!.name));
         assert.equal(new Set(names).size, 2);
@@ -68,7 +68,7 @@ test("{§worker-auto-name}: assembled receipts and child inventory identify anon
         for (const [index, name] of names.entries()) {
             assert.match(name, /^[a-f0-9]{8}$/);
             assert.equal(receipts[index]?.worker, `worker://${name}`, "the outcome address is visible beside the spawning operation");
-            assert.equal(receipts[index]?.target, undefined, "no address is invented for the authored target slot");
+            assert.equal(receipts[index]?.path, undefined, "no address is invented for the authored operand");
             assert.ok(pointers.includes(`worker://${name}`), "the same identity appears in the ordinary live-child inventory");
         }
         assert.match(String(receipts[0]?.body), /Review the files\./);
@@ -101,10 +101,10 @@ test("assembled packet: editable READ lines carry copyable anchors without chang
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const read = logEntries(await getPacket(db, second.turnId)).find((entry) =>
-            entry.target === "worker:///anchored.md"
-            && typeof entry.path === "string"
-            && entry.path.endsWith("/READ"));
-        assert.equal(read?.target, "worker:///anchored.md");
+            entry.path === "worker:///anchored.md"
+            && typeof entry.logPath === "string"
+            && entry.logPath.endsWith("/READ"));
+        assert.equal(read?.path, "worker:///anchored.md");
         assert.match(String(read?.body), /^@[0-9A-Za-z]{5}   9:line 9\n@[0-9A-Za-z]{5}  10:line 10\n$/);
     } finally { await db.close(); }
 });
@@ -133,9 +133,9 @@ test("assembled packet: landed EDIT receipts expose causal parser-recovery evide
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const edits = logEntries(await getPacket(db, second.turnId)).filter((entry) =>
-            typeof entry.path === "string" && entry.path.endsWith("/EDIT"));
-        const broken = edits.find((entry) => entry.target === "worker:///broken.go");
-        const clean = edits.find((entry) => entry.target === "worker:///clean.go");
+            typeof entry.logPath === "string" && entry.logPath.endsWith("/EDIT"));
+        const broken = edits.find((entry) => entry.path === "worker:///broken.go");
+        const clean = edits.find((entry) => entry.path === "worker:///clean.go");
         assert.match(String(broken?.parseIssues), /^0→[1-9]\d*$/);
         assert.equal(clean !== undefined && "parseIssues" in clean, false);
     } finally { await db.close(); }
@@ -225,22 +225,22 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
                 `${target} begins its own universally numbered FIND row`,
             );
         }
-        assert.ok(logEntries(packet).some(({ path }) => String(path).endsWith("/FIND")), "the catalog foist appears as a FIND op in the log address");
+        assert.ok(logEntries(packet).some(({ logPath: path }) => String(path).endsWith("/FIND")), "the catalog foist appears as a FIND op in the log address");
         const initialization = logEntries(packet)
-            .filter(({ path }) => String(path).startsWith("log:///1/1/"));
+            .filter(({ logPath: path }) => String(path).startsWith("log:///1/1/"));
         const initializationOutcomes = initialization;
         assert.deepEqual(
-            initializationOutcomes.map(({ path }) => String(path).split("/").at(-1)),
+            initializationOutcomes.map(({ logPath: path }) => String(path).split("/").at(-1)),
             ["NOTE", "NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ"],
             "turn 0 exposes its reasoning and program notes, executed surveys, and reasoning and program READs",
         );
         assert.deepEqual(
-            initialization.filter(({ target }) => target === "ops://subject/1/1").map((row) => ({ open: "body" in row, origin: row.origin })),
+            initialization.filter(({ path: target }) => target === "ops://subject/1/1").map((row) => ({ open: "body" in row, origin: row.origin })),
             [{ open: true, origin: "_plurnk" }],
             "turn 0's source is the result of its actual READ",
         );
         assert.deepEqual(
-            initializationOutcomes.filter(({ target }) => target !== undefined).slice(0, 5).map(({ target }) => target),
+            initializationOutcomes.filter(({ path: target }) => target !== undefined).slice(0, 5).map(({ path: target }) => target),
             [
                 "worker:///_plurnk/plurnk/*.md",
                 "worker:///_plurnk/tools/*.md",
@@ -339,23 +339,23 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
         // Turn 0 archives the prompt by COPY (log:///1/1/…); the model's two are under test.
-        const copies = logEntries(packet).filter(({ path }) => String(path).endsWith("/COPY") && !String(path).startsWith("log:///1/1/"));
+        const copies = logEntries(packet).filter(({ logPath: path }) => String(path).endsWith("/COPY") && !String(path).startsWith("log:///1/1/"));
 
         assert.equal(copies.length, 2);
-        assert.equal(copies[0]?.source, "worker:///src.md<2,3>");
-        assert.equal(copies[0]?.destination, "worker:///slice.md");
+        assert.equal(copies[0]?.from, "worker:///src.md<2,3>");
+        assert.equal(copies[0]?.to, "worker:///slice.md");
         assert.equal(copies[0]?.status, 201);
         assert.ok(Array.isArray(copies[0]?.effects));
         const [effect] = copies[0].effects as Array<Record<string, unknown>>;
-        assert.equal(effect?.target, "worker:///slice.md");
+        assert.equal(effect?.path, "worker:///slice.md");
         assert.equal(effect?.action, "create");
         assert.equal(Object.hasOwn(effect ?? {}, "rev"), false, "no revision token in the packet");
         assert.equal(effect?.extent, "lines 0->2");
         assert.equal(effect?.change, "-0 +2");
         assert.equal(effect?.range, "<1,-1> 1^->1-2");
         assert.ok(copies[0] !== undefined && "body" in copies[0], "the landed materialization is open (body present, #338)");
-        assert.equal(copies[1]?.source, "worker:///src.md<2,3>");
-        assert.equal(copies[1]?.destination, "worker:///slice.md");
+        assert.equal(copies[1]?.from, "worker:///src.md<2,3>");
+        assert.equal(copies[1]?.to, "worker:///slice.md");
         assert.equal(copies[1]?.status, 304);
         assert.equal(copies[1]?.effects, undefined);
         assert.ok(copies[1] !== undefined && !("body" in copies[1]) && !("tokensBody" in copies[1]), "the whole-channel effect has no text body (#338)");
@@ -436,7 +436,7 @@ test("assembled packet: the skills foist surfaces the Worker's materialized skil
 
         // The materialized doc reaches the model through its private FIND, not
         // an inline packet link ({§schemes-directory}).
-        assert.match(log, /"target":"worker:\/\/\/_plurnk\/plurnk\/\*\.md"/, "the foist scopes discovery to the Worker's skills tree");
+        assert.match(log, /"path":"worker:\/\/\/_plurnk\/plurnk\/\*\.md"/, "the foist scopes discovery to the Worker's skills tree");
         assert.match(log, /worker:\/\/\/_plurnk\/plurnk\/worker\.md/, "the materialized skill surfaces in the foist's rendered result");
         assert.match(log, /"aside":"Manage shared worker entries\."/, "the catalog projects the document's Summary without opening its body");
     } finally {

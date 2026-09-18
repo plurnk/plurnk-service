@@ -43,7 +43,7 @@ test("{§send-resource-attachments}: outbound A2A snapshots only selected resour
         const failed = rows.filter((row) => row.op === "SEND" && row.status_rx === 404);
         assert.equal(failed.length, 1, "the source failure is a visible ordinary SEND failure");
         const packet = provider.received.at(-1)!.map(chatMessageText).join("\n");
-        assert.match(packet, /"attachments":\[\{"name":"selected.md","mediaType":"text\/markdown","target":"worker:\/\/\/selected.md"\}\]/u);
+        assert.match(packet, /"attachments":\[\{"name":"selected.md","mediaType":"text\/markdown","path":"worker:\/\/\/selected.md"\}\]/u);
     } finally {
         await daemon.stop();
         await db.close();

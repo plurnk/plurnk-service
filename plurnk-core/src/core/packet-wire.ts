@@ -404,7 +404,7 @@ export default class PacketWire {
     static #canonicalJson(obj: Record<string, unknown>): string {
         const keys = Object.keys(obj).sort();
         const sorted: Record<string, unknown> = {};
-        for (const key of ["target", "aside"]) {
+        for (const key of ["path", "from", "to", "aside"]) {
             if (Object.hasOwn(obj, key)) sorted[key] = obj[key];
         }
         for (const k of keys) sorted[k] = obj[k];
@@ -786,14 +786,7 @@ export default class PacketWire {
         const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
         if (typeof tx?.aside === "string") meta.aside = tx.aside;
         const target = PacketWire.#renderActionTarget(e.target);
-        // {§exec-stream}: a terminal stream observation's address is the stream it observed,
-        // rendered under `stream` like the invocation's own link — never a `target`, which
-        // the model would otherwise author into an execution slot (#425 F4).
-        const terminalStream = op === "READ"
-            && e.origin === "_plurnk"
-            && e.attrs !== null
-            && typeof e.attrs === "object"
-            && Object.hasOwn(e.attrs, "streamEnd");
+        // {§log-address-metadata}: operands are independent of record identity and attribution.
         if (op === "COPY" || op === "MOVE") {
             const source = PacketWire.#renderSelection(
                 tx?.source?.target,
@@ -803,8 +796,8 @@ export default class PacketWire {
                 tx?.destination?.target,
                 tx?.destination?.lineMarker,
             );
-            if (source !== null) meta.source = source;
-            if (destination !== null) meta.destination = destination;
+            if (source !== null) meta.from = source;
+            if (destination !== null) meta.to = destination;
             if (
                 typeof e.status === "number"
                 && e.status < 400
@@ -813,7 +806,7 @@ export default class PacketWire {
                 throw new Error(`A successful ${op} log row must retain both operand selections.`);
             }
         } else if (target !== null) {
-            meta[terminalStream ? "stream" : "target"] = target;
+            meta.path = target;
         }
         // {§worker-auto-name} The created identity is an outcome, not an authored target.
         if ((op === "WORK" || op === "FORK") && e.attrs !== null && typeof e.attrs === "object"
@@ -841,11 +834,11 @@ export default class PacketWire {
     static #rowResultFacts(identity: RowIdentity, e: LogEntryView, rx: RxView | null): RowResultFacts {
         const { meta, op, tx } = identity;
         if (op === "SEND" && rx !== null && typeof rx === "object" && Array.isArray(rx.attachments) && rx.attachments.length > 0) {
-            meta.attachments = rx.attachments.map(({ name, mediaType, target }) => ({ name, mediaType, target }));
+            meta.attachments = rx.attachments.map(({ name, mediaType, target }) => ({ name, mediaType, path: target }));
         }
         // {§operation-resource-receipt}: preserve the returned address, not a second authored target.
         if (rx !== null && typeof rx === "object" && typeof rx.resource === "string"
-            && rx.resource.length > 0 && rx.resource !== meta.target && rx.resource !== meta.stream) {
+            && rx.resource.length > 0 && rx.resource !== meta.path && rx.resource !== meta.stream) {
             meta.resource = rx.resource;
         }
         // {§exec-stream}: explicit and automatic READs preserve the same
@@ -871,7 +864,7 @@ export default class PacketWire {
             Validator.assertProblemDetails(problem as ProblemDetails);
             meta.problem = Problems.project(problem as ProblemDetails, {
                 status: e.status,
-                row: meta,
+                row: { ...meta, target: identity.target },
             });
         }
         // The success-side sibling (#342): a sub-problem receipt may carry one
@@ -967,7 +960,7 @@ export default class PacketWire {
         ) {
             const effects = assertResourceEffects(rx.effects);
             meta.effects = effects.map((effect) => ({
-                target: effect.target,
+                path: effect.target,
                 action: effect.action,
                 ...(effect.receipt === undefined
                     ? {}

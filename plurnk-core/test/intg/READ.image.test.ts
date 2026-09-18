@@ -262,8 +262,8 @@ test("{§packet-attachment-parts} native content survives completed responses un
         assert.doesNotMatch(JSON.stringify(content), /has been ejected from context/);
     }
     assert.equal(typeof users[3]!.content, "string", "even an irrelevant KILL scope releases the atomic native observation");
-    assert.doesNotMatch(String(users[3]!.content), /### log:\/\/\/\d+\/\d+\/\d+\/READ\n\{"target":"logo\.png"/);
-    assert.match(String(users[3]!.content), /"target":"ops:\/\/[^/"]+\/1\/1"/, "the out-of-bounds text scope remains a no-op for the ordinary initialization READ");
+    assert.doesNotMatch(String(users[3]!.content), /### log:\/\/\/\d+\/\d+\/\d+\/READ\n\{"path":"logo\.png"/);
+    assert.match(String(users[3]!.content), /"path":"ops:\/\/[^/"]+\/1\/1"/, "the out-of-bounds text scope remains a no-op for the ordinary initialization READ");
 });
 
 test("{§packet-attachment-parts} retained and forked READs preserve original bytes after source deletion", async () => {

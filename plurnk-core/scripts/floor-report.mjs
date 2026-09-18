@@ -61,11 +61,11 @@ try {
     const rows = parseLogRecords(logContent).map((row) => {
         const active = Number(row.logTokens ?? 0);
         const body = typeof row.body === "string" ? contentWeight(row.body.trimEnd()) : 0;
-        return { path: String(row.path), active, metadata: active - body };
+        return { logPath: String(row.logPath), active, metadata: active - body };
     });
     const byOp = new Map();
     for (const row of rows) {
-        const op = row.path.split("/").pop() ?? "?";
+        const op = row.logPath.split("/").pop() ?? "?";
         byOp.set(op, (byOp.get(op) ?? 0) + row.active);
     }
     const rowActive = rows.reduce((sum, row) => sum + row.active, 0);
