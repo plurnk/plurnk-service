@@ -2771,6 +2771,15 @@ batch of 2026-08-29 showed the absolute `cwd` copied back into the target slot a
 family — and neither a command nor a working directory is ever a target. The default
 shell is written as its own fence, ```` ```sh ````; no runtime-less form exists.
 
+§exec-target-near-miss Two target near-misses have one reading each and are read
+without a diagnostic (#758). A directory target is never a program: with a body
+and no explicit `cwd`, the body runs with that directory as its working
+directory; without a body it is still `target-not-a-program`. A target in the
+executor's own scheme whose path can never be a stream (`sh:///daemon-env`;
+streams are eight hex digits) is the writer's name for the run: with a body, the
+body runs as if targetless; without one, the source read refuses as before. A
+real stream id is always the program source.
+
 §exec-tool-fall-through **A tool run as a shell command is named at the failure
 site.** A bare shell command whose program is the name of a tool published by
 another enabled runtime (`brave_web_search {…}` under the default shell) exits

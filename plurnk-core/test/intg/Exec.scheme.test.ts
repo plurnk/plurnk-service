@@ -396,18 +396,32 @@ for (const source of ["local", "file", "worker"] as const) {
     });
 }
 
-test("{§exec-target-routing} a directory is not a program, and `[{\"cwd\": \"…\"}]` with an empty body is refused", async () => {
+test("{§exec-target-near-miss} a directory target with a body runs there; with nothing to run it is refused, as is `[{\"cwd\": \"…\"}]` with an empty body", async () => {
     await withWorkspace(async (ctx) => {
         const root = await mkdtemp(join(tmpdir(), "exec-target-empty-directory-"));
         try {
             await mkdir(join(root, "sub"));
             await rootWorkspace(ctx.db, ctx.workspaceId, root);
-            const asProgram = await ctx.engine.dispatch({
-                statement: execStmt(null, "sub", "echo hi"),  // `### EXEC_ (sub)` — a directory in the program slot
+            const idD = deferred<number>();
+            const asCwd = ctx.engine.dispatch({
+                statement: execStmt(null, "sub", "pwd"),  // `sh (sub)` + body — the directory is where the body runs (#758)
                 workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+                onDispatch: (id) => idD.resolve(id),
+            });
+            const id = await idD.promise;
+            const row = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id });
+            const attrs = JSON.parse(row?.attrs ?? "{}") as { cwd: string | null; target: string | null; body: string };
+            assert.equal(attrs.cwd, join(root, "sub"), "the directory is the working directory");
+            assert.equal(attrs.target, null, "and no longer a program target");
+            assert.equal(attrs.body, "pwd");
+            ctx.engine.resolveProposal(id, { decision: "reject" });
+            await asCwd.catch(() => {});
+            const asProgram = await ctx.engine.dispatch({
+                statement: execStmt(null, "sub", ""),  // `sh (sub)` with no body — a directory is not a program
+                workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 3, origin: "model",
             });
             assert.equal(asProgram.status, 400);
-            assert.equal(asProgram.problem?.type, "https://problems.plurnk.xyz/scheme/exec/target-not-a-program", "a directory target is refused toward `[{\"cwd\": \"…\"}]`");
+            assert.equal(asProgram.problem?.type, "https://problems.plurnk.xyz/scheme/exec/target-not-a-program");
             const result = await ctx.engine.dispatch({
                 statement: execStmt(null, null, "", "sub"),  // `### EXEC_ [{"cwd": "sub"}]` — nothing to run
                 workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",

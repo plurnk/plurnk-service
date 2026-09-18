@@ -367,7 +367,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const projectRoot = workspaceRow?.project_root ?? null;
         // The working directory is always concrete — the project root, or the shell's own
         // cwd when the workspace has none — so every receipt can name it ({§exec-target-routing}).
-        let cwd: string | null = projectRoot ?? process.cwd();
+        const defaultCwd = projectRoot ?? process.cwd();
+        let cwd: string | null = defaultCwd;
         let target: string | null = null;
         let resourceSource: string | null = null;
         const targetDecl = invocation.target;
@@ -392,6 +393,14 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                     );
                 }
             }
+        }
+
+        // {§exec-target-near-miss} — a target in this executor's own scheme whose path can never be a
+        // stream (`sh:///daemon-env`; streams are eight hex digits) is the writer's name for the run,
+        // not a program: with a body present, the body runs as if targetless. Never taught.
+        if (resourceSource !== null && hasBody && execTarget?.kind === "url" && execTarget.scheme === runtime
+            && !/^\/[0-9a-f]{8}(?:[/#]|$)/u.test(execTarget.pathname ?? "")) {
+            resourceSource = null;
         }
 
         // {§env-option} — the fence's own environment is the service's key: refused here by name,
@@ -436,7 +445,12 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                     ) as ExecResult;
                 }
             }
-            if (kind === "directory") {
+            // {§exec-target-near-miss} — a directory is never a program: with a body and no explicit
+            // cwd, it is where the body runs. Never taught.
+            if (kind === "directory" && hasBody && cwd === defaultCwd) {
+                cwd = inspected;
+                target = null;
+            } else if (kind === "directory") {
                 return refuse(
                     "target-not-a-program",
                     `${runtime} target '${target}' is a directory, not a program.`,

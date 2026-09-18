@@ -488,3 +488,22 @@ test("execution source eligibility and failures come from the owning READ contra
         await ctx.close();
     }
 });
+
+test("{§exec-target-near-miss} an own-scheme target that can never be a stream is a name for the run; a real stream id stays a source (#758)", async () => {
+    const ctx = await wire();
+    try {
+        const labelled = await ctx.dispatch(ctx.root, "tool:///daemon-env", "print the environment");
+        assert.equal(labelled.status < 400, true, `a label target with a body runs: ${labelled.status}`);
+        assert.deepEqual(ctx.runs.map(({ body, target }) => ({ body, target })), [{ body: "print the environment", target: null }]);
+
+        const stream = await ctx.dispatch(ctx.root, "tool:///0badcafe", "print the environment");
+        assert.equal(stream.status, 404, "an eight-hex stream id is still read as the program source");
+        assert.equal(ctx.runs.length, 1);
+
+        const bodiless = await ctx.dispatch(ctx.root, "tool:///daemon-env", "");
+        assert.equal(bodiless.status, 404, "without a body there is nothing else to run");
+        assert.equal(ctx.runs.length, 1);
+    } finally {
+        await ctx.close();
+    }
+});
