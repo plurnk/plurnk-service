@@ -315,6 +315,12 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
 
     try {
         const worker = await run("worker", { workerId: a1.workerId });
+        // {§digest-programmatic-surface}: a turn line names its own artifact and the model's own
+        // count, so a reader never subtracts harness turns or counts packet files by hand.
+        assert.match(worker.markdown, /^T\d+ \(model turn \d+ · packet\d{3}\): producer=model/m);
+        for (const stem of worker.markdown.match(/packet\d{3}/gu) ?? []) {
+            assert.ok(worker.files.some((file) => file.startsWith(`${stem}.`)), `${stem} names a written artifact`);
+        }
         assert.deepEqual(worker.json.workspaces.map(({ id }) => id), [workspaceA]);
         assert.deepEqual(worker.json.workers.map(({ id }) => id), [a1.workerId]);
         assert.deepEqual(worker.json.loops.map(({ id }) => id), [a1.loopId]);

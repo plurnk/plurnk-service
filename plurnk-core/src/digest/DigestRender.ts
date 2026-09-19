@@ -255,7 +255,10 @@ export default class DigestRender {
             ? ""
             : `  ⚠ ${attemptConditions.join(" ")}/${attempts.length}`;
         const packetBadge = turn.packetFailure === null ? "" : "  ⚠ packet=invalid";
-        const lifecycle = `T${turn.sequence}: producer=${turn.producer} kind=${turn.kind} status=${turn.status}${turn.completed_at === null ? " state=open" : ""}`;
+        const stem = DigestRender.packetStems(m).get(turn.id);
+        const modelTurn = DigestRender.#modelTurnOrdinal(turn, m);
+        const provenance = [modelTurn === null ? null : `model turn ${modelTurn}`, stem].filter((part) => part !== null).join(" · ");
+        const lifecycle = `T${turn.sequence}${provenance === "" ? "" : ` (${provenance})`}: producer=${turn.producer} kind=${turn.kind} status=${turn.status}${turn.completed_at === null ? " state=open" : ""}`;
         const head = turn.kind === "inference"
             ? `${lifecycle} finish=${finishReason}${rails} model=${model} ${tokens}${cost}${errBadge}${attemptBadge}${packetBadge}`
             : `${lifecycle}${errBadge}${packetBadge}`;
@@ -467,6 +470,31 @@ export default class DigestRender {
 
     // Per-turn forensic files. turnOps is the source authority; PacketWire
     // reproduces provider request slots, and assistantRaw preserves provider bytes.
+    // The artifact stem each turn's packet files carry: one ordering, shared with the turn lines
+    // so a reader never counts files by hand.
+    static #stemCache = new WeakMap<DigestModel, Map<number, string>>();
+
+    static packetStems(m: DigestModel): Map<number, string> {
+        const cached = DigestRender.#stemCache.get(m);
+        if (cached !== undefined) return cached;
+        const stems = new Map<number, string>();
+        m.turns
+            .filter((turn) => turn.packet !== null || turn.packetFailure !== null || turn.program !== null)
+            .toSorted((a, b) => a.id - b.id)
+            .forEach((turn, ordinal) => stems.set(turn.id, `packet${String(ordinal).padStart(3, "0")}`));
+        DigestRender.#stemCache.set(m, stems);
+        return stems;
+    }
+
+    // Among its loop's model turns, this one's ordinal: the model's own count, which skips the
+    // harness turns a reader would otherwise have to subtract.
+    static #modelTurnOrdinal(turn: TurnRow, m: DigestModel): number | null {
+        if (turn.producer !== "model") return null;
+        const siblings = (m.turnsByLoop.get(turn.loop_id) ?? []).filter((t) => t.producer === "model");
+        const index = siblings.findIndex((t) => t.id === turn.id);
+        return index < 0 ? null : index + 1;
+    }
+
     static packetFiles(m: DigestModel): string[] {
         const written: string[] = [];
         m.turns

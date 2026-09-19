@@ -275,7 +275,7 @@ test("Digest: operation and request-only turns remain visibly distinct", async (
         assert.match(markdown, /T1: producer=client kind=operation status=200/);
         assert.doesNotMatch(markdown, /T1:.*(?:model=|input=|cost=)/);
         assert.match(markdown, /T2: producer=plugin kind=operation status=200/);
-        assert.match(markdown, /T3:.*\n  ↳ emission: \(none admitted\)/);
+        assert.match(markdown, /T3 \(model turn 1 · packet\d{3}\):.*\n  ↳ emission: \(none admitted\)/);
     } finally {
         await rm(dir, { recursive: true, force: true });
     }
@@ -352,8 +352,8 @@ test("{§digest-forensic-fidelity}: one malformed historical packet remains exac
 
         const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
         assert.match(markdown, /Stored packet failures: 1/);
-        assert.match(markdown, /T1:.*packet=invalid/);
-        assert.match(markdown, /T2:.*status=502/);
+        assert.match(markdown, /T1 \(model turn 1 · packet\d{3}\):.*packet=invalid/);
+        assert.match(markdown, /T2 \(model turn 2 · packet\d{3}\):.*status=502/);
 
         const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8"));
         assert.equal(json.turns.length, 2);
