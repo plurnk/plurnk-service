@@ -695,7 +695,7 @@ export default class TurnRunner {
         if (initializationTurn !== null) createdTurnIds.push(initializationTurn.id);
         const initializationPolicies = initializationTurn === null
             ? []
-            : (await CapabilityPolicies.layers(this.#db, workspaceId)).map((layer) => layer.policy);
+            : (await CapabilityPolicies.layers(this.#db, workspaceId, loopId)).map((layer) => layer.policy);
         const modelTurn = initializationTurn === null
             ? await Turn.open(this.#db, { loopId, producer: "model", kind: "inference" })
             : null;

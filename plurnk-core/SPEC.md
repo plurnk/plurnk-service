@@ -3262,10 +3262,17 @@ Unattended, two things follow and nothing else does:
   contract violation: the model has to read why it cannot ask, and "the executor failed
   outside its operation result contract" teaches it nothing it can act on.
 
-  Known gap: the model is still *taught* the tool and still spends a turn asking before being
-  refused. Removing it from the catalog outright is the capability cascade's job
-  ({§worker-tool-admission} already does exactly that for a denied `interact` access class),
-  and that needs a loop-scoped capability layer, which does not exist yet.
+  Dispatch refuses it at the **loop ring** of the capability cascade: an unattended run's own
+  layer denies the `interact` access class ({§worker-tool-admission}), and the denial names that
+  ring, so a refusal says which scope refused rather than appearing as a bare no.
+
+  Known gap: the reserved tool tree is one artifact **per workspace**, reconciled by a
+  workspace-scoped, memoized materializer, because two loops in one workspace may differ in
+  attendance and cannot both be right at the same pathname. So the loop ring reaches dispatch but
+  not the turn-0 catalog listing: an unattended model still *sees* the question document in the
+  reserved tree and still spends one turn discovering it is refused. Closing that means the
+  reserved tree's FIND/READ faces filtering their results against the dispatching loop's layers
+  rather than relying on the document's absence.
 - **A provider-recovery park becomes a conclusion** ({§provider-recovery}), carrying the
   provider's own exact Problem. Never a substituted "the model gave up".
 
@@ -3292,6 +3299,12 @@ coming, and nothing was counting.
 `LoopPolicy`; every runtime policy read validates that snapshot before use.
 Missing rows or invalid values fail with the owning loop coordinate and cause.
 Raw archival copies and forensic rendering do not interpret policy.
+
+The cascade's rings are `service`, `workspace` and, innermost, `loop`. The loop ring exists only
+for an unattended run and is purely subtractive like every other layer, so it can never widen what
+its workspace allows; a capability denial names the ring that refused. The operator's capability
+projection and the shared reserved-document materialization take no loop coordinate on purpose:
+those questions are about a workspace, not about one run.
 
 `ProposalDisposition` is either `{ owner: "client" }` or `{ owner: "loop", decision: "accept" | "reject", outcome? }`. The persisted loop policy determines it exactly:
 

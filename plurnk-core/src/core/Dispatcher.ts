@@ -1064,6 +1064,7 @@ export default class Dispatcher {
             ctx.workspaceId,
             ctx.writer,
             async (target) => (await ResourceBindings.resolve(target, ctx))?.manifest,
+            ctx.loopId,
         );
         if (denied === null) return null;
         const { descriptor, scope } = denied;

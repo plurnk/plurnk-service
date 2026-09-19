@@ -16,7 +16,8 @@ import { coreRepresentationProvider } from "./CoreSchemeServices.ts";
 import type { SchemeHandler, SchemeManifest, WriterTier } from "@plurnk/plurnk-schemes";
 import { isExecution, isExecutionOp, type RuntimeTag } from "@plurnk/plurnk-contracts";
 
-type CapabilityScope = "service" | "workspace";
+// {§loop-attendance} — the cascade's rings, outermost first. A denial names the one that refused.
+type CapabilityScope = "service" | "workspace" | "loop";
 
 export interface CapabilityDenial {
     readonly descriptor: CapabilityDescriptor;
@@ -134,11 +135,14 @@ export default class CapabilityResolver {
         }
     }
 
+    // {§loop-attendance} — `loopId` admits the cascade's innermost ring: what this RUN may do, not
+    // merely what its workspace may. A denial names the scope, so a tool that vanished says why.
     async denial(
         statement: PlurnkStatement,
         workspaceId: number,
         writer: WriterTier = "model",
         resolveResource?: (target: ParsedPath) => Promise<SchemeManifest | undefined>,
+        loopId?: number,
     ): Promise<CapabilityDenial | null> {
         const manifests = new Map<ParsedPath, SchemeManifest | undefined>();
         if (resolveResource !== undefined) {
@@ -150,7 +154,7 @@ export default class CapabilityResolver {
             });
             for (const target of manifests.keys()) manifests.set(target, await resolveResource(target));
         }
-        const layers = await CapabilityPolicies.layers(this.#db, workspaceId);
+        const layers = await CapabilityPolicies.layers(this.#db, workspaceId, loopId);
         for (const descriptor of this.descriptors(statement, workspaceId, writer,
             resolveResource === undefined ? undefined : (target) => manifests.get(target))) {
             const denied = layers.find((layer) => !CapabilityAdmission.allows(layer.policy, descriptor));

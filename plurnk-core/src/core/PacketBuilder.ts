@@ -231,7 +231,7 @@ export default class PacketBuilder {
         // {§loop-policy-effective-read} Validate active-loop policy before any
         // packet assembly or provider spend, independently of its presentation.
         await LoopPolicyReader.read(this.#db, loopId);
-        await CapabilityPolicies.layers(this.#db, workspaceId);
+        await CapabilityPolicies.layers(this.#db, workspaceId, loopId);
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
         // Resource references are discovered through Turn0, not injected. {§schemes-directory}

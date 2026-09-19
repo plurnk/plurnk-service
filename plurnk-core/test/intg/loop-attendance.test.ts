@@ -10,6 +10,7 @@ import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ClientInteractions from "../../src/core/ClientInteractions.ts";
+import CapabilityPolicies from "../../src/core/CapabilityPolicies.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
 import { waitForDb, withDaemon } from "./_rpc.ts";
 
@@ -170,4 +171,32 @@ test("{§loop-attendance} a child that inherited an unattended policy concludes 
         assert.equal((await lifecycle.result(accepted.loopId))?.status, 503,
             "it ends on the provider's own failure, which is what the parent's WAIT then collects");
     });
+});
+
+// {§loop-attendance} {§worker-tool-admission} — the loop is the capability cascade's innermost
+// ring (#770). An unattended run denies the `interact` access class, so dispatch refuses an
+// interaction runtime and names WHICH ring refused it: a tool that vanished says why.
+test("{§loop-attendance} an unattended loop denies the interact access class at its own ring", async (t) => {
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const workspaceId = await insertWorkspace(db, "attendance-capability-ring");
+    const workerId = await insertWorker(db, workspaceId);
+    const attended = await insertLoop(db, workerId, 1, "go", { proposals: "review", attended: true });
+    const unattended = await insertLoop(db, workerId, 2, "go", { proposals: "accept", attended: false });
+
+    const rings = async (loopId?: number): Promise<string[]> =>
+        (await CapabilityPolicies.layers(db, workspaceId, loopId)).map(({ scope }) => scope);
+
+    assert.deepEqual(await rings(), ["service", "workspace"],
+        "a question about the workspace carries no loop ring — the operator's projection and the shared document tree");
+    assert.deepEqual(await rings(attended), ["service", "workspace"],
+        "an attended run adds nothing: someone is there, so nothing is subtracted");
+    assert.deepEqual(await rings(unattended), ["service", "workspace", "loop"],
+        "an unattended run adds its own innermost ring");
+
+    const loopRing = (await CapabilityPolicies.layers(db, workspaceId, unattended)).at(-1)!;
+    assert.deepEqual(loopRing.policy, { deny: [{ access: "interact" }] },
+        "and that ring subtracts exactly the access class that needs a person, nothing else");
+    // Purely subtractive, like every other layer: it can never widen what the workspace allows.
+    assert.equal("only" in loopRing.policy, false);
 });
