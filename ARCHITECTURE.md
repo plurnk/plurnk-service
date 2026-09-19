@@ -1,8 +1,9 @@
 # Architecture
 
 PLURNK is a contract-first platform with one composed daemon and multiple thin
-clients. This document owns the ecosystem map and cross-boundary flow. Package
-specifications own behavior; design history belongs in Git and forge issues.
+clients. This document owns the ecosystem map, cross-boundary flow, and the
+one rule every package shares: where a choice may live. Package specifications
+own behavior; design history belongs in Git and forge issues.
 
 ## Standards boundary
 
@@ -76,6 +77,57 @@ facts have one schema and one specification owner. Capability frameworks do not
 depend on their leaf consumers; the service manifest is the sole owner of its
 default leaf set, while compatible third-party leaves extend it through the
 same installation and discovery path ({§default-plugin-ownership}).
+
+## Configuration authority
+
+**The cascading environment is the only home for a choice.** Three surfaces
+define the platform, and each owns one kind of fact. Code holds mechanism only.
+
+| Surface | Owns | The test |
+| --- | --- | --- |
+| [`plurnk.md`](./plurnk-contracts/plurnk.md) | The language: what a model may say. | A different value would be a different language. |
+| Turn 0 | The orientation: what a model is shown and taught. | A different value would teach something else. |
+| Each package's `.env.defaults` | **Every choice**: limits, timeouts, dispositions, identities, postures. | A different value would still be plurnk, behaving differently. |
+
+A constant in code is legitimate only when it derives from one of those
+surfaces or from an external standard. *Default* is a word reserved for a value
+on the panel: a constant, a parameter default, a settings field, a wire-schema
+default or a SQL column default that supplies a value the environment did not is
+a second home for a choice, and it will eventually disagree with the first.
+
+- **The system environment is the mechanism.** Node, the shell and CI all speak
+  it. Each package declares its own keys in its package-root `.env.defaults`; a
+  key's prefix names its owner; one package owns a key. The daemon assembles
+  every installed package's file into one floor, set-if-unset beneath every
+  operator source, so a declared key is always present
+  ({§operator-config-env-defaults}). A package's own tests run on its own panel,
+  or that guarantee is a fiction where the code is exercised.
+- **A read never carries a value.** Because the floor is guaranteed, a fallback
+  beside a read can only disagree with the panel. An unset key is a broken
+  deployment and an invalid value is the operator's mistake: both crash by name.
+  Unset may mean "off", or "the dependency's own default applies and plurnk
+  makes no choice" — never a literal.
+- **One knob per choice.** A composite value whose partial override must merge
+  over a base forces that base into code.
+- **Rings narrow the same knob.** A narrower scope — an alias, a workspace, a
+  worker, a run — overrides a knob under its own name; it is never a second
+  vocabulary. Where an inner ring must be bounded, an outer ring's ceiling knob
+  gates the inner default, as `PLURNK_SERVICE_GIT_ALLOWED` gates
+  `PLURNK_SERVICE_GIT_AUTO`.
+- **A flag mirrors a knob.** A command-line flag is a knob's spelling for one
+  invocation and nothing more; the service's flags are generated from its panel.
+- **A definition is not a knob.** A schedule's rule or an MCP server's address
+  is data with its own lifecycle, not a choice of behaviour.
+- **A daemon is one trust domain.** Everything holding a daemon's credential is
+  one principal. A different security situation is a different daemon with a
+  different panel — ideally inside a sandbox, which is somebody else's project:
+  PLURNK owns authority, consent and audit, and never claims containment.
+
+`scripts/env-surface-policy.mjs` enforces what a pattern can see, in
+`root:lint`, with an allowance that only shrinks
+({§operator-config-only-home}); what no pattern can see — a bare `50` — is
+found by audit. Before adding a constant, a flag, a parameter default or a
+settings field, find its knob.
 
 ## Process composition
 
@@ -163,3 +215,4 @@ the submitter the owner of the shared runtime.
 | Provider calls and process teardown       | `Engine` owns provider-call state; `Daemon` owns reverse-order process teardown.                       |
 | Workspace Functionality residency            | `WorkspaceResidency` owns demand-driven residency, provider activation/cooling, capability replacement under the workspace gate ({§module-workspace-quiescence}), and the generated-document reconciliation those transitions trigger; `Daemon` composes and delegates. |
 | Client binding and presentation         | The client-interface package and client process; neither becomes persisted daemon truth by accident.  |
+| A choice of behaviour                   | The owning package's `.env.defaults`, read through the system environment; see Configuration authority. |

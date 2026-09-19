@@ -122,6 +122,11 @@ assert that path in the root packed-artifact projection.
 
 ## Configuration cascade and test tiers
 
+**Read [`ARCHITECTURE.md` § Configuration authority](./ARCHITECTURE.md#configuration-authority)
+before adding a constant, a flag, a parameter default or a settings field.** The
+cascading environment is the only home for a choice; code holds mechanism only.
+What follows here is only the order the layers apply in.
+
 Environment layers highest-precedence-first. `loadEnvFile` is set-if-unset, so a
 value already set earlier (or in the shell) is never overwritten; among the
 repeatable `--env-file-if-exists` flags the LAST flag wins. The live/demo tier
