@@ -2674,12 +2674,15 @@ accounting and model-visible failure evidence remain separately owned by
   delivery evidence, never log visibility or the mere existence of a later SEND.
 - §prose-conclusion **Prose is the answer.** An admitted response whose content has no
   operation, attempts none ({§operation-attempt}), was not cut at the output
-  allowance and is not empty is the model's answer (operator, 2026-09-18, #761): the engine
+  allowance, is not empty, says something outside its quotations ({§quotation}: a reply that is
+  nothing but quoted material is a misfenced program) and holds no misplaced operation fence
+  (`must start its line to run`) is the model's answer (operator, 2026-09-18, #761): the engine
   admits it as a targetless SEND whose body is the trimmed content, positioned on line 1. It
   answers the open messages, reaches clients and a parent exactly as a SEND does, and meets the
   completion barrier as a SEND does ({§completion-joins-live-work},
   {§completion-defers-to-results}). Reasoning NOTEs ride with it. The model is taught
-  "respond without performing any OPs" and is never taught the SEND. Its row is stored as the
+  "respond without performing any OPs" and is never taught the SEND. A reply wrapped whole in one
+  `markdown` or `md` fence is delivered as that fence's content ({§quotation}). Its row is stored as the
   SEND that delivers it (reply accounting, delivery and clients read SEND rows) but carries
   `attrs.answer = "prose"` and `resource: ops://<worker>/<loop>`, and is addressed and rendered
   under the leaf `answer` (`log:///1/2/2/answer`), never as a SEND the model did not write.

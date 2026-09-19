@@ -50,7 +50,7 @@ test("{§balanced-fences}: exact bodies survive nested widths, indentation, Unic
                 for (const indent of ["", " \t  "]) {
                     const fence = "`".repeat(width);
                     const body = ["🦝 漢字", `${indent}${fence}text`, `${indent}${fence}sh`, "echo example", `${indent}${fence}`, `${indent}${fence}`, "trailing body", ""].join(newline);
-                    const result = PlurnkParser.parse(`${indent}${fence}${header}${newline}${body}${newline}${indent}${fence}${newline}\n\`\`\`\`READ (after.md)\n\`\`\`\``);
+                    const result = PlurnkParser.parse(`${fence}${header}${newline}${body}${newline}${indent}${fence}${newline}\n\`\`\`\`READ (after.md)\n\`\`\`\``);
                     clean(result);
                     const ops = statements(result);
                     assert.deepEqual(ops.map(writtenOp), [header.split(" ")[0], "READ"], `${header}, ${width}`);

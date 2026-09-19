@@ -68,7 +68,8 @@ test("{§operation-attempt}: prose with code blocks concludes; every operation a
     const executors = ["sh", "node"];
     assert.equal(PlurnkParser.operationAttempt("The answer is 42.\n\n```ts\nconst x = 1;\n```", executors), null);
     assert.equal(PlurnkParser.operationAttempt("READ the file first, then decide.\nsh is a shell.", executors), null);
-    assert.equal(PlurnkParser.operationAttempt("````READ (x.md\n````", executors), "four-backtick fence");
+    assert.equal(PlurnkParser.operationAttempt("````READ (x.md\n````", executors), "an operation heading that did not parse");
+    assert.equal(PlurnkParser.operationAttempt("Example:\n\n```text\n````READ (x.md\n````\n```", executors), null, "a quoted example is data, not an attempt");
     assert.equal(PlurnkParser.operationAttempt("Let me look.\nREAD (x.md)", executors), "operation heading outside a fence");
     assert.equal(PlurnkParser.operationAttempt("sh [{\"cwd\":\"/\"}]", executors), "operation heading outside a fence");
     assert.equal(PlurnkParser.operationAttempt("<function_calls><invoke name=\"x\"></invoke></function_calls>", executors), "native tool-call markup");

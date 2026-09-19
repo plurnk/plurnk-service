@@ -84,7 +84,9 @@ private metadataDepth: number = 0;
 private metadataReady: boolean = false;
 private inlineBody: boolean = false;
 private inlineBodies: Array<{ line: number; column: number; heading: string }> = [];
-private unknownTags: Array<{ line: number; column: number; tag: string; short: boolean }> = [];
+private unknownTags: Array<{ line: number; column: number; tag: string; reason: "unknown" | "short" | "indented" }> = [];
+private quotedSpans: Array<{ start: number; end: number }> = [];
+private quoteStart: number = -1;
 
 // {§interstitial-fence} - only a native operation or a known executor opens a block.
 private knownHeading(): boolean {
@@ -93,18 +95,45 @@ private knownHeading(): boolean {
     return Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutor(name);
 }
 
-// {§four-backtick-operations} - a three-backtick block is markdown: only one that names an
-// operation or executor is worth a word (it needed four); a longer fence with an unknown name
-// is a misspelled heading.
-private noteUnknownTag(): void {
-    const tag = this.text.replace(/^\x60+[0-9]*/, "");
-    const short = /^\x60{3}(?!\x60)/.test(this.text);
-    const known = Object.hasOwn(plurnkLexer.OPERATIONS, tag) || this.knownExecutor(tag);
-    if (short && !known) return;
-    this.unknownTags.push({ line: (this as any).currentTokenStartLine, column: (this as any).currentTokenColumn, tag, short });
+// {§quotation} - a fence that opened no operation quotes. Its tag is worth a word only when it
+// looks like a missed operation: a known name under four backticks or off column zero, or an
+// unknown name at operation width. Ordinary code blocks draw nothing; reasoning quotes freely.
+private quote(): void {
+    this.quoteStart = this.tokenStartCharIndex;
+    this.open();
+    this.noteTag();
 }
 
-public takeUnknownTags(): Array<{ line: number; column: number; tag: string; short: boolean }> {
+private noteTag(): void {
+    if (this.reasoning || this.text.charCodeAt(0) !== 0x60) return;
+    const tag = this.text.replace(/^\x60+[0-9]*/, "");
+    if (tag === "") return;
+    let width = 0;
+    while (this.text.charCodeAt(width) === 0x60) width++;
+    const short = width < 4;
+    const known = Object.hasOwn(plurnkLexer.OPERATIONS, tag) || this.knownExecutor(tag);
+    if (short && !known) return;
+    // A markdown wrapper is a polite envelope, not a missed operation ({§quotation}).
+    if (!known && (tag === "markdown" || tag === "md")) return;
+    const reason = !known ? "unknown" : short ? "short" : "indented";
+    this.unknownTags.push({ line: (this as any).currentTokenStartLine, column: (this as any).currentTokenColumn, tag, reason });
+}
+
+private endQuote(): void {
+    if (this.quoteStart >= 0) this.quotedSpans.push({ start: this.quoteStart, end: this.inputStream.index });
+    this.quoteStart = -1;
+}
+
+// The quoted character spans, the last one running to the end of the input when unclosed.
+public takeQuotedSpans(length: number): Array<{ start: number; end: number }> {
+    if (this.quoteStart >= 0) this.quotedSpans.push({ start: this.quoteStart, end: length });
+    this.quoteStart = -1;
+    const taken = this.quotedSpans;
+    this.quotedSpans = [];
+    return taken;
+}
+
+public takeUnknownTags(): Array<{ line: number; column: number; tag: string; reason: "unknown" | "short" | "indented" }> {
     const taken = this.unknownTags;
     this.unknownTags = [];
     return taken;
@@ -142,6 +171,47 @@ private open(implicitName?: string): void {
     this.slotReady = true;
     this.metadataReady = this.execFence || this.openOp === "SEND" || this.openOp === "WAIT";
     this.inlineBody = false;
+}
+
+// {§quotation} - the line above this one carries a fence run of three or more backticks anywhere
+// (a heading, a closer, or a heading written mid-line that opened nothing).
+private previousLineIsFence(): boolean {
+    let back = 1;
+    while (this.inputStream.LA(-back) === 0x20 || this.inputStream.LA(-back) === 0x09) back++;
+    if (this.inputStream.LA(-back) !== 0x0A) return false;
+    back++;
+    if (this.inputStream.LA(-back) === 0x0D) back++;
+    let run = 0;
+    for (let c = this.inputStream.LA(-back); c > 0 && c !== 0x0A; c = this.inputStream.LA(-(++back))) {
+        run = c === 0x60 ? run + 1 : 0;
+        if (run >= 3) return true;
+    }
+    return false;
+}
+
+// {§quotation} CommonMark: a backtick fence's info string cannot contain a backtick, so a line
+// like ```KILL (x)``` is inline code, not an opener, and quotes nothing after it.
+private fenceOpens(): boolean {
+    let cursor = 1;
+    while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
+    if (this.inputStream.LA(cursor) !== 0x60) return true;
+    while (this.inputStream.LA(cursor) === 0x60) cursor++;
+    for (let c = this.inputStream.LA(cursor); c > 0 && c !== 0x0A && c !== 0x0D; c = this.inputStream.LA(++cursor)) {
+        if (c === 0x60) return false;
+    }
+    return true;
+}
+
+// The orphaned closer is a whole line: nothing but the fence follows it.
+private orphanAtLineEnd(): boolean {
+    const c = this.inputStream.LA(1);
+    return c <= 0 || c === 0x0A || c === 0x0D;
+}
+
+// {§quotation} - an operation's backticks follow a newline directly, or begin the input.
+private atColumnZero(): boolean {
+    const c = this.inputStream.LA(-1);
+    return c <= 0 || c === 0x0A || c === 0x0D;
 }
 
 // {§indented-fences} - a fence line may carry leading horizontal whitespace; the line still
@@ -428,11 +498,17 @@ fragment EOL : '\r'? '\n' ;
 
 // {§fence-boundary} - only top-level fences can open statements. The first
 // block may terminate a provider preamble without an intervening newline.
-OPEN : { this.atLineStart() || !this.reasoning && (!this.started || this.inlineChain) }? OPENER_FENCE [0-9]* NAME { this.knownHeading() }? { this.open(); } -> mode(SLOTS) ;
+OPEN : { this.atColumnZero() || !this.reasoning && this.inlineChain }? OPENER_FENCE [0-9]* NAME { this.knownHeading() }? { this.open(); } -> mode(SLOTS) ;
 // {§reasoning-notes} — an enclosing code fence is quotation, including unknown tags and tildes.
-REASONING_QUOTE : { this.reasoning && this.atLineStart() }? (FENCE [0-9]* NAME? | '~~~' '~'* NAME?) { !this.knownHeading() }? { this.open(); } -> type(TEXT), channel(HIDDEN), mode(QUOTATION) ;
+// {§quotation} - a bare fence directly under a fence line is that block's orphaned closer: it
+// closes nothing and quotes nothing (a malformed heading's block ends at its own line).
+ORPHAN_CLOSER : { this.atLineStart() && this.previousLineIsFence() }? FENCE [0-9]* [ \t]* { this.orphanAtLineEnd() }? -> type(TEXT), channel(HIDDEN) ;
+// {§quotation} - every other fence at a line start quotes to its closer or the end of the input.
+// A line-start fence whose line carries more backticks is inline code: it quotes nothing, but a
+// missed operation's tag is still worth the same word as a quotation's.
+INLINE_TAG : { this.atLineStart() && !this.fenceOpens() }? FENCE [0-9]* NAME { this.noteTag(); } -> type(TEXT), channel(HIDDEN) ;
+QUOTE : { this.atLineStart() && this.fenceOpens() }? (FENCE [0-9]* NAME? | '~~~' '~'* NAME?) { this.quote(); } -> type(TEXT), channel(HIDDEN), mode(QUOTATION) ;
 // {§interstitial-fence} - a fence naming nothing known, or nothing at all, is prose outside a block.
-UNKNOWN_TAG : { this.atLineStart() || !this.started }? FENCE [0-9]* NAME { this.noteUnknownTag(); } -> type(TEXT), channel(HIDDEN) ;
 WS : [ \t\r\n]+ -> channel(HIDDEN) ;
 // {§whitespace-contract} - outside text has no AST or execution semantics.
 THINK_BLOCK : '<think>' .*? '</think>' -> type(TEXT), channel(HIDDEN) ;
@@ -441,8 +517,8 @@ TEXT_RUN : ~[ \t\r\n`]+ { this.inlineChain = false; } -> type(TEXT), channel(HID
 TEXT_TICK : '`' { this.inlineChain = false; } -> type(TEXT), channel(HIDDEN) ;
 
 mode QUOTATION;
-Q_END : { this.closingAfterEol() }? EOL [ \t]* ('```' '`'* | '~~~' '~'*) [0-9]* [ \t]* -> type(TEXT), channel(HIDDEN), mode(DEFAULT_MODE) ;
-Q_EMPTY_END : { this.atLineStart() && this.closingAt(1) }? [ \t]* ('```' '`'* | '~~~' '~'*) [0-9]* [ \t]* -> type(TEXT), channel(HIDDEN), mode(DEFAULT_MODE) ;
+Q_END : { this.closingAfterEol() }? EOL [ \t]* ('```' '`'* | '~~~' '~'*) [0-9]* [ \t]* { this.endQuote(); } -> type(TEXT), channel(HIDDEN), mode(DEFAULT_MODE) ;
+Q_EMPTY_END : { this.atLineStart() && this.closingAt(1) }? [ \t]* ('```' '`'* | '~~~' '~'*) [0-9]* [ \t]* { this.endQuote(); } -> type(TEXT), channel(HIDDEN), mode(DEFAULT_MODE) ;
 Q_RUN : ~[\r\n`~]+ -> type(TEXT), channel(HIDDEN) ;
 Q_CHAR : . -> type(TEXT), channel(HIDDEN) ;
 

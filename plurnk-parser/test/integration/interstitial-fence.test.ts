@@ -61,11 +61,11 @@ test("{§bare-heading-advisory}: headings inside bodies and inside blocks never 
     assert.deepEqual(statements(result).map(({ op }) => op), ["SEND", "WAIT"]);
 });
 
-test("{§interstitial-fence}: displaced headings inside an unlabeled fence are prose, and each draws the advisory once", () => {
+test("{§quotation}: a heading inside an unlabeled fence is quoted data: nothing runs and nothing is advised", () => {
     const source = unlabeled("KILL (worker:///notes.md)") + "\n" + task;
     const result = PlurnkParser.parse(source);
     assert.deepEqual(statements(result).map(({ op }) => op), ["WAIT"]);
-    assert.deepEqual(errors(result).map(({ severity, line }) => ({ severity, line })), [{ severity: "warning", line: 2 }]);
+    assert.deepEqual(errors(result), []);
 });
 
 test("{§interstitial-fence}: explicit SEND keeps its aside, target, and literal body", () => {

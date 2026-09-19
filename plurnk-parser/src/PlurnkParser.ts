@@ -109,13 +109,52 @@ export default class PlurnkParser {
     static operationAttempt(input: string, executors: readonly string[] = []): string | null {
         const helpers = ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "WORK", "FORK", "BARE", "KILL", "NOTE", "WAIT"];
         const runtimes = executors.map((name) => name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"));
-        if (/^[ \t]*`{4,}/mu.test(input)) return "four-backtick fence";
+        // {§quotation} quoted examples are data: only unquoted text can attempt an operation.
+        input = PlurnkParser.unquoted(input, executors);
+        const known = [...helpers, "sh", ...runtimes].join("|");
+        if (new RegExp(`^\`{4,}[0-9]*(?:${known})(?![A-Za-z0-9_.+-])`, "mu").test(input)) return "an operation heading that did not parse";
         // A runtime name alone on a line is ordinary prose; followed by a slot it is a heading.
         const heading = [`(?:${helpers.join("|")})(?=\\s*(?:\\(|<|\\[|$))`, ...(runtimes.length === 0 ? [] : [`(?:${runtimes.join("|")})(?=\\s*(?:\\(|<|\\[))`])];
         if (new RegExp(`^[ \\t]*(?:${heading.join("|")})`, "mu").test(input)) return "operation heading outside a fence";
         if (/DSML|<\|?tool_call|<function_calls|<invoke\b/u.test(input)) return "native tool-call markup";
         if (/^#{2,3} (?:log|ops|reasoning):\/\//mu.test(input)) return "echoed packet rows";
         return null;
+    }
+
+    // {§quotation} {§native-tool-calls} the markup lines that sit inside a Markdown quotation:
+    // quotation is judged with the markup itself blanked, so its own fence lines quote nothing.
+    static #quotedMarkup(input: string, executors: readonly string[]): Set<number> {
+        const markup = NativeToolCalls.markupLines(input);
+        const blanked = input.split("\n").map((line, index) => markup.has(index) ? "" : line).join("\n");
+        const lexer = new plurnkLexer(CharStream.fromString(blanked));
+        for (const name of executors) lexer.knownExecutors.add(name);
+        lexer.removeErrorListeners();
+        lexer.getAllTokens();
+        const points = Array.from(blanked);
+        const lineOf: number[] = [];
+        let line = 0;
+        for (const point of points) { lineOf.push(line); if (point === "\n") line += 1; }
+        const quoted = new Set<number>();
+        for (const { start, end } of lexer.takeQuotedSpans(points.length)) {
+            for (let index = start; index < end; index += 1) if (markup.has(lineOf[index]!)) quoted.add(lineOf[index]!);
+        }
+        return quoted;
+    }
+
+    // {§quotation} the input with every quoted span blanked (line breaks kept, so positions hold):
+    // what native-call recovery, attempt classification and advisories may read.
+    static unquoted(input: string, executors: readonly string[] = []): string {
+        const lexer = new plurnkLexer(CharStream.fromString(input));
+        for (const name of executors) lexer.knownExecutors.add(name);
+        lexer.removeErrorListeners();
+        lexer.getAllTokens();
+        const points = Array.from(input);
+        const spans = lexer.takeQuotedSpans(points.length);
+        if (spans.length === 0) return input;
+        for (const { start, end } of spans) {
+            for (let index = start; index < end; index += 1) if (points[index] !== "\n" && points[index] !== "\r") points[index] = " ";
+        }
+        return points.join("");
     }
 
     // Parse one model turn. An omitted disposition is silent continuation; a present one
@@ -126,7 +165,8 @@ export default class PlurnkParser {
         if (direct.items.some((item) => item.kind === "statement")) return direct;
         // {§native-tool-calls} — an emission with no operation may be native tool-call markup that
         // names plurnk operations; read it as those operations, silently (#760).
-        const rewritten = NativeToolCalls.rewrite(input, options.executors ?? []);
+        const executors = options.executors ?? [];
+        const rewritten = NativeToolCalls.rewrite(input, executors, PlurnkParser.#quotedMarkup(input, executors));
         if (rewritten === null) return direct;
         const native = PlurnkParser.#parseTurn(rewritten, options);
         return native.items.some((item) => item.kind === "statement") && !native.items.some((item) => item.kind === "error" && item.error.severity === "error")
@@ -286,14 +326,12 @@ export default class PlurnkParser {
         // {§interstitial-fence} — a tagged fence that opened nothing is prose; say so once, as a
         // warning, so a misspelled executor or an under-fenced operation is never a silent loss.
         for (const note of lexer.takeUnknownTags()) {
-            items.push({
-                kind: "error",
-                error: new PlurnkParseError(note.line, note.column, "parser",
-                    note.short
-                        ? `\`${note.tag}\` needs four backticks to run; the three-backtick block was read as prose and nothing ran.`
-                        : `\`${note.tag}\` is not an operation or a known executor here; the block was read as prose and nothing ran.`,
-                    "warning"),
-            });
+            const message = note.reason === "short"
+                ? `\`${note.tag}\` needs four backticks to run; the three-backtick block was read as prose and nothing ran.`
+                : note.reason === "indented"
+                    ? `\`${note.tag}\` must start its line to run; the indented block was read as prose and nothing ran.`
+                    : `\`${note.tag}\` is not an operation or a known executor here; the block was read as prose and nothing ran.`;
+            items.push({ kind: "error", error: new PlurnkParseError(note.line, note.column, "parser", message, "warning") });
         }
 
         return { items, unparsedTail };
@@ -333,7 +371,7 @@ export default class PlurnkParser {
             const span = raw === "" ? 0 : raw.split("\n").length;
             for (let line = start; line <= start + span + 1; line += 1) covered.add(line);
         }
-        const lines = input.split("\n");
+        const lines = PlurnkParser.unquoted(input, executors).split("\n");
         lines.forEach((text, index) => {
             const line = index + 1;
             if (covered.has(line)) return;

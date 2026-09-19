@@ -7,13 +7,12 @@ import { writtenOp } from "@plurnk/plurnk-contracts";
 const task = PlurnkParser.frame("WAIT", '[{"content":"Observe the result.","status":"completed"}]');
 const statements = (result: ReturnType<typeof PlurnkParser.parse>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 
-test("{§whitespace-contract}: provider preamble is ignored with or without a separating newline", () => {
-    for (const prefix of ["plain preamble\n", "harmless status."]) {
-        const result = PlurnkParser.parse(prefix + PlurnkParser.frame("READ (worker:///x)", null) + "\n" + task);
-        assert.deepEqual(result.items.map((item) => item.kind), ["statement", "statement"]);
-        assert.deepEqual(statements(result).map(({ op }) => op), ["READ", "WAIT"]);
-        assert.deepEqual(statements(result)[0].position, prefix.endsWith("\n") ? { line: 2, column: 0 } : { line: 1, column: prefix.length });
-    }
+test("{§whitespace-contract}: provider preamble on its own line is ignored; an opener after text on its line is prose ({§quotation})", () => {
+    const own = PlurnkParser.parse("plain preamble\n" + PlurnkParser.frame("READ (worker:///x)", null) + "\n" + task);
+    assert.deepEqual(statements(own).map(({ op }) => op), ["READ", "WAIT"]);
+    assert.deepEqual(statements(own)[0].position, { line: 2, column: 0 });
+    const inline = PlurnkParser.parse("harmless status." + PlurnkParser.frame("READ (worker:///x)", null) + "\n" + task);
+    assert.deepEqual(statements(inline).map(({ op }) => op), ["WAIT"], "the READ is prose; its orphaned closer quotes nothing, so the WAIT still runs");
 });
 
 test("{§fence-boundary}: ignored preamble does not promote headings or inline body examples", () => {

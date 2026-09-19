@@ -1789,14 +1789,22 @@ export default class TurnRunner {
         }
         // {§prose-conclusion} — a response whose content is prose (no operation, no attempt at one,
         // not cut at the output allowance) is the model's answer: a SEND to the open messages.
-        const prose = assistant.content.trim();
+        // {§quotation} a reply wrapped whole in one markdown fence is delivered as its content.
+        const wrapped = /^(`{3,}|~{3,})(?:markdown|md)[ \t]*\n([\s\S]*?)\n\1[ \t]*$/u.exec(assistant.content.trim());
+        const prose = (wrapped?.[2] ?? assistant.content).trim();
         const concludes = preParsedOps === undefined
             && ops.length === 0
             && !hasUnparsedTail
             && prose.length > 0
             && assistant.finishReason !== "length"
             && parseErrors.every((error) => error.message === PlurnkParser.NO_VALID_OPERATION)
-            && PlurnkParser.operationAttempt(assistant.content, executors) === null;
+            && PlurnkParser.operationAttempt(assistant.content, executors) === null
+            // {§quotation} an answer says something of its own: a reply that is nothing but quoted
+            // material is a misfenced program, not prose (operator, 2026-09-18).
+            && PlurnkParser.unquoted(prose, executors).trim().length > 0
+            // {§quotation} an operation fence that merely missed column zero is a misplaced program,
+            // never an answer: the loop continues and the next packet carries the parser's word.
+            && !parseNotices.some(({ message }) => (message ?? "").includes("must start its line to run"));
         const proseAnswer = concludes
             ? { op: "SEND", aside: null, target: null, metadata: null, lineMarker: null, body: { raw: prose, json: null }, position: { line: 1, column: 0 } } as PlurnkStatement
             : null;

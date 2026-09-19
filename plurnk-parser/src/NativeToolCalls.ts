@@ -27,15 +27,30 @@ type Slots = { path?: string; scope?: string; pattern?: string; aside?: string; 
 export default class NativeToolCalls {
     static readonly #MARKER = "DSML";
 
+    // The lines that belong to native markup: each `calls>` block to its close, or to the next
+    // block's opening. Fence lines inside them are the markup's own, not Markdown quotation.
+    static markupLines(input: string): Set<number> {
+        const lines = input.split("\n");
+        const inside = new Set<number>();
+        let open = false;
+        lines.forEach((line, index) => {
+            if (CALLS_OPEN.test(line)) open = true;
+            if (open) inside.add(index);
+            if (CALLS_CLOSE.test(line)) open = false;
+        });
+        return inside;
+    }
+
     // Returns the rewritten input, or null when there is nothing to rewrite or any invoke is unmappable.
-    static rewrite(input: string, executors: readonly string[]): string | null {
+    // A block whose opening line is quoted ({§quotation}) is an example, never a call.
+    static rewrite(input: string, executors: readonly string[], quotedLines: ReadonlySet<number> = new Set()): string | null {
         if (!input.includes(NativeToolCalls.#MARKER)) return null;
         const known = new Set(executors.map((name) => name.toLowerCase()));
         const lines = input.split("\n");
         const out: string[] = [];
         let rewrote = false;
         for (let i = 0; i < lines.length; i++) {
-            if (!CALLS_OPEN.test(lines[i])) { out.push(lines[i]); continue; }
+            if (quotedLines.has(i) || !CALLS_OPEN.test(lines[i])) { out.push(lines[i]); continue; }
             const start = i;
             const fences: string[] = [];
             let current: { name: string; slots: Slots; line: number } | null = null;

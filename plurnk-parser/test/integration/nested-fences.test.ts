@@ -165,7 +165,7 @@ test("{§statement-rendering}: frame adds a numeric delimiter exactly when the b
 });
 
 test("{§inline-chain}: a closer followed by the next opener on the same line closes and opens", () => {
-    const source = "Reviewing the state. ````READ (a.ts) <1,30> <!-- imports --> ```` ````READ (a.ts) <140,245> <!-- picker --> ```` ````READ (b.ts) <1,-1> ````\n" + task;
+    const source = "Reviewing the state.\n````READ (a.ts) <1,30> <!-- imports --> ```` ````READ (a.ts) <140,245> <!-- picker --> ```` ````READ (b.ts) <1,-1> ````\n" + task;
     const result = PlurnkParser.parse(source);
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(errors(result).filter(({ severity }) => severity === "error"), []);
@@ -200,7 +200,7 @@ test("{§unclosed-aside}: an aside that never closes on its line is the aside to
     assert.equal((statements(closed)[0] as { aside: string | null }).aside, "ok");
 });
 
-test("{§indented-fences}: indented opener and closer lines are fence lines; the body keeps its own indentation", () => {
+test("{§quotation}: an indented operation fence is shown, not run, and each draws the must-start-its-line warning", () => {
     const source = [
         "    ````EDIT (ark/json-schema/scope.ts) <@VaKRz> <!-- restore the union -->",
         "    \t\"boolean|TypeWithNoKeywords\",",
@@ -216,23 +216,22 @@ test("{§indented-fences}: indented opener and closer lines are fence lines; the
     ].join("\n");
     const result = PlurnkParser.parse(source);
     assert.equal(result.unparsedTail, undefined);
-    assert.deepEqual(errors(result).filter(({ severity }) => severity === "error"), []);
-    assert.deepEqual(statements(result).map(writtenOp), ["EDIT", "READ", "sh", "WAIT"]);
-    assert.equal(bodyText(statements(result)[0]), "    \t\"boolean|TypeWithNoKeywords\",", "the body line keeps its indentation");
-    assert.equal(bodyText(statements(result)[2]), "    ./node_modules/.bin/tsc --noEmit");
-    const unclosed = PlurnkParser.parseStatements("    ````EDIT (a.md)\n    body\n    ````READ (b.md)\n    ````");
-    assert.deepEqual(statements(unclosed).map(writtenOp), ["EDIT", "READ"], "an indented heading still ends an open block");
-    assert.equal(bodyText(statements(unclosed)[0]), "    body");
+    assert.deepEqual(statements(result).map(writtenOp), ["WAIT"], "only the column-0 WAIT runs");
+    assert.deepEqual(errors(result).map(({ severity, message }) => [severity, message.split(" ")[0]]), [["warning", "`EDIT`"], ["warning", "`READ`"], ["warning", "`sh`"]]);
+    assert.ok(errors(result).every(({ message }) => message.includes("must start its line to run")));
 });
 
-test("{§one-line-turn}: a whole turn on one line parses, including opener after heading", () => {
-    const chained = PlurnkParser.parse("I'll read the files and repair the mangled regions. ````READ (packages/quill/src/themes/base.ts) <1,30> <!-- imports + WeakMap --> ```` ````READ (packages/quill/src/themes/base.ts) <200,240> <!-- the rest --> ```` ````WAIT ````");
+test("{§one-line-turn}: a whole turn on one line parses from its line start, including opener after heading", () => {
+    const prose = "I'll read the files and repair the mangled regions. ";
+    const program = "````READ (packages/quill/src/themes/base.ts) <1,30> <!-- imports + WeakMap --> ```` ````READ (packages/quill/src/themes/base.ts) <200,240> <!-- the rest --> ```` ````WAIT ````";
+    assert.deepEqual(statements(PlurnkParser.parse(prose + program)).map(writtenOp), [], "{§quotation}: an opener after text on its line is prose");
+    const chained = PlurnkParser.parse(program);
     assert.equal(chained.unparsedTail, undefined);
     assert.deepEqual(errors(chained).filter(({ severity }) => severity === "error"), []);
     assert.deepEqual(statements(chained).map(writtenOp), ["READ", "READ", "WAIT"]);
     assert.equal(bodyText(statements(chained)[2]!), null);
 
-    const direct = PlurnkParser.parse("Fix the call sites. ````EDIT (crates/wasmi/src/engine/config.rs) <60,66> <!-- drop mangled duplicate Default fields --> ````EDIT (crates/wasmi/src/error.rs) <31,38> <!-- repair mangled imports --> ````WAIT ````");
+    const direct = PlurnkParser.parse("````EDIT (crates/wasmi/src/engine/config.rs) <60,66> <!-- drop mangled duplicate Default fields --> ````EDIT (crates/wasmi/src/error.rs) <31,38> <!-- repair mangled imports --> ````WAIT ````");
     assert.deepEqual(errors(direct).filter(({ severity }) => severity === "error"), []);
     const ops = statements(direct);
     assert.deepEqual(ops.map(writtenOp), ["EDIT", "EDIT", "WAIT"]);

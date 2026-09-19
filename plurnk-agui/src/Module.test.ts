@@ -844,10 +844,15 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
             assert.equal(wrongOperation.problem?.detail, `op.look parsed ${operation}; the single statement must be LOOK.`);
         }
 
-        const outside = await invoke("text ````LOOK (worker:///x)````\nPostscript.");
-        assert.equal(outside.ok, true, "outside text is ignored under {§whitespace-contract}");
+        const outside = await invoke("Preamble.\n````LOOK (worker:///x)````\nPostscript.");
+        assert.equal(outside.ok, true, "outside text on its own lines is ignored under {§whitespace-contract}");
         assert.equal(outside.result?.content, "looked");
         assert.equal(calls.length, 2);
+
+        // {§quotation} an opener after text on its line is prose, for client operations too.
+        const inline = await invoke("text ````LOOK (worker:///x)````");
+        assert.equal(inline.ok, false);
+        assert.equal(inline.problem?.detail, "op.look parsed 0 statements; exactly one LOOK statement is required.");
 
         const pinned = await post(mod.address().port, {
             threadId: "look-admission",
@@ -866,7 +871,7 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
         assert.equal(invalidValue?.ok, false);
         assert.match(String(invalidValue?.problem?.detail), /workerId/, "the advertised schema refuses the pin before dispatch");
         assert.equal(calls.length, 4, "an invalid pin never reaches the seam");
-        assert.deepEqual(calls[1].statement.position, { line: 1, column: 5 }, "ignored preamble does not shift source positions");
+        assert.deepEqual(calls[1].statement.position, { line: 2, column: 0 }, "the statement keeps its own source position under the ignored preamble");
 
         const tailed = await invoke("````LOOK (worker:///x)````\n````EDIT (worker:///y");
         assert.equal(tailed.ok, false);

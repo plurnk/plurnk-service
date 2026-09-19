@@ -332,12 +332,15 @@ fences are read by count and delimiter, except for the heading rule above:
 | At least the block's backticks with any other delimiter | Body |
 | Four or more backticks naming a native operation or known executor | A heading: ends the block, opens the next statement |
 
-§indented-fences Leading horizontal whitespace before an opener or a closer is
-not part of the fence: an indented fence line is a fence line, on openers,
-closers, headings that end a block, and the closer fallback. A body keeps its own
-lines' indentation. CommonMark allows three spaces; this allows any, because a
-model that indents an emission indents all of it (operator, 2026-09-12: measured
-at five to ten percent of emissions on GLM-5.3-flash).
+§indented-fences Leading horizontal whitespace before a CLOSER is not part of the fence: an
+indented closer, heading-that-ends-a-block, or closer fallback still closes, and a body keeps its
+own lines' indentation. An OPENER is different: an operation's backticks follow a newline
+directly (operator, 2026-09-18), so an indented fence opens a quotation, never an operation —
+CommonMark reads an indented block as code, and `plurnk.md` shows its own examples that way. This
+reverses the 2026-09-12 tolerance (then measured at five to ten percent of emissions on
+GLM-5.3-flash; 2.8% of that lane's emissions today). The cost is paid loudly: an indented fence
+naming a known operation draws `must start its line to run` and is an operation attempt, never an
+answer ({§prose-conclusion}), so the loop continues instead of delivering a program as prose.
 
 §inline-chain A closer on a heading line, or on a body's closing line, may be
 followed on that same line by the next opener; the closer still closes, and the
@@ -388,13 +391,24 @@ the five-character anchor form. Five characters after `@` are always an anchor.
 line takes the rest of the line as the aside, with one warning-severity advisory.
 A closed aside followed by more text is unchanged.
 
-§interstitial-fence A fence line that names no native operation and no known
-executor opens nothing: unlabeled, or tagged like a code block (`ts`, `json`),
-outside a block it is prose and ignored like every other outside line
-({§whitespace-contract}); inside a body it is body. Nothing is promoted into a
-header or recursively parsed. There is no implicit SEND: a reply is an explicit
-`SEND` block. (This replaces the retired unlabeled-fence SEND of the fences
-chapter, whose unlabeled fences turned displaced headings into silent messages.)
+§quotation **A fence that opens no operation quotes.** Outside a body, a line-start fence that
+is not an operation heading — unlabeled, tagged like a code block (`ts`, `json`), three
+backticks ({§four-backtick-operations}), indented, or four or more with an unknown name — opens a
+quotation that runs to its matching closer (same character, width at least the opener's) or to
+the end of the input. Everything inside is data: no operation runs there, native tool-call
+markup is not read ({§native-tool-calls}), and no heading draws an advisory. So a model may show
+plurnk's own operations in an answer. Three exceptions keep programs whole:
+CommonMark's own rule that a backtick opener's line carries no further backtick, so
+```` ```READ (x)``` ```` is inline code and quotes nothing after it; a bare fence directly under a
+line carrying a fence run, which is an orphaned closer and quotes nothing; and a tag that is a
+missed operation — a known name under four backticks or off column zero, or an unknown name at
+operation width — which still draws one warning (`markdown` and `md` are polite envelopes and
+draw none). There is no implicit SEND: a reply is prose ({§prose-conclusion}) or an explicit
+`SEND` block. Origin (#767, 2026-09-18): under prose answers, a quoted example executed.
+
+§interstitial-fence Superseded by {§quotation}: an unlabeled fence no longer opens nothing, it
+quotes. (It in turn replaced the retired unlabeled-fence SEND of the fences chapter, whose
+unlabeled fences turned displaced headings into silent messages.)
 
 §closer-aside A closing fence followed on its line by one aside and nothing else
 is the closer; the aside is outside text. Read as body, that line would be written
