@@ -11,12 +11,13 @@ import { formatJsonDocument } from "@plurnk/plurnk-contracts";
 import Guard, { GuardBlockedError } from "./Guard.ts";
 import { responseMimetype } from "./ContentType.ts";
 import MaterializerRegistry, { type HttpMaterializer } from "./Materializer.ts";
-import { requirePositiveIntegerEnv } from "./Config.ts";
+import { requirePositiveIntegerEnv, requireTextEnv } from "./Config.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 import HostPolicy from "./HostPolicy.ts";
 
-export const DEFAULT_WEB_UA =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
+// {§operator-config-only-home} — which identity a request presents is the operator's choice, and a
+// browser impersonation least of all belongs buried in code.
+export const webUserAgent = (): string => requireTextEnv("PLURNK_SCHEMES_HTTP_USER_AGENT");
 export const MARKDOWN_ACCEPT = "text/markdown, text/html;q=0.9, */*;q=0.1";
 export const PROJECTION_ID_HEADER = "x-plurnk-projection-id";
 export const CACHE_VARIANT_HEADER = "x-plurnk-cache-variant";
@@ -611,7 +612,7 @@ export default class WebFetcher {
             transportHeaders = [["Accept", MARKDOWN_ACCEPT], ...transportHeaders];
         }
         if (!hasHeader(transportHeaders, "user-agent")) {
-            transportHeaders = [["User-Agent", DEFAULT_WEB_UA], ...transportHeaders];
+            transportHeaders = [["User-Agent", webUserAgent()], ...transportHeaders];
         }
         transportHeaders.push(...conditionalHeaders.map(
             ([name, value]): [string, string] => [name, value],

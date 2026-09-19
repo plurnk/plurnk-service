@@ -56,14 +56,14 @@ test("StandardSkillsToolchain reads the registry's JSON into exact candidates an
         const toolchain = new StandardSkillsToolchain({ PLURNK_SERVICE_SKILLS_CLI: "skills-fixture", PLURNK_SERVICE_SKILLS_REGISTRY_URL: `http://127.0.0.1:${port}///` });
         assert.equal(toolchain.registry, `http://127.0.0.1:${port}`);
         assert.deepEqual(await toolchain.search("al"), [
-            { name: "alpha", id: "acme/kit/alpha", source: "acme/kit", installs: 7 },
-            { name: "beta", id: "acme/kit/beta", source: "acme/kit", installs: null },
+            { name: "alpha", id: "acme/kit/alpha", source: "acme/kit", installs: 7, reference: `http://127.0.0.1:${port}/acme/kit/alpha` },
+            { name: "beta", id: "acme/kit/beta", source: "acme/kit", installs: null, reference: `http://127.0.0.1:${port}/acme/kit/beta` },
         ]);
-        const disabled = new StandardSkillsToolchain({ PLURNK_SERVICE_SKILLS_REGISTRY_URL: "  " });
+        const disabled = new StandardSkillsToolchain({ PLURNK_SERVICE_SKILLS_CLI: "skills-fixture", PLURNK_SERVICE_SKILLS_REGISTRY_URL: "  " });
         assert.equal(disabled.registry, null);
         await assert.rejects(() => disabled.search("x"), (error: { problem?: { type?: string; status?: number } }) =>
             error.problem?.type === "https://problems.plurnk.xyz/skills/functionality/registry-not-configured" && error.problem.status === 501);
-        const unreachable = new StandardSkillsToolchain({ PLURNK_SERVICE_SKILLS_REGISTRY_URL: "http://127.0.0.1:9" });
+        const unreachable = new StandardSkillsToolchain({ PLURNK_SERVICE_SKILLS_CLI: "skills-fixture", PLURNK_SERVICE_SKILLS_REGISTRY_URL: "http://127.0.0.1:9" });
         await assert.rejects(() => unreachable.search("x"), (error: { problem?: { type?: string } }) =>
             error.problem?.type === "https://problems.plurnk.xyz/skills/functionality/registry-unreachable");
     } finally {

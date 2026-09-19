@@ -28,9 +28,9 @@ export default class Paths {
     // The first-run policy seed and built-in/conditional pull-doc sources.
     static policy = Paths.teachingSource(TEACHING_CORPUS.policy);
     // {§recap} — meta-owned default Recap and its operator override.
-    static #DEFAULT_RECAP = Paths.#resolveDefaultRecap();
-    static defaultRecap = Paths.#DEFAULT_RECAP.path;
-    static defaultRecapTeachingSource = Paths.#DEFAULT_RECAP.source;
+    static #SHIPPED_RECAP = Paths.#resolveDefaultRecap();
+    static defaultRecap = Paths.#SHIPPED_RECAP.path;
+    static defaultRecapTeachingSource = Paths.#SHIPPED_RECAP.source;
 
     static teachingSource(source: TeachingCorpusSource): string {
         return resolve(Paths.teachingRoot, source);

@@ -1,15 +1,10 @@
 {
     "default-constant": {
         "plurnk-contracts/src/types.ts": 3,
-        "plurnk-core/src/Paths.ts": 1,
         "plurnk-core/src/schemes/EffectPolicy.ts": 1,
         "plurnk-core/src/server/model-catalog.ts": 1,
-        "plurnk-core/src/server/SkillsFunctionality.ts": 2,
         "plurnk-mcp/src/tasks.ts": 1,
-        "plurnk-mimetypes/src/Mimetypes.ts": 1,
-        "plurnk-providers/src/Mock.ts": 1,
-        "plurnk-schedule/src/Scheduler.ts": 1,
-        "plurnk-schemes-http/src/WebFetcher.ts": 1
+        "plurnk-mimetypes/src/Mimetypes.ts": 1
     },
     "undeclared": {
         "PLURNK_MEMBERS_ENABLED": 1

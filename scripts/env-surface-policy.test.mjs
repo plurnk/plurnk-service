@@ -106,3 +106,20 @@ test("a reader that accepts a fallback can state a value the panel never did", (
     // A bound is not a value: a strict reader with a floor states nothing the panel did not.
     assert.deepEqual(run({ sources: [source("const readBound = (env: NodeJS.ProcessEnv, name: string, floor: number): number => {\n    const raw = env[name];\n    if (raw === undefined) throw new Error(name);\n    return Number(raw);\n};")] }), []);
 });
+
+test("a package that ships a panel tests on it, or the floor is a fiction where the code is exercised", () => {
+    const panels = [panel("PLURNK_X=1\n")];
+    const sources = [source("use(env.PLURNK_X);")];
+    const manifest = (scripts) => ({ name: "plurnk-x/package.json", content: JSON.stringify({ scripts }) });
+    const check = (scripts) => envSurfaceViolations({ panels, sources, corpus: sources, manifests: [manifest(scripts)], allowance: {} });
+    assert.deepEqual(check({ "test:unit": "node --env-file=.env.defaults --test src/**/*.test.ts" }), []);
+    assert.deepEqual(check({ "test:unit": "node --env-file-if-exists=.env.defaults --test" }), []);
+    // Somebody else's panel is not this package's floor.
+    assert.deepEqual(
+        check({ "test:unit": "node --env-file-if-exists=../plurnk-execs/.env.defaults --test" }),
+        ["test-floor: plurnk-x test:unit — 1 found, allowance 0"],
+    );
+    // A package with no panel owes nothing, and a script that runs no node owes nothing.
+    assert.deepEqual(envSurfaceViolations({ panels: [], sources: [], corpus: [], manifests: [manifest({ "test:unit": "node --test" })], allowance: {} }), []);
+    assert.deepEqual(check({ "test:unit": "npm run build" }), []);
+});

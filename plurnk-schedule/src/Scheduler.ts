@@ -68,7 +68,7 @@ const MAX_DELAY_MS = 2_147_483_647;
 const DIAGNOSTIC_LIMIT = 512;
 const key = (workspaceId: number, alias: string): string => `${workspaceId}:${alias}`;
 
-const DEFAULT_TIMERS: SchedulerTimers = Object.freeze({
+const SYSTEM_TIMERS: SchedulerTimers = Object.freeze({
     set: (callback: () => void, delayMs: number): unknown => setTimeout(callback, delayMs).unref(),
     clear: (handle: unknown): void => { clearTimeout(handle as NodeJS.Timeout); },
 });
@@ -97,7 +97,7 @@ export default class Scheduler {
 
     constructor(options: SchedulerOptions = {}) {
         this.#clock = options.clock ?? Date.now;
-        this.#timers = options.timers ?? DEFAULT_TIMERS;
+        this.#timers = options.timers ?? SYSTEM_TIMERS;
         this.#report = options.report ?? ((message, cause) => { console.error(`${message}:`, cause); });
         this.#settled = options.settled ?? (() => {});
     }

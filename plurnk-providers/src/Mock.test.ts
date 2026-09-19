@@ -8,10 +8,18 @@ import { ProviderError } from "./errors.ts";
 const build = (responses: MockResponse[] = [{ assistant: { content: "hi", reasoning: null } }]) =>
     new Mock({ contextWindow: 100000, responses });
 
+// The suite runs on this package's own panel, which ships an output budget. "No budget" is therefore
+// something a test states — the panel's explicit empty value — never an ambient absence of the key.
+const withoutOutputBudget = <T>(body: () => T): T => {
+    const panel = process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET;
+    process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "";
+    try { return body(); } finally { process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = panel; }
+};
+
 // — Identity ({§provider-interface}) —
 
 test("Mock: contextWindow and model are stable across reads", () => {
-    const m = build();
+    const m = withoutOutputBudget(() => build());
     assert.equal(m.contextWindow, 100000);
     assert.equal(m.inputCapacity, null);
     assert.equal(m.contextWindow, 100000);
@@ -193,8 +201,8 @@ test("Mock resolves percentage and absolute generation budgets against its windo
     }
 });
 
-test("no generation-budget env leaves a bare Mock unbounded", () => {
-    const m = new Mock({ contextWindow: 49152, responses: [] });
+test("an empty generation budget leaves a bare Mock unbounded", () => {
+    const m = withoutOutputBudget(() => new Mock({ contextWindow: 49152, responses: [] }));
     assert.equal(m.outputBudget, null);
     assert.equal(m.reasoningBudget, null);
     assert.equal(m.inputCapacity, null);

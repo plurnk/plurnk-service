@@ -96,7 +96,7 @@ export const readPanels = (panels) => {
 };
 
 // Every finding is `rule\tkey`, counted: the key is a file for a site count and a name for a name.
-export const measure = ({ panels, sources, corpus }) => {
+export const measure = ({ panels, sources, corpus, manifests = [] }) => {
     const { live, optional, duplicates } = readPanels(panels);
     const declared = new Set([...live.keys(), ...optional.keys()]);
     const findings = new Map();
@@ -149,6 +149,20 @@ export const measure = ({ panels, sources, corpus }) => {
         count("undeclared", name);
     }
     for (const name of retired) if (declared.has(name)) count("retired-declared", name);
+
+    // "The floor is always assembled" has to be true where the code is exercised, or a strict read
+    // is impossible and a fallback creeps back in: a package that ships a panel tests on it.
+    const panelOwners = new Set(panels.map(({ name }) => name.replace(/\/?\.env\.defaults$/u, "")));
+    for (const { name, content } of manifests) {
+        const owner = name.replace(/\/?package\.json$/u, "");
+        if (!panelOwners.has(owner)) continue;
+        const scripts = JSON.parse(content).scripts ?? {};
+        for (const script of ["test:unit", "test:intg"]) {
+            const command = scripts[script];
+            if (typeof command !== "string" || !/\bnode\b/u.test(command)) continue;
+            if (!/--env-file(?:-if-exists)?=(?:\.\/)?\.env\.defaults\b/u.test(command)) count("test-floor", `${owner} ${script}`);
+        }
+    }
     for (const duplicate of duplicates) count("duplicate-owner", duplicate);
 
     // A live declaration nothing consumes means the panel lies. Tests and tooling count as consumers.
@@ -161,8 +175,8 @@ export const measure = ({ panels, sources, corpus }) => {
     return findings;
 };
 
-export const envSurfaceViolations = ({ panels, sources, corpus, allowance }) => {
-    const findings = measure({ panels, sources, corpus });
+export const envSurfaceViolations = ({ panels, sources, corpus, manifests, allowance }) => {
+    const findings = measure({ panels, sources, corpus, manifests });
     const violations = [];
     const allowed = new Map(Object.entries(allowance).flatMap(([rule, keys]) =>
         Object.entries(keys).map(([key, n]) => [`${rule}\t${key}`, n])));
@@ -206,7 +220,8 @@ const load = async () => {
     const read = async (path) => ({ name: relative(ROOT, path), content: await readFile(path, "utf8") });
     const panels = await Promise.all(paths.filter((path) => path.endsWith("/.env.defaults")).map(read));
     const corpus = await Promise.all(paths.filter((path) => SOURCE_EXTENSIONS.test(path) || path.endsWith(".sh")).map(read));
-    return { panels, sources: corpus, corpus };
+    const manifests = await Promise.all(paths.filter((path) => /^plurnk-[^/]+\/package\.json$/u.test(relative(ROOT, path))).map(read));
+    return { panels, sources: corpus, corpus, manifests };
 };
 
 if (import.meta.main) {

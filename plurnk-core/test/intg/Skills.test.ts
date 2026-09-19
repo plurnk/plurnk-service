@@ -74,7 +74,7 @@ test("{§agent-skills-name} {§skills-resources}: discovery, installation and UR
     }
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null, hostPaths: new HostPaths({ home, env: {} }), skills: {
-        toolchain: new StandardSkillsToolchain({ PLURNK_SERVICE_SKILLS_CLI: `${process.execPath} ${FIXTURE_CLI}` }),
+        toolchain: new StandardSkillsToolchain({ PLURNK_SERVICE_SKILLS_CLI: `${process.execPath} ${FIXTURE_CLI}`, PLURNK_SERVICE_SKILLS_REGISTRY_URL: "" }),
     } });
     t.after(async () => { await daemon.stop(); await db.close(); await rm(base, { recursive: true, force: true }); });
     await daemon.start();
@@ -120,7 +120,7 @@ test("{§module-workspace-quiescence}: a busy workspace refuses skill installati
     await writeSkill(source, "alpha", "Installed alpha");
     await writeSkill(source, "beta", "Uninstalled beta");
     const hostPaths = new HostPaths({ home, env: {} });
-    const toolchain = new StandardSkillsToolchain({ PLURNK_SERVICE_SKILLS_CLI: `${process.execPath} ${FIXTURE_CLI}` });
+    const toolchain = new StandardSkillsToolchain({ PLURNK_SERVICE_SKILLS_CLI: `${process.execPath} ${FIXTURE_CLI}`, PLURNK_SERVICE_SKILLS_REGISTRY_URL: "" });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null, hostPaths, skills: { toolchain } });
     t.after(async () => { await daemon.stop(); await db.close(); await rm(base, { recursive: true, force: true }); });
@@ -247,7 +247,8 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
         const byQuery = await invoke<{ candidates: Array<{ alias: string; definition: { source: string }; provenance: { kind: string; reference?: string } }> }>("discover", { query: "alpha" });
         assert.deepEqual(hub.queries, ["alpha"]);
         assert.deepEqual(byQuery.candidates.map(({ alias, definition, provenance }) => ({ alias, source: definition.source, kind: provenance.kind, reference: provenance.reference })), [
-            { alias: "alpha", source: "acme/kit", kind: "registry", reference: "https://skills.sh/acme/kit/alpha" },
+            // The registry that answered, never a fixed one: this once pinned skills.sh while the hub answered.
+            { alias: "alpha", source: "acme/kit", kind: "registry", reference: `${hub.url}/acme/kit/alpha` },
         ], "registry hits with invalid standard names are dropped");
         assert.equal(await exists(join(projectRoot, "alpha")), false, "discovery installed nothing");
         assert.equal((await rejectedProblem(() => invoke("discover", { configuration: { X: "y" } }))).status, 400);

@@ -41,7 +41,7 @@ export type MockResponse = {
 export type MockReturnedAssistant = ProviderAssistant & { ops?: unknown[] };
 export type MockReturnedResponse = ProviderResponse & { assistant: MockReturnedAssistant };
 
-const DEFAULT_USAGE: ProviderUsage = {
+const MOCK_USAGE: ProviderUsage = {
     inputTokens: 0,
     outputTokens: 0,
     totalTokens: 0,
@@ -154,7 +154,7 @@ export default class Mock implements Provider {
         }
         const a = next.assistant;
         const usage: ProviderUsage = {
-            ...DEFAULT_USAGE,
+            ...MOCK_USAGE,
             ...next.usage,
         };
         const requestAccounting: ProviderRequestAccounting = validateProviderRequestAccounting({
@@ -196,4 +196,4 @@ export default class Mock implements Provider {
     get remaining(): number { return this.#queue.length; }
 }
 
-export { DEFAULT_USAGE as mockDefaultUsage };
+export { MOCK_USAGE as mockDefaultUsage };

@@ -2,7 +2,7 @@
 import type { SchemeCtx, SubscriptionHandle, StreamSubscription, ChannelProducerResult, PassthroughResult, SchemeManifest, UrlPath, EntryData, SchemeResult } from "@plurnk/plurnk-schemes";
 import { MimetypeClassifier, NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import ErrorDetail from "./ErrorDetail.ts";
-import WebFetcher, { DEFAULT_WEB_UA, WebMaterializationError } from "./WebFetcher.ts";
+import WebFetcher, { webUserAgent, WebMaterializationError } from "./WebFetcher.ts";
 import { responseMimetype } from "./ContentType.ts";
 import { BODY } from "./http-names.ts";
 import LiveAcquisitions from "./LiveAcquisitions.ts";
@@ -105,7 +105,7 @@ export default class HttpRequester {
                 body,
                 headers: headers.some(([k]) => k.toLowerCase() === "user-agent")
                     ? headers
-                    : [["User-Agent", DEFAULT_WEB_UA] as [string, string], ...headers],
+                    : [["User-Agent", webUserAgent()] as [string, string], ...headers],
                 signal: local.signal,
                 redirect: "follow",
             });

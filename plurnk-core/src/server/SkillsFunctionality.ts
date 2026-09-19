@@ -39,8 +39,6 @@ const execFileP = promisify(execFile);
 const SKILLS_FAMILY = "skills";
 const SKILLS_OWNER = "@plurnk/plurnk-core/skills";
 const DEFINITION = { $ref: "https://schemas.plurnk.xyz/v0/SkillDefinition.json" } as const satisfies JsonSchema;
-const DEFAULT_CLI = "npx --yes skills";
-const DEFAULT_REGISTRY = "https://skills.sh";
 const REGISTRY_LIMIT = 20;
 const CLI_TIMEOUT_MS = 120_000;
 
@@ -67,6 +65,9 @@ export interface RegistrySkill {
     readonly id: string;
     readonly source: string;
     readonly installs: number | null;
+    // Where the registry that answered the search describes this skill — the configured registry,
+    // never a fixed one: provenance used to cite skills.sh whatever the operator had configured.
+    readonly reference: string;
 }
 
 // The deterministic machinery beneath the adapter: the standard `skills` CLI
@@ -148,10 +149,14 @@ export class StandardSkillsToolchain implements SkillsToolchain {
     readonly #registry: string | null;
 
     constructor(env: NodeJS.ProcessEnv = process.env) {
-        const cli = env.PLURNK_SERVICE_SKILLS_CLI?.trim();
-        this.#command = (cli === undefined || cli.length === 0 ? DEFAULT_CLI : cli).split(/\s+/u);
+        // {§operator-config-only-home} — the panel states both values; an unset key is a broken floor.
+        const cli = env.PLURNK_SERVICE_SKILLS_CLI;
+        if (cli === undefined) throw new Error("PLURNK_SERVICE_SKILLS_CLI is missing from the assembled environment floor.");
+        if (cli.trim().length === 0) throw new Error("PLURNK_SERVICE_SKILLS_CLI must name the Agent Skills installer command.");
+        this.#command = cli.trim().split(/\s+/u);
         const registry = env.PLURNK_SERVICE_SKILLS_REGISTRY_URL;
-        this.#registry = registry === undefined ? DEFAULT_REGISTRY : registry.trim().length === 0 ? null : registry.trim().replace(/\/+$/u, "");
+        if (registry === undefined) throw new Error("PLURNK_SERVICE_SKILLS_REGISTRY_URL is missing from the assembled environment floor.");
+        this.#registry = registry.trim().length === 0 ? null : registry.trim().replace(/\/+$/u, "");
     }
 
     get registry(): string | null {
@@ -193,6 +198,7 @@ export class StandardSkillsToolchain implements SkillsToolchain {
                 id: skill.id,
                 source: typeof skill.source === "string" && skill.source.length > 0 ? skill.source : skill.id.split("/").slice(0, 2).join("/"),
                 installs: typeof skill.installs === "number" ? skill.installs : null,
+                reference: `${this.#registry}/${skill.id}`,
             }];
         });
     }
@@ -376,7 +382,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
                 alias: skill.name,
                 ...(skill.installs === null ? {} : { summary: `${skill.installs} installs` }),
                 definition: { name: skill.name, scope: "project", source: skill.source } satisfies SkillDefinition,
-                provenance: { kind: "registry", source: skill.source, reference: `${DEFAULT_REGISTRY}/${skill.id}` },
+                provenance: { kind: "registry", source: skill.source, reference: skill.reference },
             }];
         });
     }
