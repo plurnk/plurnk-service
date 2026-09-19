@@ -688,7 +688,7 @@ test("EDIT on the bare worker entity is rejected — WORK spawns, not EDIT (400,
         assert.equal(result.status, 400, "EDIT on the worker entity is rejected");
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/worker/worker-entity-not-editable");
         assert.equal(result.problem?.detail, "A worker entity is not an editable entry.");
-        assert.equal(result.problem?.recovery, "EDIT requires an entry path, such as worker:///notes.md.");
+        assert.equal(result.problem?.recovery, "EDIT requires an entry path, such as worker:///example.md.");
         assert.equal(result.problem?.retryable, false);
         assert.equal(calls.length, 0, "no inject on a rejected EDIT");
         const worker = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });

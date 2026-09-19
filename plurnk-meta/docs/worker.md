@@ -12,8 +12,8 @@ an entry rather than controlling that worker.
 | `worker://reviewer` | Named worker | WORK/FORK create; SEND messages; READ collects; KILL terminates. |
 | `message://reviewer/ab3d5678` | Retained message | READ/FIND/COPY inspect; SEND replies. Neither EDIT nor KILL changes its source. |
 | `loop://reviewer/1` | Retained loop result | READ/FIND/COPY inspect; source is immutable. |
-| `worker://reviewer/notes.md` | Named scratch entry | Read and write from any worker in the workspace. |
-| `worker:///notes.md` | Shared commons entry | Read and write. |
+| `worker://reviewer/example.md` | Named scratch entry | Read and write from any worker in the workspace. |
+| `worker:///example.md` | Shared commons entry | Read and write. |
 
 The packet names your worker, its parent (`null` at a root), and the loop and turn you are producing under `## Worker`, below the log. Addresses are literal and keep
 the same meaning when passed to another worker. All scratch belongs to the
@@ -101,7 +101,7 @@ BARE: `WORK (specs/feature.md)` reads the file whole as the task,
 an inline body follows it after a blank line, and the child is auto-named.
 Use SEND to give an existing worker a follow-up task.
 
-SEND accepts `[{"attachments":["report.pdf","worker:///notes.md"]}]`.
+SEND accepts `[{"attachments":["report.pdf","worker:///example.md"]}]`.
 It delivers send-time copies through ordinary resource links, not native media
 injection; the recipient READs what it needs. Missing sources fail before
 delivery. The same option works on a targetless reply.

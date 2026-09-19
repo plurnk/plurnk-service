@@ -59,7 +59,7 @@ export default class Worker extends CoreSchemeAdapterBase {
         if (access === "write" && pathname === "") return Results.failure(
             "scheme:worker", "worker-entity-not-editable", 400,
             "A worker entity is not an editable entry.", {},
-            { recovery: "EDIT requires an entry path, such as worker:///notes.md.", retryable: false },
+            { recovery: "EDIT requires an entry path, such as worker:///example.md.", retryable: false },
         );
         return { authority, pathname };
     }
