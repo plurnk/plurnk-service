@@ -31,12 +31,6 @@ const inlineCode = (value: string): string => {
     return `${fence}${padding}${value}${padding}${fence}`;
 };
 
-const fence = (language: string, value: string): string => {
-    const longest = Math.max(2, ...[...value.matchAll(/`+/gu)].map((match) => match[0].length));
-    const marker = "`".repeat(longest + 1);
-    return `${marker}${language}\n${value}\n${marker}`;
-};
-
 const escapeCell = (value: string): string => value.replaceAll("|", "\\|");
 
 const summaryParagraph = (value: string): string =>
@@ -71,6 +65,15 @@ const invocationRows = (
     ];
 };
 
+const optionalPropertyCount = (schema?: JsonSchema): number => {
+    if (typeof schema !== "object" || schema === null) return 0;
+    const properties = typeof schema.properties === "object" && schema.properties !== null && !Array.isArray(schema.properties)
+        ? schema.properties as Record<string, unknown>
+        : {};
+    const required = Array.isArray(schema.required) ? schema.required : [];
+    return Object.keys(properties).filter((key) => !required.includes(key)).length;
+};
+
 const invocationHeader = (
     runtime: string,
     invocation: RuntimeInvocationDecl,
@@ -80,8 +83,11 @@ const invocationHeader = (
 ): string => {
     const target = exactTarget ?? invocation.example?.target;
     const path = target === undefined ? "" : ` (${PathSyntax.escapeTarget(target)})`;
+    const optionalCount = schemaPath === undefined ? 0 : optionalPropertyCount(invocation.inputSchema);
+    const optionalNote = optionalCount > 0 ? `(+${optionalCount} opt)` : undefined;
     const note = [
         ...(aside === undefined ? [] : [asideText(aside)]),
+        ...(optionalNote === undefined ? [] : [optionalNote]),
         ...(schemaPath === undefined ? [] : [`Schema: worker://${schemaPath}`]),
     ].join(" ");
     return `${runtime}${path}` + (note === "" ? "" : ` <!-- ${note} -->`);
@@ -154,17 +160,30 @@ const renderDocument = (
     ...(details.length === 0 ? [] : ["", details.trimEnd()]),
 ].join("\n");
 
-const schemaDocument = (pathname: string, title: string, schema: JsonSchema, details: string): ToolResource => ({
-    pathname,
-    content: [
-        `# ${title}`,
-        ...(details.length === 0 ? [] : ["", details]),
-        "", "## Input schema", "", fence("json", JSON.stringify(schema, null, 2)),
-        ...ToolInputSchema.references(schema).flatMap((document) => [
-            "", fence("json", JSON.stringify(document, null, 2)),
-        ]),
-    ].join("\n"),
-});
+const schemaDocument = (pathname: string, title: string, schema: JsonSchema, details: string): ToolResource => {
+    const refs = ToolInputSchema.references(schema);
+    const doc: Record<string, unknown> = {
+        title: typeof (schema as { title?: unknown }).title === "string" ? (schema as { title?: unknown }).title : title,
+        ...(details.trim().length === 0 || typeof (schema as { description?: unknown }).description === "string"
+            ? {}
+            : { description: details }),
+        ...schema,
+    };
+    if (refs.length > 0) {
+        const existingDefs = (schema as { $defs?: Record<string, unknown> }).$defs ?? {};
+        const defs: Record<string, unknown> = { ...existingDefs };
+        for (const refDoc of refs) {
+            const refId = (refDoc as { $id?: string }).$id;
+            const defKey = refId ?? (refDoc as { title?: string }).title ?? "ref";
+            defs[defKey] = refDoc;
+        }
+        doc.$defs = defs;
+    }
+    return {
+        pathname,
+        content: JSON.stringify(doc, null, 2),
+    };
+};
 
 export default class ToolResources {
     static documentPath(runtime: string, resourcesPath?: string): string {
@@ -188,7 +207,7 @@ export default class ToolResources {
             const headerOnly = schema === undefined && source.details.trim().length === 0;
             const summary = headerOnly ? `${source.summary} (invocation only)` : source.summary;
             const child = schema === undefined ? [] : [schemaDocument(
-                `${childrenRoot}/input.md`, source.runtime, schema, source.details,
+                `${childrenRoot}/input.json`, source.runtime, schema, source.details,
             )];
             return [{
                 pathname,
@@ -204,7 +223,7 @@ export default class ToolResources {
 
         // Declaration order is the taught order (a family's lifecycle verbs, a server's tools).
         const tools = source.registry.tools;
-        const schemaPath = (target: string): string => `${childrenRoot}/${ToolResources.targetSegment(target)}.md`;
+        const schemaPath = (target: string): string => `${childrenRoot}/${ToolResources.targetSegment(target)}.json`;
         // {§scheme-catalog-aside} — the family's summary is its complete menu: every tool inside
         // the invocation form, shown whole by the catalog, so the discovery row invokes without a READ.
         const summary = typeof source.summary === "string" ? authoredSummary(source, source.summary) : summaryWitness(

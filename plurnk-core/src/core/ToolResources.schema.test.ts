@@ -42,14 +42,17 @@ test("{§executor-input-schema-preview} catalogs only required top-level fields 
     const before = structuredClone(schema);
     const [family, detail] = render();
     assert.equal(family?.pathname, "/_plurnk/tools/gitea.md");
-    assert.equal(detail?.pathname, "/_plurnk/tools/gitea/issue%2Fread.md");
-    assert.match(family!.content, /````gitea \(issue\/read\) <!-- List issues\. Schema: worker:\/\/\/_plurnk\/tools\/gitea\/issue%2Fread\.md -->\n\{"repo_id": integer, "filter": object, "labels": array, "mode": "open" \| "all", "selector": unknown\}\n````/);
+    assert.equal(detail?.pathname, "/_plurnk/tools/gitea/issue%2Fread.json");
+    assert.match(family!.content, /````gitea \(issue\/read\) <!-- List issues\. \(\+1 opt\) Schema: worker:\/\/\/_plurnk\/tools\/gitea\/issue%2Fread\.json -->\n\{"repo_id": 0, "filter": \{\}, "labels": \[\], "mode": "open", "selector": null\}\n````/);
     assert.doesNotMatch(family!.content, /page|oneOf|Selection|minItems/);
-    assert.ok(detail!.content.includes(description), "complete multiline description is preserved");
-    assert.deepEqual(JSON.parse(detail!.content.split("## Input schema\n\n```json\n")[1]!.split("\n```", 1)[0]!), schema);
+    const parsed = JSON.parse(detail!.content) as Record<string, unknown>;
+    assert.equal(parsed.description, description, "complete multiline description is preserved");
+    assert.equal(parsed.title, "gitea: issue/read");
+    assert.deepEqual(parsed.properties, schema.properties);
+    assert.deepEqual(parsed.required, schema.required);
     assert.doesNotMatch(detail!.content, /^## Summary$/m, "schema docs do not impersonate family summaries");
     assert.deepEqual(schema, before, "projection never mutates a server's schema");
-    assert.equal(render("other")[1]?.pathname, "/_plurnk/tools/other/issue%2Fread.md");
+    assert.equal(render("other")[1]?.pathname, "/_plurnk/tools/other/issue%2Fread.json");
 });
 
 test("{§executor-input-schema-preview} complex conditional requirements stay in the raw schema", () => {
@@ -60,7 +63,8 @@ test("{§executor-input-schema-preview} complex conditional requirements stay in
     const [family, detail] = render("conditional", conditional);
     assert.match(family!.content, /-->\n\{\}\n/);
     assert.doesNotMatch(family!.content, /first|second|oneOf/);
-    assert.ok(detail!.content.includes(JSON.stringify(conditional, null, 2)));
+    const parsed = JSON.parse(detail!.content) as Record<string, unknown>;
+    assert.deepEqual(parsed.oneOf, conditional.oneOf);
 });
 
 test("{§tools-summary-invocation} a featured exact tool includes its required input without expanding the family", () => {
@@ -78,7 +82,7 @@ test("{§tools-summary-invocation} a featured exact tool includes its required i
         registry: { tools: [tool, { ...tool, target: "news" }] },
     })[0]!.content.split("## Summary\n\n")[1]!.split("\n\n")[0];
     const heading = "````brave (search) <!-- Search documents -->";
-    assert.equal(family(`${heading}\`\`\`\``), `${heading}\\n{"query": string}\\n\`\`\`\``);
+    assert.equal(family(`${heading}\`\`\`\``), `${heading}\\n{"query": ""}\\n\`\`\`\``);
     for (const authored of [
         "Search documents and news.",
         "````brave (search|news)````",
@@ -98,20 +102,22 @@ test("{§executor-input-schema-preview} general schema-backed runtimes also expo
         runtime: "query", summary: "Run a query.", details: description, registry: null,
         invocation: { body: { role: "JSON arguments", required: true }, inputSchema: schema },
     });
-    assert.equal(detail!.pathname, "/_plurnk/plurnk/query/input.md");
+    assert.equal(detail!.pathname, "/_plurnk/plurnk/query/input.json");
     assert.ok(family!.content.includes(`Schema: worker://${detail!.pathname} -->`));
-    assert.ok(family!.content.includes('{"repo_id": integer, "filter": object, "labels": array, "mode": "open" | "all", "selector": unknown}'));
-    assert.ok(detail!.content.includes(JSON.stringify(schema, null, 2)));
+    assert.ok(family!.content.includes('{"repo_id": 0, "filter": {}, "labels": [], "mode": "open", "selector": null}'));
+    assert.deepEqual((JSON.parse(detail!.content) as Record<string, unknown>).properties, schema.properties);
 });
 
 test("{§executor-input-schema-preview} includes original repository-owned referenced schemas without fetching external references", () => {
     const ref = "https://schemas.plurnk.xyz/v0/McpServerDefinition.json";
     const input = { type: "object", required: ["definition"], properties: { definition: { $ref: ref } } };
     const [, detail] = render("mcp", input);
-    assert.ok(detail!.content.includes(JSON.stringify(input, null, 2)));
-    assert.ok(detail!.content.includes(JSON.stringify(Validator.schemaByRef(ref), null, 2)));
+    const parsed = JSON.parse(detail!.content) as Record<string, unknown>;
+    assert.deepEqual(parsed.properties, input.properties);
+    assert.deepEqual((parsed.$defs as Record<string, unknown>)[ref], Validator.schemaByRef(ref));
     const external = { $ref: "https://not-a-server.invalid/schema.json" };
-    assert.ok(render("external", external)[1]!.content.includes(JSON.stringify(external, null, 2)));
+    const [, extDetail] = render("external", external);
+    assert.equal((JSON.parse(extDetail!.content) as Record<string, unknown>).$ref, external.$ref);
 });
 
 test("{§executor-input-schema-preview} a required closed set of strings shows its values; a long or mixed set keeps its type (#762)", () => {
@@ -123,9 +129,51 @@ test("{§executor-input-schema-preview} a required closed set of strings shows i
             owner: { type: "string" },
             issue_number: { type: "number" },
         },
-    }), '{"method": "get" | "get_comments" | "get_labels", "owner": string, "issue_number": number}');
+    }), '{"method": "get", "owner": "", "issue_number": 0}');
     assert.equal(ToolInputSchema.preview({
-        type: "object", required: ["a", "b"],
-        properties: { a: { type: "string", enum: Array.from({ length: 9 }, (_, i) => `v${i}`) }, b: { type: "string", enum: ["x", 1] } },
-    }), '{"a": string, "b": string}');
+        type: "object", required: ["a", "b", "c", "d"],
+        properties: {
+            a: { type: "string", enum: Array.from({ length: 9 }, (_, i) => `v${i}`) },
+            b: { type: "string", enum: ["x", 1] },
+            c: { type: "boolean" },
+            d: { type: "array" },
+        },
+    }), '{"a": "v0", "b": "x", "c": false, "d": []}');
 });
+
+test("{§executor-input-schema-preview} notes omitted optional properties as (+N opt) before the schema pointer", () => {
+    const withOptions = ToolResources.render({
+        runtime: "gitea", resourcesPath: "/tools", summary: { from: "tools" }, details: "",
+        invocation: { body: { role: "JSON arguments", required: true }, target: { role: "tool", required: true, kind: "literal" }, example: { target: "search" } },
+        registry: { tools: [{
+            target: "search", summary: "Search repos.", details: "",
+            invocation: {
+                body: { role: "JSON arguments", required: true },
+                target: { role: "tool", required: true, kind: "literal" },
+                inputSchema: {
+                    type: "object", required: ["query"],
+                    properties: { query: { type: "string" }, page: { type: "integer" }, sort: { type: "string" } },
+                },
+            },
+        }] },
+    })[0]!.content;
+    assert.match(withOptions, /````gitea \(search\) <!-- Search repos\. \(\+2 opt\) Schema: worker:\/\/\/_plurnk\/tools\/gitea\/search\.json -->\n\{"query": ""\}\n````/);
+
+    const noOptions = ToolResources.render({
+        runtime: "gitea", resourcesPath: "/tools", summary: { from: "tools" }, details: "",
+        invocation: { body: { role: "JSON arguments", required: true }, target: { role: "tool", required: true, kind: "literal" }, example: { target: "search" } },
+        registry: { tools: [{
+            target: "search", summary: "Search repos.", details: "",
+            invocation: {
+                body: { role: "JSON arguments", required: true },
+                target: { role: "tool", required: true, kind: "literal" },
+                inputSchema: {
+                    type: "object", required: ["query"],
+                    properties: { query: { type: "string" } },
+                },
+            },
+        }] },
+    })[0]!.content;
+    assert.match(noOptions, /````gitea \(search\) <!-- Search repos\. Schema: worker:\/\/\/_plurnk\/tools\/gitea\/search\.json -->\n\{"query": ""\}\n````/);
+});
+

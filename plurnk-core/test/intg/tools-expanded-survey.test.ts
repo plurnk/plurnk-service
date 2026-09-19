@@ -80,10 +80,10 @@ test("{§tools-resource-materialization} turn 0 surveys an expanded server's too
             assert.match(String(survey.logPath), /\/FIND$/, "the survey is a FIND, not a document READ");
             assert.equal(survey.aside, undefined, "the target and +tools classification already orient the survey");
             const log = packetSection(packet, "log");
-            assert.match(log, /"matched":"````fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.md -->\\n\{\\"message\\": string\}\\n````"/, "one row per tool: opening fence, aside, preview, schema link, closing fence");
+            assert.match(log, /"matched":"````fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json -->\\n\{\\"message\\": \\"\\"\}\\n````"/, "one row per tool: opening fence, aside, preview, schema link, closing fence");
             assert.match(log, /"matched":"````fixture \(fail\) /, "every tool is a row");
             assert.doesNotMatch(log, /"aside":"enabled tools: /, "no redundant survey aside is materialized");
-            assert.doesNotMatch(log, /"path":"worker:\/\/\/_plurnk\/tools\/fixture\/echo\.md"/, "schema documents are not individual Turn0 discovery rows");
+            assert.doesNotMatch(log, /"path":"worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json"/, "schema documents are not individual Turn0 discovery rows");
         } finally {
             ws.close();
         }
@@ -96,7 +96,7 @@ test("{§tools-resource-materialization} turn 0 surveys an expanded server's too
 });
 
 test("{§functionality-model-projection} the model READs the complete installed MCP add schema with its transport and auth contracts", { timeout: 30_000 }, async () => {
-    const target = "worker:///_plurnk/plurnk/mcp/add.md";
+    const target = "worker:///_plurnk/plurnk/mcp/add.json";
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\`
 \`\`\`\`NOTE
@@ -117,14 +117,14 @@ Read the input schema.
         const read = logEntries(JSON.parse(row!.packet)).find((entry) => entry.path === target);
         assert.ok(read && typeof read.body === "string", "ordinary READ delivers the linked input document to the next model packet");
         const body = read.body.replace(/^(?: *\d+:|@[0-9A-Za-z]{5} +\d+:)/gm, "");
-        const schemas = [...body.matchAll(/^```json\n([\s\S]*?)\n```/gm)].map((match) => JSON.parse(match[1]!));
-        assert.deepEqual(schemas[0].required, ["definition"]);
-        const definition = schemas.find((schema) => schema.$id === "https://schemas.plurnk.xyz/v0/McpServerDefinition.json");
+        const doc = JSON.parse(body);
+        assert.deepEqual(doc.required, ["definition"]);
+        const definition = doc.$defs?.["https://schemas.plurnk.xyz/v0/McpServerDefinition.json"];
         assert.ok(definition);
         assert.equal(definition.properties.authorization.oneOf.length, 5);
-        assert.ok(Object.values(definition.properties).every((field) => typeof (field as { description?: unknown }).description === "string"));
+        assert.ok(Object.values(definition.properties).every((field: unknown) => typeof (field as { description?: unknown }).description === "string"));
         assert.deepEqual(definition, Validator.schemaByRef("https://schemas.plurnk.xyz/v0/McpServerDefinition.json"));
-        assert.match(body, /^````mcp \(add\)/m, "the family's existing valid example remains on-demand");
+        assert.match(doc.description, /````mcp \(add\)/m, "the family's existing valid example remains on-demand");
     } finally {
         ws.close();
         await daemon.stop();

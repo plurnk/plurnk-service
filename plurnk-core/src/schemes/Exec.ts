@@ -793,7 +793,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const owner = owners[0]!;
         // The tool's own document, where its family publishes it ({§tools-resource-materialization}).
         const root = executors.entry(owner, core.workspaceId)?.resourcesPath ?? "/plurnk";
-        const contract = `worker://${generatedPathname(`${root}/${owner}/${ToolResources.targetSegment(program)}.md`)}`;
+        const contract = `worker://${generatedPathname(`${root}/${owner}/${ToolResources.targetSegment(program)}.json`)}`;
         return {
             ...result,
             problem: {

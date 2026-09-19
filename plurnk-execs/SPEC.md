@@ -468,21 +468,24 @@ An exact registry instead renders one compact family document whose Summary is
 authored or derived from its effective tools. Its H2 `Tools` contains one
 executable fence per tool, naming the runtime and exact target, with its aside
 and input preview. A schema-backed invocation
-links from its aside to a child document containing the full description and
-original input JSON Schema. Non-schema invocations retain their authored witness
+links from its aside to an exact `.json` child document (`application/json`) containing the full description and
+original input JSON Schema, noting any omitted optional top-level properties as `(+N opt)` before the schema pointer. Non-schema invocations retain their authored witness
 and supplemental details.
 Supplemental `details` follows framework-owned sections and cannot own identity,
 invocation, or admission. The consumer chooses resource addresses, materializes
 the documents, and exposes each Summary through ordinary FIND metadata. No
 executor table or executor-specific discovery protocol exists.
 
-§executor-input-schema-preview Schema-backed previews list only explicitly
-required top-level fields, with quoted names and declared broad JSON types. A
-required field whose schema is a closed set of at most eight strings (`enum`) shows
-those values instead of `string` (`"method": "get" | "get_comments"`), because a
-bare `string` there invites a guess the tool refuses (#762). Nested objects and
-arrays stay opaque; an undeclared type is `unknown`. Optional fields, references,
-other constraints, and conditional branches are not interpreted.
+§executor-input-schema-preview Schema-backed previews emit a compact, valid
+JSON skeleton containing only explicitly required top-level fields. Each required
+field takes a minimal default value matching its declared JSON type: `""` for string,
+`0` for number or integer, `false` for boolean, `[]` for array, and `{}` for object;
+an undeclared type is `null`. A required field declaring a closed set of strings
+(`enum`) uses its first choice as its default value, so common invocations require
+no verb guesswork (#762). Nested objects and arrays stay empty; optional fields,
+references, other constraints, and conditional branches are not interpreted. When
+declared top-level properties exceed the required set, the aside signals their presence
+with `(+N opt)`.
 The preview is not a complete signature or validation promise. Its schema link
 provides the complete original schema, including descriptions, definitions,
 references, and constraints; repository-owned referenced schemas are included

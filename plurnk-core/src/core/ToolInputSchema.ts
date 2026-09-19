@@ -1,30 +1,33 @@
 import { Validator, type JsonSchema } from "@plurnk/plurnk-contracts";
 
-const TYPES = new Set(["string", "number", "integer", "boolean", "null", "object", "array"]);
 const objectOf = (value: unknown): JsonSchema =>
     typeof value === "object" && value !== null && !Array.isArray(value) ? value as JsonSchema : {};
 
-export default class ToolInputSchema {
-    static readonly #ENUM_LIMIT = 8;
+const defaultValue = (property: JsonSchema): unknown => {
+    const choices = property.enum;
+    if (Array.isArray(choices) && choices.length > 0) {
+        return choices[0];
+    }
+    const type = property.type;
+    const declared = Array.isArray(type) ? type : [type];
+    if (declared.includes("string")) return "";
+    if (declared.includes("number") || declared.includes("integer")) return 0;
+    if (declared.includes("boolean")) return false;
+    if (declared.includes("array")) return [];
+    if (declared.includes("object")) return {};
+    return null;
+};
 
-    // {§executor-input-schema-preview} — a shallow field list, not a schema compiler.
+export default class ToolInputSchema {
+    // {§executor-input-schema-preview} — a compact valid JSON skeleton of required fields.
     static preview(schema: JsonSchema): string {
         const properties = objectOf(schema.properties);
         const required = Array.isArray(schema.required) ? schema.required : [];
-        const fields = required.map((name: string) => {
-            // {§executor-input-schema-preview} — a short closed set of strings is shown as its values:
-            // `string` there invites a guess the tool will refuse (#762, dogfood item 8).
-            const choices = objectOf(properties[name]).enum;
-            if (Array.isArray(choices) && choices.length > 0 && choices.length <= ToolInputSchema.#ENUM_LIMIT
-                && choices.every((choice) => typeof choice === "string")) {
-                return `${JSON.stringify(name)}: ${choices.map((choice) => JSON.stringify(choice)).join(" | ")}`;
-            }
-            const type = objectOf(properties[name]).type;
-            const declared = Array.isArray(type) ? type : [type];
-            const broad = declared.filter((value): value is string => typeof value === "string" && TYPES.has(value));
-            return `${JSON.stringify(name)}: ${broad.length === 0 ? "unknown" : broad.join(" | ")}`;
+        const entries = required.map((name: string) => {
+            const prop = objectOf(properties[name]);
+            return `${JSON.stringify(name)}: ${JSON.stringify(defaultValue(prop))}`;
         });
-        return `{${fields.join(", ")}}`;
+        return `{${entries.join(", ")}}`;
     }
 
     // Include known referenced documents verbatim. Do not inline, rewrite, or fetch schemas.

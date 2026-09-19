@@ -259,7 +259,7 @@ remain in the linked input-contract documents. With tools, the runtime declares
 complete effective menu in the family Summary and survey row
 ({§scheme-catalog-aside}). Without authored purpose the menu stands alone. The tool
 doc's Summary section IS the invocation form
-```` ```server (tool) <!-- one-liner --> ````, so the discovery row teaches the
+````` ````server (tool) <!-- one-liner --> `````, so the discovery row teaches the
 call ({§tools-resource-materialization}). Summary companions expand `${NAME}`
 references like every other companion.
 
@@ -666,7 +666,7 @@ it as a skill. The design review is tracked in #654.
 | MCP surface | Plurnk surface |
 |---|---|
 | Server | One registered executor family, `worker:///_plurnk/tools/<server>.md`, and matching resource scheme |
-| Enabled tool | One annotated call in the compact family document plus one exact `worker:///_plurnk/tools/<server>/<encoded-tool>.md` input-contract document |
+| Enabled tool | One annotated call in the compact family document plus one exact `worker:///_plurnk/tools/<server>/<encoded-tool>.json` input-contract document |
 | Tool survey | Ordinary FIND summary metadata from the standard executable-tool resource tree |
 | Resource catalog | `<server>:///` and `<server>:///resources` |
 | Resources | `<server>:///resources` and encoded resource-URI descendants |

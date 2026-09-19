@@ -86,13 +86,13 @@ test("{§send-directed-scope}: directed SEND carries a numeric scope to its owne
 
 test("trailing operation asides are durable, single-line, and follow every modifier", () => {
     const statement = oneStatement([
-        "````gitea (list_issues) <!-- Lists issues (details: worker:///_plurnk/tools/gitea/list_issues.md) -->",
+        "````gitea (list_issues) <!-- Lists issues (details: worker:///_plurnk/tools/gitea/list_issues.json) -->",
         "{\"owner\":\"plurnk\",\"repo\":\"plurnk-service\"}",
         "````",
     ].join("\n"));
     assert.equal(
         statement.aside,
-        "Lists issues (details: worker:///_plurnk/tools/gitea/list_issues.md)",
+        "Lists issues (details: worker:///_plurnk/tools/gitea/list_issues.json)",
     );
     assert.equal(oneStatement("````READ (README.md)````").aside, null);
     assert.equal(oneStatement("````READ (README.md) <!-- -->````").aside, "");
