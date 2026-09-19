@@ -78,6 +78,31 @@ depend on their leaf consumers; the service manifest is the sole owner of its
 default leaf set, while compatible third-party leaves extend it through the
 same installation and discovery path ({§default-plugin-ownership}).
 
+## Documentation authority
+
+Four documents, four jobs, and one home for every sentence.
+
+| Document | Its job |
+| --- | --- |
+| `README.md` | The front porch: what this is and how to start. |
+| `AGENTS.md` | The field guide: how to work here — drills, gates, the forge, the vocabulary. |
+| `ARCHITECTURE.md` | The lodestar: what PLURNK believes, and why. Short enough to read in one sitting, because every contributor reads it first. |
+| `SPEC.md`, one per package | The documentation: contracts anchored to the implementation, the panels and the tests. |
+
+Code comments stay lean and cite `{§tags}`, so the specifications are the hub
+that links to the moving parts. Only a file named `SPEC.md` may declare an
+anchor; every other document cites. An anchor is *witnessed* when the
+implementation, a panel or a test cites it. One that nothing outside prose cites
+is a principle in the wrong document, orientation in the wrong document, or a
+contract nobody witnesses — and, cited by nothing, it rots without anything
+failing. `scripts/spec-references.mjs` holds that allowance, which only shrinks.
+
+Promotion is never duplication. A principle moves here; a how-to moves to the
+field guide; a value that lives on a panel is deleted from prose, which cites
+the knob by name; history is deleted, because Git and the forge keep it. What
+remains in a specification is contract. `plurnk.md` and each package's
+`docs/*.md` are not documentation at all: they are surfaces a model reads.
+
 ## Configuration authority
 
 **The cascading environment is the only home for a choice.** Three surfaces

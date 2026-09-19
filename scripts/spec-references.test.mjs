@@ -3,6 +3,8 @@ import test from "node:test";
 import {
     ambiguousIssueShorthands,
     analyzeSpecReferences,
+    unwitnessedAnchors,
+    witnessViolations,
 } from "./spec-references.mjs";
 
 const cite = (tag) => `{${"§"}${tag}}`;
@@ -277,4 +279,38 @@ test("a declaration owns contract text in the same Markdown block", () => {
             { name: "alpha/SPEC.md", line: 3, tag: "empty-heading-two" },
         ],
     });
+});
+
+test("an anchor is witnessed by the implementation, a panel or a test — prose citing prose is not a witness", () => {
+    const files = [
+        { name: "alpha/SPEC.md", text: [
+            `${declare("held")} **A contract a test holds.**`,
+            "",
+            `${declare("configured")} **A contract a panel states.**`,
+            "",
+            `${declare("lectured")} **A principle only other prose mentions.** See ${cite("held")}.`,
+            "",
+            `${declare("forgotten")} **Nothing mentions this at all.**`,
+        ].join("\n") },
+        { name: "alpha/src/thing.test.ts", text: `test("${cite("held")} it holds", () => {});` },
+        { name: "alpha/.env.defaults", text: `# ${cite("configured")}\nPLURNK_X=1\n` },
+        { name: "ARCHITECTURE.md", text: `The lecture cites ${cite("lectured")}.` },
+    ];
+    assert.deepEqual(unwitnessedAnchors(files), { "alpha/SPEC.md": ["forgotten", "lectured"] });
+});
+
+test("the witness allowance only shrinks", () => {
+    const files = [
+        { name: "alpha/SPEC.md", text: `${declare("old-debt")} **Known debt.**\n\n${declare("new-debt")} **Born unwitnessed.**\n\n${declare("paid")} **Now held.**` },
+        { name: "alpha/src/paid.test.ts", text: `// ${cite("paid")}` },
+    ];
+    assert.deepEqual(witnessViolations(files, { "alpha/SPEC.md": ["new-debt", "old-debt"] }), []);
+    assert.deepEqual(
+        witnessViolations(files, { "alpha/SPEC.md": ["old-debt"] }),
+        [`alpha/SPEC.md ${declare("new-debt")} is cited by no implementation, panel or test`],
+    );
+    assert.deepEqual(
+        witnessViolations(files, { "alpha/SPEC.md": ["new-debt", "old-debt", "paid"], "gone/SPEC.md": ["moved"] }),
+        [`alpha/SPEC.md ${declare("paid")} is witnessed or gone; strike it from the allowance`, `gone/SPEC.md ${declare("moved")} is witnessed or gone; strike it from the allowance`],
+    );
 });

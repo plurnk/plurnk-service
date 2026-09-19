@@ -71,7 +71,7 @@ const checksUnbracedTags = (name) =>
     UNBRACED_SOURCE_EXTENSIONS.has(path.extname(name).toLowerCase())
     || path.basename(name).startsWith(".env");
 
-export const analyzeSpecReferences = (files) => {
+const collectSpecTags = (files) => {
     const declarations = new Map();
     const references = [];
     const invalidTagUsages = [];
@@ -158,12 +158,59 @@ export const analyzeSpecReferences = (files) => {
         .toSorted(locationOrder);
 
     return {
-        duplicateDeclarations,
-        unresolvedReferences,
-        ambiguousReferences,
-        invalidTagUsages: invalidTagUsages.toSorted(locationOrder),
-        emptyDeclarations: emptyDeclarations.toSorted(locationOrder),
+        declarations,
+        references,
+        verdicts: {
+            duplicateDeclarations,
+            unresolvedReferences,
+            ambiguousReferences,
+            invalidTagUsages: invalidTagUsages.toSorted(locationOrder),
+            emptyDeclarations: emptyDeclarations.toSorted(locationOrder),
+        },
     };
+};
+
+export const analyzeSpecReferences = (files) => collectSpecTags(files).verdicts;
+
+// SPEC.md is documentation anchored to the implementation, the panels and the tests. An anchor that
+// nothing outside prose cites is not doing that job: it is a principle in the wrong document
+// (ARCHITECTURE.md lectures), orientation in the wrong document (AGENTS.md guides), or a contract
+// nobody witnesses — and, cited by nothing, it rots without anything failing. Citing an anchor from
+// a test that does not witness it is worse than leaving it here: this counts honesty, not tags.
+const isProse = (name) => path.extname(name).toLowerCase() === ".md";
+
+export const unwitnessedAnchors = (files) => {
+    const { declarations, references } = collectSpecTags(files);
+    const witnessed = new Set(references.filter(({ name }) => !isProse(name)).map(({ tag }) => tag));
+    const bySpec = new Map();
+    for (const [tag, locations] of declarations) {
+        if (witnessed.has(tag)) continue;
+        const { name } = locations[0];
+        bySpec.set(name, [...(bySpec.get(name) ?? []), tag]);
+    }
+    return Object.fromEntries([...bySpec.entries()]
+        .toSorted(([left], [right]) => left.localeCompare(right))
+        .map(([name, tags]) => [name, tags.toSorted()]));
+};
+
+// The allowance only shrinks: an anchor is born witnessed, and one that gains a witness, moves to the
+// document whose job it is, or is deleted must be struck in the same change.
+export const witnessViolations = (files, allowance) => {
+    const actual = unwitnessedAnchors(files);
+    const violations = [];
+    for (const [name, tags] of Object.entries(actual)) {
+        const allowed = new Set(allowance[name] ?? []);
+        for (const tag of tags) {
+            if (!allowed.has(tag)) violations.push(`${name} §${tag} is cited by no implementation, panel or test`);
+        }
+    }
+    for (const [name, tags] of Object.entries(allowance)) {
+        const still = new Set(actual[name] ?? []);
+        for (const tag of tags) {
+            if (!still.has(tag)) violations.push(`${name} §${tag} is witnessed or gone; strike it from the allowance`);
+        }
+    }
+    return violations.toSorted();
 };
 
 export const unresolvedSpecReferences = (files) =>
@@ -208,15 +255,23 @@ const printLocations = (title, entries, render) => {
 
 const main = async () => {
     const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+    const allowancePath = path.join(root, "scripts/spec-witness-allowance.json");
     const files = await repositoryFiles(root);
+    if (process.argv.includes("--write")) {
+        await fs.writeFile(allowancePath, `${JSON.stringify(unwitnessedAnchors(files), null, 4)}\n`);
+    }
     const analysis = analyzeSpecReferences(files);
     const issueShorthands = ambiguousIssueShorthands(files);
+    const allowance = JSON.parse(await fs.readFile(allowancePath, "utf8"));
+    const unwitnessed = witnessViolations(files, allowance);
     const failed = Object.values(analysis).some((entries) => entries.length > 0)
-        || issueShorthands.length > 0;
+        || issueShorthands.length > 0 || unwitnessed.length > 0;
     if (!failed) {
-        console.log("spec references OK");
+        const debt = Object.values(allowance).reduce((sum, tags) => sum + tags.length, 0);
+        console.log(`spec references OK${debt === 0 ? "" : ` — ${debt} anchors await a witness or their proper document`}`);
         return;
     }
+    printLocations("Anchors without a witness", unwitnessed, (violation) => violation);
 
     printLocations(
         "Duplicate specification-tag declarations",
