@@ -144,7 +144,9 @@ WHERE log_entry_id IN (SELECT value FROM json_each($ids))
 
 -- PREP: engine_open_messages
 -- {§send-response-receipt}: only an executed reply to this exact published message answers it.
-SELECT m.id, m.path, m.source
+-- {§message-short-identity}: the model sees the short address, and a sender only when it is
+-- another actor rather than the transport that minted this very message.
+SELECT m.id, m.path, m.key_path, CASE WHEN m.source = m.path THEN NULL ELSE m.source END AS source
 FROM unanswered_messages m
 WHERE m.loop_id = $loop_id AND m.log_entry_id IS NOT NULL
 ORDER BY m.ordinal ASC;

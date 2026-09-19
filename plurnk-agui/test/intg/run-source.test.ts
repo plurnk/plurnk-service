@@ -253,16 +253,26 @@ test("{§agui-run-source}: a curated arrival remains readable, copyable and repl
         const logSections = turns.flatMap(({ packet }) => packet === null ? [] : (JSON.parse(packet) as {
             sections?: Array<{ name: string; content: string }>;
         }).sections?.filter((section) => section.name === "log") ?? []);
+        // {§message-short-identity}: the client's own name for this very message says nothing its
+        // address does not, so the wire omits it; the row still carries it for the client.
         assert.ok(
-            logSections.some(({ content }) => content.includes(`"source":"${expected}"`)),
-            "the packet renders the source on the arrival row, so the model reads the sender by address",
+            !logSections.some(({ content }) => content.includes(`"source":"${expected}"`)),
+            "the packet does not repeat the transport's identity for the message",
+        );
+        assert.ok(
+            logSections.some(({ content }) => /"resource":"message:\/\/[^"]+"/.test(content)),
+            "the arrival row names the message by its short address",
         );
         const promptSections = turns.flatMap(({ packet }) => packet === null ? [] : (JSON.parse(packet) as {
             sections?: Array<{ name: string; content: string }>;
         }).sections?.filter((section) => section.name === "messages") ?? []);
         assert.ok(
-            promptSections.some(({ content }) => JSON.parse(content).some((message: { path: string }) => message.path === expected)),
-            "Open Messages names the immutable message rather than the curatable arrival",
+            promptSections.some(({ content }) => JSON.parse(content).some((message: { path: string }) => /^message:\/\/[^/]+\/[0-9a-f]+$/.test(message.path))),
+            "Open Messages names the immutable message by its short address ({§message-short-identity})",
+        );
+        assert.ok(
+            !promptSections.some(({ content }) => content.includes(expected)),
+            "and never repeats the client's UUID address",
         );
         assert.ok(
             !logSections.some(({ content }) => /### log:\/\/\/\d+\/\d+\/\d+\/SEND\n\{[^\n]*"origin":"_plurnk"/.test(content)),

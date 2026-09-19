@@ -1024,12 +1024,13 @@ export default class TurnRunner {
         let nextActionIndex = 1;
         const openPaths: string[] = [];
         const unpublished = await this.#db.drain_unpublished_messages_for_loop.all<{
-            id: number; ordinal: number; source: string | null; body: string; open_paths: string; path: string;
+            id: number; ordinal: number; source: string | null; body: string; open_paths: string; path: string; durable_path: string;
         }>({ loop_id: loopId });
         for (const message of unpublished) {
             openPaths.push(...assertOpenPaths(JSON.parse(message.open_paths) as unknown, `Message ${message.id} open_paths`));
             const logEntryId = await this.#materialization.writeArrivalLog({
                 workerId, loopId, turnId, sequence: nextActionIndex++, body: message.body, source: message.source, resource: message.path,
+                selfAddressed: message.source !== null && message.source === message.durable_path,
             });
             const published = await this.#db.drain_publish_message.get<{ id: number }>({ id: message.id, log_entry_id: logEntryId });
             if (published === undefined) throw new Error(`TurnRunner.#publishMessages: message ${message.id} was already published`);

@@ -156,8 +156,12 @@ BEGIN
     SELECT RAISE(ABORT, 'accepted messages can only be removed with their containing history');
 END;
 
+-- {§message-short-identity}: `key_path` is the model's address for a message — always short, always
+-- `message://<worker>/<key>`, exactly as the worker docs teach. `path` stays the durable identity a
+-- client minted (an AG-UI message UUID, say), which correlation and delivery keep using.
 CREATE VIEW IF NOT EXISTS message_sources AS
 SELECT m.*, w.workspace_id, w.id AS worker_id,
+       'message://' || w.name || '/' || m.message_key AS key_path,
        COALESCE(m.address, 'message://' || w.name || '/' || m.message_key) AS path
 FROM loop_messages m
 JOIN loops l ON l.id = m.loop_id

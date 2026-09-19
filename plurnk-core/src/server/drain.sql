@@ -78,7 +78,7 @@ RETURNING id, ordinal;
 -- PREP: drain_unpublished_messages_for_loop
 -- {§message-loop-containment}: the messages the loop contains but has not yet published, oldest
 -- first; the next turn boundary publishes each as an inbound SEND row exactly once.
-SELECT id, ordinal, source, body, open_paths, path
+SELECT id, ordinal, source, body, open_paths, key_path AS path, path AS durable_path
 FROM message_sources
 WHERE loop_id = $loop_id AND log_entry_id IS NULL
 ORDER BY ordinal ASC;

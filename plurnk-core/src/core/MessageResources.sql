@@ -16,14 +16,21 @@ WHERE w.workspace_id = $workspace_id AND w.id = $worker_id
   AND ($loop_id IS NULL OR e.loop_id = $loop_id)
 ORDER BY loop_id, id;
 -- PREP: message_source_resources
+-- A message keeps the address its minter gave it (`a2a://…`, `agui://…`), and {§message-short-identity}
+-- adds the short `message://<worker>/<key>` alias the worker docs teach.
 SELECT path, body FROM message_sources
 WHERE workspace_id = $workspace_id AND path LIKE $scheme || '://%'
-  AND ($target IS NULL OR path = $target);
+  AND ($target IS NULL OR path = $target)
+UNION ALL
+SELECT key_path AS path, body FROM message_sources
+WHERE workspace_id = $workspace_id AND address IS NOT NULL AND $scheme = 'message'
+  AND ($target IS NULL OR key_path = $target);
 
 -- PREP: message_source_by_address
-SELECT * FROM message_sources WHERE workspace_id = $workspace_id AND address = $path
+-- The short address the model is taught, or the durable one a client minted.
+SELECT * FROM message_sources WHERE workspace_id = $workspace_id AND key_path = $path
 UNION ALL
-SELECT * FROM message_sources WHERE workspace_id = $workspace_id AND address IS NULL AND path = $path;
+SELECT * FROM message_sources WHERE workspace_id = $workspace_id AND address = $path;
 
 -- PREP: message_unanswered_count
 SELECT count(*) AS count FROM unanswered_messages WHERE loop_id = $loop_id;

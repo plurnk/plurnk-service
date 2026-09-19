@@ -340,6 +340,7 @@ export default class TurnMaterialization {
         body,
         source,
         resource,
+        selfAddressed = false,
     }: {
         workerId: number;
         loopId: number;
@@ -348,6 +349,9 @@ export default class TurnMaterialization {
         body: string;
         source: string | null;
         resource: string;
+        // {§message-short-identity} the source is the transport's own name for this message, so it
+        // tells the model nothing its address does not; clients still read it from the row.
+        selfAddressed?: boolean;
     }): Promise<number> {
         const tx = JSON.stringify({ op: "SEND", aside: null, target: null, metadata: null, lineMarker: null, matcher: null, body: { raw: body } });
         const rx = JSON.stringify({ status: 200, resource });
@@ -377,7 +381,7 @@ export default class TurnMaterialization {
             status_rx: 200,
             weight: LogBody.weight({
                 op: "SEND",
-                attrs: { kind: "message" },
+                attrs: selfAddressed ? { kind: "message", selfAddressed: true } : { kind: "message" },
                 tx,
                 rx,
                 mimetypeTx: "application/json",
@@ -385,7 +389,7 @@ export default class TurnMaterialization {
             }, this.#weighContent),
             state: "resolved",
             outcome: null,
-            attrs: JSON.stringify({ kind: "message" }),
+            attrs: JSON.stringify(selfAddressed ? { kind: "message", selfAddressed: true } : { kind: "message" }),
             initial_folded: LogVisibility.serialize(LogVisibility.OPEN),
         });
         if (row === undefined) throw new Error("TurnMaterialization.writeArrivalLog: INSERT ... RETURNING produced no row");

@@ -756,7 +756,11 @@ export default class PacketWire {
         if (typeof e.origin === "string" && e.origin !== "model" && !PacketWire.isArrival(e)) meta.origin = e.origin;
         // {§env-delta-attribution}: render the causal worker address or
         // subsystem token when present; absence means the owning worker.
-        if (typeof e.source === "string" && e.source.length > 0) meta.source = e.source;
+        // {§message-short-identity} an arrival whose source is the transport's own name for it adds
+        // nothing to its address; a peer's or an agent's source still shows.
+        const arrivalAttrs = typeof e.attrs === "string" ? PacketWire.#safeParse(e.attrs) : e.attrs;
+        const selfAddressed = arrivalAttrs !== null && typeof arrivalAttrs === "object" && (arrivalAttrs as { selfAddressed?: unknown }).selfAddressed === true;
+        if (typeof e.source === "string" && e.source.length > 0 && !selfAddressed) meta.source = e.source;
         if (e.source === "file" && e.attrs !== null && typeof e.attrs === "object" && "git" in e.attrs) {
             const git = (e.attrs as { git?: unknown }).git;
             if (typeof git !== "string" || git.length !== 2) {

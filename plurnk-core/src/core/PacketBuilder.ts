@@ -240,11 +240,13 @@ export default class PacketBuilder {
         const workerName = await WorkerName.forId(this.#db, workerId);
         // {§message-arrival}: source addresses survive curation of their log observations.
         const openMessages = await this.#db.engine_open_messages.all<{
-            id: number; path: string; source: string | null;
+            id: number; path: string; key_path: string; source: string | null;
         }>({ loop_id: loopId });
+        // {§message-short-identity}: the model is shown the short address, never a client's own
+        // transport identity; answering either reaches the same message.
         const prompt = openMessages.length > 0
             ? `[${openMessages.map((m) => JSON.stringify({
-                path: m.path,
+                path: m.key_path,
                 ...(m.source === null ? {} : { source: m.source }),
             })).join(",\n")}]`
             : "[]";
