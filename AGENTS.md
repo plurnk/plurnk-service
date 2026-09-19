@@ -176,6 +176,29 @@ PLURNK_MODEL=<selector> npm run test:live                # every live specimen
 PLURNK_MODEL=<selector> npm run test:live:specimen -- <exact name>       # one specimen
 ```
 
+## Dogfood teamwork sessions
+
+The operator drives the dogfood daemon in an ordinary, unscripted conversation — web research,
+questions about plurnk's own syntax, changing their mind mid-task — and the session is then read
+like a demo. Its lack of structure is the point: benchmarks grade the workspace afterwards, a
+conversation grades the reply. Never digest the live database; copy it first.
+
+```sh
+# 1. a consistent copy (the daemon keeps running); the copy is bulky, so it lives on the backup drive
+node -e 'new (require("node:sqlite").DatabaseSync)(process.env.HOME+"/.local/share/plurnk/plurnk.db",{readOnly:true})
+  .exec("VACUUM INTO \x27/media/T7/plurnk_claude/dogfood-db/teamwork-<stamp>.db\x27")'
+
+# 2. digest where the operator can read along, beside the drill runs
+cd plurnk-core && npm run -s dev:digest -- /media/T7/plurnk_claude/dogfood-db/teamwork-<stamp>.db \
+  ~/benchmarks/dogfood-teamwork-<stamp>/digest
+```
+
+Report friction first (the standing rule): refused or failed operations by
+family, then the **conversation census** — was every message answered, in what form (prose answer,
+tolerated SEND, never), premature endings, packet echoes, and anything that ran which the operator
+did not ask for. Pass rates and outcomes come after. An advisory, a strike, an empty turn or a
+surprise mutation is a failure in this tier even when the final text is right.
+
 ## Monorepo contracts
 
 - JSON Schema is authoritative for shared wire shapes.
