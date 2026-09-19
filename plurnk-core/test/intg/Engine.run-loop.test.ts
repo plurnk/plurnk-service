@@ -373,7 +373,7 @@ going
         assert.equal(result.result.problem?.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
         assert.equal(result.result.problem?.turns, 2);
         assert.equal(result.result.problem?.retryable, false);
-        assert.equal(result.result.problem?.instance, `loop://${(await db.worker_name_by_id.get<{ name: string }>({ worker_id: workerId }))!.name}/1`);
+        assert.equal(result.result.problem?.instance, `ops://${(await db.worker_name_by_id.get<{ name: string }>({ worker_id: workerId }))!.name}/1`);
     } finally { await db.close(); }
 });
 
@@ -390,6 +390,6 @@ test("the full terminal enumeration names itself — max_turns included", async 
         assert.equal(result.result.status, 429);
         assert.equal(result.result.problem?.type, "https://problems.plurnk.xyz/engine/rails/max-turns");
         assert.match(result.result.problem?.detail ?? "", /turn ceiling/i);
-        assert.equal(result.result.problem?.instance, `loop://${(await db.worker_name_by_id.get<{ name: string }>({ worker_id: workerId }))!.name}/1`);
+        assert.equal(result.result.problem?.instance, `ops://${(await db.worker_name_by_id.get<{ name: string }>({ worker_id: workerId }))!.name}/1`);
     } finally { await db.close(); }
 });

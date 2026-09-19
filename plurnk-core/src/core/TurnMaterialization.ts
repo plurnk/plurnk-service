@@ -5,7 +5,8 @@ import { type GitStatusSnapshot } from "./git-state.ts";
 import { editedSpan } from "../content/index.ts";
 import ReadResolve from "../content/read-resolve.ts";
 import ReadProjector from "../content/read-projector.ts";
-import Loop from "../schemes/Loop.ts";
+import TurnSource from "../schemes/TurnSource.ts";
+import { loopOutcome } from "./LoopOutcome.ts";
 import { authorityParts } from "./plurnk-uri.ts";
 import Results, { type SchemeResult } from "./results.ts";
 import TerminalResult from "./TerminalResult.ts";
@@ -92,13 +93,18 @@ export default class TurnMaterialization {
                     kind: "loop_termination",
                     ...(r.terminated_by === null ? {} : { terminatedBy: r.terminated_by }),
                 });
-                const resource = `loop://${r.hostname}${r.pathname}`;
+                // {§loop-answer} the row IS what the child said, at the child's own loop address.
+                const sequence = Number(r.pathname?.slice(1) ?? "0");
+                const outcome = r.hostname === null || !Number.isSafeInteger(sequence)
+                    ? null
+                    : await loopOutcome(this.#db, workspaceId, r.hostname, sequence);
+                const resource = outcome?.resource ?? `ops://${r.hostname}${r.pathname}`;
                 rx = JSON.stringify(await ReadProjector.project({
                     statement: { op: "READ", target: null, lineMarker: null, matcher: null, metadata: null,
                         body: null, aside: null, position: { line: 1, column: 1 } },
-                    manifest: Loop.manifest, publishesLineAnchors: false,
+                    manifest: TurnSource.manifestFor("ops"), publishesLineAnchors: false,
                     target: resource, identity: resource, mimetypes: this.#mimetypes,
-                    representation: TerminalResult.representation(terminal, resource, r.terminated_by),
+                    representation: TerminalResult.representation(outcome?.result ?? terminal, resource, r.terminated_by),
                 }));
             }
             const inserted = await this.#db.engine_insert_ambient_delta.get<{ id: number }>({

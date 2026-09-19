@@ -14,7 +14,7 @@ SET status = 500,
             'title', 'Owner vanished',
             'status', 500,
             'detail', 'The daemon restarted while this loop was active; its process-local owner no longer exists.',
-            'instance', 'loop://' || (SELECT name FROM workers WHERE workers.id = loops.worker_id) || '/' || sequence
+            'instance', 'ops://' || (SELECT name FROM workers WHERE workers.id = loops.worker_id) || '/' || sequence
         )
     )
 WHERE status = 102;

@@ -3,7 +3,6 @@ import Exec, { type WebFetch } from "../schemes/Exec.ts";
 import TurnSource from "../schemes/TurnSource.ts";
 import File from "../schemes/File.ts";
 import Worker from "../schemes/Worker.ts";
-import Loop from "../schemes/Loop.ts";
 import {
     Manifest,
     MessageScheme,
@@ -82,7 +81,6 @@ export default class SchemeRegistry {
         this.#registerBuiltIn("file", new File());
         this.#registerBuiltIn("worker", new Worker());
         this.#registerBuiltIn("message", new MessageScheme("message"));
-        this.#registerBuiltIn("loop", new Loop());
     }
 
     outputResource(manifest: SchemeManifest): ExecOutputScheme {

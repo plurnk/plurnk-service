@@ -25,7 +25,7 @@ WHERE w.workspace_id = $workspace_id AND w.name = $worker_name
 -- {§loop-answer} A loop's answer is the latest reply its own loop gave to its originating message
 -- (ordinal 1): a prose conclusion or a SEND that targeted it. The loop's status says whether an
 -- absent answer is still to come.
-SELECT l.status, l.terminal_result,
+SELECT l.status, l.terminal_result, l.terminated_by,
        (SELECT r.content
         FROM log_responses r, json_each(r.rx, '$.answers') a
         WHERE r.loop_id = l.id AND a.value = m.path
@@ -35,13 +35,27 @@ LEFT JOIN message_sources m ON m.loop_id = l.id AND m.ordinal = 1
 WHERE w.workspace_id = $workspace_id AND w.name = $worker_name AND l.sequence = $loop_seq;
 
 -- PREP: turn_source_candidates
+-- {§loop-answer}: `ops://<worker>/<loop>` is a resource of its own beside each turn's emission, so
+-- a FIND over a worker's programs also finds what its loops said.
 SELECT s.turn_id, s.kind, s.sequence, w.name AS authority,
        '/' || l.sequence || '/' || t.sequence || CASE WHEN s.kind = 'note' THEN '/' || s.sequence ELSE '' END AS pathname,
        s.content, s.deep_hash
 FROM turn_sources s JOIN turns t ON t.id = s.turn_id
 JOIN loops l ON l.id = t.loop_id JOIN workers w ON w.id = l.worker_id
 WHERE w.workspace_id = $workspace_id AND ($worker_name IS NULL OR w.name = $worker_name) AND s.kind = $kind
-ORDER BY w.name, l.sequence, t.sequence, s.sequence;
+UNION ALL
+SELECT NULL AS turn_id, 'ops' AS kind, 0 AS sequence, w.name AS authority,
+       '/' || l.sequence AS pathname,
+       COALESCE((SELECT r.content
+                 FROM log_responses r, json_each(r.rx, '$.answers') a
+                 WHERE r.loop_id = l.id AND a.value = m.path
+                 ORDER BY r.id DESC LIMIT 1),
+                json_extract(l.terminal_result, '$.content'), '') AS content,
+       NULL AS deep_hash
+FROM loops l JOIN workers w ON w.id = l.worker_id
+LEFT JOIN message_sources m ON m.loop_id = l.id AND m.ordinal = 1
+WHERE $kind = 'ops' AND w.workspace_id = $workspace_id AND ($worker_name IS NULL OR w.name = $worker_name)
+ORDER BY authority, pathname;
 
 -- PREP: turn_source_derivations
 SELECT s.turn_id, s.kind, s.sequence,

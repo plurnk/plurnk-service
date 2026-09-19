@@ -18,7 +18,7 @@ const terminalResult = (status: number, sequence: number): string | null => {
             title: "Test terminal",
             status,
             detail: "The test fixture made this loop terminal.",
-            instance: `loop://fixture/${sequence}`,
+            instance: `ops://fixture/${sequence}`,
         },
     });
 };

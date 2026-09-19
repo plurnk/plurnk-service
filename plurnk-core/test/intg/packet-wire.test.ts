@@ -801,7 +801,7 @@ test("{§problem-projection} a failed content-bearing READ renders a compact Pro
                 title: "Nonzero exit",
                 status: 500,
                 detail: "'sh' exited with code 1.",
-                instance: "loop://worker/2",
+                instance: "ops://worker/2",
                 stage: "execution",
                 recovery: "Inspect the stdout and stderr channels.",
                 retryable: false,

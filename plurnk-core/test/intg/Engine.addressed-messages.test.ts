@@ -127,9 +127,12 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
                 provider: new Mock({ contextWindow: 100000, responses: [makeRawMockResponse(frame("NOTE", "Observed."))] }),
             });
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: observed.turnId }))!.packet);
-            const replies = logEntries(packet).filter(({ body }) => String(body).includes("Recovered answer."));
-            assert.equal(replies.length, 1, "the reply reaches the parent exactly once");
-            assert.deepEqual(replies[0]!.answers, [address]);
+            // {§loop-answer}: the parent hears the answer once, as the child's conclusion, never as a
+            // second reply row.
+            const delivered = logEntries(packet).filter(({ body }) => String(body).includes("Recovered answer."));
+            assert.equal(delivered.length, 1, "the reply reaches the parent exactly once");
+            assert.equal(delivered[0]!.path, "ops://responder/1");
+            assert.equal(delivered[0]!.answers, undefined, "the conclusion is not another answer");
         }
     });
 }
@@ -276,6 +279,13 @@ for (const child of [false, true]) test(`{§message-reply-delivery} ${child ? "c
         assert.equal(completed.status, 200);
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: completed.turnId }))!.packet);
         const replies = logEntries(packet).filter(({ body }) => String(body).includes("Distinct answer from Bob."));
+        if (child) {
+            // {§loop-answer}: a child's answer to its parent's own task arrives once, as its conclusion.
+            assert.equal(replies.length, 1, "once, not twice");
+            assert.equal(replies[0]!.path, "ops://bob/1");
+            assert.equal(replies[0]!.answers, undefined, "the conclusion is not another answer");
+            return;
+        }
         assert.equal(replies.length, 1, "one reply, not repeated as activity and terminal deliverable");
         assert.equal(replies[0]!.source, "worker://bob");
         const answers = replies[0]!.answers;

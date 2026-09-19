@@ -160,7 +160,7 @@ BEGIN
         terminal_result = json_set(
             NEW.cancellation,
             '$.problem.instance',
-            'loop://' || NEW.name || '/' || sequence
+            'ops://' || NEW.name || '/' || sequence
         ),
         terminated_by = 'cancel'
     WHERE worker_id = NEW.id
@@ -171,5 +171,5 @@ END;
 SELECT sequence FROM loops WHERE id = $loop_id;
 
 -- PREP: loop_resource_identity
-SELECT 'loop://' || w.name || '/' || l.sequence AS resource
+SELECT 'ops://' || w.name || '/' || l.sequence AS resource
 FROM loops l JOIN workers w ON w.id = l.worker_id WHERE l.id = $loop_id;

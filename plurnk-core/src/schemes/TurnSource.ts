@@ -7,6 +7,8 @@ import { contentWeight } from "../core/content-weight.ts";
 import LogVisibility from "../core/LogVisibility.ts";
 import Matcher, { type CandidateMatch } from "../content/matcher.ts";
 import EntryFts from "./_entry-fts.ts";
+import TerminalResult from "../core/TerminalResult.ts";
+import { loopOutcome } from "../core/LoopOutcome.ts";
 import EntryGraph from "./_entry-graph.ts";
 import { emptyFindFields, projectFindResult, type FindResult, type FindProjectionResource } from "./_entry-find.ts";
 import { pathScope, pathScopeMatches, pathFolderSummaries } from "./_path-scope.ts";
@@ -21,15 +23,19 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
     readonly #kind: "ops" | "reasoning" | "note";
     readonly #mimetype: string;
 
+    static manifestFor(kind: "ops" | "reasoning" | "note"): SchemeManifest {
+        return {
+            name: kind, authority: "resource", channels: { body: kind === "ops" ? "text/vnd.plurnk" : "text/plain" },
+            defaultChannel: "body", category: "logging", writableBy: [], volatile: false, modelVisible: true,
+            folderScopes: true, textEditScopes: true,
+        };
+    }
+
     constructor(kind: "ops" | "reasoning" | "note") {
         super();
         this.#kind = kind;
         this.#mimetype = kind === "ops" ? "text/vnd.plurnk" : "text/plain";
-        this.manifest = {
-            name: kind, authority: "resource", channels: { body: this.#mimetype }, defaultChannel: "body",
-            category: "logging", writableBy: [], volatile: false, modelVisible: true,
-            folderScopes: true, textEditScopes: true,
-        };
+        this.manifest = TurnSource.manifestFor(kind);
     }
 
     #failure(status: number, code: string, detail: string) {
@@ -67,22 +73,17 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
     // {§loop-answer} ops://<worker>/<loop> is what the loop said: the latest reply to the message
     // that started it. Still running without one is 425; ended without one is the loop's outcome.
     async #answer(target: UrlPath & { hostname: string }, loopSeq: number, db: Db, workspaceId: number): Promise<CoreRepresentationResolution> {
-        const row = await db.turn_source_loop_answer.get<{ status: number; terminal_result: string | null; answer: string | null }>({
-            workspace_id: workspaceId, worker_name: target.hostname, loop_seq: loopSeq,
-        });
-        if (row === undefined) return { result: this.#failure(404, "entry-not-found", `No loop exists at ${target.raw}.`) };
-        if (row.answer === null && [100, 102, 202].includes(row.status)) {
-            return { result: this.#failure(425, "loop-running", `${target.raw} has not answered yet; its loop is still running.`) };
+        if (!Number.isSafeInteger(loopSeq) || loopSeq < 1) {
+            return { result: this.#failure(400, "coordinate-malformed", "A loop coordinate is a positive safe-integer sequence.") };
         }
-        if (row.answer === null) {
-            const problem = row.terminal_result === null ? null : (JSON.parse(row.terminal_result) as { problem?: { detail?: string; title?: string } }).problem;
-            return { result: row.status >= 400
-                ? this.#failure(row.status, "loop-unanswered", problem?.detail ?? problem?.title ?? `${target.raw} ended with status ${row.status} and no answer.`)
-                : this.#failure(404, "loop-unanswered", `${target.raw} ended without answering the message that started it.`) };
-        }
+        const outcome = await loopOutcome(db, workspaceId, target.hostname, loopSeq);
+        if (outcome === null) return { result: this.#failure(404, "entry-not-found", `No loop exists at ${target.raw}.`) };
+        // A running loop refuses; every settled outcome — an answer or a failure — is a representation,
+        // so the reader sees what the loop said or how it broke, with its own status ({§loop-answer}).
+        if (outcome.result.status === 425) return { result: outcome.result };
         return {
-            identity: renderAddress({ scheme: this.#kind, authority: target.hostname, pathname: `/${loopSeq}` }),
-            representation: { channels: { body: { content: row.answer, mimetype: "text/markdown", state: "static" } } },
+            identity: outcome.resource,
+            representation: TerminalResult.representation(outcome.result, outcome.resource, outcome.terminatedBy),
         };
     }
 
@@ -101,14 +102,20 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
         })).filter((row) => pathScopeMatches(authorityScope, row.authority)).map((row) => ({
             ...row, key: renderAddress({ scheme: this.#kind, authority: row.authority, pathname: row.pathname }),
         }));
-        let all = await load();
         const matcher = statement.matcher;
         const relation = matcher !== null && (matcher.dialect === "fts" || matcher.dialect === "graph") ? matcher : null;
+        // {§loop-answer}: a loop's answer is a projection of rows the index already covers, not a
+        // derived source of its own, so relation matchers read the turns beneath it.
+        const loadMatchable = async () => (await load()).filter(({ pathname }) => relation === null || !/^\/\d+$/.test(pathname));
+        let all = await loadMatchable();
         if (relation !== null && all.some(({ deep_hash }) => deep_hash === null) && core.settleDerivations !== undefined) {
             await core.settleDerivations();
-            all = await load();
+            all = await loadMatchable();
         }
-        const selected = all.filter((row) => pathScopeMatches(scope, row.pathname));
+        // {§loop-answer}: `ops://<worker>/<loop>` is both a folder of that loop's emissions and the
+        // loop's own answer, so a loop coordinate selects the turns beneath it and the answer itself.
+        const loopItself = this.#kind === "ops" && /^\/\d+$/.test(pathname) ? pathname : null;
+        const selected = all.filter((row) => pathScopeMatches(scope, row.pathname) || row.pathname === loopItself);
         if (authorityScope.kind === "exact" && scope.kind === "exact" && selected.length === 0) return failed(404, "entry-not-found", `No ${this.#kind} source exists at ${target.raw}.`);
         const projections = selected.map(({ key, content }) => ({ key, content, mimetype: this.#mimetype }));
         let matches: CandidateMatch[];

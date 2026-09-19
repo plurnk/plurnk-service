@@ -25,11 +25,11 @@ test("{§worker-loop-result}: exact outcomes compose with READ, FIND, COPY and i
     const dispatch = (statement: PlurnkStatement) => engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: ++sequence, origin: "model" });
     const child = await insertWorker(db, workspaceId, null, "child");
     const first = await insertLoop(db, child, 1);
-    const source = parsePath("loop://child/1")!;
+    const source = parsePath("ops://child/1")!;
     const unfinished = await dispatch(readStmt(source));
     assert.equal(unfinished.status, 425);
     assert.equal(unfinished.resource, source.raw);
-    assert.equal(unfinished.problem?.type, "https://problems.plurnk.xyz/scheme/loop/loop-unfinished");
+    assert.equal(unfinished.problem?.type, "https://problems.plurnk.xyz/scheme/ops/loop-running");
     const body = Array.from({ length: 30 }, (_, i) => `Result line ${i + 1}`).join("\n");
     const lifecycle = new LoopLifecycle(db);
     await lifecycle.finish(first, { status: 200, content: body, mimetype: "text/plain" });
@@ -43,12 +43,12 @@ test("{§worker-loop-result}: exact outcomes compose with READ, FIND, COPY and i
     const live = await insertLoop(db, child, 2);
     const latest = await dispatch(readStmt(parsePath("worker://child")));
     assert.equal(latest.status, 425);
-    assert.equal(latest.resource, "loop://child/2");
+    assert.equal(latest.resource, "ops://child/2");
     assert.equal((await dispatch(readStmt(source, { marks: [1, -1] }))).content, body);
-    for (const target of ["loop://child/*", "loop://*/1", "loop://child/1"]) {
+    for (const target of ["ops://child/*", "ops://*/1", "ops://child/1"]) {
         const found = await dispatch(findStmt(parsePath(target)));
         assert.equal(found.status, 200, JSON.stringify(found));
-        assert.match(JSON.stringify(found.results), /loop:\/\/child\/1/);
+        assert.match(JSON.stringify(found.results), /ops:\/\/child\/1/);
     }
     const destination = parsePath("worker:///copied.txt")!;
     assert.equal((await dispatch(copyStmt(source, destination, { marks: [20, 21] }))).status, 201);
@@ -59,11 +59,11 @@ test("{§worker-loop-result}: exact outcomes compose with READ, FIND, COPY and i
         assert.equal(denied.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden");
         assert.equal((await lifecycle.result(first))?.content, body, "no mutation changes the outcome");
     }
-    assert.equal((await dispatch(readStmt(parsePath("loop://child/99")))).status, 404);
-    for (const target of ["loop:///1", "loop://child/0", "loop://child/1?latest=1", "loop://child/9007199254740992"]) {
+    assert.equal((await dispatch(readStmt(parsePath("ops://child/99")))).status, 404);
+    for (const target of ["ops:///1", "ops://child/0", "ops://child/1?latest=1", "ops://child/9007199254740992"]) {
         const invalid = await dispatch(readStmt(parsePath(target)));
         assert.equal(invalid.status, 400, target);
-        assert.equal(invalid.problem?.type, "https://problems.plurnk.xyz/scheme/loop/coordinate-malformed");
+        assert.equal(invalid.problem?.type, "https://problems.plurnk.xyz/scheme/ops/coordinate-malformed");
     }
     const otherWorkspace = await insertWorkspace(db, "separate-loop-resources");
     const otherChild = await insertWorker(db, otherWorkspace, null, "child");
@@ -74,7 +74,7 @@ test("{§worker-loop-result}: exact outcomes compose with READ, FIND, COPY and i
     const collected = await dispatch(readStmt(parsePath("worker://child")));
     assert.equal(collected.status, 200);
     assert.equal(collected.content, "");
-    assert.equal(collected.resource, "loop://child/2");
+    assert.equal(collected.resource, "ops://child/2");
 
     const third = await insertLoop(db, child, 3);
     const exact = Results.failure("test:source", "failed", 502, "Provider failed.");
@@ -84,12 +84,12 @@ test("{§worker-loop-result}: exact outcomes compose with READ, FIND, COPY and i
     Results.attachInstance(external, "https://example.test/errors/abc123");
     await lifecycle.finish(fourth, external);
     await Fork.fork(db, child, "branch");
-    const inherited = await dispatch(readStmt(parsePath("loop://branch/3")));
+    const inherited = await dispatch(readStmt(parsePath("ops://branch/3")));
     assert.equal(inherited.status, 502);
-    assert.equal(inherited.problem?.instance, "loop://branch/3");
+    assert.equal(inherited.problem?.instance, "ops://branch/3");
     assert.equal(inherited.content, "Provider failed.");
-    assert.equal((await dispatch(readStmt(parsePath("loop://branch/1"), { marks: [1, -1] }))).content, body);
-    assert.equal((await dispatch(readStmt(parsePath("loop://branch/4")))).problem?.instance, external.problem?.instance);
+    assert.equal((await dispatch(readStmt(parsePath("ops://branch/1"), { marks: [1, -1] }))).content, body);
+    assert.equal((await dispatch(readStmt(parsePath("ops://branch/4")))).problem?.instance, external.problem?.instance);
 });
 
 test("{§worker-loop-result}: source identity and exact outcome survive reopening the database", async () => {
@@ -108,10 +108,10 @@ test("{§worker-loop-result}: source identity and exact outcome survive reopenin
         const turnId = await insertTurn(db, readingLoop, 1);
         const read = await new Engine({ db, schemes: new SchemeRegistry() }).dispatch({
             workspaceId, workerId: reader, loopId: readingLoop, turnId, sequence: 1, origin: "model",
-            statement: readStmt(parsePath("loop://producer/1")),
+            statement: readStmt(parsePath("ops://producer/1")),
         });
         assert.equal(read.status, 502);
-        assert.equal(read.resource, "loop://producer/1");
+        assert.equal(read.resource, "ops://producer/1");
         assert.equal(read.content, "Retained failure.");
         assert.deepEqual(read.problem, exact.problem);
     } finally {

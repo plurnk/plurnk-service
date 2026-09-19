@@ -610,9 +610,9 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
         const wLoop = await insertLoop(db, worker, 1, "find db");
         const running = await lookThroughScheme("worker", null, readStmt(workerPath("worker-db")), ctx);
         assert.equal(running.status, 425, "a still-running worker hasn't delivered — 425, not its result");
-        assert.equal(running.problem?.type, "https://problems.plurnk.xyz/scheme/loop/loop-unfinished");
-        assert.equal(running.problem?.detail, "The execution at loop://worker-db/1 has not concluded.");
-        assert.equal(running.resource, "loop://worker-db/1", "the selected execution has an exact identity");
+        assert.equal(running.problem?.type, "https://problems.plurnk.xyz/scheme/ops/loop-running");
+        assert.equal(running.problem?.detail, "The execution at ops://worker-db/1 has not concluded.");
+        assert.equal(running.resource, "ops://worker-db/1", "the selected execution has an exact identity");
         assert.equal("awaitWorker" in running, false, "a READ result does not carry hidden scheduling intent");
 
         // It concludes 200 with a deliverable → READing the worker yields one
@@ -1110,7 +1110,7 @@ test("an empty join cannot manufacture a terminal deliverable from its inventory
         const done = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
         assert.equal(done.status, 200);
         assert.equal(done.content, "", "the READ has no invented answer or invented failure");
-        assert.equal(done.resource, "loop://req-test/1");
+        assert.equal(done.resource, "ops://req-test/1");
         assert.equal((await new LoopLifecycle(db).result(wLoop))?.content ?? null, null);
     } finally { await db.close(); }
 });

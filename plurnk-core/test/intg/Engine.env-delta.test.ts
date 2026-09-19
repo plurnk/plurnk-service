@@ -701,7 +701,7 @@ test("{§env-delta-child-termination} administrative loops stay private without 
                     const outcomes = rows.filter(({ source }) => source === "worker://child").map(({ rx }) => JSON.parse(rx));
                     assert.equal(outcomes.length, Number(specimen.delivered));
                     if (specimen.delivered) {
-                        assert.equal(outcomes[0].resource, "loop://child/1");
+                        assert.equal(outcomes[0].resource, "ops://child/1");
                         assert.equal(outcomes[0].status, result.status);
                         assert.deepEqual(outcomes[0].problem, result.problem);
                         assert.equal(outcomes[0].content, result.content ?? result.problem?.detail);
@@ -769,9 +769,9 @@ test("a child's loop termination reaches only its parent with success, failure, 
         assert.deepEqual(
             terminations.map(({ source, scheme, pathname, status_rx }) => ({ source, scheme, pathname, status_rx })),
             [
-                { source: "worker://worker", scheme: "loop", pathname: "/1", status_rx: 200 },
-                { source: "worker://failed-worker", scheme: "loop", pathname: "/1", status_rx: 502 },
-                { source: "worker://cancelled-worker", scheme: "loop", pathname: "/1", status_rx: 499 },
+                { source: "worker://worker", scheme: "ops", pathname: "/1", status_rx: 200 },
+                { source: "worker://failed-worker", scheme: "ops", pathname: "/1", status_rx: 502 },
+                { source: "worker://cancelled-worker", scheme: "ops", pathname: "/1", status_rx: 499 },
             ],
             "every conclusion selects its exact loop, in occurrence order, attributed to the concluding worker",
         );
@@ -783,7 +783,7 @@ test("a child's loop termination reaches only its parent with success, failure, 
         const projected = JSON.parse(win!.rx);
         assert.equal(projected.status, deliverable.status);
         assert.equal(projected.content, deliverable.content);
-        assert.equal(projected.resource, "loop://worker/1");
+        assert.equal(projected.resource, "ops://worker/1");
         assert.equal(win!.initial_folded, "[]", "initially visible — a child's 2xx deliverable reaches the parent with its body + awakening");
         assert.equal(win!.folded, "[]", "the deliverable is untrimmed");
 

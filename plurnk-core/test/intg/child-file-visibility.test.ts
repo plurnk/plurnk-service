@@ -71,11 +71,12 @@ reading
                     const observations = turns.flatMap(({ packet }) => (packet === null ? [] : logEntries(JSON.parse(packet)))
                         .filter((entry) => entry.source === "worker://counter" && entry.origin === "_plurnk"));
                     const replies = observations.filter((entry) => String(entry.logPath).endsWith("/SEND") && entry.status === 200 && Array.isArray(entry.answers));
-                    const conclusions = observations.filter((entry) => String(entry.logPath).endsWith("/READ") && entry.path === "loop://counter/1");
-                    assert.equal(new Set(conclusions.map(({ logPath: path }) => path)).size, 1, "one bodyless terminal observation avoids repeating the reply");
-                    assert.equal(new Set(replies.map(({ logPath: path }) => path)).size, 1, `one durable child reply reaches the parent's packets: ${JSON.stringify(replies)}`);
-                    assert.match(String(replies[0]!.body ?? ""), /written/, "the delivered reply remains visible");
-                    assert.equal("body" in conclusions[0]!, false, "the terminal outcome does not copy the child's reply");
+                    const conclusions = observations.filter((entry) => String(entry.logPath).endsWith("/READ") && entry.path === "ops://counter/1");
+                    // {§loop-answer}: the child's answer to its parent's own task arrives once, as the
+                    // conclusion at the child's loop address.
+                    assert.equal(new Set(conclusions.map(({ logPath: path }) => path)).size, 1, "one terminal observation");
+                    assert.deepEqual(replies, [], "the answer is not delivered a second time as a reply");
+                    assert.match(String(conclusions[0]!.body ?? ""), /written/, "the conclusion carries what the child said");
                 } finally { ws.close(); }
             });
         } finally { await rm(root, { recursive: true, force: true }); }

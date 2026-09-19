@@ -250,8 +250,6 @@ export class SqlRiteSync {
 	log_entry_by_id: SqlRiteSyncPreparedStatements;
 	log_entries_recent: SqlRiteSyncPreparedStatements;
 	engine_insert_log_entry: SqlRiteSyncPreparedStatements;
-	loop_resource_read: SqlRiteSyncPreparedStatements;
-	loop_resource_candidates: SqlRiteSyncPreparedStatements;
 	loop_docs_materialized: SqlRiteSyncPreparedStatements;
 	engine_loop_status: SqlRiteSyncPreparedStatements;
 	engine_reclaim_queued_loop: SqlRiteSyncPreparedStatements;
@@ -836,8 +834,6 @@ export default class SqlRite {
 	log_entry_by_id: SqlRitePreparedStatements;
 	log_entries_recent: SqlRitePreparedStatements;
 	engine_insert_log_entry: SqlRitePreparedStatements;
-	loop_resource_read: SqlRitePreparedStatements;
-	loop_resource_candidates: SqlRitePreparedStatements;
 	loop_docs_materialized: SqlRitePreparedStatements;
 	engine_loop_status: SqlRitePreparedStatements;
 	engine_reclaim_queued_loop: SqlRitePreparedStatements;

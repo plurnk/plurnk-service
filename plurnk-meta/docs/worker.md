@@ -11,7 +11,7 @@ an entry rather than controlling that worker.
 | --- | --- | --- |
 | `worker://reviewer` | Named worker | WORK/FORK create; SEND messages; READ collects; KILL terminates. |
 | `message://reviewer/ab3d5678` | Retained message | READ/FIND/COPY inspect; SEND replies. Neither EDIT nor KILL changes its source. |
-| `loop://reviewer/1` | Retained loop result | READ/FIND/COPY inspect; source is immutable. |
+| `ops://reviewer/1` | What that loop said, or how it ended | READ/FIND/COPY inspect; source is immutable. |
 | `worker://reviewer/example.md` | Named scratch entry | Read and write from any worker in the workspace. |
 | `worker:///example.md` | Shared commons entry | Read and write. |
 
@@ -160,8 +160,9 @@ results and answering every Open Message with SEND. A later observation turn
 can conclude without repeating a response already delivered.
 
 Each child task's conclusion wakes its waiting parent and arrives as an
-`_plurnk` READ of `loop://capital-checker/1`. This is the execution outcome,
-not another message. Replies remain separate; failure retains its status and Problem.
+`_plurnk` READ of `ops://capital-checker/1`, carrying what the child said. This is the
+execution outcome, not another message, and it arrives once: an answer to the task you
+delegated is not delivered again as a separate reply. A failure retains its status and Problem.
 READ that address with a scope to inspect more of the exact result, even after
 the child starts another task. Bare `READ (worker://capital-checker)` collects
 the current result instead, naming its exact source in `resource`. While the child is running it returns

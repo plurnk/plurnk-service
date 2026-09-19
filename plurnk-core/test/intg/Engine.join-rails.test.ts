@@ -65,7 +65,7 @@ Await results.
         const unfinished = reads.filter(({ status_rx }) => status_rx === 425);
         assert.equal(unfinished.length, 2, "the original not-ready receipts are not erased or relabeled");
         for (const row of unfinished) {
-            assert.equal(JSON.parse(row.rx).problem.type, "https://problems.plurnk.xyz/scheme/loop/loop-unfinished");
+            assert.equal(JSON.parse(row.rx).problem.type, "https://problems.plurnk.xyz/scheme/ops/loop-running");
         }
         assert.ok(reads.some(({ status_rx, rx }) => status_rx === 200 && JSON.parse(rx).content === "42"),
             "resumption collects the child's actual terminal response");
@@ -122,10 +122,12 @@ test("{§join-blocking-collect} the daemon wakes a collecting parent on actual c
             const parentRail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: parent.loopId });
             assert.equal(parentRail?.strike_streak, 0, "neither the join nor its wake consumes recovery allowance");
             const delivered = await db.test_log_entries_by_loop.all<{ attrs: string; initial_folded: string; folded: string }>({ loop_id: parent.loopId });
-            const reply = delivered.find(({ attrs }) => JSON.parse(attrs).kind === "reply");
-            assert.ok(reply);
-            assert.equal(reply.initial_folded, "[]", JSON.stringify(reply));
-            assert.equal(reply.folded, "[]", JSON.stringify(reply));
+            // {§loop-answer}: the child's answer to its parent's own task arrives as the conclusion.
+            const conclusion = delivered.find(({ attrs }) => JSON.parse(attrs).kind === "loop_termination");
+            assert.ok(conclusion);
+            assert.equal(conclusion.initial_folded, "[]", JSON.stringify(conclusion));
+            assert.equal(conclusion.folded, "[]", JSON.stringify(conclusion));
+            assert.deepEqual(delivered.filter(({ attrs }) => JSON.parse(attrs).kind === "reply"), [], "and never twice");
             assert.match(JSON.stringify(provider.received.at(-1)), /Child answer: 42\./,
                 "the resumed parent packet contains the child's completed response");
             assert.equal(await new StrikeRail(db).streak(parent.loopId), 0);

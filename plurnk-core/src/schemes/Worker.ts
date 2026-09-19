@@ -18,7 +18,8 @@ import type {
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
-import Loop, { type LoopResource } from "./Loop.ts";
+import TerminalResult from "../core/TerminalResult.ts";
+import { loopOutcome } from "../core/LoopOutcome.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
 import { MessageAttachments } from "@plurnk/plurnk-schemes";
@@ -125,14 +126,20 @@ export default class Worker extends CoreSchemeAdapterBase {
             );
         }
         const core = this.coreContext(ctx);
-        const row = await core.db.worker_collect_loop.get<LoopResource>({
+        const row = await core.db.worker_collect_loop.get<{ name: string; sequence: number }>({
             workspace_id: core.workspaceId, name: authority,
         });
         if (row === undefined) return Results.failure(
             "scheme:worker", "worker-not-found", 404,
             `Worker '${authority}' has no loop in this workspace.`, {}, { retryable: false },
         );
-        const written = await ctx.entries.write(request.pathname, Loop.representation(row));
+        // {§worker-scheme-collect} the pull mirrors the push: both name the loop's own address.
+        const outcome = await loopOutcome(core.db, core.workspaceId, row.name, row.sequence);
+        if (outcome === null) return Results.failure(
+            "scheme:worker", "worker-not-found", 404,
+            `Worker '${authority}' has no loop in this workspace.`, {}, { retryable: false },
+        );
+        const written = await ctx.entries.write(request.pathname, TerminalResult.representation(outcome.result, outcome.resource, outcome.terminatedBy));
         return Results.isErrorStatus(written.status) ? written : { status: 200 };
     }
 

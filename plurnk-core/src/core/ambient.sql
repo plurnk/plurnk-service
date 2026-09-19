@@ -28,7 +28,7 @@ BEGIN
     SELECT d.workspace_id, NEW.worker_id, d.recipient_worker_id,
         'reply', NEW.id, NULL, 'SEND', NEW.tx, NEW.mimetype_tx, NEW.rx, NEW.mimetype_rx,
         NEW.status_rx, 'resolved', '{"kind":"reply"}'
-    FROM message_reply_deliveries d
+    FROM delivered_message_replies d
     WHERE d.source_record_id = NEW.id AND d.recipient_worker_id != NEW.worker_id;
 END;
 
@@ -71,13 +71,10 @@ BEGIN
     )
     SELECT w.workspace_id, NEW.worker_id, w.parent_worker_id,
            0, 'loop_termination', NEW.id, NULL,
-           'READ', 'loop', w.name, '/' || NEW.sequence, NULL,
-           '', 'text/plain',
-           -- {§loop-answer} a concluded child points its parent at what it said.
-           CASE WHEN json_extract(NEW.terminal_result, '$.status') BETWEEN 200 AND 299
-                THEN json_set(NEW.terminal_result, '$.answer', 'ops://' || w.name || '/' || NEW.sequence)
-                ELSE NEW.terminal_result END,
-           'application/json',
+           -- {§loop-answer} the child's conclusion reaches its parent at the child's own loop
+           -- address, where its answer lives; materialization renders that answer as this row.
+           'READ', 'ops', w.name, '/' || NEW.sequence, NULL,
+           '', 'text/plain', NEW.terminal_result, 'application/json',
            json_extract(NEW.terminal_result, '$.status'), 'resolved', NEW.terminated_by,
            '{}'
     FROM workers w

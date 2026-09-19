@@ -146,6 +146,18 @@ WHERE NOT EXISTS (
 
 -- {§message-reply-delivery}: notify the sender and the assigned conversation.
 -- UNION prevents duplicate delivery when both roles belong to the same worker.
+-- {§loop-answer}: a child's answer to the very task its parent delegated is NOT delivered here;
+-- the parent receives it once, as the child's termination row, which carries that answer at
+-- ops://<child>/<loop> (operator, 2026-09-19). Replies to any other message still deliver.
+CREATE VIEW IF NOT EXISTS delegated_task_answers AS
+SELECT r.id AS source_record_id, parent.id AS recipient_worker_id
+FROM log_responses r
+JOIN workers producer ON producer.id = r.worker_id
+JOIN workers parent ON parent.id = producer.parent_worker_id
+JOIN json_each(r.rx, '$.answers') answer
+JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
+WHERE m.loop_id = r.loop_id AND m.ordinal = 1 AND m.source = 'worker://' || parent.name;
+
 CREATE VIEW IF NOT EXISTS message_reply_deliveries AS
 SELECT DISTINCT r.id AS source_record_id, r.loop_id, m.workspace_id,
        r.worker_id AS producer_worker_id, m.worker_id AS recipient_worker_id
@@ -160,6 +172,13 @@ JOIN workers producer ON producer.id = r.worker_id
 JOIN json_each(r.rx, '$.answers') answer
 JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
 JOIN workers sender ON sender.workspace_id = m.workspace_id AND m.source = 'worker://' || sender.name;
+
+CREATE VIEW IF NOT EXISTS delivered_message_replies AS
+SELECT d.* FROM message_reply_deliveries d
+WHERE NOT EXISTS (
+    SELECT 1 FROM delegated_task_answers t
+    WHERE t.source_record_id = d.source_record_id AND t.recipient_worker_id = d.recipient_worker_id
+);
 
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_model_call_id
     ON log_entries (model_call_id)

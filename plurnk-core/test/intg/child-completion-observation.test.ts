@@ -30,40 +30,38 @@ const fixture = async () => {
 };
 
 for (const outcome of ["success", "failure", "cancel"] as const) {
-    test(`{§env-delta-child-termination}: ${outcome} after a reply is a READ, never another SEND`, async (t) => {
+    test(`{§loop-answer}: the parent receives ${outcome} once, as the child's own loop answer`, async (t) => {
         const f = await fixture();
         t.after(() => f.db.close());
         await f.engine.injectIntoLoop(f.childLoop, "What did you find?", [], "worker://parent");
         await f.run(f.child, f.childLoop, frame("SEND", "The answer is 42.") + "\n\n" + frame("FIND (*)"));
         const before = await f.run(f.parent, f.parentLoop);
-        const reply = before.entries.filter(({ answers }) => Array.isArray(answers));
-        assert.equal(reply.length, 1);
-        assert.match(String(reply[0]!.body), /The answer is 42\./);
-        assert.equal(before.entries.filter(({ path: target }) => target === "loop://child/1").length, 0, "a reply does not imply completion");
+        assert.deepEqual(before.entries.filter(({ answers }) => Array.isArray(answers)), [],
+            "the answer to the parent's own task is not delivered twice: it arrives with the conclusion");
+        assert.equal(before.entries.filter(({ path: target }) => target === "ops://child/1").length, 0, "an answer before the conclusion implies no completion");
 
         const result = outcome === "success"
             ? { status: 200 }
             : Results.failure("test:child", outcome, outcome === "cancel" ? 499 : 502, "The child could not finish.");
         const exact = await f.lifecycle.finish(f.childLoop, result, { terminatedBy: outcome === "cancel" ? "cancel" : null });
         assert.ok(exact);
-        assert.equal(exact.content, undefined, "lifecycle outcomes do not copy a prior reply");
         const after = await f.run(f.parent, f.parentLoop);
         const observations = after.entries.filter(({ source }) => source === "worker://child");
-        assert.deepEqual(observations.map(({ logPath: path }) => String(path).split("/").at(-1)), ["SEND", "READ"]);
-        const completion = observations[1]!;
-        assert.equal(completion.path, "loop://child/1");
+        assert.deepEqual(observations.map(({ logPath: path }) => String(path).split("/").at(-1)), ["READ"]);
+        const completion = observations[0]!;
+        assert.equal(completion.path, "ops://child/1");
         assert.equal(completion.origin, "_plurnk");
         assert.equal(completion.answers, undefined, "observation is not another answer");
         if (outcome === "success") {
-            assert.equal(completion.body ?? "", "", "success needs no synthetic deliverable");
+            assert.match(String(completion.body), /The answer is 42\./, "the conclusion carries what the child said");
         } else {
             assert.equal(completion.status, exact.status);
             assert.match(JSON.stringify(completion), /The child could not finish\./);
-            assert.ok(String(completion.body).length > 0, "failure stays visible even after an answer was delivered");
+            assert.ok(String(completion.body).length > 0, "a failure stays visible even after an answer was written");
             if (outcome === "cancel") assert.match(String(completion.body), /worker cancelled/);
         }
         const history = await f.db.message_history.all<{ direction: string; body: string }>({ workspace_id: f.workspaceId, worker_id: f.child, loop_id: f.childLoop });
-        assert.deepEqual(history.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["The answer is 42."]);
+        assert.deepEqual(history.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["The answer is 42."], "the reply is still the child's own outbound message");
     });
 }
 
@@ -81,10 +79,10 @@ test("{§env-delta-child-termination}: delayed observation preserves each comple
     assert.equal(await f.lifecycle.status(thirdLoop), 102);
 
     const observed = await f.run(f.parent, f.parentLoop);
-    const completions = observed.entries.filter(({ path: target }) => String(target).startsWith("loop://child/"));
+    const completions = observed.entries.filter(({ path: target }) => String(target).startsWith("ops://child/"));
     assert.equal(completions.length, 2);
     assert.ok(completions.every(({ logPath: path }) => String(path).endsWith("/READ")));
-    assert.deepEqual(completions.map(({ path: target }) => target), ["loop://child/1", "loop://child/2"]);
+    assert.deepEqual(completions.map(({ path: target }) => target), ["ops://child/1", "ops://child/2"]);
     assert.match(String(completions[0]!.body), /First result line 16/);
     assert.doesNotMatch(String(completions[0]!.body), /First result line 17/, "automatic observation obeys the ordinary READ preview");
     assert.match(String(completions[1]!.body), /Second loop failed\./);
@@ -101,5 +99,5 @@ test("{§env-delta-child-termination}: delayed observation preserves each comple
     assert.equal((await f.lifecycle.result(f.childLoop))?.content, first, "curation never changes the producer's result");
     assert.deepEqual((await f.lifecycle.result(secondLoop))?.problem, failure.problem);
     const again = await f.run(f.parent, f.parentLoop);
-    assert.equal(again.entries.filter(({ source, path }) => source === "worker://child" && String(path).startsWith("loop://child/")).length, 2, "observing again creates no duplicate occurrences");
+    assert.equal(again.entries.filter(({ source, path }) => source === "worker://child" && String(path).startsWith("ops://child/")).length, 2, "observing again creates no duplicate occurrences");
 });

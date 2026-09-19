@@ -55,7 +55,7 @@ test("{§loop-answer}: a loop's address reads its answer, prose or SEND; running
     } finally { await db.close(); }
 });
 
-test("{§loop-answer}: a concluded child's termination points its parent at what it said", async () => {
+test("{§loop-answer}: a concluded child's termination IS what it said, read at its own address", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loop-answer-child-${crypto.randomUUID()}`);
@@ -69,7 +69,7 @@ test("{§loop-answer}: a concluded child's termination points its parent at what
         });
         assert.equal(result.result.status, 200);
         const events = await db.test_loop_termination_events.all<{ rx: string }>({ recipient_worker_id: parentId });
-        assert.deepEqual(events.map(({ rx }) => JSON.parse(rx)), [{ status: 200, answer: "ops://reviewer/1" }]);
+        assert.deepEqual(events.map(({ rx }) => JSON.parse(rx)), [{ status: 200 }], "the event retains the child's exact terminal result");
         const answer = await engine.look({ workspaceId, workerId: parentId, loopId, statement: statement("````READ (ops://reviewer/1)````") });
         assert.ok("content" in answer);
         assert.equal(answer.content, "The draft is sound.", "the parent reads the answer where the termination points");

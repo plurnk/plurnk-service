@@ -550,7 +550,8 @@ the `git` runtime — never engine machinery.
 - §worker-lifecycle-wake-requeue-not-terminal **A wake re-queue is not a terminal.** A conclusion-wake resumes a 202-blocked loop by re-queueing it (202 → 100); when that lands while the loop's own live drain is between turns, the drain **re-claims and continues** (atomic 100 → 102; the injected prompt is already the next turn). The internal re-queue is never reported as an outward terminal.
 
 - §worker-scheme-collect **Collect** — each concluded child loop reaches its direct
-  parent as an `_plurnk` READ of `loop://<name>/<sequence>`, not a message.
+  parent as an `_plurnk` READ of `ops://<name>/<sequence>` ({§loop-answer}), not a message,
+  and that row carries what the child said.
   The occurrence retains that loop's exact terminal result; the READ uses ordinary
   bounded projection. Its body, when present, is initially visible. Replies are
   independent deliveries ({§message-reply-delivery}), never copied into this outcome. Failures and
@@ -564,15 +565,15 @@ the `git` runtime — never engine machinery.
   or wait for that worker ({§join-blocking-collect}). A
   missing name is 404. The model therefore reads the worker itself for its
   outcome or a wait rather than guessing a scratch path to "check on" it.
-- §worker-loop-result `loop://<name>/<sequence>` selects one worker-local
-  positive safe-integer loop sequence. It is a read-only resource, not an actor
-  control address: READ, FIND and COPY use ordinary projections; EDIT, MOVE-source, and
-  KILL cannot change the result. No query, userinfo, or port is
-  accepted. A missing loop returns 404; an unfinished selected loop returns 425.
-  A concluded result remains readable after newer loops, log curation, or a
-  reply to its originating message. The source is the durable terminal result,
-  not a copied mutable scratch entry. A successful result need not have a body.
-  READs and completion observations use the same representation and projector.
+- §worker-loop-result `ops://<name>/<sequence>` selects one worker-local positive safe-integer
+  loop sequence ({§loop-answer}; the retired `loop://` scheme is gone, and one address now serves
+  both what a loop said and how it ended). It is a read-only resource, not an actor control
+  address: READ, FIND and COPY use ordinary projections; EDIT, MOVE-source, and KILL cannot change
+  it. No query, userinfo, or port is accepted. A coordinate that is not a positive safe integer is
+  400; a missing loop 404; a loop that has not answered and has not concluded 425. A concluded
+  loop remains readable after newer loops, log curation, or a reply to its originating message.
+  A failure reports its problem even when the loop answered earlier: the failure is the news.
+  READs and completion observations use the same resolution, representation and projector.
 - §child-orientation **Child orientation.** Beyond the conclusion delta, every
   turn the packet's status clump surfaces the live things this worker currently
   holds under the teaching's own word for handing work out: `## Delegation` is
@@ -1389,7 +1390,7 @@ meaning of an authored URI authority before any entry capability is exposed:
 | `worker://alice/...` | Named scratch | Any workspace actor | Snapshot source namespace into new name |
 | `ops://<worker>/<loop>/<turn>`, `reasoning://<worker>/<loop>/<turn>` | Named worker's turn history | Immutable for every actor | Snapshot sources at identical coordinates under the child's name |
 | `note://<worker>/<loop>/<turn>/<item>` | Named worker's NOTE history | Immutable for every actor | Snapshot sources at identical coordinates under the child's name |
-| `loop://<worker>/<sequence>` | Named worker's execution | Immutable terminal outcome | Snapshot terminal history under the child's name |
+| `ops://<worker>/<loop>` | Named worker's loop | Immutable: what it said, or how it ended | Snapshot terminal history under the child's name |
 | `message://<worker>/<id>` | Native message admitted to the named worker | Immutable; SEND records a separate reply | Retain original addresses |
 | `log:///<loop>/<turn>/<item>/<op>` | Implicit observing worker | KILL curates the projection, not its source | Snapshot projection; explicit source addresses stay unchanged |
 | `<executor>:///<id>` | Empty, workspace output namespace | Executor stream contract | Shared live; no copied process |
