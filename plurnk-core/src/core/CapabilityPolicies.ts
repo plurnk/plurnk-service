@@ -37,6 +37,13 @@ export default class CapabilityPolicies {
         deny: Object.freeze([Object.freeze({ access: "interact" as const })]) as CapabilityPolicy["deny"],
     });
 
+    // The loop ring exists for exactly one reason today, so its recovery lives beside it rather
+    // than being reinvented at the refusal. A denial that names a ring but not a reason tells the
+    // model a tool vanished without telling it what to do instead.
+    static readonly UNATTENDED_RECOVERY =
+        "This run is unattended: nobody is present to answer. Decide from what you already have, "
+        + "or conclude stating what you could not resolve.";
+
     // `loopId` is omitted where the question is genuinely about the workspace and not one run —
     // the operator's capability projection, and the shared reserved-document materialization, which
     // is one tree per workspace. Admission for a particular loop is decided at dispatch, which has

@@ -3263,8 +3263,12 @@ Unattended, two things follow and nothing else does:
   outside its operation result contract" teaches it nothing it can act on.
 
   Dispatch refuses it at the **loop ring** of the capability cascade: an unattended run's own
-  layer denies the `interact` access class ({§worker-tool-admission}), and the denial names that
-  ring, so a refusal says which scope refused rather than appearing as a bare no.
+  layer denies the `interact` access class ({§worker-tool-admission}), and that 403 names the ring,
+  the reason and the recovery — a subtracted tool must say why it is gone and what to do instead,
+  or the model has learned only that something vanished. Every other ring is operator configuration
+  and speaks for itself; the loop ring is the one the model can act on. The 501 at the interaction
+  itself remains the backstop for the paths that do not cross dispatch (MCP elicitation raised
+  inside a tool call, the execution-input bridge).
 
   Known gap: the reserved tool tree is one artifact **per workspace**, reconciled by a
   workspace-scoped, memoized materializer, because two loops in one workspace may differ in

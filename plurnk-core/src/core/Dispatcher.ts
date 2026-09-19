@@ -17,6 +17,7 @@ import { PathSyntax } from "@plurnk/plurnk-contracts";
 import Namespace from "./namespace.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
+import CapabilityPolicies from "./CapabilityPolicies.ts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
 import { type StreamEventNotify, type WakeWorkerNotify, type InjectWorkerNotify, type CancelWorkerNotify } from "./ChannelWrite.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
@@ -1082,6 +1083,10 @@ export default class Dispatcher {
             {
                 ...descriptor,
                 policyScope: scope,
+                // {§loop-attendance} — the innermost ring subtracts for a reason the model can act
+                // on, so it says it. Every other scope is the operator's configuration and speaks
+                // for itself.
+                ...(scope === "loop" ? { recovery: CapabilityPolicies.UNATTENDED_RECOVERY } : {}),
                 retryable: false,
             },
         );

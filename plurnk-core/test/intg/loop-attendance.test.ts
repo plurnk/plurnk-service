@@ -200,3 +200,15 @@ test("{§loop-attendance} an unattended loop denies the interact access class at
     // Purely subtractive, like every other layer: it can never widen what the workspace allows.
     assert.equal("only" in loopRing.policy, false);
 });
+
+// {§loop-attendance} — the ring subtracts a tool; the refusal has to say why, or the model has
+// learned only that something vanished. Delivery through a real dispatch is proven end to end by
+// the client's `--auto` seam test, which reads the actual next packet; this pins the words, so a
+// future edit cannot quietly reduce the refusal to a dead end.
+test("{§loop-attendance} the loop ring's recovery names both the reason and what to do instead", () => {
+    const recovery = CapabilityPolicies.UNATTENDED_RECOVERY;
+    assert.match(recovery, /unattended/, "the model is told why the tool is gone");
+    assert.match(recovery, /nobody is present to answer/, "in plain terms, not as a policy citation");
+    assert.match(recovery, /conclude stating what you could not resolve/, "and what to do instead");
+    assert.doesNotMatch(recovery, /retry|try again/i, "never an invitation to ask again; nobody will have arrived");
+});
