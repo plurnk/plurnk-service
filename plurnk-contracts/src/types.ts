@@ -24,6 +24,10 @@ export const PLURNK_OPS = [
     "NOTE", "WAIT",
 ] as const;
 
+// {§four-backtick-operations} — the fence that opens an operation. Anything narrower is
+// ordinary markup and is quoted, never run, so every producer of a statement writes THIS.
+export const PLURNK_FENCE = "````";
+
 // Markerless model-facing retrievals share one fixed first page. Producers use
 // an explicit <1,-1> when they deliberately require the complete projection.
 export const DEFAULT_RETRIEVAL_LIMIT = 16;

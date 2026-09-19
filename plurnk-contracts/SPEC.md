@@ -302,7 +302,9 @@ four or more backticks; a three-backtick fence is markdown wherever it stands, s
 code blocks (```` ```sh ````, ```` ```ts ````) are prose and never run (operator,
 2026-09-18, #761). A three-backtick fence naming an operation or known executor draws one warning that it
 needs four backticks; any other three-backtick fence draws none. `plurnk.md` teaches exactly
-four; longer fences are tolerated, not taught.
+four; longer fences are tolerated, not taught. Every producer of a statement — the parser, a
+client composing `/look`, a client's tab-completion — writes `PLURNK_FENCE` rather than its own
+literal, so no surface can ship a width the parser will quote (plurnk/plurnk#92).
 
 §fence-heading-in-body Outside a complete nested block ({§balanced-fences}), a fence
 line of four or more backticks, optional digits, and a name that is a native operation

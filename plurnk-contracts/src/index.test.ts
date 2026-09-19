@@ -48,6 +48,7 @@ test("the package root exposes exactly the supported runtime values", () => {
         "InvalidReasoningPolicyError",
         "InvalidSkillDefinitionError",
         "InvalidTextRegionError",
+        "PLURNK_FENCE",
         "PLURNK_OPS",
         "PathSyntax",
         "PlurnkParseError",
