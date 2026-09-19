@@ -13,9 +13,11 @@ const ALLOWANCE_PATH = join(ROOT, "scripts/env-surface-allowance.json");
 const IGNORED_DIRECTORIES = new Set([".git", ".tmp", ".cache", "coverage", "dist", "node_modules"]);
 const SOURCE_EXTENSIONS = /\.(?:ts|mjs|js|cjs)$/u;
 
-// The one module allowed to touch the process environment for a knob, once it exists: a reader
-// whose signature cannot carry a value, so a default cannot be expressed in code at all.
-const READER = "plurnk-meta/src/Env.ts";
+// A reader that accepts a fallback can supply a value the panel never stated — and the one that
+// existed also swallowed an invalid value silently. These are the standard's own defaults, not ours.
+const STANDARD_FALLBACK = new Map([
+    ["plurnk-core/src/core/HostPaths.ts", "the XDG base-directory specification defines these fallbacks"],
+]);
 
 // `PLURNK_*` strings that are not knobs. Each squats in the knob namespace and says why it may.
 const NOT_A_KNOB = new Map([
@@ -125,10 +127,13 @@ export const measure = ({ panels, sources, corpus }) => {
         // By its own name, a default that lives in code.
         const constants = [...code.matchAll(/\b(?:const|let|static(?:\s+readonly)?)\s+#?DEFAULT_[A-Z0-9_]+\b/gu)].length;
         if (constants > 0) count("default-constant", name, constants);
-        // One reader touches the environment; every other site is a place a default can be written.
-        if (name !== READER) {
-            const raw = [...code.matchAll(/\bprocess\.env\b/gu)].length;
-            if (raw > 0) count("raw-env", name, raw);
+        // Reading the system environment is the mechanism and is never a debt: node, the shell and
+        // CI all speak it, and the floor is set-if-unset into it. What is a debt is a reader that
+        // takes a fallback, because its signature lets a caller state a value the panel did not.
+        if (!STANDARD_FALLBACK.has(name)) {
+            const readers = [...code.matchAll(/\(([^()]*\b(?:fallback|defaultValue)\b[^()]*)\)\s*(?::[^=>{]+)?(?:=>|\{)([\s\S]{0,400})/gu)]
+                .filter((match) => /\bprocess\.env\b|\benv\s*[.[]/u.test(match[2])).length;
+            if (readers > 0) count("reader-fallback", name, readers);
         }
     }
 

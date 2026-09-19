@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { envSurfaceViolations, measure, readPanels, stripComments } from "./env-surface-policy.mjs";
+import { envSurfaceViolations, readPanels, stripComments } from "./env-surface-policy.mjs";
 
 const panel = (content, name = "plurnk-x/.env.defaults") => ({ name, content });
 const source = (content, name = "plurnk-x/src/thing.ts") => ({ name, content });
@@ -30,10 +30,7 @@ test("a computed name is a family, covered by one declared example of it", () =>
 test("a read never carries its own value: a default in code is a second home for a choice", () => {
     const panels = [panel("PLURNK_X_TURNS=-1\n")];
     const violations = run({ panels, sources: [source("const a = Number(process.env.PLURNK_X_TURNS ?? \"50\");\nconst b = env[\"PLURNK_X_TURNS\"] || 30;")] });
-    assert.deepEqual(violations, [
-        "fallback: plurnk-x/src/thing.ts — 2 found, allowance 0",
-        "raw-env: plurnk-x/src/thing.ts — 1 found, allowance 0",
-    ]);
+    assert.deepEqual(violations, ["fallback: plurnk-x/src/thing.ts — 2 found, allowance 0"]);
 });
 
 test("a constant named DEFAULT is, by its own name, a default living in code", () => {
@@ -76,15 +73,15 @@ test("prose is not a read: comments, messages that merely begin with a name, tes
 });
 
 test("the allowance is a ratchet: new debt is refused, and so is a paid debt left on the books", () => {
-    const sources = [source("const a = process.env.HOME; const b = process.env.PATH;")];
-    assert.deepEqual(run({ sources, allowance: { "raw-env": { "plurnk-x/src/thing.ts": 2 } } }), []);
+    const sources = [source("const DEFAULT_A = 1; const DEFAULT_B = 2;")];
+    assert.deepEqual(run({ sources, allowance: { "default-constant": { "plurnk-x/src/thing.ts": 2 } } }), []);
     assert.deepEqual(
-        run({ sources, allowance: { "raw-env": { "plurnk-x/src/thing.ts": 1 } } }),
-        ["raw-env: plurnk-x/src/thing.ts — 2 found, allowance 1"],
+        run({ sources, allowance: { "default-constant": { "plurnk-x/src/thing.ts": 1 } } }),
+        ["default-constant: plurnk-x/src/thing.ts — 2 found, allowance 1"],
     );
     assert.deepEqual(
-        run({ sources, allowance: { "raw-env": { "plurnk-x/src/thing.ts": 3 } } }),
-        ["raw-env: plurnk-x/src/thing.ts — allowance 3 is stale, 2 remain; lower it"],
+        run({ sources, allowance: { "default-constant": { "plurnk-x/src/thing.ts": 3 } } }),
+        ["default-constant: plurnk-x/src/thing.ts — allowance 3 is stale, 2 remain; lower it"],
     );
     assert.deepEqual(
         run({ sources: [], allowance: { "fallback": { "plurnk-x/src/gone.ts": 1 } } }),
@@ -92,7 +89,17 @@ test("the allowance is a ratchet: new debt is refused, and so is a paid debt lef
     );
 });
 
-test("the one reader is where the environment is touched, and nowhere else is free", () => {
-    const findings = measure({ panels: [], sources: [source("process.env.HOME", "plurnk-meta/src/Env.ts"), source("process.env.HOME")], corpus: [] });
-    assert.deepEqual([...findings.keys()], ["raw-env\tplurnk-x/src/thing.ts"]);
+test("reading the system environment is the mechanism, never a debt", () => {
+    // Node, the shell and CI all speak it, and the floor is set-if-unset into it.
+    const direct = source("const turns = Number(process.env.PLURNK_X_TURNS); const home = process.env.HOME;");
+    assert.deepEqual(run({ panels: [panel("PLURNK_X_TURNS=-1\n")], sources: [direct] }), []);
+});
+
+test("a reader that accepts a fallback can state a value the panel never did", () => {
+    const reader = source("const readInt = (name: string, fallback: number): number => {\n    const raw = process.env[name];\n    return raw === undefined ? fallback : Number(raw);\n};");
+    assert.deepEqual(run({ sources: [reader] }), ["reader-fallback: plurnk-x/src/thing.ts — 1 found, allowance 0"]);
+    // A parameter named fallback that never touches the environment is somebody else's business.
+    assert.deepEqual(run({ sources: [source("const parse = (text: string, fallback: unknown) => { try { return JSON.parse(text); } catch { return fallback; } };")] }), []);
+    // A bound is not a value: a strict reader with a floor states nothing the panel did not.
+    assert.deepEqual(run({ sources: [source("const readBound = (env: NodeJS.ProcessEnv, name: string, floor: number): number => {\n    const raw = env[name];\n    if (raw === undefined) throw new Error(name);\n    return Number(raw);\n};")] }), []);
 });
