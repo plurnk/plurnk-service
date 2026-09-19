@@ -12,12 +12,6 @@
         "plurnk-schemes-http/src/WebFetcher.ts": 1
     },
     "undeclared": {
-        "PLURNK_API_KEY": 1,
-        "PLURNK_BASE_URL": 1,
-        "PLURNK_MEMBERS_ENABLED": 1,
-        "PLURNK_PROVIDERS_COMPLETION_RESERVE": 1,
-        "PLURNK_PROVIDERS_REASONING_RESERVE": 1,
-        "PLURNK_PROVIDERS_REASONING_STYLE": 1,
-        "PLURNK_PROVIDERS_SERVICE_TIER": 1
+        "PLURNK_MEMBERS_ENABLED": 1
     }
 }

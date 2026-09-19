@@ -32,10 +32,11 @@ const NOT_A_KNOB = new Map([
     ["PLURNK_VISIBLE_TOKEN_COUNT_UNAVAILABLE", "a provider diagnostic code"],
 ]);
 
-// A key the code names only in order to refuse it. `shedRenamed(env, "OLD", …)` and a `retired`
-// record are the two constructs that do so.
+// A key the code names only in order to refuse it. The house says "shed": `shedRenamed(env, "OLD",
+// …)` retires its first name, and a function named `shed…` retires every key it spells out.
 const RETIRED_CALL = /\bshedRenamed\(\s*[\w.]+\s*,\s*["'`](PLURNK_[A-Z0-9_]+)["'`]/gu;
 const RETIRED_RECORD = /\bretired\b[^=\n]*=\s*\{([^}]*)\}/gu;
+const RETIRING_FUNCTION = /#?\bshed[A-Z]\w*\s*(?:=\s*)?\([^)]*\)[^{;]*\{([\s\S]{0,1600}?)\n\}/gu;
 
 const isTest = (name) => /(?:^|\/)(?:test|tests|fixtures)\//u.test(name) || /\.test\.[^.]+$/u.test(name);
 const isShipped = (name) => /^plurnk-[^/]+\/src\//u.test(name) && SOURCE_EXTENSIONS.test(name)
@@ -110,6 +111,10 @@ export const measure = ({ panels, sources, corpus }) => {
         for (const match of code.matchAll(RETIRED_CALL)) retired.add(match[1]);
         for (const match of code.matchAll(RETIRED_RECORD)) {
             for (const key of match[1].matchAll(/\b(PLURNK_[A-Z0-9_]+)\s*:/gu)) retired.add(key[1]);
+        }
+        for (const match of code.matchAll(RETIRING_FUNCTION)) {
+            if (/^\s*shedRenamed\b/u.test(match[0])) continue;
+            for (const key of match[1].matchAll(/["'`](PLURNK_[A-Z0-9_]*[A-Z0-9])["'`]/gu)) retired.add(key[1]);
         }
         // A computed name — `PLURNK_EXECS_${runtime}` — is a family, covered by one declared example.
         for (const match of code.matchAll(/["'`](PLURNK_[A-Z0-9_]*_)(?:\$\{|["'`]\s*\+)/gu)) families.add(match[1]);
