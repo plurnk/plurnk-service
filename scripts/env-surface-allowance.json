@@ -1,7 +1,6 @@
 {
     "default-constant": {
         "plurnk-contracts/src/types.ts": 3,
-        "plurnk-core/src/core/LoopDriver.ts": 4,
         "plurnk-core/src/Paths.ts": 1,
         "plurnk-core/src/schemes/EffectPolicy.ts": 1,
         "plurnk-core/src/server/model-catalog.ts": 1,
@@ -11,17 +10,6 @@
         "plurnk-providers/src/Mock.ts": 1,
         "plurnk-schedule/src/Scheduler.ts": 1,
         "plurnk-schemes-http/src/WebFetcher.ts": 1
-    },
-    "fallback": {
-        "plurnk-agui/src/config.ts": 1,
-        "plurnk-core/src/core/LoopDriver.ts": 2,
-        "plurnk-core/src/core/teaching.ts": 1,
-        "plurnk-core/src/schemes/exec-abort.ts": 1,
-        "plurnk-core/src/server/Daemon.ts": 2,
-        "plurnk-core/src/server/DrainSupervisor.ts": 3
-    },
-    "reader-fallback": {
-        "plurnk-core/src/core/LoopDriver.ts": 1
     },
     "undeclared": {
         "PLURNK_API_KEY": 1,

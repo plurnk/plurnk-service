@@ -6,6 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import Results, { type SchemeResult } from "./results.ts";
 import NoticeChannel from "./NoticeChannel.ts";
 import StrikeRail from "./StrikeRail.ts";
+import Knob from "./Knob.ts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
 import { isAttended } from "@plurnk/plurnk-contracts";
 import { type ChatMessage } from "./PacketBuilder.ts";
@@ -14,32 +15,11 @@ import { observed } from "../observe/spans.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 import type { AcquireWorkspaceTurn, WorkspaceTurnStarting } from "./Engine.ts";
 
-const readMaxStrikes = (): number => {
-    const raw = process.env.PLURNK_SERVICE_MAX_STRIKES;
-    if (raw === undefined || raw.length === 0) return DEFAULT_MAX_STRIKES;
-    const n = Number.parseInt(raw, 10);
-    if (!Number.isFinite(n) || n < 0) return DEFAULT_MAX_STRIKES;
-    return n;
-};
-
-const DEFAULT_MIN_CYCLES = 3;
-
-const DEFAULT_MAX_CYCLE_PERIOD = 4;
-
-const readPositiveInt = (envVar: string, fallback: number): number => {
-    const raw = process.env[envVar];
-    if (raw === undefined || raw.length === 0) return fallback;
-    const n = Number.parseInt(raw, 10);
-    if (!Number.isFinite(n) || n < 1) return fallback;
-    return n;
-};
-
-const readLoopTimeoutMs = (): number => readPositiveInt("PLURNK_SERVICE_LOOP_TIMEOUT", DEFAULT_LOOP_TIMEOUT_MS);
-
-const DEFAULT_MAX_STRIKES = 3;
-
+// {§operator-config-only-home} — the rails' values live on the panel. These readers used to return
+// a constant of their own when a key was unset OR invalid, so `PLURNK_SERVICE_LOOP_TIMEOUT=banana`
+// silently meant twenty-four hours.
 // {§operator-config-loop-timeout}
-const DEFAULT_LOOP_TIMEOUT_MS = 86400000;
+const readLoopTimeoutMs = (): number => Knob.integer("PLURNK_SERVICE_LOOP_TIMEOUT", 1);
 
 type TerminalReason = "max_turns" | "strike_threshold" | "token_budget" | "provider_capacity" | "loop_timeout" | "provider_unavailable";
 type LoopResult = {
@@ -84,9 +64,10 @@ export default class LoopDriver {
 
     async runLoop({
         provider, childProvider = provider, messages, recap = "", workspaceId, workerId, loopId,
-        maxTurns = 50, maxStrikes = readMaxStrikes(),
-        minCycles = readPositiveInt("PLURNK_SERVICE_MIN_CYCLES", DEFAULT_MIN_CYCLES),
-        maxCyclePeriod = readPositiveInt("PLURNK_SERVICE_MAX_CYCLE_PERIOD", DEFAULT_MAX_CYCLE_PERIOD),
+        maxTurns = Knob.integer("PLURNK_SERVICE_MAX_TURNS", -1),
+        maxStrikes = Knob.integer("PLURNK_SERVICE_MAX_STRIKES", 0),
+        minCycles = Knob.integer("PLURNK_SERVICE_MIN_CYCLES", 1),
+        maxCyclePeriod = Knob.integer("PLURNK_SERVICE_MAX_CYCLE_PERIOD", 1),
         signal, onDispatch, onSettled }: {
         provider: Provider;
         childProvider?: Provider;
@@ -205,8 +186,8 @@ export default class LoopDriver {
                 // {§exec-hold-until-concluded} — hold matching runtime/effect
                 // streams until conclusion or the fail-open cap, then resume the
                 // ordinary cycle without altering stream state.
-                const holdSet = new Set((process.env.PLURNK_SERVICE_EXEC_HOLD ?? "").split(",").map((x) => x.trim()).filter((x) => x.length > 0));
-                const holdCapMs = Number(process.env.PLURNK_SERVICE_EXEC_HOLD_MS ?? "300000");
+                const holdSet = new Set(Knob.list("PLURNK_SERVICE_EXEC_HOLD"));
+                const holdCapMs = Knob.integer("PLURNK_SERVICE_EXEC_HOLD_MS", 0);
                 if (holdSet.size > 0 && holdCapMs > 0 && execHandler?.hasActiveHoldSpawns !== undefined) {
                     const holdStart = Date.now();
                     while (execHandler.hasActiveHoldSpawns(workerId, holdSet) && Date.now() - holdStart < holdCapMs) {

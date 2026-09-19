@@ -50,12 +50,15 @@ test("[{§agui-configuration}] explicit in-process options override the assemble
 
 test("[{§agui-configuration}] missing and malformed numeric configuration fails at the owner", () => {
     const resolve = (env: NodeJS.ProcessEnv) => resolveModuleOptions({ host: "127.0.0.1", port: 0, env });
-    assert.throws(() => resolve({}), /PLURNK_AGUI_HEARTBEAT_MS must be a safe integer/);
-    assert.throws(() => resolve({ PLURNK_AGUI_HEARTBEAT_MS: "many" }), /PLURNK_AGUI_HEARTBEAT_MS must be a safe integer/);
-    assert.throws(() => resolve({ PLURNK_AGUI_HEARTBEAT_MS: "-1" }), /from 0 through 2147483647/);
-    assert.throws(() => resolve({ PLURNK_AGUI_HEARTBEAT_MS: "2147483648" }), /from 0 through 2147483647/);
+    // {§operator-config-only-home} — an absent token key is a broken floor, never a silently open listener.
+    assert.throws(() => resolve({}), /PLURNK_AGUI_TOKEN is missing from the assembled environment floor/);
+    const open = { PLURNK_AGUI_TOKEN: "" };
+    assert.throws(() => resolve(open), /PLURNK_AGUI_HEARTBEAT_MS must be a safe integer/);
+    assert.throws(() => resolve({ ...open, PLURNK_AGUI_HEARTBEAT_MS: "many" }), /PLURNK_AGUI_HEARTBEAT_MS must be a safe integer/);
+    assert.throws(() => resolve({ ...open, PLURNK_AGUI_HEARTBEAT_MS: "-1" }), /from 0 through 2147483647/);
+    assert.throws(() => resolve({ ...open, PLURNK_AGUI_HEARTBEAT_MS: "2147483648" }), /from 0 through 2147483647/);
     assert.throws(
-        () => resolve({ PLURNK_AGUI_HEARTBEAT_MS: "15000", PLURNK_AGUI_MAX_TURNS: "-2" }),
+        () => resolve({ ...open, PLURNK_AGUI_HEARTBEAT_MS: "15000", PLURNK_AGUI_MAX_TURNS: "-2" }),
         /PLURNK_AGUI_MAX_TURNS must be a safe integer from -1 through 9007199254740991/,
     );
     assert.throws(

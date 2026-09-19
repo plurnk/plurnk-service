@@ -10,6 +10,7 @@ import type { LoopUsage } from "../core/Engine.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import { DEFAULT_LOOP_POLICY } from "../core/scheme-types.ts";
+import Knob from "../core/Knob.ts";
 import type { LoopPolicy } from "../core/types.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import { observed } from "../observe/spans.ts";
@@ -309,7 +310,7 @@ export default class DrainSupervisor {
             model_route_id: modelRouteId,
             spawn_model_route_id: spawnRouteId,
             reasoning_policy: args.reasoningPolicy,
-            max_turns: args.maxTurns ?? Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "50"),
+            max_turns: args.maxTurns ?? Knob.integer("PLURNK_SERVICE_MAX_TURNS", -1),
             policy: JSON.stringify({ ...DEFAULT_LOOP_POLICY, ...args.policy }),
         });
         if (loopRow === undefined) throw new Error("enqueueFreshLoop: loop enqueue returned no row");
@@ -898,8 +899,8 @@ export default class DrainSupervisor {
         } else {
             // An open stream without an explicit cadence uses the stream polling floor.
             // Child joins never enter this branch: durable child settlement is their only wake edge.
-            const base = Number(process.env.PLURNK_SERVICE_EXEC_POLL_SEC ?? "60");
-            const turns = Number(process.env.PLURNK_SERVICE_EXEC_POLL_TURNS ?? "8");
+            const base = Knob.integer("PLURNK_SERVICE_EXEC_POLL_SEC", 0);
+            const turns = Knob.integer("PLURNK_SERVICE_EXEC_POLL_TURNS", 1);
             const step = this.#pollBackoff.get(loopId) ?? 0;
             delayMs = execPollBackoffMs(step, base, turns);
             this.#pollBackoff.set(loopId, step + 1);

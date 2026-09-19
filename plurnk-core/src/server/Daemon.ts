@@ -41,6 +41,7 @@ import WorkspaceStorage from "./WorkspaceStorage.ts";
 import Fork from "../core/fork.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
+import Knob from "../core/Knob.ts";
 import LoopPolicyReader from "../core/LoopPolicyReader.ts";
 import { contentWeight } from "../core/content-weight.ts";
 import MessageResources from "../core/MessageResources.ts";
@@ -495,7 +496,7 @@ export default class Daemon implements ApplicationPort {
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
         // {§operator-config-max-turns-ceiling} — the operator ceiling clamps a per-call maxTurns; a
         // seam caller must not bypass operator policy (inject only DEFAULTS from env, never clamps).
-        const ceiling = Number(process.env.PLURNK_SERVICE_MAX_TURNS ?? "-1");
+        const ceiling = Knob.integer("PLURNK_SERVICE_MAX_TURNS", -1);
         const requested = requestedMaxTurns ?? ceiling;
         const maxTurns = ceiling < 0 ? requested : (requested < 0 ? ceiling : Math.min(requested, ceiling));
         const turnCeiling: TurnCeilingSelection = {
@@ -1604,15 +1605,11 @@ export default class Daemon implements ApplicationPort {
         }
     }
 
-    // {§crash-only-stop} — the settle deadline. Default 30s; an operator can
-    // raise it for slow hosts or lower it for tests. 0 is refused (an unbounded
-    // stop is exactly the wedge this exists to prevent).
+    // {§crash-only-stop} — the settle deadline. The panel owns the value; an operator can raise it
+    // for slow hosts or lower it for tests. 0 is refused (an unbounded stop is exactly the wedge
+    // this exists to prevent).
     static #stopDeadlineMs(): number {
-        const raw = Number(process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS ?? 30_000);
-        if (!Number.isSafeInteger(raw) || raw <= 0) {
-            throw new Error(`PLURNK_SERVICE_STOP_TIMEOUT_MS must be a positive integer; got ${JSON.stringify(process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS)}.`);
-        }
-        return raw;
+        return Knob.integer("PLURNK_SERVICE_STOP_TIMEOUT_MS", 1);
     }
 
     async stop(): Promise<void> {

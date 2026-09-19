@@ -30,6 +30,9 @@ test("execution exhaustion rules a legible 504 loop_timeout terminal", async (t)
     const loopTimeoutMs = 60_000;
     t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
     t.mock.method(performance, "now", () => Date.now());
+    // Restored, never deleted: the panel's value is what every later test in this file runs under,
+    // and a code-side default no longer papers over a knob this test removed.
+    const panelTimeout = process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
     process.env.PLURNK_SERVICE_LOOP_TIMEOUT = String(loopTimeoutMs);
     const db = await openMigrated();
     try {
@@ -58,7 +61,7 @@ test("execution exhaustion rules a legible 504 loop_timeout terminal", async (t)
             "the lifecycle timeout never fabricates a provider failure",
         );
     } finally {
-        delete process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
+        process.env.PLURNK_SERVICE_LOOP_TIMEOUT = panelTimeout;
         await db.close();
     }
 });
@@ -117,7 +120,7 @@ test("{§operator-config-loop-timeout}: waiting preserves one execution allowanc
     }
 });
 
-test("the default wall never intrudes — a short loop concludes 200 untouched", async () => {
+test("the panel's wall never intrudes — a short loop concludes 200 untouched", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loop-wall-off-${crypto.randomUUID()}`);
@@ -126,7 +129,7 @@ test("the default wall never intrudes — a short loop concludes 200 untouched",
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(null, "done")] } }] });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
-        assert.equal(result.result.status, 200, "the 24h default is invisible to a normal loop");
+        assert.equal(result.result.status, 200, "the panel's execution allowance is invisible to a normal loop");
     } finally { await db.close(); }
 });
 

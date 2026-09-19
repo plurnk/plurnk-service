@@ -37,7 +37,10 @@ const environmentMaxTurns = (raw: string | undefined): number | undefined => {
 
 export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOptions => {
     const env = options.env === undefined ? process.env : options.env;
-    const token = options.token === undefined ? env.PLURNK_AGUI_TOKEN ?? "" : options.token;
+    // {§operator-config-only-home} — an absent key is a broken floor, never a silent "no
+    // authentication": only the panel's own empty value may say that the listener is open.
+    const token = options.token === undefined ? env.PLURNK_AGUI_TOKEN : options.token;
+    if (token === undefined) throw new Error("PLURNK_AGUI_TOKEN is missing from the assembled environment floor.");
     if (typeof token !== "string") {
         throw new Error(`ModuleOptions.token must be a string; got ${JSON.stringify(token)}.`);
     }

@@ -2665,7 +2665,7 @@ test("[{§agui-configuration}] the environment heartbeat cadence reaches the SSE
     const mod = await Module.init({
         host: "127.0.0.1",
         port: 0,
-        env: { PLURNK_AGUI_HEARTBEAT_MS: "40" },
+        env: { PLURNK_AGUI_TOKEN: "", PLURNK_AGUI_HEARTBEAT_MS: "40" },
     }).start(seam);
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
@@ -2685,7 +2685,7 @@ test("[{§agui-configuration}] heartbeat cadence 0 emits no comment frames", asy
     const mod = await Module.init({
         host: "127.0.0.1",
         port: 0,
-        env: { PLURNK_AGUI_HEARTBEAT_MS: "0" },
+        env: { PLURNK_AGUI_TOKEN: "", PLURNK_AGUI_HEARTBEAT_MS: "0" },
     }).start(seam);
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
@@ -2708,6 +2708,7 @@ test("[{§agui-configuration}] the environment turn default yields to the Run va
         host: "127.0.0.1",
         port: 0,
         env: {
+            PLURNK_AGUI_TOKEN: "",
             PLURNK_AGUI_MAX_TURNS: "7",
             PLURNK_AGUI_HEARTBEAT_MS: "0",
         },

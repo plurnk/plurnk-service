@@ -1,3 +1,4 @@
+import Knob from "../core/Knob.ts";
 // The abort-reason protocol @plurnk/plurnk-execs' SubprocessExecutor reads off `signal.reason`:
 //   { signal }                       → deliver exactly that Unix signal, once, no escalation.
 //   { housekeeping: true, graceMs }  → loop/worker teardown: the polite signal, then SIGKILL after graceMs.
@@ -5,10 +6,10 @@
 // polite default, SIGHUP — the gentlest rung; the model escalates with explicit codes.
 export default class ExecAbort {
     // The grace a teardown straggler gets before the hard SIGKILL. The executor refuses to bake a
-    // number (it'd be a magic literal there); the consumer owns it — env-tunable, 2s default. A
-    // getter, not a static field, so a test can set the env at runtime. {§worker-lifecycle-total-reap}
+    // number (it'd be a magic literal there) and so does this consumer: the panel owns it. A getter,
+    // not a static field, so a test can set the env at runtime. {§worker-lifecycle-total-reap}
     static get graceMs(): number {
-        return Number(process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS ?? "2000");
+        return Knob.integer("PLURNK_SERVICE_EXEC_KILL_GRACE_MS", 0);
     }
 
     // Loop/worker teardown — a bounded reap, so Exec.idle() can't wedge on a signal-ignoring spawn.
