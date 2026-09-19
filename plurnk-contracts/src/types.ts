@@ -74,7 +74,13 @@ export const DEFAULT_CAPABILITY_POLICY: CapabilityPolicy = Object.freeze({});
 
 export const DEFAULT_LOOP_POLICY: LoopPolicy = Object.freeze({
     proposals: "review",
+    attended: true,
 });
+
+// {§loop-attendance} — one reading of "is anyone there?", so no wait site re-derives it. An absent
+// field is attended: a policy written before attendance existed keeps its meaning, and a run only
+// becomes unattended by saying so.
+export const isAttended = (policy: LoopPolicy): boolean => policy.attended !== false;
 
 // Minting predicate only; URL ingestion deliberately remains permissive. {§worker-name}
 export const WORKER_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/;

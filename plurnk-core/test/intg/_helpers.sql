@@ -12,7 +12,9 @@ VALUES ($workspace_id, $name, $parent_worker_id, $origin)
 RETURNING id;
 
 -- PREP: test_insert_loop
-INSERT INTO loops (worker_id, sequence, prompt) VALUES ($worker_id, $sequence, $prompt) RETURNING id;
+-- A NULL $policy takes the column default, so every existing caller is unchanged.
+INSERT INTO loops (worker_id, sequence, prompt, policy)
+VALUES ($worker_id, $sequence, $prompt, COALESCE($policy, '{"proposals":"review"}')) RETURNING id;
 
 -- PREP: test_insert_queued_loop
 INSERT INTO loops (worker_id, sequence, prompt, status) VALUES ($worker_id, $sequence, $prompt, 100) RETURNING id;

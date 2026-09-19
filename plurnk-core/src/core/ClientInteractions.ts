@@ -1,10 +1,12 @@
 import {
+    isAttended,
     Validator,
     type ClientInteractionProjection,
     type ClientInteractionRequest,
     type ClientInteractionResolution,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
+import LoopPolicyReader from "./LoopPolicyReader.ts";
 import Results, { OperationFailureError } from "./results.ts";
 
 export interface ClientInteractionPendingEvent extends ClientInteractionProjection {
@@ -46,6 +48,25 @@ const pendingFailure = (interactionId: number): OperationFailureError =>
         },
     ));
 
+// {§loop-attendance} — an unattended run has no interactive partner, so a request for one is
+// refused at the point of use rather than written down and waited on. Without this the wait is
+// bounded only by the loop's 24 h abort, and the model spends a turn asking a question nobody
+// will ever see (#765).
+const unattendedRefusal = (loopId: number): OperationFailureError =>
+    new OperationFailureError(Results.failure(
+        "interaction:request",
+        "loop-unattended",
+        501,
+        "This run is unattended: nobody is present to answer.",
+        {},
+        {
+            loopId,
+            stage: "interaction-request",
+            recovery: "Decide from what you already have, or conclude stating what you could not resolve.",
+            retryable: false,
+        },
+    ));
+
 export default class ClientInteractions {
     readonly #db: Db;
     readonly #pending = new Map<number, InteractionWaiter>();
@@ -66,6 +87,9 @@ export default class ClientInteractions {
     ): Promise<ClientInteractionResolution> {
         const exact = structuredClone(Validator.assertClientInteractionRequest(request));
         signal?.throwIfAborted();
+        // {§loop-attendance} — every interaction wiring funnels here (the question tool, the exec
+        // bridge, the scheme caps and MCP elicitation), so one refusal covers them all.
+        if (!isAttended(await LoopPolicyReader.read(this.#db, ids.loopId))) throw unattendedRefusal(ids.loopId);
         const inserted = await this.#db.client_interaction_insert.get<{ id: number }>({
             workspace_id: ids.workspaceId,
             worker_id: ids.workerId,

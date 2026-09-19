@@ -90,19 +90,23 @@ test("loop.run persists a complete canonical policy and omission uses the comple
                 prompt: "selected",
                 policy: {
                     proposals: "accept",
+                    attended: false,
                 },
             });
             const selectedId = selected.loopId;
             const selectedRow = await db.engine_get_loop_policy.get<{ policy: string }>({ loop_id: selectedId });
             assert.deepEqual(JSON.parse(selectedRow!.policy) as LoopPolicy, {
                 proposals: "accept",
+                attended: false,
             });
 
             const ordinary = await runLoopToTerminal(ws, 3, { prompt: "ordinary" });
             const ordinaryId = ordinary.loopId;
             const ordinaryRow = await db.engine_get_loop_policy.get<{ policy: string }>({ loop_id: ordinaryId });
+            // {§loop-attendance} — an omitted policy is the complete default, attendance included.
             assert.deepEqual(JSON.parse(ordinaryRow!.policy) as LoopPolicy, {
                 proposals: "review",
+                attended: true,
             });
         } finally { ws.close(); }
     });
@@ -160,7 +164,7 @@ test("proposals=reject settles the same admitted proposal without becoming a cap
                 decision: "reject",
                 outcome: "no_review_channel",
             });
-            assert.deepEqual(proposal.policy, { proposals: "reject" });
+            assert.deepEqual(proposal.policy, { proposals: "reject", attended: true });
         } finally { ws.close(); }
     });
 });
@@ -184,8 +188,11 @@ test("proposal notification projects the same durable policy and its derived dis
                 (items) => items.length > 0,
             );
             assert.equal(typeof proposal.workerId, "number");
+            // The projection is the durable policy verbatim, attendance included: the client
+            // deciding this proposal sees exactly what the loop is running under.
             assert.deepEqual(proposal.policy, {
                 proposals: "review",
+                attended: true,
             });
             assert.deepEqual(proposal.disposition, { owner: "client" });
             await rpcCall(ws, 3, "loop.resolve", { logEntryId: proposal.logEntryId, decision: "accept" });

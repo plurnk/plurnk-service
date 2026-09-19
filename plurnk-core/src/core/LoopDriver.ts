@@ -6,6 +6,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import Results, { type SchemeResult } from "./results.ts";
 import NoticeChannel from "./NoticeChannel.ts";
 import StrikeRail from "./StrikeRail.ts";
+import LoopPolicyReader from "./LoopPolicyReader.ts";
+import { isAttended } from "@plurnk/plurnk-contracts";
 import { type ChatMessage } from "./PacketBuilder.ts";
 import TurnRunner, { LOOP_TIMEOUT_REASON } from "./TurnRunner.ts";
 import { observed } from "../observe/spans.ts";
@@ -39,7 +41,7 @@ const DEFAULT_MAX_STRIKES = 3;
 // {§operator-config-loop-timeout}
 const DEFAULT_LOOP_TIMEOUT_MS = 86400000;
 
-type TerminalReason = "max_turns" | "strike_threshold" | "token_budget" | "provider_capacity" | "loop_timeout";
+type TerminalReason = "max_turns" | "strike_threshold" | "token_budget" | "provider_capacity" | "loop_timeout" | "provider_unavailable";
 type LoopResult = {
     turnIds: number[];
     result: SchemeResult;
@@ -260,6 +262,15 @@ export default class LoopDriver {
                 if (turn.providerParked) {
                     // {§provider-recovery} — the provider stayed unavailable past the recovery budget:
                     // the loop parks like a [202] wait, spawns outlive it, and the ordinary wake resumes it.
+                    // {§loop-attendance} — except that parking here stops the execution clock, so an
+                    // unattended loop would wait with nothing counting and nobody coming. It concludes
+                    // instead, naming the provider rather than pretending the model gave up (#765).
+                    if (!isAttended(await LoopPolicyReader.read(this.#db, loopId))) {
+                        if (turn.providerFailure === undefined) {
+                            throw new Error("a provider-recovery stop requires its exact failure to conclude unattended");
+                        }
+                        return await ruleTerminal(turn.providerFailure, "provider_unavailable");
+                    }
                     if (!await this.#lifecycle.park(loopId)) throw new Error(`loop ${loopId} could not park after provider recovery`);
                     cleanup("graceful", "provider_unavailable");
                     return { turnIds, result: { status: 202 }, hitMaxTurns: false, reason: "provider_unavailable" };

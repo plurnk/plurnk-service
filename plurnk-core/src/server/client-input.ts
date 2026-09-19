@@ -343,17 +343,18 @@ export default class ClientInput {
                 { field: "policy", recovery: "Provide a proposal disposition." },
             );
         }
-        const partial = policy as { proposals?: unknown };
-        if (Object.keys(partial).some((key) => key !== "proposals")) {
+        const partial = policy as { proposals?: unknown; attended?: unknown };
+        if (Object.keys(partial).some((key) => key !== "proposals" && key !== "attended")) {
             ClientInput.#invalid(
                 context,
                 "loop-policy-invalid",
                 "policy contains an unsupported field.",
-                { field: "policy", recovery: "Use only proposals." },
+                { field: "policy", recovery: "Use only proposals and attended." },
             );
         }
         const candidate = {
             proposals: partial.proposals ?? DEFAULT_LOOP_POLICY.proposals,
+            attended: partial.attended ?? DEFAULT_LOOP_POLICY.attended,
         };
         try {
             return Validator.assertLoopPolicy(candidate as LoopPolicy);

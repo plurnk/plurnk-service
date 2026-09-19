@@ -2,7 +2,8 @@ import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import type { RequestPacket } from "./StoredPacket.ts";
 import NativeContent from "./NativeContent.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { PathSyntax, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
+import { isAttended, PathSyntax, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
+import LoopPolicyReader from "./LoopPolicyReader.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderErrorKind, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
@@ -1518,11 +1519,14 @@ export default class TurnRunner {
         if (attempts.parked) {
             // {§provider-recovery} — the recovery budget is spent: the loop parks exactly like a
             // [202] wait and resumes on the next prompt or wake; the failure stays durable.
+            // {§loop-attendance} — unattended, nothing will wake it, so LoopDriver concludes instead
+            // and the notice says that rather than promising a resumption nobody can deliver.
+            const attended = isAttended(await LoopPolicyReader.read(this.#db, loopId));
             this.#notices.push(workspaceId, workerId, loopId, {
                 source: "engine:provider",
                 kind: "provider_unavailable",
                 level: "error",
-                message: `${recorded.result.problem?.title ?? "Provider failure"}: the ${Math.round(attempts.recoveryBudget / 1000)}s recovery budget is spent; the loop is parked and resumes on the next prompt or wake.`,
+                message: `${recorded.result.problem?.title ?? "Provider failure"}: the ${Math.round(attempts.recoveryBudget / 1000)}s recovery budget is spent; ${attended ? "the loop is parked and resumes on the next prompt or wake" : "this run is unattended, so the loop ends here"}.`,
             });
             return turnResult(request, 202, { providerParked: true, providerFailure: recorded.result, emissionAttempts });
         }

@@ -102,11 +102,15 @@ test("{§worker-delegation-inherits-policy}: a fresh injection persists delegate
             systemPrompt: "test system",
             freshLoopPolicy: {
                 proposals: "accept",
+                attended: false,
             },
         });
         const row = await db.engine_get_loop_policy.get<{ policy: string }>({ loop_id: accepted.loopId });
+        // {§loop-attendance} — attendance inherits with the rest of the policy, so a child of a
+        // headless run is headless too and cannot stop at a wait nobody would end (#765).
         assert.deepEqual(JSON.parse(row!.policy), {
             proposals: "accept",
+            attended: false,
         });
         await accepted.drainPromise;
     });

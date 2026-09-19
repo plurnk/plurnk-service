@@ -2,11 +2,23 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/LoopPolicy.json",
     "title": "LoopPolicy",
-    "description": "The immutable proposal disposition for one loop. Workspace capability admission precedes proposals.",
+    "description": "One loop's immutable disposition: how proposals are settled, and whether anyone is attending who could answer a question. Workspace capability admission precedes both.",
     "type": "object",
-    "required": ["proposals"],
+    "required": [
+        "proposals"
+    ],
     "additionalProperties": false,
     "properties": {
-        "proposals": { "enum": ["review", "accept", "reject"] }
+        "proposals": {
+            "enum": [
+                "review",
+                "accept",
+                "reject"
+            ]
+        },
+        "attended": {
+            "type": "boolean",
+            "description": "Whether an interactive partner exists who can answer. False declares an unattended run: no human-in-the-loop surface is offered, and a wait nobody could end becomes a conclusion. Absent means true, so a policy written before this field keeps its meaning."
+        }
     }
 }

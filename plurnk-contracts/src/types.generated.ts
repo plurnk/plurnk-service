@@ -757,6 +757,10 @@ removed?: true
 
 export interface LoopPolicy {
 proposals: ("review" | "accept" | "reject")
+/**
+ * Whether an interactive partner exists who can answer. False declares an unattended run: no human-in-the-loop surface is offered, and a wait nobody could end becomes a conclusion. Absent means true, so a policy written before this field keeps its meaning.
+ */
+attended?: boolean
 }
 
 export interface McpConfigurationOverlay {
@@ -1148,7 +1152,7 @@ policy: LoopPolicy
 disposition: ProposalDisposition
 }
 /**
- * The immutable proposal disposition for one loop. Workspace capability admission precedes proposals.
+ * One loop's immutable disposition: how proposals are settled, and whether anyone is attending who could answer a question. Workspace capability admission precedes both.
  */
 
 export type ProviderCost = ({

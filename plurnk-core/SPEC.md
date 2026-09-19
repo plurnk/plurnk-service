@@ -1149,7 +1149,9 @@ retains only the current provider state; the next completed exchange notices
 `provider_recovered`. Recovery is bounded by `PLURNK_SERVICE_PROVIDER_RECOVERY`; when it
 is spent the turn completes as `202` and the loop parks exactly like a
 WAIT ({§worker-lifecycle-wake-requeue-not-terminal}), resuming on the
-next prompt or wake with its log intact. Only a client cancel, the execution allowance
+next prompt or wake with its log intact — **unless the run is unattended
+({§loop-attendance}), in which case the loop concludes on the provider's exact failure
+instead, because parking stops the execution clock and no wake would ever arrive.** Only a client cancel, the execution allowance
 ({§operator-config-loop-timeout}), or a non-recoverable provider Problem (refusal,
 authorization, quota, an invalid response) settles a loop on a provider failure.
 
@@ -3238,6 +3240,40 @@ only after authority crosses the client boundary.
 §proposal-ownership-notification **The notification carries disposition, not policy inputs.** `loop/proposal` carries the core-owned `ProposalDisposition` ({§notifications}, {§proposal-disposition}). A connected client presents only `owner="client"`; it never reimplements policy from operation or attrs.
 
 ### §proposal-disposition Settlement authority and precedence
+
+§loop-attendance **A run says whether anyone is attending, and a wait nobody could
+end is never taken.** `LoopPolicy.attended` is the whole of it: `true` (the default, and
+what an absent field means, so a policy written before this existed keeps its meaning)
+says an interactive partner is present; `false` declares an unattended run. The client's
+`--auto` sets it, because `--auto` asserts that nobody is watching rather than merely
+choosing a proposal disposition. A fresh delegated loop inherits it with the rest of the
+policy ({§worker-delegation-inherits-policy}), so a child of a headless run is headless too.
+
+Unattended, two things follow and nothing else does:
+
+- **No interactive partner is offered.** `ClientInteractions.request` refuses **501
+  `loop-unattended`** instead of writing the request down and waiting. Every wiring funnels
+  through that one request — the `question` runtime ({§question-tool}), the execution input
+  bridge, the scheme interaction caps, and MCP elicitation — so one
+  refusal covers them all. This matters because the `question` runtime's effect is `read`
+  and it is therefore never proposal-gated: `proposals: "accept"` does nothing for it, and
+  before this a headless run could be handed a question whose only bound was the 24 h
+  execution allowance.
+- **A provider-recovery park becomes a conclusion** ({§provider-recovery}), carrying the
+  provider's own exact Problem. Never a substituted "the model gave up".
+
+Attendance changes nothing else: it is not a capability layer, it does not alter proposal
+disposition, and it never converts a legitimate wait that has a real waker — a `WAIT`, an
+open stream, a delegated child, an awaited event — into a termination. Those have wakers;
+a human question does not. A prompt prefix selects a disposition, never an attendance:
+typing `?` cannot conjure a reviewer into a headless run.
+
+Origin: measured, `plurnk-bench` `dumbox-20260918` run4. Two 600 s provider cuts spent the
+recovery budget; the root loop parked at 17:53:32 and the client's own clock cancelled it
+at 18:48:02 — **54 minutes 30 seconds of an 88-minute budget in silence.** `LoopLifecycle.park`
+calls `#stopExecution`, which clears the loop-timeout timer, and `DrainSupervisor` arms a wake
+timer only when an open exec stream exists. There was none. Nothing was scheduled, nothing was
+coming, and nothing was counting.
 
 §loop-policy-effective-read `loops.policy` persists one complete immutable
 `LoopPolicy`; every runtime policy read validates that snapshot before use.

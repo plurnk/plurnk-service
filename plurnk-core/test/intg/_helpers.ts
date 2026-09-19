@@ -27,7 +27,7 @@ import {
     type ChatMessage,
     type ProviderRequestCapacity,
 } from "@plurnk/plurnk-providers";
-import { isExecutionOp } from "@plurnk/plurnk-contracts";
+import { isExecutionOp, type LoopPolicy } from "@plurnk/plurnk-contracts";
 
 // {§loop-response-messages}: evaluate delivered text independently of execution outcome.
 export const lastReply = async (db: Db, loopId: number): Promise<string> =>
@@ -299,9 +299,9 @@ export const insertWorker = async (
 };
 
 // {§message-arrival} — a loop's nonempty initial prompt is ordinal 1 of its inbox, published on turn 1.
-export const insertLoop = async (db: Db, workerId: number, sequence: number, prompt: string = ""): Promise<number> => {
+export const insertLoop = async (db: Db, workerId: number, sequence: number, prompt: string = "", policy?: LoopPolicy): Promise<number> => {
     const row = await db.test_insert_loop.get<{ id: number }>({
-        worker_id: workerId, sequence, prompt,
+        worker_id: workerId, sequence, prompt, policy: policy === undefined ? null : JSON.stringify(policy),
     });
     if (row === undefined) throw new Error("insertLoop: insert returned no row");
     if (prompt.length > 0) {
