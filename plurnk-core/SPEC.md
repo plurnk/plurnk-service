@@ -3258,9 +3258,22 @@ Unattended, two things follow and nothing else does:
   refusal covers them all. This matters because the `question` runtime's effect is `read`
   and it is therefore never proposal-gated: `proposals: "accept"` does nothing for it, and
   before this a headless run could be handed a question whose only bound was the 24 h
-  execution allowance.
+  execution allowance. The refusal is the asking executor's **own result**, never a thrown
+  contract violation: the model has to read why it cannot ask, and "the executor failed
+  outside its operation result contract" teaches it nothing it can act on.
+
+  Known gap: the model is still *taught* the tool and still spends a turn asking before being
+  refused. Removing it from the catalog outright is the capability cascade's job
+  ({§worker-tool-admission} already does exactly that for a denied `interact` access class),
+  and that needs a loop-scoped capability layer, which does not exist yet.
 - **A provider-recovery park becomes a conclusion** ({§provider-recovery}), carrying the
   provider's own exact Problem. Never a substituted "the model gave up".
+
+**A park is a promise that something will restart it.** `LoopLifecycle.park` takes the waker
+by name; `null` says nothing will. Parking an unattended loop with no waker is a contract
+violation and throws, so a park site added later fails loudly on its first unattended run
+instead of idling until some caller's clock notices. It is a tripwire, not a fallback: the
+provider-recovery path concludes before reaching it.
 
 Attendance changes nothing else: it is not a capability layer, it does not alter proposal
 disposition, and it never converts a legitimate wait that has a real waker — a `WAIT`, an

@@ -138,6 +138,9 @@ export const liveLoop = async (
             ...(params.workerId !== undefined ? { workerId: params.workerId } : {}),
             policy: {
                 proposals: params.policy?.proposals ?? "accept",
+                // {§loop-attendance} — a drill has no human at the composer, but the default stays
+                // attended so a specimen must ask for the unattended run it wants to exercise.
+                ...(params.policy?.attended === undefined ? {} : { attended: params.policy.attended }),
             },
             ...(params.maxTurns !== undefined ? { maxTurns: params.maxTurns } : {}),
             ...(params.openPaths !== undefined ? { openPaths: params.openPaths } : {}),

@@ -50,7 +50,7 @@ test(`{§loop-wake-identity}: ${kind} completion ${phase} is acknowledged only b
     try {
         const lifecycle = new LoopLifecycle(db);
         const parkedLoop = await insertLoop(db, workerId, 2, "An independent waiting task.");
-        await lifecycle.park(parkedLoop);
+        await lifecycle.park(parkedLoop, { wakenBy: "test-fixture" });
         let finish: () => Promise<unknown>;
         if (kind === "child") {
             const child = await insertWorker(db, workspaceId, workerId, "child");

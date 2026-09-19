@@ -58,7 +58,8 @@ export default class TurnDispositionHandler {
         const { pending } = await this.#pendingSet(workerId, turnId, loopId);
         const live = pending.some((kind) => kind === "streams" || kind === "workers" || kind === "events");
         if (live && (wait || unanswered.count === 0)) {
-            return await this.#lifecycle.park(loopId) ? 202 : this.#lifecycle.status(loopId);
+            // The obligation itself is the waker: a concluding stream, child or event requeues this loop.
+            return await this.#lifecycle.park(loopId, { wakenBy: "obligations" }) ? 202 : this.#lifecycle.status(loopId);
         }
         if (wait || unanswered.count > 0 || pending.length > 0 || await this.#unobservedFailureCount(turnId) > 0) return 102;
         // {§completion-defers-to-messages}: recheck unanswered arrivals atomically with conclusion.

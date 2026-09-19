@@ -88,7 +88,7 @@ test("{§loop-rail-continuity}: clean recovery after a park resets only this loo
     const rail = new StrikeRail(db);
     await rail.assess(loopId, { ...base, outcomes: [outcome("READ", 403)] });
     const lifecycle = new LoopLifecycle(db);
-    assert.equal(await lifecycle.park(loopId), true);
+    assert.equal(await lifecycle.park(loopId, { wakenBy: "test-fixture" }), true);
     assert.equal(await lifecycle.wake(loopId), true);
     const resumed = new StrikeRail(db);
     assert.equal(await resumed.streak(loopId), 1);
@@ -115,9 +115,9 @@ test("{§loop-rail-continuity}: reconstructing an owner does not renew the bound
 
 test("{§loop-rail-continuity}: an unsuccessful park does not create a new cycle window", async () => {
     const lifecycle = new LoopLifecycle(db);
-    assert.equal(await lifecycle.park(loopId), true);
+    assert.equal(await lifecycle.park(loopId, { wakenBy: "test-fixture" }), true);
     for (let i = 0; i < 2; i++) {
-        assert.equal(await lifecycle.park(loopId), false, "an already parked loop cannot park twice");
+        assert.equal(await lifecycle.park(loopId, { wakenBy: "test-fixture" }), false, "an already parked loop cannot park twice");
         await new StrikeRail(db).assess(loopId, { ...base, waitRevision: 1, outcomes: [] });
     }
     assert.equal((await new StrikeRail(db).assess(loopId, { ...base, waitRevision: 1, outcomes: [] })).cycleDetected, true);

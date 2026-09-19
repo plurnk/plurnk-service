@@ -70,7 +70,7 @@ test("{§awaited-event}: packet observation and parking cannot lose a concurrent
         await builder.recordObservations(pending);
         assert.equal((await db.awaited_event_unobserved.all({ loop_id: loopId })).length, 1, "the pending snapshot did not present the later result");
         assert.equal(await lifecycle.finish(loopId, { status: 200 }, { requireAnswered: true }), null, "completion rechecks unobserved results atomically");
-        assert.equal(await lifecycle.park(loopId), true);
+        assert.equal(await lifecycle.park(loopId, { wakenBy: "test-fixture" }), true);
         assert.equal(await lifecycle.wake(loopId, { eventOnly: true }), true, "settlement before parking still wakes that exact loop");
         const transform = t.mock.method(schemes, "transformSections", async (sections: PacketSectionDraft[]) => sections.filter((section) => section.name !== "delegation"));
         const hidden = await build();
@@ -98,7 +98,7 @@ test("{§awaited-event}: restart without the producer settles its attachments vi
         const joined = await caps.join({ event: "reminder/123", source: "schedule:///rules/reminder" });
         assert.ok(typeof joined.resource === "string");
         const lifecycle = new LoopLifecycle(db);
-        await lifecycle.park(loopId);
+        await lifecycle.park(loopId, { wakenBy: "test-fixture" });
         await owner.reconcileProducers(["schedule"]);
         assert.equal(await lifecycle.wake(loopId, { eventOnly: true }), false, "an available producer keeps the pending obligation");
         await owner.reconcileProducers([]);

@@ -271,7 +271,7 @@ export default class LoopDriver {
                         }
                         return await ruleTerminal(turn.providerFailure, "provider_unavailable");
                     }
-                    if (!await this.#lifecycle.park(loopId)) throw new Error(`loop ${loopId} could not park after provider recovery`);
+                    if (!await this.#lifecycle.park(loopId, { wakenBy: null })) throw new Error(`loop ${loopId} could not park after provider recovery`);
                     cleanup("graceful", "provider_unavailable");
                     return { turnIds, result: { status: 202 }, hitMaxTurns: false, reason: "provider_unavailable" };
                 }

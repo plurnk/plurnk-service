@@ -68,7 +68,7 @@ for (const restoration of ["future", "overdue", "disabled", "replaced"] as const
             assert.ok(typeof joined.resource === "string");
             const path = new URL(joined.resource!).pathname;
             const before = await f.caps.read(path);
-            await new LoopLifecycle(f.db).park(f.loopId);
+            await new LoopLifecycle(f.db).park(f.loopId, { wakenBy: "test-fixture" });
             await first.close();
             if (restoration === "overdue") f.advance(DUE + 1);
             const second = f.create();

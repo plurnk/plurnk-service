@@ -1,6 +1,7 @@
 import { BaseExecutor, Results } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
 import { Validator } from "@plurnk/plurnk-contracts";
+import { OperationFailureError } from "../core/results.ts";
 
 // {§question-tool} — the native request-user-input runtime. The model asks the
 // human through one registered executor tool, wired directly against the standard
@@ -86,7 +87,17 @@ export default class QuestionTool extends BaseExecutor {
             message: r.message,
             responseSchema: r.requestedSchema as Record<string, unknown>,
         });
-        const resolution = await interact(request);
+        // {§loop-attendance} — an unattended run has no partner to ask. That refusal is this
+        // executor's own result, not a thrown contract violation: the model must read why it cannot
+        // ask, and "the executor failed outside its operation result contract" teaches it nothing.
+        let resolution;
+        try {
+            resolution = await interact(request);
+        } catch (cause) {
+            if (!(cause instanceof OperationFailureError)) throw cause;
+            setState("results", "errored");
+            return cause.result;
+        }
         const result = resolution.status === "cancelled"
             ? { action: "cancel" as const }
             : { action: "accept" as const, content: resolution.payload };

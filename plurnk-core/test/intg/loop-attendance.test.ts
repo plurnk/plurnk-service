@@ -11,6 +11,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ClientInteractions from "../../src/core/ClientInteractions.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
+import { waitForDb, withDaemon } from "./_rpc.ts";
 
 const downProvider = (): Mock => {
     const provider = new Mock({ contextWindow: 100000, responses: [] });
@@ -117,4 +118,56 @@ test("{§loop-attendance} an unattended run is refused an interactive partner, n
     assert.equal((status as { status?: number }).status, 501, "asking is not available when nobody is there to answer");
     assert.equal((status as { problem?: { detail?: string } }).problem?.detail, "This run is unattended: nobody is present to answer.");
     assert.equal((await interactions.list(workspaceId)).length, 1, "and no second row was written down for nobody");
+});
+
+// {§loop-attendance} — the rule lives at the park owner, so a future park site that forgets
+// attendance fails loudly on its first unattended run instead of idling until a caller's clock
+// notices. LoopDriver concludes before it reaches this, so on the shipped paths it never fires.
+test("{§loop-attendance} parking an unattended loop with no waker is a contract violation", async (t) => {
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const workspaceId = await insertWorkspace(db, "attendance-park-tripwire");
+    const workerId = await insertWorker(db, workspaceId);
+    const lifecycle = new LoopLifecycle(db);
+
+    const unattended = await insertLoop(db, workerId, 1, "go", { proposals: "accept", attended: false });
+    await assert.rejects(
+        () => lifecycle.park(unattended, { wakenBy: null }),
+        /cannot park with no waker in an unattended run; conclude instead/,
+    );
+    assert.notEqual(await lifecycle.status(unattended), 202, "and nothing was parked");
+
+    // A named waker is the whole difference: an obligation requeues the loop, a human does not.
+    assert.equal(await lifecycle.park(unattended, { wakenBy: "obligations" }), true,
+        "an unattended loop still parks on a real waker — a WAIT, an open stream, a delegated child");
+    const attended = await insertLoop(db, workerId, 2, "go", { proposals: "review", attended: true });
+    assert.equal(await lifecycle.park(attended, { wakenBy: null }), true,
+        "and an attended loop may park on nothing but a person, because a person can arrive");
+});
+
+// {§worker-delegation-inherits-policy} already carries the whole policy to a fresh delegated loop;
+// this proves the inherited half is load-bearing, not decorative — the child BEHAVES unattended.
+test("{§loop-attendance} a child that inherited an unattended policy concludes rather than parking", async () => {
+    await withDaemon(downProvider(), async (db, daemon) => {
+        const { workspaceId } = await daemon.createWorkspace({ name: `attendance-inheritance-${crypto.randomUUID()}` });
+        const parent = await daemon.ensureModelWorker(workspaceId);
+        const accepted = await daemon.inject({
+            workspaceId,
+            workerId: parent,
+            prompt: "delegated work",
+            providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
+            reasoningPolicy: "adaptive",
+            systemPrompt: "test system",
+            // Exactly what Worker.ts passes when a parent delegates: the parent's own policy.
+            freshLoopPolicy: { proposals: "accept", attended: false },
+        });
+        await accepted.drainPromise;
+        const lifecycle = new LoopLifecycle(db);
+        // Its provider was down for every attempt; the recovery budget is spent.
+        await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 200 || status >= 400);
+        assert.notEqual(await lifecycle.status(accepted.loopId), 202,
+            "a delegated child never rests at 202 for a human its parent never had");
+        assert.equal((await lifecycle.result(accepted.loopId))?.status, 503,
+            "it ends on the provider's own failure, which is what the parent's WAIT then collects");
+    });
 });

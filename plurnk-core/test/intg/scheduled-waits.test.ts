@@ -272,14 +272,14 @@ test("{§awaited-event}: settlement just before parking resumes through the ordi
     ], async ({ db, daemon, provider, workspaceId, workerId }) => {
         const park = LoopLifecycle.prototype.park;
         let crossed = false;
-        t.mock.method(LoopLifecycle.prototype, "park", async function (this: LoopLifecycle, loopId: number) {
+        t.mock.method(LoopLifecycle.prototype, "park", async function (this: LoopLifecycle, loopId: number, options: { wakenBy: string | null }) {
             if (!crossed) {
                 crossed = true;
                 const [attachment] = await db.awaited_event_packet.all<AwaitedEventRow>({ loop_id: loopId });
                 assert.ok(attachment);
                 await daemon.awaitedEvents("schedule").settle(workspaceId, attachment.event, { status: 200 });
             }
-            return park.call(this, loopId);
+            return park.call(this, loopId, options);
         });
         const { loopId } = await daemon.runLoop({ workspaceId, workerId, prompt: "Await the occurrence." });
         const lifecycle = new LoopLifecycle(db);

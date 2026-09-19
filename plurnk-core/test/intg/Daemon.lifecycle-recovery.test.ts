@@ -100,7 +100,7 @@ test("{§loop-wake-identity}: restart settles an interrupted child and wakes the
         const childLoop = await enqueueLoop(db, child, "Interrupted work.");
         for (const id of [loopId, childLoop]) await db.engine_reclaim_queued_loop.run({ loop_id: id });
         const lifecycle = new LoopLifecycle(db);
-        await lifecycle.park(loopId);
+        await lifecycle.park(loopId, { wakenBy: "test-fixture" });
         await daemon.start();
         await waitForDb(() => lifecycle.status(loopId), (status) => status === 200);
         assert.equal((await lifecycle.result(childLoop))?.status, 500);
@@ -205,7 +205,7 @@ test("boot closes an open operation turn even when its loop already parked", asy
         const loopId = await enqueueLoop(db, workerId, "parked after its operation committed");
         await db.engine_reclaim_queued_loop.run({ loop_id: loopId });
         const turn = await Turn.open(db, { loopId, producer: "client", kind: "operation" });
-        assert.equal(await new LoopLifecycle(db).park(loopId), true);
+        assert.equal(await new LoopLifecycle(db).park(loopId, { wakenBy: "test-fixture" }), true);
 
         await daemon.start();
 
@@ -429,7 +429,7 @@ test("boot settles vanished owners and resumes the now-unblocked parent topology
         const childId = await insertWorker(db, workspaceId, parentId, "child", "model");
         const parentLoopId = await enqueueLoop(db, parentId, "wait for child");
         await db.engine_reclaim_queued_loop.run({ loop_id: parentLoopId });
-        assert.equal(await new LoopLifecycle(db).park(parentLoopId), true);
+        assert.equal(await new LoopLifecycle(db).park(parentLoopId, { wakenBy: "test-fixture" }), true);
         const childLoopId = await enqueueLoop(db, childId, "interrupted child");
         await db.engine_reclaim_queued_loop.run({ loop_id: childLoopId });
 
@@ -520,7 +520,7 @@ test("a child drain exception still propagates the parent wake edge", async () =
         assert.notEqual(childProviderIdentity, "", "the fixture addresses the failed child by its provider identity");
         const parentLoopId = await enqueueLoop(db, parentId, "wait for child");
         await db.engine_reclaim_queued_loop.run({ loop_id: parentLoopId });
-        assert.equal(await new LoopLifecycle(db).park(parentLoopId), true);
+        assert.equal(await new LoopLifecycle(db).park(parentLoopId, { wakenBy: "test-fixture" }), true);
         const childLoopId = await enqueueLoop(db, childId, "fail while running");
 
         await daemon.start();
