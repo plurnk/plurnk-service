@@ -15,7 +15,7 @@ test("{§operator-config-precedence} empty environment definitions stay absent t
         const workspaceId = await insertWorkspace(db, "empty-definitions");
         daemon.registerModule(McpModule.init({ env: {
             PLURNK_MCP_CONNECT_TIMEOUT: "1000",
-            PLURNK_MCP_REQUEST_TIMEOUT: "1000",
+            PLURNK_MCP_REQUEST_TIMEOUT: "1000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
             PLURNK_MCP_MASKED: "",
             PLURNK_MCP_MASKED_ENV: '{"TOKEN":"${NOT_DEFINED}"}',
             PLURNK_MCP_MASKED_SUMMARY: "${NOT_DEFINED}",

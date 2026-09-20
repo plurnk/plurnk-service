@@ -26,7 +26,7 @@ test("{§workspace-environment-sharing}: MCP definitions belong to the workspace
     const provider = new Mock({ contextWindow: 1_000_000, responses: [] });
     const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules") });
     daemon.registerModule(McpModule.init({ env: {
-        PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000",
+        PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     } }));
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();

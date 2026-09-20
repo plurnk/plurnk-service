@@ -22,7 +22,7 @@ test("{§mcp-launch-environment} a real MCP probe and server use workspace env, 
     const db = await openMigrated();
     const boot = () => {
         const instance = new Daemon({ db, provider: null, schemes: new SchemeRegistry() });
-        instance.registerModule(McpModule.init({ env: { PLURNK_MCP_CONNECT_TIMEOUT: "10000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", REF_VALUE: "operator" } }));
+        instance.registerModule(McpModule.init({ env: { PLURNK_MCP_CONNECT_TIMEOUT: "10000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", REF_VALUE: "operator" } }));
         return instance;
     };
     let daemon = boot();
@@ -127,7 +127,7 @@ test("{§mcp-launch-environment} HTTP authorization references use workspace def
     });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
-    daemon.registerModule(McpModule.init({ env: { PLURNK_MCP_CONNECT_TIMEOUT: "10000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", ENV_AUTH: "operator-token" } }));
+    daemon.registerModule(McpModule.init({ env: { PLURNK_MCP_CONNECT_TIMEOUT: "10000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", ENV_AUTH: "operator-token" } }));
     await daemon.start();
     try {
         const workspaceId = await insertWorkspace(db, `http-env-${crypto.randomUUID()}`);

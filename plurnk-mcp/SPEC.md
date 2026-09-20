@@ -71,6 +71,12 @@ partial catalog. Caller cancellation and connection shutdown still apply.
 Tool calls, resource reads, prompt retrieval, and their client-input waits retain
 `PLURNK_MCP_REQUEST_TIMEOUT`; discovery does not borrow that operation allowance.
 
+§mcp-retry-pacing Every retry the adapter schedules on its own — reopening a dropped
+subscription, refreshing a catalog a server announced as changed — waits
+`PLURNK_MCP_RETRY_FLOOR_MS`, doubling per attempt up to `PLURNK_MCP_RETRY_CEILING_MS`.
+One pacing serves them all; a ceiling beneath the floor fails configuration. The
+deadlines above bound an attempt; this paces the next one.
+
 §mcp-catalog-list-absence **An unsupported list method does not disable the server.**
 At the first page of `tools/list`, `resources/list`, `resources/templates/list`, or
 `prompts/list`, JSON-RPC `-32601` yields an empty collection for that method and an

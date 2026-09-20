@@ -5,12 +5,15 @@ import { readDefinition, DefinitionError, type ScheduleDefinition } from "./defi
 
 const PREFIX = "PLURNK_SCHEDULE_";
 export const ENABLED = `${PREFIX}ENABLED`;
+export const PREVIEW_OCCURRENCES = `${PREFIX}PREVIEW_OCCURRENCES`;
+// The family's own knobs; every other key under the prefix declares a rule.
+const CONTROLS: ReadonlySet<string> = new Set([ENABLED, PREVIEW_OCCURRENCES]);
 const ALIAS = /^[a-z][a-z0-9-]*$/u;
 
 const parseEnvironment = (env: NodeJS.ProcessEnv): Map<string, { key: string; value: string }> => {
     const definitions = new Map<string, { key: string; value: string }>();
     for (const [key, value] of Object.entries(env)) {
-        if (value === undefined || !key.startsWith(PREFIX) || key === ENABLED) continue;
+        if (value === undefined || !key.startsWith(PREFIX) || CONTROLS.has(key)) continue;
         const alias = key.slice(PREFIX.length).toLowerCase();
         if (!ALIAS.test(alias)) throw new Error(`${key} derives the alias '${alias}', which must match [a-z][a-z0-9-]*.`);
         const existing = definitions.get(alias);
@@ -26,6 +29,16 @@ const parseJson = (key: string, value: string): unknown => {
     } catch (cause) {
         throw new Error(`${key} is not JSON.`, { cause });
     }
+};
+
+// {§schedule-discovery-preview} — how many upcoming occurrences a reading of rule text shows.
+export const previewOccurrences = (env: NodeJS.ProcessEnv): number => {
+    const raw = env[PREVIEW_OCCURRENCES];
+    const value = Number(raw);
+    if (raw === undefined || raw.trim().length === 0 || !Number.isSafeInteger(value) || value < 1) {
+        throw new Error(`${PREVIEW_OCCURRENCES} must be a positive integer; got ${JSON.stringify(raw)}.`);
+    }
+    return value;
 };
 
 export const serviceEnabled = (env: NodeJS.ProcessEnv): ReadonlySet<string> => {

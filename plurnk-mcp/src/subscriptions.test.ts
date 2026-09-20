@@ -13,7 +13,7 @@ import ServerConnection from "./client.ts";
 
 const env = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "30000",
+    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
 const bodyOf = (request: ReceivedRequest): Record<string, unknown> =>

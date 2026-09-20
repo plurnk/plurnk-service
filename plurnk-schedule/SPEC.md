@@ -52,9 +52,13 @@ zone refuses with `zone-unknown`.
 No packet carries a clock. The time is told on demand: `discover` with rule
 text in `source` returns one inert candidate whose summary opens with the
 current time in the effective zone (RFC 9557, to the second), states the rule
-in words, and previews its next three occurrences; the candidate's definition
+in words, and previews its next `PLURNK_SCHEDULE_PREVIEW_OCCURRENCES`
+occurrences ({§schedule-discovery-preview}); the candidate's definition
 carries the canonical rule text. Discovery persists nothing; a `query` or a
 `configuration` is refused.
+
+§schedule-discovery-preview `PLURNK_SCHEDULE_PREVIEW_OCCURRENCES` is a family control
+like `PLURNK_SCHEDULE_ENABLED`: a positive integer, never read as a rule alias.
 
 ## §schedule-delivery Delivery
 

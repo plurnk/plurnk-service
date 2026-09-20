@@ -185,7 +185,7 @@ const mcpFamily = async (): Promise<Family> => {
             const daemon = new Daemon({ db, provider });
             daemon.registerModule(McpModule.init({ env: {
                 PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-                PLURNK_MCP_REQUEST_TIMEOUT: "30000",
+                PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
                 PLURNK_MCP_FIXTURE: process.execPath,
                 PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([echo]),
                 PLURNK_MCP_FIXTURE_READ: '["echo"]',

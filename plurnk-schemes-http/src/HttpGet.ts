@@ -4,6 +4,7 @@ import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import WebFetcher, { WebMaterializationError, type WebFetchResult } from "./WebFetcher.ts";
 import { BODY, HEADER } from "./http-names.ts";
 import LiveAcquisitions from "./LiveAcquisitions.ts";
+import { requireFlagEnv } from "./Config.ts";
 
 const LLMS_TEXT_ATTEMPT_TTL_MS = 3_600_000;
 
@@ -297,6 +298,8 @@ export default class HttpGet {
     // own https entry. Any failure is quiet: the companion never fails the
     // READ that piggybacked it, and the companion itself never recurses.
     async #piggybackLlmsText(address: NetworkAddress, ctx: SchemeCtx): Promise<void> {
+        // An outbound request nobody asked for is the operator's to allow.
+        if (!requireFlagEnv("PLURNK_SCHEMES_HTTP_LLMS_TXT")) return;
         const url = new URL(address.url);
         if (url.pathname === "/llms.txt") return;
         const origin = url.origin;

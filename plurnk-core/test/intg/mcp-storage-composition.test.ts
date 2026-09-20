@@ -13,7 +13,7 @@ import { awaitExecOutcome, fixtureExecutors, insertWorker, insertWorkspace, open
 
 const fixture = fileURLToPath(new URL("./fixtures/storage-mcp.mjs", import.meta.url));
 const nodeModulesPath = fileURLToPath(new URL("../../../node_modules", import.meta.url));
-const floor = { PLURNK_MCP_CONNECT_TIMEOUT: "2000", PLURNK_MCP_REQUEST_TIMEOUT: "5000" };
+const floor = { PLURNK_MCP_CONNECT_TIMEOUT: "2000", PLURNK_MCP_REQUEST_TIMEOUT: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000" };
 type Start = { cwd: string; home: string | null; pid: number };
 
 test("{§mcp-working-storage} probes and attached tools write outside the project through discovery, execution, and restart", { timeout: 30000 }, async () => {

@@ -18,6 +18,8 @@ const COMPANION_SUFFIXES = [
 const CONTROL_KEYS = new Map([
     ["connect_timeout", `${PREFIX}CONNECT_TIMEOUT`],
     ["request_timeout", `${PREFIX}REQUEST_TIMEOUT`],
+    ["retry_floor_ms", `${PREFIX}RETRY_FLOOR_MS`],
+    ["retry_ceiling_ms", `${PREFIX}RETRY_CEILING_MS`],
     ["enabled", `${PREFIX}ENABLED`],
     ["expanded", `${PREFIX}EXPANDED`],
 ]);
@@ -410,6 +412,29 @@ export const connectTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): numb
     }
     return value;
 };
+
+// {§mcp-retry-pacing} — every retry the adapter schedules doubles its delay from the floor to the ceiling.
+export interface RetryPacing {
+    readonly floorMs: number;
+    readonly ceilingMs: number;
+}
+
+export const retryPacing = (environ: NodeJS.ProcessEnv = process.env): RetryPacing => {
+    const read = (name: "PLURNK_MCP_RETRY_FLOOR_MS" | "PLURNK_MCP_RETRY_CEILING_MS"): number => {
+        const raw = environ[name];
+        const value = Number(raw);
+        if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer; got ${JSON.stringify(raw)}.`);
+        return value;
+    };
+    const pacing = { floorMs: read("PLURNK_MCP_RETRY_FLOOR_MS"), ceilingMs: read("PLURNK_MCP_RETRY_CEILING_MS") };
+    if (pacing.ceilingMs < pacing.floorMs) {
+        throw new Error(`PLURNK_MCP_RETRY_CEILING_MS (${pacing.ceilingMs}) must be at least PLURNK_MCP_RETRY_FLOOR_MS (${pacing.floorMs}).`);
+    }
+    return pacing;
+};
+
+export const retryDelayMs = ({ floorMs, ceilingMs }: RetryPacing, attempt: number): number =>
+    Math.min(floorMs * (2 ** attempt), ceilingMs);
 
 export const requestTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number => {
     const raw = environ.PLURNK_MCP_REQUEST_TIMEOUT;

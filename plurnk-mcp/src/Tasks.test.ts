@@ -11,7 +11,7 @@ import { mcpRoutingHeaderValue } from "./protocolHeaders.ts";
 
 const env = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "3000",
+    PLURNK_MCP_REQUEST_TIMEOUT: "3000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
 const stdioFixture = fileURLToPath(new URL("./fixtures/task-server.mjs", import.meta.url));
@@ -315,7 +315,7 @@ test("{§mcp-connection-shutdown} closing during Task subscription acknowledgeme
         return fixture.route(request);
     });
     const connection = new ServerConnection({ name: "closing-listen", transport: "http", url: served.url }, {
-        ...env, PLURNK_MCP_REQUEST_TIMEOUT: "30000",
+        ...env, PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     });
     t.after(() => connection.close());
     const tool = (await connection.catalog()).tools[0]!;
@@ -346,7 +346,7 @@ test("{§tasks-lifetime} a stalled notification acknowledgement cannot block Tas
         return fixture.route(request);
     });
     const connection = new ServerConnection({ name: "pending-listen", transport: "http", url: served.url }, {
-        ...env, PLURNK_MCP_REQUEST_TIMEOUT: "30000",
+        ...env, PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     });
     const owner = new AbortController();
     let settled = false;

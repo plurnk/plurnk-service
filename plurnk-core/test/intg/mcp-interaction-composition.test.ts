@@ -41,7 +41,7 @@ const setup = async (
     const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules") });
     daemon.registerModule(McpModule.init({ env: {
         PLURNK_MCP_CONNECT_TIMEOUT: "5000",
-        PLURNK_MCP_REQUEST_TIMEOUT: "10000",
+        PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         PLURNK_MCP_ENABLED: '["fixture"]',
         ...configuration,
     } }));
@@ -371,7 +371,7 @@ for (const source of ["MRTR", "Task", "resource", "prompt"] as const) {
             : source === "resource" ? "````READ (fixture:///resources/fixture%3A%2F%2Fguarded) <1,-1>````"
                 : "````READ (fixture:///prompts/guarded?topic=MCP) <1,-1>````";
         const { provider, post, start, reconnect, daemon } = await setup(t, operation, {
-            PLURNK_MCP_REQUEST_TIMEOUT: "1000",
+            PLURNK_MCP_REQUEST_TIMEOUT: "1000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
             ...(served === undefined ? {
                 PLURNK_MCP_FIXTURE: process.execPath,
                 PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixturePath("interaction-server.mjs")]),

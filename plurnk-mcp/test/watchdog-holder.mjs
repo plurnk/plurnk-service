@@ -9,6 +9,8 @@ import ServerConnection from "../src/client.ts";
 // requires these knobs.
 process.env.PLURNK_MCP_CONNECT_TIMEOUT ??= "30000";
 process.env.PLURNK_MCP_REQUEST_TIMEOUT ??= "86400000";
+process.env.PLURNK_MCP_RETRY_FLOOR_MS ??= "250";
+process.env.PLURNK_MCP_RETRY_CEILING_MS ??= "5000";
 
 const fixture = process.argv[2];
 const workingDirectory = process.argv[3];

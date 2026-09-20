@@ -3249,6 +3249,32 @@ test("{§http-llms-txt} a successful GET piggybacks the origin's llms.txt exactl
     ], "the companion materializes as its own origin entry");
 });
 
+test("{§http-llms-txt} the companion is the operator's to allow: switched off, a READ makes only its own request", async () => {
+    const prior = process.env.PLURNK_SCHEMES_HTTP_LLMS_TXT;
+    const requested: string[] = [];
+    const { ctx } = makeCtx(null, { write: async () => ({ status: 201, created: true, entryId: 1 }) });
+    try {
+        process.env.PLURNK_SCHEMES_HTTP_LLMS_TXT = "0";
+        await withFetch(async (input) => {
+            requested.push(String(input));
+            return new Response("## Page body", { status: 200, headers: { "content-type": "text/markdown" } });
+        }, async () => {
+            assert.equal((await prepareRepresentation(new Http(), readStmt(urlTarget("https://quiet.example/page", "/page")), ctx)).status, 200);
+        }, true, true);
+        assert.deepEqual(requested, ["https://quiet.example/page"]);
+        process.env.PLURNK_SCHEMES_HTTP_LLMS_TXT = "maybe";
+        // An invalid switch is the operator's mistake and fails by name, never quietly one way or the other.
+        await withFetch(async () => new Response("x", { status: 200, headers: { "content-type": "text/markdown" } }), async () => {
+            await assert.rejects(
+                prepareRepresentation(new Http(), readStmt(urlTarget("https://loud.example/page", "/page")), ctx),
+                /PLURNK_SCHEMES_HTTP_LLMS_TXT must be 0 or 1; got "maybe"/u,
+            );
+        }, true, true);
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SCHEMES_HTTP_LLMS_TXT; else process.env.PLURNK_SCHEMES_HTTP_LLMS_TXT = prior;
+    }
+});
+
 test("{§http-llms-txt} a missing llms.txt is quiet, non-recurring, and never fails the READ", async () => {
     const writes: string[] = [];
     const { ctx } = makeCtx(null, {

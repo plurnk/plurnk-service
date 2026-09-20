@@ -42,6 +42,7 @@ import {
     connectTimeoutMs,
     expandReferences,
     requestTimeoutMs,
+    retryPacing,
 } from "./config.ts";
 import {
     INPUT_REQUIRED_MAX_ROUNDS,
@@ -543,6 +544,7 @@ const openClient = async (
         protocolVersion: negotiated,
         subscriptions: new Subscriptions(client, {
             timeout: requestTimeoutMs(environ),
+            retry: retryPacing(environ),
             tasks: serverSupportsTasks(discover?.capabilities ?? client.getServerCapabilities()),
             onError: options.onInfrastructureError,
         }),

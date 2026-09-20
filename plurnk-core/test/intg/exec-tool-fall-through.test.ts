@@ -24,7 +24,7 @@ test("a bare execution of a tool's name fails with a receipt that names the tool
     const daemon = new Daemon({ db, provider });
     daemon.registerModule(McpModule.init({ env: {
         PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-        PLURNK_MCP_REQUEST_TIMEOUT: "30000",
+        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         PLURNK_MCP_FIXTURE: process.execPath,
         PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixture]),
         PLURNK_MCP_ENABLED: '["fixture"]',

@@ -4,15 +4,12 @@ import {
     type SubscriptionFilter,
 } from "@modelcontextprotocol/client";
 import { addAbortListener } from "node:events";
+import { retryDelayMs, type RetryPacing } from "./config.ts";
 
-// The adapter's one retry pacing, shared by every retry it schedules: the delay doubles from the
-// floor to the ceiling. Protocol resilience, not a deployment choice.
-const RETRY_FLOOR_MS = 250;
-const RETRY_CEILING_MS = 5_000;
-export const retryDelayMs = (attempt: number): number => Math.min(RETRY_FLOOR_MS * (2 ** attempt), RETRY_CEILING_MS);
 
 export interface SubscriptionOptions {
     readonly timeout: number;
+    readonly retry: RetryPacing;
     readonly tasks?: boolean;
     readonly onError?: (error: Error) => void;
 }
@@ -197,7 +194,7 @@ export default class Subscriptions {
 
     #scheduleRetry(): void {
         if (this.#closed || this.#retryTimer !== undefined) return;
-        const delay = retryDelayMs(this.#retryAttempt);
+        const delay = retryDelayMs(this.#options.retry, this.#retryAttempt);
         this.#retryAttempt += 1;
         this.#retryTimer = setTimeout(() => {
             this.#retryTimer = undefined;

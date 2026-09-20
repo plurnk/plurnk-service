@@ -103,7 +103,7 @@ Inspect the discovery outcome.
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider });
     daemon.registerModule(McpModule.init({ env: {
-        PLURNK_MCP_CONNECT_TIMEOUT: "1000", PLURNK_MCP_REQUEST_TIMEOUT: "1000",
+        PLURNK_MCP_CONNECT_TIMEOUT: "1000", PLURNK_MCP_REQUEST_TIMEOUT: "1000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     } }));
     const started = Promise.withResolvers<AguiModule>();
     const registration = AguiModule.init({ host: "127.0.0.1", port: 0 });
@@ -170,7 +170,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
     daemon.registerModule(McpModule.init({
         env: {
             PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-            PLURNK_MCP_REQUEST_TIMEOUT: "30000",
+            PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
             PLURNK_MCP_FIXTURE: process.execPath,
         },
     }));
@@ -467,7 +467,7 @@ test(
         daemon.registerModule(McpModule.init({
             env: {
                 PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-                PLURNK_MCP_REQUEST_TIMEOUT: "30000",
+                PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
             },
         }));
         const aguiRegistration = AguiModule.init({ host: "127.0.0.1", port: 0 });

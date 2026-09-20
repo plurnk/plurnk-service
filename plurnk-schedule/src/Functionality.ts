@@ -10,7 +10,7 @@ import {
     type JsonSchema,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
-import { serviceDefinitions, serviceEnabled } from "./config.ts";
+import { previewOccurrences, serviceDefinitions, serviceEnabled } from "./config.ts";
 import { DEFINITION_SCHEMA, DefinitionError, readDefinition, type ScheduleDefinition } from "./definition.ts";
 import { describeRule, nextOccurrence, normalizeRule, parseRule, ScheduleRuleError, upcoming, type ParsedRule } from "./rules.ts";
 import Scheduler, { type ScheduledRule, type SchedulerOptions } from "./Scheduler.ts";
@@ -19,7 +19,6 @@ import ScheduleResources from "./ScheduleResources.ts";
 
 export const SCHEDULE_FAMILY = "schedule";
 export const SCHEDULE_OWNER = "@plurnk/plurnk-schedule";
-const PREVIEW = 3;
 
 // Structural views of the core seam, as every module declares them.
 interface WorkspaceIdentity {
@@ -195,7 +194,7 @@ export default class ScheduleFunctionality {
         const zone = await this.#zone(identity, options);
         const now = this.#scheduler.now();
         const parsed = this.#read(query.source, zone, now);
-        const preview = upcoming(parsed, now, PREVIEW).map(isoString);
+        const preview = upcoming(parsed, now, previewOccurrences(this.#env)).map(isoString);
         return [{
             alias: parsed.rule.options().freq.toLowerCase(),
             summary: [

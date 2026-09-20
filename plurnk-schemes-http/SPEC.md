@@ -238,7 +238,8 @@ non-2xx, binary content, or a transport failure is quiet: the companion is
 never fabricated, the failed probe is remembered (not retried per READ), and
 the piggyback never fails the READ that carried it. The companion itself
 never recurses. This is lazy by construction — one extra request only when
-an origin is first being read.
+an origin is first being read — and it is the operator's to allow:
+`PLURNK_SCHEMES_HTTP_LLMS_TXT=0` makes only the requests a READ asks for.
 
 ## §http-status §4 HTTP status mapping
 

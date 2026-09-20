@@ -57,7 +57,7 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules") });
         daemon.registerModule(McpModule.init({ env: {
-            PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000",
+            PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
             PLURNK_MCP_FIXTURE: served.url, PLURNK_MCP_ENABLED: '["fixture"]',
         } }));
         let identity: { workspaceId: number; workerId: number } | undefined;

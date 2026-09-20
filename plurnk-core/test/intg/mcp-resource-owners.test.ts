@@ -75,7 +75,7 @@ const fixture = async (t: TestContext, responses: string[] = []) => {
     const createDaemon = () => {
         const instance = new Daemon({ db, schemes, provider, nodeModulesPath: resolve("node_modules") });
         instance.registerModule(McpModule.init({ env: {
-            PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000",
+            PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         } }));
         return instance;
     };

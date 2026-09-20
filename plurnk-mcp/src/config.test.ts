@@ -1,20 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-    overlayServerDefinitions,
     connectTimeoutMs,
+    expandedServerNames,
+    overlayServerDefinitions,
     requestTimeoutMs,
+    retryDelayMs,
+    retryPacing,
     serverDefinition,
+    serverNames,
     serviceDefinitions,
     serviceEnabledNames,
-    expandedServerNames,
-    serverNames,
     summaryOverrides,
 } from "./config.ts";
 
 const floor = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "86400000",
+    PLURNK_MCP_REQUEST_TIMEOUT: "86400000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
 test("configuration discovers case-folded server targets and exact stdio arguments", () => {
@@ -450,4 +452,16 @@ test("{§mcp-summary-derivation} summary companions expand ${NAME} references", 
         SEARCH_KIND: "the Brave API",
     });
     assert.equal(servers.get("brave"), "Search with the Brave API.");
+});
+
+test("{§mcp-retry-pacing} one pacing, stated on the panel, doubles from its floor to its ceiling", () => {
+    const pacing = retryPacing({ PLURNK_MCP_RETRY_FLOOR_MS: "100", PLURNK_MCP_RETRY_CEILING_MS: "450" });
+    assert.deepEqual(pacing, { floorMs: 100, ceilingMs: 450 });
+    assert.deepEqual([0, 1, 2, 3, 9].map((attempt) => retryDelayMs(pacing, attempt)), [100, 200, 400, 450, 450]);
+    assert.throws(() => retryPacing({ PLURNK_MCP_RETRY_CEILING_MS: "450" }), /PLURNK_MCP_RETRY_FLOOR_MS must be a positive integer; got undefined/u);
+    assert.throws(() => retryPacing({ PLURNK_MCP_RETRY_FLOOR_MS: "0", PLURNK_MCP_RETRY_CEILING_MS: "450" }), /PLURNK_MCP_RETRY_FLOOR_MS must be a positive integer; got "0"/u);
+    assert.throws(
+        () => retryPacing({ PLURNK_MCP_RETRY_FLOOR_MS: "500", PLURNK_MCP_RETRY_CEILING_MS: "450" }),
+        /PLURNK_MCP_RETRY_CEILING_MS \(450\) must be at least PLURNK_MCP_RETRY_FLOOR_MS \(500\)/u,
+    );
 });

@@ -28,7 +28,7 @@ const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.
 const legacyFixture = fileURLToPath(new URL("./fixtures/legacy-server.mjs", import.meta.url));
 const floor = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "30000",
+    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
 interface RuntimeRegistration {
@@ -322,7 +322,7 @@ test("{§mcp-catalog-deadline} activation publishes a stalled catalog as unavail
         if (stalled && body.method === "tools/list") await delay(1000, undefined, { signal: request.signal });
         return null;
     });
-    const h = harness({ PLURNK_MCP_CONNECT_TIMEOUT: "500", PLURNK_MCP_REQUEST_TIMEOUT: "3000" });
+    const h = harness({ PLURNK_MCP_CONNECT_TIMEOUT: "500", PLURNK_MCP_REQUEST_TIMEOUT: "3000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000" });
     await h.setup();
     try {
         const enabled = new Map([
