@@ -167,7 +167,7 @@ test("scoped KILLs compose one way: numeric and hash-selected intervals accumula
     } finally { await db.close(); }
 });
 
-test("bulk scoped KILL intersects one scope with every selected canonical body", async () => {
+test("{§log-curation-set-selection} bulk scoped KILL intersects one scope with every selected canonical body", async () => {
     const context = await setup();
     const { db, workerId } = context;
     try {
@@ -201,6 +201,26 @@ test("a matcher body selects the rows a scoped KILL curates", async () => {
         assert.equal(await getFolded(db, workerId, 2), "[[1,-1]]", "the matching READ row is body-suppressed");
         assert.equal(await getFolded(db, workerId, 3), "[]", "the non-matching READ row remains visible");
         assert.equal(await getFolded(db, workerId, 1), "[]", "the non-matching EDIT (1/1/1) is untouched");
+    } finally { await db.close(); }
+});
+
+test("{§log-curation-set-selection} an unscoped pattern KILL retires only the rows its pattern selects", async () => {
+    const context = await setup();
+    const { db, workspaceId, workerId, loopId, turnId } = context;
+    try {
+        await seedRead(context, 2, "retain this row");
+        await seedRead(context, 3, "discard this row");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const result = await engine.dispatch({
+            statement: killStmt(urlPath("log", "/**/READ"), null, regex("discard")),
+            workspaceId, workerId, loopId, turnId, sequence: 4, origin: "model",
+        });
+        assert.equal(result.status, 200, JSON.stringify(result));
+        assert.equal((result as { matched?: number }).matched, 1, "the pattern and the glob intersect; the glob alone does not decide");
+        const active = async (sequence: number): Promise<number | undefined> =>
+            (await db.test_log_entries_by_turn.all<{ sequence: number; active: number }>({ turn_id: turnId })).find((row) => row.sequence === sequence)?.active;
+        assert.equal(await active(3), 0, "the matching READ row is retired");
+        assert.equal(await active(2), 1, "the READ row the pattern does not select stays in context");
     } finally { await db.close(); }
 });
 

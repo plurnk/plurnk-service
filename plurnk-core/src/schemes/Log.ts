@@ -589,7 +589,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         const pathname = (statement.target.kind === "url"
             ? statement.target.pathname
             : statement.target.raw).replace(/^\//, "");
-        return this.#planKill(pathname, core, maxLogEntryId);
+        return this.#planKill(statement, pathname, core, maxLogEntryId);
     }
 
     // Resolve a log:/// target — a concrete coordinate or path-glob — to the matched row ids.
@@ -864,13 +864,21 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         return planned(selected.ids);
     }
 
+    // {§log-curation-set-selection} — the target and an optional pattern select the rows by
+    // intersection, exactly as they do for a scoped KILL; a scope only decides what happens to them.
     async #planKill(
+        statement: KillStatement,
         pathname: string,
         ctx: PlurnkSchemeContext,
         maxLogEntryId: number | null,
     ): Promise<LogCurationOutcome> {
-        const selected = await this.#resolveIds(pathname, ctx, maxLogEntryId);
+        const selected: { status: number; ids: number[]; error?: string; problem?: ProblemDetails } = statement.matcher === null
+            ? await this.#resolveIds(pathname, ctx, maxLogEntryId)
+            : await this.#resolveByMatcher(statement, ctx, maxLogEntryId);
         if (selected.status === 204) return { result: { status: 204, matched: 0 }, plan: null };
+        if (selected.problem !== undefined) {
+            return { result: Results.assert({ status: selected.status, problem: selected.problem }) as OpenFoldResult, plan: null };
+        }
         if (selected.status !== 200) {
             return {
                 result: Results.failure(
