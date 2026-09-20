@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import { access, mkdir, readFile, rmdir, unlink, writeFile } from "node:fs/promises";
 import type HostPaths from "./HostPaths.ts";
@@ -9,12 +10,25 @@ const exists = async (path: string): Promise<boolean> => access(path, constants.
 // {§operator-config-discovery} — the user owns this one ordinary dotenv file.
 // Package defaults remain package-owned and are projected on demand.
 export default class OperatorConfig {
-    static renderSeed(): string {
+    // {§agui-http-authorization} — a daemon is one trust domain, and on loopback the operator's own
+    // browser is inside it: any page they visit can POST to the port. The bearer is the perimeter,
+    // so a fresh install mints one instead of shipping the empty value that means "no check". It
+    // lands in the same file the client reads through the same cascade, so a default install keeps
+    // working untouched; an operator who wants no perimeter empties the line themselves.
+    static #mintToken(): string {
+        return randomBytes(32).toString("base64url");
+    }
+
+    static renderSeed(token = OperatorConfig.#mintToken()): string {
         return [
             "# Plurnk user configuration. This file is yours and is never overwritten.",
             "# Full installed options: plurnk-service config defaults",
             "# Validate this cascade: plurnk-service config check",
             "#",
+            "# The bearer every client presents to this daemon, minted for this install. Anything",
+            "# that can reach the port can drive the daemon, so emptying this removes the perimeter.",
+            `PLURNK_AGUI_TOKEN=${token}`,
+            "",
             "# Choose one model profile by uncommenting its complete block.",
             "",
             "# OPENROUTER — bring any supported OpenRouter model.",

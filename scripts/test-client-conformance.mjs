@@ -44,6 +44,15 @@ const temp = await mkdtemp(join(tmpdir(), "plurnk-cross-client-"));
 const install = join(temp, "consumer");
 const terminalStage = join(temp, "terminal");
 const home = join(temp, "home");
+
+// {§agui-http-authorization} — a fresh install mints its own bearer into the operator file, so
+// every client presents it. The real client reads it through its own env cascade; this harness
+// drives BridgeTransport directly, so it reads the same file the daemon just seeded.
+const seededToken = async () => {
+    const file = join(home, ".config", "plurnk", ".env");
+    const text = await readFile(file, "utf8").catch(() => "");
+    return /^PLURNK_AGUI_TOKEN=(.*)$/m.exec(text)?.[1]?.trim() ?? "";
+};
 const world = "cross-client-conformance";
 
 const freePort = () => new Promise((accept, reject) => {
@@ -352,8 +361,9 @@ try {
     const { BridgeTransport } = await import(pathToFileURL(join(
         install, "node_modules", "@plurnk", "plurnk", "dist", "transport.js",
     )).href);
+    const bridgeToken = await seededToken();
     const terminal = new BridgeTransport(
-        { bridgeUrl: `http://127.0.0.1:${port}` },
+        { bridgeUrl: `http://127.0.0.1:${port}`, token: bridgeToken },
         world,
         { workspace: world },
     );
@@ -394,7 +404,7 @@ try {
     }
 
     const observer = new BridgeTransport(
-        { bridgeUrl: `http://127.0.0.1:${port}` },
+        { bridgeUrl: `http://127.0.0.1:${port}`, token: bridgeToken },
         "independent-observer",
         { workspace: world },
     );
@@ -420,7 +430,7 @@ try {
     await stop(daemon);
     daemon = await boot();
     const afterRestart = new BridgeTransport(
-        { bridgeUrl: `http://127.0.0.1:${port}` },
+        { bridgeUrl: `http://127.0.0.1:${port}`, token: bridgeToken },
         world,
         { workspace: world },
     );

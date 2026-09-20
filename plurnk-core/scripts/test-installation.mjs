@@ -164,10 +164,23 @@ const bootStart = (env = {}, probe) => new Promise((res) => {
     child.once("error", () => { clearTimeout(hardKill); res({ stdout, stderr, listening, probeResult, probeError, error: true }); });
 });
 
+// {§agui-http-authorization} — a fresh install mints its own bearer into the operator file, so the
+// probe presents it exactly as a real client does. Reading it here also proves the perimeter is on:
+// without the header these calls would be refused.
+const seededToken = () => {
+    const file = resolve(sandboxHostEnv.XDG_CONFIG_HOME, "plurnk", ".env");
+    if (!existsSync(file)) return "";
+    return /^PLURNK_AGUI_TOKEN=(.*)$/m.exec(readFileSync(file, "utf8"))?.[1]?.trim() ?? "";
+};
+
 const aguiRun = async (address, plurnk, extra = {}) => {
+    const token = seededToken();
     const response = await fetch(address, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+            "content-type": "application/json",
+            ...(token.length === 0 ? {} : { authorization: `Bearer ${token}` }),
+        },
         body: JSON.stringify({
             runId: crypto.randomUUID(),
             threadId: "installation-probe",

@@ -581,7 +581,13 @@ carry the reply, independently of whether the loop can yet conclude.
 non-preflight request must carry that exact value as an
 `authorization: Bearer <token>` header. Authorization precedes request-body
 reading. A missing or mismatched credential returns the stable 401
-`bearer-token-required` Problem.
+`bearer-token-required` Problem. A fresh install **mints its own** into the
+operator's file ({§operator-config-discovery}), which every client reads
+through the same cascade, so the shipped posture is authenticated: the empty
+value that means *no check* is an operator's deliberate choice, never a
+default. This is the perimeter because a daemon is one trust domain and on
+loopback the operator's browser is inside it — any page they visit can reach
+the port, and only the bearer tells the two apart.
 
 §agui-cors Every response carries `access-control-allow-origin` with the value
 of `PLURNK_AGUI_ALLOW_ORIGIN`, and allows the `content-type` and
