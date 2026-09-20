@@ -9,7 +9,7 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
     ````
 
 > [!IMPORTANT]
-> YOU MUST ONLY respond with either valid Operation Syntax OPs or prose (concludes loop, GFM). Not both.
+> YOU MUST ONLY respond with either valid Operation Syntax OPs or prose (concludes loop, may contain GFM). Not both.
 
 * `[metadata]`: optional one-line JSON array of special configuration.
 * `<!-- aside -->`: optional terse note.
