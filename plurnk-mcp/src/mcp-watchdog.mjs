@@ -29,6 +29,7 @@ if (!Number.isSafeInteger(parentPid) || parentPid <= 1 || typeof command !== "st
 }
 
 const SHUTDOWN_GRACE_MS = 2_000;
+const PARENT_POLL_MS = 2_000;
 
 const child = spawn(command, rest, {
     stdio: ["pipe", "pipe", "inherit"],
@@ -71,10 +72,10 @@ process.stdin.on("close", closeInput);
 process.stdin.resume();
 
 // Parent-death signal 2: poll the ppid. Covers a reparented-but-open-fd edge
-// (e.g. a grandchild accidentally inheriting our stdin) at 2s granularity.
+// (e.g. a grandchild accidentally inheriting our stdin).
 const poll = setInterval(() => {
     if (!alive()) die("parent gone");
-}, 2_000);
+}, PARENT_POLL_MS);
 poll.unref();
 
 // Forward the protocol verbatim.

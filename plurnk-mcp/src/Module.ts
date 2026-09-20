@@ -42,6 +42,7 @@ import {
 } from "./config.ts";
 import McpExecutor, { runtimeDecl, runtimeServerSummary, serverSummary } from "./McpExecutor.ts";
 import McpResources from "./McpResources.ts";
+import { retryDelayMs } from "./subscriptions.ts";
 
 const OWNER = "@plurnk/plurnk-mcp";
 const FAMILY = "mcp";
@@ -903,7 +904,7 @@ export default class Module {
         if (this.#closed) return;
         const key = this.#pendingKey(workspaceId, name);
         if (!this.#dirty.has(key) || this.#refreshTimers.has(key)) return;
-        const delay = Math.min(250 * (2 ** attempt), 5000);
+        const delay = retryDelayMs(attempt);
         const timer = setTimeout(() => {
             this.#refreshTimers.delete(key);
             const identity = this.#identities.get(workspaceId);

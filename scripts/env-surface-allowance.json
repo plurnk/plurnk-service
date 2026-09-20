@@ -2,7 +2,6 @@
     "default-constant": {
         "plurnk-contracts/src/types.ts": 1,
         "plurnk-core/src/schemes/EffectPolicy.ts": 1,
-        "plurnk-mcp/src/tasks.ts": 1,
         "plurnk-mimetypes/src/Mimetypes.ts": 1
     },
     "undeclared": {

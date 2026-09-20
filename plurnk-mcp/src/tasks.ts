@@ -22,7 +22,9 @@ import { mcpParamHeaders } from "./protocolHeaders.ts";
 import { MCP_TASKS_EXTENSION_ID } from "./protocol.ts";
 import Subscriptions from "./subscriptions.ts";
 
-const DEFAULT_POLL_INTERVAL_MS = 250;
+// A Task server may suggest its poll interval; this is the adapter's own cadence when it does
+// not, and the least it will honour when it does.
+const OWN_POLL_INTERVAL_MS = 250;
 const MINIMUM_POLL_INTERVAL_MS = 10;
 
 type TaskStatus = "working" | "input_required" | "completed" | "failed" | "cancelled";
@@ -430,7 +432,7 @@ const driveTask = async (
 
             const interval = state.status === "working"
                 || (state.status === "input_required" && "inputRequests" in state)
-                ? Math.max(MINIMUM_POLL_INTERVAL_MS, state.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS)
+                ? Math.max(MINIMUM_POLL_INTERVAL_MS, state.pollIntervalMs ?? OWN_POLL_INTERVAL_MS)
                 : 0;
             const remaining = remainingTimeout(deadline, "Task");
             const notification = await inbox.next(Math.min(interval, remaining), options.signal);
