@@ -116,14 +116,26 @@ FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 -- WHERE renders exactly one worker's log — {§actor-boundary-isolation} {§machine-processes-worker-is-its-log}
--- Proposed rows wait for resolution ({§proposal-proposed-hidden}); successful
--- log-KILL receipts stay out of the packet ({§log-kill-meta-operation}).
+-- Proposed rows wait for resolution ({§proposal-proposed-hidden}); a log-KILL that worked
+-- stays out of the packet ({§log-kill-meta-operation}).
 -- Every failed operation remains visible ({§operation-result-uniform-error-channel}).
 WHERE le.worker_id = $worker_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
   AND NOT (
       (COALESCE(le.op, '') = 'KILL' AND COALESCE(le.scheme, '') = 'log')
       AND le.status_rx < 400
+      -- {§log-kill-meta-operation} — the one curation receipt the model cannot infer. A success
+      -- is legible from the rows that are gone; a 204 is not, and with both silent the model
+      -- cannot tell 'my KILL worked' from 'there was nothing to kill', so it repeats until its
+      -- ceiling (#779). A mismatch shows in the packet of the very next turn, then retires.
+      AND NOT (
+          le.status_rx = 204
+          AND le.turn_id <> COALESCE($turn_id, -1)
+          AND le.turn_id = (
+              SELECT MAX(prior.turn_id) FROM active_log_entries prior
+              WHERE prior.worker_id = $worker_id AND prior.turn_id <> COALESCE($turn_id, -1)
+          )
+      )
   )
   -- Successful maintenance-turn rows (doc reconciliation) never render: a
   -- receipt answers an asker and these turns have none. Rows stay durable and

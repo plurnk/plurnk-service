@@ -13,11 +13,12 @@ const rows = (log: string, op: string): Array<Record<string, unknown>> =>
     parseLogRecords(log).filter(({ logPath: path }) => typeof path === "string" && path.endsWith(`/${op}`));
 const row = (log: string, op: string): Record<string, unknown> | undefined => rows(log, op)[0];
 
-test("{§log-kill-meta-operation} successful log KILL receipts never render; errors, resource KILLs, and forensic evidence remain", async () => {
+test("{§log-kill-meta-operation} a KILL that worked never renders; one that matched nothing renders once; errors, resource KILLs, and forensic evidence remain", async () => {
     const mock = new Mock({ contextWindow: 32768, responses: [
         "````EDIT (worker:///note)\nfirst line\nsecond line\n````\n\n````READ (worker:///note)````\n````NOTE\nwrote\n````",
         "````KILL (log:///1/**/READ) <2,-1>````\n````KILL (log:///1/**/EDIT)````\n````KILL (log:///9/9/9)````\n````NOTE\ncurated\n````",
         "````KILL (log:///1/**/EDIT)````\n````READ (log:///1/3/1/KILL)````\n````READ (worker:///note)````\n````KILL (worker:///note)````\n````NOTE\nverified\n````",
+        "````NOTE\nthe mismatch has been seen; moving on\n````",
         "````SEND\ndone\n````",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -27,7 +28,7 @@ test("{§log-kill-meta-operation} successful log KILL receipts never render; err
             const result = await runLoopToTerminal(ws, 2, { prompt: "curate", policy: { proposals: "accept" } });
             assert.equal(result.result.status, 200);
             const ids = result.turnIds ?? [];
-            assert.ok(ids.length >= 5, `init + four model turns; got ${ids.length}`);
+            assert.ok(ids.length >= 6, `init + five model turns; got ${ids.length}`);
             const packetOf = async (index: number) => logSection((await db.test_get_packet.get<{ packet: string }>({ id: ids[index]! }))!.packet);
             const afterCuration = await packetOf(3);
             const kills = rows(afterCuration, "KILL");
@@ -42,9 +43,15 @@ test("{§log-kill-meta-operation} successful log KILL receipts never render; err
             const afterRepeat = await packetOf(4);
             assert.deepEqual(rows(afterRepeat, "KILL").map(({ path: target, status }) => ({ target, status })), [
                 { target: "log:///9/9/9", status: 404 },
+                { target: "log:///1/**/EDIT", status: 204 },
                 { target: "worker:///note", status: 200 },
-            ], "the no-op receipt is also suppressed; the error and resource deletion stay visible");
+            ], "the mismatch says so in the very next packet — the model cannot otherwise tell its own earlier KILL emptied the selection (#779)");
             assert.ok(rows(afterRepeat, "READ").some(({ path: target }) => target === "log:///1/3/1/KILL"), "explicit READ of a suppressed receipt remains an ordinary visible operation");
+            const afterNext = await packetOf(5);
+            assert.deepEqual(rows(afterNext, "KILL").map(({ path: target, status }) => ({ target, status })), [
+                { target: "log:///9/9/9", status: 404 },
+                { target: "worker:///note", status: 200 },
+            ], "shown once: a turn later the mismatch has retired, and the failure and resource deletion stay");
             const history = await db.test_log_entries_by_loop.all<{
                 op: string | null; pathname: string | null; scheme: string | null;
                 status_rx: number; rx: string; active: number;
@@ -64,7 +71,7 @@ test("{§log-kill-meta-operation} successful log KILL receipts never render; err
             assert.equal(JSON.parse(receiptRead.rx).content, "");
             assert.equal(history.filter(({ op }) => op === null).length, 0, "source retention does not add log rows");
             const programs = await db.test_turn_sources.all<{ kind: string }>({ worker_id: result.modelWorkerId! });
-            assert.equal(programs.filter(({ kind }) => kind === "ops").length, 5, "initialization and every model program remain recorded");
+            assert.equal(programs.filter(({ kind }) => kind === "ops").length, 6, "initialization and every model program remain recorded");
         } finally { ws.close(); }
     });
 });

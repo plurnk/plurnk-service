@@ -2257,7 +2257,8 @@ single line past the end, a reversed range, empty content, a command's log row
 
 | KILL result | Packet receipt |
 |---|---|
-| Successful log-item or line curation, including a 204 no-op | Not shown, including the first packet after the operation. |
+| Successful log-item or line curation (200) | Not shown, including the first packet after the operation: the rows that are gone are the receipt. |
+| A curation that matched nothing (204) | Shown once, in the packet of the very next turn, then retired like any other row. A success and a mismatch are not both silent: the model cannot otherwise tell that its earlier KILL is what emptied the selection (#779). |
 | Failed log curation | Visible with its ordinary Problem. |
 | Non-log target: file, worker, stream, or other resource | Ordinary scheme-owned receipt. |
 

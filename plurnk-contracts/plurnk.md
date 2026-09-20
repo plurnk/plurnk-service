@@ -83,7 +83,7 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 ## Context Curation
 
 > [!CAUTION]
-> logTokensTotal must not exceed logTokensMax. Successful log KILL receipts are not shown.
+> logTokensTotal must not exceed logTokensMax. Successful log KILL receipts are not shown; one that matched nothing says so, once.
 
     ````KILL (log:///1/[1-7]/*/{NOTE,READ}) <!-- removes matching log items, recovering context -->
     ````

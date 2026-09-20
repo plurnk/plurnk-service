@@ -496,7 +496,7 @@ export default class PacketBuilder {
             status_rx: number; rx: string; mimetype_rx: string;
             output_admission_turn_id: number | null; output_withheld: number;
             tx: string; mimetype_tx: string; initial_folded: string; folded: string; source: string | null; attrs: string | null;
-        }>({ worker_id: workerId });
+        }>({ worker_id: workerId, turn_id: turnId });
         return rows.map((r) => {
             const tx = r.mimetype_tx === "application/json" ? JSON.parse(r.tx) as unknown : r.tx;
             const rx = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) as unknown : r.rx;
