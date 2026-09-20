@@ -15,6 +15,7 @@ const floor = {
     PLURNK_A2A_REQUEST_TIMEOUT: "86400000",
     PLURNK_A2A_ERROR_DETAIL_LIMIT: "512",
     PLURNK_A2A_PROPOSALS: "reject",
+    PLURNK_A2A_TOKEN: "",
 };
 
 test("outbound configuration preserves standard discovery targets and environment-owned credentials", () => {
@@ -109,8 +110,6 @@ test("{§a2a-hosted-card} the hosted card derives identity from environment and 
     const config = hostedAgentConfiguration({
         ...floor,
         PLURNK_A2A_EXPOSE: "1",
-        PLURNK_A2A_HOST: "127.0.0.1",
-        PLURNK_A2A_PORT: "0",
         PLURNK_A2A_ENDPOINT_PATH: "/a2a",
         PLURNK_A2A_ENDPOINT_URL: "https://agent.example/a2a",
         PLURNK_A2A_WORKSPACE: "research",
@@ -131,6 +130,7 @@ test("{§a2a-hosted-card} the hosted card derives identity from environment and 
         }]),
     });
     assert.ok(config !== null);
+    assert.equal(config.token, "", "the floor's empty token is an unauthenticated exposure");
     assert.deepEqual(config.workspace, {
         name: "research",
         projectRoot: "/srv/research",
@@ -167,8 +167,6 @@ test("{§a2a-hosted-proposals} an inbound loop settles its own proposals, and re
     const hosted = {
         ...floor,
         PLURNK_A2A_EXPOSE: "1",
-        PLURNK_A2A_HOST: "127.0.0.1",
-        PLURNK_A2A_PORT: "0",
         PLURNK_A2A_ENDPOINT_PATH: "/a2a",
         PLURNK_A2A_WORKSPACE: "research",
         PLURNK_A2A_NAME: "Research agent",
@@ -193,8 +191,6 @@ test("hosted exposure is disabled without identity requirements and rejects unsu
         () => hostedAgentConfiguration({
             ...floor,
             PLURNK_A2A_EXPOSE: "1",
-            PLURNK_A2A_HOST: "127.0.0.1",
-            PLURNK_A2A_PORT: "4100",
             PLURNK_A2A_ENDPOINT_PATH: "/a2a",
             PLURNK_A2A_WORKSPACE: "research",
             PLURNK_A2A_NAME: "Research agent",
@@ -209,8 +205,6 @@ test("hosted exposure is disabled without identity requirements and rejects unsu
         () => hostedAgentConfiguration({
             ...floor,
             PLURNK_A2A_EXPOSE: "1",
-            PLURNK_A2A_HOST: "127.0.0.1",
-            PLURNK_A2A_PORT: "4100",
             PLURNK_A2A_ENDPOINT_PATH: "/a2a",
             PLURNK_A2A_WORKSPACE: "research",
             PLURNK_A2A_NAME: "Research agent",
@@ -229,4 +223,33 @@ test("timeouts are positive integer configuration", () => {
         () => connectTimeoutMs({ PLURNK_A2A_CONNECT_TIMEOUT: "0" }),
         /positive integer/,
     );
+});
+
+test("{§a2a-hosted-bearer} the token is the floor's to state: empty is open, a value is the bearer, absence is a broken floor", () => {
+    const hosted = {
+        ...floor,
+        PLURNK_A2A_EXPOSE: "1",
+        PLURNK_A2A_ENDPOINT_PATH: "/a2a",
+        PLURNK_A2A_WORKSPACE: "research",
+        PLURNK_A2A_NAME: "Research agent",
+        PLURNK_A2A_DESCRIPTION: "Researches questions",
+        PLURNK_A2A_VERSION: "1.0.0",
+        PLURNK_A2A_SKILLS: "[]",
+    };
+    assert.equal(hostedAgentConfiguration(hosted)?.token, "");
+    assert.equal(hostedAgentConfiguration({ ...hosted, PLURNK_A2A_TOKEN: "s3cret" })?.token, "s3cret");
+    const { PLURNK_A2A_TOKEN: _unset, ...missing } = hosted;
+    assert.throws(() => hostedAgentConfiguration(missing), /PLURNK_A2A_TOKEN is missing from the assembled environment floor/);
+    assert.deepEqual(outboundAgentNames({ ...floor, PLURNK_A2A_TOKEN: "s3cret" }), [], "the token is a reserved global, never an alias");
+});
+
+test("{§a2a-environment-projection} a key that once named the exposure's own listener fails hard, naming the service listener", () => {
+    for (const key of ["PLURNK_A2A_HOST", "PLURNK_A2A_PORT", "PLURNK_A2A_port"]) {
+        assert.throws(
+            () => outboundAgentNames({ ...floor, [key]: "4100" }),
+            new RegExp(`^Error: ${key} is retired: .*PLURNK_HOST and PLURNK_PORT .*remove it\\.$`, "u"),
+            key,
+        );
+    }
+    assert.deepEqual(outboundAgentNames({ ...floor, PLURNK_A2A_HOST: "" }), [], "an emptied leftover is inert, like any empty target");
 });

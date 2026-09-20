@@ -20,7 +20,7 @@ cards are protocol projections, not configuration files.
 | Outbound defaults | `PLURNK_A2A_ENABLED` | JSON array selecting the exact aliases enabled by default for the workspace's `a2a` family ({§a2a-functionality}); workspace state may override enabledness. `[]` is the one spelling of none: an absent or empty key is refused by name. |
 | Timeouts | `PLURNK_A2A_CONNECT_TIMEOUT`, `PLURNK_A2A_REQUEST_TIMEOUT` | Positive integer milliseconds owned by the A2A package. |
 | Diagnostics | `PLURNK_A2A_ERROR_DETAIL_LIMIT` | Non-negative character bound for one caught upstream diagnostic admitted to a model-facing A2A Problem; complete causes remain internal. |
-| Inbound listener | `PLURNK_A2A_EXPOSE`, `_HOST`, `_PORT`, `_ENDPOINT_PATH`, `_ENDPOINT_URL` | `EXPOSE=1` admits one optional HTTP+JSON listener; `0` admits none. |
+| Inbound exposure | `PLURNK_A2A_EXPOSE`, `_TOKEN`, `_ENDPOINT_PATH`, `_ENDPOINT_URL` | `EXPOSE=1` mounts one HTTP+JSON exposure on the service listener ({§http-host}); `0` mounts none. `_TOKEN` is the bearer the endpoint requires and the card declares ({§a2a-hosted-bearer}); empty is an unauthenticated exposure. |
 | Inbound workspace | `PLURNK_A2A_WORKSPACE`, `_PROJECT_ROOT` | Names the lazily resolved execution workspace and its creation root. |
 | Hosted identity | `PLURNK_A2A_NAME`, `_DESCRIPTION`, `_VERSION`, optional provider/docs/icon fields, and `_SKILLS` | Supplies identity content for one generated standard Agent Card. `_SKILLS` is a JSON array; omitted per-skill examples and media modes receive the exposure's factual defaults. |
 
@@ -49,8 +49,11 @@ architecture.
 
 ## §a2a-inbound-exposure Inbound exterior exposure
 
-The inbound HTTP+JSON listener is an exterior adapter over
-`ApplicationPort`. The official SDK owns A2A framing and request handling;
+The inbound HTTP+JSON exposure is an exterior adapter over
+`ApplicationPort`, mounted on the daemon's one listener ({§http-host}): the
+public Agent Card at the standard well-known path and the interface at
+`PLURNK_A2A_ENDPOINT_PATH`, both on the service address, and it opens no
+socket of its own. The official SDK owns A2A framing and request handling;
 Plurnk Workers, Loops, logs, and terminal results remain the only execution
 state. The SDK `TaskStore` implementation is a projection of that durable
 state, not an independent Task database.
@@ -95,20 +98,30 @@ failures follow the SDK's failed-Task behavior.
 | Such replies' attachment receipts | Distinct standard Artifacts holding send-time bytes from {§send-resource-attachments}, independent of later source changes. |
 
 The exposure accepts text, data, URL, and raw Message Parts, advertises HTTP+JSON v1
-streaming without push notifications, tenants, extended cards, or security
-schemes, and rejects a card that claims unsupported security. Those omitted
-surfaces are not silently simulated. The adapter subscribes to live
+streaming without push notifications, tenants, or extended cards, declares no
+security beyond the bearer it enforces ({§a2a-hosted-bearer}), and rejects a
+card that claims any security of its own. Those omitted surfaces are not
+silently simulated. The adapter subscribes to live
 application events for streaming and reads durable Worker/Loop/log projections
 for retrieval and restart truth.
 
 §a2a-hosted-card The service generates the hosted standard Agent Card from
 normalized environment identity plus actual adapter capabilities. The adapter,
 not configuration, fixes HTTP+JSON protocol `1.0`, streaming, no push
-notifications, no extended card, no tenant, no security, and `*/*` input/output.
+notifications, no extended card, no tenant, the security it enforces
+({§a2a-hosted-bearer}), and `*/*` input/output.
 Arbitrary media are resources; native model interpretation still depends on its route.
 Unsupported security claims are structurally absent
 rather than configurable. The official SDK serializes the card served at the
 standard well-known path.
+
+§a2a-hosted-bearer With `PLURNK_A2A_TOKEN` set, the card declares one `http`
+bearer scheme as its whole security requirement, and the endpoint refuses any
+request without that exact bearer — `401`, `UNAUTHENTICATED`,
+`WWW-Authenticate: Bearer`, in the binding's own error shape — before the SDK
+reads anything. The card at the well-known path is never behind the bearer, so a
+caller can discover the scheme. Empty is an unauthenticated exposure: the panel
+states it, the adapter never infers it.
 
 §a2a-hosted-proposals A2A carries no review channel, so an inbound Task's loop
 settles its own proposals: `PLURNK_A2A_PROPOSALS` states `accept` or `reject`,
@@ -116,7 +129,7 @@ and `review` is outside its vocabulary. That one field is all the adapter states
 about the loop's policy; attendance is the daemon's to supply, because a remote
 agent can answer an interaction through `input-required`.
 
-§a2a-lazy-workspace Listener startup, Agent Card discovery, Task observations,
+§a2a-lazy-workspace Mounting the exposure, Agent Card discovery, Task observations,
 and rejected Task lookups perform no workspace creation, attachment, hydration,
 model selection, or inference. An absent workspace yields an empty Task list or
 the standard Task-not-found result, not implicit creation. The

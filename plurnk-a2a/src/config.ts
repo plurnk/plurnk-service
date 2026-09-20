@@ -14,8 +14,7 @@ const CONTROL_KEYS = new Map([
     ["request_timeout", `${PREFIX}REQUEST_TIMEOUT`],
     ["error_detail_limit", `${PREFIX}ERROR_DETAIL_LIMIT`],
     ["expose", `${PREFIX}EXPOSE`],
-    ["host", `${PREFIX}HOST`],
-    ["port", `${PREFIX}PORT`],
+    ["token", `${PREFIX}TOKEN`],
     ["endpoint_path", `${PREFIX}ENDPOINT_PATH`],
     ["endpoint_url", `${PREFIX}ENDPOINT_URL`],
     ["workspace", `${PREFIX}WORKSPACE`],
@@ -52,8 +51,8 @@ interface ParsedEnvironment {
 export type OutboundAgentDefinition = A2aAgentDefinition;
 
 export interface HostedAgentConfiguration {
-    readonly host: string;
-    readonly port: number;
+    /** The bearer the endpoint requires and the card declares; empty = an unauthenticated exposure. */
+    readonly token: string;
     readonly endpointPath: string;
     readonly endpointUrl?: string;
     readonly workspace: {
@@ -76,7 +75,22 @@ const assertAgentName = (name: string, variable: string): void => {
     }
 };
 
+// {§http-host} — the exposure rides the service listener, so its own address knobs retired (#641).
+// A still-set one fails hard naming the successor; it never silently binds nothing, and it never
+// case-folds into an alias definition. Spelled out only here, as the refusal's own evidence.
+const shedRetiredListener = (environ: NodeJS.ProcessEnv): void => {
+    for (const name of ["PLURNK_A2A_HOST", "PLURNK_A2A_PORT"] as const) {
+        const present = Object.entries(environ).find(([key, value]) => key.toUpperCase() === name && value !== undefined && value !== "");
+        if (present !== undefined) {
+            throw new Error(
+                `${present[0]} is retired: the A2A exposure is mounted on the service listener, whose address is PLURNK_HOST and PLURNK_PORT ({§http-host}); remove it.`,
+            );
+        }
+    }
+};
+
 const parseEnvironment = (environ: NodeJS.ProcessEnv): ParsedEnvironment => {
+    shedRetiredListener(environ);
     const targets = new Map<string, EnvironmentVariable>();
     const companions = new Map<string, Map<CompanionSuffix, EnvironmentVariable>>();
     for (const [key, value] of Object.entries(environ)) {
@@ -206,14 +220,6 @@ const positiveInteger = (raw: string | undefined, field: string): number => {
     return value;
 };
 
-const listenerPort = (raw: string | undefined): number => {
-    const value = Number(raw);
-    if (!Number.isInteger(value) || value < 0 || value > 65_535) {
-        throw new Error(`PLURNK_A2A_PORT must be an integer from 0 through 65535; got ${JSON.stringify(raw)}.`);
-    }
-    return value;
-};
-
 const stringArray = (value: unknown, field: string): string[] => {
     if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
         throw new Error(`${field} must be an array of strings.`);
@@ -250,7 +256,7 @@ const skills = (raw: string | undefined): AgentSkill[] => {
         if (skill.securityRequirements !== undefined) {
             const security = skill.securityRequirements;
             if (!Array.isArray(security) || security.length > 0) {
-                throw new Error(`${at}.securityRequirements must be absent or empty for an unauthenticated exposure.`);
+                throw new Error(`${at}.securityRequirements must be absent or empty; security is the exposure's, card-wide.`);
             }
         }
         return {
@@ -358,6 +364,10 @@ export const hostedAgentConfiguration = (
         throw new Error("PLURNK_A2A_PROVIDER_ORGANIZATION and PLURNK_A2A_PROVIDER_URL must be set together.");
     }
     const endpointUrl = optionalUrl(environ.PLURNK_A2A_ENDPOINT_URL, "PLURNK_A2A_ENDPOINT_URL");
+    // {§operator-config-only-home} — an absent key is a broken floor, never a silent "no
+    // authentication": only the panel's own empty value may say that the exposure is open.
+    const token = environ.PLURNK_A2A_TOKEN;
+    if (token === undefined) throw new Error("PLURNK_A2A_TOKEN is missing from the assembled environment floor.");
     const documentationUrl = optionalUrl(
         environ.PLURNK_A2A_DOCUMENTATION_URL,
         "PLURNK_A2A_DOCUMENTATION_URL",
@@ -395,8 +405,7 @@ export const hostedAgentConfiguration = (
         ...(iconUrl === undefined ? {} : { iconUrl }),
     });
     return {
-        host: required(environ, "PLURNK_A2A_HOST"),
-        port: listenerPort(environ.PLURNK_A2A_PORT),
+        token,
         endpointPath,
         ...(endpointUrl === undefined ? {} : { endpointUrl }),
         workspace: {

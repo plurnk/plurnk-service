@@ -3,10 +3,10 @@ import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import test, { type TestContext } from "node:test";
-import { Module as A2aModule } from "@plurnk/plurnk-a2a";
+import { Module as A2aModule, connectHttpJsonAgent } from "@plurnk/plurnk-a2a";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { A2A_LISTENER, a2aCard } from "./_a2a.ts";
+import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl } from "./_a2a.ts";
 import { openMigrated } from "./_helpers.ts";
 import { makeMockResponse } from "./_rpc.ts";
 
@@ -15,17 +15,20 @@ const completed = (content: string) => makeMockResponse([
     "````SEND", "````",
 ].join("\n"));
 
-const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof makeMockResponse>[]) => {
+const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof makeMockResponse>[], token = "") => {
     const db = await openMigrated();
+    let http = await bindListener();
     let daemon = new Daemon({
         db,
         provider: responses instanceof Mock ? responses : new Mock({
             contextWindow: 100_000,
             responses,
         }),
+        http,
     });
     t.after(async () => {
         await daemon.stop();
+        await http.close();
         await db.close();
     });
     const workspace = await daemon.createWorkspace({
@@ -38,7 +41,8 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof makeM
             const adapter = await A2aModule.init({
                 workspace: { name: workspace.workspaceName, projectRoot: null },
                 card: a2aCard(),
-                ...A2A_LISTENER,
+                ...A2A_EXPOSURE,
+                token,
             }).start(port);
             endpoint = adapter.agentCard().supportedInterfaces[0]!.url;
             return adapter;
@@ -73,7 +77,9 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof makeM
     };
     const restart = async () => {
         await daemon.stop();
-        daemon = new Daemon({ db, provider: new Mock({ contextWindow: 100_000, responses: [] }) });
+        await http.close();
+        http = await bindListener();
+        daemon = new Daemon({ db, provider: new Mock({ contextWindow: 100_000, responses: [] }), http });
         expose();
         await daemon.start();
     };
@@ -419,4 +425,59 @@ test("{§a2a-inbound-exposure}: a disconnected HTTP subscriber can rejoin the sa
     assert.equal(retained.status.state, "TASK_STATE_COMPLETED");
     assert.equal(retained.artifacts[0].parts[0].text, "rejoined result");
     assert.equal(calls, 1);
+});
+
+test("{§a2a-hosted-bearer}: a configured token is declared by the public card and required at the endpoint", async (t) => {
+    const { daemon, endpoint } = await fixture(t, [], "s3cret");
+    const origin = serviceUrl(daemon);
+    const card = await fetch(`${origin}/.well-known/agent-card.json`);
+    assert.equal(card.status, 200, "the card is public: a caller discovers the scheme without a bearer");
+    const client = await connectHttpJsonAgent(origin, undefined, { headers: { authorization: "Bearer s3cret" } });
+    const discovered = await client.getAgentCard();
+    assert.deepEqual(discovered.securitySchemes.bearer?.scheme, {
+        $case: "httpAuthSecurityScheme",
+        value: { scheme: "bearer", bearerFormat: "", description: "The bearer configured for this exposure." },
+    });
+    assert.deepEqual(discovered.securityRequirements, [{ schemes: { bearer: { list: [] } } }]);
+    const refusals: Record<string, string>[] = [{}, { authorization: "Bearer wrong" }, { authorization: "s3cret" }];
+    for (const headers of refusals) {
+        const refused = await fetch(`${endpoint}/tasks`, { headers: { "a2a-version": "1.0", ...headers } });
+        assert.equal(refused.status, 401, JSON.stringify(headers));
+        assert.equal(refused.headers.get("www-authenticate"), "Bearer");
+        const body = await refused.json();
+        assert.equal(body.error.status, "UNAUTHENTICATED");
+        assert.equal(body.error.details[0].reason, "BEARER_TOKEN_REQUIRED");
+        assert.match(body.error.message, /bearer token/u);
+    }
+    const admitted = await fetch(`${endpoint}/tasks`, { headers: { "a2a-version": "1.0", authorization: "Bearer s3cret" } });
+    assert.equal(admitted.status, 200);
+    assert.equal((await admitted.json()).totalSize, 0);
+    await assert.rejects(client.getTask({ tenant: "", id: "missing-task", historyLength: 0 }), /Task not found/iu,
+        "the official client drives the authenticated interface with the bearer");
+});
+
+test("{§module-lifecycle}: a stopped daemon's exposure refuses, the routes staying mounted until the listener closes", async () => {
+    const db = await openMigrated();
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider: new Mock({ contextWindow: 100_000, responses: [] }), http });
+    try {
+        let endpoint = "";
+        daemon.registerModule({
+            start: async (port) => {
+                const adapter = await A2aModule.init({ workspace: { name: "a2a-closed", projectRoot: null }, card: a2aCard(), ...A2A_EXPOSURE }).start(port);
+                endpoint = adapter.agentCard().supportedInterfaces[0]!.url;
+                return adapter;
+            },
+        });
+        await daemon.start();
+        assert.equal((await fetch(`${endpoint}/tasks`, { headers: { "a2a-version": "1.0" } })).status, 200);
+        await daemon.stop();
+        const refused = await fetch(`${endpoint}/tasks`, { headers: { "a2a-version": "1.0" } });
+        assert.equal(refused.status, 503);
+        assert.equal((await refused.json()).error.details[0].reason, "EXPOSURE_CLOSED");
+    } finally {
+        await daemon.stop();
+        await http.close();
+        await db.close();
+    }
 });

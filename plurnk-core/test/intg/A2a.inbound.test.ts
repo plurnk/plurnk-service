@@ -13,7 +13,7 @@ import {
 } from "@plurnk/plurnk-a2a";
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { A2A_LISTENER, a2aCard, streamPayload as payload } from "./_a2a.ts";
+import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl, streamPayload as payload } from "./_a2a.ts";
 import { openMigrated } from "./_helpers.ts";
 import { makeMockResponse } from "./_rpc.ts";
 
@@ -67,12 +67,13 @@ const runTask = async (
 test("{§a2a-inbound-exposure}: an unrelated addressed reply is not an A2A artifact", async (t) => {
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 100_000, responses: [] });
-    const daemon = new Daemon({ db, provider });
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, http });
     daemon.registerModule(OutboundModule.init({ PLURNK_A2A_ENABLED: "[]" }));
     const workspace = await daemon.createWorkspace({ name: "a2a-reply-audience", projectRoot: null });
     const registration = A2aModule.init({
         workspace: { name: workspace.workspaceName, projectRoot: null }, card: a2aCard(),
-        ...A2A_LISTENER,
+        ...A2A_EXPOSURE,
     });
     let exposure: A2aModule | undefined;
     daemon.registerModule({ start: async (port) => { exposure = await registration.start(port); return exposure; } });
@@ -100,9 +101,7 @@ test("{§a2a-inbound-exposure}: an unrelated addressed reply is not an A2A artif
     try {
         await daemon.start();
         assert.ok(exposure);
-        const address = exposure.address();
-        assert.ok(address);
-        const client = await connectHttpJsonAgent(`http://${address.host}:${address.port}`);
+        const client = await connectHttpJsonAgent(serviceUrl(daemon));
         const { task } = await runTask(client, "Provide the A2A answer.");
         const retrieved = await client.getTask({ tenant: "", id: task.id, historyLength: 10 });
         const binding = await daemon.readWorker({ workspaceId: workspace.workspaceId, identity: { name: task.id } });
@@ -115,7 +114,7 @@ test("{§a2a-inbound-exposure}: an unrelated addressed reply is not an A2A artif
             { body: "The A2A answer.", answers: [protocolAddress] },
             { body: "The unrelated answer.", answers: [unrelatedAddress] },
         ]);
-    } finally { await daemon.stop(); await db.close(); }
+    } finally { await daemon.stop(); await http.close(); await db.close(); }
 });
 
 test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task workers through ApplicationPort", async (testContext) => {
@@ -146,7 +145,8 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
             makeMockResponse("````SEND\nlowercase context result\n````"),
         ],
     });
-    const daemon = new Daemon({ db, provider });
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, http });
     const workspace = await daemon.createWorkspace({
         name: `a2a-inbound-${crypto.randomUUID()}`,
         projectRoot: null,
@@ -163,7 +163,7 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
     const registration = A2aModule.init({
         workspace: { name: workspace.workspaceName, projectRoot: workspace.projectRoot },
         card: a2aCard(),
-        ...A2A_LISTENER,
+        ...A2A_EXPOSURE,
     });
     let a2a: A2aModule | null = null;
     daemon.registerModule({
@@ -176,11 +176,12 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
     try {
         await daemon.start();
         assert.ok(a2a !== null, "daemon start activates the exterior A2A listener");
-        const address = (a2a as A2aModule).address();
-        const client = await connectHttpJsonAgent(`http://${address.host}:${address.port}`);
+        const client = await connectHttpJsonAgent(serviceUrl(daemon));
         const discovered = await client.getAgentCard();
         assert.equal(discovered.supportedInterfaces[0]?.protocolVersion, "1.0");
         assert.equal(discovered.supportedInterfaces[0]?.protocolBinding, "HTTP+JSON");
+        assert.deepEqual(discovered.securitySchemes ?? {}, {}, "an exposure without a token declares no scheme");
+        assert.deepEqual(discovered.securityRequirements ?? [], [], "an exposure without a token requires none");
         await assert.rejects(
             client.getTask({ tenant: "", id: ordinaryChild.workerName!, historyLength: 1 }),
             /Task not found/i,
@@ -338,24 +339,27 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
         assert.equal(provider.remaining, 0);
     } finally {
         await daemon.stop();
+        await http.close();
         await db.close();
     }
 });
 
 test("{§a2a-lazy-workspace}: discovery and Task observations are passive until first admitted work", async () => {
     const db = await openMigrated();
+    const http = await bindListener();
     const daemon = new Daemon({
         db,
         provider: new Mock({
             contextWindow: 100_000,
             responses: [makeMockResponse("````SEND\nlazy workspace result\n````")],
         }),
+        http,
     });
     const workspaceName = `a2a-lazy-${crypto.randomUUID()}`;
     const registration = A2aModule.init({
         workspace: { name: workspaceName, projectRoot: null },
         card: a2aCard(),
-        ...A2A_LISTENER,
+        ...A2A_EXPOSURE,
     });
     let listener: A2aModule | null = null;
     daemon.registerModule({
@@ -373,8 +377,7 @@ test("{§a2a-lazy-workspace}: discovery and Task observations are passive until 
             false,
             "listener startup does not create or hydrate its configured workspace",
         );
-        const address = (listener as A2aModule).address();
-        const client = await connectHttpJsonAgent(`http://${address.host}:${address.port}`);
+        const client = await connectHttpJsonAgent(serviceUrl(daemon));
         await client.getAgentCard();
         assert.equal(
             (await daemon.listWorkspaces()).some(({ name }) => name === workspaceName),
@@ -414,18 +417,21 @@ test("{§a2a-lazy-workspace}: discovery and Task observations are passive until 
         );
     } finally {
         await daemon.stop();
+        await http.close();
         await db.close();
     }
 });
 
 test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and Task ownership", async () => {
     const db = await openMigrated();
+    let http = await bindListener();
     let daemon = new Daemon({
         db,
         provider: new Mock({
             contextWindow: 100_000,
             responses: [makeMockResponse("````SEND\nfirst durable result\n````")],
         }),
+        http,
     });
     const workspace = await daemon.createWorkspace({
         name: `a2a-restart-${crypto.randomUUID()}`,
@@ -435,7 +441,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
     const firstExposure = A2aModule.init({
         workspace: { name: workspace.workspaceName, projectRoot: workspace.projectRoot },
         card: a2aCard(),
-        ...A2A_LISTENER,
+        ...A2A_EXPOSURE,
     });
     daemon.registerModule({
         start: async (port) => {
@@ -447,10 +453,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
     try {
         await daemon.start();
         assert.ok(firstListener !== null);
-        const firstAddress = (firstListener as A2aModule).address();
-        const firstClient = await connectHttpJsonAgent(
-            `http://${firstAddress.host}:${firstAddress.port}`,
-        );
+        const firstClient = await connectHttpJsonAgent(serviceUrl(daemon));
         const first = await runTask(firstClient, "persist this result");
         const firstTerminal = payload(first.events.at(-1)!);
         assert.equal(firstTerminal.$case, "statusUpdate");
@@ -459,18 +462,21 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
         }
 
         await daemon.stop();
+        await http.close();
+        http = await bindListener();
         daemon = new Daemon({
             db,
             provider: new Mock({
                 contextWindow: 100_000,
                 responses: [makeMockResponse("````SEND\nsecond durable result\n````")],
             }),
+            http,
         });
         let secondListener: A2aModule | null = null;
         const secondExposure = A2aModule.init({
             workspace: { name: workspace.workspaceName, projectRoot: workspace.projectRoot },
             card: a2aCard(),
-            ...A2A_LISTENER,
+            ...A2A_EXPOSURE,
         });
         daemon.registerModule({
             start: async (port) => {
@@ -480,10 +486,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
         });
         await daemon.start();
         assert.ok(secondListener !== null);
-        const secondAddress = (secondListener as A2aModule).address();
-        const secondClient = await connectHttpJsonAgent(
-            `http://${secondAddress.host}:${secondAddress.port}`,
-        );
+        const secondClient = await connectHttpJsonAgent(serviceUrl(daemon));
 
         const recovered = await secondClient.getTask({
             tenant: "",
@@ -515,6 +518,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
         );
     } finally {
         await daemon.stop();
+        await http.close();
         await db.close();
     }
 });
@@ -522,7 +526,8 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
 test("{§a2a-inbound-exposure}: A2A cancellation settles the ordinary Task worker lifecycle", async () => {
     const db = await openMigrated();
     const provider = new BlockingMock();
-    const daemon = new Daemon({ db, provider });
+    const http = await bindListener();
+    const daemon = new Daemon({ db, provider, http });
     const workspace = await daemon.createWorkspace({
         name: `a2a-cancel-${crypto.randomUUID()}`,
         projectRoot: null,
@@ -530,7 +535,7 @@ test("{§a2a-inbound-exposure}: A2A cancellation settles the ordinary Task worke
     const registration = A2aModule.init({
         workspace: { name: workspace.workspaceName, projectRoot: workspace.projectRoot },
         card: a2aCard(),
-        ...A2A_LISTENER,
+        ...A2A_EXPOSURE,
     });
     let a2a: A2aModule | null = null;
     daemon.registerModule({
@@ -543,8 +548,7 @@ test("{§a2a-inbound-exposure}: A2A cancellation settles the ordinary Task worke
     try {
         await daemon.start();
         assert.ok(a2a !== null);
-        const address = (a2a as A2aModule).address();
-        const client = await connectHttpJsonAgent(`http://${address.host}:${address.port}`);
+        const client = await connectHttpJsonAgent(serviceUrl(daemon));
         const states: TaskState[] = [];
         let task: Task | null = null;
         let cancellation: Promise<Task> | null = null;
@@ -584,6 +588,7 @@ test("{§a2a-inbound-exposure}: A2A cancellation settles the ordinary Task worke
         assert.equal(taskLoop?.terminalResult?.status, 499);
     } finally {
         await daemon.stop();
+        await http.close();
         await db.close();
     }
 });

@@ -11,7 +11,7 @@ import {
 } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { A2A_LISTENER, a2aCard, a2aFace } from "./_a2a.ts";
+import { A2A_EXPOSURE, a2aCard, a2aFace, bindListener, serviceUrl } from "./_a2a.ts";
 import { openMigrated } from "./_helpers.ts";
 import { makeMockResponse } from "./_rpc.ts";
 
@@ -59,7 +59,8 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
     });
     const routedProvider = new WorkspaceRoutedMock();
     const caller = new Daemon({ db: callerDb, provider: routedProvider });
-    const agent = new Daemon({ db: agentDb, provider: routedProvider });
+    const agentHttp = await bindListener();
+    const agent = new Daemon({ db: agentDb, provider: routedProvider, http: agentHttp });
     const callerWorkspace = await caller.createWorkspace({
         name: `a2a-caller-${crypto.randomUUID()}`,
         projectRoot: null,
@@ -80,7 +81,7 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
             projectRoot: agentWorkspace.projectRoot,
         },
         card: a2aCard(),
-        ...A2A_LISTENER,
+        ...A2A_EXPOSURE,
     });
     let listener: A2aModule | null = null;
     agent.registerModule({
@@ -94,8 +95,7 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
     try {
         await agent.start();
         assert.ok(listener !== null);
-        const address = (listener as A2aModule).address();
-        const agentUrl = `http://${address.host}:${address.port}`;
+        const agentUrl = serviceUrl(agent);
         caller.registerModule({
             setup: (seam) => seam.registerRuntimes([a2aFace(async (authority) =>
                 authority === "remote" ? await connectHttpJsonAgent(agentUrl) : null)]),
@@ -164,6 +164,7 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
     } finally {
         unsubscribe?.();
         await Promise.allSettled([caller.stop(), agent.stop()]);
+        await agentHttp.close();
         await Promise.all([callerDb.close(), agentDb.close()]);
     }
 });
@@ -200,7 +201,8 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
         ],
     });
     const routedProvider = new WorkspaceRoutedMock();
-    const agent = new Daemon({ db: agentDb, provider: routedProvider });
+    const agentHttp = await bindListener();
+    const agent = new Daemon({ db: agentDb, provider: routedProvider, http: agentHttp });
     const unrelatedWorkspace = await agent.createWorkspace({
         name: `a2a-unrelated-${crypto.randomUUID()}`,
         projectRoot: null,
@@ -216,7 +218,7 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
             projectRoot: agentWorkspace.projectRoot,
         },
         card: a2aCard(),
-        ...A2A_LISTENER,
+        ...A2A_EXPOSURE,
     });
     let listener: A2aModule | null = null;
     agent.registerModule({
@@ -231,8 +233,7 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
     try {
         await agent.start();
         assert.ok(listener !== null);
-        const address = (listener as A2aModule).address();
-        const agentUrl = `http://${address.host}:${address.port}`;
+        const agentUrl = serviceUrl(agent);
 
         // The production attachment: the environment defines the peer; the
         // Worker `a2a` family owns availability, enablement, and resolution.
@@ -326,6 +327,7 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
     } finally {
         unsubscribe?.();
         await Promise.allSettled([caller?.stop() ?? Promise.resolve(), agent.stop()]);
+        await agentHttp.close();
         await Promise.all([callerDb.close(), agentDb.close()]);
     }
 });

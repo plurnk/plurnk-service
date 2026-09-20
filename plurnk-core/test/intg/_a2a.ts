@@ -5,12 +5,23 @@ import {
 } from "@a2a-js/sdk";
 import assert from "node:assert/strict";
 import { A2a, type A2aClientResolver } from "@plurnk/plurnk-a2a";
+import type { HttpHost } from "@plurnk/plurnk-contracts";
 import type Engine from "../../src/core/Engine.ts";
 import ExecutorRegistry, { type Executor } from "../../src/core/ExecutorRegistry.ts";
 import type { RuntimeRegistration } from "../../src/server/DaemonModule.ts";
+import HttpListener from "../../src/server/HttpListener.ts";
 
-// The listener a test exposes, stated whole: the module holds no default of its own.
-export const A2A_LISTENER = Object.freeze({ host: "127.0.0.1", port: 0, endpointPath: "/a2a", proposals: "reject" } as const);
+// The exposure a test mounts, stated whole: the module holds no default of its own.
+export const A2A_EXPOSURE = Object.freeze({ endpointPath: "/a2a", proposals: "reject", token: "" } as const);
+
+// {§http-host} — the one listener a hosted-A2A test binds before its daemon exists, as the service
+// does ({§startup-listener-admission}); the test closes it after the daemon stops.
+export const bindListener = (): Promise<HttpListener> => HttpListener.bind({ host: "127.0.0.1", port: 0 });
+
+export const serviceUrl = (host: HttpHost): string => {
+    const address = host.httpAddress();
+    return `http://${address.host}:${address.port}`;
+};
 
 // {§a2a-scheme-face} — the `a2a` runtime reduced to what a face test needs: a manager that is never
 // run, carrying the package's own scheme face over the test's resolver.

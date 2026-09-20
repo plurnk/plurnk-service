@@ -10,7 +10,7 @@ HTTP+JSON v1 binding.
 
 The module is an exterior client of Core's `ApplicationPort`; it does not add
 an A2A scheduler or Task database. The installed service reads the ordinary
-Plurnk environment cascade. Enable one listener and describe its public
+Plurnk environment cascade. Enable the exposure and describe its public
 identity in an operator or project `.env`:
 
 ```dotenv
@@ -22,11 +22,13 @@ PLURNK_A2A_VERSION=1.0.0
 PLURNK_A2A_SKILLS=[{"id":"research","name":"Research","description":"Researches a question and returns a sourced answer","tags":["research"]}]
 ```
 
-The module publishes the Agent Card at `/.well-known/agent-card.json` and the
-advertised HTTP+JSON interface at `/a2a`. It rejects security declarations
-until an authenticated exposure owns the corresponding enforcement path.
-Starting the listener or reading its card does not create or hydrate the named
-workspace; the first admitted Task does so.
+The module mounts the Agent Card at `/.well-known/agent-card.json` and the
+advertised HTTP+JSON interface at `/a2a` on the service listener
+(`PLURNK_HOST:PLURNK_PORT`); it opens no socket of its own. With
+`PLURNK_A2A_TOKEN` set, the card declares an HTTP bearer scheme and the
+interface requires that bearer; the card itself stays public. Starting the
+service or reading the card does not create or hydrate the named workspace;
+the first admitted Task does so.
 
 ## Connect to an agent
 
