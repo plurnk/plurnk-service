@@ -48,6 +48,41 @@ test("proposal timeout rejects every explicit non-positive or non-finite value a
     }
 });
 
+// #769: the wait is deliberately untimed, but a cancelled loop is not a loop awaiting a decision.
+// Before this, only a human, an opt-in timeout, or daemon shutdown could free it.
+test("a proposal wait ends with its loop, carrying the abort's own reason", async () => {
+    const lifecycle = lifecycleWithDb({} as Db);
+
+    for (const [reason, outcome] of [
+        ["loop_timeout", "loop_timeout"],
+        ["loop_forceful_termination", "loop_forceful_termination"],
+        [undefined, "loop_cancelled"],
+    ] as const) {
+        const loop = new AbortController();
+        const waiting = lifecycle.awaitResolution(1, loop.signal);
+        assert.deepEqual(lifecycle.pendingIds(), [1], "the proposal is pending before the loop ends");
+        loop.abort(reason);
+        assert.deepEqual(await waiting, { decision: "cancel", outcome });
+        assert.deepEqual(lifecycle.pendingIds(), [], "the waiter is released, not left registered");
+    }
+});
+
+test("a proposal wait already outlived by its loop settles rather than parking", async () => {
+    const lifecycle = lifecycleWithDb({} as Db);
+    const loop = new AbortController();
+    loop.abort("loop_timeout");
+    assert.deepEqual(await lifecycle.awaitResolution(2, loop.signal), { decision: "cancel", outcome: "loop_timeout" });
+});
+
+test("a decided proposal keeps its decision when its loop later ends", async () => {
+    const lifecycle = lifecycleWithDb({} as Db);
+    const loop = new AbortController();
+    const waiting = lifecycle.awaitResolution(3, loop.signal);
+    lifecycle.resolve(3, { decision: "accept" });
+    loop.abort("loop_timeout");
+    assert.deepEqual(await waiting, { decision: "accept" });
+});
+
 test("pending projection rejects malformed durable review material at its owner", async () => {
     const base = {
         logEntryId: 7,

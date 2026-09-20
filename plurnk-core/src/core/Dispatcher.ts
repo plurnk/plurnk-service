@@ -671,7 +671,7 @@ export default class Dispatcher {
             // not an observer and cannot silently degrade into client ownership.
             let resolutionPromise: Promise<ProposalResolution>;
             try {
-                resolutionPromise = this.#proposals.awaitResolution(logEntryId);
+                resolutionPromise = this.#proposals.awaitResolution(logEntryId, this.#loopSignal(loopId));
                 const event = await this.#proposals.pending(logEntryId);
                 this.#proposals.settleOwned(event);
                 this.#proposals.notifyPending(event);

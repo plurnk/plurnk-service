@@ -53,8 +53,14 @@ export interface ProposalResolution {
 }
 interface ProposalWaiter {
     resolve: (resolution: ProposalResolution) => void;
-    timeoutHandle: ReturnType<typeof setTimeout> | null;
+    // Drops whatever the wait armed — its timer, its abort listener — on every exit path.
+    release: () => void;
 }
+
+// A loop's abort reason is already a descriptive string on every local path ("loop_timeout",
+// "loop_forceful_termination"); anything else records that the loop ended and nothing more.
+const abortOutcome = (reason: unknown): string =>
+    typeof reason === "string" && reason.length > 0 ? reason : "loop_cancelled";
 
 export interface ProposalSettlement {
     resolution: ProposalResolution;
@@ -200,7 +206,7 @@ export default class ProposalLifecycle {
                 },
             ));
         }
-        if (waiter.timeoutHandle !== null) clearTimeout(waiter.timeoutHandle);
+        waiter.release();
         this.#pending.delete(logEntryId);
         waiter.resolve(resolution);
     }
@@ -241,7 +247,7 @@ export default class ProposalLifecycle {
     #abandon(logEntryId: number): void {
         const waiter = this.#pending.get(logEntryId);
         if (waiter === undefined) return;
-        if (waiter.timeoutHandle !== null) clearTimeout(waiter.timeoutHandle);
+        waiter.release();
         this.#pending.delete(logEntryId);
     }
 
@@ -275,7 +281,7 @@ export default class ProposalLifecycle {
     // {§worker-lifecycle-total-reap}: shutdown cancels every process-local proposal waiter.
     cancelAll(outcome: string): void {
         for (const [logEntryId, waiter] of [...this.#pending.entries()]) {
-            if (waiter.timeoutHandle !== null) clearTimeout(waiter.timeoutHandle);
+            waiter.release();
             this.#pending.delete(logEntryId);
             waiter.resolve({ decision: "cancel", outcome });
         }
@@ -407,18 +413,32 @@ export default class ProposalLifecycle {
         return { owner: "client" };
     }
 
-    awaitResolution(logEntryId: number): Promise<ProposalResolution> {
+    // The wait is untimed by default because a decision belongs to whoever is deciding. It still
+    // does not outlive its loop: an aborted loop settles the proposal the way shutdown already
+    // does, carrying the abort's own reason as the outcome (#769).
+    awaitResolution(logEntryId: number, signal?: AbortSignal): Promise<ProposalResolution> {
         const timeoutMs = readProposalTimeoutMs();
         return new Promise<ProposalResolution>((resolve) => {
-            const timeoutHandle = timeoutMs === null ? null : setTimeout(() => {
-                // Operator-bounded lane only: synthesize a cancel resolution through the same
-                // path as any other. State transitions to cancelled with outcome='timeout'.
-                if (this.#pending.has(logEntryId)) {
-                    this.#pending.delete(logEntryId);
-                    resolve({ decision: "cancel", outcome: "timeout" }); // {§proposal-timeout-cancels}
-                }
-            }, timeoutMs);
-            this.#pending.set(logEntryId, { resolve, timeoutHandle });
+            // Synthesize a cancel resolution through the same path as any other decision. State
+            // transitions to cancelled with this outcome. {§proposal-timeout-cancels}
+            const cancel = (outcome: string): void => {
+                const waiter = this.#pending.get(logEntryId);
+                if (waiter === undefined) return;
+                this.#pending.delete(logEntryId);
+                waiter.release();
+                resolve({ decision: "cancel", outcome });
+            };
+            const onAbort = (): void => cancel(abortOutcome(signal?.reason));
+            const timeoutHandle = timeoutMs === null ? null : setTimeout(() => cancel("timeout"), timeoutMs);
+            this.#pending.set(logEntryId, {
+                resolve,
+                release: () => {
+                    if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+                    signal?.removeEventListener("abort", onAbort);
+                },
+            });
+            signal?.addEventListener("abort", onAbort, { once: true });
+            if (signal?.aborted) onAbort();
         });
     }
 
