@@ -49,7 +49,7 @@ const harness = async () => {
     return { db, workspaceId, residency, workspaceGate, calls, rollbacks: () => rollbacks };
 };
 
-test("provider registration is validated and exactly-once per namespace owner", async () => {
+test("{§module-workspace-provider} provider registration is validated and exactly-once per namespace owner", async () => {
     const { db, residency } = await harness();
     try {
         const provider = { activate: async () => {}, deactivate: async () => {} };

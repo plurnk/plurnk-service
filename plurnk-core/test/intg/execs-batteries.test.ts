@@ -150,7 +150,7 @@ test("execs batteries: coverage census — every self-contained default-install 
 
 for (const { tag, body, cwd, expect, gate } of CASES) {
     const label = `${tag}${cwd === null ? "" : ` (${gate} target)`}`;
-    test(`execs batteries: ${label} runs through the real Exec scheme, captures output, gates per effect`, async (t) => {
+    test(`{§executor-consumer-boundary} execs batteries: ${label} runs through the real Exec scheme, captures output, gates per effect`, async (t) => {
         const reg = await testExecutors();
         if (!reg.availableRuntimes().includes(tag)) {
             t.skip(`${tag} not available in this env (probe failed / resource-gated)`);

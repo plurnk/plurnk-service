@@ -391,7 +391,7 @@ test("{§bare-inference}: an intervening operation separates concurrent BARE gro
 });
 
 // {§bare-inference}
-test("BARE calls receive only their body prompts, run in parallel, and commit in authored order", async () => {
+test("{§provider-cache-identity} BARE calls receive only their body prompts, run in parallel, and commit in authored order", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const parent = new Mock({

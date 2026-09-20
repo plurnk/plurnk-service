@@ -222,7 +222,7 @@ test("Mimetypes.process returns metadata plus requested projections", async () =
 // via Mimetypes.detect and must not fire either channel. An explicit content
 // projection does fire content(). Same handler, separate phases.
 
-test("write resolves mimetype and derives only the readable projection; never the handler's query", async () => {
+test("{§mimetype-schemes-do-not-invoke-handlers} write resolves mimetype and derives only the readable projection; never the handler's query", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `cm-fire-${crypto.randomUUID()}`);
@@ -407,7 +407,7 @@ test("a binary file persists only derived Unicode and refreshes when its project
     }
 });
 
-test("registry-aware classification governs file decoding, operation gates, and search eligibility (#93)", async () => {
+test("{§mimetype-classification-consumption} registry-aware classification governs file decoding, operation gates, and search eligibility (#93)", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-mimetype-classification-"));
     const db = await openMigrated();
     try {

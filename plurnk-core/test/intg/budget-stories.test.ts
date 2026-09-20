@@ -137,7 +137,7 @@ test("budget: the provider-derived input capacity is the curation ceiling", asyn
     } finally { await db.close(); }
 });
 
-test("the model-facing budget is one measured three-field state (#478)", async () => {
+test("{§tokenomics-neutral-telemetry} the model-facing budget is one measured three-field state (#478)", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);

@@ -33,7 +33,7 @@ const CASES: Array<{ name: string; root: () => Promise<string>; read: string }> 
 ];
 
 for (const c of CASES) {
-    test(`a child's new file is readable by its parent by bare path right after child completion (${c.name})`, async () => {
+    test(`{§machine-processes-one-filesystem} a child's new file is readable by its parent by bare path right after child completion (${c.name})`, async () => {
         const root = await c.root();
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````WORK (worker://counter)\nWrite the number 3 to count.txt and conclude.\n````\n\n````WAIT\nwaiting\n````", 10),

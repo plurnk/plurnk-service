@@ -52,7 +52,7 @@ test("{§plurnk-skill} the discoverable COPY/MOVE chapter provides executable op
     });
 });
 
-test("{§plurnk-skill} defaults are the operator catalog through ordinary READ and Worker enablement", async (t) => {
+test("{§skills-installation-boundary} {§plurnk-skill} defaults are the operator catalog through ordinary READ and Worker enablement", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-own-skill-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     await withDaemon(new Mock({ contextWindow: 32768, responses: [] }), async (db, daemon, addr) => {

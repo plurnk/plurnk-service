@@ -44,7 +44,7 @@ const body = (result: EntryReadWire): ClientEntry => {
     return exact.entry;
 };
 
-test("entry.read resolves one owner-aware client entry and returns the exact shared wire", async () => {
+test("{§client-entry-address} entry.read resolves one owner-aware client entry and returns the exact shared wire", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     schemes.register("notes", new Notes());
@@ -130,7 +130,7 @@ test("entry.read resolves one owner-aware client entry and returns the exact sha
     }
 });
 
-test("entry.read applies worker authority across the workspace: a child reads its parent's named space (#394)", async () => {
+test("{§client-entry-address} entry.read applies worker authority across the workspace: a child reads its parent's named space (#394)", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     await daemon.start();

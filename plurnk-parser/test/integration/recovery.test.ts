@@ -58,7 +58,7 @@ test("an internal builder failure propagates without leaking its advisories", (t
     assert.deepEqual(statements(parsed).map(writtenOp), ["READ"]);
 });
 
-test("a scope inside a target is applied with one factual warning per selection", () => {
+test("{§scope-slot-tolerance} a scope inside a target is applied with one factual warning per selection", () => {
     const r = PlurnkParser.parse(turn(frame("COPY (worker:///src.md<2,3>) (worker:///slice.md<1,-1>)", null), frame("READ (a.ts<4,5>)", null)));
     assert.equal(r.unparsedTail, undefined);
     const errs = errors(r);
@@ -92,7 +92,7 @@ test("conflicting scopes on one resource selection are rejected without affectin
     }
 });
 
-test("a malformed block never downgrades a conclusion", () => {
+test("{§heading-boundary-recovery} a malformed block never downgrades a conclusion", () => {
     const r = PlurnkParser.parse([frame("READ (b.ts) <1,-1>", null), frame("READ [+diff] (a.ts) <1,-1>", null), task()].join("\n"));
     assert.equal(errors(r).length, 1);
     assert.deepEqual(statements(r).map(writtenOp), ["READ", "WAIT"]);
@@ -170,7 +170,7 @@ test("a plus-prefixed path is still a path, alone or as an extglob", () => {
     }
 });
 
-test("duplicate dispositions are structural failures, never a false unclosed tail", () => {
+test("{§send-mid-reservation} duplicate dispositions are structural failures, never a false unclosed tail", () => {
     for (const op of ["WAIT"]) {
         const r = PlurnkParser.parse([task(op), task()].join("\n"));
         assert.equal(r.unparsedTail, undefined);

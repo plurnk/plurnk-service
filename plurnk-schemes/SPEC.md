@@ -613,7 +613,7 @@ Raw CRUD methods are not a parallel handler protocol. For `data` schemes whose
 handlers omit resource-specific storage hooks, engine-owned COPY/MOVE/KILL
 orchestration uses the manifest-bound `ctx.entries` implementation.
 
-## §trusted-extension §5 Trusted extension contract
+## §5 Trusted extension contract
 
 Installed schemes may legitimately own network connections, subprocesses,
 caches, pools, or other host resources under {§handler-lifecycle}. These powers

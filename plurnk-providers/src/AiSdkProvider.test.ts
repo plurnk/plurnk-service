@@ -272,7 +272,7 @@ test("(#482) conformance judges the grant: tolerated overflow is accepted, past-
     );
 });
 
-test("request-observer open failures preserve the durability cause and issue no provider I/O", async () => {
+test("{§provider-request-observer} request-observer open failures preserve the durability cause and issue no provider I/O", async () => {
     const root = new Error("durable request open failed");
     let calls = 0;
     const provider = testProvider({
@@ -299,7 +299,7 @@ test("request-observer open failures preserve the durability cause and issue no 
     assert.equal(calls, 0);
 });
 
-test("request-observer settlement failures preserve the durability cause without retrying I/O", async () => {
+test("{§provider-request-observer} request-observer settlement failures preserve the durability cause without retrying I/O", async () => {
     const root = new Error("durable request settlement failed");
     let calls = 0;
     const provider = testProvider({
@@ -533,7 +533,7 @@ test("only the trailing eos_token is stripped; a quoted one mid-body survives", 
     assert.equal(res.assistant.content, "quotes <eos> in the body"); // only the tail goes
 });
 
-test("identity getters and default prompt estimate", async () => {
+test("{§provider-prompt-measurement} identity getters and default prompt estimate", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     assert.equal(p.model, "m");
     assert.equal(p.contextWindow, null); // default
@@ -578,7 +578,7 @@ test("injected prompt measurement preserves provenance and request cost estimati
     });
 });
 
-test("an exact request overflow rejects before observer or provider I/O", async () => {
+test("{§provider-capacity-failure} an exact request overflow rejects before observer or provider I/O", async () => {
     const calls = installFetch([{ choices: [{ delta: { content: "unreachable" } }] }]);
     let observed = false;
     const p = testProvider({
@@ -672,7 +672,7 @@ test("an unsupported fixed reasoning policy fails before provider I/O", () => {
     );
 });
 
-test("native SDK warnings survive as source-attributed provider Notices", async () => {
+test("{§provider-sdk-warning} native SDK warnings survive as source-attributed provider Notices", async () => {
     const usage = {
         inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
         outputTokens: { total: 1, text: 1, reasoning: 0 },
@@ -1973,7 +1973,7 @@ test("streaming:false: a non-ok response rejects as a classified ProviderError (
     });
 });
 
-test("generate fail-hards on a missing or empty workerId", async () => {
+test("{§provider-cache-identity} generate fail-hards on a missing or empty workerId", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await assert.rejects(() => p.generate({ workerId: "", messages: [] }), /workerId is required/);

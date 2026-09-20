@@ -39,6 +39,7 @@ export default class ResourceSelector {
         this.#admitRead = admitRead;
     }
 
+    // {§scheme-resource-capture} — ordered exact snapshots through the shared source selection; the first failure delivers nothing.
     async capture(targets: readonly string[], ctx: PlurnkSchemeContext): Promise<
         { readonly attachments: readonly (MessageResource & MessageResourceReceipt)[] } | { readonly failure: DispatchResult }
     > {

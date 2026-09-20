@@ -29,7 +29,7 @@ const providerAt = (capacity: number, responses: MockResponse[]): Mock => {
 };
 const continuing = "````NOTE\nReview the evidence.\n````";
 
-test("{§context-output-admission}: oversized output is withheld in the same inference turn, retained READable, and never replaces NOTE", async () => {
+test("{§tokenomics-fetch-fits-free} {§context-output-admission}: oversized output is withheld in the same inference turn, retained READable, and never replaces NOTE", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `output-admission-${crypto.randomUUID()}`);

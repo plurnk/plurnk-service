@@ -25,7 +25,7 @@ for (const [name, expected, labels] of classifications) {
     });
 }
 
-test("binary classification requires the configured registry", async () => {
+test("{§mimetype-classification-consumption} binary classification requires the configured registry", async () => {
     await assert.rejects(
         MimetypeBinary.isBinaryMimetype("text/plain", undefined),
         /configured mimetype registry is required/,
@@ -34,7 +34,7 @@ test("binary classification requires the configured registry", async () => {
 
 // --- MimetypeBinary.normalizeAutoTextMimetype ---
 
-test("MimetypeBinary.normalizeAutoTextMimetype: text/plain → text/markdown (the text primitive)", () => {
+test("{§markdown-primitive} MimetypeBinary.normalizeAutoTextMimetype: text/plain → text/markdown (the text primitive)", () => {
     assert.equal(MimetypeBinary.normalizeAutoTextMimetype("text/plain"), MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE);
     assert.equal(MimetypeBinary.normalizeAutoTextMimetype("text/plain"), "text/markdown");
 });

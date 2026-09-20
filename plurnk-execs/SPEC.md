@@ -618,7 +618,7 @@ The consumer:
 5. validates the terminal result and closes every declared channel and subscription coherently; and
 6. projects stream observations and later reads without calling back into the executor.
 
-## §executor-forbidden Forbidden in executor leaves
+## Forbidden in executor leaves
 
 - Direct database, subscription, packet, or wake access.
 - Imports from `@plurnk/plurnk-service/*`.

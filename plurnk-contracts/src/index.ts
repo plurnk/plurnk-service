@@ -1,3 +1,5 @@
+// {§wire-entrypoint} — the package root: validators, Problems and generated types. The schemas
+// themselves are published at `./schema/*.json`, never re-exported here as values.
 export {
     default as Validator,
     InvalidCapabilityDescriptorError,

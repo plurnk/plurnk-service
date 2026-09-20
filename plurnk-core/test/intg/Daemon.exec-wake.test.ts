@@ -355,7 +355,7 @@ test("{§methods-loop-run-model}: a parked loop retains its provider across daem
     }
 });
 
-test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, no summary-as-prompt", async () => {
+test("{§worker-wait-timing} wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, no summary-as-prompt", async () => {
     // First loop: execution echo + WAIT — the loop SLEEPS while the
     // spawn runs on. When the spawn concludes (a stream-status transition to terminal,
     // {§actor-boundary-passive-wake}), the daemon AWAKENS that same loop in place —
@@ -426,7 +426,7 @@ test("wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, n
     });
 });
 
-test("wake-on-completion preserves the durable loop's cumulative maxTurns ceiling", async () => {
+test("{§worker-wait-timing} wake-on-completion preserves the durable loop's cumulative maxTurns ceiling", async () => {
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
@@ -567,7 +567,7 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
     });
 });
 
-test("wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-aborted)", async () => {
+test("{§worker-lifecycle-subscription-matrix} wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-aborted)", async () => {
     // Slow exec; loop.cancel RPC fires the drain controller; spawn aborts
     // with result.status=499; daemon's handler skips opening a wake loop.
     const mock = new Mock({

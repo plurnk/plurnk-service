@@ -338,7 +338,7 @@ test("{§agui-listener-admission}: a lost bind race rejects with the socket erro
     }
 });
 
-test("workspace stream notifications route to their producing worker's AG-UI Run", async () => {
+test("{§agui-stream-producer} workspace stream notifications route to their producing worker's AG-UI Run", async () => {
     const { seam, emit } = mockSeam();
     const firstRun = Promise.withResolvers<void>();
     const bothRuns = Promise.withResolvers<void>();
@@ -444,7 +444,7 @@ test("a read-only management Run does not duplicate its conversation's model set
     } finally { await mod.close(); }
 });
 
-test("a management-action AG-UI Run executes via the seam: result custom + RUN_FINISHED, no loop", async () => {
+test("{§agui-management-plane} a management-action AG-UI Run executes via the seam: result custom + RUN_FINISHED, no loop", async () => {
     const { seam, modelQueries } = mockSeam();
     // loop.inject below addresses a live world; it never mints one.
     seam.listWorkspaces = async () => [workspaceRow(3, "t1")];
@@ -948,7 +948,7 @@ test("#127: op.parse dispatches only the trusted prefix and appends one parser-o
     } finally { await mod.close(); }
 });
 
-test("a module action colliding with an AG-UI built-in fails module startup", async () => {
+test("{§agui-module-actions} a module action colliding with an AG-UI built-in fails module startup", async () => {
     const { seam } = mockSeam();
     seam.listModuleActions = () => [{
         name: "ping",
@@ -1154,7 +1154,7 @@ test("an owner output violating its advertised schema fails at the AG-UI boundar
     } finally { await mod.close(); }
 });
 
-test("workspace module actions receive authority from the bound AG-UI envelope", async () => {
+test("{§agui-module-action-scope} workspace module actions receive authority from the bound AG-UI envelope", async () => {
     const { seam } = mockSeam();
     const calls: Array<{
         params: Readonly<Record<string, unknown>>;
@@ -1197,7 +1197,7 @@ test("workspace module actions receive authority from the bound AG-UI envelope",
     } finally { await mod.close(); }
 });
 
-test("worker module actions receive authority from the bound AG-UI conversation", async () => {
+test("{§agui-module-action-scope} worker module actions receive authority from the bound AG-UI conversation", async () => {
     const { seam } = mockSeam();
     const calls: Array<{
         params: Readonly<Record<string, unknown>>;
@@ -1275,7 +1275,7 @@ test("a module action preserves its owner-defined validation Problem", async () 
     } finally { await mod.close(); }
 });
 
-test("a throwing module action becomes one generic action Problem and a completed AG-UI Run", async () => {
+test("{§agui-module-actions} a throwing module action becomes one generic action Problem and a completed AG-UI Run", async () => {
     const { seam } = mockSeam();
     seam.listModuleActions = () => [{
         name: "example.inspect",
@@ -2756,7 +2756,7 @@ test("[{§agui-configuration}] the environment turn default yields to the Run va
 });
 
 
-test("a message AG-UI Run forwards model selection and general loop policy into runLoop", async () => {
+test("{§agui-provider-policy-forwarding} a message AG-UI Run forwards model selection and general loop policy into runLoop", async () => {
     const { seam, loopRuns, finish } = mockSeam();
     // The worker self-completes: the runLoop override closes the stream for its workspace (the working
     // message-drive pattern above), so the POST resolves.
@@ -2869,7 +2869,7 @@ test("an unexpected post-headers runLoop exception becomes one generic Problem w
     } finally { await mod.close(); }
 });
 
-test("the AG-UI STANDARD face keeps the protocol's nouns: RUN_STARTED/RUN_FINISHED echo RunAgentInput.runId (never plurnk's workerId) — ungated, so a lexicon sweep can't silently break conformance", async () => {
+test("{§agui-run-authority} the AG-UI STANDARD face keeps the protocol's nouns: RUN_STARTED/RUN_FINISHED echo RunAgentInput.runId (never plurnk's workerId) — ungated, so a lexicon sweep can't silently break conformance", async () => {
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "w")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "w", projectRoot: null, workerId: 10, workerName: "c" });

@@ -48,7 +48,7 @@ const runWithPolicy = async (capabilities: CapabilityPolicy, runtime: string) =>
     } finally { await db.close(); }
 };
 
-test("{§capability-policy-cascade}: a workspace runtime denial refuses execution before executor resolution", async () => {
+test("{§operator-config-workspace-capabilities} {§capability-policy-cascade}: a workspace runtime denial refuses execution before executor resolution", async () => {
     const result = await runWithPolicy({ deny: [{ runtime: "sh" }] }, "sh");
     assert.equal(result.status, 403);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");

@@ -339,7 +339,7 @@ test("manifest: documentation is loaded verbatim from docs/https.md", async () =
     for (const op of ["READ", "EDIT", "SEND"]) assert.ok(fromFile.includes(`\`\`\`${op} (`), `${op} remains illustrated in the discoverable reference`);
 });
 
-test("ready validates the fetch ceiling without making a provider request", async () => {
+test("{§http-config} ready validates the fetch ceiling without making a provider request", async () => {
     const originalTimeout = process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT;
     let calls = 0;
     try {
@@ -765,7 +765,7 @@ test("finite GET stores its complete body and returns ready", async () => {
     assert.deepEqual(wrote?.entry.channels.body, { content: "hello world", mimetype: "text/plain" });
 });
 
-test("finite HTTP errors preserve their body and exact default-channel outcome", async () => {
+test("{§http-status} finite HTTP errors preserve their body and exact default-channel outcome", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(404, "Not Found", ["missing"], { "content-type": "text/plain" }), async () => {
         const result = await prepareRepresentation(
@@ -1236,7 +1236,7 @@ test("READ SSE: cancellation after acquisition settles the retained stream at 49
     });
 });
 
-test("HTML preparation keeps the server source as body while readable carries the projection", async () => {
+test("{§materialization-lifecycle} HTML preparation keeps the server source as body while readable carries the projection", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["<html><body><h1>Hello</h1></body></html>"], { "content-type": "text/html; charset=utf-8" }), async () => {
         const r = await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/spa", "/spa")), ctx);
@@ -3135,7 +3135,7 @@ test("TTL: explicit 0 disables the window — fresh stamp still revalidates", as
     assert.equal(fetched, true);
 });
 
-test("TTL: unset crashes naming the var (floor-set knob, no silent default)", async () => {
+test("{§http-config} TTL: unset crashes naming the var (floor-set knob, no silent default)", async () => {
     const { ctx } = makeCtx(priorEntry("cached", "text/plain", stampedHeader(1000)));
     await withTtl(undefined, async () => {
         await assert.rejects(

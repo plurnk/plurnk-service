@@ -20,7 +20,7 @@ test("#713: lifecycle verbs have literal bodies and retain tolerant disposition 
     }
 });
 
-test("#713: NOTE-only turns continue without a synthetic lifecycle declaration", () => {
+test("{§lifecycle-only-turn} #713: NOTE-only turns continue without a synthetic lifecycle declaration", () => {
     const parsed = operations(frame("NOTE", "The test failed before our change."));
     assert.equal(parsed.length, 1);
     assert.equal(parsed[0]!.op, "NOTE");

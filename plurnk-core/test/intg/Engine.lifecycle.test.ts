@@ -21,7 +21,7 @@ for (const [name, first, detail] of [
     ["scoped wait", frame("WAIT <60>", ""), "Nothing is in flight. Continuing."],
     ["decorated wait", frame("WAIT (sh:///missing) <60,60> [{\"timeout\":42}]", ""), "Nothing is in flight. Continuing."],
 ] as const) {
-    test(`{§wait-obligation-matrix} ${name} continues without losing its operations`, async (t) => {
+    test(`{§lifecycle-only-turn} {§wait-obligation-matrix} ${name} continues without losing its operations`, async (t) => {
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "explicit-lifecycle");

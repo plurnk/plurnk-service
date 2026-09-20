@@ -577,10 +577,6 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | NOTE | none | none | literal working memory |
 | WAIT | optional event source ({§send-wait-scope}) | ignored | explanation of the wait |
 
-§operation-code-polymorphism Operation-result statuses and turn dispositions are
-distinct facts. WAIT requests yielding to live work;
-SEND, NOTE and KILL carry no disposition operand.
-
 §note-value NOTE retains its literal body as ordinary model-owned working memory.
 It has no target, scope, metadata, or lifecycle effect. Its full body participates
 in ordinary log token accounting and model-driven curation; prior notes are not
@@ -725,7 +721,7 @@ Mutation semantics:
   no body. Each selection binds its own target, scope, matcher, and metadata
   under {§slot-order}, {§matcher-option}, and {§scheme-metadata-modifier}.
 
-### §operation-observation Per-operation observations
+### Per-operation observations
 
 | OP   | Successful observation                                                            |
 |------|-----------------------------------------------------------------------------------|
@@ -915,8 +911,7 @@ its `L`, `SL`, or `EL` position denotes a line. Columns, prepend `0`, and append
 `-1` remain numeric. Exact READ, EDIT, COPY/MOVE source and destination,
 KILL, and client LOOK preserve these positions in `TextLineMarker`; core resolves them
 against the addressed current text before operation-specific numeric scope
-semantics run. A matcher-bearing or path-glob READ normalizes to FIND, whose
-result positions remain numeric and reject anchors. Numeric text scopes remain
+semantics run. FIND's result positions remain numeric and reject anchors. Numeric text scopes remain
 canonical and fully supported. Parser acceptance does not imply model-facing
 recommendation.
 
@@ -969,7 +964,7 @@ operation receives empty-turn recovery, not successful completion ({§empty-turn
 | KILL own worker | 499 | Cancel unfinished work in that worker and its descendants |
 | Runtime or infrastructure failure | 5xx | Not a model-authored task status |
 
-### §waitpid-dispositions The terminal contract (waitpid)
+### The terminal contract (waitpid)
 
 The model may supply one WAIT per turn. The host, not the grammar, owns
 turn boundaries and adjudicates the loop's actual obligations. Asking
@@ -1016,11 +1011,13 @@ schema-owned AST. Registration, effects and authority remain runtime concerns.
 ```mermaid
 stateDiagram-v2
     [*] --> DEFAULT
+    DEFAULT --> QUOTATION: a fence that opens no operation
+    QUOTATION --> DEFAULT: its matching closer
     DEFAULT --> SLOTS: fenced native OP or executor
     SLOTS --> TARGET: (
     TARGET --> SLOTS: )
-    SLOTS --> METADATA: {
-    METADATA --> SLOTS: }
+    SLOTS --> METADATA: [
+    METADATA --> SLOTS: ]
     SLOTS --> BODY: header newline or tolerated inline body
     SLOTS --> DEFAULT: matching compact closer
     BODY --> DEFAULT: matching standalone closer, no nested block
@@ -1044,7 +1041,7 @@ closer still ends its body, and no missing closer is inferred. No generic Markdo
 rendering, indentation stripping or recursive code-block extraction occurs.
 Only a header aside has aside semantics.
 
-## §public-api 12. Public API
+## 12. Public API
 
 The package root is the single JavaScript and TypeScript entry point. Shared AST
 and wire types come from generated schemas; the small hand-maintained parser
@@ -1078,26 +1075,28 @@ ordered `statement` and `error` items. When present, {§unparsed-tail-boundary} 
 extent. The statement `op` field discriminates the generated per-operation
 union.
 
-§root-value-api The package-root runtime namespace is closed and consists of the
-following supported consumer values. All other root exports are TypeScript types.
+§root-value-api The package-root runtime namespace is closed. Its exact membership has one home,
+`src/index.test.ts`, which fails on any addition or removal; the table names the families and
+their owners. All other root exports are TypeScript types. `PlurnkParser` and `parsePath` are not
+among them: the parser is `@plurnk/plurnk-parser`'s ({§parser-consumers}).
 
-| Root value(s)                         | Consumer contract                                                   | Exact owner                                 |
-|---------------------------------------|---------------------------------------------------------------------|---------------------------------------------|
-| `PlurnkParser`                        | Three document-tier entry points listed above                        | {§parser-architecture}, {§tier-entrypoints} |
-| `PlurnkParseError`                    | JSON-serializable positioned parser diagnostic                      | {§parse-diagnostics}                        |
-| `parsePath`                           | Parser-equivalent target admission                                   | {§path-syntax}, {§tier-entrypoints}         |
-| `PathSyntax`                          | Target-slot spelling and exact-versus-glob classification           | {§path-parentheses}, {§path-glob}           |
-| `Validator`                           | Validation and assertion against the owning JSON Schemas            | {§wire-entrypoint}                          |
-| `InvalidNoticeError`                  | Typed failure from `Validator.assertNotice`                         | {§notice}                                   |
-| `InvalidProblemDetailsError`          | Typed failure from `Validator.assertProblemDetails`                 | {§problem-details}                          |
-| `InvalidProblemProjectionError`       | Typed failure from `Validator.assertProblemProjection`              | {§problem-projection}                       |
-| `InvalidOperationResultError`         | Typed failure from `Validator.assertOperationResult`                | {§operation-result}                         |
-| `InvalidTextRegionError`              | Typed failure from `Validator.assertTextRegion`                     | {§text-region}                              |
-| `InvalidRangeExtentError`             | Typed failure from `Validator.assertRangeExtent`                    | {§range-extent}                             |
-| `Problems`                            | RFC 9457 Problem construction and model projection                  | {§problem-details}, {§problem-projection}   |
-| `PLURNK_OPS`                          | Runtime tuple from which the closed `PlurnkOp` union is derived     | {§canonical-statement}                      |
-| `WORKER_NAME`                         | Authority minting predicate                                         | {§worker-name}                              |
-| `UNKNOWN_POSITION`                    | Frozen sentinel for an AST statement without retained parsed source | {§parser-position}                          |
+| Root value(s)                                       | Consumer contract                                                   | Exact owner                               |
+|-----------------------------------------------------|---------------------------------------------------------------------|-------------------------------------------|
+| `Validator` and one `Invalid…Error` per assertion   | Validation and typed failure against the owning JSON Schemas        | {§wire-entrypoint}                        |
+| `Problems`                                          | RFC 9457 Problem construction and model projection                  | {§problem-details}, {§problem-projection} |
+| `PlurnkParseError`                                  | JSON-serializable positioned parser diagnostic                      | {§parse-diagnostics}                      |
+| `PathSyntax`                                        | Target-slot spelling and exact-versus-glob classification           | {§path-parentheses}, {§path-glob}         |
+| `TurnDisposition`                                   | The one turn disposition and its recognition                        | {§turn-disposition}                       |
+| `CapabilityAdmission`                               | Admission of a capability descriptor against policy layers          | {§capability-admission}                   |
+| `PLURNK_OPS`, `INTERNAL_ROW_OPS`, `PLURNK_FENCE`    | The closed operation alphabet and the language's fence              | {§canonical-statement}                    |
+| `PROPOSAL_POLICIES`                                 | The vocabulary a loop policy chooses from                           | {§loop-policy}                            |
+| `WORKER_NAME`                                       | Authority minting predicate                                         | {§worker-name}                            |
+| `UNKNOWN_POSITION`                                  | Frozen sentinel for an AST statement without retained parsed source | {§parser-position}                        |
+
+The remaining values are small pure helpers over those contracts (`isExecution`, `writtenOp`,
+`lifecycleOfLoopStatus`, `selectWorkerLoop`, `renderJsonResult`, `formatJsonDocument`,
+`aguiConformanceReport`) and the closed name patterns and vocabularies (`RUNTIME_TAG`,
+`SKILL_NAME`, `REASONING_POLICIES`).
 
 §parser-construction-boundary Parser construction components are internal rather
 than alternate consumer entry points:
@@ -1107,20 +1106,10 @@ than alternate consumer entry points:
 | `AstBuilder`                               | Consumes generated ANTLR contexts; `PlurnkParser` and `parsePath` own its API                                |
 | `PlurnkErrorStrategy`, `RecordingListener` | Assemble parser recovery and diagnostics around `antlr4ng`; consumers receive `PlurnkParseError` values       |
 
-### CLI
-
-```text
-plurnk-contracts [file]    parse a file, or standard input when omitted
-plurnk-contracts --help    show usage
-```
-
-The CLI prints the parse result as JSON. It exits `0` when no error item or
-`unparsedTail` exists and `1` otherwise.
-
 ## 13. Runtime-neutral wire contracts
 
 §wire-entrypoint The package root exports generated wire types, `Problems`, and
-`Validator` alongside the parser and AST. Their owning JSON Schemas are published
+`Validator` alongside the AST types. Their owning JSON Schemas are published
 through `@plurnk/plurnk-contracts/schema/*.json`, not re-exported as root values.
 
 ### §text-region 13.1 Text regions

@@ -48,7 +48,7 @@ test("{§message-envelope-evidence}: competing interaction answers admit exactly
     assert.deepEqual(await awaiting, resolution);
 });
 
-test("{§client-interactions}: a pending request is durable, projected, resolved once, then removed", async (t) => {
+test("{§methods-client-interaction-resolve} {§client-interactions}: a pending request is durable, projected, resolved once, then removed", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const ids = await seedEnvelope(db, `interaction-${crypto.randomUUID()}`);
@@ -136,7 +136,7 @@ test("{§client-interactions}: invalid response content leaves the same interact
     }
 });
 
-test("{§client-interactions}: a retired interrupt identity never addresses a subsequent input request", async () => {
+test("{§methods-client-interaction-resolve} {§client-interactions}: a retired interrupt identity never addresses a subsequent input request", async () => {
     const db = await openMigrated();
     const ids = await seedEnvelope(db, "interaction-identities");
     const interactions = new ClientInteractions(db);

@@ -141,7 +141,7 @@ test("resolve(): a complete standard resume resolves the exact worker proposal",
     assert.equal(m.resolves.length, 1, "the foreign tool-result issued no resolve");
 });
 
-test("resurface(): a workspace's pending stopped-worlds come back as tool-calls", async () => {
+test("{§agui-proposal-disposition} resurface(): a workspace's pending stopped-worlds come back as tool-calls", async () => {
     const pending: ProposalProjection[] = [
         proposal({ logEntryId: 5, op: "sh", target: { scheme: null, authority: null, pathname: null }, body: "rm -rf /tmp/x", attrs: { command: "rm" } }),
         proposal({ logEntryId: 10, disposition: { owner: "loop", decision: "accept" } }),
@@ -202,7 +202,7 @@ test("interrupt resume validation exposes exact Problems with the complete pendi
     );
 });
 
-test("proposal disposition, not loop policy, owns live tool-call presentation", () => {
+test("{§agui-proposal-disposition} {§proposal-ownership-notification} proposal disposition, not loop policy, owns live tool-call presentation", () => {
     const m = mockSeam();
     const hitl = new ProposalHitl(m.seam, collect());
     hitl.start();

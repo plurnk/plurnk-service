@@ -60,7 +60,7 @@ test("workspace settings.maxCommands min()s the env action cap — tightens, nev
     }
 });
 
-test("maxCommands:0 admits WAIT and drops every authored command", async () => {
+test("{§operator-config-workspace-max-commands-floor} maxCommands:0 admits WAIT and drops every authored command", async () => {
     const prev = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     try {
         process.env.PLURNK_SERVICE_MAX_COMMANDS = "99";

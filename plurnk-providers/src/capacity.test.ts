@@ -27,7 +27,7 @@ test("call-specific output tightening also tightens its reasoning subset", () =>
     );
 });
 
-test("capacity applies independent input and combined-context limits", () => {
+test("{§provider-capacity-admission} capacity applies independent input and combined-context limits", () => {
     assert.equal(effectiveInputCapacity({
         contextWindow: 100_000,
         maxInputTokens: 70_000,
@@ -61,7 +61,7 @@ test("a known combined context must leave positive input capacity", () => {
     );
 });
 
-test("only exact overflow rejects before provider I/O", () => {
+test("{§provider-capacity-admission} only exact overflow rejects before provider I/O", () => {
     const base = {
         contextWindow: 100,
         maxInputTokens: null,

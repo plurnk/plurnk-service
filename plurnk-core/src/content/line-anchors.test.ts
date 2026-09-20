@@ -140,7 +140,7 @@ test("LineAnchors: identical neighborhoods share one anchor and resolve as ambig
     });
 });
 
-test("LineAnchors: unresolved model syntax fails hard at the scheme boundary", () => {
+test("{§resolved-edit-statement} LineAnchors: unresolved model syntax fails hard at the scheme boundary", () => {
     const statement: EditStatement = {
         op: "EDIT",
         aside: null,

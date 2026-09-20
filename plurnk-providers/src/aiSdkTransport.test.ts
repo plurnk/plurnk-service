@@ -19,7 +19,7 @@ const request = {
     captureRawBody: false,
 };
 
-test("the transport performs exactly one physical request", async () => {
+test("{§provider-sdk-boundary} the transport performs exactly one physical request", async () => {
     let calls = 0;
     await assert.rejects(
         executeOpenAICompatible({

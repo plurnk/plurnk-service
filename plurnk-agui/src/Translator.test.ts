@@ -385,7 +385,7 @@ test("turn boundaries are STEPs; termination closes the step and flags the outco
     assert.deepEqual(done.map((e) => e.type), ["STEP_FINISHED", "STATE_DELTA", "CUSTOM", "RUN_FINISHED"]);
 });
 
-test("plurnk.terminated carries the full terminal truth, including attribution outside usage", () => {
+test("{§agui-cost-evidence} plurnk.terminated carries the full terminal truth, including attribution outside usage", () => {
     const tr = new Translator({ threadId: "th-1", runId: "run-1", workspaceId: 512 });
     const term: TerminatedNotification = {
         workerId: 2,

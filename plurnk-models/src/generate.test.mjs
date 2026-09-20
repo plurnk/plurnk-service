@@ -29,7 +29,7 @@ const source = (entry = model) => ({
     },
 });
 
-test("catalog projection preserves independent model facts and provider construction data", () => {
+test("{§model-catalog-projection} catalog projection preserves independent model facts and provider construction data", () => {
     assert.deepEqual(projectCatalog(source()), {
         providers: {
             example: {
@@ -52,7 +52,7 @@ test("catalog projection preserves independent model facts and provider construc
     });
 });
 
-test("catalog projection excludes unsupported SDKs and models without usable context", () => {
+test("{§model-catalog-projection} catalog projection excludes unsupported SDKs and models without usable context", () => {
     const db = source({ ...model, limit: { context: 0 } });
     db.unsupported = { ...db.example, npm: "@example/uninstalled-sdk", models: { example: model } };
     const result = projectCatalog(db);

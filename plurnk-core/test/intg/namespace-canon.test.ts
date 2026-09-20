@@ -114,7 +114,7 @@ test("the log row: address columns speak canon while tx retains non-sensitive au
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("{§fs-write-surface}: canonical root and outside-member writes obey the admission matrix", async () => {
+test("{§fs-write-outside} {§fs-create-root} {§fs-write-surface}: canonical root and outside-member writes obey the admission matrix", async () => {
     const { root, db, workspaceId, ctx } = await setup();
     const outside = await mkdtemp(join(tmpdir(), "plurnk-mount-"));
     try {

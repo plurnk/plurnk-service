@@ -134,7 +134,7 @@ test("detected llama-server measures the complete chat request through input_tok
     assert.deepEqual(countBody?.chat_template_kwargs, { enable_thinking: false });
 });
 
-test("a missing llama-server input-token endpoint degrades explicitly, never to a claimed bound", async () => {
+test("{§provider-prompt-measurement} a missing llama-server input-token endpoint degrades explicitly, never to a claimed bound", async () => {
     mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
         const url = String(input);
         if (url.endsWith("/models")) {

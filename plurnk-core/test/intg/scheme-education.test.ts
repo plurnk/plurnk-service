@@ -8,7 +8,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
 import { sendStmt  } from "./_dsl.ts";
 
-test("{§schemes-directory}: stored packets carry language and policy without an injected resource catalogue", async () => {
+test("{§manifest-client-display} {§schemes-directory}: stored packets carry language and policy without an injected resource catalogue", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `scheme-edu-${crypto.randomUUID()}`);

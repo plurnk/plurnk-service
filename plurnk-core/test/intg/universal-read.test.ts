@@ -312,7 +312,7 @@ test("preparation capabilities bind to the already-resolved canonical owner", as
     }
 });
 
-test("scope-blind preparation durably composes producer status with cold and warm core projection", async () => {
+test("{§read-preparation} scope-blind preparation durably composes producer status with cold and warm core projection", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     schemes.register("archive", new ArchiveScheme());

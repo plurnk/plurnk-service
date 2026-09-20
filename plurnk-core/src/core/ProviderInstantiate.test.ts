@@ -57,7 +57,7 @@ test("an alias-scoped provider knob binds at construction — the per-alias CONT
     assert.equal(ProviderInstantiate.aliasOf(provider), "pinbox");
 });
 
-test("a pollable provider exposes the lower operator-capped window and derives its generation envelope from it", async () => {
+test("{§provider-surface-identity} a pollable provider exposes the lower operator-capped window and derives its generation envelope from it", async () => {
     const realFetch = globalThis.fetch;
     globalThis.fetch = (async (input: string | URL | Request) => {
         if (String(input).endsWith("/models")) {

@@ -160,7 +160,7 @@ test("{§reasoning-policy-wire}: reasoning policy is the exact shared portable v
     }
 });
 
-test("client interactions carry one generic tool contract without owner-private continuation state", () => {
+test("{§client-interaction-wire} client interactions carry one generic tool contract without owner-private continuation state", () => {
     const request = {
         toolName: "request_user_input",
         arguments: { message: "Choose a repository.", choices: ["one", "two"] },
@@ -202,7 +202,7 @@ test("client interactions carry one generic tool contract without owner-private 
     );
 });
 
-test("{§mcp-server-definition}: MCP server definitions are one closed transport shape with symbolic credentials", () => {
+test("{§mcp-definition-wire} {§mcp-server-definition}: MCP server definitions are one closed transport shape with symbolic credentials", () => {
     const definitions: McpServerDefinition[] = [
         {
             name: "local-tools",
@@ -635,7 +635,7 @@ test("ProblemDetails rejects missing fields and non-absolute type URIs", () => {
     }).valid, false);
 });
 
-test("OperationResult discriminates successes and RFC 9457 failures", () => {
+test("{§operation-result} OperationResult discriminates successes and RFC 9457 failures", () => {
     const success = { status: 200, content: "ok" };
     const failure = {
         status: 404,
@@ -761,7 +761,7 @@ test("{§loop-policy}: a loop has a complete policy, and its creator states any 
     assert.deepEqual(PROPOSAL_POLICIES, ["review", "accept", "reject"]);
 });
 
-test("ProposalProjection validates one complete disposition-bearing client view", () => {
+test("{§contract-proposal-projection} ProposalProjection validates one complete disposition-bearing client view", () => {
     const proposal = {
         logEntryId: 1,
         workerId: 2,

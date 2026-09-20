@@ -64,7 +64,7 @@ test("the OpenAI-compatible entrypoint excludes Node-owned provider machinery", 
     ]));
 });
 
-test("the normalized-error entrypoint excludes transport and Node machinery", () => {
+test("{§provider-runtime-neutral-errors} the normalized-error entrypoint excludes transport and Node machinery", () => {
     assertRuntimeNeutralGraph("providerError.ts", new Set([
         "notices.ts",
         "providerError.ts",

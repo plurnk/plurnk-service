@@ -30,7 +30,7 @@ async function raceScenario(db: Awaited<ReturnType<typeof openMigrated>>) {
     return { workspaceId, parent, parentLoop, parentTurn, engine };
 }
 
-test("waiting on a just-concluded child continues until the result is delivered", async () => {
+test("{§worker-lifecycle-child-matrix} waiting on a just-concluded child continues until the result is delivered", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);

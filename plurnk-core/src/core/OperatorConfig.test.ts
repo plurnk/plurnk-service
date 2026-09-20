@@ -19,7 +19,7 @@ test("{§operator-config-discovery} the seed is one dotenv front door with exact
     assert.doesNotMatch(seed, /^(?!#).*PLURNK_MODEL=/m, "no model ships selected");
 });
 
-test("{§host-path-layout} first run creates private user-owned config once", async () => {
+test("{§policy} {§host-path-layout} first run creates private user-owned config once", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-operator-config-"));
     const paths = new HostPaths({ env: {}, home: join(root, "home") });
     const policySource = join(root, "policy.md");

@@ -1,6 +1,6 @@
 # Plurnk MCP host specification
 
-## §mcp-role Host boundary
+## Host boundary
 
 `@plurnk/plurnk-mcp` is an MCP **host/client** that projects trusted remote
 servers into Plurnk. It does not implement an MCP server or authorization

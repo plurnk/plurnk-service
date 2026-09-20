@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { parseAliasesFromEnv, resolveActiveRoute } from "@plurnk/plurnk-providers";
 
-test("parseAliasesFromEnv: extracts PLURNK_MODEL_<alias>=<provider>/<model> entries", () => {
+test("{§provider-instantiation} parseAliasesFromEnv: extracts PLURNK_MODEL_<alias>=<provider>/<model> entries", () => {
     const aliases = parseAliasesFromEnv({
         PLURNK_MODEL_gemma: "openai/macher.gguf",
         PLURNK_MODEL_opus: "openrouter/anthropic/claude-opus-latest",

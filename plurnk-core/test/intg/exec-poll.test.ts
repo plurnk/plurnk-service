@@ -12,7 +12,7 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } fro
 // This file isolates the parked poll policy itself.
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
-test("a polled execution <T,P> wakes a hibernating (202) loop every P minutes", { timeout: 120_000 }, async () => {
+test("{§worker-lifecycle-poll-matrix} a polled execution <T,P> wakes a hibernating (202) loop every P minutes", { timeout: 120_000 }, async () => {
     // 16384: base-packet growth (grammar 0.76.5 + sibling teaching) crested this accumulation's 8192 edge — headroom scaffolding, not a budget probe.
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Turn 1: background a long spawn with a 1-minute poll, then hibernate.
@@ -37,7 +37,7 @@ test("a polled execution <T,P> wakes a hibernating (202) loop every P minutes", 
     });
 });
 
-test("an execution without an explicit cadence wakes on the exponential-backoff floor while still open", async () => {
+test("{§worker-lifecycle-poll-matrix} an execution without an explicit cadence wakes on the exponential-backoff floor while still open", async () => {
     const previous = process.env.PLURNK_SERVICE_EXEC_POLL_SEC;
     process.env.PLURNK_SERVICE_EXEC_POLL_SEC = "1";
     const mock = new Mock({ contextWindow: 16384, responses: [
@@ -63,7 +63,7 @@ test("an execution without an explicit cadence wakes on the exponential-backoff 
     }
 });
 
-test("an explicit zero cadence stays blind while open but still wakes exactly once on closure", async () => {
+test("{§worker-lifecycle-poll-matrix} an explicit zero cadence stays blind while open but still wakes exactly once on closure", async () => {
     const previous = process.env.PLURNK_SERVICE_EXEC_POLL_SEC;
     process.env.PLURNK_SERVICE_EXEC_POLL_SEC = "0.1";
     const mock = new Mock({ contextWindow: 16384, responses: [

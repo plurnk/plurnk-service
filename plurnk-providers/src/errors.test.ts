@@ -15,7 +15,7 @@ const apiError = (statusCode: number, responseBody = "body") => new APICallError
 
 const SOURCE_PATTERN = /^[a-z]+(:[a-z][a-z0-9-]*)?$/;
 
-test("HTTP request rejection preserves its cause without becoming a response-contract strike", () => {
+test("{§provider-request-rejection} HTTP request rejection preserves its cause without becoming a response-contract strike", () => {
     for (const status of [400, 404, 405, 422]) {
         const message = "The requested model is not available on this endpoint.";
         const cause = apiError(status, JSON.stringify({ error: { message } }));
@@ -54,7 +54,7 @@ test("classifyProviderError maps HTTP status to kind", () => {
     assert.equal(k(404), "request_rejected");
 });
 
-test("capacity normalization prefers structured provider codes and keeps generic 400s distinct", () => {
+test("{§provider-capacity-failure} capacity normalization prefers structured provider codes and keeps generic 400s distinct", () => {
     const openai = apiError(400, JSON.stringify({
         error: {
             type: "invalid_request_error",

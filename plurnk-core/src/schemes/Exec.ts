@@ -715,6 +715,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         // the worker's total reap, and daemon shutdown end it.
         if (core.signal !== undefined && attrs.detached !== true) {
             const parent = core.signal;
+            // {§worker-lifecycle-exec-epoch-bound}
             // The spawn's kill binds to its loop's cancellation epoch (ctx.signal —
             // captured here, stable for the loop). The parent only aborts on FORCEFUL loop
             // teardown — a 202-graceful loop lets its spawns outlive, never firing this — so
@@ -1055,6 +1056,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                     registerInput: (receiver) => input.register(receiver),
                     runtime, body, cwd, target, metadata, signal,
                     entry: entrySink,
+                    // {§executor-interaction-sink} — the executor's signal narrows the execution's, never replaces it.
                     interact: (request, interactionSignal) => {
                         if (ctx.requestInteraction === undefined) {
                             throw new Error("The execution's client interaction capability is unavailable.");

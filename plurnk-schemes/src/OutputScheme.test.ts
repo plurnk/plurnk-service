@@ -28,7 +28,7 @@ test("manifestFromRuntime: presentation is optional", () => {
     assert.equal(m.modelVisible, true);
 });
 
-test("manifestFromRuntime preserves policy traits without interpreting them", () => {
+test("{§manifest-capability-traits} manifestFromRuntime preserves policy traits without interpreting them", () => {
     const manifest = OutputScheme.manifestFromRuntime({
         name: "asker",
         channels: { results: "text/plain" },

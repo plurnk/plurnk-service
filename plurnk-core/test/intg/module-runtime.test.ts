@@ -237,7 +237,7 @@ test("{§runtime-resource-binding}: a facet that states its representation owns 
     }
 });
 
-test("{§runtime-resource-binding}: READ, FIND, COPY, execution, and BARE use the workspace attachment and channel", async () => {
+test("{§scheme-ctx-workspace-environment} {§runtime-resource-binding}: READ, FIND, COPY, execution, and BARE use the workspace attachment and channel", async () => {
     const db = await openMigrated();
     try {
         const { engine, schemes } = wire(db);

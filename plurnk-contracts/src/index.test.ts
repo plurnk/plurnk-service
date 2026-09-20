@@ -9,7 +9,7 @@ test("ProposalProjection's op keywords are the closed operation alphabet; a runt
     assert.equal(proposalProjectionSchema.properties.op.anyOf[1].pattern, Contracts.RUNTIME_TAG.source);
 });
 
-test("the package root exposes exactly the supported runtime values", () => {
+test("{§root-value-api} the package root exposes exactly the supported runtime values", () => {
     assert.deepEqual(Object.keys(Contracts).sort(), [
         "CapabilityAdmission",
         "INTERNAL_ROW_OPS",

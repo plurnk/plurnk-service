@@ -322,7 +322,7 @@ test("a literal execution target is a tool identifier, never a resource route", 
     } finally { await exec.idle(); await db.close(); }
 });
 
-test("runtime scheme traits participate in the same selector space", async () => {
+test("{§manifest-capability-traits} runtime scheme traits participate in the same selector space", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine, exec } = await setup();
     const interactive: Executor = {
         ...fixtureExecutor,

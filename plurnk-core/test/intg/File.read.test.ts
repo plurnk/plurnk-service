@@ -266,7 +266,7 @@ test("File.find: a binary member does not poison a body search across readable m
     });
 });
 
-test("File.find: an invalid matcher preserves the matcher Problem", async () => {
+test("{§matcher-invalid-expression} File.find: an invalid matcher preserves the matcher Problem", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "alpha\nbeta\n");
         await addMember(ctx, "f.txt");

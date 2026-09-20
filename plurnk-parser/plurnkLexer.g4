@@ -516,6 +516,8 @@ CHANNEL_BLOCK : '<|channel>' .*? '<channel|>' -> type(TEXT), channel(HIDDEN) ;
 TEXT_RUN : ~[ \t\r\n`]+ { this.inlineChain = false; } -> type(TEXT), channel(HIDDEN) ;
 TEXT_TICK : '`' { this.inlineChain = false; } -> type(TEXT), channel(HIDDEN) ;
 
+// {§parser-architecture} - the modes below are that chapter's state diagram: DEFAULT, QUOTATION,
+// SLOTS, TARGET, METADATA and BODY, and each `mode(...)` action is one of its edges.
 mode QUOTATION;
 Q_END : { this.closingAfterEol() }? EOL [ \t]* ('```' '`'* | '~~~' '~'*) [0-9]* [ \t]* { this.endQuote(); } -> type(TEXT), channel(HIDDEN), mode(DEFAULT_MODE) ;
 Q_EMPTY_END : { this.atLineStart() && this.closingAt(1) }? [ \t]* ('```' '`'* | '~~~' '~'*) [0-9]* [ \t]* { this.endQuote(); } -> type(TEXT), channel(HIDDEN), mode(DEFAULT_MODE) ;

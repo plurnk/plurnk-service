@@ -44,7 +44,7 @@ test("the full tier and exact specimen share one invocation", async () => {
     assert.deepEqual(specimen.env, full.env);
 });
 
-test("the specimen selector rejects absent and duplicate names", () => {
+test("{§provider-conformance-matrix} the specimen selector rejects absent and duplicate names", () => {
     assert.throws(() => exactSpecimen("missing", ["present"]), /matched 0 registered tests/);
     assert.throws(() => exactSpecimen("duplicate", ["duplicate", "duplicate"]), /matched 2 registered tests/);
 });

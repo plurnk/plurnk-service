@@ -105,7 +105,7 @@ const killEntry = (owner: string, path: string): KillStatement => ({
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 
-test("{§machine-processes-entry-inheritance}: a fork copies named scratch without changing literal references", async () => {
+test("{§worker-scheme-fork-scratch} {§machine-processes-entry-inheritance}: a fork copies named scratch without changing literal references", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, crypto.randomUUID());
@@ -696,7 +696,7 @@ test("EDIT on the bare worker entity is rejected — WORK spawns, not EDIT (400,
     } finally { await db.close(); }
 });
 
-test("SEND(worker://name):msg delivers to a sister; a missing sister is 404", async () => {
+test("{§worker-scheme-irc} SEND(worker://name):msg delivers to a sister; a missing sister is 404", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectWorker } = recordingInjectWorker();

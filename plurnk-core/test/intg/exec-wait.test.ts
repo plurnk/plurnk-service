@@ -100,7 +100,7 @@ test("{§send-wait-scope} a decorated WAIT joins its actual live stream without 
     }
 });
 
-test("fast current-turn streams settle before waiting and do not become monitored work", async () => {
+test("{§worker-lifecycle-subscription-matrix} fast current-turn streams settle before waiting and do not become monitored work", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "1000";
     let startedAt = 0;
@@ -131,7 +131,7 @@ test("fast current-turn streams settle before waiting and do not become monitore
     }
 });
 
-test("a current-turn stream still active at the settlement cap follows the ordinary monitored path", async () => {
+test("{§worker-lifecycle-subscription-matrix} a current-turn stream still active at the settlement cap follows the ordinary monitored path", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "40";
     let release!: () => void;

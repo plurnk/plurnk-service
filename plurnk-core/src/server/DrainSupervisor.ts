@@ -218,6 +218,7 @@ export default class DrainSupervisor {
             throw new Error("drain injection cannot combine an explicit policy with a fresh-loop policy");
         }
         const { workspaceId, workerId, prompt } = args;
+        // {§worker-message-admission} — selection, compatibility, admission and the wake check share one lock.
         const delivery = await this.#withAdmissionLock(workspaceId, () => this.#withDrainLock(workerId, async () => {
             if (!this.#acceptingWork) throw new Error("The daemon is not accepting work.");
             if (args.messageAddress !== undefined) {
@@ -360,6 +361,7 @@ export default class DrainSupervisor {
                     controller.signal.throwIfAborted();
                     let loopRow = await claim();
                     if (loopRow === undefined) {
+                        // {§worker-lifecycle-no-lost-loop}
                         // Queue empty → teardown UNDER the per-worker drain lock (R4 / I1),
                         // serialized against ensureDrain so a concurrent inject can't
                         // start a 2nd drain in the gap. Re-claim while holding the lock;

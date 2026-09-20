@@ -22,7 +22,7 @@ class FixtureEngine extends Engine {
     }
 }
 
-test("{§application-worker-observation} maintenance preserves work lifecycle and scheduler history", async () => {
+test("{§application-loop-observation} {§application-worker-observation} maintenance preserves work lifecycle and scheduler history", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({ db });
     try {

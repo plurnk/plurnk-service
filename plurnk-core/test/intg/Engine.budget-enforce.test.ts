@@ -138,7 +138,7 @@ test("{§tokenomics-window-partition} the cold-start ceiling subtracts no additi
     } finally { await db.close(); }
 });
 
-test("an exact provider overflow remains distinct from curation admission", async () => {
+test("{§tokenomics-context-envelope-admission} {§provider-surface-prompt-measurement} an exact provider overflow remains distinct from curation admission", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);

@@ -286,7 +286,7 @@ test("close: attempts and awaits every handler, then aggregates every failure", 
     assert.equal(slowSettled, true, "shutdown waits for a slower closer before rejecting");
 });
 
-test("register requires one identity-matched static or instance manifest", () => {
+test("{§scheme-manifest-manifest} register requires one identity-matched static or instance manifest", () => {
     const registry = new SchemeRegistry();
     assert.throws(() => registry.register("missing", {}), /must declare a static or instance manifest/);
     assert.throws(() => registry.register("expected", handler("other")), /identity mismatch/);

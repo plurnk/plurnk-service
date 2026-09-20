@@ -51,7 +51,7 @@ const setupContext = async () => {
     return { db, workspaceId, workerId };
 };
 
-test("Worker.read: existing entry — returns body content and mimetype with status 200", async () => {
+test("{§read-read-content} Worker.read: existing entry — returns body content and mimetype with status 200", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();
@@ -238,7 +238,7 @@ test("Worker.read: read against workspace A doesn't surface workspace B's entry"
 
 // --- Extension-based mimetype ----------------------------------------
 
-test("Worker: path suffix `.json` declares mimetype; READ returns application/json", async () => {
+test("{§ext-mimetype} Worker: path suffix `.json` declares mimetype; READ returns application/json", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -282,7 +282,7 @@ test("Worker: extension `.json` does not change line shorthand semantics", async
     } finally { db.close(); }
 });
 
-test("Worker: no path suffix → scheme default (text/markdown); <L> is line-based", async () => {
+test("{§ext-mimetype} Worker: no path suffix → scheme default (text/markdown); <L> is line-based", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();

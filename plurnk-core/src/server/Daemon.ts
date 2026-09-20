@@ -373,6 +373,7 @@ export default class Daemon implements ApplicationPort {
             const { workspaceId, ...proposal } = event;
             this.#broadcast({ workspaceId }, "loop/proposal", proposal);
         });
+        // {§notifications-loop-interaction} — the projection is the payload; its scope is the envelope's.
         this.#engine.onClientInteractionPending((event) => {
             const { workspaceId, ...interaction } = event;
             this.#broadcast({ workspaceId }, "loop/interaction", interaction);
@@ -1418,6 +1419,7 @@ export default class Daemon implements ApplicationPort {
         this.#residency.registerProvider(namespaceOwner, provider);
     }
 
+    // {§module-functionality-adapter}
     registerFunctionalityAdapter(adapter: FunctionalityAdapter): FunctionalityFamilyHandle {
         return this.#functionality.register(adapter);
     }

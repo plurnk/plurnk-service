@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import * as Contracts from "@plurnk/plurnk-contracts";
 import * as Parser from "../../src/index.ts";
 
-test("{§parser-consumers}: the parser package exports exactly the parser surface", () => {
+test("{§parser-construction-boundary} {§parser-consumers}: the parser package exports exactly the parser surface", () => {
     assert.deepEqual(Object.keys(Parser).sort(), ["PlurnkParser", "parsePath"]);
 });
 

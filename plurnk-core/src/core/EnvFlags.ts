@@ -2,7 +2,7 @@
 // not plumbing" / single-source-of-truth ethos: .env.defaults is the
 // canonical config doc ({§operator-config-env-defaults}); the CLI's --flag surface mirrors it.
 //
-// Rules:
+// Rules ({§operator-config-cli-flags}):
 //   - Each PLURNK_* env var becomes a --kebab-cased flag (prefix stripped).
 //   - Comment line(s) immediately above (no blank line between) become the
 //     -h description. Section headers (# --- xxx ---) are delimiters,

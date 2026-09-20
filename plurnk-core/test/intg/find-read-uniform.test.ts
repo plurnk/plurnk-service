@@ -263,7 +263,7 @@ test("broad matcher FIND promotes a resource's locator/region when it matches ex
     } finally { await db.close(); }
 });
 
-test("a glob remains resource mode when it resolves to one matching path", async () => {
+test("{§find-result-unit} a glob remains resource mode when it resolves to one matching path", async () => {
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "only.md", "first target\nsecond target");
@@ -320,7 +320,7 @@ test("FIND on an exact target with a result-position scope", async () => {
     } finally { await db.close(); }
 });
 
-test("FIND on an exact target with a content matcher pages flat match locations", async () => {
+test("{§find-result-unit} FIND on an exact target with a content matcher pages flat match locations", async () => {
     const { db, workspaceId, workerId, ctx } = await setup();
     try {
         await seedRaw(ctx, "doc.md", "hello world hello again");

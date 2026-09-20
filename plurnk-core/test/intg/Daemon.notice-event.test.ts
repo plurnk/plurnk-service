@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
-test("notifyNotice broadcasts to clients attached to the loop's workspace", async () => {
+test("{§notifications-notice-event} notifyNotice broadcasts to clients attached to the loop's workspace", async () => {
     await withDaemon(null, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {

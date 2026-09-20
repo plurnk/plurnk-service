@@ -332,7 +332,7 @@ test("{§proposal-202-pauses}: a WAIT over live work parks without a proposal", 
     } finally { await db.close(); }
 });
 
-test("proposal: loop acceptance is core-owned and needs no daemon listener", async (t) => {
+test("{§proposal-ownership-loop-auto} proposal: loop acceptance is core-owned and needs no daemon listener", async (t) => {
     const original = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
     t.after(() => {
         if (original === undefined) delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;

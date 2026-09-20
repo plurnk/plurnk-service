@@ -12,7 +12,7 @@ import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, schemeManif
 import LiveSubscriptions from "../../src/core/LiveSubscriptions.ts";
 import { Results } from "@plurnk/plurnk-schemes";
 
-test("DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, close terminates + wakes", async () => {
+test("{§per-entry-channels} DbSubscriptionCaps: open binds + composes abort, notifyChunk streams, close terminates + wakes", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `caps-sub-${crypto.randomUUID()}`);

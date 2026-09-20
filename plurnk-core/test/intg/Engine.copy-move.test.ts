@@ -55,7 +55,7 @@ test("Engine.copy cross-scheme (worker commons → fixture)", async () => {
     } finally { await db.close(); }
 });
 
-test("Engine.copy missing source returns 404", async () => {
+test("{§copy-missing-source-404} Engine.copy missing source returns 404", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/nope"), urlPath("worker", "/elsewhere")));
@@ -171,7 +171,7 @@ test("Engine.move keeps an ordinary source region regional when it covers the cu
     } finally { await db.close(); }
 });
 
-test("Engine.move to /dev/null no longer deletes — source survives", async () => {
+test("{§move-dev-null-not-special} Engine.move to /dev/null no longer deletes — source survives", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/obsolete"), "stale"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -186,7 +186,7 @@ test("Engine.move to /dev/null no longer deletes — source survives", async () 
     } finally { await db.close(); }
 });
 
-test("Engine.move missing source returns 404", async () => {
+test("{§move-missing-source-404} Engine.move missing source returns 404", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, moveStmt(urlPath("worker", "/nope"), urlPath("worker", "/elsewhere")));
@@ -210,7 +210,7 @@ test("Engine.move cross-scheme (worker commons → fixture) deletes source, crea
     } finally { await db.close(); }
 });
 
-test("Engine.copy with <L> slices the source range into the dest, no N:\\t prefix", async () => {
+test("{§copy-l-source-range} Engine.copy with <L> slices the source range into the dest, no N:\\t prefix", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/long"), "alpha\nbeta\ngamma\ndelta"), makeSchemeCtx({ db, workspaceId, workerId }));

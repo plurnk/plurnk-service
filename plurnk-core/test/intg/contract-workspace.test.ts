@@ -144,7 +144,7 @@ test("git-tracked file (never client-added) is a workspace member via git ls-fil
     });
 });
 
-test("EDIT of an existing non-member is refused — no read (leak), no overwrite (wipe)", async () => {
+test("{§file-create-no-clobber} EDIT of an existing non-member is refused — no read (leak), no overwrite (wipe)", async () => {
     await withGitWorkspace(async (root, ctx, _db, trackedPath) => {
         // A gitignored/untracked secret on disk: it EXISTS but is never a member
         // (not in `git ls-files`, never client-added), so the model can't see it.
@@ -454,7 +454,7 @@ test("overlapping startup and turn membership requests coalesce into one workspa
     });
 });
 
-test("PLURNK_SERVICE_GIT_ALLOWED=0 denies all git membership, un-re-enableable", async () => {
+test("{§operator-config-git-ceiling} PLURNK_SERVICE_GIT_ALLOWED=0 denies all git membership, un-re-enableable", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         const prev = process.env.PLURNK_SERVICE_GIT_ALLOWED;
         process.env.PLURNK_SERVICE_GIT_ALLOWED = "0";

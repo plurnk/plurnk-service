@@ -5,7 +5,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, waitFor } from "./_rpc.ts";
 
-test("{§methods-conversation-worker}: fresh named conversation — empty log, runLoop accepts, stable door unaffected", async () => {
+test("{§methods-worker-name-admission} {§methods-conversation-worker}: fresh named conversation — empty log, runLoop accepts, stable door unaffected", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````SEND\nhello from thread-2\n````", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);

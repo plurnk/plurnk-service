@@ -623,7 +623,7 @@ test("{§lifecycle-slots}: a malformed continuation heading preserves siblings w
     }
 });
 
-test("a syntactically legal $fC matcher failure is bounded, admitted once, and made model-visible (#12/#16)", async () => {
+test("{§operation-result-no-error-scheme} a syntactically legal $fC matcher failure is bounded, admitted once, and made model-visible (#12/#16)", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const malformed = "\n````FIND (worker:///x) [{\"pattern\":\"$fC\"}]````\n\n````NOTE\ninspect the results next\n````";
@@ -1442,7 +1442,7 @@ test("a classified provider error retains billed usage and authoritative charge 
     }
 });
 
-test("Core rejects a ProviderError whose accounting differs from its observed physical requests", async () => {
+test("{§provider-guarantees-request-observer} Core rejects a ProviderError whose accounting differs from its observed physical requests", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({ contextWindow: 100_000, responses: [] });

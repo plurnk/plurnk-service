@@ -33,10 +33,10 @@ test("parseAliasesFromEnv: skips empty values", () => {
     assert.deepEqual(parseAliasesFromEnv(env), []);
 });
 
-test("parseAliasesFromEnv: PLURNK_MODEL_CHILD is a selector, not an alias declaration", () => {
+test("{§alias-child-selector-reserved} parseAliasesFromEnv: PLURNK_MODEL_CHILD is a selector, not an alias declaration", () => {
     const env = {
         PLURNK_MODEL_child: "openai/small",
-        PLURNK_MODEL_CHILD: "child",
+        PLURNK_MODEL_CHILD: "openai/other",
     } as NodeJS.ProcessEnv;
     assert.deepEqual(parseAliasesFromEnv(env), [
         { alias: "child", provider: "openai", model: "small" },

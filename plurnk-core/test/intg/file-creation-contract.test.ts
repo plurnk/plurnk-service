@@ -115,7 +115,7 @@ test("{§file-create-producer-neutral}: every runtime producer completes the sam
     });
 });
 
-test("{§file-create-no-orphans}: a naked non-Git workspace create becomes an exact generated pick", async () => {
+test("{§fs-create-definition} {§file-create-no-orphans}: a naked non-Git workspace create becomes an exact generated pick", async () => {
     await withWorkspace(async ({ root, file, db, workspaceId, ctx }) => {
         await acceptCreate(file, ctx, "fresh.md");
         assert.equal(await readFile(join(root, "fresh.md"), "utf8"), "created\n");
@@ -226,7 +226,7 @@ test("{§file-create-scope}: service and workspace scopes compose monotonically"
         else process.env.PLURNK_SERVICE_FILE_CREATE_SCOPE = previous;
     });
 
-    await t.test("none denies a new root file without affecting an existing member edit", async () => {
+    await t.test("{§fs-create-disabled} none denies a new root file without affecting an existing member edit", async () => {
         process.env.PLURNK_SERVICE_FILE_CREATE_SCOPE = "none";
         await withWorkspace(async ({ root, file, db, workspaceId, ctx }) => {
             const denied = await file.edit(edit("new.md", "new\n"), ctx);
@@ -265,7 +265,7 @@ test("{§file-create-scope}: service and workspace scopes compose monotonically"
         });
     });
 
-    await t.test("namespace admits an outside create and exact-picks it", async () => {
+    await t.test("{§fs-create-namespace} namespace admits an outside create and exact-picks it", async () => {
         process.env.PLURNK_SERVICE_FILE_CREATE_SCOPE = "namespace";
         await withWorkspace(async ({ outside, file, db, workspaceId, ctx }) => {
             const key = `../${basename(outside)}/outside.md`;

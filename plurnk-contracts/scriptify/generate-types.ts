@@ -2,6 +2,8 @@ import { readFile, writeFile, readdir } from "node:fs/promises";
 import { join, basename } from "node:path";
 import { compile } from "json-schema-to-typescript";
 
+// {§contract-representations} — the schemas are the only source of the shared types: this is the
+// one writer of the generated file, and nothing else may edit it.
 const SCHEMA_DIR = "schema";
 const OUTPUT_FILE = "src/types.generated.ts";
 

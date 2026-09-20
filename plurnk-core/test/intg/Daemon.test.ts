@@ -100,7 +100,7 @@ test("Daemon: listenerless boot — the seam is live with no socket bound", asyn
     });
 });
 
-test("Daemon composes deterministic scheme and MIME display capabilities for clients", async () => {
+test("{§manifest-client-display} {§mimetype-client-display} Daemon composes deterministic scheme and MIME display capabilities for clients", async () => {
     const db = await openMigrated();
     const mimetypes = new Mimetypes({
         discovery: {
@@ -204,7 +204,7 @@ test("Daemon boot reports mimetype packages withheld by the shared trust gate", 
     }
 });
 
-test("Daemon: module actions register once during setup and invoke through ApplicationPort", async () => {
+test("{§module-action-registration} Daemon: module actions register once during setup and invoke through ApplicationPort", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     const calls: Array<{
@@ -485,7 +485,7 @@ test("Daemon: concurrent worker demands share one Functionality activation", asy
     }
 });
 
-test("Daemon cools idle capabilities, retained provider work postpones cooling, and later demand reactivates", async (t) => {
+test("{§module-workspace-provider} Daemon cools idle capabilities, retained provider work postpones cooling, and later demand reactivates", async (t) => {
     const priorWarmMs = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS;
     const priorWarmMax = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX;
     process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "0";
@@ -766,7 +766,7 @@ test("workspace.list returns workspaces most-recent-first", async () => {
     });
 });
 
-test("workspace.attach binds to existing workspace", async () => {
+test("{§methods-workspace-attach} workspace.attach binds to existing workspace", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const existing = await db.test_insert_workspace.get<{ id: number }>({ name: "existing" });
 
@@ -850,7 +850,7 @@ test("workspace.attach with workerId: reuses that specific worker", async () => 
     });
 });
 
-test("workspace.attach with workerId belonging to different workspace returns an exact Problem", async () => {
+test("{§methods-workspace-attach} workspace.attach with workerId belonging to different workspace returns an exact Problem", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
         const sA = await db.test_insert_workspace.get<{ id: number }>({ name: "sA" });
         const sB = await db.test_insert_workspace.get<{ id: number }>({ name: "sB" });
@@ -964,7 +964,7 @@ test("multiple connections attaching to same workspace each get their own worker
     });
 });
 
-test("workspace/created notification broadcasts to other connected clients", async () => {
+test("{§notifications-workspace-created} workspace/created notification broadcasts to other connected clients", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const observer = await connect(addr);
         const creator = await connect(addr);
@@ -1260,7 +1260,7 @@ test("the client-interface seam — metadata reads surface providers, workspaces
     });
 });
 
-test("the client-interface seam — workspace lifecycle: create/attach/rename/set-root", async () => {
+test("{§methods-worker-name-admission} the client-interface seam — workspace lifecycle: create/attach/rename/set-root", async () => {
     // {§methods-workspace-create}: the module decodes its protocol; core owns semantic validation,
     // the envelope, name invariants, membership, and workspace/created.
     const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````SEND\ndone\n````", 10)] });

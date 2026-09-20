@@ -29,7 +29,7 @@ test("Mock.provider: prompt measurement carries exact provenance", async () => {
     );
 });
 
-test("Mock.provider: returns queued responses in order", async () => {
+test("{§mock-provider-mock-fixture} Mock.provider: returns queued responses in order", async () => {
     const r1 = response("first", [editStmt("a", "1")]);
     const r2 = response("second", [editStmt("b", "2")]);
     const mock = new Mock({ contextWindow: 10_000, responses: [r1, r2] });

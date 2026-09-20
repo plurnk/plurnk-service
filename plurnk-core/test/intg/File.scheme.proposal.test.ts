@@ -134,7 +134,7 @@ Continue the task.
     });
 });
 
-test("file.edit: writes file on accept via applyResolution", async () => {
+test("{§fs-write-member} file.edit: writes file on accept via applyResolution", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         // Pre-seed an existing file so the EDIT computes a real diff.
         const target = "src/hello.txt";
@@ -406,7 +406,7 @@ test("{§membership-create-parents}: accepted file creation creates missing pare
     });
 });
 
-test("{§edit-marker-required-on-existing}: markerless EDIT refuses an existing file", async () => {
+test("{§unscoped-edit-create-only} {§edit-marker-required-on-existing}: markerless EDIT refuses an existing file", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "src/Engine.ts";
         await mkdir(join(root, "src"), { recursive: true });

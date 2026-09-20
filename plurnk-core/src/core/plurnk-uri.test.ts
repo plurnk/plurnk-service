@@ -14,7 +14,7 @@ test("foldAuthorityIntoPath folds a namespace authority into the canonical path"
     assert.equal(foldAuthorityIntoPath(null, "/docs/x.md"), "/docs/x.md");
 });
 
-test("entryCoordinateOf distinguishes namespace and resource authority", () => {
+test("{§manifest-authority} {§scheme-address-namespace-fold} entryCoordinateOf distinguishes namespace and resource authority", () => {
     const notes = parsePath("notes://docs/fact.md");
     const agent = parsePath("a2a://researcher/tasks/t-1");
     const worker = parsePath("worker://ada/task");

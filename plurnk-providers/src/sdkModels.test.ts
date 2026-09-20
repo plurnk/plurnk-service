@@ -103,7 +103,7 @@ test("{§model-catalog-readiness}: an authenticated operator declaration reports
     );
 });
 
-test("createSdkModel uses Models.dev provider facts and operator credentials", () => {
+test("{§provider-sdk-boundary} createSdkModel uses Models.dev provider facts and operator credentials", () => {
     const sdk = createSdkModel("xai", "grok-build-0.1", { XAI_API_KEY: "test-key" });
     assert.notEqual(sdk, null);
     assert.equal(sdk?.catalog?.npm, "@ai-sdk/xai");

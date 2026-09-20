@@ -53,7 +53,7 @@ test("{§completion-joins-live-work} completion with a live child worker joins i
     } finally { await db.close(); }
 });
 
-test("an _plurnk administrative completion closes only its own loop while model work remains live", async () => {
+test("{§send-administrative-terminal} an _plurnk administrative completion closes only its own loop while model work remains live", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `admin-terminal-${crypto.randomUUID()}`);

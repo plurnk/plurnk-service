@@ -20,7 +20,7 @@ test("Manifest.of resolves static and instance manifests", () => {
     assert.equal(Manifest.of({ manifest: manifest("dynamic") }, "dynamic").name, "dynamic");
 });
 
-test("Manifest.of rejects missing and mismatched identities", () => {
+test("{§manifest} Manifest.of rejects missing and mismatched identities", () => {
     assert.throws(() => Manifest.of({}, "missing"), /must declare a static or instance manifest/);
     assert.throws(() => Manifest.of({ manifest: manifest("other") }, "expected"), /identity mismatch/);
 });
@@ -71,7 +71,7 @@ test("Manifest.of validates dispatch-critical fields", () => {
     assert.doesNotThrow(() => Manifest.of({ manifest: manifest("resource") }));
 });
 
-test("Manifest.of admits only declared top-level fields", () => {
+test("{§manifest} Manifest.of admits only declared top-level fields", () => {
     const ownerManifest = manifest("owner");
     assert.doesNotThrow(() => Manifest.of({ manifest: ownerManifest }, "owner"));
     assert.equal(

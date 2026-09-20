@@ -112,7 +112,7 @@ test("loop.run persists a complete canonical policy and omission uses the comple
     });
 });
 
-test("proposals=accept resolves through Core without a client resolver", async () => {
+test("{§proposal-ownership-loop-auto} proposals=accept resolves through Core without a client resolver", async () => {
     const first = "````EDIT (proposing-test://x)\ny\n````\n\n````SEND\ndone\n````";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse(first, 50),
@@ -136,7 +136,7 @@ test("proposals=accept resolves through Core without a client resolver", async (
     });
 });
 
-test("proposals=reject settles the same admitted proposal without becoming a capability denial", async () => {
+test("{§proposal-ownership-notification} proposals=reject settles the same admitted proposal without becoming a capability denial", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("````EDIT (proposing-test://x)\ny\n````\n\n````SEND\ndone\n````", 50),
         makeMockResponse("````SEND\nthe edit was declined; concluding\n````", 50),
@@ -169,7 +169,7 @@ test("proposals=reject settles the same admitted proposal without becoming a cap
     });
 });
 
-test("proposal notification projects the same durable policy and its derived disposition", async () => {
+test("{§notifications-loop-proposal} proposal notification projects the same durable policy and its derived disposition", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("````EDIT (proposing-test://x)\ny\n````\n\n````SEND\ndone\n````", 50),
     ] });

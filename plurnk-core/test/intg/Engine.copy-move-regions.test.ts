@@ -457,7 +457,7 @@ test("MOVE propagates tolerated source and destination scope normalizations", as
     }
 });
 
-test("same-channel MOVE applies destination insertion and source deletion to one snapshot", async () => {
+test("{§edit-batch} same-channel MOVE applies destination insertion and source deletion to one snapshot", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         await seed("/document", {
@@ -515,7 +515,7 @@ test("same-channel MOVE composes source and destination anchors against one snap
     }
 });
 
-test("same-channel MOVE rejects overlapping source and destination regions without mutation", async () => {
+test("{§edit-batch} same-channel MOVE rejects overlapping source and destination regions without mutation", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         await seed("/document", {

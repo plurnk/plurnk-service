@@ -225,7 +225,7 @@ describe("discover", () => {
         );
     });
 
-    it("rejects a handler entry whose name is not a media type", async () => {
+    it("{§mimetype-naming} rejects a handler entry whose name is not a media type", async () => {
         const dir = await makePackage(tmpRoot, "pkg-entry-invalid-name", {
             name: "@plurnk/plurnk-mimetypes-test",
             plurnk: {
@@ -369,7 +369,7 @@ describe("discover", () => {
         assert.deepEqual([...result.packageAttributions], [["@acme/mime-b", ["@acme/b"]]]);
     });
 
-    it("defaults glyph to empty string when not declared in a handler entry", async () => {
+    it("{§mimetype-client-display} defaults glyph to empty string when not declared in a handler entry", async () => {
         const dir = await makePackage(tmpRoot, "pkg-noglyph", {
             name: "@plurnk/plurnk-mimetypes-noglyph",
             plurnk: {

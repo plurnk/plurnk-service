@@ -208,7 +208,7 @@ test("{§error-shape} malformed FIND scopes get one relevant correction and pres
     }
 });
 
-test("{§error-shape} scope diagnostics do not borrow another operation's contract", () => {
+test("{§invalid-scope-diagnostic} {§error-shape} scope diagnostics do not borrow another operation's contract", () => {
     for (const op of ["READ", "EDIT", "COPY", "MOVE", "KILL"] as const) {
         const error = firstError(section(op, " (a.md) <line number>"));
         assert.equal(error.message, `invalid ${op} scope "<line number>"; use numeric coordinates or \`@hash\` line anchors`);
@@ -225,7 +225,7 @@ test("{§error-shape} scope diagnostics do not borrow another operation's contra
         "invalid FIND scope \"<result range>\"; use numeric result positions, e.g. `<1,16>`");
 });
 
-test("{§error-shape} scope excerpts stop at a delimiter, line ending, or bounded length", () => {
+test("{§invalid-scope-diagnostic} {§error-shape} scope excerpts stop at a delimiter, line ending, or bounded length", () => {
     for (const [input, excerpt] of [
         ["<result range> <!-- unrelated -->", "<result range>"],
         ["<result range\nprivate body", "<result range"],
@@ -661,7 +661,7 @@ test("{§naked-pattern}: a sigil matcher after the target lifts into pattern; a 
     assert.equal(find?.kind === "statement" ? (find.statement as { matcher?: { raw?: string } | null }).matcher?.raw : null, "/resolveWorkerPrimary/");
 });
 
-test("a malformed regex pattern receives a bounded dialect error that echoes nothing", () => {
+test("{§regex-trailing-text} a malformed regex pattern receives a bounded dialect error that echoes nothing", () => {
     const errors = errorsOf('````FIND (**/*.go) <1,-1> [{"pattern": "/require|ABS_MODULE_PATH|module_load/ trailing"}]````');
     assert.equal(errors.length, 1);
     assert.equal(errors[0]?.message, "Regex matcher has trailing text after `/pattern/flags`.");
@@ -742,7 +742,7 @@ test("scope spellings normalize to ordered numeric marks", () => {
     }
 });
 
-test("text-coordinate operations admit Base62 anchors only in line positions", () => {
+test("{§text-line-anchor-syntax} text-coordinate operations admit Base62 anchors only in line positions", () => {
     const cases = [
         [section("READ", " (p) <@aZ09b>"), "READ", ["@aZ09b"]],
         [section("EDIT", " (p) <@aZ09b,@0Aa9Z>", "body"), "EDIT", ["@aZ09b", "@0Aa9Z"]],
@@ -1108,7 +1108,7 @@ test("COPY and MOVE operands project path, metadata, fragment, and scope indepen
     assert.deepEqual(move.destination.target, { kind: "local", raw: "./out.txt" });
 });
 
-test("SEND projects JSON when valid and always preserves raw body", () => {
+test("{§send-body} SEND projects JSON when valid and always preserves raw body", () => {
     const json = oneStatement(section("SEND", "", '{"answer":"Paris","confidence":0.95}'));
     if (json.op !== "SEND" || !json.body) assert.fail("expected SEND");
     assert.equal(json.body.raw, '{"answer":"Paris","confidence":0.95}');

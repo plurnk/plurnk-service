@@ -46,7 +46,7 @@ test("{§packet-git-status}: unborn and detached heads are not invented branch n
     }
 });
 
-test("GitState.status reads the working tree, gated by PLURNK_SERVICE_GIT_ALLOWED", async () => {
+test("{§operator-config-git-ceiling} GitState.status reads the working tree, gated by PLURNK_SERVICE_GIT_ALLOWED", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-gitstate-"));
     const db = await openMigrated();
     const orig = process.env.PLURNK_SERVICE_GIT_ALLOWED;

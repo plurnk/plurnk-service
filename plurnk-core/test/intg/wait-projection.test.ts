@@ -9,7 +9,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
 
 for (const header of ["WAIT", "WAIT (sh:///missing) <60,60> [{\"timeout\":42}]"]) {
-    test(`{§wait-obligation-matrix} ${header} parks on the actual live child, not the decoration`, async (t) => {
+    test(`{§park-202-only} {§wait-obligation-matrix} ${header} parks on the actual live child, not the decoration`, async (t) => {
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "wait-obligations");
@@ -38,7 +38,7 @@ for (const header of ["WAIT", "WAIT (sh:///missing) <60,60> [{\"timeout\":42}]"]
     });
 }
 
-test("{§wait-obligation-matrix} WAIT retains literal prose without inventing a response", async () => {
+test("{§park-202-only} {§wait-obligation-matrix} WAIT retains literal prose without inventing a response", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "continuation-inventory");

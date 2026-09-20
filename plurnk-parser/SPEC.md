@@ -1,6 +1,6 @@
 # @plurnk/plurnk-parser — SPEC
 
-## §parser-package 1. What this package is
+## 1. What this package is
 
 `@plurnk/plurnk-parser` implements the PLURNK language that
 `@plurnk/plurnk-contracts` specifies. It owns the ANTLR grammars

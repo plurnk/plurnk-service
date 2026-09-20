@@ -865,7 +865,7 @@ test("cataloged unknown model fails unless its context is explicit", () => {
     assert.deepEqual(provider?.supportedReasoningPolicies, ["off", "adaptive"]);
 });
 
-test("Models.dev is the only fallback rate table", async () => {
+test("{§provider-monetary-evidence} Models.dev is the only fallback rate table", async () => {
     mock.method(globalThis, "fetch", async () => new Response([
         `data: ${JSON.stringify({
             id: "response",

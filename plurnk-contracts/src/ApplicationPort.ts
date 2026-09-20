@@ -99,7 +99,7 @@ export type ApplicationEventHandler = (
     params: unknown,
 ) => void;
 
-/** The transport-neutral application contract consumed by exterior adapters. */
+/** {§application-port} The transport-neutral application contract consumed by exterior adapters. */
 export interface ApplicationPort {
     listClientDisplayCapabilities(): Promise<ClientDisplayCapabilities>;
     listModuleActions(): ApplicationActionDescriptor[];

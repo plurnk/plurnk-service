@@ -202,7 +202,7 @@ const rejectedProblem = async (run: () => Promise<unknown>): Promise<ProblemDeta
     assert.fail("Expected operation failure.");
 };
 
-test("{§functionality-coordinator} registration, client lifecycle, documents, persistence, and shared visibility through one owner", async () => {
+test("{§module-workspace-sharing} {§functionality-coordinator} registration, client lifecycle, documents, persistence, and shared visibility through one owner", async () => {
     const db = await openMigrated();
     const log: string[] = [];
     const workspaceId = await insertWorkspace(db, `functionality-${crypto.randomUUID()}`);

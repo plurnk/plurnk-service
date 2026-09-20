@@ -6,7 +6,7 @@ const floor = {
     PLURNK_HOOKS_TIMEOUT_MS: "30000",
 };
 
-test("hook configuration is absent until an exact command and event selection are declared", () => {
+test("{§hooks-config} hook configuration is absent until an exact command and event selection are declared", () => {
     assert.equal(hookConfig(floor), null);
     assert.throws(
         () => hookConfig({ ...floor, PLURNK_HOOKS_COMMAND: "notify-send" }),
@@ -32,7 +32,7 @@ test("hook configuration preserves one executable, exact JSON argv, and selected
     });
 });
 
-test("the event inventory is exactly the tagged core notification vocabulary", () => {
+test("{§hooks-selection} the event inventory is exactly the tagged core notification vocabulary", () => {
     assert.deepEqual(HOOK_EVENTS, [
         "log/entry",
         "loop/proposal",
@@ -44,7 +44,7 @@ test("the event inventory is exactly the tagged core notification vocabulary", (
     ]);
 });
 
-test("hook configuration rejects shell text, malformed argv, unknown events, duplicates, and invalid timeout", () => {
+test("{§hooks-config} hook configuration rejects shell text, malformed argv, unknown events, duplicates, and invalid timeout", () => {
     const configured = {
         ...floor,
         PLURNK_HOOKS_COMMAND: "node hook.mjs",

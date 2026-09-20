@@ -27,7 +27,7 @@ const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = nul
     matcher: null, position: { line: 1, column: 1 },
 });
 
-test("two workers in one workspace both write the same shared entry — no lock", async () => {
+test("{§actor-boundary-no-mutex} two workers in one workspace both write the same shared entry — no lock", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -100,7 +100,7 @@ test("origin is attribution (provenance), never read to hide a row at render", a
 // the stream-status door — a slept (202) loop's stream concluding RESUMES it in place,
 // an active loop folds the conclusion into its next turn — is locked in
 // Daemon.exec-wake.test.ts. Together they discharge {§actor-boundary-passive-wake}'s two-trigger contract.
-test("an idle worker wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async () => {
+test("{§env-delta-passive} an idle worker wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [
         makeMockResponse("````SEND\nfirst done\n````", 10),
         makeMockResponse("````SEND\nwoke done\n````", 10),

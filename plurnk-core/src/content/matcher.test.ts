@@ -50,7 +50,7 @@ test("regex hits select the resource and retain readable-text regions", async ()
     assert.equal(r.body, undefined);
 });
 
-test("matcher applied with zero hits → 204, no body", async () => {
+test("{§matcher-result-resource-selection} matcher applied with zero hits → 204, no body", async () => {
     const r = await Matcher.matchAgainstContent(regexBody("zzz"), "alpha\nbeta", "text/markdown",
         stubQuery(async () => []));
     assert.equal(r.status, 204);
@@ -58,7 +58,7 @@ test("matcher applied with zero hits → 204, no body", async () => {
     assert.equal(r.body, undefined);
 });
 
-test("structural hits expose coordinates rather than extracted values", async () => {
+test("{§matcher-result-resource-selection} structural hits expose coordinates rather than extracted values", async () => {
     // jsonpath $.users[*] over multi-line JSON: each object resolves to the line it sits on.
     const content = '{\n  "users": [\n    { "name": "Alice", "role": "admin" },\n    { "name": "Bob" }\n  ]\n}';
     const r = await Matcher.matchAgainstContent(
@@ -132,7 +132,7 @@ test("a scalar retains its locator without fabricated coordinates", async () => 
     assert.deepEqual(r.matches, [{ locator: "count(//user)" }]);
 });
 
-test("source unparseable for its mimetype → 203 soft fallback with raw content + reason", async () => {
+test("{§matcher-dispatch-203-soft-fallback} source unparseable for its mimetype → 203 soft fallback with raw content + reason", async () => {
     const r = await Matcher.matchAgainstContent(
         { dialect: "jsonpath", raw: "$.field" } as MatcherBody, "{broken json", "application/json",
         stubQuery(async () => { throw new QueryParseFailureError({ mimetype: "application/json", cause: new Error("unexpected token } in JSON") }); }));

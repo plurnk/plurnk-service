@@ -16,7 +16,7 @@ import LoopDocs from "../../src/server/loopDocs.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, flush } from "./_rpc.ts";
 
-test("a child worker concluding wakes a parent parked at 202", async () => {
+test("{§worker-lifecycle-child-matrix} a child worker concluding wakes a parent parked at 202", async () => {
     // Response order is forced by causality: the parent can't resume until the child concludes,
     // and the child can't run until the parent spawns it — so the Mock queue is deterministic.
     // 16384: the parent's final resume carries the whole child subtree; that accumulation crests at the 8192 edge

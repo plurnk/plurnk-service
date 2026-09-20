@@ -4,35 +4,35 @@ Canonical contracts plurnk-service exposes, architecture it implements, promises
 
 ## Contents
 
-- [Glossary](#glossary-glossary)
+- [Glossary](#glossary)
 - [Architecture](#arch-architecture)
 - [Workers and workspace boundaries](#actor-boundary-workers-and-workspace-boundaries)
 - [File membership and project roots](#membership-file-membership-and-project-roots)
 - [Loop scheduling and lifecycle](#worker-loop-lifecycle-loop-scheduling-and-lifecycle)
-- [Provider Contract](#provider-provider-contract)
+- [Provider Contract](#provider-contract)
 - [Scheme Contract](#scheme-scheme-contract)
 - [Mimetype Contract](#mimetype-mimetype-contract)
 - [Search indexing](#persistent-search-index-search-indexing)
 - [Channel Topology](#channels-channel-topology)
-- [Op Surface](#op-op-surface)
+- [Op Surface](#op-surface)
 - [Proposals and client interactions](#proposal-proposals-and-client-interactions)
 - [Stream Model](#stream-stream-model)
-- [Storage Model](#storage-storage-model)
+- [Storage Model](#storage-model)
 - [Plugin composition](#core-plugin-composition-plugin-composition)
 - [Bundled Set](#bundled-set-bundled-set)
-- [Grammar Dependency](#grammar-grammar-dependency)
+- [Grammar Dependency](#grammar-dependency)
 - [Operator Configuration](#operator-config-operator-configuration)
 - [Module seam](#rpc-module-seam)
-- [Workspace Functionality](#functionality-workspace-functionality)
+- [Workspace Functionality](#workspace-functionality)
 - [Application interface](#methods-application-interface)
 - [Packet assembly](#packet-assembly-packet-assembly)
 - [Packet shape](#packet-packet-shape)
-- [Matcher selection and text regions](#matcher-matcher-selection-and-text-regions)
-- [Testing and evidence](#test-taxonomy-testing-and-evidence)
+- [Matcher selection and text regions](#matcher-selection-and-text-regions)
+- [Testing and evidence](#testing-and-evidence)
 
 ---
 
-## §glossary Glossary
+## Glossary
 
 Canonical meanings. When a doc, comment, test name, or commit message uses one of these words, it means exactly what's written here. Drift is a bug.
 
@@ -66,7 +66,7 @@ flowchart LR
 | **`--run`**       | Client compatibility  | A compatibility-sensitive client spelling, not an internal entity. |
 | **session**       | Retired/unqualified   | Not a PLURNK lifecycle noun. Use the actual core noun; a third-party standard may use only its explicitly qualified protocol term. <!-- lexicon-allow: this row defines the retired noun --> |
 
-### §storage-terms Storage terms
+### Storage terms
 
 | Term | Meaning |
 |---|---|
@@ -74,20 +74,20 @@ flowchart LR
 | **channel** | A named content buffer on an entry. Examples: `body`, `stdout`, `stderr`, `headers`, `symbols`. Each channel has `content`, `mimetype`, curation `weight`, and lifecycle `state`. |
 | **scheme** | An addressed capability family + handler. Built-ins include `worker`, `log`, `ops`, `reasoning`, and bare/file paths; discovered schemes and executor-runtime tags extend that set. Internal `exec` routes executions but is not an addressable model namespace. Consumption surface {§scheme-surface}; author contract: [plurnk-schemes](../plurnk-schemes/SPEC.md). |
 | **mimetype** | A channel's content type. Drives the handler that produces the structural projections (`symbols`, `deepJson`, `deepXml`). Consumption surface {§mimetype-surface}; author contract: [plurnk-mimetypes](../plurnk-mimetypes/SPEC.md). |
-| **provider** | An LLM transport implementing the `@plurnk/plurnk-providers` `Provider` interface. Core supplies an assembled request and generation context; the provider owns endpoint adaptation and normalized response evidence. Consumption surface {§provider}; author contract: [plurnk-providers](../plurnk-providers/SPEC.md). |
+| **provider** | An LLM transport implementing the `@plurnk/plurnk-providers` `Provider` interface. Core supplies an assembled request and generation context; the provider owns endpoint adaptation and normalized response evidence. Consumption surface {§provider-surface}; author contract: [plurnk-providers](../plurnk-providers/SPEC.md). |
 
-### §state-terms State / status
+### State / status
 
 Independent axes on entries and channels. Confusion across them is a recurring source of bugs.
 
 | Term | Type | Meaning |
 |---|---|---|
-| **status** | HTTP int | Outcome of an operation. Carried on `log_entries.status_rx`, returned from op handlers. Per the catalogue ({§send-dispatch}). |
+| **status** | HTTP int | Outcome of an operation. Carried on `log_entries.status_rx`, returned from op handlers. Per the catalogue ({§operation-results}). |
 | **channel state** | `static \| active \| closed \| errored` | Streaming lifecycle of a channel's content. Metadata, not gating — engine renders content regardless of state. |
 | **proposal state** | `proposed \| resolved \| failed \| cancelled` | Proposal lifecycle (`log_entries.state`) under {§proposal}; distinct from entry identity and channel state. |
 | **outcome** | `string \| null` | Short reason for `failed`/`cancelled` (`"permission:403"`, `"aborted"`, `"not_found"`). Opaque to most callers. |
 
-### §authority-terms Writer / authority
+### Writer / authority
 
 | Term | Meaning |
 |---|---|
@@ -95,7 +95,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | **origin** | Synonym for writer in log_entries (`log_entries.origin`). Historical naming; treat as equivalent. |
 | **writable_by** | The set of writers a scheme accepts. Subset of `{model, client, _plurnk, plugin}`. Engine rejects writes outside the set with 403; the rejection is logged as the action-entry ({§subscriptions} action-entry-as-outcome). |
 
-### §execution-terms Execution terms
+### Execution terms
 
 | Term                         | Meaning |
 |------------------------------|---|
@@ -124,7 +124,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 Daemon composition and startup. Worker attention and workspace state follow
 {§actor-boundary} and {§machine-processes}.
 
-### §ecosystem Ecosystem
+### Ecosystem
 
 The root [`ARCHITECTURE.md`](../ARCHITECTURE.md) owns the platform process and
 package map. The default installed composition is specified in {§bundled-set}.
@@ -174,7 +174,7 @@ Seven principles govern which exterior standards Plurnk conforms to (#299):
 
 Composed daemon internals + admin CLI. Four plug points:
 
-- **Providers** ({§provider}) — LLM transports. Engine sends a turn's messages, receives raw content + usage; engine parses the content into `PlurnkStatement[]`.
+- **Providers** ({§provider-surface}) — LLM transports. Engine sends a turn's messages, receives raw content + usage; engine parses the content into `PlurnkStatement[]`.
 - **Schemes** ({§scheme}) — addressed capabilities. A scheme handler interprets targets under its prefix and owns its storage substrate.
 - **Mimetypes** ({§mimetype}) — content interpretation. Render-time handlers consume channel content; framework owns the dispatch.
 - **Executors** ({§exec} / {§bundled-set}) — execution dispatch for subprocess, data, and pure-computation runtimes; web discovery rides the ordinary MCP surface.
@@ -266,7 +266,7 @@ shared workspace state ({§packet}, {§membership}). Other journals are not
 automatically injected. This follows "one packet, one worker," not an access
 filter over workspace resources.
 
-§actor-boundary-origin-not-filter `origin` ({§authority-terms}) is
+§actor-boundary-origin-not-filter `origin` (the writer, {§scheme-surface-writableby-403}) is
 **attribution** — the delta's provenance ({§env-delta}) — and is never read to
 filter a row.
 
@@ -1206,7 +1206,7 @@ separated by actual waits are not an uninterrupted cycle; cumulative turn and
 execution allowances remain independent bounds. A committed terminal result
 cannot be replaced by a later rail assessment ({§worker-lifecycle-state-machine}).
 
-## §provider Provider Contract
+## Provider Contract
 
 Author-facing contract: [`@plurnk/plurnk-providers`](../plurnk-providers/SPEC.md). Below: consumption surface + engine→provider guarantees.
 
@@ -1224,7 +1224,7 @@ Three current entry points:
 
 §meta-passthrough **Metadata passthrough (provider → client).** `generate` may return an open `meta: Record<string, unknown>` bag. The service stores it unenforced per turn (`turns.meta`, `json_valid` only — no schema) and forwards the latest turn's blob in `loop/terminated.usage` ({§notifications}). The service never reads a field within it. Providers own their metadata shapes; monetary values carry an explicit amount and currency rather than an implied unit. Absent → `{}`. The mirror direction (client → provider, the self-identified `client` id) rides `generate({client})` ({§attribution}).
 
-### §provider-guarantees Engine → provider guarantees
+### Engine → provider guarantees
 
 - `messages` is a complete prompt (the section list, pre-assembled into the system + user messages). Provider does not reorder.
 - §provider-guarantees-signal-wired `signal` is wired to the worker's AbortController.
@@ -1348,7 +1348,7 @@ PLURNK_MODEL=gemma
 
 First path segment = provider name; rest = provider-native model id.
 
-### §mock-provider Mock provider (sibling fixture)
+### Mock provider (sibling fixture)
 
 §mock-provider-mock-fixture `Mock` (exported from `@plurnk/plurnk-providers`) — intg fixture + reference implementation. `{ contextWindow, responses }` constructor; `generate` shifts from the queue. `MockResponse.assistant.ops?: PlurnkStatement[]` is a pre-parsed escape hatch the engine consumes directly when present; production providers don't expose this — and being a plugin export, this contract has no service-side `§`-ref.
 
@@ -1496,7 +1496,7 @@ cross-scheme SQL transaction. Core's create-only publication claims the same
 identity atomically: an existing identity returns 409 without changing its
 metadata or channels.
 
-### §op-methods Op methods
+### Op methods
 
 §op-methods-op-dispatch Engine operation ownership follows the public scheme contract:
 
@@ -1535,7 +1535,7 @@ Registration precedes loop affinity:
 - §edit-batch-receipt **A refusal describes its own unapplied work.** An anchor collision lists every distinct unresolved anchor in that EDIT, including both range endpoints, in `unresolvedAnchors` (`anchor`, `kind: missing | ambiguous`, and matching `lines` when ambiguous). Missing is not proof of earlier validity or subsequent change. It carries `editCount: 1`, `applied: 0`, and recovery directing a READ for current coordinates; it makes no claim about other operations. A refused compound splice batch lists all conflicting pairs in `conflicts`, non-conflicting regions in `cleanRegions`, its first pair in `conflictingRegions`, and its own `editCount` and `applied: 0`.
 - §edit-batch-merges **Normalizations require evidence and a receipt.** An EDIT body carrying only this resource's published `@xxxxx L:` prefixes is stripped when those prefixes verify against current anchors or this worker's preserved READ receipts (`rendered-prefix-stripped`); otherwise it remains literal content (`rendered-prefix-unverified`). Within a single atomic splice batch, the Slicer can deduplicate identical regions/bodies, concatenate same-boundary insertions, assign a shared endpoint to the sole body reproducing that line, or relocate an inner change when its original content occurs exactly once in the outer body. An already-applied inner body can be dropped. Unevidenced overlap remains a collision. These batch resolutions never reinterpret separate authored EDITs. Applied normalizations carry their exact merge facts and a notice; receipts describe only the applied effects.
 
-### §orchestration Cross-scheme orchestration
+### Cross-scheme orchestration
 
 Core owns same- and cross-scheme transfers under {§copy} and {§move}; handlers
 provide the underlying resource operations. Each operand independently selects
@@ -1543,7 +1543,7 @@ a resource, channel, and optional text scope ({§transfer-resource-selections}).
 Source acquisition follows {§universal-read-composition}; landed mutation
 effects follow {§edit-result-copy-move-effects}.
 
-### §send-dispatch SEND dispatch (a message to a recipient)
+### SEND dispatch (a message to a recipient)
 
 Targetless and exact-message SENDs follow the reply accounting at
 {§send-response-receipt}. Other directed SENDs route to the recipient scheme's
@@ -1828,7 +1828,7 @@ Model uses state to anticipate growth between turns. Clients use state for UI (s
 
 ---
 
-## §op Op Surface
+## Op Surface
 
 Per-op semantics. AST shapes come from `@plurnk/plurnk-contracts`'s `PlurnkStatement`. Engine dispatches by `op`; scheme implements per author contract ({§scheme}).
 
@@ -3223,7 +3223,7 @@ composes it with the existing owner signal before registering the same waiter.
 Reconnect discovery intersects durable rows with live waiters; restart
 removes ownerless rows without fabricating cancellation, payload, or replay.
 
-### §proposal-ownership Loop disposition and client YOLO
+### Loop disposition and client YOLO
 
 Side-effecting operations propose ({§exec}) and pause dispatch at 202 for an
 authority decision ({§engine-rails}, {§methods}). Automatic acceptance has two
@@ -3351,7 +3351,7 @@ live executor's current declaration.
 
 §subscriptions-fold-keeps-subscription A scoped KILL changes a log row's readable projection ({§log-kill-scope}), never the subscription registry. Curation of a streaming entry's log body leaves the live stream and its source running; it is not cancellation.
 
-### §chunk-accumulation Chunk accumulation
+### Chunk accumulation
 
 §chunk-accumulation-chunks-accumulate SSE event types, WS message types, exec stdout/stderr each map to a named channel. Each stored channel carries `content`, `mimetype`, curation `weight`, and lifecycle `state` ({§channel-state}). The subscription registry owns durable subscription identity and process-local cancellation routing, not a second channel-state representation. Chunks accumulate into the channel as they arrive — not buffered until close.
 
@@ -3386,7 +3386,7 @@ The model is NOT a stream/event consumer — turn-based only; sees whatever's in
 
 ---
 
-## §storage Storage Model
+## Storage Model
 
 SQLite (`node:sqlite`) with WAL mode and STRICT tables. Hand-written DDL; CI-aligned against grammar schemas.
 
@@ -3529,7 +3529,7 @@ service manifest edit.
 
 ---
 
-## §grammar Grammar Dependency
+## Grammar Dependency
 
 Core consumes the language, schemas, and generated types under
 {§contract-authority} and {§contract-representations}. Provider emissions cross
@@ -3917,7 +3917,7 @@ The version-1 baseline table `workspace_module_state` stores one JSON value
 per `(workspace_id, namespace_owner)`. It is configuration, not an executable
 registry. Deleting the workspace cascades its state; worker lifecycle does not.
 
-## §functionality Workspace Functionality
+## Workspace Functionality
 
 §functionality-coordinator **One coordinator owns the common lifecycle.**
 Agent Skills, MCP, outbound A2A agents, and membership are adapters beneath
@@ -4482,7 +4482,7 @@ sections. It receives no separate engine, database, actor, or request context.
 
 This is strictly a trusted in-process seam, admitted through the common plugin
 trust gate; an external client action cannot invoke it. Whole-list transformation is
-the fork-avoidance valve for alternate packet shapes ({§ecosystem}), while
+the fork-avoidance valve for alternate packet shapes, while
 overflow recovery and packet projection remain closed engine concerns.
 
 ### §tokenomics Tokenomics: four facts, one curation ruler
@@ -5011,7 +5011,7 @@ stored fact, so a live watcher accrues running loop cost per turn (#465).
 
 §notice-content-offset-pointer **Content-offset position.** A non-fatal diagnosis on an accepted emission (for example `grammar_unenforced` or `parse_advisory`) carries `position: { type: "content-offset", line, column }` into the model's exact `ops://<worker>/<loop>/<turn>` source. A bounded hard parse error becomes a durable failed operation whose Problem Details preserve its line, column, source, and parser-owned diagnostic. Hard errors that make the frame untrustworthy remain only with their rejected forensic attempt.
 
-### §tools Executable tool resources
+### Executable tool resources
 
 §tools-resource-discovery **Executable capability discovery uses ordinary
 Plurnk resources.** No generated tool table rides the system packet. Every
@@ -5239,7 +5239,7 @@ same exact 403 from dispatch rather than a second documentation policy.
 Optional non-execution operations remain a separate `## Enabled Optional Operations`
 section because they are language extensions rather than executable tools.
 
-### §schemes Scheme-reference discovery
+### Scheme-reference discovery
 
 §schemes-directory Scheme references are ordinary workspace entries at `worker:///_plurnk/plurnk/<scheme>.md`. Turn0's FIND survey projects their summaries ({§worker-initialization-entry}); the model READs details on demand. No Resources section or separate example catalog is injected into the system packet.
 
@@ -5311,7 +5311,7 @@ one dormant authored source. A failed read fails packet assembly with its cause.
 The footer is one projection path and one authored source, not a second language
 contract.
 
-## §matcher Matcher selection and text regions
+## Matcher selection and text regions
 
 Matchers select resources and report evidence; text scopes independently
 address the exact readable text, regardless of mimetype. Syntax belongs to
@@ -5373,7 +5373,7 @@ one binary marker to fail a repository-wide text search.
 Glob anchoring (`TODO*` starts-with, `*TODO*` contains, `*.log` ends-with,
 `[Tt]odo*` character class) lives in the mimetypes framework.
 
-### §matcher-result Matcher selection and evidence
+### Matcher selection and evidence
 
 - §matcher-selection-signal **Matching carries navigation evidence** - a matcher is a boolean resource predicate. Internally, each selected resource carries `matches: MatchEvidence[]`, where `MatchEvidence` is `{channel?,locator?,region?}`; `channel` names the entry channel the finding was located in and is absent for channel-less resources such as log rows, so line coordinates cannot be mis-attributed across channels of the same resource ({§channel-selection-visibility}). `locator` preserves a structural address without overloading the resource row's `path`; `region` is a complete four-coordinate `TextRegion` only when the finding maps honestly into the exact text the model can READ. Exact duplicate evidence deduplicates. Relation findings map their indexed source spans through the same readable text coordinate index. FIND alone decides whether that grouped selection projects as resource rows or flat locations ({§find-result-projection}); the engine never fabricates a region or guesses which surgical READ the model wants.
 
@@ -5455,7 +5455,7 @@ an existing channel retain its stored type. Effective mimetype is stored in
 `entry_channels.mimetype` and drives matcher, projection, and binary handling.
 Text scope meaning does not vary by mimetype.
 
-### §render-rule Render rule
+### Render rule
 
 §render-rule-line-navigable-prefix Every textual content body with a source
 `startLine` renders with a coordinate prefix on each physical line, independent
@@ -5518,7 +5518,7 @@ Carried from the contract walk; durable.
   Any scoped textual transfer materializes create/update receipts; whole-channel
   changes do not. Operand selections remain independently visible per
   {§copy-move-observation}.
-- **READ rx** prefixes every textual line under {§render-rule}; eligible
+- **READ rx** prefixes every textual line under {§render-rule-line-navigable-prefix}; eligible
   editable resources carry `@hash N:`, and all others carry `N:`.
 - **FIND pattern** (`[{"pattern": …}]` in the heading, {§matcher-option}) applies to the addressed entry channel (all dialects), per-candidate via the in-tree `Matcher.matchAgainstContent` ({§matcher-dispatch}; status 200 = content hit → entry selected). The target scope and channel select candidates; the path-glob is the (target). On READ, EDIT, KILL, COPY and MOVE the same heading pattern selects lines within one resource ({§read-pattern}, {§edit-pattern}, {§kill-pattern}, {§copy-move-pattern}).
 - **Scoped KILL** on the **log** (`log:///`) removes a body span from its readable projection ({§log-kill-scope}); on an entry it deletes that span through the EDIT path ({§kill-scope-entry}). A whole-entry KILL deletes the entry, or one `#fragment` channel.
@@ -5532,7 +5532,7 @@ A KILL with a text-coordinate scope aimed at an entry-bearing scheme deletes exa
 
 ---
 
-## §test-taxonomy Testing and evidence
+## Testing and evidence
 
 | Tier | Location | LLM | Substrate |
 |---|---|---|---|

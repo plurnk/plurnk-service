@@ -78,7 +78,7 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
     return JSON.parse(row?.packet ?? "{}") as { sections: Array<Record<string, unknown>> };
 };
 
-test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, no embedded snippet", async () => {
+test("{§notice-content-offset-pointer} a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, no embedded snippet", async () => {
     // A NOTICE points at exact source retrievable through ops://<worker>/, not an automatic log row.
     // ({§turn-ops-entry}) — the model READs it at the cited lines. No snippet duplicating the bytes.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
@@ -115,7 +115,7 @@ test("a content-offset NOTICE (grammar_unenforced) carries a line:col pointer, n
     } finally { await db.close(); }
 });
 
-test("the notice buffer drains — a notice appears on exactly one packet, then is gone", async () => {
+test("{§notice-drain-on-read} the notice buffer drains — a notice appears on exactly one packet, then is gone", async () => {
     // Errors persist (log items); engine NOTICES are ephemeral — drain-on-read, one packet only.
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
@@ -339,7 +339,7 @@ test("engine brackets generate() with turn_awaiting_model → turn_generated not
     } finally { await db.close(); }
 });
 
-test("a parser warning remains advisory while the independently invalid mutation stays durable", async () => {
+test("{§notice-content-offset-pointer} a parser warning remains advisory while the independently invalid mutation stays durable", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);

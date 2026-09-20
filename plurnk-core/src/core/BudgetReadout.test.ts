@@ -14,7 +14,7 @@ const resolve = (
     return { content, usage: measure(content) };
 };
 
-test("BudgetReadout: the block opens as one JSON object whose total is the exact render-weight", () => {
+test("{§tokenomics-neutral-telemetry} BudgetReadout: the block opens as one JSON object whose total is the exact render-weight", () => {
     const { content, usage } = resolve(100_000, 100);
     assert.equal(content.split("\n").length, 1, "neutral telemetry is one JSON line");
     const parsed = JSON.parse(content) as { logTokensTotal: number; logTokensMax: number };
@@ -41,7 +41,7 @@ test("BudgetReadout: decimal-width boundaries converge without off-by-one substi
     }
 });
 
-test("BudgetReadout: over-ceiling pressure remains an honest telemetry object", () => {
+test("{§tokenomics-negative-pressure} BudgetReadout: over-ceiling pressure remains an honest telemetry object", () => {
     const { content, usage } = resolve(9, 62);
     assert.match(content, /\n\n> \[!WARNING\]\n> YOU MUST KILL/u);
     const parsed = JSON.parse(content.split("\n\n")[0]!) as { logTokensTotal: number; logTokensMax: number };

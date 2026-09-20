@@ -119,7 +119,7 @@ const waitFor = async (predicate: () => boolean): Promise<void> => {
     assert.ok(predicate(), "condition did not become true");
 };
 
-test("Task completion preserves tool errors while failed Tasks preserve protocol errors", async (t) => {
+test("{§mcp-errors} Task completion preserves tool errors while failed Tasks preserve protocol errors", async (t) => {
     const toolErrorFixture = taskHandler("tool-error");
     const toolErrorServer = await serveMcpHttp(
         t,

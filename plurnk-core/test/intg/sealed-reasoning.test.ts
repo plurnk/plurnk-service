@@ -29,7 +29,7 @@ const projectThroughAgui = async (db: Db, workerId: number, turnId: number) => {
     return events;
 };
 
-test("core preserves opaque state only in provider evidence while readable reasoning reaches AG-UI", async () => {
+test("{§methods-readable-reasoning} core preserves opaque state only in provider evidence while readable reasoning reaches AG-UI", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `sealed-${crypto.randomUUID()}`);

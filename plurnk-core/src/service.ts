@@ -212,6 +212,7 @@ export default class Service {
         finally { await db.close(); }
     }
 
+    // {§startup-admission} — listener, database, provider, daemon, in that order; a failure unwinds what it holds.
     static async #start(): Promise<void> {
         FileCreationPolicy.serviceScope();
         const dbPath = Service.#databasePath();

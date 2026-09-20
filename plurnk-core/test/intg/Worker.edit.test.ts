@@ -199,7 +199,7 @@ test("EDIT that changes nothing returns 304; only a content change updates the e
     } finally { await db.close(); }
 });
 
-test("Worker.edit: empty body clears the channel content (does not delete the entry)", async () => {
+test("{§edit-null-clears} Worker.edit: empty body clears the channel content (does not delete the entry)", async () => {
     const { db, workspaceId, workerId } = await setupContext();
     try {
         const k = new Worker();

@@ -89,7 +89,7 @@ const proposeAndResolve = async (
     return dispatchPromise;
 };
 
-test("{§copy-cross-scheme-copy}: COPY worker:/// → file:/// proposes then lands on accept", async () => {
+test("{§fs-create-copy} {§copy-cross-scheme-copy}: COPY worker:/// → file:/// proposes then lands on accept", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedWorker(ctx, "note", "copied content\n");
         const result = await proposeAndResolve(ctx, copyStmt(urlPath("worker", "/note"), urlPath("file", "/copied.txt")), "accept");
@@ -135,7 +135,7 @@ for (const transfer of [copyStmt, moveStmt]) {
     }
 }
 
-test("live and reconnect use one COPY destination proposal projection", async () => {
+test("{§notifications-loop-proposal} live and reconnect use one COPY destination proposal projection", async () => {
     await withWorkspace(async (_root, ctx) => {
         await seedWorker(ctx, "note", "copied content\n");
         const observed = deferred<ProposalPendingEvent>();
@@ -418,7 +418,7 @@ test("{§proposal-reject-fails}: a rejected MOVE into file:/// preserves the sou
     });
 });
 
-test("{§move-relocation-deletes-source}: file MOVE into a new subdir lands and unlinks", async () => {
+test("{§fs-create-move} {§move-relocation-deletes-source}: file MOVE into a new subdir lands and unlinks", async () => {
     // The file→file MOVE that was a silent noop: File lacked deleteEntry, so #handleMove returned a
     // bare 501 before any write — the model's correct MOVE did nothing while the worker concluded 200.
     await withWorkspace(async (root, ctx) => {

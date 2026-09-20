@@ -398,6 +398,7 @@ export default class ProposalLifecycle {
         };
     }
 
+    // {§proposal-disposition} — the persisted policy decides the owner; nothing downstream re-derives it.
     static #disposition(policy: LoopPolicy): ProposalDisposition {
         if (policy.proposals === "accept") return { owner: "loop", decision: "accept" };
         if (policy.proposals === "reject") {

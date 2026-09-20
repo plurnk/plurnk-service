@@ -567,7 +567,7 @@ test("Engine.dispatch: a scoped READ anchor includes nearby lines outside the re
     } finally { await db.close(); }
 });
 
-test("Engine.dispatch: a mutation between anchor resolution and landing is an edit collision", async () => {
+test("{§resolved-edit-statement} Engine.dispatch: a mutation between anchor resolution and landing is an edit collision", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `anchor-race-${crypto.randomUUID()}`);
     const target = urlPath("racy", "/unit.md");

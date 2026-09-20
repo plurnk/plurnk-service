@@ -6,7 +6,7 @@ import EnvDefaults from "../core/env-defaults.ts";
 import Paths from "../Paths.ts";
 import PlurnkSkill from "./PlurnkSkill.ts";
 
-test("{§plurnk-skill} listing is lazy and chapters retain their native owners", async () => {
+test("{§skills-installation-boundary} {§plurnk-skill} listing is lazy and chapters retain their native owners", async () => {
     const tree = await PlurnkSkill.load(resolve("../node_modules"));
     assert.equal(tree.document.name, "plurnk");
     assert.ok(tree.document.description);

@@ -183,6 +183,7 @@ export default class ClientInteractions {
         if (failure !== null) throw failure;
     }
 
+    // {§client-interaction-list} — a durable row is resumable only while its operation still waits.
     async list(workspaceId: number): Promise<ClientInteractionProjection[]> {
         const rows = await this.#db.client_interaction_list.all<InteractionRow>({ workspace_id: workspaceId });
         return rows

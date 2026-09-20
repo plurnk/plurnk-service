@@ -18,7 +18,7 @@ import {
 
 const execFileP = promisify(execFile);
 
-test("{§edit-execution}: reviewer replacement supersedes only its EDIT; the next scope addresses the landed content", async () => {
+test("{§scheme-edit-proposal-receipt} {§edit-result-render} {§edit-execution}: reviewer replacement supersedes only its EDIT; the next scope addresses the landed content", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-reviewed-batch-"));
     try {
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
