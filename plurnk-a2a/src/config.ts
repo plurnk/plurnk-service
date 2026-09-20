@@ -20,6 +20,7 @@ const CONTROL_KEYS = new Map([
     ["endpoint_url", `${PREFIX}ENDPOINT_URL`],
     ["workspace", `${PREFIX}WORKSPACE`],
     ["project_root", `${PREFIX}PROJECT_ROOT`],
+    ["proposals", `${PREFIX}PROPOSALS`],
     ["name", `${PREFIX}NAME`],
     ["description", `${PREFIX}DESCRIPTION`],
     ["version", `${PREFIX}VERSION`],
@@ -59,8 +60,13 @@ export interface HostedAgentConfiguration {
         readonly name: string;
         readonly projectRoot: string | null;
     };
+    readonly proposals: HostedProposals;
     readonly card: AgentCard;
 }
+
+// A2A carries no review channel, so an inbound loop settles its own proposals.
+export const HOSTED_PROPOSALS = ["accept", "reject"] as const;
+export type HostedProposals = typeof HOSTED_PROPOSALS[number];
 
 const assertAgentName = (name: string, variable: string): void => {
     if (!AGENT_NAME.test(name)) {
@@ -183,6 +189,13 @@ const required = (environ: NodeJS.ProcessEnv, field: string): string => {
         throw new Error(`${field} is required when PLURNK_A2A_EXPOSE=1.`);
     }
     return value;
+};
+
+const hostedProposals = (raw: string): HostedProposals => {
+    if (!(HOSTED_PROPOSALS as readonly string[]).includes(raw)) {
+        throw new Error(`PLURNK_A2A_PROPOSALS must be one of ${HOSTED_PROPOSALS.join(", ")}; got ${JSON.stringify(raw)}.`);
+    }
+    return raw as HostedProposals;
 };
 
 const positiveInteger = (raw: string | undefined, field: string): number => {
@@ -388,6 +401,7 @@ export const hostedAgentConfiguration = (
             name: required(environ, "PLURNK_A2A_WORKSPACE"),
             projectRoot: projectRoot === undefined || projectRoot.length === 0 ? null : projectRoot,
         },
+        proposals: hostedProposals(required(environ, "PLURNK_A2A_PROPOSALS")),
         card,
     };
 };

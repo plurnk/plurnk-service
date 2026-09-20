@@ -11,6 +11,7 @@ import {
 } from "@a2a-js/sdk/server/express";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import express from "express";
+import type { HostedProposals } from "./config.ts";
 import PlurnkAgentExecutor from "./PlurnkAgentExecutor.ts";
 import PlurnkRequestHandler from "./PlurnkRequestHandler.ts";
 import PlurnkTaskStore from "./PlurnkTaskStore.ts";
@@ -19,9 +20,10 @@ import WorkspaceBinding, { type A2aWorkspaceConfiguration } from "./WorkspaceBin
 export interface A2aModuleOptions {
     readonly workspace: A2aWorkspaceConfiguration;
     readonly card: AgentCard;
-    readonly host?: string;
-    readonly port?: number;
-    readonly endpointPath?: string;
+    readonly proposals: HostedProposals;
+    readonly host: string;
+    readonly port: number;
+    readonly endpointPath: string;
     /** Canonical public endpoint URL when it cannot be inferred from the listener. */
     readonly endpointUrl?: string;
 }
@@ -53,9 +55,9 @@ export default class Module {
     readonly #port: number;
 
     private constructor(application: ApplicationPort, options: A2aModuleOptions) {
-        this.#host = options.host ?? "127.0.0.1";
-        this.#port = options.port ?? 0;
-        this.#endpointPath = options.endpointPath ?? "/a2a";
+        this.#host = options.host;
+        this.#port = options.port;
+        this.#endpointPath = options.endpointPath;
         this.#endpointUrl = options.endpointUrl;
         if (!this.#endpointPath.startsWith("/") || this.#endpointPath.includes("?") || this.#endpointPath.includes("#")) {
             throw new TypeError("A2A endpointPath must be an absolute URL pathname without query or fragment.");
@@ -79,7 +81,7 @@ export default class Module {
 
         const workspace = new WorkspaceBinding(application, options.workspace);
         const store = new PlurnkTaskStore(application, workspace);
-        const executor = new PlurnkAgentExecutor(application, workspace, store);
+        const executor = new PlurnkAgentExecutor(application, workspace, store, options.proposals);
         const handler = new PlurnkRequestHandler(this.#card, store, executor);
         const app = express();
         app.use(`/${AGENT_CARD_PATH}`, agentCardHandler({ agentCardProvider: handler }));

@@ -5,6 +5,9 @@ import {
 } from "@a2a-js/sdk";
 import assert from "node:assert/strict";
 
+// The listener a test exposes, stated whole: the module holds no default of its own.
+export const A2A_LISTENER = Object.freeze({ host: "127.0.0.1", port: 0, endpointPath: "/a2a", proposals: "reject" } as const);
+
 export const a2aCard = (): AgentCard => ({
     name: "Plurnk composed A2A agent",
     description: "Deterministic Plurnk Core composition witness",

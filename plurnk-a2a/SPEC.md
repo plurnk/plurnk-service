@@ -110,6 +110,12 @@ Unsupported security claims are structurally absent
 rather than configurable. The official SDK serializes the card served at the
 standard well-known path.
 
+§a2a-hosted-proposals A2A carries no review channel, so an inbound Task's loop
+settles its own proposals: `PLURNK_A2A_PROPOSALS` states `accept` or `reject`,
+and `review` is outside its vocabulary. That one field is all the adapter states
+about the loop's policy; attendance is the daemon's to supply, because a remote
+agent can answer an interaction through `input-required`.
+
 §a2a-lazy-workspace Listener startup, Agent Card discovery, Task observations,
 and rejected Task lookups perform no workspace creation, attachment, hydration,
 model selection, or inference. An absent workspace yields an empty Task list or

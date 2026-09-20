@@ -14,6 +14,7 @@ const floor = {
     PLURNK_A2A_CONNECT_TIMEOUT: "30000",
     PLURNK_A2A_REQUEST_TIMEOUT: "86400000",
     PLURNK_A2A_ERROR_DETAIL_LIMIT: "512",
+    PLURNK_A2A_PROPOSALS: "reject",
 };
 
 test("outbound configuration preserves standard discovery targets and environment-owned credentials", () => {
@@ -160,6 +161,29 @@ test("{§a2a-hosted-card} the hosted card derives identity from environment and 
         outputModes: ["*/*"],
         securityRequirements: [],
     }]);
+});
+
+test("{§a2a-hosted-proposals} an inbound loop settles its own proposals, and review is outside the vocabulary", () => {
+    const hosted = {
+        ...floor,
+        PLURNK_A2A_EXPOSE: "1",
+        PLURNK_A2A_HOST: "127.0.0.1",
+        PLURNK_A2A_PORT: "0",
+        PLURNK_A2A_ENDPOINT_PATH: "/a2a",
+        PLURNK_A2A_WORKSPACE: "research",
+        PLURNK_A2A_NAME: "Research agent",
+        PLURNK_A2A_DESCRIPTION: "Researches questions",
+        PLURNK_A2A_VERSION: "1.0.0",
+        PLURNK_A2A_SKILLS: "[]",
+    };
+    assert.equal(hostedAgentConfiguration(hosted)?.proposals, "reject");
+    assert.equal(hostedAgentConfiguration({ ...hosted, PLURNK_A2A_PROPOSALS: "accept" })?.proposals, "accept");
+    assert.throws(
+        () => hostedAgentConfiguration({ ...hosted, PLURNK_A2A_PROPOSALS: "review" }),
+        /PLURNK_A2A_PROPOSALS must be one of accept, reject; got "review"/,
+    );
+    const { PLURNK_A2A_PROPOSALS: _unset, ...missing } = hosted;
+    assert.throws(() => hostedAgentConfiguration(missing), /PLURNK_A2A_PROPOSALS is required when PLURNK_A2A_EXPOSE=1/);
 });
 
 test("hosted exposure is disabled without identity requirements and rejects unsupported declarations", () => {

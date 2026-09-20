@@ -23,6 +23,7 @@ import {
     type ClientInteractionProjection,
     type OperationResult,
 } from "@plurnk/plurnk-contracts";
+import type { HostedProposals } from "./config.ts";
 import PlurnkTaskStore, { type PlurnkTaskBinding } from "./PlurnkTaskStore.ts";
 import type WorkspaceBinding from "./WorkspaceBinding.ts";
 
@@ -71,14 +72,16 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
     readonly #port: ApplicationPort;
     readonly #workspace: WorkspaceBinding;
     readonly #store: PlurnkTaskStore;
+    readonly #proposals: HostedProposals;
     readonly #contextLocks = new Map<string, Promise<void>>();
     readonly #ownedContexts = new Set<string>();
     readonly #activeTasks = new Set<string>();
 
-    constructor(port: ApplicationPort, workspace: WorkspaceBinding, store: PlurnkTaskStore) {
+    constructor(port: ApplicationPort, workspace: WorkspaceBinding, store: PlurnkTaskStore, proposals: HostedProposals) {
         this.#port = port;
         this.#workspace = workspace;
         this.#store = store;
+        this.#proposals = proposals;
     }
 
     async validateMessage(message: Message | undefined): Promise<void> {
@@ -130,7 +133,7 @@ export default class PlurnkAgentExecutor implements AgentExecutor {
                     }] : []),
                     source: PlurnkAgentExecutor.#source(request),
                     messageAddress: PlurnkAgentExecutor.#source(request),
-                    policy: { proposals: "reject" },
+                    policy: { proposals: this.#proposals },
                 });
             }, workspaceId, () => {
                 events.publish(AgentEvent.task(snapshot));

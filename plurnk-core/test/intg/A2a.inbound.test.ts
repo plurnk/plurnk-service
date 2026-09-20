@@ -13,7 +13,7 @@ import {
 } from "@plurnk/plurnk-a2a";
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { a2aCard, streamPayload as payload } from "./_a2a.ts";
+import { A2A_LISTENER, a2aCard, streamPayload as payload } from "./_a2a.ts";
 import { openMigrated } from "./_helpers.ts";
 import { makeMockResponse } from "./_rpc.ts";
 
@@ -71,7 +71,8 @@ test("{§a2a-inbound-exposure}: an unrelated addressed reply is not an A2A artif
     daemon.registerModule(OutboundModule.init({}));
     const workspace = await daemon.createWorkspace({ name: "a2a-reply-audience", projectRoot: null });
     const registration = A2aModule.init({
-        workspace: { name: workspace.workspaceName, projectRoot: null }, card: a2aCard(), host: "127.0.0.1", port: 0,
+        workspace: { name: workspace.workspaceName, projectRoot: null }, card: a2aCard(),
+        ...A2A_LISTENER,
     });
     let exposure: A2aModule | undefined;
     daemon.registerModule({ start: async (port) => { exposure = await registration.start(port); return exposure; } });
@@ -162,8 +163,7 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
     const registration = A2aModule.init({
         workspace: { name: workspace.workspaceName, projectRoot: workspace.projectRoot },
         card: a2aCard(),
-        host: "127.0.0.1",
-        port: 0,
+        ...A2A_LISTENER,
     });
     let a2a: A2aModule | null = null;
     daemon.registerModule({
@@ -355,8 +355,7 @@ test("{§a2a-lazy-workspace}: discovery and Task observations are passive until 
     const registration = A2aModule.init({
         workspace: { name: workspaceName, projectRoot: null },
         card: a2aCard(),
-        host: "127.0.0.1",
-        port: 0,
+        ...A2A_LISTENER,
     });
     let listener: A2aModule | null = null;
     daemon.registerModule({
@@ -436,8 +435,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
     const firstExposure = A2aModule.init({
         workspace: { name: workspace.workspaceName, projectRoot: workspace.projectRoot },
         card: a2aCard(),
-        host: "127.0.0.1",
-        port: 0,
+        ...A2A_LISTENER,
     });
     daemon.registerModule({
         start: async (port) => {
@@ -472,8 +470,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
         const secondExposure = A2aModule.init({
             workspace: { name: workspace.workspaceName, projectRoot: workspace.projectRoot },
             card: a2aCard(),
-            host: "127.0.0.1",
-            port: 0,
+            ...A2A_LISTENER,
         });
         daemon.registerModule({
             start: async (port) => {
@@ -533,8 +530,7 @@ test("{§a2a-inbound-exposure}: A2A cancellation settles the ordinary Task worke
     const registration = A2aModule.init({
         workspace: { name: workspace.workspaceName, projectRoot: workspace.projectRoot },
         card: a2aCard(),
-        host: "127.0.0.1",
-        port: 0,
+        ...A2A_LISTENER,
     });
     let a2a: A2aModule | null = null;
     daemon.registerModule({

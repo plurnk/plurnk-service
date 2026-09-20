@@ -2,7 +2,7 @@
 import { Module as A2aModule } from "@plurnk/plurnk-a2a";
 import { Mock, type Provider } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { a2aCard } from "../intg/_a2a.ts";
+import { A2A_LISTENER, a2aCard } from "../intg/_a2a.ts";
 import { openMigrated } from "../intg/_helpers.ts";
 import { makeMockResponse } from "../intg/_rpc.ts";
 
@@ -52,6 +52,7 @@ daemon.registerModule({
         const adapter = await A2aModule.init({
             workspace: { name: "a2a-tck", projectRoot: null },
             card: a2aCard(),
+            ...A2A_LISTENER,
         }).start(port);
         const address = adapter.address();
         baseUrl = `http://${address.host}:${address.port}`;

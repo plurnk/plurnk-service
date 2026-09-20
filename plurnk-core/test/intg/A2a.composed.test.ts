@@ -12,7 +12,7 @@ import {
 } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { a2aCard } from "./_a2a.ts";
+import { A2A_LISTENER, a2aCard } from "./_a2a.ts";
 import { openMigrated } from "./_helpers.ts";
 import { makeMockResponse } from "./_rpc.ts";
 
@@ -81,8 +81,7 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
             projectRoot: agentWorkspace.projectRoot,
         },
         card: a2aCard(),
-        host: "127.0.0.1",
-        port: 0,
+        ...A2A_LISTENER,
     });
     let listener: A2aModule | null = null;
     agent.registerModule({
@@ -213,8 +212,7 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
             projectRoot: agentWorkspace.projectRoot,
         },
         card: a2aCard(),
-        host: "127.0.0.1",
-        port: 0,
+        ...A2A_LISTENER,
     });
     let listener: A2aModule | null = null;
     agent.registerModule({

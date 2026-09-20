@@ -6,7 +6,7 @@ import test, { type TestContext } from "node:test";
 import { Module as A2aModule } from "@plurnk/plurnk-a2a";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { a2aCard } from "./_a2a.ts";
+import { A2A_LISTENER, a2aCard } from "./_a2a.ts";
 import { openMigrated } from "./_helpers.ts";
 import { makeMockResponse } from "./_rpc.ts";
 
@@ -38,6 +38,7 @@ const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof makeM
             const adapter = await A2aModule.init({
                 workspace: { name: workspace.workspaceName, projectRoot: null },
                 card: a2aCard(),
+                ...A2A_LISTENER,
             }).start(port);
             endpoint = adapter.agentCard().supportedInterfaces[0]!.url;
             return adapter;
