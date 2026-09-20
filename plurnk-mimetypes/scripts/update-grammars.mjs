@@ -11,7 +11,6 @@ const execFileAsync = promisify(execFile);
 const PACKAGE_PREFIX = "@plurnk/plurnk-mimetypes-grammar-";
 const DIRECTORY_PREFIX = "plurnk-mimetypes-grammar-";
 const CANONICAL_REMOTE_PREFIX = "ssh://git@ssh.possumtech.com/plurnk/";
-const AGENT_ID = "plurnk_codex";
 
 const invariant = (condition, message) => {
     if (!condition) throw new Error(message);
@@ -70,8 +69,9 @@ const checkIdentity = async (run, directory) => {
         run("git", ["var", "GIT_AUTHOR_IDENT"], directory),
         run("git", ["config", "user.email"], directory),
     ]);
-    invariant(author.startsWith(`${AGENT_ID} <`),
-        `${path.basename(directory)}: active Git author is not ${AGENT_ID}`);
+    // The identity is the checkout's to configure; the procedure requires only that one
+    // exists and can sign, because the commit it creates is signed.
+    invariant(author.trim() !== "", `${path.basename(directory)}: no Git author is configured`);
     invariant(email.trim() !== "", `${path.basename(directory)}: Git signer identity is unavailable`);
 };
 

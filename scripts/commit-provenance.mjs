@@ -1,23 +1,43 @@
+// pre-push provenance. Two rules, one of them universal:
+//
+//   1. Every pushed commit carries a good signature. This holds in any clone.
+//   2. Its author and committer are identities this clone accepts — a local policy,
+//      because who may author here is a property of the installation, not of the
+//      project. Configure it per clone; unconfigured, rule 1 still applies.
+//
+//       git config --add plurnk.allowedAuthor "Name <address>"
+//       git config plurnk.allowedCommitter    "Name <address>"
+//
+// Each allowedAuthor is one exact `Name <address>`; repeat the flag for more. The
+// committer is single-valued and doubles as the required signer. Nothing here names
+// an identity: a register of who may push belongs to the clone that enforces it.
 import { spawnSync } from "node:child_process";
 
 const ZERO = "0".repeat(40);
 
-export const ALLOWED_AUTHORS = new Set([
-    "wikitopian\0wikitopian@pm.me",
-    "plurnk_codex\0wikitopian+plurnk_codex@pm.me",
-    "plurnk_oc\0wikitopian+plurnk_oc@pm.me",
-    "plurnk_pk\0wikitopian+plurnk_pk@pm.me",
-    "plurnk_ds\0wikitopian+plurnk_ds@pm.me",
-    "plurnk_claude\0wikitopian+plurnk_claude@pm.me",
-]);
+const config = (key) => {
+    const result = spawnSync("git", ["config", "--get-all", key], { encoding: "utf8" });
+    // Exit 1 is "not set", which is the ordinary unconfigured case, not a failure.
+    return result.status === 0 ? result.stdout.split("\n").map((line) => line.trim()).filter(Boolean) : [];
+};
 
-export const validateCommit = ({ sha, authorName, authorEmail, committerName, committerEmail, signature }) => {
+export const readPolicy = () => ({
+    authors: new Set(config("plurnk.allowedAuthor")),
+    committer: config("plurnk.allowedCommitter")[0] ?? null,
+});
+
+export const identity = (name, email) => `${name} <${email}>`;
+
+export const validateCommit = (
+    { sha, authorName, authorEmail, committerName, committerEmail, signature },
+    policy = { authors: new Set(), committer: null },
+) => {
     const errors = [];
-    if (!ALLOWED_AUTHORS.has(`${authorName}\0${authorEmail}`)) {
-        errors.push(`unexpected author ${authorName} <${authorEmail}>`);
+    if (policy.authors.size > 0 && !policy.authors.has(identity(authorName, authorEmail))) {
+        errors.push(`unexpected author ${identity(authorName, authorEmail)}`);
     }
-    if (committerName !== "wikitopian" || committerEmail !== "wikitopian@pm.me") {
-        errors.push(`unexpected committer ${committerName} <${committerEmail}>`);
+    if (policy.committer !== null && identity(committerName, committerEmail) !== policy.committer) {
+        errors.push(`unexpected committer ${identity(committerName, committerEmail)}`);
     }
     if (signature !== "G") errors.push(`signature status is ${signature || "missing"}, expected G`);
     return errors.map((error) => `${sha.slice(0, 12)}: ${error}`);
@@ -58,12 +78,15 @@ if (import.meta.main) {
         console.error("usage: commit-provenance.mjs <remote> <local-sha> <remote-sha>");
         process.exit(2);
     }
-    const errors = inspect(pushedCommits(remote, localSha, remoteSha)).flatMap(validateCommit);
+    const policy = readPolicy();
+    const errors = inspect(pushedCommits(remote, localSha, remoteSha))
+        .flatMap((commit) => validateCommit(commit, policy));
     if (errors.length > 0) {
         console.error("pre-push: commit provenance rejected:");
         for (const error of errors) console.error(`  ${error}`);
-        const authorNames = [...ALLOWED_AUTHORS].map((entry) => entry.split("\0")[0]);
-        console.error(`authors may be ${authorNames.join(" or ")}; the committer and signer must be wikitopian`);
+        if (policy.authors.size > 0) console.error(`authors may be ${[...policy.authors].join(" or ")}`);
+        if (policy.committer !== null) console.error(`the committer and signer must be ${policy.committer}`);
+        console.error("this clone's policy is git config plurnk.allowedAuthor / plurnk.allowedCommitter");
         process.exit(1);
     }
 }

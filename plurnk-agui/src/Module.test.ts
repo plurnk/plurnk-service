@@ -1386,7 +1386,7 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
             forwardedProps: {
                 plurnk: {
                     workspace: "interrupt-ownership",
-                    action: { kind: "loop.inject", prompt: "I am plurnk_pk" },
+                    action: { kind: "loop.inject", prompt: "I am the caller" },
                 },
             },
         });

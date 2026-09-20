@@ -852,8 +852,8 @@ have one durable winner, and cancellation cannot be reversed by a timer.
 stamped by trigger the first time a loop enters status 102, at insertion for a
 loop created running and on the move from queued otherwise; later re-claims never
 move it. The digest reports, per loop, the claim time and how long after it the
-first model turn started, so a stall between claim and inference (the moltbook
-heartbeat waited 7.5 h, #703) is a number rather than a gap.
+first model turn started, so a stall between claim and inference (a heartbeat has
+waited 7.5 h, #703) is a number rather than a gap.
 
 §digest-storage **The digest states the file's health.** Beside the database path it
 reports the file size, the free pages it holds, its `auto_vacuum` mode, and the six
@@ -1377,7 +1377,7 @@ sequences; native messages and workspace outputs use opaque identifiers rather t
 pretending to be turn coordinates. `worker://<name>` addresses the actor, not a
 historical execution. No address grants ownership or access restrictions.
 
-§fs-namespace **The workspace is a mount namespace; `project_root` is the model's `/`.** A namespace *names*; it does not confine. Host paths do not exist in it, and no engine surface folds a host-absolute spelling onto a member — not because a wall refuses them, but because those coordinates have no meaning here. What the model can reach is exactly the mount table, which the operator composes: a membership overlay routinely mounts a path from above the root (`../POSSUMTECH.md` is an ordinary `include` grantor, {§fs-visibility-grantors}), and it arrives named in namespace coordinates like everything else. Plurnk is therefore not a sandbox and claims no containment — confinement is the host's job; what Plurnk owns is authority, consent and audit. The root is **fixed immutably at workspace creation** (headless is forever); the mount table changes only through the declared membership overlay ({§membership}), never by re-rooting. At `project_root = /` the namespace is the whole filesystem and every rule below degenerates to identity — the design's proof case, and the common benchmark topology.
+§fs-namespace **The workspace is a mount namespace; `project_root` is the model's `/`.** A namespace *names*; it does not confine. Host paths do not exist in it, and no engine surface folds a host-absolute spelling onto a member — not because a wall refuses them, but because those coordinates have no meaning here. What the model can reach is exactly the mount table, which the operator composes: a membership overlay routinely mounts a path from above the root (`../house-policy.md` is an ordinary `include` grantor, {§fs-visibility-grantors}), and it arrives named in namespace coordinates like everything else. Plurnk is therefore not a sandbox and claims no containment — confinement is the host's job; what Plurnk owns is authority, consent and audit. The root is **fixed immutably at workspace creation** (headless is forever); the mount table changes only through the declared membership overlay ({§membership}), never by re-rooting. At `project_root = /` the namespace is the whole filesystem and every rule below degenerates to identity — the design's proof case, and the common benchmark topology.
 
 §fs-namei **Resolution is namei over the mount table.** The model's CWD is permanently `/`, so `src/x.md` and `/src/x.md` are the same name — the slash rule is a corollary, never a legislated equivalence. Resolution is lexical: `.` and `..` resolve before anything touches storage (`..` is legal *during* traversal); the final name lands in the root subtree (a bare key), on a declared outside-root mount (a `../`-prefixed key — the git-style overlay), or names nothing (404 carrying the resolved form). Containment is the resolution semantics — there is no separate traversal check to forget.
 

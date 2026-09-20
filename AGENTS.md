@@ -1,8 +1,7 @@
 # PLURNK platform monorepo
 
-Read `../POSSUMTECH.md` completely before this file. Stop if that central
-contract is unavailable. This file adds only rules specific to the open-source
-PLURNK platform monorepo.
+The field guide: how to work in this repository. It is self-contained — everything
+an agent or a contributor needs to act is here or in the documents it names.
 
 This repository is an npm workspace containing the daemon
 (`plurnk-core`, published as `@plurnk/plurnk-service`), the contracts and
@@ -17,11 +16,11 @@ Where things are, for an agent that has to act before it has read everything:
   one alias per line: `PLURNK_MODEL_<alias>=<provider>/<model>`. Alias names may carry
   lowercase (`PLURNK_MODEL_ibm`). `PLURNK_MODEL=<alias>` selects one per run. The
   operator's daily default is whatever `PLURNK_MODEL` that file sets.
-- **Provider credentials are `export`s in `~/.bashrc`**, never in any `.env`.
-  `scripts/operator-environment.sh` re-executes its command under
-  `bash --rcfile ~/.bashrc`, so every live, demo, bench, and candidate run sees
-  `<PROVIDER>_API_KEY`. Check readiness by name only:
-  `grep -oE '^\s*export [A-Za-z_0-9]+' ~/.bashrc`. Never print a value.
+- **Provider credentials live in the login shell environment**, never in any `.env`
+  and never in the repository. `scripts/operator-environment.sh` re-executes its
+  command under `~/.bashrc` when one exists (and runs it unchanged otherwise), so
+  every live, demo, bench and candidate run inherits `<PROVIDER>_API_KEY`. Check
+  readiness by name only; never print, echo or log a credential's value.
 - **Run a model** from `plurnk-core`: `PLURNK_MODEL=<alias> npm run test:live`
   (specimens in `test/live/`), `npm run test:demo` (stories), or
   `npm run test:live:specimen -- "<exact name>"`. The whole-platform candidate is
@@ -32,11 +31,15 @@ Where things are, for an agent that has to act before it has read everything:
   `packetNNN.user.md` and `packetNNN.system.md` (what it saw). Read the digest;
   the database is evidence, never the diagnostic interface. For any other database:
   `npm run dev:digest -- <copy of plurnk.db> [out-dir]` from `plurnk-core`, over a copy.
-- **The dogfood daemon** is the systemd user unit `plurnk.service`
-  (`systemctl --user status plurnk`, `journalctl --user -u plurnk -f`), listening on
-  `127.0.0.1:1066`, running this checkout's source. It is the operator's; leave it alone.
-- **The bench lane** is `../plurnk-bench`; read `deepswe/README.md` there before
-  launching anything, and never reconstruct its invocation from memory.
+- **A daemon may already be attached to this checkout**, run from its source and
+  listening on `PLURNK_PORT` (1066 by default) — commonly as a user service
+  (`systemctl --user status plurnk`, `journalctl --user -u plurnk -f`). Treat any
+  daemon you did not start as a live session someone is using: never stop it to free
+  a port, never select processes by the directory they happen to sit in, and never
+  read its database except through a copy.
+- **The bench lane** is the `plurnk-bench` checkout beside this one; read
+  `deepswe/README.md` there before launching anything, and never reconstruct its
+  invocation from memory.
 - **Landing**: topic branch, `npm run -s root:lint`, then `git push origin <branch>:main`.
   The pre-push drill is the gate (lint, unit, intg, client conformance against
   `../plurnk`). It runs the pushed commit in a throwaway
@@ -49,14 +52,15 @@ Where things are, for an agent that has to act before it has read everything:
   lowercase-led line citing `(#N)`, no body.
 - **Release train** (`scripts/release-*.mjs`): `npm run release:version -- <service-version>`
   stamps the platform; land the stamp through the normal gate. Then, from a clean `main` with
-  `PLURNK_CLIENT_CHECKOUT=$HOME/ptl/plurnk` and `PLURNK_EXTERNAL_REPOS_ROOT=$HOME/ptl` exported,
+  `PLURNK_CLIENT_CHECKOUT=<client checkout>` and `PLURNK_EXTERNAL_REPOS_ROOT=<directory holding
+  the sibling checkouts>` exported,
   run `npm run release:publish -- <client-version>` under `setsid` with its output in a log:
   it outruns a ten-minute shell cap, so watch the log, never the registry. It re-runs the
   drill, then `release-gates` (one bounded `npm audit` that warns and continues when the
   advisory endpoint is rate-limited, #649, and fails only on a real ≥moderate finding), then
   publishes the service and the client. Afterwards, signed tags: `v<service>` here,
-  `v<client>` in `../plurnk`;
-  then relock `../plurnk-bench` with `npm update @plurnk/plurnk-service --no-audit --no-fund`.
+  `v<client>` in the client checkout;
+  then relock the bench checkout with `npm update @plurnk/plurnk-service --no-audit --no-fund`.
   Every install passes `--no-audit` (the project `.npmrc` sets `audit=false`): npm's
   advisory endpoint drops over-limit requests instead of answering 429, and retries and
   probes only feed the limit.
@@ -182,19 +186,19 @@ PLURNK_MODEL=<selector> npm run test:live:specimen -- <exact name>       # one s
 
 ## Dogfood teamwork sessions
 
-The operator drives the dogfood daemon in an ordinary, unscripted conversation — web research,
+An operator drives a daemon in an ordinary, unscripted conversation — web research,
 questions about plurnk's own syntax, changing their mind mid-task — and the session is then read
 like a demo. Its lack of structure is the point: benchmarks grade the workspace afterwards, a
-conversation grades the reply. Never digest the live database; copy it first.
+conversation grades the reply. Never digest a live database; copy it first, and put the copy
+somewhere with room, because it is large.
 
 ```sh
-# 1. a consistent copy (the daemon keeps running); the copy is bulky, so it lives on the backup drive
+# 1. a consistent copy (the daemon keeps running)
 node -e 'new (require("node:sqlite").DatabaseSync)(process.env.HOME+"/.local/share/plurnk/plurnk.db",{readOnly:true})
-  .exec("VACUUM INTO \x27/media/T7/plurnk_claude/dogfood-db/teamwork-<stamp>.db\x27")'
+  .exec("VACUUM INTO \x27<copy>.db\x27")'
 
-# 2. digest where the operator can read along, beside the drill runs
-cd plurnk-core && npm run -s dev:digest -- /media/T7/plurnk_claude/dogfood-db/teamwork-<stamp>.db \
-  ~/benchmarks/dogfood-teamwork-<stamp>/digest
+# 2. digest the copy, beside the drill runs
+cd plurnk-core && npm run -s dev:digest -- <copy>.db ~/benchmarks/dogfood-teamwork-<stamp>/digest
 ```
 
 Report friction first (the standing rule): refused or failed operations by

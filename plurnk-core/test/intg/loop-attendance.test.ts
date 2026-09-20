@@ -1,5 +1,5 @@
 // {§loop-attendance} — a run that declares nobody is attending must never stop at a wait only a
-// human could end. Measured cost of the gap (plurnk-bench dumbox-20260918, run4): after two 600 s
+// human could end. Measured cost of the gap on a weak-model bench run: after two 600 s
 // provider cuts the root loop parked at 17:53:32 and the client's own clock cancelled it at
 // 18:48:02 — 54 minutes 30 seconds of an 88-minute budget spent in silence, because
 // `LoopLifecycle.park` stops the execution clock and no wake timer arms without an open stream.

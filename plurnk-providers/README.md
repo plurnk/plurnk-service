@@ -144,18 +144,10 @@ Authorization and credential failures are reported as their own class, never as
 model failures. Repeated stochastic and stable operation failures are reported
 separately in the ledger's specimens.
 
-### Ledger
-
-| Alias | Route (snapshot) | Class | Evidence |
-|---|---|---|---|
-| 38 configured aliases — 2026-07 sweep | — | 20 × pass; 14 × auth/credential/transport; 4 × operation-level | Initial READ line-slice sweep (`#7`) |
-| `cfgpt120b`, `grok` | — | op:stochastic → pass on replay | `#7` |
-| `cfkimi27`, `kimi` | — | op:stable-fail (unresolved, unweakened assertion) | `#7` |
-| `cfds1` | `cloudflare/@cf/deepseek-ai/deepseek-r1-distill-qwen-32b` | op:stable-fail — READ repeated 13 turns to the 508 strike threshold; retrieval materialization verified (`2:beta` present, exact 409 recovery given) | `/home/hyzen/benchmarks/live-contract-read-L-TIgart/digest/` (`#7`) |
-
-The full current classifications of every configured alias are refreshed by the
-frozen-candidate live drill's honest reporting; this ledger is the maintained
-record of that procedure, never a substitute for it.
+A route's classification is established by running the live drill against it and
+reading the digest, never by reputation. Record the outcome where the work is
+tracked; this README owns the procedure and the vocabulary, not a snapshot of any
+one installation's configured aliases.
 
 ## Development
 

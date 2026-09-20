@@ -111,7 +111,7 @@ test("update stops at the first failed lifecycle command", async () => {
             return { stdout: "ssh://git@ssh.possumtech.com/plurnk/plurnk-mimetypes-grammar-alpha.git\n", stderr: "" };
         }
         if (command === "git" && args[0] === "rev-parse") return { stdout: "abc\n", stderr: "" };
-        if (command === "git" && args[0] === "var") return { stdout: "plurnk_codex <agent@example.test> 0 +0000\n", stderr: "" };
+        if (command === "git" && args[0] === "var") return { stdout: "an-agent <agent@example.test> 0 +0000\n", stderr: "" };
         if (command === "git" && args[0] === "config") return { stdout: "signer@example.test\n", stderr: "" };
         return { stdout: "", stderr: "" };
     };

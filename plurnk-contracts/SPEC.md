@@ -380,9 +380,8 @@ The authored source remains unchanged. This spelling adds no executor, discovery
 entry, or model-facing teaching. An explicitly registered `js` retains its own
 identity; absent `node`, the shorthand grants no executable capability.
 
-§one-line-turn **A whole turn on one line.** The most frequent private rejection
-across the 2026-09-12/13 dumbox runs (five of eleven) was a turn emitted as a
-single line: prose, then heading after heading with no line ending anywhere. Two
+§one-line-turn **A whole turn on one line.** A model may emit a turn as a single
+line: prose, then heading after heading with no line ending anywhere. Two
 rules absorb it. The next opener on a heading's own line, after the heading's
 slots, ends that heading's block bodyless and opens ({§empty-section}), so
 `````EDIT (a.rs) <60,66> <!-- drop --> ````EDIT (b.rs) <31,38>` is two scoped
@@ -693,8 +692,8 @@ parses as `{ kind: "local", raw: "data/users.html", fragment: "readable" }`: the
 the path and the rest is the channel (a spelling that opens with `#` names no path and stays
 whole), exactly as `worker:///a.html#readable` decomposes, so
 the `#channel` a READ receipt advertises (`channels: {"#readable": N}`) is addressable in the
-same bare spelling the receipt used (2026-09-13 dumbox demo: the model appended it and was
-told no entry existed at `users.html#readable`). `raw` is therefore always the path alone; a
+same bare spelling the receipt used: a model that appends the channel to the path it was just
+shown addresses the same entry. `raw` is therefore always the path alone; a
 bare path never contains a literal `#`, and `PlurnkParser.stringify` renders the channel back.
 Without a `#` the field is absent, so an older `LocalPath` literal stays valid.
 
@@ -1439,9 +1438,7 @@ diagnostics are:
   its flags (`/(?i)shutdown|reactor/` is `/shutdown|reactor/i`; `^(?i)note:` is the
   anchored regex with `i`), with one warning-severity advisory naming the flag
   position after the closing `/`. Only a leading group of `i`, `m` and `s` lifts;
-  `(?i:…)` scoped modifiers are valid ECMAScript and pass through untouched. From
-  the 2026-09-13 dumbox demo pass, where the model wrote the inline form, was
-  refused, and rewrote it as a trailing flag one turn later.
+  `(?i:…)` scoped modifiers are valid ECMAScript and pass through untouched.
 - §regex-trailing-text A valid `/pattern/flags` prefix followed by horizontal
   whitespace and trailing text receives one concise trailing-content
   diagnostic, with or without flags, without assuming what the extra text was
@@ -1472,9 +1469,8 @@ diagnostics are:
   any order, each taken once and only when the heading did not already carry that slot,
   until what remains is the matcher. `READ (a.rs) /fn resolve_/ <1,-1> <!-- entities -->`
   is the same operation as `READ (a.rs) <1,-1> /fn resolve_/ <!-- entities -->`, with
-  one warning-severity advisory naming the canonical order for the scope or block
-  (operator, 2026-09-13: "swallow up anything that passes as legitimate plurnk"; the
-  2026-09-13 dumbox run refused three headings for this in one turn). A matcher that
+  one warning-severity advisory naming the canonical order for the scope or block:
+  the grammar swallows up anything that passes as legitimate plurnk. A matcher that
   itself ends in one of those shapes takes the option escape.
 - §matcher-body-redirect **A body beneath those headings.** Text below the heading
   of a FIND, READ or KILL is a body, and those operations take none: the builder

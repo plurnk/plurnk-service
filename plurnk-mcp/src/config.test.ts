@@ -354,14 +354,14 @@ test("{§mcp-configuration-cascade} client companions replace complete fields ov
     });
     assert.ok(base);
     const definitions = overlayServerDefinitions({
-        PLURNK_MCP_GITEA_ARGS: '["plurnk_pk"]',
+        PLURNK_MCP_GITEA_ARGS: '["an-org"]',
         PLURNK_MCP_GITEA_ENV: '{"TENANT":"project"}',
     }, new Map([["gitea", base]]));
     assert.deepEqual(definitions.get("gitea"), {
         name: "gitea",
         transport: "stdio",
         command: "gitea-mcp",
-        args: ["plurnk_pk"],
+        args: ["an-org"],
         env: { TENANT: "project" },
         tools: ["issue_read"],
         read: [],

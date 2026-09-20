@@ -946,8 +946,8 @@ leaf's owned `update:pin --check` operation and never changes a checkout.
 
 A coordinated update requires one existing repository-local issue number for
 every leaf it will change. Before mutation, each checkout must be clean on
-`main`, equal canonical Gitea `origin/main`, and use the registered
-`plurnk_codex` author with an available human signer. The procedure creates a
+`main`, equal canonical Gitea `origin/main`, and carry a configured author with an
+available signer. The procedure creates a
 Conventional topic branch, updates the owned pin, rebuilds and verifies the
 artifact, increments the patch version and lockfile together, creates one
 signed Conventional commit ending in the leaf's issue number, and pushes only
