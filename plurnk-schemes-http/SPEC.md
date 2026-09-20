@@ -60,10 +60,16 @@ Exact-versus-pattern FIND preparation uses the shared
 path-pattern grammar.
 
 §http-outbound-proposes **A request that changes a remote resource proposes.**
-POST, PUT, and the remote DELETE declare `effect: "host"` and return `202`
-under {§proposal}; the panel's `PLURNK_SERVICE_EFFECT_HOST` decides whether
-that settles by consent or runs unattended, exactly as it does for a
-subprocess ({§exec-host-proposes}). GET is observation and stays ungated. The
+POST, PUT, the remote DELETE, and a WebSocket frame (EDIT or SEND on an open
+`ws(s)://` socket) declare `effect: "host"` and return `202` under
+{§proposal}; the panel's `PLURNK_SERVICE_EFFECT_HOST` decides whether that
+settles by consent or runs unattended, exactly as it does for a subprocess
+({§exec-host-proposes}). GET is observation and stays ungated, and so is the
+socket open a `ws(s)://` READ performs: an acquisition leaks only what a URL
+can carry, and that is the same for both. A frame needs an open socket, so that
+refusal arrives before any proposal — nobody is asked to approve a message to a
+connection that is not there — and the admission runs again at apply, because
+the socket is live and may have closed while the question was open. The
 proposal carries the method, target, and body, and the resolver may replace
 the body before it is sent; nothing leaves the process until the settlement
 accepts. This is the same reason a local `EDIT` proposes: Plurnk does not
@@ -528,7 +534,9 @@ policy; its consumers supply those boundaries and the projection capability.
 `wss` is a first-class data scheme; `ws` routes to the same handler. WebSocket
 is bidirectional and stateful, not an HTTP content type. It uses `messages` as a
 `text/plain` default channel and the same canonical network address contract
-{§network-address}.
+{§network-address}. A frame written by EDIT or SEND is data leaving the
+process and proposes ({§http-outbound-proposes}); the socket open itself is an
+acquisition and does not.
 
 ### §ws-lifecycle Socket ownership and settlement
 

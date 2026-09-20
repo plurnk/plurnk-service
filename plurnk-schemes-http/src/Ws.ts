@@ -17,6 +17,9 @@ import type {
     KillStatement,
     EntryData,
     UrlPath,
+    ProposalResult,
+    ProposalApplyRequest,
+    ProposalApplyResult,
 } from "@plurnk/plurnk-schemes";
 import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
@@ -59,6 +62,9 @@ interface SocketOwner {
     readonly done: Promise<void>;
     readonly acquisition: Promise<RepresentationPreparationResult>;
 }
+
+// An admitted frame target, or the refusal that stands in for one ({§http-outbound-proposes}).
+type OpenSocket = { ok: true; address: NetworkAddress; socket: Socket } | { ok: false; result: PassthroughResult };
 
 const SOCKET_OPEN = 1;
 const SOCKET_CLOSE_NORMAL = 1000;
@@ -416,7 +422,7 @@ export default class Ws implements SchemeHandler {
 
     // EDIT and a recipient SEND target only an open owner whose native transport
     // is still OPEN. Both operations converge on one outbound-frame path.
-    async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<PassthroughResult> {
+    async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
         if (statements.length !== 1) {
             return Ws.#bad(
                 409,
@@ -451,11 +457,13 @@ export default class Ws implements SchemeHandler {
                 },
             );
         }
-        return this.#write(statement.target, statement.body ?? "", ctx, "EDIT");
+        const open = this.#openFor(statement.target, ctx, "EDIT");
+        if (!open.ok) return open.result;
+        return Ws.#propose("EDIT", statement.target, statement.body ?? "");
     }
 
     // {§turn-disposition} — SEND is messaging; a KILL closes the owner.
-    async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
+    async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
         if (statement.metadata !== null) return Ws.#metadataUnsupported();
         if (statement.target === null || statement.target.kind !== "url") {
             return Ws.#bad(400, "bad-target", "SEND requires a ws(s):// URL target.", {
@@ -464,20 +472,48 @@ export default class Ws implements SchemeHandler {
                 retryable: false,
             });
         }
-        return this.#write(statement.target, statement.body?.raw ?? "", ctx, "SEND");
+        const open = this.#openFor(statement.target, ctx, "SEND");
+        if (!open.ok) return open.result;
+        return Ws.#propose("SEND", statement.target, statement.body?.raw ?? "");
     }
 
-    async #write(
+    // {§http-outbound-proposes} — a frame is data leaving the process, so EDIT and SEND propose
+    // and write on the settlement. The socket is live, so this admission runs twice: once before
+    // the proposal, so nobody is asked to approve a frame on a socket that is not open, and again
+    // at apply, because it may have closed while the question was open.
+    static #propose(operation: "EDIT" | "SEND", target: UrlPath, body: string): ProposalResult {
+        return {
+            shape: "proposal",
+            status: 202,
+            body: `${operation} ${target.raw}`,
+            attrs: { effect: "host", operation, target, body },
+        };
+    }
+
+    async applyResolution(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult> {
+        const attrs = request.attrs as { operation?: unknown; target?: unknown; body?: unknown };
+        const { operation, target } = attrs;
+        if (typeof target !== "object" || target === null) {
+            throw new Error("A WebSocket proposal is missing its target.");
+        }
+        // This scheme proposes exactly two operations; a settlement never widens that set.
+        if (operation !== "EDIT" && operation !== "SEND") {
+            throw new Error(`A WebSocket proposal named an operation this scheme never proposes: ${String(operation)}.`);
+        }
+        const body = request.body ?? (typeof attrs.body === "string" ? attrs.body : "");
+        return this.#write(target as UrlPath, body, ctx, operation);
+    }
+
+    #openFor(
         target: UrlPath,
-        body: string,
         ctx: SchemeCtx,
         operation: "EDIT" | "SEND",
-    ): Promise<PassthroughResult> {
+    ): OpenSocket {
         const address = Ws.#address(target);
-        if (!(address instanceof NetworkAddress)) return address;
+        if (!(address instanceof NetworkAddress)) return { ok: false, result: address };
         const owner = this.#sockets.get(Ws.#key(ctx.workspaceId, address));
         if (owner === undefined) {
-            return Ws.#bad(
+            return { ok: false, result: Ws.#bad(
                 409,
                 "no-open-socket",
                 `No WebSocket connection is open for ${address.url}.`,
@@ -487,7 +523,7 @@ export default class Ws implements SchemeHandler {
                     recovery: "READ the WebSocket URL before sending a message.",
                     retryable: false,
                 },
-            );
+            ) };
         }
         const socket = owner.socket;
         if (owner.state !== "open" || socket === null || socket.readyState !== SOCKET_OPEN) {
@@ -495,7 +531,7 @@ export default class Ws implements SchemeHandler {
                 ? "settling"
                 : owner.state;
             if (connectionState === "settling") owner.state = "settling";
-            return Ws.#bad(
+            return { ok: false, result: Ws.#bad(
                 409,
                 "socket-not-open",
                 `The WebSocket connection to ${address.url} is ${connectionState}; ${operation} requires open.`,
@@ -508,8 +544,20 @@ export default class Ws implements SchemeHandler {
                         : "Wait for the connection's active stream event before sending.",
                     retryable: connectionState !== "settling",
                 },
-            );
+            ) };
         }
+        return { ok: true, address, socket };
+    }
+
+    async #write(
+        target: UrlPath,
+        body: string,
+        ctx: SchemeCtx,
+        operation: "EDIT" | "SEND",
+    ): Promise<PassthroughResult> {
+        const open = this.#openFor(target, ctx, operation);
+        if (!open.ok) return open.result;
+        const { address, socket } = open;
         try {
             socket.send(body);
             return { shape: "passthrough", status: 200 };

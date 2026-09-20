@@ -12,15 +12,15 @@ while EDIT, SEND, and KILL address that connection.
 | ---------------------------------------------- | --------------------------------------------------------------------------------------- |
 | `READ (wss://host/path)`                   | Claim the address, connect, mark `messages` active on `open`, and stream inbound frames |
 | A second READ of the same address              | Read the retained representation; reuse the existing connection without reconnecting    |
-| `EDIT (wss://host/path)` with body         | Send one whole text frame through an already-open connection; ranges and batches are invalid |
-| `SEND (wss://host/path)` with body         | Send one whole text frame; it may follow the opening READ in the same turn               |
+| `EDIT (wss://host/path)` with body         | Propose one whole text frame through an already-open connection, sent on acceptance; ranges and batches are invalid |
+| `SEND (wss://host/path)` with body         | Propose one whole text frame, sent on acceptance; it may follow the opening READ in the same turn |
 | `KILL (wss://host/path)`                   | Close or cancel the connection; an address with no connection is `404`                  |
 
 | Connection state | Meaning                                          | EDIT or directed SEND                           |
 | ------------ | ---------------------------------------------------- | ------------------------------------------------ |
 | `claimed`    | Address reserved while entry/subscription setup runs | `409`; no second connection is created           |
 | `connecting` | Native socket exists but has not emitted `open`      | `409`; wait for the active stream event          |
-| `open`       | `open` was observed and the native state is open     | Sends one whole text frame                       |
+| `open`       | `open` was observed and the native state is open     | Proposes one whole text frame, sent on acceptance |
 | `settling`   | A terminal transition owns cleanup                   | `409`; wait for cleanup before another READ      |
 
 The native `open` event plus durable `messages` activation is the acquisition

@@ -12,6 +12,8 @@ import {
     Results,
     type SchemeCtx,
     type UrlPath,
+    type PassthroughResult,
+    type ProposalResult,
     type ReadStatement,
     type ResolvedEditStatement,
     type SendStatement,
@@ -232,6 +234,15 @@ const prepareRepresentation = (ws: Ws, statement: ReadStatement, ctx: SchemeCtx)
 const sendStmt = (target: UrlPath, body?: string): SendStatement => ({ op: "SEND", aside: null, target, metadata: null, lineMarker: null, body: body === undefined ? null : { raw: body, json: null }, position: { line: 0, column: 0 } });
 const killStmt = (target: UrlPath): KillStatement => ({ op: "KILL", aside: null, target, metadata: null, lineMarker: null, matcher: null, body: null, position: { line: 0, column: 0 } });
 
+// {§http-outbound-proposes} — a frame is data leaving the process, so EDIT and SEND propose. A test
+// that means to observe the FRAME settles the proposal the way the dispatcher does on accept; a
+// refusal (no socket, socket not open, host policy) arrives before any proposal and passes through.
+const settle = async (ws: Ws, ctx: SchemeCtx, result: PassthroughResult | ProposalResult) =>
+    Results.isProposal(result) ? ws.applyResolution({ attrs: result.attrs ?? {}, metadata: null }, ctx) : result;
+const wsSend = async (ws: Ws, statement: SendStatement, ctx: SchemeCtx) => settle(ws, ctx, await ws.send(statement, ctx));
+const wsEdit = async (ws: Ws, statements: readonly ResolvedEditStatement[], ctx: SchemeCtx) =>
+    settle(ws, ctx, await ws.editBatch(statements, ctx));
+
 const flush = () => new Promise((r) => setImmediate(r));
 
 test("manifest: wss scheme - messages channel, web trait, network-volatile", () => {
@@ -291,7 +302,7 @@ test("READ: returns 102 after native open while the socket remains owned", async
     sock.emit("open");
     await flush();
     const returnedWhileOpen = returned;
-    assert.equal((await ws.send(sendStmt(target, "same actor can continue"), ctx)).status, 200);
+    assert.equal((await wsSend(ws, sendStmt(target, "same actor can continue"), ctx)).status, 200);
     sock.close(1000);
     assert.equal((await read).status, 102);
     await awaitClosed();
@@ -401,7 +412,7 @@ for (const [form, data] of [
         assert.deepEqual(sock.closed, { code: 4003, reason: "binary unsupported" });
         assert.equal(inspect().closeCount, 1);
         await flush();
-        assert.equal((await ws.send(sendStmt(target, "late"), ctx)).status, 409);
+        assert.equal((await wsSend(ws, sendStmt(target, "late"), ctx)).status, 409);
     });
 }
 
@@ -466,7 +477,7 @@ test("SEND: connecting is 409, open is sendable, and closing cannot silently dis
     const read = prepareRepresentation(ws, readStmt(target), ctx); // owner exists while READ remains pending
     await flush();
 
-    const early = await ws.send(sendStmt(target, "early"), ctx);
+    const early = await wsSend(ws, sendStmt(target, "early"), ctx);
     assert.equal(early.status, 409);
     assert.equal(early.problem?.type, "https://problems.plurnk.xyz/scheme/wss/socket-not-open");
     assert.equal(early.problem?.connectionState, "connecting");
@@ -485,11 +496,11 @@ test("SEND: connecting is 409, open is sendable, and closing cannot silently dis
         state: "active",
         contentLength: 0,
     }]);
-    assert.equal((await ws.send(sendStmt(target, "ping"), ctx)).status, 200);
+    assert.equal((await wsSend(ws, sendStmt(target, "ping"), ctx)).status, 200);
     assert.deepEqual(sock.sent, ["ping"]);
 
     sock.startClosing();
-    const late = await ws.send(sendStmt(target, "late"), ctx);
+    const late = await wsSend(ws, sendStmt(target, "late"), ctx);
     assert.equal(late.status, 409);
     assert.equal(late.problem?.connectionState, "settling");
     assert.deepEqual(sock.sent, ["ping"], "SEND cannot report success for a native no-op after closing starts");
@@ -513,7 +524,7 @@ test("SEND: a claimed owner is distinct from an absent connection", async () => 
     const read = prepareRepresentation(ws, readStmt(target), ctx);
     await flush();
 
-    const result = await ws.send(sendStmt(target, "early"), ctx);
+    const result = await wsSend(ws, sendStmt(target, "early"), ctx);
     assert.equal(result.status, 409);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/socket-not-open");
     assert.equal(result.problem?.connectionState, "claimed");
@@ -594,7 +605,7 @@ test("READ: a close before open is one connection failure and releases ownership
     assert.equal(result.status, 502);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/connection-failed");
     assert.equal(inspect().closeCount, 1);
-    assert.equal((await ws.send(sendStmt(target, "late"), ctx)).status, 409);
+    assert.equal((await wsSend(ws, sendStmt(target, "late"), ctx)).status, 409);
 });
 
 test("READ: terminal cleanup exposes the existing canonical representation until it settles", async () => {
@@ -646,7 +657,7 @@ test("READ: duplicate canonical workspace address reuses its representation and 
         assert.equal(connects, 1, "the duplicate does not create a second transport");
         assert.equal(secondCtx.inspect().wrote, null, "the duplicate has no storage side effects");
         assert.equal(secondCtx.inspect().opened, null, "the duplicate opens no subscription");
-        assert.equal((await ws.send(sendStmt(target, "still-owned"), firstCtx.ctx)).status, 200);
+        assert.equal((await wsSend(ws, sendStmt(target, "still-owned"), firstCtx.ctx)).status, 200);
         assert.deepEqual(sockets[0].sent, ["still-owned"]);
     } finally {
         sockets[0].close(1000);
@@ -686,7 +697,7 @@ test("{§ws-lifecycle}: workers share acquisition, input and KILL while other wo
     await flush();
     sockets[1].emit("open");
     assert.equal((await foreign).status, 102);
-    assert.equal((await ws.send(sendStmt(target, "shared input"), secondCtx.ctx)).status, 200);
+    assert.equal((await wsSend(ws, sendStmt(target, "shared input"), secondCtx.ctx)).status, 200);
     assert.deepEqual(sockets[0].sent, ["shared input"]);
     assert.deepEqual(sockets[1].sent, []);
     assert.equal((await ws.kill(killStmt(target), secondCtx.ctx)).status, 200);
@@ -708,10 +719,10 @@ test("socket lookup isolates addressed protocol, port, and ordered query", async
     assert.equal(inspect().wrote, "/feed?room=1&role=a&role=b");
 
     const reordered = wss("wss://93.184.216.34:8443/feed?role=a&role=b&room=1", "/feed");
-    assert.equal((await ws.send(sendStmt(reordered, "wrong"), ctx)).status, 409);
+    assert.equal((await wsSend(ws, sendStmt(reordered, "wrong"), ctx)).status, 409);
     const plain = wss("ws://93.184.216.34:8443/feed?room=1&role=a&role=b", "/feed");
-    assert.equal((await ws.send(sendStmt(plain, "wrong"), ctx)).status, 409);
-    assert.equal((await ws.send(sendStmt(opened, "right"), ctx)).status, 200);
+    assert.equal((await wsSend(ws, sendStmt(plain, "wrong"), ctx)).status, 409);
+    assert.equal((await wsSend(ws, sendStmt(opened, "right"), ctx)).status, 200);
     assert.deepEqual(sock.sent, ["right"]);
     sock.close(1000);
     await read;
@@ -740,8 +751,8 @@ test("EDIT and SEND: no claimed socket → 409", async () => {
     const { ctx } = makeCtx();
     const ws = new Ws(() => fakeSocket());
     const target = wss(PUB, "/feed");
-    const send = await ws.send(sendStmt(target, "x"), ctx);
-    const edit = await ws.editBatch([editStmt(target, "x")], ctx);
+    const send = await wsSend(ws, sendStmt(target, "x"), ctx);
+    const edit = await wsEdit(ws, [editStmt(target, "x")], ctx);
     for (const result of [edit, send]) {
         assert.equal(result.status, 409);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/no-open-socket");
@@ -759,8 +770,8 @@ test("EDIT and SEND: both send one whole text frame through the open owner", asy
     sock.emit("open");
     await flush();
 
-    assert.equal((await ws.editBatch([editStmt(target, "edit frame")], ctx)).status, 200);
-    assert.equal((await ws.send(sendStmt(target, "send frame"), ctx)).status, 200);
+    assert.equal((await wsEdit(ws, [editStmt(target, "edit frame")], ctx)).status, 200);
+    assert.equal((await wsSend(ws, sendStmt(target, "send frame"), ctx)).status, 200);
     assert.deepEqual(sock.sent, ["edit frame", "send frame"]);
 
     sock.close(1000);
@@ -772,13 +783,13 @@ test("EDIT: ranges and multi-edit pseudo-atomicity are rejected", async () => {
     const ws = new Ws(() => fakeSocket());
     const { ctx } = makeCtx();
     const target = wss(PUB, "/feed");
-    const ranged = await ws.editBatch([
+    const ranged = await wsEdit(ws, [
         editStmt(target, "partial", { marks: [1] }),
     ], ctx);
     assert.equal(ranged.status, 400);
     assert.equal(ranged.problem?.type, "https://problems.plurnk.xyz/scheme/wss/line-edit-unsupported");
 
-    const multiple = await ws.editBatch([
+    const multiple = await wsEdit(ws, [
         editStmt(target, "one"),
         editStmt(target, "two"),
     ], ctx);
@@ -798,7 +809,7 @@ test("SEND: a socket send throw becomes a structured transport failure", async (
     await flush();
     sock.emit("open");
     await flush();
-    const result = await ws.send(sendStmt(wss(PUB, "/feed"), "ping"), ctx);
+    const result = await wsSend(ws, sendStmt(wss(PUB, "/feed"), "ping"), ctx);
     assert.equal(result.status, 502);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/send-failed");
     assert.equal(result.problem?.detail, "The WebSocket message could not be sent.");
@@ -895,7 +906,7 @@ test("READ: message persistence failure settles with a structured problem", asyn
     assert.equal(inspect().closeCount, 1);
     assert.notEqual(sock.closed, null, "a terminal persistence failure closes its transport");
     await flush();
-    assert.equal((await ws.send(sendStmt(target, "late"), ctx)).status, 409, "terminal cleanup releases address ownership");
+    assert.equal((await wsSend(ws, sendStmt(target, "late"), ctx)).status, 409, "terminal cleanup releases address ownership");
 });
 
 test("READ: a pending persistence failure supersedes graceful close", async () => {
@@ -939,7 +950,7 @@ test("READ: a pre-open transport error closes once before settling", async () =>
     assert.equal(inspect().closed?.result.problem, result.problem);
     assert.equal(inspect().closeCount, 1, "the error+close event pair has one settlement owner");
     assert.deepEqual(sock.closed, { code: 4011, reason: "transport failed" });
-    assert.equal((await ws.send(sendStmt(target, "late"), ctx)).status, 409, "terminal cleanup releases address ownership");
+    assert.equal((await wsSend(ws, sendStmt(target, "late"), ctx)).status, 409, "terminal cleanup releases address ownership");
 });
 
 test("READ: a post-acquisition transport error settles the retained stream", async () => {
@@ -957,7 +968,7 @@ test("READ: a post-acquisition transport error settles the retained stream", asy
     assert.equal(terminal.result.status, 502);
     assert.equal(terminal.result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/connection-failed");
     await flush();
-    assert.equal((await ws.send(sendStmt(target, "late"), ctx)).status, 409);
+    assert.equal((await wsSend(ws, sendStmt(target, "late"), ctx)).status, 409);
 });
 
 test("READ: subscription close rejection is diagnosed after the acquired READ", async (t) => {
@@ -1014,7 +1025,7 @@ test("handler close closes every remaining socket and waits for READ cleanup", a
     await shutdown;
     const results = await Promise.all(reads);
     assert.deepEqual(results.map(({ status }) => status), [499, 499]);
-    assert.equal((await ws.send(sendStmt(wss("wss://93.184.216.34/one", "/one"), "late"), firstCtx.ctx)).status, 409);
+    assert.equal((await wsSend(ws, sendStmt(wss("wss://93.184.216.34/one", "/one"), "late"), firstCtx.ctx)).status, 409);
 });
 
 test("handler close settles every READ and aggregates transport close failures", async () => {
@@ -1042,4 +1053,63 @@ test("handler close settles every READ and aggregates transport close failures",
     );
     assert.notEqual(second.closed, null, "one close failure does not skip another socket");
     assert.deepEqual((await Promise.all(reads)).map(({ status }) => status), [499, 499]);
+});
+
+test("{§http-outbound-proposes} EDIT and SEND propose with the host effect, and no frame leaves before settlement", async () => {
+    const sock = fakeSocket();
+    const ws = new Ws(() => sock);
+    const { ctx, awaitClosed } = makeCtx();
+    const target = wss(PUB, "/feed");
+    const read = prepareRepresentation(ws, readStmt(target), ctx);
+    await flush();
+    sock.emit("open");
+    await flush();
+
+    const cases = [
+        ["SEND", () => ws.send(sendStmt(target, "payload"), ctx)],
+        ["EDIT", () => ws.editBatch([editStmt(target, "payload")], ctx)],
+    ] as const;
+    for (const [operation, propose] of cases) {
+        const before = sock.sent.length;
+        const proposal = await propose();
+        assert.equal(proposal.status, 202, `${operation} proposes`);
+        assert.equal(sock.sent.length, before, `${operation} writes nothing before its settlement`);
+        assert.ok(Results.isProposal(proposal));
+        const attrs = proposal.attrs as { effect?: string; operation?: string };
+        assert.equal(attrs.effect, "host", `${operation} declares the host effect the panel maps`);
+        assert.equal(attrs.operation, operation);
+        // The resolver may replace the authored body before it is sent.
+        const settledBody = `${operation.toLowerCase()} frame`;
+        const applied = await ws.applyResolution({ attrs: attrs as object, metadata: null, body: settledBody }, ctx);
+        assert.equal(applied.status, 200);
+        assert.deepEqual(sock.sent.slice(before), [settledBody], `${operation} writes exactly one frame, on acceptance`);
+    }
+
+    sock.emit("close", { code: 1000 });
+    await read;
+    await awaitClosed();
+});
+
+test("{§http-outbound-proposes} a socket that closed while the proposal was open refuses at apply", async () => {
+    const sock = fakeSocket();
+    const ws = new Ws(() => sock);
+    const { ctx, awaitClosed } = makeCtx();
+    const target = wss(PUB, "/feed");
+    const read = prepareRepresentation(ws, readStmt(target), ctx);
+    await flush();
+    sock.emit("open");
+    await flush();
+
+    const proposal = await ws.send(sendStmt(target, "late"), ctx);
+    assert.equal(proposal.status, 202);
+    assert.ok(Results.isProposal(proposal));
+    // The connection goes away while the question is still being asked.
+    sock.emit("close", { code: 1000 });
+    await read;
+    await awaitClosed();
+
+    const applied = await ws.applyResolution({ attrs: proposal.attrs ?? {}, metadata: null }, ctx);
+    assert.equal(applied.status, 409, "the admission runs again at apply, because the socket is live");
+    assert.match(applied.problem?.type ?? "", /\/scheme\/wss\/(no-open-socket|socket-not-open)$/u);
+    assert.deepEqual(sock.sent, [], "nothing is written to a connection that is gone");
 });
