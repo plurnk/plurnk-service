@@ -174,14 +174,14 @@ test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty s
         // ENOENT on a READ miss carries the resolved name in wire canon.
         const miss = await readFileScheme(readStmt("/no/such.md"), ctx);
         assert.equal(miss.status, 404);
-        assert.equal(miss.problem?.detail, "No entry exists at no/such.md.", "the READ miss states its fact — resolved form, wire canon");
+        assert.equal(miss.problem?.detail, "No member of this workspace is at 'no/such.md'.", "the READ miss states its fact — resolved form, wire canon");
 
         // Exact-path FIND distinguishes absence from a successful empty survey.
         const findMissStmt = { op: "FIND", aside: null, lineMarker: null, position: { line: 1, column: 1 },
             target: { kind: "local", raw: "no/such.md" }, matcher: null, body: null } as never;
         const findMiss = await file.find(findMissStmt, ctx);
         assert.equal(findMiss.status, 404, "FIND over an absent exact path cannot certify an empty set");
-        assert.equal(findMiss.problem?.detail, "No entry exists at no/such.md.");
+        assert.equal(findMiss.problem?.detail, "No member of this workspace is at 'no/such.md'.");
 
         // A FOLDER scope with zero matches stays the blessed orienting empty survey.
         const surveyStmt = { op: "FIND", aside: null, lineMarker: null, position: { line: 1, column: 1 },
@@ -205,6 +205,31 @@ test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty s
         assert.equal(clobber.problem?.recovery, "Choose an unoccupied member path.");
         assert.equal(clobber.problem?.retryable, false);
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+test("{§membership-read-refusal}: beyond the root a miss is the same sentence whether or not a file is there", async () => {
+    const { root, db, ctx } = await setup();
+    const present = `plurnk-dark-${crypto.randomUUID()}.md`;
+    const absent = `plurnk-dark-${crypto.randomUUID()}.md`;
+    try {
+        // A real file beside the root, and a name nothing holds. Neither is a member.
+        await writeFile(join(root, "..", present), "somebody else's\n");
+        const there = await readFileScheme(readStmt(`../${present}`), ctx);
+        const notThere = await readFileScheme(readStmt(`../${absent}`), ctx);
+        for (const [result, name] of [[there, present], [notThere, absent]] as const) {
+            assert.equal(result.status, 404);
+            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-found");
+            assert.equal(result.problem?.detail, `No member of this workspace is at '../${name}'.`, "about the address's membership: it neither claims absence nor hints at presence");
+            assert.match(String(result.problem?.recovery), /EDIT creates one at this path, and the `members` executor's `add` tool admits a file that already exists/u, "both doors, without saying which applies");
+        }
+        // The disk beyond the root stays dark: swap the names and the two answers are one answer.
+        const normalize = (result: typeof there, name: string): string => JSON.stringify(result).replaceAll(name, "<name>");
+        assert.equal(normalize(there, present), normalize(notThere, absent));
+    } finally {
+        await rm(join(root, "..", present), { force: true });
+        await db.close();
+        await rm(root, { recursive: true, force: true });
+    }
 });
 
 test("{§fs-create-incorporation}: accept records constraint provenance before reporting success", async () => {

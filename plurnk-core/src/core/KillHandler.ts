@@ -4,7 +4,7 @@ import type { Db } from "./Db.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type { DeleteEntryResult } from "../schemes/_entry-crud.ts";
-import { entryCoordinateOf, renderAddress, schemeNameOf } from "./plurnk-uri.ts";
+import { entryCoordinateOf, missDetail, renderAddress, schemeNameOf } from "./plurnk-uri.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
 import { type CancelWorkerNotify } from "./ChannelWrite.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
@@ -100,7 +100,7 @@ export default class KillHandler {
                     return this.#failure(
                         "entry-not-found",
                         404,
-                        `No entry exists at ${renderAddress({ scheme: schemeName, ...coordinate })}.`,
+                        missDetail(schemeName, renderAddress({ scheme: schemeName, ...coordinate })),
                     );
                 }
                 handlerCtx = new SchemeCtxImpl(ctx, resolved.address.scheme, manifest, this.#liveSubscriptions, {

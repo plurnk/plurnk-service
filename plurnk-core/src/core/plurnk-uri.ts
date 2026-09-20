@@ -67,6 +67,13 @@ export function renderAddress(address: EntryCoordinate & { readonly scheme: stri
     return PathSyntax.escapeTarget(`${scheme}://${authority}${encoded}`);
 }
 
+// {§membership-read-refusal} — what an address lacks is an entry, and in `file` an entry is a
+// member. "No entry exists" reads there as a claim about the disk, which the engine never makes:
+// this sentence is about the address's membership and is true whether or not a file is there.
+export function missDetail(scheme: string | null, target: string): string {
+    return scheme === "file" ? `No member of this workspace is at '${target}'.` : `No entry exists at ${target}.`;
+}
+
 /** Render one stored target without exposing credentials or request metadata. {§scheme-address} */
 export function renderTarget(target: RenderTargetParts): string | null {
     if (target.pathname === null || target.pathname === undefined) return null;

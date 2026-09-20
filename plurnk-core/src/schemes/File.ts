@@ -1,5 +1,6 @@
 import { lstat, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import Namespace from "../core/namespace.ts";
+import { missDetail } from "../core/plurnk-uri.ts";
 import { basename, dirname, relative, isAbsolute, join } from "node:path";
 import { createPatch } from "diff";
 import type { FindStatement, ParsedPath } from "@plurnk/plurnk-contracts";
@@ -218,27 +219,29 @@ export default class File extends CoreSchemeAdapterBase {
         return new FileByteSource(locate);
     }
 
-    // {§membership-read-refusal} — a path that exists on disk but is not a member is refused as a
-    // non-member, not as absent, so the reader learns which door to use; null when the miss is plain.
+    // {§membership-read-refusal} — a file is read only as a member, so a miss speaks of the address's
+    // membership and never of the disk. Inside the root occupancy is not secret ({§fs-write-nonmember}),
+    // and an occupied path says so. Beyond it the disk stays dark: nothing is looked at, and the
+    // sentence is true whether or not a file is there — it neither claims absence nor hints at presence.
     async missRefusal(pathname: string, core: PlurnkSchemeContext, fields: Record<string, null>): Promise<SchemeResultBase | null> {
         const root = await loadWorkspaceRoot(core.db, core.workspaceId);
         if (root === null) return null;
         const key = Namespace.canonicalize(pathname, root);
-        if (key === null || key.startsWith("../")) return null;
-        try {
-            await lstat(join(root, key));
-        } catch {
-            return null;
-        }
+        if (key === null) return null;
+        const occupied = !key.startsWith("../") && await lstat(join(root, key)).then(() => true, () => false);
         return Results.failure(
             "scheme:file",
-            "entry-not-member",
+            occupied ? "entry-not-member" : "entry-not-found",
             404,
-            `'${key}' exists on disk but is not a member of this workspace.`,
+            occupied
+                ? `'${key}' exists on disk but is not a member of this workspace.`
+                : missDetail("file", key),
             fields,
             {
                 target: key,
-                recovery: "EDIT creates member files; admit an existing file with the `members` executor's `add` tool and a `{\"glob\": \"<path>\"}` body.",
+                recovery: occupied
+                    ? "EDIT creates member files; admit an existing file with the `members` executor's `add` tool and a `{\"glob\": \"<path>\"}` body."
+                    : "A file is read only as a member: EDIT creates one at this path, and the `members` executor's `add` tool admits a file that already exists, with a `{\"glob\": \"<path>\"}` body.",
                 retryable: false,
             },
         ) as SchemeResultBase;
@@ -862,9 +865,9 @@ export default class File extends CoreSchemeAdapterBase {
             ) as DeleteEntryResult;
         }
         const rel = Namespace.canonicalize(pathname, root);
-        if (rel === null) return Results.failure("scheme:file", "entry-not-found", 404, `No file entry exists at ${pathname}.`, {}, { target: pathname }) as DeleteEntryResult;
+        if (rel === null) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", pathname), {}, { target: pathname }) as DeleteEntryResult;
         const member = await core.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: core.workspaceId, scheme: "file", authority: "", pathname: rel });
-        if (member === undefined) return Results.failure("scheme:file", "entry-not-found", 404, `No file entry exists at ${rel}.`, {}, { target: rel }) as DeleteEntryResult;
+        if (member === undefined) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", rel), {}, { target: rel }) as DeleteEntryResult;
         return { status: 202, attrs: { deletePath: rel } };
     }
 

@@ -6,7 +6,7 @@ import DurableStatement from "./DurableStatement.ts";
 import { InvalidOperationResultError, type ScopeNormalization, type SchemeHandler, type StoredEntryData } from "@plurnk/plurnk-schemes";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import ResourceBindings from "./ResourceBindings.ts";
-import { entryCoordinateOf, schemeNameOf } from "./plurnk-uri.ts";
+import { entryCoordinateOf, missDetail, schemeNameOf } from "./plurnk-uri.ts";
 import EntryAddressBinding, { type BoundEntryAddress } from "./EntryAddressBinding.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import { LineAnchors, LineMarkerOps, MimetypeBinary, type LineAnchorPrecondition } from "../content/index.ts";
@@ -363,7 +363,7 @@ export default class ResourceSelector {
             return { result: MutationEffects.failure(
                 "entry-not-found",
                 404,
-                `No entry exists at ${MutationEffects.resourceAddress(selection)}.`,
+                missDetail(selection.scheme, MutationEffects.resourceAddress(selection)),
                 {},
                 { target: MutationEffects.resourceAddress(selection) },
             ) };

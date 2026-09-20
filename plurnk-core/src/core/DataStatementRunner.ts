@@ -2,7 +2,7 @@
 import type { FindStatement, ParsedPath, ReadStatement } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import ResourceBindings from "./ResourceBindings.ts";
-import { entryCoordinateOf, renderTarget } from "./plurnk-uri.ts";
+import { entryCoordinateOf, missDetail, renderTarget } from "./plurnk-uri.ts";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
 import { ReadProjector } from "../content/index.ts";
@@ -96,7 +96,7 @@ export default class DataStatementRunner {
             `scheme:${schemeName}`,
             "entry-not-found",
             404,
-            `No entry exists at ${rendered ?? "the requested address"}.`,
+            missDetail(schemeName, rendered ?? "the requested address"),
             DataStatementRunner.#emptyFields(op),
             { target: rendered },
         );

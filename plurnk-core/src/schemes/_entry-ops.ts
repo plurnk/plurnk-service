@@ -1,7 +1,7 @@
 import EntryCrud from "./_entry-crud.ts";
 import EntryReadable from "./_entry-readable.ts";
 import { PathSyntax, type RangeExtent, type ReadStatement, type TextRegion } from "@plurnk/plurnk-contracts";
-import { entryCoordinateOf } from "../core/plurnk-uri.ts";
+import { entryCoordinateOf, missDetail } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import type { ByteSource } from "../content/byte-view.ts";
 import EntryManifest from "./_entry-manifest.ts";
@@ -172,7 +172,7 @@ export default class EntryOps {
 
         // Non-default channel write requires the entry to exist ({§channel-selection-fragment-on-nonexistent-404}).
         if (existing === undefined && fragment !== null) {
-            return failure("entry-not-found", 404, `No entry exists at ${EntryManifest.toPath(scheme, authority, pathname)}.`, { entryId: null, channel: targetChannel });
+            return failure("entry-not-found", 404, missDetail(scheme, EntryManifest.toPath(scheme, authority, pathname)), { entryId: null, channel: targetChannel });
         }
 
         const channel = existing === undefined
@@ -373,7 +373,7 @@ export default class EntryOps {
                 `scheme:${manifest.name}`,
                 "entry-not-found",
                 404,
-                `No entry exists at ${EntryManifest.toPath(manifest.name, authority, pathname)}.`,
+                missDetail(manifest.name, EntryManifest.toPath(manifest.name, authority, pathname)),
                 {},
                 { target: EntryManifest.toPath(manifest.name, authority, pathname) },
             );
@@ -448,7 +448,7 @@ export default class EntryOps {
             return failure(
                 "entry-not-found",
                 404,
-                `No entry exists at ${EntryManifest.toPath(scheme, authority, pathname)}.`,
+                missDetail(scheme, EntryManifest.toPath(scheme, authority, pathname)),
                 { content: null, mimetype: null, channel: null },
                 { target: EntryManifest.toPath(scheme, authority, pathname) },
             );

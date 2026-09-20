@@ -8,7 +8,7 @@ import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
 import type { ByteSource } from "../content/byte-view.ts";
 import type { ChannelProducerResult, ChannelState, EntryCoordinate, EntryData, StoredEntryData } from "@plurnk/plurnk-schemes";
 export type { EntryData } from "@plurnk/plurnk-schemes";
-import { renderAddress } from "../core/plurnk-uri.ts";
+import { missDetail, renderAddress } from "../core/plurnk-uri.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import MimetypeBinary from "../content/mimetype-binary.ts";
@@ -73,7 +73,7 @@ export default class EntryCrud {
                 `scheme:${scheme}`,
                 "entry-not-found",
                 404,
-                `No entry exists at ${target}.`,
+                missDetail(scheme, target),
                 { entry: null },
                 { target },
             ) as ReadEntryResult;
@@ -170,7 +170,7 @@ export default class EntryCrud {
                 `scheme:${scheme}`,
                 "entry-not-found",
                 404,
-                `No entry exists at ${target}.`,
+                missDetail(scheme, target),
                 {},
                 { target },
             ) as DeleteEntryResult;
@@ -201,7 +201,7 @@ export default class EntryCrud {
                 `scheme:${scheme}`,
                 "entry-not-found",
                 404,
-                `No entry exists at ${target}.`,
+                missDetail(scheme, target),
                 {},
                 { target },
             ) as DeleteEntryResult;

@@ -20,7 +20,7 @@ import { binaryInputMaximum } from "@plurnk/plurnk-mimetypes";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
 import type { SourceCandidateMatch } from "../content/matcher.ts";
-import { entryCoordinateOf } from "../core/plurnk-uri.ts";
+import { entryCoordinateOf, missDetail } from "../core/plurnk-uri.ts";
 import EntryGraph from "./_entry-graph.ts";
 import EntryCrud from "./_entry-crud.ts";
 import EntryManifest, { type CatalogChannel, type CatalogDefaultChannel } from "./_entry-manifest.ts";
@@ -333,7 +333,7 @@ export default class EntryFind {
                     status: 404,
                     matches: [],
                     code: "entry-not-found",
-                    error: `No entry exists at ${target}.`,
+                    error: missDetail(scheme, target),
                     extensions: { target },
                 };
             }
@@ -398,7 +398,7 @@ export default class EntryFind {
                 status: 404,
                 matches: [],
                 code: "entry-not-found",
-                error: `No entry exists at ${target}.`,
+                error: missDetail(scheme, target),
                 extensions: { target },
             };
         }

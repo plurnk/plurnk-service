@@ -76,7 +76,6 @@
         "fs-create-namespace",
         "fs-create-root",
         "fs-write-member",
-        "fs-write-nonmember",
         "fs-write-outside",
         "functionality",
         "git-native-default",
