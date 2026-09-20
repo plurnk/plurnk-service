@@ -1130,7 +1130,7 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
                 origin: string;
             }>({ worker_id: kernelWorker.id })).filter(({ origin, pathname }) =>
                 origin === "_plurnk"
-                && (pathname === "/_plurnk/agents.md" || pathname?.startsWith("/_plurnk/skills/") === true));
+                && (pathname === "/_plurnk/AGENTS.md" || pathname?.startsWith("/_plurnk/skills/") === true));
             const publishedCount = (await publicationRows()).length;
 
             const second = await daemon.runLoop({ workspaceId: created.id, workerId: modelWorkerId, prompt: "go again" });

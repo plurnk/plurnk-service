@@ -157,7 +157,7 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
                     workspace_id: workspaceId,
                     scheme: "worker",
                     authority: "",
-                    pathname: "/_plurnk/agents.md",
+                    pathname: "/_plurnk/AGENTS.md",
                 });
                 assert.ok(entry !== undefined, "the generated document is structurally owned by the addressed Worker");
 
@@ -180,7 +180,7 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
                     op: string | null; scheme: string | null; pathname: string; origin: string;
                     turn_id: number; status_rx: number;
                 }>({ worker_id: await RuntimeWorker.ensure(db, workspaceId) });
-                const matEdit = workerLog.find((row) => row.op === "EDIT" && row.scheme === "worker" && row.pathname === "/_plurnk/agents.md");
+                const matEdit = workerLog.find((row) => row.op === "EDIT" && row.scheme === "worker" && row.pathname === "/_plurnk/AGENTS.md");
                 assert.ok(matEdit !== undefined, "the materialization is durable operation evidence, not a privileged write");
                 assert.equal(matEdit.origin, "_plurnk", "the runtime producer remains explicit");
 
@@ -208,7 +208,7 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
                     op: string | null; scheme: string | null; hostname: string | null; pathname: string; status_rx: number;
                 }>({ loop_id: loopId });
                 const docRead = modelLoopLog.find((row) => row.op === "READ" && row.scheme === "worker"
-                    && row.hostname === null && row.pathname === "/_plurnk/agents.md");
+                    && row.hostname === null && row.pathname === "/_plurnk/AGENTS.md");
                 assert.ok(docRead !== undefined && docRead.status_rx === 200, "Turn 0 reads the addressed Worker's generated policy entry");
             } finally { ws.close(); }
         });

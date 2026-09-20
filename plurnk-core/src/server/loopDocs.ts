@@ -1,7 +1,7 @@
 // Worker documentation projections of the shared workspace environment.
 // Reconcile on reader demand and after workspace Functionality changes. Two private sets run through
 // an ordinary `_plurnk` turn in the addressed worker ({§actor-boundary-doc-injection}):
-//   1. the project AGENTS.md at worker:///_plurnk/agents.md — Engine.runTurn foists
+//   1. the project AGENTS.md at worker:///_plurnk/AGENTS.md — Engine.runTurn foists
 //      its READ at turn 0 ({§turn0-agents-stunt});
 //   2. the exact current scheme and executable-tool reference set under
 //      worker:///_plurnk/plurnk/ and worker:///_plurnk/tools/ — discovered by the
@@ -87,7 +87,7 @@ export default class LoopDocs {
 
     static async #materialize(engine: Engine, db: Db, workspaceId: number): Promise<void> {
         // {§turn0-agents-stunt} — the project's AGENTS.md becomes one
-        // shared worker:///_plurnk/agents.md entry, read at turn 0.
+        // shared worker:///_plurnk/AGENTS.md entry, read at turn 0.
         const workspace = await db.envelope_get_workspace.get<{ project_root: string | null }>({
             id: workspaceId,
         });
@@ -100,7 +100,7 @@ export default class LoopDocs {
         const desired = new Map(
             (await engine.referenceEntries(workspaceId)).map(({ pathname, content }) => [pathname, content]),
         );
-        if (agentsContent !== null) desired.set(generatedPathname("/agents.md"), agentsContent);
+        if (agentsContent !== null) desired.set(generatedPathname("/AGENTS.md"), agentsContent);
         // #346 — nested AGENTS.md honor the standard's closest-file scope:
         // each materializes at _plurnk/instructions/<subtree>/AGENTS.md with its
         // path preserved. No foisted READ and no teaching (operator-ruled):

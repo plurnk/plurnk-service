@@ -715,7 +715,7 @@ export default class TurnRunner {
         // {§worker-initialization-entry} — the worker's first turn is the worked
         // example itself: the actual orienting operations and ordinary NOTEs.
         // {§turn0-agents-stunt} — the project AGENTS.md (materialized by LoopDocs as
-        // worker:///_plurnk/agents.md) gets one foisted READ on the worker's first
+        // worker:///_plurnk/AGENTS.md) gets one foisted READ on the worker's first
         // loop, so local repo guidance is visible turn-0 content. Global policy
         // stays in the system prompt; nothing else is force-read.
         if (initializationTurn !== null) {
@@ -727,13 +727,13 @@ export default class TurnRunner {
                 workspace_id: workspaceId,
                 scheme: "worker",
                 authority: "",
-                pathname: generatedPathname("/agents.md"),
+                pathname: generatedPathname("/AGENTS.md"),
             });
             if (agentsEntry !== undefined) {
                 const agentsTarget: UrlPath = {
-                    kind: "url", raw: "worker:///_plurnk/agents.md", scheme: "worker",
+                    kind: "url", raw: "worker:///_plurnk/AGENTS.md", scheme: "worker",
                     username: null, password: null, hostname: null, port: null,
-                    pathname: generatedPathname("/agents.md"), query: null, fragment: null,
+                    pathname: generatedPathname("/AGENTS.md"), query: null, fragment: null,
                 };
                 const agentsRead: ReadStatement = {
                     op: "READ", aside: null, target: agentsTarget,

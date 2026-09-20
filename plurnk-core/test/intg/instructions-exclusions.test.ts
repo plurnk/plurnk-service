@@ -43,12 +43,12 @@ test("an ignored or excluded AGENTS.md is never projected; the standard does not
                 const entry = (pathname: string) => db.crud_find_workspace_entry.get<{ id: number }>({
                     workspace_id: workspaceId, scheme: "worker", authority: "", pathname,
                 });
-                assert.equal(await entry("/_plurnk/agents.md"), undefined, "a gitignored root AGENTS.md is not projected");
+                assert.equal(await entry("/_plurnk/AGENTS.md"), undefined, "a gitignored root AGENTS.md is not projected");
                 assert.equal(await entry("/_plurnk/instructions/packages/secret/AGENTS.md"), undefined, "a gitignored nested AGENTS.md is not projected");
                 assert.equal(await entry("/_plurnk/instructions/packages/hidden/AGENTS.md"), undefined, "an excluded nested AGENTS.md is not projected");
                 assert.ok(await entry("/_plurnk/instructions/packages/web/AGENTS.md"), "an admitted nested AGENTS.md still is");
                 const rows = await db.test_log_entries_by_worker.all<{ op: string | null; pathname: string; status_rx: number }>({ worker_id: workerId });
-                assert.equal(rows.some((r) => r.pathname === "/_plurnk/agents.md" && r.status_rx >= 400), false, "no turn-0 stunt fires for an excluded root AGENTS.md — nothing 404s");
+                assert.equal(rows.some((r) => r.pathname === "/_plurnk/AGENTS.md" && r.status_rx >= 400), false, "no turn-0 stunt fires for an excluded root AGENTS.md — nothing 404s");
             } finally { ws.close(); }
         });
     } finally {

@@ -30,4 +30,4 @@ export const readSystemPolicy = async (): Promise<string | null> => {
 };
 
 // Project policy is retired from the system slot: the project AGENTS.md now
-// rides turn 0 as the foisted agents.md entry ({§turn0-agents-stunt}).
+// rides turn 0 as the foisted AGENTS.md entry ({§turn0-agents-stunt}).

@@ -330,8 +330,10 @@ Plurnk never stages a file or runs `git add`.
 
 §turn0-agents-stunt **The project AGENTS.md is a turn-0 stunt.** When
 `<projectRoot>/AGENTS.md` exists, LoopDocs materializes it as the workspace's shared
-`worker:///_plurnk/agents.md` entry and the engine foists one READ of it into
-that model worker's first turn — visible, logged, line-addressable. Absent
+`worker:///_plurnk/AGENTS.md` entry and the engine foists one READ of it into
+that model worker's first turn — visible, logged, line-addressable. The entry
+keeps the standard's own name, as a nested instruction file does: that name is
+in the model's prior, and no other generated document is called it. Absent
 file: no entry, no stunt, nothing 404s. The global XDG configuration `AGENTS.md`
 remains system-prompt policy ({§policy-sections}); the stunt carries only
 local repo guidance.
@@ -490,7 +492,7 @@ continues to decompose other authorities without treating them as mintable.
 
 §worker-write-scoping **Scratch is workspace-writable.** All workspace actors may EDIT, COPY, MOVE, or KILL entries in any named or shared scratch namespace, including generated documents. There is no creator-only, self-only, ancestor-only, or runtime-only grant. Workspace admission remains uniform. Intrinsically immutable evidence in other schemes retains its own contract ({§scheme-entry-matrix}); operation provenance and delegation lifecycle do not grant or restrict scratch access.
 
-§worker-generated-subtree **Generated documents share `worker:///_plurnk/`.** Project instructions (`agents.md` and subtree-scoped `instructions/**`), scheme/runtime references (`plurnk/**`), tool details (`tools/**`), and family catalogs are workspace resources. Agent Skills retain their own trees at `skill://<name>/` ({§skills-resources}).
+§worker-generated-subtree **Generated documents share `worker:///_plurnk/`.** Project instructions (`AGENTS.md` and subtree-scoped `instructions/**`), scheme/runtime references (`plurnk/**`), tool details (`tools/**`), and family catalogs are workspace resources. Agent Skills retain their own trees at `skill://<name>/` ({§skills-resources}).
 
 The subtree has ordinary scratch access, not an ACL. Runtime maintenance reconciles it from workspace Functionality through the runtime actor's ordinary turns ({§actor-boundary-doc-injection}); reconciliation may replace manual edits. There are no per-Worker copies or fork rederivation. A runtime's `resourcesPath` is relative to this root ({§tools-resource-materialization}).
 
@@ -677,7 +679,7 @@ and never re-fetch a match.
   ({§membership-create-parents}). Admitted by a published standard as projected
   instruction documents — never as members: (3) the project's `AGENTS.md` and nested
   `AGENTS.md` files ({§turn0-agents-stunt}, #346), read from disk regardless of git status
-  and materialized as `worker:///_plurnk/agents.md` and
+  and materialized as `worker:///_plurnk/AGENTS.md` and
   `worker:///_plurnk/instructions/<subtree>/AGENTS.md`; the file itself is a member
   only when tracked or added, and the standard never overrides the operator's
   exclusions — an `AGENTS.md` the repository ignores or an exclusion matches
@@ -5255,7 +5257,7 @@ section because they are language extensions rather than executable tools.
 
 ### §policy system.policy — the client's policy injection
 
-§policy-sections One section rides the system slot **after the definition**: the contents of `PLURNK_SERVICE_POLICY` (default `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, {§host-path-layout}), with no engine-generated heading. The policy document owns its Markdown structure. Policy is the client's authoritative rules promoted into the privileged zone — NOT a log entry; the model cannot READ or KILL it. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. The PROJECT `AGENTS.md` is local guidance, not policy: it rides turn 0 as the foisted `worker:///_plurnk/agents.md` entry ({§turn0-agents-stunt}); references and skills use native discovery ({§skills-functionality}).
+§policy-sections One section rides the system slot **after the definition**: the contents of `PLURNK_SERVICE_POLICY` (default `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, {§host-path-layout}), with no engine-generated heading. The policy document owns its Markdown structure. Policy is the client's authoritative rules promoted into the privileged zone — NOT a log entry; the model cannot READ or KILL it. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. The PROJECT `AGENTS.md` is local guidance, not policy: it rides turn 0 as the foisted `worker:///_plurnk/AGENTS.md` entry ({§turn0-agents-stunt}); references and skills use native discovery ({§skills-functionality}).
 
 On first run, and only when `$XDG_CONFIG_HOME/plurnk` itself is absent, the service seeds
 `AGENTS.md` from `@plurnk/plurnk-meta/POLICY.md` ({§teaching-corpus}).

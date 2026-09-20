@@ -286,7 +286,7 @@ export default class PacketBuilder {
         const inject = await readPacketInject(); // {§packet-inject} — per-turn; a broken configured path fails hard
         const systemPolicy = await readSystemPolicy(); // XDG config AGENTS.md (or PLURNK_SERVICE_POLICY)
         // {§turn0-agents-stunt} — the PROJECT AGENTS.md rides turn 0 as a foisted
-        // READ (LoopDocs → worker:///_plurnk/agents.md), not the system prompt.
+        // READ (LoopDocs → worker:///_plurnk/AGENTS.md), not the system prompt.
         // Child-orientation ({§child-orientation}): the live things this worker holds — open streams +
         // unconcluded child workers — surfaced every turn as `{status, path}` JSON pointers (same shape
         // as errors) just above the errors section. Orienting STATE so the model never loses track of

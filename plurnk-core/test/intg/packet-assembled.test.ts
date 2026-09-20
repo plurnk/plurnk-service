@@ -489,7 +489,7 @@ test("assembled packet: PLURNK_SERVICE_POLICY renders the single privileged syst
 
         // Policy is the client's foot in the privileged zone — the system slot
         // carries the operator's authoritative rules. Project guidance now
-        // rides turn 0 as the foisted agents.md entry ({§turn0-agents-stunt}).
+        // rides turn 0 as the foisted AGENTS.md entry ({§turn0-agents-stunt}).
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.ok(slot("system").includes("system-policy"), "PLURNK_SERVICE_POLICY rides the system slot — privileged, not a READable entry");
         assert.ok(!slot("system").includes("project-policy"), "the retired project-policy section never renders");
