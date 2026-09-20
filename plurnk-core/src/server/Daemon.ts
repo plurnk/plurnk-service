@@ -1156,7 +1156,7 @@ export default class Daemon implements ApplicationPort {
     listPrompts(workspaceId: number, limit?: number) {
         const checkedWorkspaceId = ClientInput.assertId("workspace.prompts", "workspaceId", workspaceId);
         const checkedLimit = ClientInput.assertLimit("workspace.prompts", limit);
-        return Envelope.listPromptsForWorkspace(this.#db, checkedWorkspaceId, checkedLimit ?? 100);
+        return Envelope.listPromptsForWorkspace(this.#db, checkedWorkspaceId, checkedLimit ?? Knob.integer("PLURNK_SERVICE_PROMPTS_PAGE", 1));
     }
     workspaceDerivationStatus(workspaceId: number) {
         return this.#engine.workspaceDerivationStatus(

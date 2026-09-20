@@ -22,6 +22,9 @@ import {
 } from "@plurnk/plurnk-contracts";
 import type WorkspaceBinding from "./WorkspaceBinding.ts";
 
+// A2A ListTasks: a request that names no page size asks for fifty. The protocol's, not ours.
+const UNSPECIFIED_PAGE = 50;
+
 export interface PlurnkTaskBinding {
     readonly workspaceId: number;
     readonly context: ApplicationWorkerProjection;
@@ -193,7 +196,7 @@ export default class PlurnkTaskStore implements TaskStore {
         context: ServerCallContext,
     ): Promise<import("@a2a-js/sdk").ListTasksResponse> {
         this.#assertTenant(context);
-        const pageSize = params.pageSize ?? 50;
+        const pageSize = params.pageSize ?? UNSPECIFIED_PAGE;
         const cursor = decodeCursor(params.pageToken);
         const workspaceId = await this.#workspace.existingId();
         if (workspaceId === null) return { tasks: [], nextPageToken: "", pageSize, totalSize: 0 };
