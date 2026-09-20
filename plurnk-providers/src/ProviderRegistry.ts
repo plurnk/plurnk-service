@@ -60,7 +60,7 @@ export const instantiateProvider = async (
     const catalog = catalogProviderFromEnv(name, env, model, baseUrl);
     if (catalog !== null) return catalog;
     if (name === "ollama") return ollamaProviderFromEnv(env, model, baseUrl === undefined ? undefined : { baseUrl });
-    if (name === "openai" || name === "plurnk") return compatibleProviderFromEnv(name, env, model, baseUrl);
+    if (name === "openai") return compatibleProviderFromEnv(env, model, baseUrl);
     const { registry, skipped, packageAttributions = new Map(), grammarStyles = new Map() } = await providerPackages(discoverFn, env);
     const specifier = registry.get(name);
     if (specifier === undefined) {

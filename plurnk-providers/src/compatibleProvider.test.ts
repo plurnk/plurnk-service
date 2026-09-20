@@ -44,7 +44,7 @@ test("an undifferentiated compatible endpoint receives no guessed prompt-cache f
         return streamedChatResponse("ok");
     });
 
-    const provider = await compatibleProviderFromEnv("openai", env, "local");
+    const provider = await compatibleProviderFromEnv(env, "local");
     await provider.generate({
         workerId: "worker-affinity",
         messages: [{ role: "user", content: "hello" }],
@@ -65,7 +65,7 @@ test("the server-wide DRY-off floor emits no DRY request fields", async () => {
         return streamedChatResponse("ok");
     });
 
-    const provider = await compatibleProviderFromEnv("openai", {
+    const provider = await compatibleProviderFromEnv({
         ...env,
         PLURNK_PROVIDERS_DRY_MULTIPLIER: "0",
         // Stale or independently supplied shape values cannot activate DRY.
@@ -90,7 +90,7 @@ test("(#483) a detected llama-server rail admits the operator's stated effort", 
         if (url.endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }));
         throw new Error(`unexpected request ${url}`);
     });
-    const provider = await compatibleProviderFromEnv("openai", { ...env, PLURNK_PROVIDERS_REASONING: "medium" }, "local");
+    const provider = await compatibleProviderFromEnv({ ...env, PLURNK_PROVIDERS_REASONING: "medium" }, "local");
     assert.ok(provider.supportedReasoningPolicies.includes("medium"), "the template governs: medium is admitted on a llama-server rail");
     assert.ok(provider.supportedReasoningPolicies.includes("low") && provider.supportedReasoningPolicies.includes("high"), "the whole policy vocabulary rides; the template refuses unknown words itself");
 });
@@ -118,7 +118,7 @@ test("detected llama-server measures the complete chat request through input_tok
         throw new Error(`unexpected request ${url}`);
     });
 
-    const provider = await compatibleProviderFromEnv("openai", env, "local");
+    const provider = await compatibleProviderFromEnv(env, "local");
     const messages = [
         { role: "system" as const, content: "system slot" },
         { role: "user" as const, content: "漢漢漢" },
@@ -147,7 +147,7 @@ test("a missing llama-server input-token endpoint degrades explicitly, never to 
         throw new Error(`unexpected request ${url}`);
     });
 
-    const provider = await compatibleProviderFromEnv("openai", env, "local");
+    const provider = await compatibleProviderFromEnv(env, "local");
     assert.deepEqual(await provider.countPromptTokens([{ role: "user", content: "漢漢漢" }]), {
         kind: "estimate",
         tokens: 2,

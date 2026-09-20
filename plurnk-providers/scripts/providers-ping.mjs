@@ -24,7 +24,6 @@ const SENSITIVE_NAME = /(?:^|_)(?:API_KEY|TOKEN|SECRET|ACCESS_KEY|PASSWORD|CREDE
 const envPrefix = (provider) => provider.replaceAll(/[^a-zA-Z0-9]/g, "_").toUpperCase();
 
 const configuredCredentialNames = (provider, env, catalog) => {
-    if (provider === "plurnk") return ["PLURNK_API_KEY"];
     const configured = env[`PLURNK_PROVIDERS_PROVIDER_${envPrefix(provider)}_API_KEY_ENV`];
     const names = configured === undefined || configured.length === 0
         ? catalog?.env ?? []
@@ -88,7 +87,6 @@ export const planProviderPings = (env = process.env) => {
         const names = catalog.env.filter((name) => CREDENTIAL_NAME.test(name));
         if (hasCredential(names, env)) keyed.add(id);
     }
-    if (env.PLURNK_API_KEY !== undefined && env.PLURNK_API_KEY.length > 0) keyed.add("plurnk");
     for (const group of byProvider.values()) {
         if (hasCredential([...group.credentialNames], env)) keyed.add(group.id);
     }

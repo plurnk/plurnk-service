@@ -26,22 +26,16 @@ type EndpointProbe = {
     failed: boolean;
 };
 
-const chatUrl = (
-    provider: "openai" | "plurnk",
-    env: NodeJS.ProcessEnv,
-    override?: string,
-): string => {
-    const configured = override
-        ?? (provider === "openai"
-            ? env.OPENAI_BASE_URL ?? env.OPENAI_API_BASE
-            : env.PLURNK_BASE_URL);
+const provider = "openai";
+
+const chatUrl = (env: NodeJS.ProcessEnv, override?: string): string => {
+    const configured = override ?? env.OPENAI_BASE_URL ?? env.OPENAI_API_BASE;
     if (configured === undefined || configured.length === 0) {
-        throw new Error(`${provider} provider: ${provider === "openai" ? "OPENAI_BASE_URL or OPENAI_API_BASE" : "PLURNK_BASE_URL"} must be set`);
+        throw new Error(`${provider} provider: OPENAI_BASE_URL or OPENAI_API_BASE must be set`);
     }
     const base = configured.replace(/\/+$/, "");
     if (base.endsWith("/chat/completions")) return base;
-    if (provider === "openai") return `${base.replace(/\/v1$/, "")}/v1/chat/completions`;
-    return `${base}/chat/completions`;
+    return `${base.replace(/\/v1$/, "")}/v1/chat/completions`;
 };
 
 const probeModels = async (
@@ -113,18 +107,16 @@ const probeProps = async (
 };
 
 export const compatibleProviderFromEnv = async (
-    provider: "openai" | "plurnk",
     env: NodeJS.ProcessEnv,
     model: string,
     baseUrlOverride?: string,
 ): Promise<Provider> => {
-    // The knobs remain universal and fail hard when malformed, but this local /
-    // first-party compatible route declares no vendor cache projection. llama-server
-    // already owns slot affinity and the first-party endpoint receives worker metadata.
+    // The knobs remain universal and fail hard when malformed, but this local compatible
+    // route declares no vendor cache projection: llama-server already owns slot affinity.
     cacheAffinityFromEnv(env, provider);
     cacheWritePolicyFromEnv(env, provider);
-    const url = chatUrl(provider, env, baseUrlOverride);
-    const apiKey = provider === "openai" ? env.OPENAI_API_KEY : env.PLURNK_API_KEY;
+    const url = chatUrl(env, baseUrlOverride);
+    const apiKey = env.OPENAI_API_KEY;
     const headers: Record<string, string> = apiKey === undefined || apiKey.length === 0
         ? {}
         : { Authorization: `Bearer ${apiKey}` };
@@ -144,8 +136,8 @@ export const compatibleProviderFromEnv = async (
         throw new Error(`${provider} provider: PLURNK_PROVIDERS_LLAMA_SERVER must be "1", "0", or unset`);
     }
     const pinned = pinRaw === undefined || pinRaw === "" ? null : pinRaw === "1";
-    const llamaServer = provider === "openai" && (pinned ?? probe.llamaServer);
-    if (probe.failed && pinned === null && provider === "openai") {
+    const llamaServer = pinned ?? probe.llamaServer;
+    if (probe.failed && pinned === null) {
         emitWarningOnce(
             `${provider} provider: llama-server detection failed after ${attempts} attempts; pin PLURNK_PROVIDERS_LLAMA_SERVER=1 when this is a llama-server`,
             "PLURNK_PROBE_FAILED",
@@ -159,7 +151,7 @@ export const compatibleProviderFromEnv = async (
     }
 
     let grammarStyle: GrammarStyle = "none";
-    let reasoningStyle: ReasoningStyle = provider === "openai" ? "think" : "none";
+    let reasoningStyle: ReasoningStyle = "think";
     let slotCount: number | null = null;
     let eosText: string | undefined;
     let tokenizeUrl: string | undefined;

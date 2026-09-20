@@ -109,10 +109,6 @@ Third-party discovery uses the shared pre-import trust contract ({§plugin-trust
 requires runtime facts no static catalog owns: served model, context window,
 llama-server capabilities, slots, EOS token, and exact tokenization.
 
-The `plurnk` provider retains the compatible transport because it carries
-first-party attribution and loop metadata and leaves model tuning to the
-endpoint.
-
 ## Configured-provider packet conformance matrix
 
 Every configured model alias is exercised through a real PLURNK loop — the

@@ -17,7 +17,6 @@ test("ExecEnv.scoped strips plurnk's own (PLURNK_* + provider keys) beneath any 
         CLOUDFLARE_ACCOUNT_ID: "account",        // provider coordinate, not a secret — keep
         ACME_TOKEN: "secret",                    // declared provider secret — drop
         PLURNK_PROVIDERS_PROVIDER_ACME_API_KEY_ENV: "ACME_TOKEN",
-        PLURNK_API_KEY: "plurnk-bearer",         // the plurnk provider's optional cred — drop
         PLURNK_SERVICE_GIT_ALLOWED: "1",                 // plurnk config — drop
         PLURNK_SERVICE_DB_PATH: "./x.db",                // plurnk config — drop
     });
@@ -28,7 +27,6 @@ test("ExecEnv.scoped strips plurnk's own (PLURNK_* + provider keys) beneath any 
     assert.equal(scoped.AWS_REGION, "us-east-1");
     assert.equal(scoped.CLOUDFLARE_ACCOUNT_ID, "account");
     assert.equal(scoped.ACME_TOKEN, undefined);
-    assert.equal(scoped.PLURNK_API_KEY, undefined, "the plurnk provider's bearer cred is stripped by the PLURNK_ prefix");
     // The policy admitted `PLURNK_*` explicitly; the invariant strips it anyway. That is the
     // whole point of running the invariant last: no policy can readmit plurnk's own.
     assert.equal(scoped.PLURNK_SERVICE_GIT_ALLOWED, undefined, "PLURNK_* config is stripped even when the policy names it");

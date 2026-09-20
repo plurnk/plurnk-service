@@ -39,13 +39,14 @@ test("#224: provider ping planning selects one cheapest declared route per keyed
 
 test("#224: the provider-named alias resolves an unpriced keyed provider without guessing another model", () => {
     const plan = planProviderPings({
-        PLURNK_MODEL_amanda: "plurnk/amanda",
-        PLURNK_MODEL_plurnk: "plurnk/plurnk",
-        PLURNK_API_KEY: "plurnk-secret",
+        PLURNK_MODEL_amanda: "acme/amanda",
+        PLURNK_MODEL_acme: "acme/acme",
+        PLURNK_PROVIDERS_PROVIDER_ACME_API_KEY_ENV: "ACME_API_KEY",
+        ACME_API_KEY: "acme-secret",
     });
 
     assert.equal(plan.routes.length, 1);
-    assert.equal(plan.routes[0].alias, "plurnk");
+    assert.equal(plan.routes[0].alias, "acme");
     assert.equal(plan.routes[0].selection, "provider-named alias");
 });
 
@@ -59,13 +60,14 @@ test("#224: a catalog key without a declared route remains explicitly red", () =
 
 test("#224: multiple unpriced aliases remain one ambiguous provider, not guessed routes", () => {
     const plan = planProviderPings({
-        PLURNK_MODEL_amanda: "plurnk/amanda",
-        PLURNK_MODEL_ashley: "plurnk/ashley",
-        PLURNK_API_KEY: "plurnk-secret",
+        PLURNK_MODEL_amanda: "acme/amanda",
+        PLURNK_MODEL_ashley: "acme/ashley",
+        PLURNK_PROVIDERS_PROVIDER_ACME_API_KEY_ENV: "ACME_API_KEY",
+        ACME_API_KEY: "acme-secret",
     });
 
     assert.deepEqual(plan.routes, []);
-    assert.deepEqual(plan.unrouted, ["plurnk"]);
+    assert.deepEqual(plan.unrouted, ["acme"]);
 });
 
 test("#224: response evidence retains structure but no provider scalar values", () => {
@@ -82,10 +84,10 @@ test("#224: response evidence retains structure but no provider scalar values", 
     });
 });
 
-test("#224: the bounded probe carries the complete first-party turn identity", () => {
-    const request = pingRequest({ provider: "plurnk" });
+test("#224: the bounded probe carries a complete turn identity", () => {
+    const request = pingRequest({ provider: "acme" });
 
-    assert.equal(request.workerId, "providers-ping-plurnk");
+    assert.equal(request.workerId, "providers-ping-acme");
     assert.equal(request.primaryWorkerId, request.workerId);
     assert.equal(request.maxOutputTokens, 16);
 });
