@@ -149,3 +149,27 @@ test("{§tokenomics-calibrated-readout} a converted ceiling changes pressure wit
     );
     assert.doesNotMatch(calibrated, /YOU MUST KILL/u, "the same packet under an honest factor carries no mandate");
 });
+
+test("{§tokenomics-pressure-inventory} the panel says when pressure begins and how many items it names", () => {
+    const items = [
+        { path: "log:///1/1/1/READ", logTokens: 110 },
+        { path: "log:///1/1/2/READ", logTokens: 100 },
+        { path: "log:///1/1/3/READ", logTokens: 90 },
+    ];
+    const prior = { pressure: process.env.PLURNK_SERVICE_BUDGET_PRESSURE, largest: process.env.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS };
+    try {
+        assert.doesNotMatch(resolve(1_000, 700, items).content, /YOU MUST KILL/u, "70% is calm on the shipped panel");
+        process.env.PLURNK_SERVICE_BUDGET_PRESSURE = "60%";
+        process.env.PLURNK_SERVICE_BUDGET_LARGEST_ITEMS = "2";
+        const pressured = resolve(1_000, 700, items).content;
+        assert.match(pressured, /YOU MUST KILL/u, "and pressured once the operator moves the line beneath it");
+        const { logTokensLargest } = JSON.parse(pressured.split("\n\n")[0]!) as { logTokensLargest: unknown[] };
+        assert.equal(logTokensLargest.length, 2);
+        process.env.PLURNK_SERVICE_BUDGET_PRESSURE = "0.6";
+        assert.throws(() => resolve(1_000, 700, items), /PLURNK_SERVICE_BUDGET_PRESSURE must be a percentage in \(0, 100\); got "0\.6"/u);
+    } finally {
+        for (const [name, value] of [["PLURNK_SERVICE_BUDGET_PRESSURE", prior.pressure], ["PLURNK_SERVICE_BUDGET_LARGEST_ITEMS", prior.largest]] as const) {
+            if (value === undefined) delete process.env[name]; else process.env[name] = value;
+        }
+    }
+});

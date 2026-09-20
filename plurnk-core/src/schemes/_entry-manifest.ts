@@ -12,6 +12,7 @@ import type {
     EntryStreamLifecycle,
 } from "@plurnk/plurnk-schemes";
 import { renderAddress } from "../core/plurnk-uri.ts";
+import Knob from "../core/Knob.ts";
 
 type ManifestRow = {
     entry_id: number;
@@ -52,14 +53,15 @@ const catalogAside = (value: string | null): string | undefined => {
     if (value === null) return undefined;
     if (value.startsWith("```")) return value;
     const points = [...value];
-    return points.length <= EntryManifest.SUMMARY_CODE_POINTS
+    const shown = EntryManifest.summaryCodePoints();
+    return points.length <= shown
         ? value
-        : `${points.slice(0, EntryManifest.SUMMARY_CODE_POINTS - 1).join("")}…`;
+        : `${points.slice(0, shown - 1).join("")}…`;
 };
 
 export default class EntryManifest {
     // {§scheme-catalog-aside} — the catalog shows a prose summary whole up to this many code points.
-    static readonly SUMMARY_CODE_POINTS = 256;
+    static summaryCodePoints(): number { return Knob.integer("PLURNK_SERVICE_CATALOG_SUMMARY_CHARS", 1); }
 
     static toPath(scheme: string, authority: string, pathname: string): string {
         if (scheme === "file") return PathSyntax.escapeTarget(PathSyntax.encodeParens(pathname));

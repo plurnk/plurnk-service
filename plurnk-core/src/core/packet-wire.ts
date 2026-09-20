@@ -14,7 +14,7 @@ import { relative, sep } from "node:path";
 import { Problems, Validator, type ProblemDetails, type RangeExtent, type TextLineMarker, type TextRegion } from "@plurnk/plurnk-contracts";
 import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
 import { renderTarget } from "./plurnk-uri.ts";
-import type { GitStatus } from "./git-state.ts";
+import GitState, { type GitStatus } from "./git-state.ts";
 import LogBody, { type ResolvedLogBody } from "./LogBody.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
 import LogVisibility, { type LogFoldRanges } from "./LogVisibility.ts";
@@ -1228,8 +1228,6 @@ export default class PacketWire {
 
     // {§packet-git-status}: the count line, then one bounded line per non-empty class. Untracked paths are
     // named because they are NOT members ({§membership-baseline}) — a human `git add`s or picks them.
-    static #GIT_PATHS_PER_CLASS = 8;
-
     static #renderGitState(git: GitStatus & { files?: readonly { path: string; status: string; member?: string | null }[] }): string {
         const sync = git.ahead > 0 || git.behind > 0 ? ` (↑${git.ahead} ↓${git.behind})` : "";
         const position = git.branch === null ? "detached HEAD" : `branch \`${git.branch}\`${git.unborn ? " (no commits)" : ""}`;
@@ -1247,8 +1245,9 @@ export default class PacketWire {
         const lines = classes
             .filter(([, items]) => items.length > 0)
             .map(([label, items]) => {
-                const shown = items.slice(0, PacketWire.#GIT_PATHS_PER_CLASS).join(" · ");
-                const more = items.length > PacketWire.#GIT_PATHS_PER_CLASS ? ` (+${items.length - PacketWire.#GIT_PATHS_PER_CLASS} more)` : "";
+                const paths = GitState.renderedPaths();
+                const shown = items.slice(0, paths).join(" · ");
+                const more = items.length > paths ? ` (+${items.length - paths} more)` : "";
                 return `${label}: ${shown}${more}`;
             });
         return [head, ...lines].join("\n");

@@ -97,6 +97,32 @@ test("{§provider-recovery} two dropped provider calls are absorbed inside the t
     });
 });
 
+test("{§provider-recovery} the panel's ceiling bounds the doubling delay", async () => {
+    // A one-second first delay would wait 1 + 2 + 4 + 8 seconds across four failures; a 5 ms ceiling
+    // bounds every one of them, so the turn recovers in well under the first uncapped delay.
+    await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "1000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX: "5" }, async () => {
+        const db = await openMigrated();
+        const workspaceId = await insertWorkspace(db, `recovery-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId, null, "conversation", "model");
+        const provider = new Flaky(4, [102, 200]);
+        const daemon = new Daemon({ db, provider });
+        await daemon.start();
+        const terminated: Terminated[] = [];
+        daemon.subscribeToEvents((_w, method, params) => { if (method === "loop/terminated") terminated.push(params as Terminated); });
+        try {
+            const began = Date.now();
+            await daemon.runLoop({ workspaceId, workerId, prompt: "hello", policy: { proposals: "accept" } });
+            const done = await untilTerminated(terminated, 0);
+            assert.equal(done.result.status, 200);
+            assert.equal(provider.calls, 6, "four failed calls, the recovered response, and one new model turn");
+            assert.ok(Date.now() - began < 1000, `four capped delays took ${Date.now() - began}ms`);
+        } finally {
+            await daemon.stop();
+            await db.close();
+        }
+    });
+});
+
 test("{§provider-recovery} a spent recovery budget parks the loop as 202; the next prompt resumes it", async () => {
     await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "0", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "10" }, async () => {
         const db = await openMigrated();

@@ -14,6 +14,7 @@ import type {
 import LineMarkerOps from "./line-marker.ts";
 import ScopeFormat from "./scope-format.ts";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import Knob from "../core/Knob.ts";
 
 export interface ReceiptEdit {
     readonly marker: LineMarker;
@@ -352,9 +353,10 @@ const lineEffects = (
 
 // {§edit-receipt-removed-text} — a pure deletion's removed lines ride its receipt so it can be
 // undone from what the model already sees; long spans are cut, not dropped.
-const REMOVED_TEXT_LINES = 40;
-const removedTextOf = (lines: readonly string[]): string =>
-    lines.length <= REMOVED_TEXT_LINES ? lines.join("\n") : `${lines.slice(0, REMOVED_TEXT_LINES).join("\n")}\n… ${lines.length - REMOVED_TEXT_LINES} more lines`;
+const removedTextOf = (lines: readonly string[]): string => {
+    const shown = Knob.integer("PLURNK_SERVICE_EDIT_RECEIPT_REMOVED_LINES", 0);
+    return lines.length <= shown ? lines.join("\n") : `${lines.slice(0, shown).join("\n")}\n… ${lines.length - shown} more lines`;
+};
 const codePointCount = (content: string): number => [...content].length;
 
 const codePointOffset = (content: string, jsOffset: number): number =>

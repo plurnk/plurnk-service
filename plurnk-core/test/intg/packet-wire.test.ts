@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { resolve as resolveTokenizer } from "@plurnk/plurnk-mimetypes-tokenizers";
 import PacketWire from "../../src/core/packet-wire.ts";
+import GitState from "../../src/core/git-state.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 
 // Per-row `tokens` tests assert on bodies/substrings, not tokenizer-specific
@@ -193,7 +194,21 @@ test("{§packet-git-status}: Git packet state names each class once, bounded, an
         files: Array.from({ length: 10 }, (_, i) => ({ path: `loose-${i}.txt`, status: "??" })),
     });
     assert.equal(many.split("\n").length, 3, "one note marker and one line per class, never one per path");
-    assert.match(many, / \(\+2 more\)$/, "the class line is bounded at eight paths");
+    assert.match(many, / \(\+2 more\)$/, "the class line is bounded by the panel");
+    // {§packet-git-status} — one knob is read by the renderer and by the marker that decides which
+    // untracked paths the catalog names, so the two can never disagree.
+    const prior = process.env.PLURNK_SERVICE_GIT_STATUS_PATHS;
+    try {
+        process.env.PLURNK_SERVICE_GIT_STATUS_PATHS = "3";
+        const few = PacketWire.renderGit({
+            branch: "main", ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 10,
+            files: Array.from({ length: 10 }, (_, i) => ({ path: `loose-${i}.txt`, status: "??" })),
+        });
+        assert.match(few, /`loose-2\.txt` \(\+7 more\)$/);
+        assert.equal(GitState.renderedPaths(), 3);
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_GIT_STATUS_PATHS; else process.env.PLURNK_SERVICE_GIT_STATUS_PATHS = prior;
+    }
 });
 
 // Default-channel convention: when a channel's name matches its scheme's

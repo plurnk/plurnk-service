@@ -241,10 +241,11 @@ const readMilliseconds = (key: string): number => {
     return value;
 };
 // {§provider-recovery} — how long one turn keeps re-issuing its provider call after a
-// recoverable failure before the loop parks (0 parks at once), and the first backoff delay,
-// which doubles per failure and is capped at twelve times itself.
+// recoverable failure before the loop parks (0 parks at once), the first backoff delay, which
+// doubles per failure, and that delay's ceiling.
 const readProviderRecovery = (): number => readMilliseconds("PLURNK_SERVICE_PROVIDER_RECOVERY");
 const readProviderRecoveryBackoff = (): number => readMilliseconds("PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF");
+const readProviderRecoveryBackoffMax = (): number => readMilliseconds("PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX");
 const RECOVERABLE_PROVIDER_FAILURES: ReadonlySet<ProviderErrorKind> = new Set(["rate_limit", "network_failure", "deadline_exceeded", "resource_interrupted"]);
 
 // The wall's abort reason — runLoop branches a mid-turn teardown to the 504 terminal on it.
@@ -1393,7 +1394,7 @@ export default class TurnRunner {
             source: "provider",
             result: failure,
         });
-        const wait = Math.min(attempts.recoveryBackoff * 2 ** (attempts.recoveryFailures - 1), attempts.recoveryBackoff * 12);
+        const wait = Math.min(attempts.recoveryBackoff * 2 ** (attempts.recoveryFailures - 1), readProviderRecoveryBackoffMax());
         this.#notices.push(workspaceId, workerId, loopId, {
             source: "engine:provider",
             kind: "provider_unavailable",

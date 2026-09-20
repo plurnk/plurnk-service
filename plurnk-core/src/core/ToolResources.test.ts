@@ -158,7 +158,7 @@ test("a large family's inventory summary names every tool", () => {
     });
     const family = resources[0]?.content ?? "";
     const summary = /^## Summary\n\n(.*)$/m.exec(family)?.[1] ?? "";
-    assert.ok([...summary].length > EntryManifest.SUMMARY_CODE_POINTS, "the complete menu is longer than the prose bound");
+    assert.ok([...summary].length > EntryManifest.summaryCodePoints(), "the complete menu is longer than the prose bound");
     assert.match(summary, new RegExp(`^\`\`\`\`gitea \\(${targets.join("\\|")}\\)`), "every tool is named, in declaration order");
     assert.doesNotMatch(summary, /…/);
 

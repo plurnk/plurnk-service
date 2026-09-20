@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import type { Db } from "./Db.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import Namespace from "./namespace.ts";
+import Knob from "./Knob.ts";
 
 interface GitFileStatus {
     path: string;
@@ -73,10 +74,10 @@ export default class GitState {
 
     // {§packet-git-status} — the rendered untracked paths never contradict the catalog: an
     // untracked file an inclusion or a creation record admits is named as the member it is.
-    static readonly RENDERED_PATHS = 8;
+    static renderedPaths(): number { return Knob.integer("PLURNK_SERVICE_GIT_STATUS_PATHS", 0); }
 
     static async #markMembers(db: Db, workspaceId: number, snapshot: GitStatusSnapshot): Promise<void> {
-        const untracked = snapshot.files.filter((file) => file.status === "??").slice(0, GitState.RENDERED_PATHS);
+        const untracked = snapshot.files.filter((file) => file.status === "??").slice(0, GitState.renderedPaths());
         if (untracked.length === 0) return;
         // {§membership-glob-in-sql} — one statement marks every rendered path.
         const marks = await db.crud_untracked_member_marks.all<{ pathname: string; registered: 0 | 1; source: string | null; glob: string | null }>({

@@ -18,6 +18,7 @@ import Meta, {
     type PluginAttributionContext,
 } from "@plurnk/plurnk-meta";
 import type { SchemeManifest } from "./types.ts";
+import Knob from "./Knob.ts";
 
 // The executor contract surface we consume (a BaseExecutor subclass). We bind
 // to the contract, not the framework's class identity. Under {§executor-scheme-output}, the executor is also
@@ -247,7 +248,7 @@ export default class ExecutorRegistry {
         return Meta.composeAttributions(...lists);
     }
 
-    static async build({ defaultRuntime = null, probeTimeoutMs = 3000, cwd, discoverFn, load = (name: string): Promise<unknown> => import(name) }: {
+    static async build({ defaultRuntime = null, probeTimeoutMs = Knob.integer("PLURNK_SERVICE_EXEC_PROBE_TIMEOUT_MS", 1), cwd, discoverFn, load = (name: string): Promise<unknown> => import(name) }: {
         defaultRuntime?: string | null;
         probeTimeoutMs?: number;
         cwd?: string;   // discovery root — the dir whose node_modules holds the exec plugins

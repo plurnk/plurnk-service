@@ -22,6 +22,7 @@ import {
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import HostPaths from "../core/HostPaths.ts";
+import Knob from "../core/Knob.ts";
 import Paths from "../Paths.ts";
 import type {
     FunctionalityAdapter,
@@ -39,8 +40,8 @@ const execFileP = promisify(execFile);
 const SKILLS_FAMILY = "skills";
 const SKILLS_OWNER = "@plurnk/plurnk-core/skills";
 const DEFINITION = { $ref: "https://schemas.plurnk.xyz/v0/SkillDefinition.json" } as const satisfies JsonSchema;
-const REGISTRY_LIMIT = 20;
-const CLI_TIMEOUT_MS = 120_000;
+// The ceiling of one skills CLI run's captured output: a bound on a child process, not a choice.
+const CLI_OUTPUT_BYTES = 8 * 1024 * 1024;
 
 type Scope = SkillDefinition["scope"];
 
@@ -171,8 +172,8 @@ export class StandardSkillsToolchain implements SkillsToolchain {
             // operator's environment (npm config, proxies) but never plurnk's secrets. NO_COLOR
             // and CI arrive as declared floors from @plurnk/plurnk-execs rather than inline.
             env: { ...ExecEnv.withoutOwnSecrets(), HOME: home },
-            timeout: CLI_TIMEOUT_MS,
-            maxBuffer: 8 * 1024 * 1024,
+            timeout: Knob.integer("PLURNK_SERVICE_SKILLS_CLI_TIMEOUT_MS", 1),
+            maxBuffer: CLI_OUTPUT_BYTES,
         });
         return `${stdout}\n${stderr}`;
     }
@@ -181,10 +182,10 @@ export class StandardSkillsToolchain implements SkillsToolchain {
         if (this.#registry === null) {
             throw actionError("registry-not-configured", 501, "Skills registry search is disabled; PLURNK_SERVICE_SKILLS_REGISTRY_URL is empty.", { query, retryable: false });
         }
-        const url = `${this.#registry}/api/search?${new URLSearchParams({ q: query, limit: String(REGISTRY_LIMIT) })}`;
+        const url = `${this.#registry}/api/search?${new URLSearchParams({ q: query, limit: String(Knob.integer("PLURNK_SERVICE_SKILLS_REGISTRY_LIMIT", 1)) })}`;
         let response: Response;
         try {
-            response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+            response = await fetch(url, { signal: AbortSignal.timeout(Knob.integer("PLURNK_SERVICE_SKILLS_REGISTRY_TIMEOUT_MS", 1)) });
         } catch (cause) {
             throw actionError("registry-unreachable", 502, `Skills registry ${this.#registry} could not be reached.`, { query, registry: this.#registry, retryable: true }, cause);
         }

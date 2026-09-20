@@ -30,6 +30,16 @@ export default class Knob {
         return raw as T;
     }
 
+    // The panel's own notation, a share strictly between nothing and everything: `80%` is 0.8.
+    static percent(name: string): number {
+        const raw = Knob.text(name);
+        const percent = Number(/^([0-9]+(?:\.[0-9]+)?)%$/u.exec(raw)?.[1]);
+        if (!Number.isFinite(percent) || percent <= 0 || percent >= 100) {
+            throw new Error(`${name} must be a percentage in (0, 100); got ${JSON.stringify(raw)}.`);
+        }
+        return percent / 100;
+    }
+
     // `floor` is a bound on what the operator may say, never a value used in the operator's place.
     static integer(name: string, floor: number): number {
         const raw = Knob.text(name);

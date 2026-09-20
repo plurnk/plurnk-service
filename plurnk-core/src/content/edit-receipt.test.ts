@@ -352,3 +352,18 @@ test("{§edit-receipt-anchored-context} with an identity the resulting context i
     const plain = editReceipt(original, updated, [{ marker: { marks: [2] }, body: "TWO" }]);
     assert.match(plain.effects[0]?.context ?? "", /^1:one\n2:TWO/, "no identity keeps the line-numbered form");
 });
+
+test("{§edit-receipt-removed-text} the panel says how much of a deletion its receipt quotes", () => {
+    const prior = process.env.PLURNK_SERVICE_EDIT_RECEIPT_REMOVED_LINES;
+    const deleted = (): string | undefined => editReceipt("a\nb\nc\nd\ne", "a\ne", [{ marker: { marks: [2, 4] }, body: "" }]).effects[0]?.removedText;
+    try {
+        assert.equal(deleted(), "b\nc\nd", "the shipped panel quotes a short deletion whole");
+        process.env.PLURNK_SERVICE_EDIT_RECEIPT_REMOVED_LINES = "1";
+        assert.equal(deleted(), "b\n… 2 more lines", "a longer span is cut and counted, never dropped");
+        process.env.PLURNK_SERVICE_EDIT_RECEIPT_REMOVED_LINES = "many";
+        assert.throws(deleted, /PLURNK_SERVICE_EDIT_RECEIPT_REMOVED_LINES must be a safe integer of at least 0/u);
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_EDIT_RECEIPT_REMOVED_LINES;
+        else process.env.PLURNK_SERVICE_EDIT_RECEIPT_REMOVED_LINES = prior;
+    }
+});
