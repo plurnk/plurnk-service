@@ -10,13 +10,18 @@ does not recompute them.
 - §agui-daemon-client **The module is an in-process plugin of the daemon** — the
   production host pre-binds its AG-UI+ listener, then daemon activation
   (`registerModule` → the application port) makes the client interface ready.
-  AG-UI owns the socket throughout. No WebSocket, no separate process.
-- §agui-listener-admission **Bound is not ready.** `Module.bind` owns the configured
-  TCP address before durable-state admission and answers every request with a
-  retryable 503 until `Module.start` installs the application port. A bind error
-  rejects with its originating socket failure; there is no unhandled server
-  error, silent pending promise, or close/rebind window. `Module.init` composes
-  bind and start for direct in-process use.
+  AG-UI mounts the root of the daemon's one listener ({§http-host}) and owns no
+  socket of its own under the daemon. No WebSocket, no separate process.
+- §agui-listener-admission **Bound is not ready.** Under the daemon the socket is
+  core's ({§startup-listener-admission}): bound before durable-state admission,
+  answering a retryable 503 until this module mounts the root at `Module.start`,
+  which installs the application port and registers `/` and `/agui`
+  ({§http-host}). Standalone, `Module.bind` owns a private TCP address with the
+  same admission shape — a retryable 503 until `Module.start`, a bind error that
+  rejects with its originating socket failure, and no unhandled server error,
+  silent pending promise, or close/rebind window; `Module.init` composes bind
+  and start for direct in-process use. `Module.create` is the daemon's door and
+  owns no socket.
 - §agui-thread-binding **A PLURNK workspace is the world; an AG-UI thread is a conversation over it**
   — the lifecycle vocabulary is defined by service {§lifecycle-terms}. PLURNK's machine model ({§machine-processes}) splits the world (a workspace: one
   curated workspace) from the CONVERSATION (a worker: a history over that world). AG-UI's workspace

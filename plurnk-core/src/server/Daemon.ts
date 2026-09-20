@@ -24,8 +24,9 @@ export type NotifyTarget = "all" | { workspaceId: number };
 import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult, type TurnCeilingSelection } from "./DrainSupervisor.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import { Validator, type ClientDisplayCapabilities, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationPort, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type ReasoningPolicy } from "@plurnk/plurnk-contracts";
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { HttpRouteHandler, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
+import HttpListener from "./HttpListener.ts";
 import Envelope, { projectWorkerRow } from "./envelope.ts";
 import ClientInput from "./client-input.ts";
 import type { ClientEnvelope } from "./envelope.ts";
@@ -106,6 +107,9 @@ export default class Daemon implements ApplicationPort {
     readonly #ownsMimetypes: boolean;
     #provider: Provider | null;
     #nodeModulesPath: string;
+    // {§http-host} — the one listener, bound by the service before durable admission; null in
+    // tests that never open a transport.
+    readonly #http: HttpListener | null;
     #discoveryCwd: string;
     #started = false; // {§module-lifecycle}: one discovery/module boot; no listener
 
@@ -128,17 +132,19 @@ export default class Daemon implements ApplicationPort {
     readonly #storage: WorkspaceStorage;
 
     constructor({
-        db, schemes, mimetypes, provider, nodeModulesPath, hostPaths = new HostPaths(), skills }: {
+        db, schemes, mimetypes, provider, nodeModulesPath, hostPaths = new HostPaths(), skills, http = null }: {
         db: Db;
         schemes?: SchemeRegistry;
         mimetypes?: Mimetypes;
         provider?: Provider | null;
         nodeModulesPath?: string;
         hostPaths?: HostPaths;
+        http?: HttpListener | null;
         // {§skills-functionality} — standard skill machinery, replaceable in tests.
         skills?: { toolchain?: SkillsToolchain };
     }) {
         this.#db = db;
+        this.#http = http;
         this.#storage = new WorkspaceStorage(db, hostPaths);
         this.#lifecycle = new LoopLifecycle(db);
         this.#schemes = schemes ?? new SchemeRegistry();
@@ -1333,6 +1339,18 @@ export default class Daemon implements ApplicationPort {
             scheme };
     }
 
+    // {§http-host} — exterior adapters mount on the daemon's one listener at start(); the
+    // daemon never opens a second transport, and a daemon without a listener says so.
+    registerHttpRoute(prefix: string, handler: HttpRouteHandler): void {
+        if (this.#http === null) throw new Error(`registerHttpRoute: this daemon has no HTTP listener to mount '${prefix}' on`);
+        this.#http.registerHttpRoute(prefix, handler);
+    }
+
+    httpAddress(): { readonly host: string; readonly port: number } {
+        if (this.#http === null) throw new Error("httpAddress: this daemon has no HTTP listener");
+        return this.#http.httpAddress();
+    }
+
     registerModuleAction(registration: ModuleActionRegistration): void {
         const { name, scope, inputSchema, outputSchema, handler } = registration;
         if (name.length === 0) throw new Error("registerModuleAction: action name must not be empty");
@@ -1529,8 +1547,9 @@ export default class Daemon implements ApplicationPort {
 
         await this.#recoverLifecycle();
 
-        // {§module-lifecycle} — the daemon opens no transport. Modules start their listeners only
-        // after capability publication and durable lifecycle recovery are complete.
+        // {§module-lifecycle} — the daemon opened its one transport before admission ({§http-host});
+        // modules mount their routes on it here, only after capability publication and durable
+        // lifecycle recovery are complete. None opens a listener of its own.
         for (const module of this.#modules) {
             const started = await module.start?.(this);
             if (started !== undefined && !this.#moduleClosers.includes(started)) {

@@ -67,6 +67,10 @@ const mockSeam = () => {
     const reasoningSets: unknown[] = [];
     const handlers = new Set<(s: number | null, m: string, p: unknown) => void>();
     const seam: ApplicationPort = {
+        // {§http-host} — the mock daemon carries no listener; a module started against it under
+        // create() would mount here, and one bound privately never calls these.
+        registerHttpRoute: () => {},
+        httpAddress: () => ({ host: "127.0.0.1", port: 0 }),
         listClientDisplayCapabilities: async () => [],
         listModuleActions: () => [],
         invokeModuleAction: async (name) => { throw new Error(`unexpected module action '${name}'`); },

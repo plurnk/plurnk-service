@@ -1,3 +1,4 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
 import type { LoopLifecycle } from "./LoopLifecycle.ts";
 import type { ApplicationMessage, MessageResource } from "./MessageResource.ts";
 import type {
@@ -99,8 +100,24 @@ export type ApplicationEventHandler = (
     params: unknown,
 ) => void;
 
+/** {§http-host} One request on the daemon's listener, handed to the adapter that mounted its prefix. */
+export type HttpRouteHandler = (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
+
+/**
+ * {§http-host} The daemon's one HTTP listener, offered to exterior adapters. A daemon is one trust
+ * domain on one address: core binds `PLURNK_HOST:PLURNK_PORT` before it admits durable state,
+ * answers 503 until a root is mounted, and hands each request to the longest mounted prefix.
+ * Adapters mount at `start()`; none opens a socket of its own. This is the one place the
+ * application port names a transport, by ruling (#641): the standards address by URL, never by
+ * port, so every exterior interface shares the address.
+ */
+export interface HttpHost {
+    registerHttpRoute(prefix: string, handler: HttpRouteHandler): void;
+    httpAddress(): { readonly host: string; readonly port: number };
+}
+
 /** {§application-port} The transport-neutral application contract consumed by exterior adapters. */
-export interface ApplicationPort {
+export interface ApplicationPort extends HttpHost {
     listClientDisplayCapabilities(): Promise<ClientDisplayCapabilities>;
     listModuleActions(): ApplicationActionDescriptor[];
     invokeModuleAction(

@@ -197,13 +197,27 @@ flowchart LR
     DAEMON -. failure .-> TEARDOWN["Close every started owner"] --> FAIL
 ```
 
-§startup-listener-admission The production service binds its sole client
-listener before creating, opening, replacing, rotating, migrating, or otherwise
-mutating anything in the durable data directory. A process that loses the
-listener race fails with the originating address error and byte-identical
-durable storage. The client-interface module owns the socket continuously; it
-answers 503 until activated, so early ownership introduces neither traffic nor a
-close/rebind race.
+§startup-listener-admission The production service binds its one listener
+({§http-host}) before creating, opening, replacing, rotating, migrating, or
+otherwise mutating anything in the durable data directory. A process that loses
+the listener race fails with the originating address error and byte-identical
+durable storage. Core owns the socket continuously; it answers 503 until the
+client-interface module mounts the root at daemon activation, so early
+ownership introduces neither traffic nor a close/rebind race.
+
+§http-host **The daemon opens exactly one transport.** Core binds the HTTP
+listener on `PLURNK_HOST:PLURNK_PORT` and offers it to every exterior adapter as
+`registerHttpRoute(prefix, handler)` and `httpAddress()` on the application port
+({§application-port}). A prefix is an absolute pathname. Each request goes to the
+longest mounted prefix; a prefix claims itself and the subtree beneath it, never
+a longer sibling name; `/` is the root and receives whatever nothing more
+specific claimed. Until a root is mounted the listener answers `503
+service-starting` to every request: the service has not admitted its client
+interface. Adapters mount at `start()`, after durable lifecycle recovery, and
+none opens a socket of its own under the daemon — a module hosted *without* a
+daemon may bind a private one, which is outside this contract. The standards
+address by URL, never by port (#641): AG-UI mounts `/` and `/agui`, A2A the
+well-known card and its endpoint path, on the same address.
 
 §startup-admission-order After listener ownership, database admission completes
 before provider or capability initialization can perform external work. Every

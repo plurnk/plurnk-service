@@ -8,6 +8,7 @@ import { dirname, resolve } from "node:path";
 import SqlRite from "@possumtech/sqlrite";
 import type { Db } from "./core/Db.ts";
 import Daemon from "./server/Daemon.ts";
+import HttpListener from "./server/HttpListener.ts";
 import DaemonLock from "./server/DaemonLock.ts";
 import EnvFlags from "./core/EnvFlags.ts";
 import EnvDefaults from "./core/env-defaults.ts";
@@ -224,10 +225,11 @@ export default class Service {
         // {§operator-config} — an explicit boot selector must resolve; only an
         // unset selector permits modelless boot for per-request selection.
         const { active: route } = Service.#modelConfiguration();
-        // {§startup-listener-admission}: the client-interface module wins the
-        // configured address before anything may mutate durable state. It owns
-        // the bound socket but serves only 503 until daemon activation.
-        const aguiModule = await AguiModule.bind({ host, port });
+        // {§startup-listener-admission}: the daemon's one listener wins the configured
+        // address before anything may mutate durable state ({§http-host}). It answers 503
+        // until the client-interface module mounts the root at daemon activation.
+        const listener = await HttpListener.bind({ host, port });
+        const aguiModule = AguiModule.create({ host, port });
         let db: Db | null = null;
         let daemon: Daemon | null = null;
         let observability: Awaited<ReturnType<typeof startObservability>> = null;
@@ -235,7 +237,7 @@ export default class Service {
             async () => { await daemon?.stop(); },
             async () => { await observability?.shutdown(); },
             async () => { await db?.close(); },
-            async () => { await aguiModule.close(); },
+            async () => { await listener.close(); },
         );
         try {
             // {§startup-admission-order}: after listener ownership, persistence
@@ -247,16 +249,16 @@ export default class Service {
             observability = await startObservability();
             const hooksModule = HooksModule.init();
             const provider = route === null ? null : await ProviderInstantiate.loadActiveProvider();
-            daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules(), hostPaths: Service.#hostPaths });
+            daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules(), hostPaths: Service.#hostPaths, http: listener });
             ServiceModules.registerWorkspaceCapabilities(daemon);
             daemon.registerModule(hooksModule);
             const a2a = hostedAgentConfiguration();
             if (a2a !== null) daemon.registerModule(A2aModule.init(a2a));
-            // {§rpc}: AG-UI owns the already-bound client listener. Daemon
-            // activation makes it ready without a close/rebind race.
+            // {§rpc}: AG-UI mounts the root of the daemon's listener at activation; the
+            // socket never closes or rebinds between admission and readiness.
             daemon.registerModule(aguiModule);
             await daemon.start();
-            const aguiAddr = aguiModule.address();
+            const aguiAddr = listener.httpAddress();
             if (route === null) {
                 process.stderr.write(
                     `plurnk-service: no model configured — choose a profile in ${Service.#hostPaths.configFile}; `

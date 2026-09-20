@@ -55,7 +55,9 @@ export default class Module {
     #seam!: ApplicationPort;
     #opts: ResolvedModuleOptions;
     #portal!: Portal;
-    #http: HttpServer;
+    // {§http-host} — null under the daemon, which carries this module on its one listener; a
+    // private socket exists only for standalone hosting through bind().
+    #http: HttpServer | null;
     #threadEnvelopes = new Map<string, ClientEnvelope>();
     #threadWorkers = new Map<string, Promise<number>>();
     #workspaceAcquisitions = new Map<string, Promise<void>>();
@@ -68,7 +70,13 @@ export default class Module {
 
     private constructor(opts: ModuleOptions) {
         this.#opts = resolveModuleOptions(opts);
-        this.#http = createServer((req, res) => { void this.#route(req, res); });
+        this.#http = null;
+    }
+
+    // {§http-host} — daemon composition: no socket of its own; start() mounts the module on
+    // the daemon's listener.
+    static create(opts: ModuleOptions): Module {
+        return new Module(opts);
     }
 
     #registerActions(): void {
@@ -151,36 +159,47 @@ export default class Module {
     // {§agui-listener-admission} Bind the process's client identity without
     // admitting any durable state. Until start() installs the ApplicationPort,
     // requests receive a transient 503 and cannot enter Core.
+    // Standalone hosting (tests, embedding without a daemon): a private socket the module owns.
     static async bind(opts: ModuleOptions): Promise<Module> {
         const module = new Module(opts);
+        module.#http = createServer((req, res) => { void module.#route(req, res); });
         await module.listen();
         return module;
     }
 
     async listen(): Promise<{ host: string; port: number }> {
         if (this.#listening) throw new Error("plurnk-agui: listener already bound");
+        const http = this.#http;
+        if (http === null) throw new Error("plurnk-agui: create() owns no socket; the daemon's listener carries this module");
         await new Promise<void>((resolve, reject) => {
             const onError = (cause: Error): void => {
-                this.#http.off("listening", onListening);
+                http.off("listening", onListening);
                 reject(cause);
             };
             const onListening = (): void => {
-                this.#http.off("error", onError);
+                http.off("error", onError);
                 resolve();
             };
-            this.#http.once("error", onError);
-            this.#http.once("listening", onListening);
-            this.#http.listen(this.#opts.port, this.#opts.host);
+            http.once("error", onError);
+            http.once("listening", onListening);
+            http.listen(this.#opts.port, this.#opts.host);
         });
         this.#listening = true;
-        const addr = this.#http.address();
+        const addr = http.address();
         if (addr === null || typeof addr === "string") throw new Error("plurnk-agui: listener bound no TCP address");
         return { host: this.#opts.host, port: addr.port };
     }
 
     async start(seam: ApplicationPort): Promise<Module> {
-        if (!this.#listening) throw new Error("plurnk-agui: listener must be bound before activation");
         if (this.#activated) throw new Error("plurnk-agui: module already activated");
+        if (this.#http === null) {
+            // {§http-host} — mount as the root: every request nothing more specific claims is
+            // AG-UI's, exactly as when it owned the socket, so unknown paths keep their refusals.
+            seam.registerHttpRoute("/", (req, res) => this.#route(req, res));
+            seam.registerHttpRoute("/agui", (req, res) => this.#route(req, res));
+        } else if (!this.#listening) {
+            throw new Error("plurnk-agui: a privately bound listener must be bound before activation");
+        }
         this.#seam = seam;
         this.#registerActions();
         this.#portal = new Portal(seam);
@@ -190,6 +209,7 @@ export default class Module {
     }
 
     address(): { host: string; port: number } {
+        if (this.#http === null) throw new Error("plurnk-agui: no private listener; the daemon's httpAddress() is the address");
         const addr = this.#http.address();
         if (addr === null || typeof addr === "string") throw new Error("plurnk-agui: not listening");
         return { host: this.#opts.host, port: addr.port };
@@ -200,8 +220,9 @@ export default class Module {
             this.#activated = false;
             this.#portal.stop();
         }
-        if (!this.#listening) return;
-        this.#closing ??= new Promise<void>((resolve, reject) => this.#http.close((e) => (e ? reject(e) : resolve())));
+        const http = this.#http;
+        if (!this.#listening || http === null) return;
+        this.#closing ??= new Promise<void>((resolve, reject) => http.close((e) => (e ? reject(e) : resolve())));
         await this.#closing;
         this.#listening = false;
     }
