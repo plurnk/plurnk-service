@@ -3,7 +3,7 @@
 The single authority for PLURNK's model-facing language contract, its AST,
 generated model rail, shared schemas and types, runtime-neutral Problems,
 operation results, Notices, and text coordinates. See SPEC
-{§contract-authority}.
+{§root-value-api}.
 
 ## Install
 
@@ -19,7 +19,7 @@ Requires Node.js 26 or newer.
 |---------------------------------|------------------------------------------------------|
 | Concise model language teaching | [`plurnk.md`](plurnk.md)                             |
 | Stable behavioral contract      | [`SPEC.md`](SPEC.md)                                 |
-| Accepted language syntax        | `SPEC.md` ({§contract-layers}); implemented by `@plurnk/plurnk-parser` |
+| Accepted language syntax        | `SPEC.md` ({§canonical-statement}); implemented by `@plurnk/plurnk-parser` |
 | Shared wire shapes              | `schema/*.json`                                      |
 | JavaScript and TypeScript API   | `@plurnk/plurnk-contracts`                           |
 | Published JSON Schemas          | `@plurnk/plurnk-contracts/schema/*.json`             |

@@ -454,6 +454,22 @@ test("overlapping startup and turn membership requests coalesce into one workspa
     });
 });
 
+test("{§membership-git-flags} PLURNK_SERVICE_GIT_AUTO=0 leaves definitions as the only grantor", async () => {
+    await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
+        const prev = process.env.PLURNK_SERVICE_GIT_AUTO;
+        process.env.PLURNK_SERVICE_GIT_AUTO = "0";
+        try {
+            await GitMembership.resolveGitMembership(db, ctx.workspaceId, undefined);
+            const member = await db.crud_find_workspace_entry.get<{ id: number }>({
+                workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: trackedPath,
+            });
+            assert.equal(member, undefined, "AUTO=0 stops the repository from admitting its own tracked files");
+        } finally {
+            if (prev === undefined) delete process.env.PLURNK_SERVICE_GIT_AUTO; else process.env.PLURNK_SERVICE_GIT_AUTO = prev;
+        }
+    });
+});
+
 test("{§operator-config-git-ceiling} PLURNK_SERVICE_GIT_ALLOWED=0 denies all git membership, un-re-enableable", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         const prev = process.env.PLURNK_SERVICE_GIT_ALLOWED;

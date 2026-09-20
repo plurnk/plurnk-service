@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import type { ExecArgs } from "@plurnk/plurnk-execs";
+import { ERROR_DETAIL_LIMIT, type ExecArgs } from "@plurnk/plurnk-execs";
 
 import type { Notice } from "@plurnk/plurnk-contracts";
 import McpExecutor, { runtimeDecl, runtimeServerSummary, serverSummary, toolResultBody } from "./McpExecutor.ts";
@@ -210,6 +210,48 @@ test("MCP executor calls a current tool and writes its result", async () => {
     } finally {
         await connection.close();
     }
+});
+
+test("{§mcp-tool-problem-detail} a tool Problem names its runtime and tool and bounds the remote diagnostic", async () => {
+    const connection = {
+        async catalog() {
+            return {
+                protocolVersion: "2026-07-28",
+                server: { name: "effects", version: "1" },
+                capabilities: {},
+                tools: [{ name: "mutate", inputSchema: { type: "object" } }],
+                resources: [],
+                resourceTemplates: [],
+                prompts: [],
+                unsupportedLists: [],
+            };
+        },
+        async callTool() {
+            throw new Error("connection reset while the operator's token sk-not-in-the-packet was in flight");
+        },
+    } as unknown as ServerConnection;
+    const executor = new McpExecutor(
+        { runtime: "effects", glyph: "🔌" },
+        connection,
+        retainWorkspace,
+        { tools: ["mutate"], read: [] },
+    );
+    await executor.requireAvailable();
+    const previous = process.env[ERROR_DETAIL_LIMIT];
+    process.env[ERROR_DETAIL_LIMIT] = "4";
+    let result;
+    try {
+        result = await executor.run(harness({ runtime: "effects", target: "mutate", body: "{}" }).args);
+    } finally {
+        if (previous === undefined) delete process.env[ERROR_DETAIL_LIMIT];
+        else process.env[ERROR_DETAIL_LIMIT] = previous;
+    }
+
+    assert.equal(result.problem?.detail, "The MCP tool call failed.", "the prose states the boundary fact and nothing else");
+    assert.equal(result.problem?.runtime, "effects", "the failed runtime is a field, not prose");
+    assert.equal(result.problem?.tool, "mutate", "so is the tool");
+    assert.equal(result.problem?.diagnostic, "conn...", "the remote cause is admitted only within the operator's bound");
+    assert.doesNotMatch(JSON.stringify(result), /sk-not-in-the-packet/u, "nothing past the bound reaches the model");
 });
 
 test("{§mcp-tool-replay} an uncertain MCP tool-call failure never recommends automatic replay", async () => {

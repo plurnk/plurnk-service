@@ -63,13 +63,14 @@ interface ExecArgs {
     write(channel: string, chunk: string, mimetype?: string): void;
     setState(channel: string, state: ChannelState): void;
     emit(notice: Notice): void;
-    interact(request: ClientInteractionRequest): Promise<ClientInteractionResolution>;
+    interact(request: ClientInteractionRequest, signal?: AbortSignal): Promise<ClientInteractionResolution>;
     entry?(
-        path: string,
-        content: string | null,
-        opts: { tags: string[]; mimetype?: string },
+        path: string | null,
+        content: string | Uint8Array | null,
+        opts: { mimetype?: string; name?: string },
     ): Promise<string>;
 }
+```
 
 `ExecArgs` deliberately carries **no Worker identity**: an executor is a
 worker-agnostic capability, and `run` may assume nothing about which Worker,
@@ -81,6 +82,7 @@ identity through `env` or `body` conventions; a consumer that owns both a
 runtime and the execution identity binds the two to each other outside these
 arguments, at the operation.
 
+```ts
 interface RuntimeAvailability {
     available: boolean;
     detail?: string;

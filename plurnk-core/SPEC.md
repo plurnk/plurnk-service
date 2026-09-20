@@ -73,7 +73,7 @@ flowchart LR
 | **entry** | The unit of canonical state. Identity: `(workspace_id, scheme, authority, pathname)` ({§entry-identity-no-null}). Holds one or more `channels` of content plus scheme-private `attributes`. |
 | **channel** | A named content buffer on an entry. Examples: `body`, `stdout`, `stderr`, `headers`, `symbols`. Each channel has `content`, `mimetype`, curation `weight`, and lifecycle `state`. |
 | **scheme** | An addressed capability family + handler. Built-ins include `worker`, `log`, `ops`, `reasoning`, and bare/file paths; discovered schemes and executor-runtime tags extend that set. Internal `exec` routes executions but is not an addressable model namespace. Consumption surface {§scheme-surface}; author contract: [plurnk-schemes](../plurnk-schemes/SPEC.md). |
-| **mimetype** | A channel's content type. Drives the handler that produces the structural projections (`symbols`, `deepJson`, `deepXml`). Consumption surface {§mimetype-surface}; author contract: [plurnk-mimetypes](../plurnk-mimetypes/SPEC.md). |
+| **mimetype** | A channel's content type. Drives the handler that produces the structural projections (`symbols`, `deepJson`, `deepXml`). Consumption surface {§mimetype}; author contract: [plurnk-mimetypes](../plurnk-mimetypes/SPEC.md). |
 | **provider** | An LLM transport implementing the `@plurnk/plurnk-providers` `Provider` interface. Core supplies an assembled request and generation context; the provider owns endpoint adaptation and normalized response evidence. Consumption surface {§provider-surface}; author contract: [plurnk-providers](../plurnk-providers/SPEC.md). |
 
 ### State / status
@@ -129,12 +129,6 @@ Daemon composition and startup. Worker attention and workspace state follow
 The root [`ARCHITECTURE.md`](../ARCHITECTURE.md) owns the platform process and
 package map. The default installed composition is specified in {§bundled-set}.
 
-§ecosystem-composed-host Core is the composed runtime: it owns persistence,
-scheduling, packet assembly, dispatch, and cross-capability orchestration while
-consuming the language and each capability family's author contract. Domain
-logic stays with its owning package. AG-UI projects that runtime to clients;
-clients render and submit actions but contain no engine logic.
-
 ### §observability-boundary Observability boundary
 
 OpenTelemetry may observe PLURNK; it never becomes product state, failure transport, scheduler input, model teaching, or client protocol. Domain and client activity remain on AG-UI. Reusable packages depend on the OTel API only; the daemon constructs only the explicitly configured trace and metric providers. An unconfigured or standards-valid disabled process loads no SDK or exporter implementation and keeps the API's no-op behavior with bounded overhead. OTel Logs have no provider or initialization path.
@@ -158,43 +152,10 @@ boundary is unchanged — no prompts, reasoning, bodies, or URLs. This is the
 sanctioned exception to the blanket draft-convention exclusion; no other
 draft convention is projected.
 
-### §standards-discernment Standards discernment
+### In-process architecture
 
-Seven principles govern which exterior standards Plurnk conforms to (#299):
-
-1. **UVP first.** Never conform away what users chose Plurnk for; the OP grammar, curated log, packet, and worker graph are the product, not a compatibility gap.
-2. **Right-fit.** Hobbyist-first: an enterprise-grade feature is acceptable only when its cost lands on the party that wants it, never on general adoption.
-3. **Traction.** Count running counterparties today; integration horizon must be shorter than the standard's expected half-life. Sockets stay configurable with no default until a candidate earns it.
-4. **POSIX app identity.** Decades-stable host-ecosystem conventions (XDG, NO_COLOR, man, completions, service units) outrank months-stable AI-pipeline fashions.
-5. **Faces, never organs.** A standard adopts as one adapter or projection behind an existing seam; if it cannot, that is the alarm, and it goes to a design gate.
-6. **Deletion is the price of admission.** A standard earns adoption by deleting bespoke surface; parallel representations, second discovery paths, and compatibility grammars are refused.
-7. **Two arbiters.** Model-facing surfaces change only on measured model evidence; human-facing surfaces follow host-ecosystem convention without ceremony. Standards bodies get a vote on neither.
-
-### §in-process In-process architecture
-
-Composed daemon internals + admin CLI. Four plug points:
-
-- **Providers** ({§provider-surface}) — LLM transports. Engine sends a turn's messages, receives raw content + usage; engine parses the content into `PlurnkStatement[]`.
-- **Schemes** ({§scheme}) — addressed capabilities. A scheme handler interprets targets under its prefix and owns its storage substrate.
-- **Mimetypes** ({§mimetype}) — content interpretation. Render-time handlers consume channel content; framework owns the dispatch.
-- **Executors** ({§exec} / {§bundled-set}) — execution dispatch for subprocess, data, and pure-computation runtimes; web discovery rides the ordinary MCP surface.
-
-Core's internal owners compose without becoming new package or public seams:
-
-| Owner | Machine |
-|-------|---------|
-| `Daemon` | Process/module lifecycle, dependency composition, provider policy, notifications, and the external client façade. |
-| `DrainSupervisor` | One worker's queue consumer, drain identity, wake obligations, cancellation scope, poll/park timers, and terminal cleanup. |
-| `Engine` | Loop lifecycle and the public turn, dispatch, derivation, and proposal façades. |
-| `TurnRunner` | Model inference and `_plurnk` initialization, from materialization and output admission through operation settlement. |
-| `Dispatcher` | Operation admission/routing, scheme execution, proposal waiting, curation, and durable log writes. |
-| `ResourceMutations` | EDIT/COPY/MOVE selection, anchor preconditions, cross-scheme effects, and mutation settlement. |
-
-Capability-specific behavior remains with the owning plug point.
-
-The contracts package (`@plurnk/plurnk-contracts`) owns the parser and AST contract. Schemes receive parsed statement fragments via dispatch.
-
-Server posture: this package is the one long-running runtime process. `plurnk-agui` exposes its external protocol; user-facing clients run separately and do not call core's in-process seam directly.
+The process and package map is ARCHITECTURE.md's; this package's AGENTS.md maps core's internal
+owners. Capability-specific behavior remains with the owning plug point.
 
 §service-worker-composition The service launcher and the live/demo workspace
 helper share one registration of default worker-facing modules: MCP, outbound
@@ -400,7 +361,7 @@ flowchart TB
     workspace --> parentEntries["Named scratch<br/>worker://a/..."]
     parent --> parentWork["Loops, turns, cancellation scope"]
     parent -->|FORK| child["Worker B"]
-    parentLog -.->|"copy rows, tags, visibility state"| childLog["Worker B log"]
+    parentLog -.->|"copy rows and visibility state"| childLog["Worker B log"]
     parentEntries -.->|"snapshot under new name"| childEntries["Named scratch<br/>worker://b/..."]
     workspace --> childEntries
     child --> childLog
@@ -421,7 +382,7 @@ terminal history.**
 | Project files ({§machine-processes-one-filesystem})   | Workspace         | Shared live; a fork does not create another checkout.                                                              |
 | Shared worker entries (`worker:///...`)               | Workspace commons | Shared live.                                                                                                       |
 | Membership overlay ({§machine-processes-one-overlay}) | Workspace         | Shared unchanged; divergent membership requires another workspace.                                                 |
-| Log items ({§machine-processes-fork-copies-the-log})  | Worker            | Durable events, curation effects, tags, current active/body-suppression projection, and the matching observation cursor are copied as terminal history. Parent-audience occurrences still pending at the fork boundary belong to the snapshot; later sibling activity does not. |
+| Log items ({§machine-processes-fork-copies-the-log})  | Worker            | Durable events, curation effects, current active/body-suppression projection, and the matching observation cursor are copied as terminal history. Parent-audience occurrences still pending at the fork boundary belong to the snapshot; later sibling activity does not. |
 | §machine-processes-fork-cost **Provider evidence and accounting** | Worker | Turns and their model-facing log history are copied, but turn-attached inference calls, their specializations, admission rows, and physical provider requests are not: one issued call or request has one causal branch. Parent and fork accounting therefore includes only work issued in that branch, while workspace accounting never double-counts copied history. |
 | §machine-processes-entry-inheritance **Named scratch and evidence** | Workspace | FORK snapshots quiescent `worker` entries whose authority is the source Worker name into the child name. Bytes, attributes, and channel results remain exact; embedded addresses are not rewritten. Other resources, including `worker:///_plurnk/**`, stay shared. |
 | Active loops, turns, and cancellation                 | Worker            | Never copied as live work; inherited structure is terminal history, then a new loop starts.                        |
@@ -545,9 +506,6 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
   own work is a fresh loop, so an inherited mid-flight loop never makes the
   branch look forever-live to the {§send-premature-terminate} gate.
 - §worker-scheme-fork-scratch **Forked scratch.** Named scratch and evidence are copied under the new name through {§machine-processes-entry-inheritance}. Parent and branch can edit either scratch namespace; their copies diverge independently.
-- §worker-spawn-no-branch **WORK and FORK take a worker path and a prompt, nothing else.** Branch
-delegation was removed outright (#396). A model manages git branches through ordinary
-the `git` runtime — never engine machinery.
 - §worker-delegation-inherits-policy **Fresh delegated loops inherit the sender's policy.** WORK, FORK, and SEND to an idle Worker carry the sender's complete loop policy, disposition and attendance alike. SEND into an active or parked loop leaves its immutable policy untouched. All workers share live workspace capability policy; delegation creates no capability snapshot or bound.
 - §worker-lifecycle-wake-requeue-not-terminal **A wake re-queue is not a terminal.** A conclusion-wake resumes a 202-blocked loop by re-queueing it (202 → 100); when that lands while the loop's own live drain is between turns, the drain **re-claims and continues** (atomic 100 → 102; the injected prompt is already the next turn). The internal re-queue is never reported as an outward terminal.
 
@@ -653,8 +611,6 @@ normal
 under that exact URL—never raw HTML, response headers, or a channel-selection
 lesson. FIND consumes the addressed stored channel representation
 and never re-fetch a match.
-
-§web-retrieval-live Coverage protects the composition at distinct seams: HTTP unit tests pin fragmentless-body publication and explicit auxiliary selection; integration tests pin materialize→FIND and persistence/publication separation. A live positive-control demo requires a materialized HTTPS body and a substantive answer from a real sanitized page; live discovery demos remain diagnostic and may expose model judgment failures without weakening these assertions.
 
 **Git is the substrate and the repository is the boundary:**
 
@@ -1651,9 +1607,9 @@ Handler authority, discovery, projection identity, and failures follow
 persistence, packet accounting ({§tokenomics-agnostic-ruler}), and subscriptions
 ({§subscriptions}); handlers do not.
 
-### §mimetype-surface Consumption surface
+### Consumption surface
 
-plurnk-service is mimetype-illiterate. Engine hands channel content + mimetype label to `Mimetypes.process({content, hint})`; the manifest build uses `result.totalLines` for each channel's `lines`. Content reaches the model on READ, not as a rendered preview.
+plurnk-service is mimetype-illiterate. A channel's `lines` is stored when its content is written, so the catalog reads no bodies and calls no handler; `Mimetypes.process({content, hint})` serves search derivation ({§persistent-search-index}) and parse-issue probes. Content reaches the model on READ, not as a rendered preview.
 
 §mimetype-owned-lifecycle `Daemon` owns and disposes the `Mimetypes` instance
 it constructs. A constructor-injected instance remains caller-owned. Shutdown
@@ -1681,7 +1637,7 @@ model-independent ruler for stored/catalog weights and the model-facing curation
 confined to provider-owned physical capacity assessment
 ({§tokenomics-context-envelope-admission}).
 
-**Conformance.** Mimetype-specific behavioral tests live in each handler's own surface. plurnk-service intg covers integration: the engine routes through `Mimetypes.process` with the right hint and the catalog reflects `totalLines`; tests use auto-discovery (production handler set); a custom-handler test injects a stub `BaseHandler` via `loader + discovery`.
+**Conformance.** Mimetype-specific behavioral tests live in each handler's own surface. plurnk-service intg covers integration: the engine routes through `Mimetypes.process` with the right hint and the catalog reflects the stored line count; tests use auto-discovery (production handler set); a custom-handler test injects a stub `BaseHandler` via `loader + discovery`.
 
 ## §persistent-search-index Search indexing
 
@@ -1740,7 +1696,7 @@ operator knobs in `.env.defaults`. Search indexing performs no inference.
 
 ## §channels Channel Topology
 
-§channels-channels-append-only Every entry has named channels. **Channels are append-only content stores** keyed by `(entry_id, name)`. Schemes write content; the engine reads at turn boundaries; mimetype handlers interpret.
+§channels-entry-name-key Every entry has named channels: **content stores keyed by `(entry_id, name)`**, one row per name. Schemes write content — appending to a channel, replacing it, or deleting it; mimetype handlers interpret it.
 
 ### §per-entry-channels Per-entry channels
 
@@ -3179,7 +3135,7 @@ body prefixes.
 | §proposal-reject-fails reject   | `failed` | 400 | `rejected` | none — the action did not occur. |
 | §proposal-cancel-aborts cancel  | `cancelled` | 499 | `loop_aborted` | none — the loop is abandoning. |
 
-§proposal-outcome-terse-error A caller-supplied `outcome` overrides the default. On an **accept** it stays forensics-only; a **non-accept** carries it as the `rx`'s terse `error` token (`write_failed` / `rejected` / `timeout` — one word, never prose), because "the action didn't occur" without the mechanical why leaves the model acting on a phantom success (the fan-out dead-park: an ENOENT apply rendered as a mute 400).
+§proposal-outcome-terse-error A caller-supplied `outcome` overrides the default. On an **accept** it rides the result as the forensic `outcome` field; a **non-accept** is a Problem that carries the same `outcome` field (`write_failed` / `rejected` / `timeout` — one word) and names it in its detail, because "the action didn't occur" without the mechanical why leaves the model acting on a phantom success (the fan-out dead-park: an ENOENT apply rendered as a mute 400).
 
 §proposal-proposed-hidden **A proposed row is invisible until it resolves.** A `state='proposed'` / 202 row is withheld from both packet materialization and `log/entry`; it surfaces exactly once after resolution, carrying its terminal status — models and clients see outcomes, never pending proposals.
 
@@ -3361,10 +3317,6 @@ live executor's current declaration.
 
 Model sees lifecycle events in the `log` section per turn.
 
-### §deep-slices Deep slices on demand
-
-```` ```READ (https://feed.example/x#body) <N-M> ```` pulls a slice into a log row when the model wants a specific line-range of an SSE stream.
-
 ### §stream-control Stream control and writes
 
 - **Cancel:** ```` ```KILL (https://feed.example/x) ```` — the service invokes the handle registered by `subscriptions.open()` and aborts the composed subscription signal.
@@ -3390,7 +3342,7 @@ The model is NOT a stream/event consumer — turn-based only; sees whatever's in
 
 SQLite (`node:sqlite`) with WAL mode and STRICT tables. Hand-written DDL; CI-aligned against grammar schemas.
 
-### §ddl DDL strategy
+### DDL strategy
 
 No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, explicit `NOT NULL`, indexed query paths, deliberate FK `ON DELETE`/`ON UPDATE`, `WITHOUT ROWID` where access pattern warrants, generated columns, FTS5.
 
@@ -3408,8 +3360,7 @@ No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, ex
 | §content-store Every body is stored once | `contents` holds each settled body once, addressed by its SHA-256, however many channels, workspaces, forks or derivations carry it; rows are immutable. `entry_channel_rows` points a settled channel at its body and keeps an active stream's body as a private buffer until it settles, when it is interned. Every reader and writer uses the `entry_channels` view, whose `INSTEAD OF` triggers intern bodies, refuse a bound `content_hash` that is not the content's, and write each column group only when it changed, so a search attachment is never a representation write. SQLite counts no changes for a view, so a write that must know whether its channel exists returns the channel's name; an outer join cannot flatten the view, so the two statements that need one read `entry_channel_rows` and `contents` directly. `derivation_fts` is an external-content index over `derivation_texts` (a derivation joined to its body); `derivations.content_id` names the indexed text, and the triggers in `_entry-fts.sql` move the index with it and forget it on delete. A body no channel holds and no derivation indexes is collected by retention under `PLURNK_SERVICE_COLLECT_CONTENTS` (1). Witnesses: `test/intg/retention.test.ts`, `test/intg/entries.test.ts`, `test/intg/fulltext-index.test.ts`. |
 | §retention-policy Retention is the operator's policy; information is kept by default | `Retention` (`src/server/Retention.ts`, statements in `Retention.sql`) reads ten knobs from `.env.defaults` once at daemon construction (the two storage knobs are {§db-space-reclamation}) and runs four set statements in dependency order — on `PLURNK_SERVICE_RETENTION_INTERVAL_MS` cadence while the daemon runs (0 = shutdown only) and once more at shutdown before `PRAGMA optimize`. `PLURNK_SERVICE_RETAIN_PACKET_TURNS` (-1 = every packet) and `PLURNK_SERVICE_RETAIN_PACKET_MS` (-1 = no age limit) retire a completed turn's packet composition (`turn_sections`, {§packet-items}) once it is beyond the newest N packet-bearing turns of its loop or older than the age; the turn, its bag, its log rows and its accounting stay, and an open turn is never retired. `PLURNK_SERVICE_COLLECT_PACKET_ITEMS` (1) collects items no composition references. `PLURNK_SERVICE_COLLECT_CONTENTS` (1) collects stored bodies nothing holds ({§content-store}), after the collectors that release them. `PLURNK_SERVICE_COLLECT_DERIVATIONS` (1) collects derivations no channel, turn source, or log row cites — superseded editions — with their symbols (cascade) and their full-text shadow (`derivations_delete_fts`, a process trigger beside the FTS statements, on every delete path). `PLURNK_SERVICE_RETAIN_RESPONSE_TURNS` (-1) and `PLURNK_SERVICE_RETAIN_RESPONSE_MS` (-1) retire a settled call's response body (`model_call_responses`) once it is beyond the newest N body-bearing calls of its loop or its turn is older than the age; the call's identity, failure, capacity, admission and accounting stay, and the digest renders such a call request-only. Under the shipped defaults nothing that is information leaves; only what no row references. A malformed knob refuses daemon construction. Witness: `test/intg/retention.test.ts`. |
 
-- **Schema-alignment test**: loads `@plurnk/plurnk-contracts/schema/*.json`, parses DDL via `node:sqlite` introspection, asserts every required schema field has a corresponding `NOT NULL` column. Contract drift fails CI.
-- DDL = storage truth; JSON Schemas = wire truth. Tested-aligned, allowed to differ where ergonomics demand.
+- DDL = storage truth; JSON Schemas = wire truth. They are allowed to differ where ergonomics demand.
 - §entry-identity-no-null **Identity components are never NULL.** `(workspace_id, scheme, authority, pathname)` is a unique key. `workspace_id` references the workspace directly with cascading deletion. Namespace schemes use empty authority; resource schemes retain their canonical authority. File members use nonempty `scheme="file"` and render as bare paths. Registration refuses `storedScheme: null`.
 
 ### §sql-ts-boundary SQL/TS responsibility boundary
@@ -3532,7 +3483,7 @@ service manifest edit.
 ## Grammar Dependency
 
 Core consumes the language, schemas, and generated types under
-{§contract-authority} and {§contract-representations}. Provider emissions cross
+{§contract-representations}. Provider emissions cross
 {§emission-admission}; admitted programs execute through
 {§turn-ops-admission-path}. Core owns execution and persisted state, not a second
 language definition.
@@ -4349,9 +4300,8 @@ beside database ids, so a client can render and resolve the logical `L/T/S`
 coordinate without fetching all rows and matching locally.
 
 §methods-log-entry-wire **Log entry wire fidelity.** `readLog` and `log/entry`
-preserve causal `source` and parse the row's JSON `attrs` into structured data;
-they also project the row's complete sorted `tags` classification. Client
-interfaces do not reconstruct these fields from operation or origin.
+preserve causal `source` and parse the row's JSON `attrs` into structured data.
+Client interfaces do not reconstruct these fields from operation or origin.
 
 §methods-readable-reasoning **Readable provider reasoning remains derived
 provider evidence.** On model SEND and disposition rows, `readLog` and `log/entry`
@@ -4418,13 +4368,6 @@ defining the public client lifecycle. Multiple client actors have distinct worke
 `origin="model"`. Both workers share workspace state, while a packet renders
 only the model worker's private log; client action rows are structurally absent
 without an origin filter ({§actor-boundary-isolation}).
-
-### §versioning Versioning
-
-The typed module seam is released with the service package. Core exposes no
-runtime version or update-advertising action. External protocol compatibility
-and any protocol-level version negotiation belong to the client-interface
-module that publishes that protocol.
 
 ---
 
@@ -4941,7 +4884,7 @@ retain distinct contracts and lifetimes.
 |---|---|---|
 | `grammar_unenforced` | engine rail verdict, or a forwarded provider transport anomaly such as a discarded-channel escape | content-offset when the observed position maps into content; none for a reasoning-prefix divergence |
 | `parse_advisory` | grammar parser — recoverable near-miss which did not invalidate the parsed statements | content-offset into the model's emission |
-| `search_progress` | repository materialization/indexing lifecycle ({§mimetype-surface}); structured phase, count, and percent; `level: info`, `warn` when a completed pass carries failed members ({§derivation-member-failure}), `error` on terminal failure | none |
+| `search_progress` | repository materialization/indexing lifecycle ({§persistent-search-index}); structured phase, count, and percent; `level: info`, `warn` when a completed pass carries failed members ({§derivation-member-failure}), `error` on terminal failure | none |
 | `git_inspection_refused` | engine membership — automatic Git inspection refused a supplied repository whose config declares a `filter.*` program ({§membership-git-hermetic}); names the key; `level: warn`, once per workspace until the key changes or clears | none |
 
 §notice-level **Severity on the wire (`level`, required).** Every `Notice` carries `level: "error" | "warn" | "info"`, set by the **producer** at the emit site. The level is client presentation, not operation status: even an `error` notice cannot terminalize work or substitute for a durable Problem. A forwarded `grammar_unenforced` is `warn`; ordinary lifecycle and progress notices are `info`. Clients color straight off `level` without interpreting the open `kind` vocabulary.
@@ -4967,7 +4910,7 @@ retain distinct contracts and lifetimes.
 
 §digest-wire-line **Wire health aggregated.** Each worker summary renders a `Wire:` line — total physical provider requests, error-outcome count, and the error percentage when nonzero. Provider-level failures are absorbed by retries below the packet stream, so without this aggregate a rate-limit storm is invisible in every summary while the model's experience stays clean.
 
-§digest-forensic-fidelity **Forensic fidelity and cardinality.** The digest's machine-readable JSON preserves every log event with its initial and current projection, causal `source`, tags, and structured `attrs`; every exact log-KILL target effect; the exact Problem on every failed row; each loop's exact terminal result, settlement time, scheduled due time, recurring interval, and recurrence lineage; and every ordered physical provider request. Programs still produce chronological `assistant.md` artifacts after every READ receipt is KILLed; source is independent of log curation. Each stored packet validates independently: one malformed historical packet remains exact raw evidence with its complete validation error chain and never prevents healthy turns from being projected. Accounting on broader rows is the shared exact derivation from that ledger, never a second stored fact. A worker's Cost line names how many settled requests carry no usage at all (errored or aborted exchanges) — their server-side spend is unrecorded rather than silently priced as zero. The reasoning chronology distinguishes readable reasoning content from provider-reported reasoning usage: when tokens were reported but no readable content was returned, it states both facts instead of implying that no reasoning occurred. The human Markdown waterfall shows a present causal source and may preview only the Problem detail because it remains a triage projection, not the machine record. Targets reconstruct the model-visible address, including hostname, port, serialized query, and fragment; an authority-bearing URL must never degrade from `https://host/path` to `https:///path`, and durable resource coordinates render back to their authority form. Its human Markdown waterfall groups identical per-turn op outcomes and typed `entry_materialized` narrations, reporting the exact count and sequence span (`xN (seq A-B)`). Grouping keys include source and the complete target, so distinct causes, authorities, or channels never collapse. Thus amplification is conspicuous without making the diagnostic artifact itself pathological; valid packet files remain byte-identical records of what the model saw.
+§digest-forensic-fidelity **Forensic fidelity and cardinality.** The digest's machine-readable JSON preserves every log event with its initial and current projection, causal `source`, and structured `attrs`; every exact log-KILL target effect; the exact Problem on every failed row; each loop's exact terminal result, settlement time, scheduled due time, recurring interval, and recurrence lineage; and every ordered physical provider request. Programs still produce chronological `assistant.md` artifacts after every READ receipt is KILLed; source is independent of log curation. Each stored packet validates independently: one malformed historical packet remains exact raw evidence with its complete validation error chain and never prevents healthy turns from being projected. Accounting on broader rows is the shared exact derivation from that ledger, never a second stored fact. A worker's Cost line names how many settled requests carry no usage at all (errored or aborted exchanges) — their server-side spend is unrecorded rather than silently priced as zero. The reasoning chronology distinguishes readable reasoning content from provider-reported reasoning usage: when tokens were reported but no readable content was returned, it states both facts instead of implying that no reasoning occurred. The human Markdown waterfall shows a present causal source and may preview only the Problem detail because it remains a triage projection, not the machine record. Targets reconstruct the model-visible address, including hostname, port, serialized query, and fragment; an authority-bearing URL must never degrade from `https://host/path` to `https:///path`, and durable resource coordinates render back to their authority form. Its human Markdown waterfall groups identical per-turn op outcomes and typed `entry_materialized` narrations, reporting the exact count and sequence span (`xN (seq A-B)`). Grouping keys include source and the complete target, so distinct causes, authorities, or channels never collapse. Thus amplification is conspicuous without making the diagnostic artifact itself pathological; valid packet files remain byte-identical records of what the model saw.
 
 Unrecognized actionless log rows are retained and labelled as such, not
 interpreted as executable turnOps or allowed to prevent the remaining digest.

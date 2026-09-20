@@ -2367,7 +2367,7 @@ test("run.fork admits the contract's anonymous-fork form", async () => {
     } finally { await mod.close(); }
 });
 
-test("discover returns the exact public action and notification membership", async () => {
+test("{§discovery} discover returns the exact public action and notification membership", async () => {
     const { seam } = mockSeam();
     seam.listClientDisplayCapabilities = async () => [
         { kind: "scheme", scheme: "https", display: { glyph: "🌐" } },
@@ -2755,6 +2755,43 @@ test("[{§agui-configuration}] the environment turn default yields to the Run va
     } finally { await mod.close(); }
 });
 
+
+test("{§agui-run-endpoint} the prompt is the last textual user message, and a non-textual one is refused before any loop", async () => {
+    const { seam, loopRuns, finish } = mockSeam();
+    seam.runLoop = async (a) => {
+        loopRuns.push({ prompt: a.prompt });
+        finish(a.workspaceId, a.workerId);
+        return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 };
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        await post(mod.address().port, {
+            threadId: "t-last", workerId: "r-last",
+            forwardedProps: { plurnk: { workspace: "t-last" } },
+            messages: [
+                { role: "user", content: "first" },
+                { role: "assistant", content: "in between" },
+                { role: "user", content: "the standing request" },
+            ],
+        });
+        assert.deepEqual(loopRuns.map(({ prompt }) => prompt), ["the standing request"], "the latest user turn is the prompt");
+
+        const response = await fetch(`http://127.0.0.1:${mod.address().port}/`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+                runId: "r-parts", threadId: "t-last", state: {}, tools: [], context: [],
+                forwardedProps: { plurnk: { workspace: "t-last" } },
+                messages: [{ id: "m0", role: "user", content: [{ type: "text", text: "multimodal" }] }],
+            }),
+        });
+        assert.equal(response.status, 400);
+        assert.equal(response.headers.get("content-type"), "application/problem+json");
+        const problem = await response.json() as Record<string, unknown>;
+        assert.equal(problem.type, "https://problems.plurnk.xyz/agui/http/user-message-required");
+        assert.equal(loopRuns.length, 1, "a refused Run starts no loop");
+    } finally { await mod.close(); }
+});
 
 test("{§agui-provider-policy-forwarding} a message AG-UI Run forwards model selection and general loop policy into runLoop", async () => {
     const { seam, loopRuns, finish } = mockSeam();

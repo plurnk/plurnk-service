@@ -11,7 +11,7 @@ import Fork from "../../src/core/fork.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import Turn from "../../src/core/Turn.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel, testDeferredProviderCapacity } from "./_helpers.ts";
-import { killStmt } from "./_dsl.ts";
+import { findStmt, killStmt, readStmt } from "./_dsl.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -52,6 +52,48 @@ test("a workspace-commons entry is shared — a second worker updates it rather 
 // {§machine-processes-one-overlay} is a REAL test now in contract-workspace.test.ts (two workers on one
 // workspace resolve the IDENTICAL git-member overlay — membership is workspace-keyed, no worker_id). It lives
 // there for the git-fixture deps (withGitWorkspace); the stub here is retired.
+
+test("{§no-visibility} curating the log leaves the entry catalogued and READ-able, for its author and for a sibling", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const spawn = async () => {
+            const workerId = await insertWorker(db, workspaceId);
+            const loopId = await insertLoop(db, workerId, 1);
+            const turnId = await insertTurn(db, loopId, 1);
+            return { workerId, loopId, turnId };
+        };
+        const author = await spawn();
+        const sibling = await spawn();
+        const target = urlPath("worker", "/curated.md");
+        const written = await engine.dispatch({ statement: editStmt(target, "the entry itself"), workspaceId, ...author, sequence: 1, origin: "model" });
+        assert.equal(written.status, 201);
+
+        // The author retires its own EDIT from context — the model's curation, on the log.
+        const curated = await engine.dispatch({
+            statement: killStmt(urlPath("log", "/1/1/1")),
+            workspaceId, ...author, sequence: 2, origin: "model",
+        });
+        assert.equal(curated.status, 200, JSON.stringify(curated));
+
+        // The entry is untouched by that: no per-worker visible or suppressed state exists to set.
+        for (const [who, actor] of [["its author", author], ["a sibling", sibling]] as const) {
+            const listed = await engine.dispatch({
+                statement: findStmt(urlPath("worker", "/**")),
+                workspaceId, ...actor, sequence: 3, origin: "model",
+            });
+            assert.equal(listed.status, 200, JSON.stringify(listed));
+            assert.match(JSON.stringify(listed.results), /curated\.md/u, `the catalog still lists the entry for ${who}`);
+            const read = await engine.look({
+                statement: readStmt(target, { marks: [1, -1] }),
+                workspaceId, workerId: actor.workerId, loopId: actor.loopId,
+            });
+            assert.equal(read.status, 200, `the entry still READs for ${who}`);
+            assert.equal(read.content, "the entry itself");
+        }
+    } finally { db.close(); }
+});
 
 test("a fork copies the parent's log (rows + their suppressed body intervals)", async () => {
     const db = await openMigrated();

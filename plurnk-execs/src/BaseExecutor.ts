@@ -12,6 +12,7 @@ import InvocationMetadata from "./InvocationMetadata.ts";
 // subscriptions, AbortController bridging, wake-on-completion). The executor
 // receives sinks via ExecArgs and nothing more — it stays stateless across
 // runs beyond its construction metadata ({§executor-role}).
+// {§executor-contract} — the author surface: what an executor declares and what run receives.
 export default abstract class BaseExecutor implements SchemeHandler {
     readonly runtime: string;
     readonly glyph: string;

@@ -12,6 +12,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import GitState from "../../src/core/git-state.ts";
+import GitMembership from "../../src/core/git-membership.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import { openMigrated, insertWorkspace, rootWorkspace } from "./_helpers.ts";
 
@@ -43,6 +44,37 @@ test("{§packet-git-status}: unborn and detached heads are not invented branch n
         else process.env.PLURNK_SERVICE_GIT_ALLOWED = orig;
         await db.close();
         await rm(root, { recursive: true, force: true });
+    }
+});
+
+test("{§git-native-default} with no git binary on PATH there is no status and no automatic membership", async () => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-git-absent-"));
+    const empty = await mkdtemp(join(tmpdir(), "plurnk-no-path-"));
+    const db = await openMigrated();
+    const allowed = process.env.PLURNK_SERVICE_GIT_ALLOWED;
+    const path = process.env.PATH;
+    try {
+        await execFileP("git", ["init", "-q", "-b", "main"], { cwd: root, env: hermeticGitEnv() });
+        await writeFile(join(root, "tracked.md"), "# tracked\n");
+        await execFileP("git", ["add", "tracked.md"], { cwd: root, env: hermeticGitEnv() });
+        await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env: hermeticGitEnv() });
+        process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
+        const workspaceId = await insertWorkspace(db, `git-absent-${crypto.randomUUID()}`);
+        await rootWorkspace(db, workspaceId, root);
+
+        process.env.PATH = empty;  // a real worktree the daemon cannot ask about
+        assert.equal(await GitState.status(db, workspaceId, undefined), null, "no git binary, no status — never a reimplementation");
+        await GitMembership.resolveGitMembership(db, workspaceId, undefined);
+        const member = await db.crud_find_workspace_entry.get<{ id: number }>({
+            workspace_id: workspaceId, scheme: "file", authority: "", pathname: "tracked.md",
+        });
+        assert.equal(member, undefined, "and no automatic membership is granted from a repository it cannot read");
+    } finally {
+        process.env.PATH = path;
+        if (allowed === undefined) delete process.env.PLURNK_SERVICE_GIT_ALLOWED; else process.env.PLURNK_SERVICE_GIT_ALLOWED = allowed;
+        await db.close();
+        await rm(root, { recursive: true, force: true });
+        await rm(empty, { recursive: true, force: true });
     }
 });
 

@@ -499,7 +499,7 @@ test("fragment EDIT on absent entry → 404; default-channel (fragment-less) EDI
     } finally { await db.close(); }
 });
 
-test("channels are keyed by (entry_id, name); same key collides, distinct names coexist", async () => {
+test("{§channels-entry-name-key} channels are keyed by (entry_id, name); same key collides, distinct names coexist", async () => {
     const { db, workspaceId, workerId } = await setup();
     try {
         // Two distinct channel names on one entry are two rows under the same key space.
@@ -508,7 +508,7 @@ test("channels are keyed by (entry_id, name); same key collides, distinct names 
         assert.deepEqual(channels.map((c) => c.name), ["stderr", "stdout"], "distinct names coexist under one entry");
 
         // (entry_id, name) is the primary key — re-inserting the SAME (entry, name)
-        // raw violates uniqueness. The append-only store keys on this tuple.
+        // raw violates uniqueness. The store keys on this tuple.
         await assert.rejects(
             () => db.test_seed_channel.run({
                 entry_id: entryId, name: "stdout", content: "dup", mimetype: "text/stream", state: "static",

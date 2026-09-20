@@ -2,13 +2,14 @@
 
 ## 1. Overview
 
-§contract-authority This package is the single authority for PLURNK's language, schemas, generated
-types, parser, and runtime-neutral wire envelopes. Its package root
-is the single code API for those contracts.
+This package is the single authority for PLURNK's language, schemas, generated types and
+runtime-neutral wire envelopes; `@plurnk/plurnk-parser` implements the language it specifies
+({§parser-consumers}). Its package root is the single code API for those contracts
+({§root-value-api}).
 
 | Surface                                                                         | Canonical export or artifact                        |
 | ------------------------------------------------------------------------------- | --------------------------------------------------- |
-| Parser, AST, validators, Problems, results, Notices, text regions and extents   | `@plurnk/plurnk-contracts`                          |
+| AST, validators, Problems, results, Notices, text regions and extents          | `@plurnk/plurnk-contracts`                          |
 | Capability and loop policies                                                    | `CapabilityPolicy`, `LoopPolicy`, `LoopPolicyRequest`, `PROPOSAL_POLICIES` |
 | Durable reasoning intent                                                        | `ReasoningPolicy`, `REASONING_POLICIES`             |
 | Model route and catalog discovery                                               | `ModelRoute`, `ModelCatalogQuery`, `ModelCatalogPage`, `ModelReadiness` |
@@ -89,12 +90,10 @@ and previews; never reformat literal resources, JSONL framing, or wire/evidence
 serialization. Compact aggregate rows ({§json-result-rendering}) and packet
 metadata retain their deliberate layouts.
 
-## §contract-layers 1.1 Contract layers and admission boundary
+## 1.1 Contract layers and admission boundary
 
-PLURNK uses one contract with deliberately different projections. A tolerant
-ingester accepting a spelling does not make that spelling canonical model
-teaching, and an operator's sampling grammar admitting a sentence does not
-make its runtime semantics valid.
+One contract, deliberately different projections (ARCHITECTURE.md). Each layer
+below owns what it alone can decide.
 
 ```mermaid
 flowchart LR
@@ -127,7 +126,7 @@ WHATWG `URL`, ECMAScript `RegExp`, XPath 1.0, and RFC 9535 JSONPath parsers.
 The runtime owner decides facts that require state or operation-specific
 meaning, including registered scheme resolution, target existence, tag
 selection, text-region bounds, result ordering, full-text ranking, mutation
-effects, executor behavior, and numeric operation-code semantics.
+effects, and executor behavior.
 
 ### §contract-proposal-projection Loop policy and stopped-world projection
 
@@ -1003,7 +1002,7 @@ defines no synthetic scheme or READ-back convention for them.
 ## §parser-architecture 10. Parser architecture
 
 The implementation this section describes lives in `@plurnk/plurnk-parser`
-({§parser-boundary}); this section remains the contract it implements.
+({§parser-consumers}); this section remains the contract it implements.
 
 ANTLR owns framing, slots and statement composition; AstBuilder produces the
 schema-owned AST. Registration, effects and authority remain runtime concerns.

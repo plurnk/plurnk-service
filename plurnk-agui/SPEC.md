@@ -437,7 +437,7 @@ The `discover` action returns the complete schema-bearing
 type Discovery = {
     schemaVersion: 1;
     actions: Record<string, {
-        scope: "worldless" | "workspace";
+        scope: "worldless" | "workspace" | "worker";
         inputSchema: JsonSchema;
         outputSchema: JsonSchema;
     }>;
@@ -450,7 +450,7 @@ type Discovery = {
 ({§client-display-capabilities}). AG-UI adds no fallback, font, theme, or packet
 policy.
 
-`actions` contains the 30 built-ins in the table plus every registered module
+`actions` contains the 25 built-ins in the table plus every registered module
 action. `notifications` contains exactly these externally projected daemon
 event families:
 
@@ -458,6 +458,7 @@ event families:
 |--------------|
 | `log/entry` |
 | `loop/terminated` |
+| `loop/packet` |
 | `loop/proposal` |
 | `loop/interaction` |
 | `notice/event` |

@@ -41,7 +41,7 @@ test("fetchLogEntry surfaces loop_seq/turn_seq (ordinals), not just DB ids", asy
     } finally { await db.close(); }
 });
 
-test("fetchLogEntry preserves causal source and structured attributes", async () => {
+test("{§methods-log-entry-wire} fetchLogEntry preserves causal source and structured attributes", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, `wire-provenance-${crypto.randomUUID()}`);

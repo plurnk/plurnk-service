@@ -21,6 +21,19 @@ Core does not own provider transports, content-type behavior, external
 executors, or client rendering. Add those capabilities to the appropriate
 plugin or client package and keep the core integration seam small.
 
+## Where a change belongs
+
+Core's internal owners compose without becoming new package or public seams:
+
+| Owner | Machine |
+|-------|---------|
+| `Daemon` | Process/module lifecycle, dependency composition, provider policy, notifications, and the external client façade. |
+| `DrainSupervisor` | One worker's queue consumer, drain identity, wake obligations, cancellation scope, poll/park timers, and terminal cleanup. |
+| `Engine` | Loop lifecycle and the public turn, dispatch, derivation, and proposal façades. |
+| `TurnRunner` | Model inference and `_plurnk` initialization, from materialization and output admission through operation settlement. |
+| `Dispatcher` | Operation admission/routing, scheme execution, proposal waiting, curation, and durable log writes. |
+| `ResourceMutations` | EDIT/COPY/MOVE selection, anchor preconditions, cross-scheme effects, and mutation settlement. |
+
 ## Development
 
 Run package checks from the repository root or with npm's workspace flag:

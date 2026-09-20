@@ -28,6 +28,18 @@ flowchart LR
     class X402,AP2,DID deferred;
 ```
 
+### Which standards earn a place
+
+Seven principles govern which exterior standards PLURNK conforms to:
+
+1. **UVP first.** Never conform away what users chose Plurnk for; the OP grammar, curated log, packet, and worker graph are the product, not a compatibility gap.
+2. **Right-fit.** Hobbyist-first: an enterprise-grade feature is acceptable only when its cost lands on the party that wants it, never on general adoption.
+3. **Traction.** Count running counterparties today; integration horizon must be shorter than the standard's expected half-life. Sockets stay configurable with no default until a candidate earns it.
+4. **POSIX app identity.** Decades-stable host-ecosystem conventions (XDG, NO_COLOR, man, completions, service units) outrank months-stable AI-pipeline fashions.
+5. **Faces, never organs.** A standard adopts as one adapter or projection behind an existing seam; if it cannot, that is the alarm, and it goes to a design gate.
+6. **Deletion is the price of admission.** A standard earns adoption by deleting bespoke surface; parallel representations, second discovery paths, and compatibility grammars are refused.
+7. **Two arbiters.** Model-facing surfaces change only on measured model evidence; human-facing surfaces follow host-ecosystem convention without ceremony. Standards bodies get a vote on neither.
+
 ## Ecosystem
 
 ```mermaid
@@ -47,9 +59,12 @@ flowchart LR
 ```
 
 [`plurnk-contracts/plurnk.md`](./plurnk-contracts/plurnk.md) is the
-model-facing canon. It is intentionally narrower than the tolerant parser.
-Language and schema behavior remain owned by the contracts package; this root
-document does not restate their teaching.
+model-facing canon. It is intentionally narrower than the tolerant parser:
+one contract with deliberately different projections. A tolerant ingester
+accepting a spelling does not make that spelling canonical teaching, and an
+operator's sampling grammar admitting a sentence does not make its runtime
+semantics valid. Language and schema behavior remain owned by the contracts
+package; this root document does not restate their teaching.
 
 ## Package ownership
 
@@ -70,6 +85,10 @@ document does not restate their teaching.
 | A2A exterior client/agent                                  | `@plurnk/plurnk-a2a`                                         | [`plurnk-a2a/SPEC.md`](./plurnk-a2a/SPEC.md)                                                                   |
 | Scheduled worker messages                                | `@plurnk/plurnk-schedule`                                    | [`plurnk-schedule/SPEC.md`](./plurnk-schedule/SPEC.md)                                                         |
 | CLI, TUI, and web presentation                            | Separate open-client repositories                            | Consume AG-UI; they do not own daemon scheduling or persisted truth.                                           |
+
+The typed module seam is released with the service package, and core exposes no runtime version or
+update-advertising action: protocol compatibility and any version negotiation belong to the
+client-interface module that publishes that protocol.
 
 Family packages define extension contracts. Installed adapters implement those
 contracts. Core composes them but does not absorb their domain logic. Shared

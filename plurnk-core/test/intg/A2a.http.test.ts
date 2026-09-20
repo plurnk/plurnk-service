@@ -153,7 +153,7 @@ test("{§a2a-inbound-exposure}: HTTP history retains the admitted prompt identit
     assert.equal(without.history?.length ?? 0, 0);
 });
 
-test("{§message-envelope-evidence}: hosted A2A retains mixed Parts and metadata without injecting media before READ", async (t) => {
+test("{§message-envelope-evidence} {§a2a-hosted-message-resources}: hosted A2A retains mixed Parts and metadata without injecting media before READ", async (t) => {
     let fetches = 0;
     const resource = createServer((_request, response) => { fetches++; response.end("not requested"); });
     resource.listen(0, "127.0.0.1");
@@ -180,6 +180,16 @@ test("{§message-envelope-evidence}: hosted A2A retains mixed Parts and metadata
     assert.ok(provider.received.length > 0);
     assert.equal(provider.received.flatMap((messages) => messages.flatMap((message) =>
         Array.isArray(message.content) ? message.content.filter((part) => part.type === "file") : [])).length, 0);
+
+    // {§a2a-hosted-message-resources} — each Part's model-facing arrival: authored text, pretty JSON,
+    // the literal URL, and a link for bytes. No Agent Card and no configured alias took part.
+    // The packet renders each line with its navigable number ({§render-rule-line-navigable-prefix}).
+    const arrival = provider.received[0]!.map(chatMessageText).join("\n").replaceAll(/^\d+:/gmu, "");
+    assert.ok(arrival.includes("Inspect this image."), "text arrives as authored");
+    assert.ok(arrival.includes(JSON.stringify({ subject: "screenshot" }, null, 2)), `a data Part arrives as pretty-printed JSON: ${arrival}`);
+    assert.ok(arrival.includes(`http://127.0.0.1:${address.port}/external.bin`), "a URL Part arrives as its literal URL");
+    const link = /<(worker:\/\/[^>]+\/attachments\/[^>]+screen\.png)>/u.exec(arrival);
+    assert.ok(link, `a raw Part arrives as an addressable link, not bytes: ${arrival}`);
 });
 
 for (const modes of [undefined, [], ["application/json", "text/plain"]]) {

@@ -11,14 +11,6 @@ on contracts for the AST and wire types, the schemas, `PathSyntax`,
 `PlurnkParseError`, `TurnDisposition`, and the constants. Contracts
 depends on nothing here.
 
-§parser-boundary **The contract lives in contracts; the implementation lives here.**
-Accepted syntax, document tiers, recovery, whitespace, framing, and diagnostics
-are specified by `plurnk-contracts/SPEC.md` ({§contract-layers},
-{§path-syntax}, {§parser-architecture}, {§turn-shape}, {§tier-entrypoints}) and
-taught by `plurnk-contracts/plurnk.md`. This package's tests are the evidence for
-those anchors and cite them. Nothing that only validates, presents, or transports
-the wire needs this package.
-
 §parser-consumers **Who imports the parser.** The service's execution path (core,
 agui, execs) imports `PlurnkParser` and `parsePath` from this package.
 `@plurnk/plurnk-contracts` exports neither and declares no parser dependency, so a

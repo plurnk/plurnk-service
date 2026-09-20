@@ -501,6 +501,23 @@ test("{§executor-policy} #162: an explicitly empty ONLY registers no runtime", 
     });
 });
 
+test("{§executor-installation} configuration cannot enable an absent package, and =1 cannot re-admit what an allowlist removed", async () => {
+    const dir = await makePkg({
+        name: "@plurnk/plurnk-execs-common",
+        plurnk: { kind: "exec", runtimes: [runtime("node"), runtime("sh")] },
+    });
+    await withEnv({ PLURNK_EXECS_GHOST: "1" }, async () => {
+        const { registry, disabled } = await Discover.scan({ packageDirs: [dir] });
+        assert.deepEqual([...registry.keys()], ["node", "sh"], "a tag no installed package declares is not conjured by its knob");
+        assert.deepEqual(disabled, [], "an absent package is not discovered, so it is not reported disabled either");
+    });
+    await withEnv({ PLURNK_EXECS_ONLY: "sh", PLURNK_EXECS_NODE: "1" }, async () => {
+        const { registry, disabled } = await Discover.scan({ packageDirs: [dir] });
+        assert.deepEqual([...registry.keys()], ["sh"], "the allowlist is the ceiling; an operator's =1 does not widen it");
+        assert.deepEqual(disabled, ["node"], "the excluded tag stays visible as policy-disabled");
+    });
+});
+
 test("runtime policy: PLURNK_EXECS_<tag>=0 removes a single tag uniformly", async () => {
     const dir = await makePkg({
         name: "@plurnk/plurnk-execs-common",
