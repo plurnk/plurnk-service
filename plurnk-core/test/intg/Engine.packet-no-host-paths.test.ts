@@ -1,4 +1,4 @@
-// {§fs-namespace} — host paths do not exist inside the jail. The 2026-08-29 benchlet showed the
+// {§fs-namespace} — host paths do not exist in the namespace. The 2026-08-29 benchlet showed the
 // execution receipt's absolute `cwd` (and the target-not-found Problem's `root`) in every packet, and
 // the model pasting it back as `### EXEC_ (cwd: /host/path)`. This witness renders a real loop's
 // packets and asserts the workspace's host root never appears in them.
@@ -17,7 +17,7 @@ import { isExecutionOp } from "@plurnk/plurnk-contracts";
 const execFileP = promisify(execFile);
 
 test("{§fs-namespace} no packet carries the workspace's host-absolute root: execution receipts, failed targets, and stream rows included", async () => {
-    const root = await realpath(await mkdtemp(join(tmpdir(), "plurnk-jail-")));
+    const root = await realpath(await mkdtemp(join(tmpdir(), "plurnk-namespace-")));
     try {
         const env = hermeticGitEnv();
         await execFileP("git", ["init", "-q"], { cwd: root, env });
@@ -36,7 +36,7 @@ test("{§fs-namespace} no packet carries the workspace's host-absolute root: exe
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
-                await rpcCall(ws, 1, "workspace.create", { name: "jail", projectRoot: root });
+                await rpcCall(ws, 1, "workspace.create", { name: "namespace", projectRoot: root });
                 const result = await runLoopToTerminal(ws, 2, { prompt: "run", policy: { proposals: "accept" } });
                 assert.equal(result.result.status, 200);
                 const texts: string[] = [];

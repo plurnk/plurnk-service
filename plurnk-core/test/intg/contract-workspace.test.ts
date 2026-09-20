@@ -168,22 +168,23 @@ test("{§file-create-no-clobber} EDIT of an existing non-member is refused — n
     });
 });
 
-test("a host-absolute spelling names its literal jail path — READ 404s, EDIT proposes a nested CREATE, never a fold", async () => {
+test("a host-absolute spelling names its literal namespace path — READ 404s, EDIT proposes a nested CREATE, never a fold", async () => {
     await withGitWorkspace(async (root, ctx, _db, trackedPath) => {
         await GitMembership.indexGitMembership(ctx); // materialize the tracked member
         const abs = `${root}/${trackedPath}`; // the path an exec/build tool would print
 
-        // {§fs-namespace} — chroot semantics: host paths do not exist in the jail. The spelling
-        // canonicalizes to the nested bare key abs.slice(1) (a legitimate, empty in-jail path),
+        // {§fs-namespace} — a namespace names, it does not confine: host coordinates have no
+        // meaning in it, so nothing is being refused here. The spelling
+        // canonicalizes to the nested bare key abs.slice(1) (a legitimate, empty in-namespace path),
         // NOT to the member — the old exec-echo fold was existence-dependent resolution (run59).
         const read = await readFileScheme(readStmt(urlPath("file", abs)), ctx);
         assert.equal(read.status, 404, "a host-absolute spelling is not the member's name — no fold, deterministic 404");
 
-        // The write side obeys the same law: the spelling names an EMPTY in-jail path, so EDIT
+        // The write side obeys the same law: the spelling names an EMPTY in-namespace path, so EDIT
         // lawfully proposes an exclusive CREATE there ({§fs-namei} — names mean what they mean),
         // nesting under root rather than silently editing the member.
         const edit = await new File().edit(editStmt(urlPath("file", abs), "# Tracked by git\n\nrevised.\n"), ctx);
-        assert.equal(edit.status, 202, "EDIT proposes at the literal jail path");
+        assert.equal(edit.status, 202, "EDIT proposes at the literal namespace path");
         assert.equal((edit.attrs as { path: string }).path, abs.slice(1), "the proposal targets the nested bare canon key, never the member");
     });
 });

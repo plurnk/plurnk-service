@@ -60,7 +60,7 @@ test("canon is a fixpoint — the world-state invariant's predicate", () => {
     }
 });
 
-test("the root-mount degenerate: at project_root=/ the jail is the whole filesystem — no mounts can exist, host-style spellings ARE member keys", () => {
+test("the root-mount degenerate: at project_root=/ the namespace is the whole filesystem — no mounts can exist, host-style spellings ARE member keys", () => {
     // The benchmark topology: /text.md on disk IS the member text.md. Same two rules,
     // no special case — and every '..' escape re-enters the tree by construction.
     assert.equal(Namespace.canonicalize("/text.md", "/"), "text.md");

@@ -166,7 +166,7 @@ Test tiers: `test:lint` / `test:unit` / `test:intg` run per package against the
 Mock-tier bootstrap (`node --import=./test/setup.ts` — a fake `mocktest` alias with
 fixture-scaled reserves). The **demo** tier drives a REAL model through the prod
 loop via `test/_live-harness.ts` (`liveWorkspace` + `liveLoop`) and uses the floor
-bootstrap (`--import=./test/floor.ts`) instead; it boots a fresh sandbox workspace,
+bootstrap (`--import=./test/floor.ts`) instead; it boots a fresh throwaway workspace,
 never the host repo, and is not part of `npm test`. Both tiers route through
 driver scripts (`scripts/live.mjs`, `scripts/demo.mjs`) that layer the full
 cascade (operator-environment.sh → floor.ts → `.env.defaults`, the XDG user `.env`,

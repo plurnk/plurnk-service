@@ -345,12 +345,12 @@ test("File.read: long content round-trips", async () => {
     });
 });
 
-test("File.read: a host-absolute spelling does not exist in the jail — no fold, deterministic 404", async () => {
+test("File.read: a host-absolute spelling does not exist in the namespace — no fold, deterministic 404", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "abs.txt"), "abs content");
         const absolutePath = resolve(root, "abs.txt");
         await addMember(ctx, "abs.txt");
-        // {§fs-namespace} — chroot semantics: the host path /tmp/.../abs.txt canonicalizes to
+        // {§fs-namespace} — the host path /tmp/.../abs.txt has no meaning here; it canonicalizes to
         // the bare key tmp/.../abs.txt, which is not a member. The old exec-echo fold was
         // run59-class existence-dependent resolution; the model uses the catalog's key.
         const result = await readFileScheme(readStmt(urlPath("file", absolutePath)), ctx);

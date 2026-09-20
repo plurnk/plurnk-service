@@ -69,7 +69,7 @@ const loadWorkspaceRoot = async (db: Db, workspaceId: number): Promise<string | 
 
 // Resolve the nearest existing ancestor, then append the still-absent tail. This
 // gives a proposed create the same physical containment check as an existing path:
-// an in-root symlinked parent cannot smuggle a root-scoped write outside the jail.
+// an in-root symlinked parent cannot smuggle a root-scoped write outside the namespace.
 const prospectiveRealpath = async (requested: string): Promise<string> => {
     const tail: string[] = [basename(requested)];
     let cursor = dirname(requested);
@@ -267,16 +267,19 @@ export default class File extends CoreSchemeAdapterBase {
         }
         // {§fs-namei} — the write side resolves through the SAME canonicalizer as reads;
         // a spelling that names nothing a file can be is refused before any disk touch.
+        // A leading `../` run is a legitimate outside-root mount key, not an escape
+        // ({§fs-namespace}); canonicalize returns null only for a spelling that names
+        // nothing a file can be, so the refusal says that and never invents a boundary.
         const key = Namespace.canonicalize(pathname, root);
         if (key === null) {
             return {
                 ok: false,
-                code: "path-outside-workspace",
+                code: "path-names-no-file",
                 status: 403,
-                detail: `The requested path '${pathname}' is outside the workspace.`,
+                detail: `The spelling '${pathname}' does not name a file: it is empty, or it names a directory.`,
                 extensions: {
                     requestedPath: pathname,
-                    recovery: "Use a path within the workspace.",
+                    recovery: "Name a file. Directories are never entries, and a path above the root is a mount key, not a refusal.",
                     retryable: false,
                 },
             };
@@ -313,16 +316,19 @@ export default class File extends CoreSchemeAdapterBase {
         }
         if (!isMount) {
             const relBare = relative(await realpath(root), canonical);
-            // in-tree keys whose realpath escapes (a symlink out) stay refused — the jail holds.
+            // in-tree keys whose realpath escapes (a symlink out) stay refused: not to contain the
+            // model, but because the key would be a lie — an in-namespace name for bytes the mount
+            // table never mounted. An operator who wants that file mounts it, and then it has an
+            // honest name.
             if (relBare.startsWith("..") || isAbsolute(relBare)) {
                 return {
                     ok: false,
                     code: "path-outside-workspace",
                     status: 403,
-                    detail: `The requested path '${pathname}' resolves outside the workspace.`,
+                    detail: `A symlink on '${pathname}' resolves outside the namespace.`,
                     extensions: {
                         requestedPath: pathname,
-                        recovery: "Use a path within the workspace.",
+                        recovery: "The key would name bytes the mount table never mounted. Write to a real in-namespace path.",
                         retryable: false,
                     },
                 };
