@@ -79,6 +79,12 @@ if (import.meta.main) {
         process.exit(2);
     }
     const policy = readPolicy();
+    // Never degrade in silence: a clone that configures no register still gets the signature
+    // rule, and is told once that the identity half is off rather than assuming it ran.
+    if (policy.authors.size === 0 && policy.committer === null) {
+        console.error("pre-push: no commit-identity policy in this clone; checking signatures only.");
+        console.error("  set one with git config --add plurnk.allowedAuthor \"Name <address>\"");
+    }
     const errors = inspect(pushedCommits(remote, localSha, remoteSha))
         .flatMap((commit) => validateCommit(commit, policy));
     if (errors.length > 0) {
