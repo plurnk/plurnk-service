@@ -6,18 +6,46 @@ import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl } from "../intg/_a2a.ts
 import { openMigrated } from "../intg/_helpers.ts";
 import { makeMockResponse } from "../intg/_rpc.ts";
 
+const WORKSPACE = "a2a-tck";
+
 class TckProvider extends Mock {
     readonly #calls = new Map<string, number>();
+    readonly #workers = new Map<string, { workspaceId: number; workerId: number }>();
+    readonly #daemon: () => Daemon;
+    readonly #db: Awaited<ReturnType<typeof openMigrated>>;
 
-    constructor() {
+    constructor(db: Awaited<ReturnType<typeof openMigrated>>, daemon: () => Daemon) {
         super({ contextWindow: 1_000_000, responses: [] });
+        this.#db = db;
+        this.#daemon = daemon;
+    }
+
+    // {§message-short-identity} — the packet shows a message by its short address, never the
+    // transport's own name for it, so the scenario the TCK encodes in its messageId is read from
+    // the durable inbound message of the Task worker this call serves ({§worker-provider-identity}).
+    async #scenario(providerIdentity: string): Promise<string> {
+        const daemon = this.#daemon();
+        let worker = this.#workers.get(providerIdentity);
+        if (worker === undefined) {
+            const workspace = (await daemon.listWorkspaces()).find(({ name }) => name === WORKSPACE);
+            if (workspace === undefined) throw new Error(`inference before the ${WORKSPACE} workspace exists`);
+            for (const { id } of await daemon.listWorkers(workspace.id, { origin: "model" })) {
+                const identity = await this.#db.engine_worker_provider_identity.get<{ worker_id: string }>({ worker_id: id });
+                if (identity?.worker_id === providerIdentity) worker = { workspaceId: workspace.id, workerId: id };
+            }
+            if (worker === undefined) throw new Error(`no ${WORKSPACE} worker has provider identity ${providerIdentity}`);
+            this.#workers.set(providerIdentity, worker);
+        }
+        const arrivals = (await daemon.readMessages(worker)).filter(({ direction }) => direction === "inbound");
+        const source = arrivals.at(-1)?.source ?? "";
+        return /\/messages\/(tck-[a-z0-9_-]+)/u.exec(source)?.[1] ?? "default";
     }
 
     override async generate(args: Parameters<Provider["generate"]>[0]) {
         const count = this.#calls.get(args.workerId) ?? 0;
         this.#calls.set(args.workerId, count + 1);
         const source = JSON.stringify(args.messages);
-        const scenario = [...source.matchAll(/\/messages\/(tck-[a-z0-9_-]+)/g)].at(-1)?.[1] ?? "default";
+        const scenario = await this.#scenario(args.workerId);
         process.stderr.write(`${JSON.stringify({ scenario, call: count + 1 })}\n`);
         if (scenario.startsWith("tck-artifact-file") && !scenario.startsWith("tck-artifact-file-url")) {
             const content = count === 0
@@ -46,12 +74,12 @@ class TckProvider extends Mock {
 
 const db = await openMigrated(process.argv[2]);
 const http = await bindListener();
-const daemon = new Daemon({ db, provider: new TckProvider(), http });
+const daemon = new Daemon({ db, provider: new TckProvider(db, () => daemon), http });
 let baseUrl = "";
 daemon.registerModule({
     start: async (port) => {
         const adapter = await A2aModule.init({
-            workspace: { name: "a2a-tck", projectRoot: null },
+            workspace: { name: WORKSPACE, projectRoot: null },
             card: a2aCard(),
             ...A2A_EXPOSURE,
         }).start(port);
