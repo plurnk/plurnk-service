@@ -186,7 +186,7 @@ export class SqlRiteSync {
 	drain_rehome_orphaned_messages: SqlRiteSyncPreparedStatements;
 	drain_find_slept_loop: SqlRiteSyncPreparedStatements;
 	drain_loop_generation_policy: SqlRiteSyncPreparedStatements;
-	drain_worker_min_poll: SqlRiteSyncPreparedStatements;
+	drain_worker_open_streams: SqlRiteSyncPreparedStatements;
 	worker_parent_id: SqlRiteSyncPreparedStatements;
 	worker_lineage_contains: SqlRiteSyncPreparedStatements;
 	edit_published_reads: SqlRiteSyncPreparedStatements;
@@ -761,7 +761,7 @@ export default class SqlRite {
 	drain_rehome_orphaned_messages: SqlRitePreparedStatements;
 	drain_find_slept_loop: SqlRitePreparedStatements;
 	drain_loop_generation_policy: SqlRitePreparedStatements;
-	drain_worker_min_poll: SqlRitePreparedStatements;
+	drain_worker_open_streams: SqlRitePreparedStatements;
 	worker_parent_id: SqlRitePreparedStatements;
 	worker_lineage_contains: SqlRitePreparedStatements;
 	edit_published_reads: SqlRitePreparedStatements;

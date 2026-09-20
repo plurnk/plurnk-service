@@ -810,7 +810,7 @@ WAIT has no timing operand; its optional path is a label ({§send-wait-scope}).
 With live work—an open stream or a live child worker—the loop parks durably
 and wakes on settlement, on a
 message, or on the inherited observation cadence of its open streams
-({§exec-poll}); without live work it continues at once, told so. A wake
+({§exec-lifetime}); without live work it continues at once, told so. A wake
 continues the same loop with the same messages, generation policy, and
 cumulative turn ceiling; it never creates another assignment. Scheduled messages
 exist independently of a loop's optional attachment to one occurrence.
@@ -929,15 +929,13 @@ stateDiagram-v2
 | closed, any status, empty or non-empty                                  | yes | no stream obligation remains |
 | cancelled as part of worker cancellation                                | irrelevant | terminate the cancelled worker; never resurrect it |
 
-Polling observes a still-open stream; it never changes ownership or manufactures
-completion. Closure is always a wake edge regardless of polling mode.
+Observation watches a still-open stream; it never changes ownership or manufactures
+completion. Closure is always a wake edge.
 
-| §worker-lifecycle-poll-matrix execution poll marker | While open | On closure |
+| §worker-lifecycle-poll-matrix stream | While open | On closure |
 |------------------------------------------------|---|---|
-| omitted                                        | exponential-backoff observation wakes | resume once with terminal observation |
-| positive `P`                                   | fixed-cadence observation wakes every `P` minutes | cancel cadence; resume once |
-| zero                                           | no observation wakes | resume once |
-| turn-scoped `<0>`                              | reap at the next pre-turn boundary | surface the terminal outcome |
+| any lifetime but `turn`                        | the daemon's exponential-backoff observation wakes ({§exec-lifetime}) | resume once with terminal observation |
+| `[{"lifetime":"turn"}]`                        | reap at the next pre-turn boundary | surface the terminal outcome |
 
 The structured-concurrency sequence is identical whether a child performs an
 execution, retrieval, or pure inference. Intermediate status does not drain the
@@ -2860,40 +2858,26 @@ repurposes the line-marker slot as `<timeout, poll>` in **minutes** — agentic
 latencies make a sub-minute horizon a trap — converted at the parse boundary to the
 catalog's internal `stream.seconds`. WAIT takes no timing; future wakes belong to the schedule family.
 
-§exec-timeout `T` (`mark[0]`) caps the spawn's lifetime. At `T>0` the service
-aborts it — a bounded reap, polite signal then SIGKILL after
-`PLURNK_SERVICE_EXEC_KILL_GRACE_MS` — and stamps the stream **504**, distinct
-from a deliberate kill (499) or a clean exit (200). Absent is unbounded but
-loop-life bounded — reaped on every loop terminal except 202 — the
-background-stream behavior. **`-1` is unbounded and detached**: the spawn
-outlives its loop's terminal, 200 included. It never binds to the loop's
-teardown and is nobody's obligation — completion is not gated by it, WAIT does
-not park on it, optimistic settlement looks past it — and it ends only by KILL,
-the worker's total reap, or daemon shutdown; its late conclusion surfaces
-without opening a loop. **`0` is turn-scoped**:
-the stream is reaped at the worker's next pre-turn via the registry abort,
-before the turn's own spawns, so it never survives into the subsequent turn;
-its terminal output surfaces born visible like any close ({§exec-stream}).
+§exec-lifetime **How long a spawn may live is the fence's metadata, one field.**
+`[{"lifetime": …}]` takes a duration (`30s`, `30m`, `2h`), or one of three words;
+absent is `loop`. An execution takes no scope: a numeric coordinate on an
+executor target is refused `scope-unsupported` (400), naming the field.
 
-§exec-poll `P` (`mark[1]`) is the **poll cadence**, stored on the subscription.
-While the loop is parked waiting for that stream, the daemon persists
-the tightest open poll cadence on that exact wait and resumes the blocked
-loop every P minutes, floored by `PLURNK_SERVICE_OPTIMISTIC_WAIT_MS` so it cannot tick
-faster than the optimistic settlement scale, to inspect progress. It does **nothing while the
-loop is active** because ambient stream deltas already surface progress. An
-open stream without `P` uses exponential backoff
-(`PLURNK_SERVICE_EXEC_POLL_SEC` and `PLURNK_SERVICE_EXEC_POLL_TURNS`); explicit
-`<,P>` wins and `<,0>` disables polling for that stream. Open subscriptions
-aggregate into each wait's inherited observation policy as follows:
+| `lifetime`   | The spawn |
+| ------------ | --------- |
+| a duration   | Aborted at the deadline — a bounded reap, polite signal then SIGKILL after `PLURNK_SERVICE_EXEC_KILL_GRACE_MS` — and the stream is stamped **504**, distinct from a deliberate kill (499) or a clean exit (200). |
+| `loop` (absent) | Loop-life bounded: reaped on every loop terminal except 202, the background-stream behavior. |
+| `turn`       | Reaped at the worker's next pre-turn via the registry abort, before the turn's own spawns, so it never survives into the subsequent turn; its terminal output surfaces born visible like any close ({§exec-stream}). |
+| `detached`   | Outlives its loop's terminal, 200 included. It never binds to the loop's teardown and is nobody's obligation — completion is not gated by it, WAIT does not park on it, optimistic settlement looks past it — and it ends only by KILL, the worker's total reap, or daemon shutdown; its late conclusion surfaces without opening a loop. |
 
-| Open-stream policies                          | Worker timer                  |
-| --------------------------------------------- | ----------------------------- |
-| Any positive `P`                              | The smallest positive cadence |
-| No positive `P`, at least one omitted `P`     | Exponential backoff           |
-| Every `P` is explicit zero                    | Disabled                      |
-
-Child-only joins never use this timer: child settlement is their durable wake
-edge. Stream closure remains a wake edge under every poll policy.
+**Cadence is the daemon's, never the model's.** While a loop is parked on an open
+stream the daemon wakes it on the worker's exponential backoff
+(`PLURNK_SERVICE_EXEC_POLL_SEC`, `PLURNK_SERVICE_EXEC_POLL_TURNS`, floored by
+`PLURNK_SERVICE_OPTIMISTIC_WAIT_MS`) to inspect progress; it does nothing while
+the loop is active, because ambient stream deltas already surface progress.
+Closure is a wake edge regardless. Child-only joins never use this timer: child
+settlement is their durable wake edge. A recurring check on the calendar is a
+schedule targeting yourself ({§schedule-delivery}), not a loop that polls.
 
 §exec-host-proposes **Effect-gating.** Each executor — and each scheme operation that mutates something outside this process — declares an `effect` (`pure` | `read` | `host`); the service maps it to policy (`EffectPolicy`). The declarer states the FACT, the panel decides the POLICY, and one rule covers every operation: nothing that changes the world runs on nobody's authority. A `host` runtime (subprocess; file-backed sqlite) proposes under {§proposal}, and so does an outbound request that mutates a remote resource ({§http-outbound-proposes}). Once accepted, it spawns and writes channels at its workspace execution address ({§execution-output-identity}), returning `102 Processing`. Channel state transitions (`active` → `closed`/`errored`) drive subsequent observations ({§channel-state}).
 

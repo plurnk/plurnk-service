@@ -17,9 +17,11 @@ import EntryCrud from "./_entry-crud.ts";
 import EntryFind from "./_entry-find.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "./_entry-crud.ts";
 import type { FindResult } from "./_entry-find.ts";
+import { MetadataOptions } from "@plurnk/plurnk-schemes";
 import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
 import EnvFunctionality, { type EnvRecord } from "../server/EnvFunctionality.ts";
 import ExecAbort from "./exec-abort.ts";
+import { LIFETIME_SYNTAX, formatLifetime, parseExecLifetime } from "./exec-lifetime.ts";
 import { entryCoordinateOf, generatedPathname, renderAddress } from "../core/plurnk-uri.ts";
 import { writeFile, unlink, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -61,10 +63,10 @@ interface ExecAttrs {
     coordinate?: StreamCoordinate;
     effect: Effect;         // one admission fact, preserved through apply and stream/hold bookkeeping
     resourceSource?: string; // complete authored non-file resource address, resolved through ordinary READ at apply time
-    timeoutSec?: number;    // `<T,P>` mark[0] > 0: T MINUTES, held in seconds: kill the spawn after T minutes (504). Absent/-1 = unbounded.
-    turnScoped?: boolean;   // `<0>`: turn-scoped — reaped at the worker's next pre-turn, never surviving into the subsequent turn. {§exec-poll}
-    detached?: boolean;     // `<-1>`: the spawn outlives its loop — never bound to the loop's teardown, nobody's obligation; KILL, the worker's total reap, and daemon shutdown still end it. {§exec-timeout}
-    pollSec?: number;       // `<T,P>` mark[1]: P MINUTES, held in seconds: absent = default backoff; 0 = disabled; positive = fixed cadence. {§exec-poll}
+    // {§exec-lifetime} — `[{"lifetime": …}]`, one field, absent = loop-bound.
+    timeoutSec?: number;    // a duration: kill the spawn at the deadline (504).
+    turnScoped?: boolean;   // "turn": reaped at the worker's next pre-turn, never surviving into the subsequent turn.
+    detached?: boolean;     // "detached": the spawn outlives its loop — never bound to the loop's teardown, nobody's obligation; KILL, the worker's total reap, and daemon shutdown still end it.
 }
 
 // Executors are discovered + probed at boot into ExecutorRegistry and reach
@@ -164,7 +166,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return false;
     }
 
-    // {§exec-timeout} — a `<-1>` spawn ends with the daemon: nothing else ever aborts it, so the
+    // {§exec-lifetime} — a detached spawn ends with the daemon: nothing else ever aborts it, so the
     // stop sequence reaps it (bounded housekeeping) before the streaming drain barrier.
     abortDetached(): void {
         for (const { controller, detached } of this.#activeAborts.values()) if (detached) controller.abort(ExecAbort.teardownReason());
@@ -404,6 +406,16 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             resourceSource = null;
         }
 
+        // {§exec-lifetime} — the scope slot is text coordinates, and an execution has none: what a
+        // numeric scope used to mean is the metadata's one field.
+        if (statement.lineMarker !== null) {
+            return refuse(
+                "scope-unsupported",
+                "An execution takes no scope.",
+                `Remove the scope; how long the run may live is metadata: [{"lifetime": "30m"}], or ${LIFETIME_SYNTAX}.`,
+            );
+        }
+
         // {§env-option} — the fence's own environment is the service's key: refused here by name,
         // so the model learns why, never dropped at the spawn. The executor never sees it.
         try {
@@ -411,6 +423,17 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         } catch (cause) {
             if (!(cause instanceof OperationFailureError)) throw cause;
             return cause.result as ExecResult;
+        }
+        // {§exec-lifetime} — the service's other reserved key, read before the executor's options so
+        // an unreadable lifetime is refused by name rather than spawning under a wrong bound. A block
+        // that is not the option-array shape carries no lifetime for the service to read: it is the
+        // invoked executor's to accept or refuse ({§executor-metadata}), exactly as `env` is.
+        const read = MetadataOptions.parse(statement.metadata, "scheme:exec", { runtime });
+        const lifetime = parseExecLifetime("failure" in read ? undefined : read.lifetime);
+        if ("invalid" in lifetime) {
+            return Results.failure("scheme:exec", "lifetime-invalid", 400, lifetime.invalid, {}, {
+                runtime, recovery: `State one lifetime: ${LIFETIME_SYNTAX}.`, retryable: false,
+            });
         }
         // {§executor-metadata} Options belong to the invoked executor for every source kind.
         const executor = resolved.executor;
@@ -493,22 +516,12 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         // cwd is the workspace project_root unless target routing selected a
         // directory override. {§exec-target-routing}, {§executor-sinks}
         // The log writer claims the workspace output address before proposal application.
-        // An execution repurposes the `<L>` slot as `<timeout, poll>` (MINUTES, held in seconds): mark[0] caps the spawn's
-        // lifetime, mark[1] sets the hibernation poll-wake cadence ({§exec-poll}). N>0 → deadline (504);
-        // -1 / absent → unbounded (loop-life bounded); 0 → turn-scoped (reaped at the next pre-turn,
-        // never surviving into the subsequent turn).
-        const marks = statement.lineMarker?.marks;
-        const timeoutSec = typeof marks?.[0] === "number" && marks[0] > 0 ? Math.floor(marks[0]) * 60 : undefined;
-        const turnScoped = typeof marks?.[0] === "number" && marks[0] === 0;
-        const detached = typeof marks?.[0] === "number" && marks[0] === -1;
-        const pollSec = typeof marks?.[1] === "number" && marks[1] >= 0 ? Math.floor(marks[1]) * 60 : undefined;
+        // {§exec-lifetime} — how long the spawn may live is the metadata's one field; the scope slot
+        // is text coordinates, which an execution has none of.
         const attrs: ExecAttrs = {
             runtime, cwd, body, target, pathname: "", effect,
             ...(resourceSource !== null ? { resourceSource } : {}),
-            ...(timeoutSec !== undefined ? { timeoutSec } : {}),
-            ...(turnScoped ? { turnScoped: true } : {}),
-            ...(detached ? { detached: true } : {}),
-            ...(pollSec !== undefined ? { pollSec } : {}),
+            ...lifetime,
         };
         const previewInput = body !== "" ? body : execTarget?.raw ?? "";
         const preview = runtime !== "" ? `[${runtime}] ${previewInput}` : `$ ${previewInput}`;
@@ -701,9 +714,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const subscriptionId = await ChannelWrite.openSubscription(core.db, {
             workerId: core.workerId, entryId, scheme: runtime,
             handle: runtime !== "" ? `${runtime}: ${body !== "" ? body : target ?? ""}` : body,
-            pollSeconds: typeof attrs.pollSec === "number" ? attrs.pollSec : null, // {§exec-poll} — hibernation wake cadence
-            turnScoped: attrs.turnScoped === true, // {§exec-poll} — `<0>` reaped at the next pre-turn
-            detached: attrs.detached === true, // {§worker-obligations} — `<-1>` is nobody's obligation
+            turnScoped: attrs.turnScoped === true, // {§exec-lifetime} — "turn" is reaped at the next pre-turn
+            detached: attrs.detached === true, // {§worker-obligations} — "detached" is nobody's obligation
             publishedChannel: resolved.executor.publishedChannel,
             source: attrs.coordinate === undefined ? undefined
                 : `log:///${attrs.coordinate.loop_seq}/${attrs.coordinate.turn_seq}/${attrs.coordinate.sequence}/${runtime}`,
@@ -711,8 +723,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
         const controller = new AbortController();
         let unlink = (): void => {};
-        // {§exec-timeout} — `<-1>` outlives the loop: it never binds to the loop's teardown; only KILL,
-        // the worker's total reap, and daemon shutdown end it.
+        // {§exec-lifetime} — a detached spawn outlives the loop: it never binds to the loop's teardown;
+        // only KILL, the worker's total reap, and daemon shutdown end it.
         if (core.signal !== undefined && attrs.detached !== true) {
             const parent = core.signal;
             // {§worker-lifecycle-exec-epoch-bound}
@@ -723,7 +735,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             // then re-check `aborted`: a listener added to an already-aborted signal never
             // fires, so a check-then-attach order LOSES an abort that lands in the gap (R1's
             // TOCTOU leak). Attach-then-check closes it; controller.abort is idempotent, so a
-            // doubled fire is harmless. {§exec-timeout}
+            // doubled fire is harmless. {§exec-lifetime}
             const onParentAbort = (): void => controller.abort(ExecAbort.teardownReason());
             parent.addEventListener("abort", onParentAbort, { once: true });
             unlink = (): void => parent.removeEventListener("abort", onParentAbort);
@@ -1122,15 +1134,16 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             // A timeout aborts the spawn → the executor reports 499; replace the
             // complete result so status and Problem remain one valid truth.
             if (timedOut) {
+                const lifetime = formatLifetime(timeoutSec ?? 0);
                 result = Results.failure(
                     "scheme:exec",
                     "execution-timeout",
                     504,
-                    `Execution of '${runtime}' exceeded its ${(timeoutSec ?? 0) / 60}-minute deadline.`,
+                    `Execution of '${runtime}' outlived its ${lifetime} lifetime.`,
                     exitCode === null ? {} : { exitCode },
                     {
                         runtime,
-                        timeoutMinutes: (timeoutSec ?? 0) / 60,
+                        lifetime,
                         stage: "execution",
                         retryable: false,
                     },

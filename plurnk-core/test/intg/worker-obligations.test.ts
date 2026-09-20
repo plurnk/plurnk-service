@@ -1,6 +1,6 @@
 // {§worker-obligations} — what a worker still holds is one durable row: an open stream that is not
 // detached, or a child with an unresolved loop. The completion gate, the wait matrix, and the drain
-// read the same view; a `<-1>` spawn is nobody's obligation from the row, not from process memory.
+// read the same view; a detached spawn is nobody's obligation from the row, not from process memory.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
@@ -17,7 +17,7 @@ test("{§worker-obligations}: open non-detached streams and live children are ob
         const first = await seedEntryWithChannel(db, { workspaceId, scheme: "sh", pathname: "/1/1/1/sh", channel: "stdout", content: "", state: "active" });
         const detached = await db.test_open_subscription_detached.get<{ id: number }>({ worker_id: workerId, entry_id: first, detached: 1 });
         assert.ok(detached);
-        assert.deepEqual(await held(), { streams: 0, workers: 0 }, "a `<-1>` stream outlives the loop and is nobody's obligation");
+        assert.deepEqual(await held(), { streams: 0, workers: 0 }, "a detached stream outlives the loop and is nobody's obligation");
         const second = await seedEntryWithChannel(db, { workspaceId, scheme: "sh", pathname: "/1/1/2/sh", channel: "stdout", content: "", state: "active" });
         const attached = await db.test_open_subscription_detached.get<{ id: number }>({ worker_id: workerId, entry_id: second, detached: 0 });
         assert.ok(attached);

@@ -1734,7 +1734,7 @@ export default class Daemon implements ApplicationPort {
     // (SSE, WS) add themselves here as they land.
     async #drainStreamingSchemes(): Promise<void> {
         const exec = this.#schemes.get("exec") as { idle?: () => Promise<void>; abortDetached?: () => void } | undefined;
-        // {§exec-timeout} — a `<-1>` spawn ends with the daemon: nothing else ever aborts it.
+        // {§exec-lifetime} — a detached spawn ends with the daemon: nothing else ever aborts it.
         exec?.abortDetached?.();
         if (exec?.idle !== undefined) await exec.idle();
     }

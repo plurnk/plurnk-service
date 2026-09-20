@@ -604,7 +604,7 @@ violations for the consumer to contain.
 ### §executor-cancellation Cancellation and consumer timing
 
 Executors know only the supplied `AbortSignal`. Core owns execution timeout and poll
-syntax, timers, wakes, and loop lifetime in {§exec-timeout} and {§exec-poll}.
+syntax, timers, wakes, and loop lifetime in {§exec-lifetime}.
 Subprocess cancellation signals the process group: a caller-supplied kill code
 is delivered once; ordinary cancellation uses SIGHUP; loop-end housekeeping
 may escalate after the consumer-provided grace period.

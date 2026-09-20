@@ -6,9 +6,10 @@
 import Results, { type SchemeResult } from "./Results.ts";
 
 export type MetadataOptionsParsed =
-    // `env` is the service's reserved key ({§scheme-metadata-modifier}): withheld from `options`
-    // so no owner interprets it, surfaced raw for the service, which owns its shape and names.
-    | { readonly options: Readonly<Record<string, unknown>>; readonly env?: unknown }
+    // `env` and `lifetime` are the service's reserved keys ({§scheme-metadata-modifier}): withheld
+    // from `options` so no owner interprets them, surfaced raw for the service, which owns their
+    // shapes and names.
+    | { readonly options: Readonly<Record<string, unknown>>; readonly env?: unknown; readonly lifetime?: unknown }
     | { readonly failure: SchemeResult };
 
 export default class MetadataOptions {
@@ -41,6 +42,10 @@ export default class MetadataOptions {
         // `env` is the service's: the environment of the scope an operation opens.
         const env = options.env;
         delete options.env;
-        return { options, ...(env === undefined ? {} : { env }) };
+        // `lifetime` is the service's too: how long the live work an operation opens may run
+        // ({§exec-lifetime}).
+        const lifetime = options.lifetime;
+        delete options.lifetime;
+        return { options, ...(env === undefined ? {} : { env }), ...(lifetime === undefined ? {} : { lifetime }) };
     }
 }

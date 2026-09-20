@@ -229,7 +229,7 @@ SELECT state, producer_result FROM entry_channels
 WHERE entry_id = $entry_id AND name = $name;
 
 -- PREP: test_get_subscription
-SELECT id, worker_id, entry_id, scheme, handle, poll_seconds, closed_at, close_status, close_result, channel_results
+SELECT id, worker_id, entry_id, scheme, handle, closed_at, close_status, close_result, channel_results
 FROM subscriptions WHERE id = $id;
 
 -- PREP: test_subscription_reassign_source

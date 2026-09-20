@@ -72,34 +72,21 @@ never output: output lives on the stream and in the harness READs. A receipt
 with a non-200 status and no `stream` address ran nothing; its body is still
 your program, and its Problem says why it was refused.
 
-## Deadlines & polling — `<timeout, poll>`
+## Lifetime
 
-For a long-running command, the `<L>` slot carries `<timeout, poll>` in minutes:
+How long a command may run is one metadata field; absent, it ends with the loop.
 
-````sh <30>
-npm run build
-````
-
-````sh <30,5>
+````sh [{"lifetime": "30m"}]
 npm run e2e
 ````
 
-````sh <-1,5>
-npm run test
+````sh [{"lifetime": "detached"}]
+npm run dev
 ````
 
-````sh <-1,0>
-tail -f app.log
-````
-
-The first coordinate is the timeout: a positive value kills at that deadline;
-`-1` declines the deadline and the process outlives the loop — it runs until it
-exits or you KILL it, so a server you must leave running takes `<-1>`; `0` keeps
-the process only through the current turn. Anything without `-1` is reaped when
-the loop ends. The optional
-positive second coordinate fixes the poll cadence while a loop is parked on
-the stream. With no explicit poll, the consumer uses exponential backoff so a
-parked loop can inspect partial output and decide whether to wait or KILL. A
-second coordinate of `0` disables timer polling for that stream; its eventual
-closure still wakes the loop. Polling wakes the loop but never interrupts the
-command.
+A duration (`30s`, `30m`, `2h`) kills the command at that deadline. `detached`
+outlives the loop — it runs until it exits or you KILL it, so a server you must
+leave running takes it. `turn` keeps the command only through the current turn.
+While you wait on a stream, the service wakes you to inspect it; you never ask
+for that, and you never poll from inside a loop. To act again later with nothing
+in flight, add a rule with the `schedule` family targeting yourself.

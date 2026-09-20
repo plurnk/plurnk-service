@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS loops (
     execution_budget_ms INTEGER CHECK (execution_budget_ms IS NULL OR execution_budget_ms > 0),
     execution_elapsed_ms REAL NOT NULL DEFAULT 0 CHECK (execution_elapsed_ms >= 0),
     -- {§loop-wake-identity}: the wait generation; wait_poll_at below is the next inherited
-    -- observation of the worker's open streams ({§exec-poll}), epoch milliseconds.
+    -- observation of the worker's open streams ({§exec-lifetime}), epoch milliseconds.
     wait_revision INTEGER NOT NULL DEFAULT 0 CHECK (wait_revision >= 0),
     -- {§loop-rail-continuity}: one loop-owned streak and bounded repetition window.
     strike_streak INTEGER NOT NULL DEFAULT 0 CHECK (strike_streak >= 0),

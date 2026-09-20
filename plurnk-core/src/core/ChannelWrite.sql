@@ -42,8 +42,8 @@ RETURNING name;
 -- PREP: open_subscription
 -- turn_scoped COALESCEs to 0 so a caller binding the raw prep without it (an unbounded stream) is
 -- a normal, non-turn-scoped subscription — the column is NOT NULL, so a missing bind would error.
-INSERT INTO subscriptions (worker_id, entry_id, scheme, handle, poll_seconds, turn_scoped, detached, published_channel, source)
-VALUES ($worker_id, $entry_id, $scheme, $handle, $poll_seconds, COALESCE($turn_scoped, 0), COALESCE($detached, 0), $published_channel, $source)
+INSERT INTO subscriptions (worker_id, entry_id, scheme, handle, turn_scoped, detached, published_channel, source)
+VALUES ($worker_id, $entry_id, $scheme, $handle, COALESCE($turn_scoped, 0), COALESCE($detached, 0), $published_channel, $source)
 RETURNING id;
 
 -- PREP: close_subscription
@@ -80,7 +80,7 @@ WHERE worker_id = $worker_id AND closed_at IS NULL;
 -- PREP: find_open_turn_scoped_subscriptions_for_worker
 -- The worker's open turn-scoped (EXEC `<0>`) subscriptions — reaped at the worker's next pre-turn so a
 -- `<0>` stream never survives into the subsequent turn; its terminal output surfaces initially visible
--- through the same conclusion-delta path as any close ({§exec-poll}, {§exec-stream}).
+-- through the same conclusion-delta path as any close ({§exec-stream}).
 SELECT id, scheme
 FROM subscriptions
 WHERE worker_id = $worker_id AND closed_at IS NULL AND turn_scoped = 1;

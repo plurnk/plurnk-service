@@ -155,19 +155,10 @@ SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequ
 -- PREP: drain_loop_generation_policy
 SELECT model_route_id, spawn_model_route_id, reasoning_policy FROM loops WHERE id = $loop_id;
 
--- PREP: drain_worker_min_poll
--- Execution `<T,P>` — aggregate each open subscription's policy into one worker timer. A fixed cadence
--- wins at its tightest positive value; otherwise any omitted cadence requests default backoff;
--- only an all-zero set disables the timer. Child-only joins have no subscription policy.
-SELECT
-    COUNT(*) AS open_count,
-    CASE
-        WHEN COUNT(*) = 0 THEN NULL
-        WHEN MIN(CASE WHEN poll_seconds > 0 THEN poll_seconds END) IS NOT NULL
-            THEN MIN(CASE WHEN poll_seconds > 0 THEN poll_seconds END)
-        WHEN SUM(CASE WHEN poll_seconds IS NULL THEN 1 ELSE 0 END) > 0 THEN NULL
-        ELSE 0
-    END AS poll_seconds
+-- PREP: drain_worker_open_streams
+-- {§exec-lifetime} — whether the worker holds any open stream at all. Cadence is the daemon's
+-- backoff, never the model's, so there is no policy to aggregate. Child-only joins have none.
+SELECT COUNT(*) AS open_count
 FROM subscriptions WHERE worker_id = $worker_id AND closed_at IS NULL;
 
 -- PREP: worker_parent_id

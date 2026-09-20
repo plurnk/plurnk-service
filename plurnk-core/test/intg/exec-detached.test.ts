@@ -1,4 +1,4 @@
-// {§exec-timeout} — `<-1>` outlives the loop (#494): a detached spawn survives its loop's own 200,
+// {§exec-lifetime} — `[{"lifetime":"detached"}]` outlives the loop (#494): the spawn survives its loop's own 200,
 // is no obligation for that completion, and still ends with the daemon.
 
 import test from "node:test";
@@ -27,13 +27,13 @@ const beating = async (file: string, ms: number): Promise<boolean> => {
     return before !== await beat(file);
 };
 
-test("{§exec-timeout} a detached spawn is observed once, then outlives its loop and ends with the daemon", async () => {
+test("{§exec-lifetime} a detached spawn is observed once, then outlives its loop and ends with the daemon", async () => {
     const dir = await mkdtemp(join(tmpdir(), "exec-detached-"));
     const file = join(dir, "beat");
     try {
         const mock = new Mock({
             contextWindow: viableWindow(),
-            responses: [mockTurn(`\`\`\`\`sh <-1>
+            responses: [mockTurn(`\`\`\`\`sh [{"lifetime": "detached"}]
 ${heartbeat(file)}
 \`\`\`\`
 

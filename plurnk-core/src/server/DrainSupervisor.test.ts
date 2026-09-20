@@ -254,7 +254,7 @@ test("{§module-shutdown-order}: stopping during poll persistence cannot install
     const release = Promise.withResolvers<void>();
     const drains = supervisor(async () => "system", undefined, {
         db: {
-            drain_worker_min_poll: { get: async () => ({ open_count: 1, poll_seconds: 60 }) },
+            drain_worker_open_streams: { get: async () => ({ open_count: 1 }) },
         } as unknown as Db,
         lifecycle: {
             parked: async () => [{

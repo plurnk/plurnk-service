@@ -106,64 +106,27 @@ test("openSubscription: inserts a row and returns its id", async () => {
     } finally { await db.close(); }
 });
 
-test("{§exec-poll} #106: subscriptions preserve disabled, default, and fixed poll policy", async () => {
+test("{§exec-lifetime} an open stream is the worker's, whatever its lifetime: the drain reads one count", async () => {
     const { db, workspaceId, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        const disabledId = await ChannelWrite.openSubscription(db, {
-            workerId,
-            entryId,
-            scheme: "sh",
-            handle: "disabled",
-            pollSeconds: 0,
-        });
-        const disabled = await db.test_get_subscription.get<{ poll_seconds: number | null }>({ id: disabledId });
-        assert.equal(disabled?.poll_seconds, 0, "explicit zero survives as the stream's disabled policy");
+        await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sh", handle: "first" });
         assert.deepEqual(
-            await db.drain_worker_min_poll.get({ worker_id: workerId }),
-            { open_count: 1, poll_seconds: 0 },
-            "zero alone arms no worker timer",
+            await db.drain_worker_open_streams.get({ worker_id: workerId }),
+            { open_count: 1 },
+            "one open stream arms the worker's own observation; no cadence is stored",
         );
-
-        const seed = async (pathname: string): Promise<number> => {
-            const row = await db.test_seed_entry_workspace.get<{ id: number }>({
-                workspace_id: workspaceId,
-                scheme: "worker",
-                authority: "",
-                pathname,
-            });
-            if (row === undefined) throw new Error(`seed ${pathname} failed`);
-            await db.test_seed_channel.run({
-                entry_id: row.id,
-                name: "body",
-                content: "",
-                mimetype: "text/plain",
-                state: "active",
-            });
-            return row.id;
-        };
-        await ChannelWrite.openSubscription(db, {
-            workerId,
-            entryId: await seed("/default-poll"),
-            scheme: "sh",
-            handle: "default",
+        const row = await db.test_seed_entry_workspace.get<{ id: number }>({
+            workspace_id: workspaceId, scheme: "worker", authority: "", pathname: "/second",
         });
-        assert.deepEqual(
-            await db.drain_worker_min_poll.get({ worker_id: workerId }),
-            { open_count: 2, poll_seconds: null },
-            "an omitted cadence still arms default backoff; a disabled sibling cannot suppress it",
-        );
-
-        await ChannelWrite.openSubscription(db, {
-            workerId,
-            entryId: await seed("/fixed-poll"),
-            scheme: "sh",
-            handle: "fixed",
-            pollSeconds: 3,
+        if (row === undefined) throw new Error("seed /second failed");
+        await db.test_seed_channel.run({
+            entry_id: row.id, name: "body", content: "", mimetype: "text/plain", state: "active",
         });
+        await ChannelWrite.openSubscription(db, { workerId, entryId: row.id, scheme: "sh", handle: "second", turnScoped: true });
         assert.deepEqual(
-            await db.drain_worker_min_poll.get({ worker_id: workerId }),
-            { open_count: 3, poll_seconds: 3 },
-            "the tightest fixed cadence wins when any open stream requests one",
+            await db.drain_worker_open_streams.get({ worker_id: workerId }),
+            { open_count: 2 },
+            "a turn-scoped stream counts the same: lifetime bounds the spawn, never the observation",
         );
     } finally { await db.close(); }
 });

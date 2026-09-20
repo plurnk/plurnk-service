@@ -406,8 +406,8 @@ export default class DrainSupervisor {
                     if (result.result.status === 202) {
                         // The loop parked — suspended, not terminated. Leave it at 202
                         // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion
-                        // through handleWakeWorker re-queues it; if it holds a polled stream, a poll timer
-                        // wakes it every P to inspect ({§exec-poll}). {§worker-lifecycle-wake-liveness}.
+                        // through handleWakeWorker re-queues it; if it holds an open stream, the daemon's
+                        // backoff wakes it to inspect ({§exec-lifetime}). {§worker-lifecycle-wake-liveness}.
                         await this.scheduleWakes(workspaceId, workerId, systemPrompt);
                         // Serialize the park boundary against message injection.
                         // Whichever side arrives first owns a wake edge: injection wakes
@@ -876,34 +876,22 @@ export default class DrainSupervisor {
     }
 
     async #inheritedPollMs(workerId: number, loopId: number): Promise<number | null> {
-        const row = await this.#db.drain_worker_min_poll.get<{ open_count: number; poll_seconds: number | null }>({ worker_id: workerId });
+        const row = await this.#db.drain_worker_open_streams.get<{ open_count: number }>({ worker_id: workerId });
         if (!this.#acceptingWork) return null;
         if ((row?.open_count ?? 0) === 0) {
             this.#pollBackoff.delete(loopId);
             return null;
         }
-        const pollSec = row?.poll_seconds ?? null;
-        // {§exec-poll} — a positive explicit cadence wins, zero opts out,
-        // and an absent cadence uses the worker's exponential-backoff step.
-        let delayMs: number;
-        if (pollSec !== null && pollSec > 0) {
-            this.#pollBackoff.delete(loopId);
-            delayMs = pollSec * 1000;
-        } else if (pollSec === 0) {
-            this.#pollBackoff.delete(loopId);
-            return null; // explicit opt-out
-        } else {
-            // An open stream without an explicit cadence uses the stream polling floor.
-            // Child joins never enter this branch: durable child settlement is their only wake edge.
-            const base = Knob.integer("PLURNK_SERVICE_EXEC_POLL_SEC", 0);
-            const turns = Knob.integer("PLURNK_SERVICE_EXEC_POLL_TURNS", 1);
-            const step = this.#pollBackoff.get(loopId) ?? 0;
-            delayMs = execPollBackoffMs(step, base, turns);
-            this.#pollBackoff.set(loopId, step + 1);
-        }
-        // Floored by the optimistic settlement cap so a `<…,1>` cannot wake a
-        // parked loop faster than the preceding turn's settlement scale.
-        return Math.max(delayMs, readOptimisticSettlementMs());
+        // {§exec-lifetime} — cadence is the daemon's: an open stream is observed on the worker's
+        // exponential-backoff step. Child joins never enter here: durable child settlement is their
+        // only wake edge.
+        const base = Knob.integer("PLURNK_SERVICE_EXEC_POLL_SEC", 0);
+        const turns = Knob.integer("PLURNK_SERVICE_EXEC_POLL_TURNS", 1);
+        const step = this.#pollBackoff.get(loopId) ?? 0;
+        this.#pollBackoff.set(loopId, step + 1);
+        // Floored by the optimistic settlement cap so the first step cannot wake a parked loop
+        // faster than the preceding turn's settlement scale.
+        return Math.max(execPollBackoffMs(step, base, turns), readOptimisticSettlementMs());
     }
 
     async #wakeLoop(workerId: number, loopId: number, condition: Parameters<LoopLifecycle["wake"]>[1] = {}): Promise<boolean> {
