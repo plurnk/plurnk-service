@@ -10,6 +10,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { discoverDaemonModules } from "./module-discovery.ts";
 
+// These fixtures are third-party packages, so this file exercises the operator who admitted them
+// ({§plugin-trust-boundary}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself
+// state their own value below and override this one.
+process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
+
 const packageOf = async (root: string, name: string, manifest: Record<string, unknown>, moduleBody: string): Promise<{ dir: string; name: string }> => {
     const dir = join(root, "node_modules", name);
     await mkdir(dir, { recursive: true });

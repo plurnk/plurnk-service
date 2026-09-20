@@ -28,15 +28,16 @@ test("{§loop-policy-composition} the panel supplies exactly what a loop's creat
 });
 
 test("{§loop-policy-composition} attendance picks which disposition knob answers, so every panel state is lawful", () => {
-    // `--auto` is this one statement: nobody is attending. The disposition is the panel's to supply.
-    assert.deepEqual(LoopPolicies.compose({ attended: false }), { proposals: "accept", attended: false });
-    withPanel({ PLURNK_SERVICE_UNATTENDED_PROPOSALS: "reject" }, () => {
-        assert.deepEqual(LoopPolicies.compose({ attended: false }), { proposals: "reject", attended: false });
+    // `--auto` is this one statement: nobody is attending. The disposition is the panel's to supply,
+    // and the shipped panel rejects — an effect nobody approved does not run.
+    assert.deepEqual(LoopPolicies.compose({ attended: false }), { proposals: "reject", attended: false });
+    withPanel({ PLURNK_SERVICE_UNATTENDED_PROPOSALS: "accept" }, () => {
+        assert.deepEqual(LoopPolicies.compose({ attended: false }), { proposals: "accept", attended: false });
         assert.deepEqual(LoopPolicies.compose({}), { proposals: "review", attended: true }, "an attended loop never reads the unattended knob");
     });
     // A headless daemon: review stays on the panel unread, and nothing contradicts.
     withPanel({ PLURNK_SERVICE_ATTENDED: "0" }, () => {
-        assert.deepEqual(LoopPolicies.compose({}), { proposals: "accept", attended: false });
+        assert.deepEqual(LoopPolicies.compose({}), { proposals: "reject", attended: false });
         assert.deepEqual(LoopPolicies.compose({ attended: true }), { proposals: "review", attended: true });
         LoopPolicies.validateConfiguration();
     });

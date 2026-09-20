@@ -5,6 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import Discover from "./discover.ts";
 
+// This file's fixtures are third-party packages, so it exercises the operator who admitted them
+// ({§executor-trust}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
+// their own value below and override this one.
+process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
+
 // Every temporary directory this suite creates is tracked and removed after the run.
 // mkdtemp otherwise leaks a dir per call permanently, and this suite is the
 // family's heaviest generator. One after() rms them all — a green OR red run

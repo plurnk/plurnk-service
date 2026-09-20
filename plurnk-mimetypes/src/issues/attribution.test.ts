@@ -5,6 +5,11 @@ import path from "node:path";
 import os from "node:os";
 import { discover } from "../discover.ts";
 
+// This file's fixtures are third-party packages, so it exercises the operator who admitted them
+// ({§executor-trust}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
+// their own value below and override this one.
+process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
+
 async function makePackage(
     root: string,
     folder: string,

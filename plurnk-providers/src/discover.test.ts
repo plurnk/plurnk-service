@@ -5,6 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import { discover } from "./discover.ts";
 
+// This file's fixtures are third-party packages, so it exercises the operator who admitted them
+// ({§executor-trust}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
+// their own value below and override this one.
+process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
+
 // Create a temp dir and register its removal on the test context, so it is
 // cleaned on a GREEN or RED run. A trailing rm after the assertions leaks the dir
 // whenever one throws — thousands accumulate on a shared box at drill frequency.
@@ -166,13 +171,17 @@ const trustFixture = (t: TestContext) => buildModules(t, {
     "@acme/acme-provider-foo": { name: "@acme/acme-provider-foo", plurnk: { kind: "provider", name: "foo" } },
 });
 
-test("trust gate OFF (unset/empty/0): every provider is trusted", async (t) => {
+test("trust gate OFF ('' or '0'): every provider is trusted; unset defers to the panel", async (t) => {
     const root = await trustFixture(t);
-    for (const gate of [undefined, "", "0"]) {
+    for (const gate of ["", "0"]) {
         const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_PLUGINS_TRUSTED_ONLY: gate } as NodeJS.ProcessEnv });
         assert.deepEqual([...registry.keys()].sort(), ["foo", "native"]);
         assert.equal(skipped.size, 0);
     }
+    // An unset key is answered by @plurnk/plurnk-meta's own panel, which ships `1`.
+    const { registry, skipped } = await discover({ cwd: root, env: {} as NodeJS.ProcessEnv });
+    assert.deepEqual([...registry.keys()].sort(), ["native"], "only the first-party provider survives the shipped gate");
+    assert.equal(skipped.size, 1);
 });
 
 test("trust gate ON: @plurnk/* always trusted; third party declined → skipped, not registered", async (t) => {

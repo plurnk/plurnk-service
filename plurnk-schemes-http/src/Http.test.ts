@@ -1668,9 +1668,9 @@ test("READ: {metadata} headers are threaded into the fetch", async () => {
     await withFetch(probe as typeof fetch, async () => {
         await prepareRepresentation(new Http(), readStmt(target, null, ["{\"Authorization\":\"Bearer T\",\"Accept\":\"application/json\"}"]), ctx);
     });
-    // The default web identity rides first when the model supplied no UA block.
+    // Plurnk's own identity rides first when the model supplied no UA block.
     assert.deepEqual(seenHeaders, [["User-Agent", (seenHeaders as [string, string][])[0][1]], ["Authorization", "Bearer T"], ["Accept", "application/json"]]);
-    assert.match((seenHeaders as [string, string][])[0][1], /Mozilla.*Chrome/);
+    assert.match((seenHeaders as [string, string][])[0][1], /^PlurnkBot\//u);
 });
 
 test("HTTP rejects malformed metadata without reflecting its contents", async () => {
@@ -3188,7 +3188,7 @@ test("GET appends authoritative request-method metadata after origin headers", a
 });
 
 // ── wire identity ───────────────────────────────────────────────────────────
-test("byte path sends the default web UA, not Node's automated-client default", async () => {
+test("{§http-config} byte path sends Plurnk's own identity, never a browser's", async () => {
     const { ctx } = makeCtx();
     let ua = "";
     const probe = async (_u: string | URL | Request, init?: RequestInit) => {
@@ -3198,7 +3198,8 @@ test("byte path sends the default web UA, not Node's automated-client default", 
     await withFetch(probe as typeof fetch, async () => {
         await prepareRepresentation(new Http(), readStmt(urlTarget("https://api.example.com/d.json", "/d.json")), ctx);
     });
-    assert.match(ua, /Mozilla.*Chrome/);
+    assert.match(ua, /^PlurnkBot\//u, "Plurnk says what it is");
+    assert.doesNotMatch(ua, /Mozilla|Chrome|Safari/u, "and never claims to be a browser");
 });
 
 test("a model-supplied User-Agent metadata block overrides the default identity", async () => {

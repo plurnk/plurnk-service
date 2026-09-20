@@ -10,6 +10,11 @@ import Mimetypes from "../Mimetypes.ts";
 import MimetypePluginError from "../MimetypePluginError.ts";
 import type { Discovery, HandlerInfo } from "../types.ts";
 
+// This file's fixtures are third-party packages, so it exercises the operator who admitted them
+// ({§executor-trust}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
+// their own value below and override this one.
+process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
+
 const roots: string[] = [];
 const info: HandlerInfo = {
     mimetype: "text/fixture",

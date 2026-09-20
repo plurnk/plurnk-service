@@ -9,6 +9,11 @@ import { discover } from "./discover.ts";
 import Mimetypes from "./Mimetypes.ts";
 import MimetypePluginError from "./MimetypePluginError.ts";
 
+// This file's fixtures are third-party packages, so it exercises the operator who admitted them
+// ({§executor-trust}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
+// their own value below and override this one.
+process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
+
 async function makePackage(
     root: string,
     folder: string,
@@ -581,13 +586,16 @@ describe("discover — plugin trust gate PLURNK_PLUGINS_TRUSTED_ONLY ({§plugin-
         return root;
     }
 
-    it("gate OFF (unset/empty/0) registers every discovered handler", async () => {
+    it("gate OFF ('' or '0') registers every discovered handler; unset defers to the panel", async () => {
         const root = await buildNm(await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-gate-off-")));
         try {
-            for (const env of [{}, { PLURNK_PLUGINS_TRUSTED_ONLY: "" }, { PLURNK_PLUGINS_TRUSTED_ONLY: "0" }]) {
+            for (const env of [{ PLURNK_PLUGINS_TRUSTED_ONLY: "" }, { PLURNK_PLUGINS_TRUSTED_ONLY: "0" }]) {
                 const r = await discover({ cwd: root, includeTreeSitter: false, env });
                 assert.deepEqual([...r.handlers.keys()].sort(), ["text/plain", "text/x-cobol", "text/x-fortran"]);
             }
+            // An unset key is answered by @plurnk/plurnk-meta's own panel, which ships `1`.
+            const shipped = await discover({ cwd: root, includeTreeSitter: false, env: {} });
+            assert.deepEqual([...shipped.handlers.keys()].sort(), ["text/plain"], "only the first-party handler survives the shipped gate");
         } finally {
             await fs.rm(root, { recursive: true, force: true });
         }

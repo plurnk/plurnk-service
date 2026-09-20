@@ -10,6 +10,10 @@ import { join, resolve } from "node:path";
 import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_helpers.ts";
 
+// A third-party module is exactly what this file composes, so it states the operator who admitted it
+// ({§plugin-trust-boundary}); the shipped panel admits only `@plurnk/*`.
+process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
+
 test("{§module-discovery}: a discovered third-party module composes through daemon boot", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-boot-"));
     const nodeModules = join(root, "node_modules");

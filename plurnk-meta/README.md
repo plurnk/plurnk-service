@@ -5,7 +5,7 @@ The plurnk metaproject layer, published — what the family shares that no singl
 **Membership primitives** (`import Meta from "@plurnk/plurnk-meta"`): the shared implementation of exact family identity, trust, attribution normalization, enumeration, and root resolution consumed by the four family-owned scanners (schemes, mimetypes, providers, execs). [SPEC.md](./SPEC.md) owns the complete contract ({§plugin-discovery}).
 
 - `Meta.declaresKind(manifest, kind)` — accepts one exact string family identity; arrays claim no family ({§plugin-family-kind}).
-- `Meta.isTrusted(packageName, env?)` — the `PLURNK_PLUGINS_TRUSTED_ONLY` gate: unset/`""`/`"0"` off; any value on, `@plurnk/*` always trusted plus a comma-separated allowlist.
+- `Meta.isTrusted(packageName, env?)` — the `PLURNK_PLUGINS_TRUSTED_ONLY` gate: `""`/`"0"` off; any value on, `@plurnk/*` always trusted plus a comma-separated allowlist. An unset key is answered by this package's own panel, which ships the gate on.
 - `Meta.normalizeAttribution(raw, packageName)` — normalize an always-on package declaration, including the reserved `@plurnk/` namespace rule ({§plugin-attribution}).
 - `Meta.runtimeAttribution(source, context, packageName)` — pull and normalize an optional synchronous plugin hook for one provider emission attempt.
 - `Meta.composeAttributions(...lists)` — flatten, deduplicate, and sort opaque tag lists.

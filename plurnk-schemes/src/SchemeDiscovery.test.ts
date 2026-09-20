@@ -5,6 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import SchemeDiscovery from "./SchemeDiscovery.ts";
 
+// This file's fixtures are third-party packages, so it exercises the operator who admitted them
+// ({§executor-trust}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
+// their own value below and override this one.
+process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
+
 // Every mktemp dir is tracked and removed after the suite — a green OR red run
 // Every temporary package tree is removed after the test.
 const tmpRoots: string[] = [];

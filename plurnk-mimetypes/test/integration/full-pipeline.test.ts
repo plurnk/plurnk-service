@@ -5,6 +5,11 @@ import path from "node:path";
 import os from "node:os";
 import Mimetypes from "../../src/Mimetypes.ts";
 
+// This suite's fixture is a third-party package, so it exercises the operator who admitted it
+// ({§executor-trust}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
+// their own value below and override this one.
+process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
+
 const fixtureDir = path.join(import.meta.dirname, "fixtures", "text-plain");
 const handlerPath = path.join(fixtureDir, "src", "index.ts");
 

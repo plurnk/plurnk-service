@@ -110,10 +110,13 @@ objects without reopening a manifest or tracing tags through produced values.
 
 `Meta.isTrusted(packageName, env)` is the sole trust decision:
 
-- unset, empty, or `"0"` `PLURNK_PLUGINS_TRUSTED_ONLY` trusts every installed
-  package;
+- empty or `"0"` `PLURNK_PLUGINS_TRUSTED_ONLY` trusts every installed package;
 - any other value trusts every `@plurnk/*` package plus the comma-separated
-  package-name allowlist in that value.
+  package-name allowlist in that value;
+- an **unset** key is answered by this package's own `.env.defaults`, because the
+  gate decides whose panel joins the floor and so is asked before the floor
+  exists. A value in code would outrank the panel, so there is none
+  ({§operator-config-only-home}).
 
 Every family scanner applies that predicate after reading the inert package
 manifest and before importing or registering plugin code. An untrusted package

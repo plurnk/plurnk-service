@@ -7,6 +7,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import EnvDefaults from "./env-defaults.ts";
 
+// These fixtures are third-party packages, so this file exercises the operator who admitted them
+// ({§plugin-trust-boundary}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself
+// state their own value below and override this one.
+process.env.PLURNK_PLUGINS_TRUSTED_ONLY = "0";
+
 const scaffold = async (): Promise<{ root: string; nm: string }> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-envd-"));
     const nm = join(root, "node_modules");
