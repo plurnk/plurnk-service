@@ -38,7 +38,7 @@ test("{§a2a-outbound-turn-rhythm}: a parsed KILL cancels the remote Task and se
     const client = await connectHttpJsonAgent(agent.baseUrl);
     const db = await openMigrated();
     t.after(() => db.close());
-    const envelope = await seedEnvelope(db, `a2a-cancel-${crypto.randomUUID()}`);
+    const envelope = await seedEnvelope(db, `a2a-cancel-${crypto.randomUUID()}`, { policy: { proposals: "accept", attended: true } });
     const wakes: WakeWorkerPayload[] = [];
     const schemes = new SchemeRegistry();
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES,
@@ -73,7 +73,7 @@ test("outbound A2A uses Core's ordinary 102 subscription and terminal READ path"
     const client = await connectHttpJsonAgent(agent.baseUrl);
     const db = await openMigrated();
     t.after(() => db.close());
-    const envelope = await seedEnvelope(db, `a2a-outbound-${crypto.randomUUID()}`);
+    const envelope = await seedEnvelope(db, `a2a-outbound-${crypto.randomUUID()}`, { policy: { proposals: "accept", attended: true } });
     const wakes: WakeWorkerPayload[] = [];
     const schemes = new SchemeRegistry();
     const engine = new Engine({

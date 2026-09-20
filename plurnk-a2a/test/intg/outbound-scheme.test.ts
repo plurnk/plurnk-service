@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { TaskState } from "@a2a-js/sdk";
-import type { SendStatement, UrlPath } from "@plurnk/plurnk-schemes";
+import type { ProposalResult, SchemeCtx, SendStatement, UrlPath } from "@plurnk/plurnk-schemes";
 import {
     A2a,
     A2aProjection,
@@ -33,6 +33,16 @@ const send = (body: string, pathname = ""): SendStatement => ({
     body: { raw: body, json: null },
     position: { line: 0, column: 0 },
 });
+
+// {§http-outbound-proposes} — an outbound A2A SEND proposes; a test that means to observe the
+// REMOTE exchange settles the proposal the way the dispatcher does.
+const sendSettled = async (handler: A2a, statement: SendStatement, ctx: SchemeCtx) => {
+    const proposal = await handler.send(statement, ctx);
+    assert.equal(proposal.status, 202, "an outbound A2A SEND proposes before it reaches the agent");
+    const attrs = (proposal as ProposalResult).attrs as { effect?: string };
+    assert.equal(attrs.effect, "host", "it declares the host effect the panel maps");
+    return handler.applyResolution({ attrs: attrs as object, metadata: statement.metadata }, ctx);
+};
 
 const resourceOf = (result: { readonly [key: string]: unknown }): string => {
     const { resource } = result;
@@ -85,7 +95,7 @@ test("a direct Message becomes one static addressable resource without a Task", 
     const handler = new A2a(() => client);
     const memory = new MemorySchemeContext();
 
-    const result = await handler.send(send("message witness"), memory.ctx);
+    const result = await sendSettled(handler, send("message witness"), memory.ctx);
 
     assert.equal(result.status, 200);
     const resource = resourceOf(result);
@@ -104,7 +114,7 @@ test("{§a2a-outbound-replay} an uncertain A2A SEND failure never recommends aut
         },
     } as unknown as Client;
     const handler = new A2a(() => client);
-    const result = await handler.send(send("perform a side effect"), new MemorySchemeContext().ctx);
+    const result = await sendSettled(handler, send("perform a side effect"), new MemorySchemeContext().ctx);
 
     assert.equal(result.status, 502);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/a2a/remote-request-failed");
@@ -118,7 +128,7 @@ test("{§a2a-outbound-turn-rhythm} a streamed Task returns 102 then closes on on
     const handler = new A2a(() => client);
     const memory = new MemorySchemeContext();
 
-    const result = await handler.send(send("task witness"), memory.ctx);
+    const result = await sendSettled(handler, send("task witness"), memory.ctx);
 
     assert.equal(result.status, 102);
     const resource = resourceOf(result);
@@ -152,14 +162,14 @@ test("an input-required Task resumes through its exact Task resource", async (t)
     const handler = new A2a(() => client);
     const memory = new MemorySchemeContext();
 
-    const first = await handler.send(send("book a flight"), memory.ctx);
+    const first = await sendSettled(handler, send("book a flight"), memory.ctx);
     const pathname = pathnameOf(resourceOf(first));
     const interrupted = await memory.waitForClose(pathname);
     assert.equal(interrupted.result.status, 200);
     assert.match(memory.entry(pathname).channels.body!.content, /state: input-required/);
     assert.match(memory.entry(pathname).channels.body!.content, /Which origin and destination\?/);
 
-    const second = await handler.send(send("Boston to Helsinki", pathname), memory.ctx);
+    const second = await sendSettled(handler, send("Boston to Helsinki", pathname), memory.ctx);
     assert.equal(second.status, 102);
     assert.equal(pathnameOf(resourceOf(second)), pathname);
     const completed = await memory.waitForClose(pathname);
@@ -178,7 +188,7 @@ test("multiple Artifacts remain distinct lazily addressable resources", async (t
     const handler = new A2a(() => client);
     const memory = new MemorySchemeContext();
 
-    const result = await handler.send(send("artifact witness"), memory.ctx);
+    const result = await sendSettled(handler, send("artifact witness"), memory.ctx);
     const taskPath = pathnameOf(resourceOf(result));
     await memory.waitForClose(taskPath);
     const task = JSON.parse(memory.entry(taskPath).channels.json!.content);
@@ -204,7 +214,7 @@ test("subscription cancellation requests remote Task cancellation and closes 499
     const handler = new A2a(() => client);
     const memory = new MemorySchemeContext();
 
-    const result = await handler.send(send("cancel witness"), memory.ctx);
+    const result = await sendSettled(handler, send("cancel witness"), memory.ctx);
     const pathname = pathnameOf(resourceOf(result));
     await memory.cancel(pathname);
     const closed = await memory.waitForClose(pathname);

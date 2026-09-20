@@ -238,6 +238,14 @@ entry, opens one subscription, returns its exact address with `102`, and closes
 that subscription with the remote Task result. Core alone owns parking, waking,
 the terminal next-turn READ, and cancellation propagation.
 
+Reaching a remote agent is a host effect, so the SEND proposes first
+({§http-outbound-proposes}) and the seeding above happens on the settlement. The
+`102` is then what the applied operation returns to the settlement, not what the
+model reads: an accepted proposal answers `200` ({§proposal-accept-applies}), so
+the Task's first snapshot arrives by ordinary observation of the resource rather
+than on the SEND row. The model sees the same canonical entry either way, one
+turn later; a rejected proposal reaches no agent at all.
+
 §a2a-outbound-replay A card or resource READ and connection discovery are
 replay-safe observations. A SEND is not: once dispatch begins, a transport or
 stream-protocol failure cannot prove that the remote agent rejected the

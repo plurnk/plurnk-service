@@ -13,7 +13,7 @@ import Http from "@plurnk/plurnk-schemes-http";
 import MaterializerRegistry from "@plurnk/plurnk-schemes-http/materializer";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx, makeHandlerCtx, fixtureExecutors } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx, makeHandlerCtx, fixtureExecutors, settleOutbound } from "./_helpers.ts";
 
 const readHttp = (
     http: Http,
@@ -217,7 +217,9 @@ for (const mode of ["complete", "oversize", "interrupted"] as const) {
         }) : pdf, { headers: { "content-type": "application/pdf", "x-response-id": "mutation" } }));
         const send = PlurnkParser.parseStatements("````SEND (https://93.184.216.34/paper.pdf)\ncreate\n````").items[0];
         assert.ok(send?.kind === "statement");
-        const result = await new Http().send(send.statement as SendStatement, handlerCtx);
+        const http = new Http();
+        const result = await settleOutbound(http, await http.send(send.statement as SendStatement, handlerCtx), handlerCtx,
+            (send.statement as SendStatement).metadata);
         assert.equal(result.status, mode === "complete" ? 102 : mode === "oversize" ? 413 : 500);
         const entry = (await handlerCtx.entries.read("/paper.pdf")).entry;
         assert.ok(entry);

@@ -23,7 +23,7 @@ import HostPaths from "../../src/core/HostPaths.ts";
 import { StandardSkillsToolchain } from "../../src/server/SkillsFunctionality.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { startDemoAgent } from "../../../plurnk-a2a/test/fixtures/DemoAgent.ts";
-import { awaitExecOutcome, insertWorkspace, insertWorker, openMigrated, viableWindow, fixtureExecutors } from "./_helpers.ts";
+import { awaitExecOutcome, insertWorkspace, insertWorker, openMigrated, viableWindow, fixtureExecutors, dispatchSettled } from "./_helpers.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 import { makeMockResponse, waitFor, waitForDb } from "./_rpc.ts";
 import { sendStmt } from "./_dsl.ts";
@@ -200,8 +200,11 @@ const mcpFamily = async (): Promise<Family> => {
 const agentsFamily = async (): Promise<Family> => {
     const agentA = await startDemoAgent();
     const agentB = await startDemoAgent();
+    // {§http-outbound-proposes} — an outbound SEND proposes. This probe only asks whether the alias
+    // is live, so it accepts its own proposal the way the dispatching client would; an alias that is
+    // not configured refuses before any proposal and passes straight through.
     const send = (alias: string) => async (context: Context) =>
-        (await dispatch(context, sendStmt(a2aTarget(alias), "parity"))).status;
+        (await dispatchSettled(context.daemon, () => dispatch(context, sendStmt(a2aTarget(alias), "parity")))).status;
     return {
         family: "a2a",
         documentOf: (alias) => `/_plurnk/a2a/${alias}.md`,

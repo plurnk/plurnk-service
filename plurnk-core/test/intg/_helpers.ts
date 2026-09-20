@@ -106,6 +106,50 @@ export const makeHandlerCtx = async (
         authority,
     });
 
+// {§http-outbound-proposes} — POST, PUT and the remote DELETE propose before anything leaves the
+// process. A test that drives a scheme directly (no dispatcher, so no settlement arrives) and
+// means to observe the REQUEST settles the proposal itself, exactly as the dispatcher would on
+// an accept. A non-proposal result passes through, so a refusal keeps its own status.
+export const settleOutbound = async <T extends { status: number; attrs?: object }>(
+    handler: { applyResolution?: (request: { attrs: object; metadata: readonly string[] | null; body?: string }, ctx: never) => Promise<T> },
+    result: T,
+    ctx: unknown,
+    metadata: readonly string[] | null = null,
+): Promise<T> => {
+    if (result.status !== 202 || handler.applyResolution === undefined) return result;
+    return handler.applyResolution({ attrs: result.attrs ?? {}, metadata }, ctx as never);
+};
+
+// {§http-outbound-proposes} — a client dispatch of an operation that proposes needs a settlement:
+// a real client answers the `loop/proposal` event it receives. A test that only means to observe
+// the operation does the same. A dispatch that never proposes passes straight through.
+interface ProposalSettler {
+    subscribeToEvents(listener: (workspaceId: number | null, method: string, params: unknown) => void): () => void;
+    resolveProposal(logEntryId: number, resolution: { decision: "accept" | "reject" }): void;
+}
+
+export const dispatchSettled = async <T>(
+    daemon: ProposalSettler,
+    run: () => Promise<T>,
+    decision: "accept" | "reject" = "accept",
+): Promise<T> => {
+    const proposed = Promise.withResolvers<number>();
+    const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
+        if (method === "loop/proposal") proposed.resolve((params as { logEntryId: number }).logEntryId);
+    });
+    try {
+        const pending = run();
+        // Whichever comes first: the dispatch finished (it never proposed) or a proposal to answer.
+        // Racing costs nothing either way — a waiting poll would spend its whole budget on every
+        // operation that refuses before proposing.
+        const logEntryId = await Promise.race([pending.then(() => null), proposed.promise]);
+        if (logEntryId !== null) daemon.resolveProposal(logEntryId, { decision });
+        return await pending;
+    } finally {
+        unsubscribe();
+    }
+};
+
 export const seedStaticChannel = async (
     db: Db,
     entryId: number | undefined,
@@ -391,13 +435,15 @@ export const insertOperationTurn = async (
 export const seedEnvelope = async (
     db: Db,
     label: string,
-    options: { producer?: "model" | "client" | "plugin" | "_plurnk" } = {},
+    // `policy` states the seeded loop's disposition: a fixture that dispatches an operation which
+    // proposes ({§http-outbound-proposes}) has no client to answer, so it says what it would say.
+    options: { producer?: "model" | "client" | "plugin" | "_plurnk"; policy?: LoopPolicy } = {},
 ): Promise<{
     workspaceId: number; workerId: number; loopId: number; turnId: number;
 }> => {
     const workspaceId = await insertWorkspace(db, label);
     const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1);
+    const loopId = await insertLoop(db, workerId, 1, "", options.policy);
     const producer = options.producer ?? "model";
     const { id: turnId } = await Turn.open(db, { loopId, producer, kind: producer === "model" ? "inference" : "operation" });
     return { workspaceId, workerId, loopId, turnId };

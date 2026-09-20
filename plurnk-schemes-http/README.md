@@ -22,6 +22,11 @@ A path-pattern FIND surveys already-materialized web entries; it does not crawl
 or discover the remote web. Exact matcher FIND shares the standard flat
 location, weighting, pagination, and status contract.
 
+The three verbs that change a remote resource — POST, PUT, and the remote
+DELETE — propose before anything leaves the process, the same way a subprocess
+does; `PLURNK_SERVICE_EFFECT_HOST` decides whether that settles by consent or
+runs unattended ({§http-outbound-proposes}). GET is observation and is ungated.
+
 ## HTTP channels
 
 | Channel  | Content                                                                    |

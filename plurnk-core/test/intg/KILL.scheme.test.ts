@@ -54,7 +54,7 @@ test("{§scheme-operation-dispatch}: KILL receives the authored statement and bo
 for (const protocol of ["https", "http"]) {
     test(`{§http-kill}: dispatched ${protocol} KILL separates local deletion from explicit remote DELETE`, async (t) => {
         const db = await openMigrated();
-        const env = await seedEnvelope(db, `http-kill-${crypto.randomUUID()}`);
+        const env = await seedEnvelope(db, `http-kill-${crypto.randomUUID()}`, { policy: { proposals: "accept", attended: true } });
         const schemes = new SchemeRegistry();
         schemes.register("https", new Http());
         const engine = new Engine({ db, schemes });

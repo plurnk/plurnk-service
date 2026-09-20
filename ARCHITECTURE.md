@@ -247,7 +247,10 @@ travels as the settled status of the operation's log row, never as channel
 content. The model learns the result through the ordinary environment
 observation of newly publishable stream content on a later turn — there is no
 same-turn receipt ({§exec-readpure-ungated}). `read`/`pure` runtimes auto-run;
-`host` runtimes propose, and an accepted proposal's settlement replaces the
+`host` runtimes propose — and so does any other operation that declares the
+host effect, because the effect is the rule and the op is not: an outbound
+POST, PUT or DELETE leaves the machine exactly as a subprocess does
+({§http-outbound-proposes}). An accepted proposal's settlement replaces the
 202 with 200 regardless of the applied operation's own outcome
 ({§proposal-accept-applies}) — the verb's own status rides its output entry.
 

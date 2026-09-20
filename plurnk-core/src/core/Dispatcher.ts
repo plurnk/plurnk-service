@@ -636,10 +636,14 @@ export default class Dispatcher {
             // Effect-gated auto-run (read/pure runtimes, {§exec-readpure-ungated}):
             // An execution stores its one canonical effect fact before admission. Reuse
             // that exact fact here; no human gate or loop/proposal notification.
+            // {§exec-host-proposes} — the rule is the effect, not the op: an execution and a
+            // runtime SEND MUST declare one, and any other proposal that declares one (an
+            // outbound HTTP mutation, {§http-outbound-proposes}) is mapped by the same panel.
             const effect = (result.attrs as { effect?: unknown } | undefined)?.effect;
             let autoAccept = false;
-            if (isExecution(statement) || (statement.op === "SEND"
-                && this.#schemes.isRuntimeScheme(schemeNameOf(statement.target) ?? "", workspaceId))) {
+            const mustDeclareEffect = isExecution(statement) || (statement.op === "SEND"
+                && this.#schemes.isRuntimeScheme(schemeNameOf(statement.target) ?? "", workspaceId));
+            if (mustDeclareEffect || effect !== undefined) {
                 if (!EffectPolicy.isEffect(effect)) {
                     throw new InvalidOperationResultError("Execution proposal omitted its canonical effect fact.");
                 }
@@ -650,7 +654,7 @@ export default class Dispatcher {
                     statement,
                     result,
                     { decision: "accept" },
-                    { workspaceId, workerId, loopId, turnId },
+                    { workspaceId, workerId, loopId, turnId, resources: schemeCtx.resources },
                 );
                 const effective = await this.#resourceMutations.settleProposal({
                     statement,
@@ -692,7 +696,7 @@ export default class Dispatcher {
                 statement,
                 result,
                 resolution,
-                { workspaceId, workerId, loopId, turnId },
+                { workspaceId, workerId, loopId, turnId, resources: schemeCtx.resources },
             );
             const effective = await this.#resourceMutations.settleProposal({
                 statement,

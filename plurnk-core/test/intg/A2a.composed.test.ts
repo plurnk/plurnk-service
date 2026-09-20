@@ -123,6 +123,9 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
             workspaceId: callerWorkspace.workspaceId,
             workerId: worker.workerId,
             prompt: "Delegate the fruit comparison to the remote agent, then return its result.",
+            // {§http-outbound-proposes} — reaching a remote agent is a host effect, so this caller
+            // states that it approves its own delegations. Without a statement nobody resolves them.
+            policy: { proposals: "accept" },
         });
         assert.deepEqual(await terminal.promise, {
             status: 200,
@@ -273,7 +276,7 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
         const runToTerminal = async (workerId: number, prompt: string): Promise<OperationResult> => {
             const expected = terminals.length + 1;
             arrival = Promise.withResolvers<void>();
-            await caller!.runLoop({ workspaceId: callerWorkspace.workspaceId, workerId, prompt });
+            await caller!.runLoop({ workspaceId: callerWorkspace.workspaceId, workerId, prompt, policy: { proposals: "accept" } });
             while (terminals.length < expected) {
                 arrival = Promise.withResolvers<void>();
                 await arrival.promise;
@@ -311,7 +314,13 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
         // The delegator's own log carries both exact protocol journeys.
         const callerLog = await caller.readLog({ workspaceId: callerWorkspace.workspaceId, workerId: worker.workerId, limit: 1_000 });
         assert.equal(callerLog.filter((row) => row.op === "SEND" && row.scheme === "a2a" && row.hostname === "remote").length, 2, "both delegations are exact a2a SENDs");
-        assert.equal(callerLog.filter((row) => row.op === "READ" && row.scheme === "a2a" && typeof row.pathname === "string" && row.pathname.startsWith("/tasks/")).length, 2, "both Task conclusions arrive as exact terminal READs");
+        const terminalReads = callerLog.filter((row) => row.op === "READ" && row.scheme === "a2a" && typeof row.pathname === "string" && row.pathname.startsWith("/tasks/"));
+        // {§http-outbound-proposes} — a proposed SEND settles at 200 ({§proposal-accept-applies}), so
+        // the Task's first snapshot no longer rides the SEND row: it arrives by ordinary observation
+        // of the resource, whose channels are both newly publishable. The conclusion is still an
+        // exact terminal READ of each Task, which is what this asserts.
+        const terminalTasks = new Set(terminalReads.map((row) => row.pathname));
+        assert.deepEqual([...terminalTasks].length, 2, `both Task conclusions arrive as exact terminal READs: ${JSON.stringify(terminalReads.map((row) => `${row.pathname}#${row.fragment}`))}`);
         assert.equal(callerProvider.remaining, 0);
         assert.equal(agentProvider.remaining, 0);
     } finally {

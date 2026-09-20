@@ -21,6 +21,7 @@ import {
     type EntryStorageReadResult,
     type EntryStorageWriteResult,
     type SchemeResult,
+    type ProposalResult,
     type SchemeCtx,
     type SubscriptionHandle,
     type EntryCaps,
@@ -234,6 +235,23 @@ const killStmt = (target: UrlPath | null, matcher: KillStatement["matcher"] = nu
     op: "KILL", aside: null, target, metadata, lineMarker: null, matcher, body: null,
     position: { line: 0, column: 0 },
 });
+// {§http-outbound-proposes} — POST, PUT and the remote DELETE propose before anything leaves the
+// process. A test that means to observe the REQUEST settles the proposal the way the dispatcher
+// does; the tests that assert the proposal itself call the verb directly.
+const settle = async (http: Http, ctx: SchemeCtx, metadata: readonly string[] | null, result: SchemeResult): Promise<SchemeResult> => {
+    if (result.status !== 202) return result;
+    return http.applyResolution({ attrs: (result as ProposalResult).attrs ?? {}, metadata }, ctx);
+};
+const sendSettled = async (http: Http, statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult> =>
+    settle(http, ctx, statement.metadata, await http.send(statement, ctx));
+const editSettled = async (http: Http, statement: ResolvedEditStatement, ctx: SchemeCtx): Promise<SchemeResult> =>
+    settle(http, ctx, statement.metadata, await http.edit(statement, ctx));
+const killSettled = async (http: Http, statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult> =>
+    settle(http, ctx, statement.metadata, await http.kill(statement, ctx));
+const httpSend = (statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult> => sendSettled(new Http(), statement, ctx);
+const httpEdit = (statement: ResolvedEditStatement, ctx: SchemeCtx): Promise<SchemeResult> => editSettled(new Http(), statement, ctx);
+const httpKill = (statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult> => killSettled(new Http(), statement, ctx);
+
 const findStmt = (target: UrlPath | null, matcher: FindStatement["matcher"] = null, metadata: FindStatement["metadata"] = null): FindStatement => ({
     op: "FIND", aside: null, target, metadata, lineMarker: null, matcher, body: null,
     position: { line: 0, column: 0 },
@@ -707,7 +725,7 @@ test("finite GET materializes complete channels without opening a subscription",
 test("SEND: also materializes the entry before subscribing (shares #fetchStream)", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["ok"], { "content-type": "text/plain" }), async () => {
-        await new Http().send(sendStmt(urlTarget("https://example.com/p", "/p"), "payload"), ctx);
+        await httpSend(sendStmt(urlTarget("https://example.com/p", "/p"), "payload"), ctx);
     });
     const { wrote, seq } = inspect();
     assert.deepEqual(seq.slice(0, 2), ["write", "open"]);
@@ -723,7 +741,7 @@ test("JSON mutation responses publish formatted documents without changing the r
         submitted = init?.body;
         return respond();
     }, async () => {
-        await new Http().send(sendStmt(urlTarget("http://example.com/x", "/x"), request), ctx);
+        await httpSend(sendStmt(urlTarget("http://example.com/x", "/x"), request), ctx);
     });
     assert.equal(submitted, request);
     assert.deepEqual(inspect().chunks.filter(({ channel }) => channel === "body"), [{
@@ -744,7 +762,7 @@ test("interrupted JSON mutation responses preserve received text and the acquisi
         },
     });
     await withFetch(async () => new Response(stream, { headers: { "content-type": "application/json" } }), async () => {
-        const result = await new Http().send(sendStmt(urlTarget("http://example.com/x", "/x"), "task"), ctx);
+        const result = await httpSend(sendStmt(urlTarget("http://example.com/x", "/x"), "task"), ctx);
         assert.equal(result.status, 502);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/http/fetch-failed");
     });
@@ -840,9 +858,9 @@ test("READ/POST/PUT/DELETE: explicit loopback targets use the native transport",
         const target = urlTarget("http://127.0.0.1/private", "/private");
         const operations = [
             (http: Http, ctx: SchemeCtx) => prepareRepresentation(http, readStmt(target), ctx),
-            (http: Http, ctx: SchemeCtx) => http.send(sendStmt(target, "body"), ctx),
-            (http: Http, ctx: SchemeCtx) => http.edit(editStmt(target, "body"), ctx),
-            (http: Http, ctx: SchemeCtx) => http.kill(killStmt(target, null, ["{\"remote\":true}"]), ctx),
+            (http: Http, ctx: SchemeCtx) => sendSettled(http, sendStmt(target, "body"), ctx),
+            (http: Http, ctx: SchemeCtx) => editSettled(http, editStmt(target, "body"), ctx),
+            (http: Http, ctx: SchemeCtx) => killSettled(http, killStmt(target, null, ["{\"remote\":true}"]), ctx),
         ];
         for (const [index, operation] of operations.entries()) {
             const { ctx, inspect } = makeCtx();
@@ -989,13 +1007,13 @@ test("SEND: a binary response retains the complete bytes and response headers wi
         cancel() { cancelled = true; },
     });
     const { ctx, inspect } = makeCtx();
-    let result: Awaited<ReturnType<Http["send"]>> | undefined;
+    let result: SchemeResult | undefined;
     await withFetch(async () => new Response(stream, {
         status: 200,
         statusText: "OK",
         headers: { "content-type": "image/png" },
     }), async () => {
-        result = await new Http().send(sendStmt(urlTarget("https://example.com/logo.png", "/logo.png"), "create"), ctx);
+        result = await httpSend(sendStmt(urlTarget("https://example.com/logo.png", "/logo.png"), "create"), ctx);
     });
 
     assert.equal(result?.status, 102);
@@ -1515,7 +1533,7 @@ test("READ: a projection exception returns 500, retains evidence, and logs its c
 test("SEND: an HTML response streams body text as text/html", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["<html>body</html>"], { "content-type": "text/html" }), async () => {
-        await new Http().send(sendStmt(urlTarget("https://example.com/p", "/p"), "payload"), ctx);
+        await httpSend(sendStmt(urlTarget("https://example.com/p", "/p"), "payload"), ctx);
     });
     const body = inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join("");
     assert.equal(body, "<html>body</html>");
@@ -1629,7 +1647,7 @@ test("SEND: POSTs the body and streams the response", async () => {
         });
     };
     await withFetch(probe as typeof fetch, async () => {
-        const r = await new Http().send(sendStmt(urlTarget("https://example.com/p", "/p"), "payload", ["{\"Content-Type\":\"text/plain\"}"]), ctx);
+        const r = await httpSend(sendStmt(urlTarget("https://example.com/p", "/p"), "payload", ["{\"Content-Type\":\"text/plain\"}"]), ctx);
         assert.equal(r.status, 102);
     });
     assert.equal(seenMethod, "POST");
@@ -1638,10 +1656,78 @@ test("SEND: POSTs the body and streams the response", async () => {
     assert.equal(inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join(""), "ok");
 });
 
+test("{§http-outbound-proposes} POST, PUT and the remote DELETE propose, and nothing leaves the process until settled", async () => {
+    const target = urlTarget("https://example.com/p", "/p");
+    const cases: ReadonlyArray<readonly [string, (http: Http, ctx: SchemeCtx) => Promise<SchemeResult>]> = [
+        ["POST", (http, ctx) => http.send(sendStmt(target, "payload"), ctx)],
+        ["PUT", (http, ctx) => http.edit(editStmt(target, "payload"), ctx)],
+        ["DELETE", (http, ctx) => http.kill(killStmt(target, null, ["{\"remote\":true}"]), ctx)],
+    ];
+    for (const [method, propose] of cases) {
+        const { ctx } = makeCtx();
+        const http = new Http();
+        let calls = 0;
+        let seenMethod = "";
+        const probe = async (_url: string | URL | Request, init?: RequestInit) => {
+            calls += 1;
+            seenMethod = init?.method ?? "GET";
+            return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
+        };
+        await withFetch(probe as typeof fetch, async () => {
+            const proposal = await propose(http, ctx);
+            assert.equal(proposal.status, 202, `${method} proposes`);
+            assert.equal(calls, 0, `${method} reaches no origin before its settlement`);
+            const attrs = (proposal as ProposalResult).attrs as { effect?: string; method?: string };
+            assert.equal(attrs.effect, "host", `${method} declares the host effect the panel maps`);
+            assert.equal(attrs.method, method);
+            await http.applyResolution({ attrs: attrs as object, metadata: null }, ctx);
+        });
+        assert.equal(calls, 1, `${method} is sent exactly once, on acceptance`);
+        assert.equal(seenMethod, method);
+    }
+});
+
+test("{§http-outbound-proposes} a request header never enters the durable proposal attrs", async () => {
+    const { ctx } = makeCtx();
+    const http = new Http();
+    const metadata = ["{\"Authorization\":\"Bearer s3cr3t-value\"}"];
+    let seenAuthorization = "";
+    const probe = async (_url: string | URL | Request, init?: RequestInit) => {
+        seenAuthorization = new Headers(init?.headers).get("authorization") ?? "";
+        return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
+    };
+    await withFetch(probe as typeof fetch, async () => {
+        const statement = sendStmt(urlTarget("https://example.com/p", "/p"), "payload", metadata);
+        const proposal = await http.send(statement, ctx);
+        assert.equal(proposal.status, 202);
+        const attrs = (proposal as ProposalResult).attrs as object;
+        assert.ok(!JSON.stringify(attrs).includes("s3cr3t-value"), "the credential is not persisted in proposal evidence");
+        // It survives the pause as statement metadata instead, and still reaches the origin.
+        await http.applyResolution({ attrs, metadata: statement.metadata }, ctx);
+    });
+    assert.equal(seenAuthorization, "Bearer s3cr3t-value");
+});
+
+test("{§http-outbound-proposes} the resolver's body replaces the authored one before it is sent", async () => {
+    const { ctx } = makeCtx();
+    const http = new Http();
+    let seenBody: unknown = null;
+    const probe = async (_url: string | URL | Request, init?: RequestInit) => {
+        seenBody = init?.body ?? null;
+        return new Response("ok", { status: 200, headers: { "content-type": "text/plain" } });
+    };
+    await withFetch(probe as typeof fetch, async () => {
+        const proposal = await http.send(sendStmt(urlTarget("https://example.com/p", "/p"), "authored"), ctx);
+        const attrs = (proposal as ProposalResult).attrs as object;
+        await http.applyResolution({ attrs, metadata: null, body: "settled" }, ctx);
+    });
+    assert.equal(seenBody, "settled");
+});
+
 test("{§http-replay} SEND: an uncertain POST failure never recommends automatic replay", async () => {
     const { ctx } = makeCtx();
     await withFetch(async () => { throw new Error("connection reset after dispatch"); }, async () => {
-        const result = await new Http().send(
+        const result = await httpSend(
             sendStmt(urlTarget("https://example.com/effect", "/effect"), "payload"),
             ctx,
         );
@@ -1714,7 +1800,7 @@ test("EDIT → PUT with the body (method mapping)", async () => {
         return new Response("updated", { status: 200, headers: { "content-type": "text/plain" } });
     };
     await withFetch(probe as typeof fetch, async () => {
-        const r = await new Http().edit(editStmt(
+        const r = await httpEdit(editStmt(
             urlTarget("https://api.x/thing/42", "/thing/42"),
             '{"done":true}',
             null,
@@ -1730,7 +1816,7 @@ test("EDIT → PUT with the body (method mapping)", async () => {
 
 test("EDIT: a <L> line marker is rejected — http PUT replaces the whole resource", async () => {
     const { ctx } = makeCtx();
-    const r = await new Http().edit(editStmt(urlTarget("https://api.x/thing/42", "/thing/42"), "x", { marks: [1] }), ctx);
+    const r = await httpEdit(editStmt(urlTarget("https://api.x/thing/42", "/thing/42"), "x", { marks: [1] }), ctx);
     assert.equal(r.status, 400);
     assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/http/line-edit-unsupported");
     assert.equal(r.problem?.recovery, "Remove the line range and submit the complete replacement body.");
@@ -1743,7 +1829,7 @@ test("{§channel-selection-missing} an absent HTTP response channel is a 404 wit
         requests++;
         return new Response("unexpected");
     }, async () => {
-        const result = await new Http().edit(editStmt(urlTarget("https://example.com/x", "/x", "unknown"), "replacement"), ctx);
+        const result = await httpEdit(editStmt(urlTarget("https://example.com/x", "/x", "unknown"), "replacement"), ctx);
         assert.equal(result.status, 404);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/http/channel-not-found");
         assert.equal(result.problem?.requestedChannel, "unknown");
@@ -1763,7 +1849,7 @@ test("KILL {remote} sends DELETE with the authored precondition", async () => {
         return new Response(null, { status: 204, statusText: "No Content" });
     };
     await withFetch(probe as typeof fetch, async () => {
-        const r = await new Http().kill(killStmt(
+        const r = await httpKill(killStmt(
             urlTarget("https://api.x/thing/42", "/thing/42"),
             null,
             ["{\"remote\": true, \"If-Match\": \"\\\"revision-7\\\"\"}"],
@@ -1782,7 +1868,7 @@ test("KILL without {remote} forgets the stored response and never contacts the r
         calls += 1;
         return new Response(null, { status: 204 });
     }) as typeof fetch, async () => {
-        const r = await new Http().kill(killStmt(urlTarget("https://api.x/thing/42", "/thing/42")), ctx);
+        const r = await httpKill(killStmt(urlTarget("https://api.x/thing/42", "/thing/42")), ctx);
         assert.equal(r.status, 200);
     });
     assert.equal(inspect().deleted, "/thing/42", "the local stored entry is forgotten");
@@ -1899,9 +1985,9 @@ test("POST/PUT/DELETE preserve the addressed GitHub blob target", async () => {
     }, async () => {
         const target = urlTarget(blob, "/o/r/blob/main/src/x.js");
         const operations = [
-            (http: Http, ctx: SchemeCtx) => http.send(sendStmt(target, "body"), ctx),
-            (http: Http, ctx: SchemeCtx) => http.edit(editStmt(target, "body"), ctx),
-            (http: Http, ctx: SchemeCtx) => http.kill(killStmt(target, null, ["{\"remote\":true}"]), ctx),
+            (http: Http, ctx: SchemeCtx) => sendSettled(http, sendStmt(target, "body"), ctx),
+            (http: Http, ctx: SchemeCtx) => editSettled(http, editStmt(target, "body"), ctx),
+            (http: Http, ctx: SchemeCtx) => killSettled(http, killStmt(target, null, ["{\"remote\":true}"]), ctx),
         ];
         for (const operation of operations) {
             const { ctx, inspect } = makeCtx();

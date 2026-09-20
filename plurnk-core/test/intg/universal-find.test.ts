@@ -321,7 +321,9 @@ test("HTTP mutation responses cannot satisfy later READ or exact FIND acquisitio
     try {
         const workspaceId = await insertWorkspace(db, `http-method-provenance-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        // {§http-outbound-proposes} — the SEND below is an outbound mutation, so it proposes. This
+        // test is about method provenance, not consent: the loop states that it accepts its own.
+        const loopId = await insertLoop(db, workerId, 1, "", { proposals: "accept", attended: true });
         const turnId = await insertTurn(db, loopId, 1, 102);
         const dispatch = (statement: FindStatement | ReadStatement | SendStatement, sequence: number) => engine.dispatch({
             statement,

@@ -11,6 +11,9 @@ import {
     Results,
     type ProblemDetails,
     type PassthroughResult,
+    type ProposalResult,
+    type ProposalApplyRequest,
+    type ProposalApplyResult,
     type RepresentationPreparationRequest,
     type RepresentationPreparationResult,
     type SchemeCtx,
@@ -155,8 +158,64 @@ export default class A2a {
         }
     }
 
-    async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
+    // {§http-outbound-proposes} — answering our own hosted inbox stays inside this process and
+    // runs inline; reaching a REMOTE agent is a host effect, so it declares one and proposes.
+    // Validation is local and cheap, so a malformed SEND refuses without spending anyone's
+    // attention; attachment capture and the network both wait for the settlement.
+    async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
         if (A2a.#hostedMessage(statement.target)) return A2a.#passthrough(await ctx.messages.reply(statement));
+        const resolvedAddress = this.#address(statement.target);
+        if ("problem" in resolvedAddress) return A2a.#passthrough(resolvedAddress.problem);
+        const { address } = resolvedAddress;
+        const text = statement.body?.raw ?? "";
+        if (text.length === 0 && (statement.metadata === null || statement.metadata.length === 0)) {
+            return A2a.#failure("message-required", 400, "A2A SEND requires a body or attachments.", {
+                stage: "request-validation",
+                retryable: false,
+            });
+        }
+        if (address.pathname !== "" && address.pathname !== "/" && A2aProjection.taskIdentity(address.pathname) === null) {
+            return A2a.#failure("send-target-invalid", 400, "A2A SEND targets an agent root or an exact Task resource.", {
+                target: `a2a://${address.authority}${address.pathname}`,
+                recovery: `Use a2a://${address.authority} for new work or a2a://${address.authority}/tasks/<task-id> to continue a Task.`,
+                retryable: false,
+            });
+        }
+        // Resolving the alias is a replay-safe observation ({§a2a-outbound-replay}), so it happens
+        // BEFORE the proposal: nobody should be asked to approve a message to an agent that is not
+        // configured, and a disabled alias still refuses immediately.
+        const resolved = await this.#client(address.authority, ctx);
+        if ("problem" in resolved) return A2a.#passthrough(resolved.problem);
+        return {
+            shape: "proposal",
+            status: 202,
+            body: `SEND a2a://${address.authority}${address.pathname}`,
+            attrs: { effect: "host", target: statement.target, body: text },
+        };
+    }
+
+    async applyResolution(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult> {
+        const attrs = request.attrs as { target?: unknown; body?: unknown };
+        if (typeof attrs.target !== "object" || attrs.target === null) {
+            throw new Error("An A2A SEND proposal is missing its target.");
+        }
+        const raw = request.body ?? (typeof attrs.body === "string" ? attrs.body : "");
+        const applied = await this.#performSend({
+            op: "SEND", aside: null, target: attrs.target as SendStatement["target"],
+            metadata: request.metadata === null ? null : [...request.metadata],
+            lineMarker: null, body: { raw, json: null }, position: { line: 1, column: 1 },
+        }, ctx);
+        // {§proposal-accept-applies} — the settlement carries `result` into the operation the model
+        // sees THIS turn. A SEND's receipt is the resource it created and the identities that name
+        // it; without them the 202 would swallow the address and cost the model a turn to
+        // rediscover it. Everything but the structural rails rides, so a receipt field added later
+        // is carried without this having to learn its name.
+        const { shape: _shape, status: _status, problem: _problem, error: _error, outcome: _outcome, body: _body, ...receipt } =
+            applied as PassthroughResult & Record<string, unknown>;
+        return Object.keys(receipt).length === 0 ? applied : { ...applied, result: receipt };
+    }
+
+    async #performSend(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
         const captured = await MessageAttachments.capture(statement.metadata, ctx.resources, OWNER);
         if ("failure" in captured) return A2a.#passthrough(captured.failure);
         const resolvedAddress = this.#address(statement.target);

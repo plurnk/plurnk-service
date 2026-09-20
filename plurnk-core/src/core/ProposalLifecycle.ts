@@ -427,7 +427,13 @@ export default class ProposalLifecycle {
         statement: PlurnkStatement,
         originalResult: DispatchResult,
         resolution: ProposalResolution,
-        ids: { workspaceId: number; workerId: number; loopId: number; turnId: number },
+        // `resources` is the dispatcher's own capture capability. An applied operation may need
+        // it — an outbound SEND snapshots its attachments when the settlement accepts, not when the
+        // proposal was raised — and the fallback in SchemeCtxImpl refuses any non-empty capture.
+        ids: {
+            workspaceId: number; workerId: number; loopId: number; turnId: number;
+            resources?: PlurnkSchemeContext["resources"];
+        },
     ): Promise<ProposalSettlement> {
         const { workspaceId, workerId, loopId, turnId } = ids;
         if (resolution.decision !== "accept") return { resolution };
@@ -465,6 +471,7 @@ export default class ProposalLifecycle {
                 wakeWorkerNotify: this.#wakeWorkerNotify,
                 weigh: this.#weighContent,
                 mimetypes: this.#mimetypes,
+                ...(ids.resources === undefined ? {} : { resources: ids.resources }),
                 pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
                 requestInteraction: (interaction, signal = this.#loopSignal(loopId)) => this.#interactions.request(
                     interaction,
@@ -480,12 +487,16 @@ export default class ProposalLifecycle {
                     : statement.metadata,
                 body: resolution.body,
             };
-            const manifest = this.#schemes.manifestFor(schemeName, workspaceId);
-            if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
             const proposalTarget = (originalResult.attrs as OrchestrationProposalAttrs | undefined)?.proposalTarget;
             const authoredTarget = statement.op === "COPY" || statement.op === "MOVE"
                 ? statement.destination.target
                 : statement.target;
+            // The manifest is resolved AT the target, not for the scheme name: a runtime scheme's
+            // facet claims its own subtree with its own channels ({§executor-scheme-output}), and a
+            // settlement that applied under the executor's manifest would publish the facet's
+            // resources into channels it never declared.
+            const manifest = this.#schemes.manifestAt(schemeName, authoredTarget, workspaceId);
+            if (manifest === undefined) throw new Error(`scheme '${schemeName}' has no manifest`);
             let authority = proposalTarget === undefined
                 ? authoredTarget === null
                     ? ""

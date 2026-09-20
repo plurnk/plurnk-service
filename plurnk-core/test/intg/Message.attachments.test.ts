@@ -28,7 +28,9 @@ test("{§send-resource-attachments}: outbound A2A snapshots only selected resour
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: "message-export", projectRoot: null });
         const workerId = await daemon.ensureModelWorker(workspaceId);
-        const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Send only the selected report." });
+        // {§http-outbound-proposes} — the outbound SEND proposes; this loop states that it approves
+        // its own delegation, which is what a caller that means to send is saying.
+        const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Send only the selected report.", policy: { proposals: "accept" } });
         const lifecycle = new LoopLifecycle(db);
         assert.equal(await waitForDb(() => lifecycle.status(started.loopId), (status) => status === 200 || status >= 400), 200);
         assert.equal(remote.executor.received.length, 1, "no dispatch occurs on partial acquisition failure");

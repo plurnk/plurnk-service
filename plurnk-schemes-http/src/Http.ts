@@ -4,6 +4,7 @@
 
 import { createParser, type ParseError } from "eventsource-parser";
 import type { SchemeCtx, StreamSubscription, ChannelProducerResult, PassthroughResult, SchemeManifest, SchemeHandler, RepresentationPreparationRequest, RepresentationPreparationResult, SendStatement, ResolvedEditStatement, KillStatement, UrlPath, EntryData, StoredEntryData, SchemeResult, ProjectionCaps, ChannelState } from "@plurnk/plurnk-schemes";
+import type { ProposalApplyRequest, ProposalApplyResult, ProposalResult } from "@plurnk/plurnk-schemes";
 import { MetadataOptions, MimetypeClassifier, NetworkAddress, ProjectionInputLimitError, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
 import ErrorDetail from "./ErrorDetail.ts";
@@ -19,6 +20,9 @@ import HostPolicy from "./HostPolicy.ts";
 // The channel the response body streams into, and the header metadata channel.
 // Package-owned metadata appended after untrusted origin headers. Readers take
 // the last value so an origin using the same field name cannot override it.
+// {§http-outbound-proposes} — the only methods this scheme proposes, and so the only ones a
+// settlement may perform.
+const OUTBOUND_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "DELETE"]);
 const DELTA_SECONDS_LIMIT = 2_147_483_648n;
 const HEURISTIC_CACHE_STATUSES = new Set([200, 203, 204, 206, 300, 301, 308, 404, 405, 410, 414, 501]);
 const BODY_PROCESSING_FIELDS = new Set([
@@ -250,7 +254,7 @@ export default class Http implements SchemeHandler {
 
     // EDIT -> PUT the body (full-resource replace). `<L>` has no meaning against a
     // remote resource - reject rather than silently ignore the model's intent.
-    async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<PassthroughResult> {
+    async editBatch(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
         if (statements.length !== 1) {
             return Http.#bad(
                 409,
@@ -286,17 +290,17 @@ export default class Http implements SchemeHandler {
                 },
             );
         }
-        return this.#requester.request(statement.target, statement.metadata, ctx, "PUT", statement.body ?? "");
+        return Http.#propose("PUT", statement.target, statement.body ?? "");
     }
 
-    async edit(statement: ResolvedEditStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
+    async edit(statement: ResolvedEditStatement, ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
         return this.editBatch([statement], ctx);
     }
 
     // {§http-kill} — KILL follows the entry rule: a live acquisition of the address is
     // cancelled, otherwise the stored response is forgotten. The remote DELETE is its own
     // spelling, `KILL (https://…) [{"remote": true}]`; any other metadata keys are its headers.
-    async kill(statement: KillStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
+    async kill(statement: KillStatement, ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Http.#bad(400, "http", "bad-target", "KILL requires an http(s):// URL target.", {
                 stage: "target-validation",
@@ -306,11 +310,8 @@ export default class Http implements SchemeHandler {
         }
         const read = MetadataOptions.parse(statement.metadata, "scheme:http");
         if ("failure" in read) return read.failure as PassthroughResult;
-        if (read.options.remote === true) {
-            const { remote: _remote, ...headers } = read.options;
-            const blocks = Object.keys(headers).length === 0 ? null : [JSON.stringify(headers)];
-            return this.#requester.request(statement.target, blocks, ctx, "DELETE", undefined);
-        }
+        // The `remote` spelling is stripped in applyResolution, where the request is actually made.
+        if (read.options.remote === true) return Http.#propose("DELETE", statement.target);
         const address = Http.#address(statement.target);
         if (!(address instanceof NetworkAddress)) return address;
         if (this.#live.cancel(LiveAcquisitions.key(ctx.workspaceId, address.url))) {
@@ -320,8 +321,44 @@ export default class Http implements SchemeHandler {
         return Http.#passthrough(await ctx.entries.delete(address.pathname));
     }
 
+    // {§http-outbound-proposes} — a request that changes a remote resource declares the host
+    // effect and proposes; `PLURNK_SERVICE_EFFECT_HOST` decides whether that settles by consent
+    // or runs unattended. The headers stay OUT of attrs: they ride the statement metadata across
+    // the pause, so an `Authorization` value never enters durable proposal evidence.
+    static #propose(method: string, target: UrlPath, body?: string): ProposalResult {
+        return {
+            shape: "proposal",
+            status: 202,
+            body: `${method} ${target.raw}`,
+            attrs: { effect: "host", method, target, ...(body === undefined ? {} : { body }) },
+        };
+    }
+
+    async applyResolution(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult> {
+        const attrs = request.attrs as { method?: unknown; target?: unknown; body?: unknown };
+        const { method, target } = attrs;
+        if (typeof target !== "object" || target === null) {
+            throw new Error("An outbound HTTP proposal is missing its target.");
+        }
+        // This scheme mints exactly three outbound methods; a settlement never widens that set.
+        if (typeof method !== "string" || !OUTBOUND_METHODS.has(method)) {
+            throw new Error(`An outbound HTTP proposal named a method this scheme never proposes: ${String(method)}.`);
+        }
+        // The resolver may replace an authored body before it is sent; a bodyless verb keeps none.
+        const body = attrs.body === undefined ? undefined : request.body ?? String(attrs.body);
+        // DELETE spells its intent with `remote`, which selects the verb and is never a header.
+        let metadata = request.metadata;
+        if (method === "DELETE") {
+            const read = MetadataOptions.parse(metadata, "scheme:http");
+            if ("failure" in read) return read.failure as ProposalApplyResult;
+            const { remote: _remote, ...headers } = read.options;
+            metadata = Object.keys(headers).length === 0 ? null : [JSON.stringify(headers)];
+        }
+        return this.#requester.request(target as UrlPath, metadata, ctx, method, body);
+    }
+
     // {§turn-disposition} — SEND is messaging; lifecycle operations never reach a scheme.
-    async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult> {
+    async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Http.#bad(400, "http", "bad-target", "SEND requires an http(s):// URL target.", {
                 stage: "target-validation",
@@ -329,7 +366,7 @@ export default class Http implements SchemeHandler {
                 retryable: false,
             });
         }
-        return this.#requester.request(statement.target, statement.metadata, ctx, "POST", statement.body?.raw ?? "");
+        return Http.#propose("POST", statement.target, statement.body?.raw ?? "");
     }
 
     // {§http-manifest}/{§http-lifecycle} Seed the declared channel shape before

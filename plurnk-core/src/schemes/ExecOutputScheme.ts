@@ -107,7 +107,15 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
         return this.#exec.sendInput(statement, ctx, this.#manifest.name);
     }
 
-    applyResolution(request: ProposalApplyRequest, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
+    // A facet that proposed its own operation applies its own settlement: the proposal's target
+    // is the same claim that routed `send`, so an executor-input proposal (which has no claimed
+    // target) still reaches the executor.
+    async applyResolution(request: ProposalApplyRequest, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
+        const apply = this.#facet?.applyResolution;
+        const target = (request.attrs as { target?: ParsedPath | null }).target;
+        if (apply !== undefined && target != null && this.claimsLiveResource(target)) {
+            return apply.call(this.#facet, request, await this.#facetContext(ctx, target)) as Promise<SchemeResultBase>;
+        }
         return this.#exec.applyInput(request, ctx, this.#manifest.name);
     }
 

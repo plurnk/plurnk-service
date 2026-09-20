@@ -12,6 +12,7 @@ import type {
     ProblemDetails,
 } from "@plurnk/plurnk-contracts";
 import type {
+    ProposalApplyRequest,
     RepresentationPreparationRequest,
     RepresentationPreparationResult,
     SchemeCtx,
@@ -59,6 +60,10 @@ export interface RuntimeSchemeFacet {
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     wait?(statement: DispositionStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     kill?(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    // An operation the facet proposed is also the facet's to apply ({§http-outbound-proposes}).
+    // Routed by the proposal's own `target`, the same claim that routed the operation itself, so
+    // an executor-input proposal on an unclaimed coordinate still reaches the executor.
+    applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<SchemeResult>;
 }
 
 export interface RuntimeRegistration {

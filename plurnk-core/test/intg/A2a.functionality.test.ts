@@ -8,7 +8,7 @@ import { OutboundModule } from "@plurnk/plurnk-a2a";
 import Daemon from "../../src/server/Daemon.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { startDemoAgent } from "../../../plurnk-a2a/test/fixtures/DemoAgent.ts";
-import { insertWorkspace, insertWorker, openMigrated } from "./_helpers.ts";
+import { insertWorkspace, insertWorker, openMigrated, dispatchSettled } from "./_helpers.ts";
 import { sendStmt } from "./_dsl.ts";
 import type { Db } from "../../src/core/Db.ts";
 
@@ -50,8 +50,11 @@ test("{§a2a-functionality} outbound agents are workspace Functionality: baselin
         const references = await daemon.engine.referenceEntries(workspaceId);
         return references.find(({ pathname }) => pathname === `/_plurnk/a2a/${alias}.md`)?.content;
     };
-    const send = (alias: string, workerId = client) =>
-        daemon.dispatchAsClient({ workspaceId, workerId, statement: { ...sendStmt(target(alias), "ping"), target: target(alias) } });
+    // {§http-outbound-proposes} — reaching a remote agent proposes. A client dispatch settles its
+    // own proposal through the event it receives, exactly as a real client does; an alias that is
+    // not configured still refuses before any proposal, so a refusal needs no settlement.
+    const send = (alias: string, workerId = client) => dispatchSettled(daemon, () =>
+        daemon.dispatchAsClient({ workspaceId, workerId, statement: { ...sendStmt(target(alias), "ping"), target: target(alias) } }));
     try {
         assert.deepEqual(
             daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("workspace.a2a.")),

@@ -59,6 +59,17 @@ Exact-versus-pattern FIND preparation uses the shared
 `PathSyntax.hasGlob` classifier {§path-glob}; HTTP owns no reduced
 path-pattern grammar.
 
+§http-outbound-proposes **A request that changes a remote resource proposes.**
+POST, PUT, and the remote DELETE declare `effect: "host"` and return `202`
+under {§proposal}; the panel's `PLURNK_SERVICE_EFFECT_HOST` decides whether
+that settles by consent or runs unattended, exactly as it does for a
+subprocess ({§exec-host-proposes}). GET is observation and stays ungated. The
+proposal carries the method, target, and body, and the resolver may replace
+the body before it is sent; nothing leaves the process until the settlement
+accepts. This is the same reason a local `EDIT` proposes: Plurnk does not
+claim containment, so consent — not a boundary — is what stands between the
+model and the world.
+
 ## §http-lifecycle §3 Acquisition, materialization, and query lifecycle
 
 ```mermaid
