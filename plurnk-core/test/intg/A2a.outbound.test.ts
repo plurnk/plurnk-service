@@ -147,4 +147,21 @@ test("outbound A2A uses Core's ordinary 102 subscription and terminal READ path"
     const found = await engine.dispatch({ ...envelope, statement: find.statement, sequence: 2, origin: "model" });
     assert.equal(found.status, 200, JSON.stringify(found));
     assert.match(JSON.stringify(found.results), new RegExp(resource.replaceAll("/", "\\/")), "the retained Task is found by a glob over its agent");
+
+    // The face's other channel, its copy into the worker's scratch, and a write the model may not make.
+    const statementOf = (header: string, body: string | null = null) => {
+        const item = PlurnkParser.parseStatements(PlurnkParser.frame(header, body), { executors: fixtureExecutors("") }).items[0];
+        assert.ok(item?.kind === "statement");
+        return item.statement;
+    };
+    let sequence = 2;
+    const run = (header: string, body: string | null = null) =>
+        engine.dispatch({ ...envelope, statement: statementOf(header, body), sequence: ++sequence, origin: "model" });
+    const snapshot = await run(`READ (${resource}#json) <1,-1>`);
+    assert.equal(snapshot.status, 200, JSON.stringify(snapshot));
+    assert.equal(JSON.parse(String(snapshot.content)).status.state, "TASK_STATE_COMPLETED", "#json is the protocol snapshot");
+    const copied = await run(`COPY (${resource}) (worker:///task.md)`);
+    assert.equal(copied.status, 201, JSON.stringify(copied));
+    const edited = await run(`EDIT (${resource})`, "rewritten");
+    assert.equal(edited.status, 403, "a retained Task is not the model's to rewrite");
 });
