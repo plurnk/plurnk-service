@@ -377,7 +377,14 @@ export default class Service {
         const defaultsFiles = await EnvDefaults.collect(Service.#projectRoot, Service.#pluginsNodeModules());
         EnvDefaults.apply(EnvDefaults.merge(defaultsFiles));
 
-        const flagDescriptors = await EnvFlags.parseEnvDefaults(resolve(Service.#projectRoot, ".env.defaults"));
+        // A flag is a knob's spelling for one invocation: the service's own panel, and the keys it
+        // shares with every client ({§operator-config-shared-keys}), which contracts declares.
+        const shared = defaultsFiles.find(({ owner }) => owner === "@plurnk/plurnk-contracts");
+        if (shared === undefined) throw new Error("@plurnk/plurnk-contracts: .env.defaults missing — the shared endpoint keys have no owner");
+        const flagDescriptors = [
+            ...await EnvFlags.parseEnvDefaults(resolve(Service.#projectRoot, ".env.defaults")),
+            ...EnvFlags.parseEnvDefaultsContent(shared.text),
+        ];
         const flagOptions: Record<string, { type: "string" }> = {};
         for (const f of flagDescriptors) {
             flagOptions[f.flagName.replace(/^--/, "")] = { type: "string" };

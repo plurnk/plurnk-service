@@ -47,7 +47,9 @@ export default class EnvFlags {
             if (EnvFlags.#isSectionDelimiter(line)) { buffer = []; continue; }
             if (EnvFlags.#isCommentLine(line)) {
                 const text = EnvFlags.#extractCommentText(line);
-                if (text.length === 0) { buffer = []; continue; }
+                // An optional knob's commented declaration ends its own description; what follows
+                // describes the next key.
+                if (text.length === 0 || /^[A-Za-z_][A-Za-z0-9_]*=/u.test(text)) { buffer = []; continue; }
                 buffer.push(text);
                 continue;
             }

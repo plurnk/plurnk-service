@@ -3612,8 +3612,7 @@ Each knob's value lives on its panel and nowhere else (`plurnk-service config de
 | Var | Purpose |
 |---|---|
 | `PLURNK_SERVICE_DB_PATH` | SQLite file path; an explicit non-empty value overrides the derived default. |
-| `PLURNK_HOST` | Bind address for the listener. Local-only by default. |
-| `PLURNK_PORT` | TCP port for THE client surface — the AG-UI+ listener (the plurnk-agui plugin module binds it at boot). Production is single-listener. |
+| §operator-config-shared-keys `PLURNK_HOST`, `PLURNK_PORT` | The listener's bind address and TCP port — THE client surface, the AG-UI+ listener the plurnk-agui module binds at boot; production is single-listener. **A key the daemon and its clients both read has a shared owner**: `@plurnk/plurnk-contracts` declares these two and the optional `PLURNK_AGUI_URL` on its own panel, the one package every side depends on. The daemon folds it like any installed member's, a client folds it beneath its own, and so neither holds the other's default. The service's `--host` and `--port` flags are generated from that panel. |
 | §operator-config-git-ceiling `PLURNK_SERVICE_GIT_ALLOWED` | Hard service ceiling: only `1` admits Git membership and status; every other value denies them. |
 | §operator-config-file-create-scope `PLURNK_SERVICE_FILE_CREATE_SCOPE` | Hard file-creation ceiling: `none < root < namespace`. `none` denies new filesystem files, `root` admits only paths inside `project_root`, and `namespace` also admits canonical outside-root paths. Existing-member writes are unaffected. |
 | `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES` | Byte ceiling in `1..104857600` for one workspace-file snapshot ({§membership-materialization-limit}). |

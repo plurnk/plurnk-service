@@ -30,12 +30,13 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     // {§operator-config-shipped-defaults}: model selection belongs to the operator.
     assert.equal(env.get("PLURNK_MODEL"), undefined, "no active PLURNK_MODEL ships");
     // {§operator-config-env-defaults} — a knob has exactly one owner, and this file declares ONLY
-    // the service's: PLURNK_SERVICE_* plus the daemon's own unprefixed surface (HOST/PORT, the
-    // PLUGINS trust gate, initialization reasoning view, and the members Functionality family,
-    // which core itself implements). Sibling knobs (PROVIDERS/EXECS/SCHEMES/
+    // the service's: PLURNK_SERVICE_* plus the daemon's own unprefixed surface (the PLUGINS
+    // trust gate, initialization reasoning view, and the members Functionality family, which core
+    // itself implements). HOST and PORT are shared with every client, so contracts declares them
+    // ({§operator-config-shared-keys}). Sibling knobs (PROVIDERS/EXECS/SCHEMES/
     // MIMETYPES/AGUI/MODEL/BASE) live in the owning packages' shipped .env.defaults — a stray
     // here is a boot-crash collision waiting on the next sibling pub.
-    const SERVICE_OWNED = /^(PLURNK_SERVICE_|PLURNK_HOST$|PLURNK_PORT$|PLURNK_PLUGINS_|PLURNK_REASONING_VIEW_LINES$|PLURNK_MEMBERS_)/;
+    const SERVICE_OWNED = /^(PLURNK_SERVICE_|PLURNK_PLUGINS_|PLURNK_REASONING_VIEW_LINES$|PLURNK_MEMBERS_)/;
     const foreign = [...env.keys()].filter((k) => !SERVICE_OWNED.test(k));
     assert.deepEqual(foreign, [], `the template declares only service-owned knobs; foreign: ${foreign.join(", ")}`);
     // Provider physics and generation policy ship in the provider package.
@@ -98,4 +99,13 @@ test("under the shipped policy wiring, the shipped policy has one packet owner",
         if (prevPolicy === undefined) delete process.env.PLURNK_SERVICE_POLICY; else process.env.PLURNK_SERVICE_POLICY = prevPolicy;
         await db.close();
     }
+});
+
+test("{§operator-config-shared-keys} a key the daemon and its clients both read is declared by contracts, and only there", async () => {
+    const contracts = await readFile(new URL("../../../plurnk-contracts/.env.defaults", import.meta.url), "utf8");
+    const declared = new Map([...contracts.matchAll(/^(?:# )?(PLURNK_[A-Z_]+)=(.*)$/gmu)].map((match) => [match[1]!, match[2]!]));
+    assert.deepEqual([...declared.keys()], ["PLURNK_HOST", "PLURNK_PORT", "PLURNK_AGUI_URL"]);
+    assert.equal(declared.get("PLURNK_HOST"), "127.0.0.1", "local-only unless the operator says otherwise");
+    const core = await shippedEnv();
+    for (const key of declared.keys()) assert.equal(core.get(key), undefined, `${key} has one owner, and it is not the service`);
 });

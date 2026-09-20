@@ -66,6 +66,16 @@ PLURNK_X=foo`;
     assert.equal(flags[0].description, "desc 2");
 });
 
+test("parseEnvDefaultsContent: an optional knob's commented declaration ends its own description", () => {
+    const flags = EnvFlags.parseEnvDefaultsContent([
+        "# Default child model.",
+        "# PLURNK_MODEL_CHILD=fast",
+        "# Turn ceiling; -1 = none.",
+        "PLURNK_SERVICE_MAX_TURNS=-1",
+    ].join("\n"));
+    assert.deepEqual(flags.map(({ envName, description }) => [envName, description]), [["PLURNK_SERVICE_MAX_TURNS", "Turn ceiling; -1 = none."]]);
+});
+
 test("parseEnvDefaultsContent: strips quotes from default values", () => {
     const content = `# desc
 PLURNK_QUOTED="hello world"`;
