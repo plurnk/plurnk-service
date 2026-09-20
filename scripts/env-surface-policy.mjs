@@ -4,14 +4,26 @@
 // and the packages' `.env.defaults` (every choice). Code holds mechanism only. This gate counts
 // every way a choice can find another home in shipped source, and refuses both new drift and a
 // stale allowance, so the debt can only shrink. Done is an empty allowance file.
-import { readdir, readFile, writeFile } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { execFile } from "node:child_process";
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const ALLOWANCE_PATH = join(ROOT, "scripts/env-surface-allowance.json");
-const IGNORED_DIRECTORIES = new Set([".git", ".tmp", ".cache", "coverage", "dist", "node_modules"]);
+const MECHANISM_PATH = join(ROOT, "scripts/env-surface-mechanism.json");
 const SOURCE_EXTENSIONS = /\.(?:ts|mjs|js|cjs)$/u;
+
+// A number whose own name says duration, size, count or pacing is a choice by that name, exactly as
+// `DEFAULT_` is: it moves to the panel, or the register of mechanism says why it may stay. The
+// register is reviewed, permanent and small — the deliberate "this is not a knob, because…" list
+// that keeps the panel free of knobs nobody would turn.
+const CONFESSING = /(?:^|_)(?:MS|SEC|SECONDS|MINUTES|TIMEOUT|DEADLINE|INTERVAL|TTL|GRACE|DELAY|BACKOFF|RETRY|RETRIES|ATTEMPTS|ROUNDS|LIMIT|MAX|MAXIMUM|MIN|MINIMUM|FLOOR|CEILING|CAP|BYTES|SIZE|LINES|CHARS|CODEPOINTS|POINTS|ITEMS|SAMPLE|SAMPLES|PREVIEW|WIDTH|DEPTH|PASSES|FRACTION|MARGIN|TOKENS|PATHS|CONCURRENCY|WINDOW|PAGE)(?:_|$)/u;
+const NUMERIC_CONSTANT = /\b(?:const|static(?:\s+readonly)?)\s+#?([A-Z][A-Z0-9_]*)\s*(?::[^=\n]+)?=\s*-?(?:0x[0-9a-fA-F_]+|\d[\d_]*(?:\.\d+)?)n?(?:\s*\*\s*\d[\d_]*)*\s*;/gu;
+// A bare number handed to a timer or a deadline has no name to confess with, so it has no register:
+// it is named, or it is read from the panel.
+const TIMER_LITERAL = /\b(?:setTimeout|setInterval|delay|sleep|AbortSignal\.timeout)\s*\([^()\n]*?\b\d[\d_]+\s*[,)]/gu;
 
 // A reader that accepts a fallback can supply a value the panel never stated — and the one that
 // existed also swallowed an invalid value silently. These are the standard's own defaults, not ours.
@@ -140,6 +152,11 @@ export const measure = ({ panels, sources, corpus, manifests = [] }) => {
                 .filter((match) => /\bprocess\.env\b|\benv\s*[.[]/u.test(match[2])).length;
             if (readers > 0) count("reader-fallback", name, readers);
         }
+        for (const match of code.matchAll(NUMERIC_CONSTANT)) {
+            if (CONFESSING.test(match[1])) count("tunable", `${name}:${match[1]}`);
+        }
+        const timers = [...code.matchAll(TIMER_LITERAL)].length;
+        if (timers > 0) count("timer-literal", name, timers);
     }
 
     const covered = (name) => declared.has(name) || [...families].some((prefix) =>
@@ -175,13 +192,22 @@ export const measure = ({ panels, sources, corpus, manifests = [] }) => {
     return findings;
 };
 
-export const envSurfaceViolations = ({ panels, sources, corpus, manifests, allowance }) => {
+export const envSurfaceViolations = ({ panels, sources, corpus, manifests, allowance, mechanism = {} }) => {
     const findings = measure({ panels, sources, corpus, manifests });
     const violations = [];
     const allowed = new Map(Object.entries(allowance).flatMap(([rule, keys]) =>
         Object.entries(keys).map(([key, n]) => [`${rule}\t${key}`, n])));
+    // The register answers `tunable` findings one by one, each with its reason; it is not a debt.
+    for (const [key, reason] of Object.entries(mechanism)) {
+        if (typeof reason !== "string" || reason.trim().length === 0) violations.push(`tunable: ${key} — the register gives no reason`);
+        if (!findings.has(`tunable\t${key}`)) violations.push(`tunable: ${key} — registered as mechanism but gone; strike it from the register`);
+    }
     for (const [finding, actual] of findings) {
         const [rule, key] = finding.split("\t");
+        if (rule === "tunable") {
+            if (!Object.hasOwn(mechanism, key)) violations.push(`tunable: ${key} — its name says duration, size or limit: move it to the panel, or register why it is mechanism`);
+            continue;
+        }
         const permitted = allowed.get(finding) ?? 0;
         if (actual > permitted) violations.push(`${rule}: ${key} — ${actual} found, allowance ${permitted}`);
     }
@@ -200,27 +226,21 @@ export const allowanceOf = (findings) => {
     const out = {};
     for (const [finding, n] of [...findings].toSorted(([a], [b]) => a.localeCompare(b))) {
         const [rule, key] = finding.split("\t");
+        if (rule === "tunable") continue;
         (out[rule] ??= {})[key] = n;
     }
     return out;
 };
 
-const filesUnder = async (directory) => {
-    const entries = await readdir(directory, { withFileTypes: true });
-    const nested = await Promise.all(entries.map(async (entry) => {
-        if (IGNORED_DIRECTORIES.has(entry.name)) return [];
-        const path = join(directory, entry.name);
-        return entry.isDirectory() ? filesUnder(path) : [path];
-    }));
-    return nested.flat();
-};
-
+// Source is what Git tracks or would track: build output and ignored scratch are not the platform.
 const load = async () => {
-    const paths = await filesUnder(ROOT);
-    const read = async (path) => ({ name: relative(ROOT, path), content: await readFile(path, "utf8") });
-    const panels = await Promise.all(paths.filter((path) => path.endsWith("/.env.defaults")).map(read));
-    const corpus = await Promise.all(paths.filter((path) => SOURCE_EXTENSIONS.test(path) || path.endsWith(".sh")).map(read));
-    const manifests = await Promise.all(paths.filter((path) => /^plurnk-[^/]+\/package\.json$/u.test(relative(ROOT, path))).map(read));
+    const { stdout } = await promisify(execFile)("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], { cwd: ROOT, maxBuffer: 1 << 26 });
+    const names = stdout.split("\0").filter((name) => name.length > 0);
+    const read = async (name) => ({ name, content: await readFile(join(ROOT, name), "utf8").catch(() => null) });
+    const present = async (selected) => (await Promise.all(selected.map(read))).filter(({ content }) => content !== null);
+    const panels = await present(names.filter((name) => name.endsWith("/.env.defaults")));
+    const corpus = await present(names.filter((name) => SOURCE_EXTENSIONS.test(name) || name.endsWith(".sh")));
+    const manifests = await present(names.filter((name) => /^plurnk-[^/]+\/package\.json$/u.test(name)));
     return { panels, sources: corpus, corpus, manifests };
 };
 
@@ -231,12 +251,13 @@ if (import.meta.main) {
         await writeFile(ALLOWANCE_PATH, `${JSON.stringify(allowanceOf(findings), null, 4)}\n`);
     }
     const allowance = JSON.parse(await readFile(ALLOWANCE_PATH, "utf8"));
-    const violations = envSurfaceViolations({ ...input, allowance });
+    const mechanism = JSON.parse(await readFile(MECHANISM_PATH, "utf8"));
+    const violations = envSurfaceViolations({ ...input, allowance, mechanism });
     if (violations.length > 0) {
         console.error(`Environment surface policy violations:\n${violations.map((violation) => `  ${violation}`).join("\n")}`);
         process.exit(1);
     }
     const debt = Object.entries(allowance).map(([rule, keys]) =>
         `${rule} ${Object.values(keys).reduce((sum, n) => sum + n, 0)}`);
-    console.log(`env surface OK${debt.length === 0 ? "" : ` — remaining debt: ${debt.join(", ")}`}`);
+    console.log(`env surface OK${debt.length === 0 ? "" : ` — remaining debt: ${debt.join(", ")}`} — ${Object.keys(mechanism).length} numbers registered as mechanism`);
 }

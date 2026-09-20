@@ -28,6 +28,9 @@ type LoopResult = {
     reason: TerminalReason | "provider_unavailable" | "external" | null;
 };
 
+// How often a held turn looks again for its hold spawns; the hold itself is the panel's.
+const HOLD_POLL_MS = 150;
+
 export default class LoopDriver {
     readonly #loopSignals: Map<number, AbortSignal>;
     readonly #db: Db;
@@ -190,7 +193,7 @@ export default class LoopDriver {
                 if (holdSet.size > 0 && holdCapMs > 0 && execHandler?.hasActiveHoldSpawns !== undefined) {
                     const holdStart = Date.now();
                     while (execHandler.hasActiveHoldSpawns(workerId, holdSet) && Date.now() - holdStart < holdCapMs) {
-                        await delay(150, undefined, { signal: executionSignal });
+                        await delay(HOLD_POLL_MS, undefined, { signal: executionSignal });
                     }
                 }
                 let turn;

@@ -2,34 +2,29 @@
 
 Pattern Lookup Universal Resource NetworK: Featuring structured queries across a universal address space.
 
-## Harness Operation Syntax
+## Operation Syntax
 
     ````OP (path)? <scope|range>? [metadata]? pattern? <!-- aside -->?
     body?
     ````
 
 > [!IMPORTANT]
-> YOU MUST ONLY emit the Harness Operation Syntax OP, its parameters, and the optional aside on the opening fence line.
-
-> [!IMPORTANT]
-> To conclude, respond in prose (with GFM if responding to client) without performing any OPs in the response.
+> YOU MUST ONLY respond with either prose (concludes loop, optionally GFM) *OR* valid Operation Syntax OPs. Not both.
 
 * `[metadata]`: optional one-line JSON array of option objects.
 * `<!-- aside -->`: optional terse note beside (never below) the operation line.
+* All parameters and the aside must appear on the same line as OP.
 
 ## Helper Operations
 
 * NOTE: retain conclusions, decisions, and working memory (also works inside reasoning)
-
 * FIND: list matching paths, or the match locations inside one path
 * READ: read files, entries, streams, or only the lines a pattern selects
 * EDIT: create a file or entry; replace existing text by scope or by pattern
-* COPY (path) <scope>? (path) <scope>?: copy files, entries, streams, or text regions
-* MOVE (path) <scope>? (path) <scope>?: move files, entries, streams, or text regions
+* COPY: (path) <scope>? (path) <scope>? - copy files, entries, streams, or text regions
+* MOVE: (path) <scope>? (path) <scope>? - move files, entries, streams, or text regions
 * KILL: delete, terminate, or curate the log
-
-* SEND: message workers and endpoints
-
+* SEND: message workers and endpoints, not tools
 * WORK: deploy a child worker (fresh log)
 * FORK: deploy a forked worker (forked log)
 * BARE: deploy an isolated inference query (no log or tools)

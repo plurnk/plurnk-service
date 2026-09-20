@@ -134,6 +134,13 @@ a second home for a choice, and it will eventually disagree with the first.
   makes no choice" — never a literal.
 - **One knob per choice.** A composite value whose partial override must merge
   over a base forces that base into code.
+- **A knob earns its place.** PLURNK is as configurable as is practical, and the
+  panel is still something an operator reads: a knob is a lever somebody would
+  turn for their deployment — a deadline, a page, a disposition, how much the
+  model is shown, a safety bound. A format's magic byte, an algorithm's iteration
+  bound, a persisted unit of measure or a protocol's retry pacing is mechanism,
+  and a knob for it is noise that hides the real ones. Mechanism stays in code
+  under a name that says what it is.
 - **Rings narrow the same knob.** A narrower scope — an alias, a workspace, a
   worker, a run — overrides a knob under its own name; it is never a second
   vocabulary. Where an inner ring must be bounded, an outer ring's ceiling knob
@@ -148,11 +155,12 @@ a second home for a choice, and it will eventually disagree with the first.
   different panel — ideally inside a sandbox, which is somebody else's project:
   PLURNK owns authority, consent and audit, and never claims containment.
 
-`scripts/env-surface-policy.mjs` enforces what a pattern can see, in
-`root:lint`, with an allowance that only shrinks
-({§operator-config-only-home}); what no pattern can see — a bare `50` — is
-found by audit. Before adding a constant, a flag, a parameter default or a
-settings field, find its knob.
+`scripts/env-surface-policy.mjs` enforces this in `root:lint`
+({§operator-config-only-home}). A number whose own name says duration, size or
+limit is either on the panel or in `scripts/env-surface-mechanism.json`, the
+reviewed register of deliberate non-knobs, each with its reason; a bare number
+handed to a timer has no register at all. Before adding a constant, a flag, a
+parameter default or a settings field, find its knob — or say why it has none.
 
 ## Process composition
 

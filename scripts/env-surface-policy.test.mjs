@@ -35,7 +35,7 @@ test("a read never carries its own value: a default in code is a second home for
 
 test("a constant named DEFAULT is, by its own name, a default living in code", () => {
     assert.deepEqual(
-        run({ sources: [source("const DEFAULT_LIMIT = 50;\nclass A { static readonly DEFAULT_POLICY = {}; static #DEFAULT_TIMERS = {}; }")] }),
+        run({ sources: [source("const DEFAULT_MODE = 50;\nclass A { static readonly DEFAULT_POLICY = {}; static #DEFAULT_TIMERS = {}; }")] }),
         ["default-constant: plurnk-x/src/thing.ts — 3 found, allowance 0"],
     );
 });
@@ -122,4 +122,31 @@ test("a package that ships a panel tests on it, or the floor is a fiction where 
     // A package with no panel owes nothing, and a script that runs no node owes nothing.
     assert.deepEqual(envSurfaceViolations({ panels: [], sources: [], corpus: [], manifests: [manifest({ "test:unit": "node --test" })], allowance: {} }), []);
     assert.deepEqual(check({ "test:unit": "npm run build" }), []);
+});
+
+test("a number whose name says duration, size or limit is a choice, unless the register says why it is mechanism", () => {
+    const sources = [source("const POLL_INTERVAL_MS = 250;\nclass A { static readonly PAGE_LIMIT = 50; static #RETRY_MAX = 3; }\nconst TEXT_NODE = 3;\nlet depth = 0;")];
+    const check = (mechanism) => envSurfaceViolations({ panels: [], sources, corpus: sources, allowance: {}, mechanism });
+    // A format code and a loop counter confess nothing; three names do.
+    assert.deepEqual(check({}).map((violation) => violation.split(" — ")[0]), [
+        "tunable: plurnk-x/src/thing.ts:PAGE_LIMIT",
+        "tunable: plurnk-x/src/thing.ts:POLL_INTERVAL_MS",
+        "tunable: plurnk-x/src/thing.ts:RETRY_MAX",
+    ]);
+    const register = {
+        "plurnk-x/src/thing.ts:PAGE_LIMIT": "the protocol's own page size",
+        "plurnk-x/src/thing.ts:POLL_INTERVAL_MS": "internal cadence",
+        "plurnk-x/src/thing.ts:RETRY_MAX": "protocol resilience",
+    };
+    assert.deepEqual(check(register), []);
+    // The register is reviewed, not a rubber stamp: every entry gives a reason and names a living number.
+    assert.deepEqual(check({ ...register, "plurnk-x/src/thing.ts:RETRY_MAX": " " }), ["tunable: plurnk-x/src/thing.ts:RETRY_MAX — the register gives no reason"]);
+    assert.deepEqual(check({ ...register, "plurnk-x/src/gone.ts:OLD_LIMIT": "was here" }), ["tunable: plurnk-x/src/gone.ts:OLD_LIMIT — registered as mechanism but gone; strike it from the register"]);
+});
+
+test("a bare number handed to a timer or a deadline is named or read from the panel; it has no register", () => {
+    const bare = source("setTimeout(tick, 5000);\nawait delay(150, undefined, { signal });\nconst signal = AbortSignal.timeout(30_000);");
+    assert.deepEqual(run({ sources: [bare] }), ["timer-literal: plurnk-x/src/thing.ts — 3 found, allowance 0"]);
+    const named = source("setTimeout(tick, TICK_MS);\nawait delay(Knob.integer(\"PLURNK_X_POLL\", 1));\nsetTimeout(tick, 0);");
+    assert.deepEqual(run({ panels: [panel("PLURNK_X_POLL=150\n")], sources: [named] }).filter((violation) => violation.startsWith("timer-literal")), []);
 });
