@@ -7,8 +7,7 @@ PLURNK platform monorepo.
 This repository is an npm workspace containing the daemon
 (`plurnk-core`, published as `@plurnk/plurnk-service`), the contracts and
 grammar authority, the AG-UI server module, and the plugins included in the default installation. The
-terminal and optional web clients are separate repositories. The Neovim client
-is retired and is not part of development, conformance, or release gates.
+terminal and optional web clients are separate repositories.
 
 ## Operations quick reference
 
