@@ -4,20 +4,7 @@
     "title": "McpConfigurationOverlay",
     "type": "object",
     "propertyNames": {
-        "allOf": [
-            {
-                "pattern": "^PLURNK_MCP_[A-Za-z0-9_.+-]+$"
-            },
-            {
-                "not": {
-                    "enum": [
-                        "PLURNK_MCP_CONNECT_TIMEOUT",
-                        "PLURNK_MCP_REQUEST_TIMEOUT",
-                        "PLURNK_MCP_ENABLED"
-                    ]
-                }
-            }
-        ]
+        "pattern": "^PLURNK_MCP_[A-Za-z0-9_.+-]+$"
     },
     "additionalProperties": {
         "type": "string"

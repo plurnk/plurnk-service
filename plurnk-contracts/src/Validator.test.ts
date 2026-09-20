@@ -341,16 +341,15 @@ test("{§mcp-server-options}: MCP add options are a closed definition supplement
     }
 });
 
-test("{§mcp-configuration-overlay}: clients carry declarations, never service controls", () => {
+test("{§mcp-configuration-overlay}: a client carries its PLURNK_MCP_* variables whole, and nothing else", () => {
     const overlay: McpConfigurationOverlay = {
         PLURNK_MCP_GITEA_ARGS: "[\"plurnk_pk\"]",
         PLURNK_MCP_BRAVE: "https://mcp.example/brave",
+        PLURNK_MCP_ENABLED: "[\"gitea\"]",
     };
-    assert.equal(Validator.assertMcpConfigurationOverlay(overlay), overlay);
+    assert.equal(Validator.assertMcpConfigurationOverlay(overlay), overlay, "which names are controls is the host's fact, not the contract's");
     for (const invalid of [
         { OPENAI_API_KEY: "nope" },
-        { PLURNK_MCP_ENABLED: "[\"gitea\"]" },
-        { PLURNK_MCP_CONNECT_TIMEOUT: "1" },
         { PLURNK_MCP_GITEA_ARGS: ["plurnk_pk"] },
     ]) {
         assert.throws(

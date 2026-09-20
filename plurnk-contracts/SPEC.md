@@ -1312,9 +1312,11 @@ client ID plus symbolic secret, or neither for server-advertised Dynamic Client
 Registration fallback. A definition cannot combine those identity modes.
 
 §mcp-configuration-overlay `McpConfigurationOverlay` is the bounded raw
-configuration projection a client may carry to MCP list and enable actions. It
-contains only string-valued `PLURNK_MCP_*` server declaration variables;
-service-owned connection/request timeouts and default enabledness are excluded.
+configuration projection a client may carry to MCP list and enable actions: its
+string-valued `PLURNK_MCP_*` variables, whole. Which of those names are the
+host's own controls is the host's fact alone — its parser skips every control
+it owns, so a carried timeout or enabled list has no effect and no client or
+contract restates that vocabulary.
 The client does not interpret this map. The MCP host composes it over the
 lower normalized definition through the same parser that admits service
 environment declarations, then validates the resulting

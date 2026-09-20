@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import {
     connectTimeoutMs,
     expandedServerNames,
@@ -38,6 +39,14 @@ test("configuration discovers case-folded server targets and exact stdio argumen
         tools: ["filesystem_read_text_file"],
         read: ["filesystem_read_text_file"],
     });
+});
+
+test("{§mcp-configuration-overlay} every knob the panel declares is a control an overlay carries without effect", async () => {
+    const panel = await readFile(new URL("../.env.defaults", import.meta.url), "utf8");
+    const controls = Object.fromEntries([...panel.matchAll(/^(PLURNK_MCP_[A-Z0-9_]+)=(.*)$/gmu)].map(([, key, value]) => [key!, value!]));
+    assert.ok(Object.keys(controls).length >= 5, "the panel's live keys are the package's controls");
+    const declared = { PLURNK_MCP_FILES: "npx", PLURNK_MCP_FILES_ARGS: '["-y","server"]' };
+    assert.deepEqual(overlayServerDefinitions({ ...declared, ...controls }), overlayServerDefinitions(declared));
 });
 
 test("configured servers are available independently from the exact cold-enabled set", () => {
@@ -401,10 +410,13 @@ test("{§mcp-configuration-cascade} client-only definitions are complete and inc
         }),
         /PLURNK_MCP_LOCAL_ARGS.*PLURNK_MCP_LOCAL/,
     );
+    assert.deepEqual(
+        [...overlayServerDefinitions({ PLURNK_MCP_ENABLED: '["local"]' }).keys()],
+        [],
+        "a carried control declares no server and enables none",
+    );
     assert.throws(
-        () => overlayServerDefinitions({
-            PLURNK_MCP_ENABLED: '["local"]',
-        } as never),
+        () => overlayServerDefinitions({ OPENAI_API_KEY: "nope" } as never),
         /invalid MCP configuration overlay/,
     );
 });
