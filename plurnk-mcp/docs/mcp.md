@@ -1,11 +1,17 @@
 # mcp
 
-An MCP server is an external process (`stdio`) or endpoint (`http`) that
-publishes tools. Once a server is enabled, it is a runtime here under its own
-name: each tool is a target — `<server> (<tool>)` with a JSON
-body. `worker:///_plurnk/tools/<server>.md` lists the invocations and their
+An MCP server publishes tools, and an enabled server is a runtime here under
+its own name. You run a tool the way you run `sh` or `node`: a fenced call
+names the server and the tool, and its body is the tool's JSON arguments.
+
+````files (list_directory) <!-- server (tool) -->
+{"path": "/absolute/project/path"}
+````
+
+One fenced call runs one tool, and the result is that call's output.
+`worker:///_plurnk/tools/<server>.md` lists a server's invocations and their
 required top-level inputs; each invocation links to the complete raw input
-schema when you need more detail. One fenced call runs one tool.
+schema when you need more detail.
 
 ## When to reach for a server
 
