@@ -43,7 +43,7 @@ export const previewOccurrences = (env: NodeJS.ProcessEnv): number => {
 
 export const serviceEnabled = (env: NodeJS.ProcessEnv): ReadonlySet<string> => {
     const raw = env[ENABLED];
-    if (raw === undefined || raw.trim().length === 0) return new Set();
+    if (raw === undefined) throw new Error(`${ENABLED} is missing from the assembled environment floor.`);
     const parsed = parseJson(ENABLED, raw);
     if (!Array.isArray(parsed) || !parsed.every((entry) => typeof entry === "string")) {
         throw new Error(`${ENABLED} must be a JSON array of aliases.`);

@@ -17,7 +17,7 @@ cards are protocol projections, not configuration files.
 | Family | Variables | Meaning |
 |---|---|---|
 | Outbound definition | `PLURNK_A2A_<ALIAS>=<absolute HTTP(S) URL>` plus optional `_CARD_PATH`, `_HEADERS`, and `_BEARER` companions | Defines one available remote agent without fetching or enabling it. `_BEARER` contains only a symbolic `${NAME}` reference; secrets remain environment-owned. |
-| Outbound defaults | `PLURNK_A2A_ENABLED` | JSON array selecting the exact aliases enabled by default for the workspace's `a2a` family ({§a2a-functionality}); workspace state may override enabledness. |
+| Outbound defaults | `PLURNK_A2A_ENABLED` | JSON array selecting the exact aliases enabled by default for the workspace's `a2a` family ({§a2a-functionality}); workspace state may override enabledness. `[]` is the one spelling of none: an absent or empty key is refused by name. |
 | Timeouts | `PLURNK_A2A_CONNECT_TIMEOUT`, `PLURNK_A2A_REQUEST_TIMEOUT` | Positive integer milliseconds owned by the A2A package. |
 | Diagnostics | `PLURNK_A2A_ERROR_DETAIL_LIMIT` | Non-negative character bound for one caught upstream diagnostic admitted to a model-facing A2A Problem; complete causes remain internal. |
 | Inbound listener | `PLURNK_A2A_EXPOSE`, `_HOST`, `_PORT`, `_ENDPOINT_PATH`, `_ENDPOINT_URL` | `EXPOSE=1` admits one optional HTTP+JSON listener; `0` admits none. |

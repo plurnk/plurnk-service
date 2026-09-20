@@ -19,7 +19,7 @@ const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.
 const interactionFixture = fileURLToPath(new URL("./fixtures/interaction-server.mjs", import.meta.url));
 const env = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
 };
 const retainWorkspace = (): (() => void) => () => undefined;
 

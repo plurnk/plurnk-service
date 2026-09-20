@@ -106,7 +106,7 @@ Read the input schema.
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules") });
-    daemon.registerModule(McpModule.init({ env: {} }));
+    daemon.registerModule(McpModule.init({ env: { PLURNK_MCP_ENABLED: "[]" } }));
     await daemon.start();
     const ws = await connect({ daemon });
     try {

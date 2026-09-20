@@ -321,6 +321,8 @@ export const outboundDefinitions = (
 
 export const serviceEnabledNames = (environ: NodeJS.ProcessEnv = process.env): string[] => {
     const field = `${PREFIX}ENABLED`;
+    if (environ[field] === undefined) throw new Error(`${field} is missing from the assembled environment floor.`);
+    if (environ[field] === "") throw new Error(`${field} must be a JSON array of strings; [] enables none.`);
     const configured = jsonStrings(environ[field], field);
     const { targets } = parseEnvironment(environ);
     const enabled = new Set<string>();

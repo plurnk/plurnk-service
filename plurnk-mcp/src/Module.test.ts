@@ -27,6 +27,7 @@ import { workingDirectory } from "../test/working-directory.ts";
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
 const legacyFixture = fileURLToPath(new URL("./fixtures/legacy-server.mjs", import.meta.url));
 const floor = {
+    PLURNK_MCP_ENABLED: "[]",
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
     PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };

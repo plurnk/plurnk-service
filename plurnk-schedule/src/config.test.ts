@@ -15,8 +15,9 @@ test("{§schedule-environment} PLURNK_SCHEDULE_<ALIAS> definitions fold to the f
     assert.deepEqual(definitions.get("heartbeat"), { rule: "FREQ=HOURLY", target: "worker://bot", prompt: "Check in." });
     assert.deepEqual(definitions.get("nightly")?.policy, { proposals: "accept" });
     assert.deepEqual([...serviceEnabled({ PLURNK_SCHEDULE_ENABLED: '["heartbeat"]' })], ["heartbeat"]);
-    assert.deepEqual([...serviceEnabled({})], []);
-    assert.deepEqual([...serviceEnabled({ PLURNK_SCHEDULE_ENABLED: " " })], []);
+    assert.deepEqual([...serviceEnabled({ PLURNK_SCHEDULE_ENABLED: "[]" })], [], "[] is the one spelling of none");
+    assert.throws(() => serviceEnabled({}), /PLURNK_SCHEDULE_ENABLED is missing from the assembled environment floor\./);
+    assert.throws(() => serviceEnabled({ PLURNK_SCHEDULE_ENABLED: " " }), /PLURNK_SCHEDULE_ENABLED is not JSON\./);
 });
 
 test("{§schedule-environment} empty definitions mask inherited schedules and their default enabledness", () => {

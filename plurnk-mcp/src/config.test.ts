@@ -16,7 +16,7 @@ import {
 
 const floor = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "86400000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+    PLURNK_MCP_REQUEST_TIMEOUT: "86400000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
 };
 
 test("configuration discovers case-folded server targets and exact stdio arguments", () => {
@@ -49,10 +49,9 @@ test("configured servers are available independently from the exact cold-enabled
     };
     assert.deepEqual(serverNames(env), ["atlas", "gitea"]);
     assert.deepEqual(serviceEnabledNames(env), ["gitea"]);
-    assert.deepEqual(serviceEnabledNames({
-        ...env,
-        PLURNK_MCP_ENABLED: "",
-    }), []);
+    assert.deepEqual(serviceEnabledNames({ ...env, PLURNK_MCP_ENABLED: "[]" }), [], "[] is the one spelling of none");
+    assert.throws(() => serviceEnabledNames({ ...env, PLURNK_MCP_ENABLED: "" }), /PLURNK_MCP_ENABLED must be a JSON array of strings; \[\] enables none\./);
+    assert.throws(() => serviceEnabledNames({ PLURNK_MCP_ATLAS: "node" }), /PLURNK_MCP_ENABLED is missing from the assembled environment floor\./);
     assert.throws(
         () => serviceEnabledNames({
             ...env,

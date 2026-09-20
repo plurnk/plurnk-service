@@ -20,7 +20,7 @@ const setup = async (t: TestContext, responses: ReturnType<typeof makeMockRespon
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider });
     daemon.registerModule(McpModule.init({ env: {
-        PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
     } }));
     const registration = AguiModule.init({ host: "127.0.0.1", port: 0 });
     let agui: AguiModule | undefined;

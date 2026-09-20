@@ -234,7 +234,7 @@ unavailable candidate without changing durable state.
 | `PLURNK_MCP_<server>_READ` | JSON string array forming an exact subset of enabled tools that the operator classifies as read-only; every other enabled tool retains the conservative `host` effect |
 | `PLURNK_MCP_<server>_SUMMARY` | Authored one-line server orientation ({§mcp-summary-derivation}) |
 | `PLURNK_MCP_<server>_<tool>_SUMMARY` | Authored one-line tool orientation; tool names fold the same way and may contain underscores |
-| `PLURNK_MCP_ENABLED` | JSON array of exact configured server aliases enabled by default; absent or `[]` enables none |
+| `PLURNK_MCP_ENABLED` | JSON array of exact configured server aliases enabled by default. `[]` is the one spelling of none: the panel states it, and an absent or empty key is refused by name |
 | `PLURNK_MCP_EXPANDED` | JSON array subset of enabled servers whose every tool is surveyed at turn 0 — one FIND row per executable block of the family document, with aside and signature ({§tools-resource-materialization}); never a document delivered unasked; absent or `[]` expands none |
 | `PLURNK_MCP_CONNECT_TIMEOUT` | Positive integer milliseconds |
 | `PLURNK_MCP_REQUEST_TIMEOUT` | Positive integer milliseconds |

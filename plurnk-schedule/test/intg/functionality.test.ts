@@ -99,7 +99,7 @@ const HEARTBEAT = { rule: "FREQ=HOURLY", target: "worker://bot", prompt: "Check 
 const BEAT = { rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY;COUNT=2", target: "worker://bot", prompt: "Beat.", policy: { proposals: "accept" } };
 
 const family = (time: FakeTime, env: Record<string, string> = {}, reports: string[] = []): ScheduleFunctionality =>
-    new ScheduleFunctionality({ TZ: "UTC", PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "3", ...env }, { clock: time.clock, timers: time.api, report: (message) => { reports.push(message); } });
+    new ScheduleFunctionality({ TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "[]", PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "3", ...env }, { clock: time.clock, timers: time.api, report: (message) => { reports.push(message); } });
 
 const attached = (adapter: ScheduleFunctionality, zone = "UTC"): number[] => {
     const refreshed: number[] = [];
@@ -135,7 +135,7 @@ test("{§schedule-discovery-preview} the panel says how many occurrences a readi
     assert.match(String(daily!.summary), /; next 2026-09-16T12:30:16\+00:00\[UTC\]; unbounded/u, "one occurrence, not three");
     assert.deepEqual([...one.service().keys()], [], "the control key declares no rule");
     const time = new FakeTime();
-    const unset = new ScheduleFunctionality({ TZ: "UTC" }, { clock: time.clock, timers: time.api });
+    const unset = new ScheduleFunctionality({ TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "[]" }, { clock: time.clock, timers: time.api });
     await assert.rejects(unset.discover({ source: "FREQ=DAILY" }, { workspaceId: 1 }), /PLURNK_SCHEDULE_PREVIEW_OCCURRENCES must be a positive integer; got undefined/u);
 });
 

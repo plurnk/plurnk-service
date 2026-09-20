@@ -22,7 +22,7 @@ const configured = (): {
 } => {
     const env = {
         PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
     };
     const connection = new ServerConnection({
         name: "echo",
@@ -254,7 +254,7 @@ test("MCP executor keeps elicitation on its generic client interaction sink", as
         tools: ["batch"],
     }, {
         PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
     });
     const executor = new McpExecutor(
         { runtime: "interaction", glyph: "🔌" },
@@ -295,7 +295,7 @@ test("{§mcp-result-content} every passive content variant is preserved lossless
         tools: ["rich"],
     }, {
         PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
     });
     const executor = new McpExecutor(
         { runtime: "rich", glyph: "🔌" },
@@ -369,7 +369,7 @@ test("MCP progress and cancellation remain on the owning execution lifecycle ove
         tools: ["progress", "wait"],
     }, {
         PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
     });
     let residencyLeases = 0;
     const executor = new McpExecutor(

@@ -47,7 +47,7 @@ const fixture = async (programs: string[], run: (f: {
         set: (callback, delay) => { const id = ++serial; timers.set(id, { callback, due: now + delay }); return id; },
         clear: (id) => { timers.delete(id as number); },
     };
-    const makeModule = () => Module.init({ env: { TZ: "UTC" }, clock: () => now, timers: timerApi });
+    const makeModule = () => Module.init({ env: { TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "[]" }, clock: () => now, timers: timerApi });
     const module = makeModule();
     let daemon = new Daemon({ db, provider });
     daemon.registerModule(module);

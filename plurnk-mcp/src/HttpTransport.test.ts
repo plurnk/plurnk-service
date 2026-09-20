@@ -19,7 +19,7 @@ import {
 
 const floor = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
 };
 
 test("{§mcp-connection-shutdown} closing a connection interrupts unfinished negotiation", { timeout: 5_000 }, async (t) => {

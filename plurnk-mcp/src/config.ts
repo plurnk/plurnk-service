@@ -401,8 +401,12 @@ export const summaryOverrides = (
     return { servers, tools };
 };
 
-export const serviceEnabledNames = (environ: NodeJS.ProcessEnv = process.env): string[] =>
-    selectedServerNames(environ, `${PREFIX}ENABLED`);
+export const serviceEnabledNames = (environ: NodeJS.ProcessEnv = process.env): string[] => {
+    const field = `${PREFIX}ENABLED`;
+    if (environ[field] === undefined) throw new Error(`${field} is missing from the assembled environment floor.`);
+    if (environ[field] === "") throw new Error(`${field} must be a JSON array of strings; [] enables none.`);
+    return selectedServerNames(environ, field);
+};
 
 export const connectTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number => {
     const raw = environ.PLURNK_MCP_CONNECT_TIMEOUT;

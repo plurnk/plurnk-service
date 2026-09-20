@@ -43,7 +43,7 @@ const assertDelivery = async (workerName: string): Promise<void> => {
         set: (callback) => { const id = nextTimer++; armed.set(id, callback); return id; },
         clear: (id) => { armed.delete(id as number); },
     };
-    const module = Module.init({ env: { TZ: "UTC" }, clock: () => now, timers });
+    const module = Module.init({ env: { TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "[]" }, clock: () => now, timers });
     let port: ApplicationPort | null = null;
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
     daemon.registerModule({
