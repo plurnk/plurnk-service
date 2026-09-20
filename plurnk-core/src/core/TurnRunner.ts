@@ -1,4 +1,3 @@
-import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import type { RequestPacket } from "./StoredPacket.ts";
 import NativeContent from "./NativeContent.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
@@ -1828,8 +1827,7 @@ export default class TurnRunner {
             }
         }
         const sourceStatementCount = ops.filter(({ position }) => position.line > 0).length;
-        const dispositions = ops.filter(TurnDisposition.is);
-        const trustworthyBoundary = dispositions.length <= 1 && !hasUnparsedTail;
+        const trustworthyBoundary = !hasUnparsedTail;
         // {§turn-shape} — bounded operation errors are recoverable and ride with the
         // admitted program; document-boundary failures still reject it.
         const recoverableParseErrors = trustworthyBoundary

@@ -38,10 +38,8 @@ PLURNK_SCHEDULE_ENABLED=["heartbeat"]
   persisted family state.
 - A delivery that fails, because the target worker is gone, lists the rule
   `unavailable` with its Problem; `enable` retries.
-- `WAIT (schedule:///rules/<alias>)` holds one pending occurrence in the loop.
-  Other arrivals do not erase that attachment. Delivery or withdrawal settles
-  it; later recurrences remain independent. READ or KILL its returned
-  `schedule:///waits/<id>` resource without changing the shared rule.
+- An occurrence arrives as a message and runs its own loop on the target
+  worker; no WAIT holds a loop for it.
 
 `SPEC.md` is the specification; `docs/schedule.md` is the model-facing
 teaching beneath the generated family document.

@@ -746,13 +746,6 @@ export default class DrainSupervisor {
         this.#trackSettlement(this.#handleWakeWorker(payload), "wake-on-completion");
     }
 
-    notifyAwaitedEvent(workspaceId: number, workerId: number, loopId: number): void {
-        this.#trackSettlement((async () => {
-            if (!await this.#wakeLoop(workerId, loopId, { eventOnly: true })) return;
-            await this.ensureDrain({ workspaceId, workerId, systemPrompt: await this.#readSystemPrompt() });
-        })(), "wake-on-awaited-event");
-    }
-
     async operationSettled(workspaceId: number, logEntryId: number): Promise<void> {
         const recipients = await this.#db.message_reply_recipients.all<{ worker_id: number }>({ log_entry_id: logEntryId });
         if (recipients.length === 0) return;

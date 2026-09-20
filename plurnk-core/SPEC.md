@@ -562,8 +562,8 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
   ({§exec-stream}). It is orienting state, never advice: the model sees its live
   subtree (`{"status":102,"path":"worker://worker-x"}`) and reasons for itself —
   READ, SEND, or KILL via the path.
-  Explicit loop-local event attachments add `events` only when present, under
-  {§awaited-event}; unrelated workspace schedules are not held work.
+  Workspace schedules are not held work: an occurrence arrives as a message
+  ({§schedule-delivery}).
 - §packet-empty-sections **Emptiness is stated where the model decides on it.**
   `## Delegation` renders every turn, each of its two lists `[]` when empty: the
   model decides whether to wait or complete on exactly these facts, so their
@@ -806,9 +806,9 @@ all use that one definition.
 
 ### §worker-wait-timing Durable waits and wake ownership
 
-WAIT has no timing operand. Its optional path may attach a pending event
-({§awaited-event}, {§send-wait-scope}). With live work—an open stream, a live child
-worker or an attached event—the loop parks durably and wakes on settlement, on a
+WAIT has no timing operand; its optional path is a label ({§send-wait-scope}).
+With live work—an open stream or a live child worker—the loop parks durably
+and wakes on settlement, on a
 message, or on the inherited observation cadence of its open streams
 ({§exec-poll}); without live work it continues at once, told so. A wake
 continues the same loop with the same messages, generation policy, and
@@ -1028,7 +1028,7 @@ boundary.
 - §worker-lifecycle-idle-is-concluded **Idle is not unanswered.** An empty WAIT continues; an answered, observed program without held work concludes under {§wait-obligation-matrix}. A concluded worker retains durable history; a later addressed arrival starts a new loop.
 - §worker-lifecycle-no-lost-loop **A loop is never stranded by a drain's exit.** A drain relinquishes its registry slot only after a lock-held re-claim confirms the queue is empty; a loop enqueued during that teardown is either re-claimed by the exiting drain or claimed by a fresh drain that a later inject starts. The relinquish and the start are serialized, so neither the lost-loop hang nor a transient double-drain can occur.
 - §worker-lifecycle-durable-disposition **Durable disposition wins cancellation races.** At a turn boundary, the engine reads the loop's durable status before interpreting a process-local abort. A committed `202` park survives a later daemon-shutdown signal; only a loop still durably running at `102` can be terminalized by that cancellation. Wake selection rechecks shutdown and worker cancellation before requeuing each parked loop.
-- §worker-lifecycle-restart-recovery **Restart is owner-loss reconciliation, not replay.** Before opening client transports, the service holds an exclusive database-adjacent daemon lock; a second live owner fails before touching SQLite, while a dead-PID crash claim is replaced atomically without a timeout lease. Boot preserves accepted `100` loops and restores their drains. A `102` loop belonged to a vanished drain/provider call, so it settles `500` with the interruption on its durable row—never replayed across an unknown effect boundary. Every pending physical provider request first settles as an error with absent usage and explicitly unknown cost; then its logical model call closes. Recovery never fabricates zero evidence. Every durable proposed operation likewise lost its process-local resolution waiter and settles as a visible `500 owner_vanished` occurrence rather than an unresolvable interrupt ({§proposal-list}). A pending client interaction also lost its exact awaiting operation, so boot removes the orphan instead of replaying work or inventing a response ({§client-interactions}). Every durable-open subscription belonged to a vanished callable: active channels become errored and its row closes `500`. A `202` continuation requeues on an unseen completion or when no live obligation remains. Otherwise it stays parked on surviving children or awaited events ({§awaited-event}); the drain restores inherited stream observation through the same guarded scheduler ({§worker-wait-timing}). Child terminalization wakes its parked parent on every outcome, including provider exceptions, cancellation, and restart interruption, recursively through the durable parent edges. These operations are idempotent, so an interrupted recovery safely repeats.
+- §worker-lifecycle-restart-recovery **Restart is owner-loss reconciliation, not replay.** Before opening client transports, the service holds an exclusive database-adjacent daemon lock; a second live owner fails before touching SQLite, while a dead-PID crash claim is replaced atomically without a timeout lease. Boot preserves accepted `100` loops and restores their drains. A `102` loop belonged to a vanished drain/provider call, so it settles `500` with the interruption on its durable row—never replayed across an unknown effect boundary. Every pending physical provider request first settles as an error with absent usage and explicitly unknown cost; then its logical model call closes. Recovery never fabricates zero evidence. Every durable proposed operation likewise lost its process-local resolution waiter and settles as a visible `500 owner_vanished` occurrence rather than an unresolvable interrupt ({§proposal-list}). A pending client interaction also lost its exact awaiting operation, so boot removes the orphan instead of replaying work or inventing a response ({§client-interactions}). Every durable-open subscription belonged to a vanished callable: active channels become errored and its row closes `500`. A `202` continuation requeues on an unseen completion or when no live obligation remains. Otherwise it stays parked on surviving children; the drain restores inherited stream observation through the same guarded scheduler ({§worker-wait-timing}). Child terminalization wakes its parked parent on every outcome, including provider exceptions, cancellation, and restart interruption, recursively through the durable parent edges. These operations are idempotent, so an interrupted recovery safely repeats.
 
 ---
 
@@ -2118,7 +2118,7 @@ The H3 is the row's complete model-facing identity and canonical READ address; m
 
 | Metadata | Meaning | Order |
 |---|---|---|
-| `path` | The operation's addressed operand, matching `OP (path)`: read resource, mutation subject, message recipient, awaited event, or executor operand. Explicit and automatic READs use the same field. Pathless operations omit it. | First |
+| `path` | The operation's addressed operand, matching `OP (path)`: read resource, mutation subject, message recipient, or executor operand. Explicit and automatic READs use the same field. Pathless operations omit it. | First |
 | `from`, `to` | COPY/MOVE's two operand selections, each retaining its optional scope; neither replaces actor attribution or is repeated as `path`. | First, in that order |
 | `stream` | An executor invocation's separately created output address, never a READ's alternative spelling of `path`. | Remaining facts |
 | `resource` | A distinct returned resource under {§operation-resource-receipt}. | Remaining facts |
@@ -2563,35 +2563,9 @@ SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metad
 - **Workflow:** WAIT yields; successful reply delivery and settled work permit completion at the end of the whole program. NOTE retains memory.
 
 §worker-obligations A worker holds its unresolved children and open non-detached
-streams (`worker_obligations`). `loop_obligations` composes those with the loop's
-explicitly awaited events. The packet's Delegation list, WAIT, completion and
-drain wake settlement use that same durable liveness.
-
-§awaited-event An explicitly awaited event is a finite, durable obligation of
-the accepting loop, in addition to its worker's children and streams. The
-producer owns the event; Core owns the attachment, observation and lifecycle.
-An attachment names an exact producer event, never a recurring rule's lifetime.
-
-| Transition | Attachment | Loop |
-|---|---|---|
-| `WAIT (path)` resolves a pending event | Attach idempotently to this loop; return a readable, cancellable resource address. | Apply ordinary end-of-program settlement. |
-| Another event awakens the loop | Unchanged. | Resume; later bare WAIT still includes the attachment. |
-| Producer settles that exact event | Preserve the exact result durably. | Wake the owning parked loop; require observation before completion. |
-| Source disabled, removed, replaced or delivery fails | Settle visibly; never silently transfer to another event. | Same settlement/observation path. |
-| `KILL` on the attachment | Withdraw only this attachment. | The shared producer and other attachments remain intact. |
-| Owning loop concludes or is cancelled | Retire pending attachments. | No attachment can revive a terminal loop. |
-| Log curation | No effect. | Lifecycle state is not owned by log rows. |
-
-The Delegation section presents pending attachments and as-yet-unobserved
-terminal results, with source and due time when supplied. Packet admission
-acknowledges only the exact terminal rows it presented. Multiple attachments
-coexist; a settled attachment never automatically enrolls its successor.
-Unattached future events do not prevent ordinary completion. Source settlement,
-registration, packet observation and parking must preserve an event arriving
-on either side of each boundary. Awaited events survive restart independently
-of process-owned streams; their producers reconcile pending identities at
-startup, surfacing unavailable or uncertain occurrences rather than
-replaying unknown effects.
+streams (`worker_obligations`); `loop_obligations` names them per loop. The
+packet's Delegation list, WAIT, completion and drain wake settlement use that
+same durable liveness.
 
 §wait-obligation-matrix **End-of-program resolution.** Execute all admitted operations and settle optimistic work before applying this table. WAIT is an optional yield, not an end-of-program delimiter.
 
@@ -2600,10 +2574,10 @@ replaying unknown effects.
 | Worker or loop already cancelled/terminal | Preserve that result. |
 | Administrative program | Finish its transaction without adjudicating another model loop's work. |
 | New unpublished message | Continue; publish it in the next packet. |
-| Live work and either WAIT or no unanswered messages | Park the same loop; message arrival, child/stream/event settlement or stream cadence wakes it. |
+| Live work and either WAIT or no unanswered messages | Park the same loop; message arrival, child or stream settlement, or stream cadence wakes it. |
 | WAIT without live work | Continue; never invent a future wake. |
 | Unanswered messages | Continue. |
-| Unobserved operation results, failures, child results, stream conclusions or event settlements | Continue; the next packet presents them. |
+| Unobserved operation results, failures, child results or stream conclusions | Continue; the next packet presents them. |
 | No outstanding messages, live work or unobserved results | Conclude successfully, without a synthetic operation. |
 
 An empty emission is handled by {§empty-turn}, not this completion rule. Ordinary strikes,
@@ -2710,7 +2684,7 @@ accounting and model-visible failure evidence remain separately owned by
   erase it. New arrivals are protected by {§completion-defers-to-messages}; no terminal verb
   or prose overrides this rule.
 - §completion-joins-live-work **Answered work still joins its live obligations.** Once all
-  observed messages are answered, live children, non-detached streams or awaited events park the same loop
+  observed messages are answered, live children, non-detached streams park the same loop
   as WAIT does. Each ordinary wake presents the newly settled state; completion is evaluated
   again after the next program. KILL owns cancellation; a reply never cancels work implicitly.
 - §completion-defers-to-results **Results keep the loop running until observed.** Same-turn
@@ -3253,7 +3227,7 @@ instead of idling until some caller's clock notices. It is a tripwire, not a fal
 provider-recovery path concludes before reaching it.
 
 Attendance never converts a legitimate wait that has a real waker — a `WAIT`, an open stream,
-a delegated child, an awaited event — into a termination. Those have wakers; a human question
+a delegated child — into a termination. Those have wakers; a human question
 does not. A prompt prefix states a disposition, never an attendance: typing `?` asks for review,
 and an unattended loop refuses that statement rather than conjuring a reviewer.
 
@@ -3804,7 +3778,6 @@ flowchart LR
 |---|---|
 | `registerRuntimes([{ decl, executor, availability, scheme? }, ...])` | Validates the complete canonical tag set under {§executor-runtime-declaration}, then publishes every process-wide executor and optional claimed scheme facet atomically. |
 | `registerScheme(name, handler)` | Adds one process-wide addressable scheme handler; scheme readiness and model-facing capability publication remain core-owned. |
-| `awaitedEvents(scheme)` | Registers the producer and returns its retainable pending/settlement capability ({§scheme-awaited-events}). |
 | §module-action-registration `registerModuleAction({ name, scope, inputSchema, outputSchema, handler })` | Adds one non-empty, extension-unique action with resolvable JSON Schemas. `scope` is exactly `worldless`, `workspace`, or `worker`; the handler receives schema-validated params and a separate matching context. Scoped contexts contain trusted bound identifiers, never client parameters. A client-interface module decides whether and how the name becomes public, validates successful output, and owns collisions with its built-ins. |
 | §module-workspace-provider `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` | Registers one extension-unique Functionality provider. `activate({ workspaceId, retain })` reconstructs the workspace snapshot; idempotent `deactivate({ workspaceId })` releases process resources. Core coalesces demand and supplies residency leases for work that outlives its caller. |
 | §module-workspace-state `readWorkspaceModuleState(workspaceId, namespaceOwner)` | Reads one nullable JSON state value per workspace and provider. Core owns storage and lifecycle; the provider owns its schema. Store symbolic credential references, not copied secrets. A worker-scoped family's coordinator reads and replaces the same shape per worker in `worker_module_state` ({§functionality-scope}). |
@@ -3928,8 +3901,7 @@ resource authority, channels, the default channel — and that manifest governs
 every claimed coordinate: its address, its fragmentless READ, the channel a
 subscription publishes. An adapter states the `traits` of its runtime — `web`
 for a family that reaches the network — so {§capability-admission} selects its
-manager and its resources alike. Event producers register through the module
-setup seam ({§scheme-awaited-events}).
+manager and its resources alike.
 
 §env-functionality **Environment is a scoped family.** Ambient names admitted by the
 operator's ceiling ({§exec-env-scoped}, service origin) precede workspace defaults and
@@ -4641,7 +4613,7 @@ their boundaries ({§log-wire-format}).
 | `inject`        | system | Authored Markdown                                                                             | {§packet-inject}                |
 | `log`           | user   | Markdown H3 records with JSON metadata                                                        | {§log-wire-format}              |
 | `worker`        | user   | JSON `path` with the literal Worker address, `parent` (address or `null`), `loop`, `turn`     | {§packet-current-turn}          |
-| `delegation`    | user   | JSON `{workers, streams}`; optional `events` for pending or unobserved attachments | {§child-orientation}, {§awaited-event} |
+| `delegation`    | user   | JSON `{workers, streams}`                                                                    | {§child-orientation}            |
 | `errors`        | user   | JSON status/log-path pointers                                                                 | {§operation-results}            |
 | `notices`       | user   | Terse observation bullets                                                                     | {§notice-drain-on-read}         |
 | `git`           | user   | Working-tree state in a NOTE blockquote                                                       | {§packet-cache-monotone}        |

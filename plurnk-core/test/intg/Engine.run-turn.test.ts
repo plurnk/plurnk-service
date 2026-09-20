@@ -383,7 +383,7 @@ test("Engine.runTurn: an empty trusted batch fails without leaving a producer tu
     try {
         const provider = new Mock({ contextWindow: 100000, responses: [response([])] });
         await assert.rejects(engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }), {
-            message: "an admitted operation batch must contain operations and at most one disposition",
+            message: "an admitted operation batch must contain operations",
         });
         const turns = await db.test_list_turns_in_loop.all<{
             producer: string; kind: string; status: number; completed_at: string | null;
@@ -823,20 +823,19 @@ test("Engine.runTurn: sequence increments across multiple turn calls in the same
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: a trusted batch with competing dispositions fails before dispatch", async () => {
+test("{§turn-disposition} Engine.runTurn: a trusted batch with two dispositions dispatches both as one park", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
             responses: [response([dispositionStmt("WAIT", "first"), dispositionStmt("WAIT", "last")])],
         });
-        await assert.rejects(engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }), {
-            message: "an admitted operation batch must contain operations and at most one disposition",
-        });
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        assert.equal(result.status, 102, "nothing is in flight, so the park continues at once");
         const turn = await db.test_latest_model_turn_in_loop.get<{ id: number }>({ loop_id: loopId });
         assert.ok(turn);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null }>({ turn_id: turn.id });
-        assert.equal(rows.some(({ op }) => typeof op === "string" && TurnDisposition.isOp(op)), false, "no conflicting disposition was dispatched");
+        assert.equal(rows.filter(({ op }) => typeof op === "string" && TurnDisposition.isOp(op)).length, 2, "both WAITs are rows of the one turn");
     } finally { await db.close(); }
 });
 

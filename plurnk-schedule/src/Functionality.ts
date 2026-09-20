@@ -142,7 +142,7 @@ export default class ScheduleFunctionality {
         this.#env = env;
         this.#report = options.report ?? ((message, cause) => { console.error(`${message}:`, cause); });
         this.#scheduler = new Scheduler({ ...options, report: this.#report, settled: (workspaceId) => { this.#settled(workspaceId); } });
-        this.scheme = new ScheduleResources(this.#scheduler, async (workspaceId) => {
+        this.scheme = new ScheduleResources(async (workspaceId) => {
             if (this.#handle === null) throw new Error("schedule family is not attached");
             const listing = await this.#handle.invoke("list", {}, { workspaceId });
             return (listing.body as { definitions: Array<{ alias: string; state: string }> }).definitions;

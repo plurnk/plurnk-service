@@ -70,7 +70,7 @@ const idle = async (schemes: SchemeRegistry): Promise<void> => {
     await (schemes.get("exec") as Exec).idle();
 };
 
-test("{§send-wait-scope} a decorated WAIT joins its actual live stream without selecting or timing another", async () => {
+test("{§send-wait-scope} a decorated WAIT parks on its actual live stream; the decoration is a label, never a join", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "1";
     const completion = Promise.withResolvers<{ status: number }>();

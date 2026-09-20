@@ -66,33 +66,14 @@ The module holds one armed occurrence per enabled (workspace, alias). At the
 occurrence it resolves the target worker by name and delivers the prompt
 through the application port's `runLoop` with the source `schedule://<alias>`
 and the definition's policy: the message joins the worker's live loop or
-starts one ({§message-arrival}, {§message-causal-source}). The next occurrence
+starts one ({§message-arrival}, {§message-causal-source}); no WAIT holds a loop
+for an occurrence — a loop with nothing live concludes, and the occurrence's
+message starts the next loop on the same worker. The next occurrence
 then arms from the present: a late fire delivers once and skips what it
 missed, never a backlog. A missing worker or a refused delivery disarms the
 rule and lists it `unavailable` with the Problem; `enable` retries. After
 every delivery attempt the family's outcomes are refreshed where the workspace
 is resident.
-
-## §schedule-await Awaiting one occurrence
-
-`schedule:///rules/<alias>` is the readable rule resource. WAIT on it attaches
-its currently armed occurrence under {§awaited-event}; WAIT does not create,
-retarget, enable or change the schedule. A missing, disabled, exhausted or
-unavailable rule returns its factual failure and creates no attachment.
-
-The attachment resource `schedule:///waits/<id>` is independently readable and
-cancellable. KILL there withdraws the attachment, not the rule. A successful
-delivery settles all attachments to that exact occurrence after message
-admission, not after the recipient finishes answering. Later recurrences are
-independent. Repeated WAIT before delivery reuses the same loop attachment.
-
-Rule replacement, disablement and removal settle the affected attachments;
-re-enabling does not revive them. Registration, delivery and rule publication
-are serialized by the producer so completion cannot fall between resolving
-an occurrence and recording its attachment. A future occurrence survives
-restart only when the restored rule still identifies it. An overdue occurrence
-whose delivery was not recorded is reported as uncertain, not replayed or
-silently replaced with the next recurrence.
 
 ## §schedule-residency Residency
 

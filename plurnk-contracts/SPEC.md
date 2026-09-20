@@ -607,22 +607,21 @@ The path names a program or tool and is never split. Metadata such as
 `[{"cwd": "…"}]` remains interpreted by the selected executor.
 
 §turn-disposition WAIT requests parking; its literal body does not control
-scheduling. Its optional target may attach a pending event ({§awaited-event});
+scheduling, and its optional target is the label the row keeps, never a join;
 the AST has no independently settable lifecycle status or metadata.
-A turn admits at most one WAIT, deferred until its other operations
-settle. End-of-program adjudication owns continuation, joining and completion
+A turn admits any number of WAITs, all deferred until its other operations
+settle and together one park. End-of-program adjudication owns continuation, joining and completion
 under {§wait-obligation-matrix}; no terminal verb or synthetic receipt is required.
 SEND delivers messages and NOTE retains memory, neither declaring an outcome.
 
-§send-wait-scope WAIT's optional target is retained. A scheme's wait handler
-may attach one pending event; targets without a wait handler leave bare WAIT
-behavior unchanged. Scope and metadata are discarded without diagnostics,
+§send-wait-scope WAIT's optional target is retained as the row's label; no
+scheme handler runs for it, so every WAIT is the bare park. Scope and metadata
+are discarded without diagnostics,
 including structured scopes. The body, aside, and exact submitted program
 remain intact. WAIT neither creates a schedule nor restricts which ordinary
 events may awaken the loop. A scope slot's content is skipped unread whatever it
-holds (`<sh:///…>` included; #756). Ordinary malformed-header and duplicate-WAIT
-rules still apply: a second WAIT is the signature of a fabricated continuation
-(the model writing further turns past its own park), so the attempt is rejected.
+holds (`<sh:///…>` included; #756). Ordinary malformed-header rules still apply;
+a second WAIT is one more label on the same park, never a refusal.
 
 §send-directed-scope A recipient SEND carries an optional numeric scope after
 its target and metadata through to the addressed owner, which assigns its
@@ -971,17 +970,16 @@ the human is the native `question` executor tool ({§question-tool}), not a
 disposition. The shape rules ARE structural:
 
 - §send-mid-reservation WAIT is reserved ({§turn-disposition}).
-  A turn admits at most one lifecycle declaration, anywhere among its operations
-  ({§disposition-anywhere}); the runtime executes it last. A second
-  disposition is a structural error, not a choice between competing outcomes.
-- §disposition-anywhere The disposition may sit anywhere in a model turn
+  A turn admits any number of lifecycle declarations, anywhere among its
+  operations ({§disposition-anywhere}); the runtime executes them last, as one park.
+- §disposition-anywhere A disposition may sit anywhere in a model turn
   without imposing a program boundary. `PlurnkParser.parse` admits every
   operation before and after it in authored order; the runtime defers only the
-  disposition until the other admitted operations settle
+  dispositions until the other admitted operations settle
   ({§op-execution-order}). Nothing is dropped and no diagnostic is raised for
   position. Omission does not synthesize a disposition ({§turn-shape}).
 - SEND is communication: an optional recipient path and an optional body.
-- §park-202-only WAIT joins live work: an open stream, an explicitly awaited event, or a live
+- §park-202-only WAIT joins live work: an open stream or a live
   child. With none, it continues. It takes no scope ({§send-wait-scope});
   a future message is scheduled through the schedule family.
 - §lifecycle-only-turn A WAIT-, SEND-, or NOTE-only turn is valid.
@@ -1054,8 +1052,8 @@ found.`), which the host may admit as an empty turn rather than reject
 ({§disposition-anywhere}). An omitted WAIT produces no synthesized statement, diagnostic, receipt,
 warning, or strike. The authored operations and source remain unchanged.
 Unfinished blocks never receive inferred closers.
-Bounded operation errors retain valid siblings. Duplicate dispositions
-and failed document boundaries remain structural failures.
+Bounded operation errors retain valid siblings. A failed document boundary
+remains a structural failure.
 
 The host records programs per turn; no operation acts as a separator between
 saved programs. There is no outer Markdown program wrapper; the executable

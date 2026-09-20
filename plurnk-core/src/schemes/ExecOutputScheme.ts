@@ -1,4 +1,4 @@
-import type { DispositionStatement, FindStatement, KillStatement, ParsedPath, SendStatement } from "@plurnk/plurnk-contracts";
+import type { FindStatement, KillStatement, ParsedPath, SendStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "../core/scheme-types.ts";
 import type Exec from "./Exec.ts";
 import EntryFind, { type FindResult } from "./_entry-find.ts";
@@ -139,12 +139,5 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
             return kill.call(this.#facet, statement, await this.#facetContext(ctx, statement.target));
         }
         return this.#exec.kill(statement, ctx);
-    }
-
-    async wait(statement: DispositionStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
-        if (statement.target !== null && this.claimsLiveResource(statement.target)) {
-            return this.#facet?.wait?.(statement, await this.#facetContext(ctx)) ?? { status: 200 };
-        }
-        return { status: 200 };
     }
 }

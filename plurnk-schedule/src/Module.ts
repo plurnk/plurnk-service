@@ -13,7 +13,6 @@ import { parseRule } from "./rules.ts";
 import type { ScheduledRule } from "./Scheduler.ts";
 
 interface SetupSeam extends EnvironmentSeam {
-    awaitedEvents(scheme: string): import("@plurnk/plurnk-schemes").AwaitedEventProducer;
     registerFunctionalityAdapter(adapter: ScheduleFunctionality): FunctionalityFamilyHandle;
     readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown | null>;
 }
@@ -63,7 +62,6 @@ export default class Module {
     setup(seam: SetupSeam): void {
         if (this.#seam !== null) throw new Error("schedule module already set up");
         this.#seam = seam;
-        this.#functionality.scheduler.attach(seam.awaitedEvents("schedule"));
         this.#functionality.attach(seam.registerFunctionalityAdapter(this.#functionality), seam);
     }
 
@@ -98,7 +96,6 @@ export default class Module {
             }
             await this.#functionality.scheduler.sync(workspace.id, rules);
         }
-        await this.#functionality.scheduler.reconcile();
     }
 
     async close(): Promise<void> {

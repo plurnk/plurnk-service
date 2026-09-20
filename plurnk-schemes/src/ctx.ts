@@ -159,7 +159,7 @@ export interface ChannelCaps {
 // content).
 //
 // Wake delivery belongs to lifecycle settlement, not this metadata notification:
-// subscriptions.close for streams; the module's awaited-event producer for finite events.
+// subscriptions.close for streams.
 export interface NotifyCaps {
     streamEvent(pathname: string, channel: string, state: ChannelState, contentLength: number): void;
 }
@@ -265,8 +265,6 @@ export interface SchemeAddressCtx {
 }
 
 export interface SchemeCtx extends SchemeAddressCtx {
-    readonly awaitedEvents: import("./awaited-events.ts").AwaitedEventCaps;
-
     readonly entries: EntryCaps;
     readonly channels: ChannelCaps;
     readonly notify: NotifyCaps;

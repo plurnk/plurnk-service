@@ -1178,7 +1178,7 @@ test("body punctuation and Markdown remain opaque", () => {
     }
 });
 
-test("parse accepts one WAIT-terminated turn and rejects another WAIT in that turn", () => {
+test("{§send-mid-reservation} {§turn-disposition} parse accepts a WAIT-terminated turn, and another WAIT after it is one more park label", () => {
     const turn = sections(
         section("READ", " (worker:///x)"),
         section("WAIT", "", inventory("done")),
@@ -1187,11 +1187,16 @@ test("parse accepts one WAIT-terminated turn and rejects another WAIT in that tu
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     assert.equal(result.unparsedTail, undefined);
 
-    const twoTurns = sections(turn, sections(
+    const twoWaits = sections(turn, sections(
         section("WAIT", "", inventory("done again")),
     ));
-    const invalid = PlurnkParser.parse(twoTurns);
-    assert.ok(invalid.items.some((item) => item.kind === "error") || invalid.unparsedTail !== undefined);
+    const admitted = PlurnkParser.parse(twoWaits);
+    assert.deepEqual(admitted.items.filter((item) => item.kind === "error"), []);
+    assert.equal(admitted.unparsedTail, undefined);
+    assert.deepEqual(
+        admitted.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []),
+        ["READ", "WAIT", "WAIT"],
+    );
 });
 
 test("parseStatements accepts direct consecutive turns and flattens them in order", () => {

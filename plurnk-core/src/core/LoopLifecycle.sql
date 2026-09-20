@@ -26,8 +26,7 @@ SET status = 100,
 WHERE id = $loop_id AND status = 202
   AND ($revision IS NULL OR wait_revision = $revision)
   AND ($due_at IS NULL OR wait_poll_at <= $due_at)
-  AND ($event_only = 0 OR observed_wake_revision < (SELECT wake_revision FROM workers WHERE id = loops.worker_id)
-    OR EXISTS (SELECT 1 FROM awaited_events a WHERE a.loop_id = loops.id AND a.result IS NOT NULL AND a.observed = 0))
+  AND ($event_only = 0 OR observed_wake_revision < (SELECT wake_revision FROM workers WHERE id = loops.worker_id))
 RETURNING id;
 
 -- PREP: lifecycle_parked_loops
@@ -50,7 +49,6 @@ SET status = $status,
 WHERE id = $loop_id AND status IN (100, 102, 202)
   AND ($require_answered = 0 OR NOT EXISTS (SELECT 1 FROM unanswered_messages WHERE loop_id = loops.id))
   AND ($require_answered = 0 OR observed_wake_revision = (SELECT wake_revision FROM workers WHERE id = loops.worker_id))
-  AND ($require_answered = 0 OR NOT EXISTS (SELECT 1 FROM awaited_events a WHERE a.loop_id = loops.id AND (a.result IS NULL OR a.observed = 0)))
 RETURNING terminal_result;
 
 -- PREP: lifecycle_loop_status
@@ -173,3 +171,7 @@ SELECT sequence FROM loops WHERE id = $loop_id;
 -- PREP: loop_resource_identity
 SELECT 'ops://' || w.name || '/' || l.sequence AS resource
 FROM loops l JOIN workers w ON w.id = l.worker_id WHERE l.id = $loop_id;
+
+-- PREP: loop_live_obligations
+-- {§worker-obligations}: the live work a loop is held on — its worker's open streams and live children.
+SELECT streams, workers FROM loop_obligations WHERE loop_id = $loop_id;

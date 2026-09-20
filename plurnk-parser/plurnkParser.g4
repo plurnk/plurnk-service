@@ -8,14 +8,13 @@ document
     : modelTurn EOF
     ;
 
-// Every decision is local ({§matcher-prefix-claims}: boundaries are trustworthy). The
-// disposition is recognized by its own token, never by a whole-turn
-// alternative that a mid-turn error can flip onto the sendless shape (#425 F2).
-// {§disposition-anywhere} — the disposition may sit anywhere among the turn's
-// operations; the runtime schedules it last.
+// Every decision is local ({§matcher-prefix-claims}: boundaries are trustworthy). A
+// disposition is recognized by its own token, never by a whole-turn alternative that a
+// mid-turn error can flip onto another shape (#425 F2). {§disposition-anywhere} — dispositions
+// may sit anywhere among the turn's operations, in any number; the runtime schedules them
+// last, and they are one park ({§turn-disposition}).
 modelTurn
-    : midStatement+ (dispositionStatement midStatement*)?
-    | dispositionStatement midStatement*
+    : (midStatement | dispositionStatement)+
     ;
 
 statementSeq

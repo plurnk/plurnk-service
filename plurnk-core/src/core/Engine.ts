@@ -257,7 +257,7 @@ export default class Engine {
     readonly #workspaceTurnStarting: WorkspaceTurnStarting | undefined;
     readonly #loopDriver: LoopDriver;
 
-    constructor({ db, lifecycle, schemes, mimetypes, streamEventNotify, reasoningEventNotify, loopPacketNotify, wakeWorkerNotify, awaitedEventNotify, injectWorker, cancelWorker, operationSettledNotify, acquireWorkspaceTurn, workspaceTurnStarting, noticeNotify, weigh }: {
+    constructor({ db, lifecycle, schemes, mimetypes, streamEventNotify, reasoningEventNotify, loopPacketNotify, wakeWorkerNotify, injectWorker, cancelWorker, operationSettledNotify, acquireWorkspaceTurn, workspaceTurnStarting, noticeNotify, weigh }: {
         db: Db;
         lifecycle?: LoopLifecycle;
         schemes: SchemeRegistry;
@@ -266,7 +266,6 @@ export default class Engine {
         reasoningEventNotify?: ReasoningEventNotify;
         loopPacketNotify?: LoopPacketNotify;
         wakeWorkerNotify?: WakeWorkerNotify;
-        awaitedEventNotify?: import("./AwaitedEvents.ts").AwaitedEventNotify;
         injectWorker?: InjectWorkerNotify;
         cancelWorker?: CancelWorkerNotify;
         operationSettledNotify?: OperationSettledNotify;
@@ -318,7 +317,7 @@ export default class Engine {
             interactions: this.#interactions,
             executors, loopSignal,
             settleDerivations: (context) => this.#queueWorkspaceWarm(context, true, false),
-            streamEventNotify, wakeWorkerNotify, awaitedEventNotify, injectWorker, cancelWorker, operationSettledNotify,
+            streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, operationSettledNotify,
             liveSubscriptions: this.#liveSubscriptions,
             entryAddresses });
         this.#turnRunner = new TurnRunner({

@@ -67,8 +67,8 @@ test("SEND authored first: later operations run in authored order and completion
     } finally { await db.close(); }
 });
 
-test("duplicate dispositions and unclosed trailing targets dispatch no part of the rejected attempt", async () => {
-    for (const tail of ["````WAIT\nContradiction.\n````", "````READ (unfinished"]) {
+test("an unclosed trailing target dispatches no part of the rejected attempt", async () => {
+    for (const tail of ["````READ (unfinished"]) {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, "rejected-disposition");

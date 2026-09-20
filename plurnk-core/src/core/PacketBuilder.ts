@@ -31,7 +31,6 @@ import TokenCalibration from "./TokenCalibration.ts";
 import LineAnchors from "../content/line-anchors.ts";
 import ToolResources from "./ToolResources.ts";
 import LogVisibility from "./LogVisibility.ts";
-import AwaitedEvents, { type AwaitedEventRow } from "./AwaitedEvents.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -131,7 +130,6 @@ export default class PacketBuilder {
     // the allowance captured before this request can change model evidence.
     readonly #curationBudgets = new WeakMap<readonly StoredPacketSection[], number | null>();
     readonly #streamObservations = new WeakMap<readonly StoredPacketSection[], readonly { publication_id: number; bytes: number }[]>();
-    readonly #eventObservations = new WeakMap<readonly StoredPacketSection[], readonly number[]>();
     readonly #unadmittedOutput = new WeakMap<readonly StoredPacketSection[], readonly number[]>();
     #schemes: SchemeRegistry;
     // Boot-discovered runtime executors, late-injected on Engine after daemon
@@ -305,12 +303,6 @@ export default class PacketBuilder {
         }));
         const childWorkers = (await this.#db.engine_child_workers_live.all<{ name: string; status: number }>({ worker_id: workerId }))
             .map((r) => ({ status: r.status, path: `worker://${r.name}` }));
-        const eventRows = await this.#db.awaited_event_packet.all<AwaitedEventRow>({ loop_id: loopId });
-        const awaitedEvents = eventRows.map((row) => {
-            const { path, source, dueAt, result } = AwaitedEvents.record(row);
-            return { path, source, ...(dueAt === undefined ? {} : { dueAt }), status: result?.status ?? "pending",
-                ...(result === null ? {} : { result }) };
-        });
         // {§child-orientation} — a child is told whose child it is, so it can name the parent's
         // streams and space ({§worker-read-scope}, #394). The parent rides the `## Worker` identity
         // block; a root worker states `"parent": null` rather than omitting it.
@@ -351,7 +343,7 @@ export default class PacketBuilder {
             // child-orientation: what this worker holds live — its child workers and its open streams — under
             // the teaching's own word, just above errors. Terse pointers (the path is the actionable address
             // the model READs, SENDs to, or KILLs), never advice. {§child-orientation}
-            { name: "delegation", slot: "user", header: "Delegation", content: PacketWire.renderDelegation(childWorkers, childStreams, awaitedEvents) },
+            { name: "delegation", slot: "user", header: "Delegation", content: PacketWire.renderDelegation(childWorkers, childStreams) },
             { name: "errors", slot: "user", header: "Errors", content: PacketWire.renderFailurePointers(failures) },
             { name: "notices", slot: "user", header: "Notices", content: PacketWire.renderNotices(notices) },
             { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus) },
@@ -394,9 +386,6 @@ export default class PacketBuilder {
         const packet: RequestPacket = { weight: renderWeight + attachmentsWeight, sections, attributions: [], attachments: [...renderedLog.attachments] };
         this.#curationBudgets.set(packet.sections, curationBudget);
         this.#streamObservations.set(packet.sections, openChannels);
-        const delegationPresented = sections.some((section) => section.name === "delegation"
-            && section.content === defaults.find((draft) => draft.name === "delegation")!.content);
-        this.#eventObservations.set(packet.sections, delegationPresented ? eventRows.filter((row) => row.result !== null).map((row) => row.id) : []);
         this.#unadmittedOutput.set(packet.sections, renderedLog.unadmittedOutput);
         return packet;
     }
@@ -414,9 +403,6 @@ export default class PacketBuilder {
     }
 
     async recordObservations(packet: RequestPacket): Promise<void> {
-        const events = this.#eventObservations.get(packet.sections);
-        if (events === undefined) throw new Error("Cannot acknowledge an unbuilt request packet.");
-        if (events.length > 0) await this.#db.awaited_event_observe.run({ ids: JSON.stringify(events) });
         const observations = this.#streamObservations.get(packet.sections);
         if (observations === undefined) throw new Error("Cannot acknowledge an unbuilt request packet.");
         if (observations.length === 0) return;

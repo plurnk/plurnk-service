@@ -170,14 +170,9 @@ test("a plus-prefixed path is still a path, alone or as an extglob", () => {
     }
 });
 
-test("{§send-mid-reservation} duplicate dispositions are structural failures, never a false unclosed tail", () => {
-    for (const op of ["WAIT"]) {
-        const r = PlurnkParser.parse([task(op), task()].join("\n"));
-        assert.equal(r.unparsedTail, undefined);
-        assert.equal(errors(r).length, 1);
-        assert.equal(errors(r)[0].message, "A turn permits only one WAIT.");
-        assert.equal(errors(r)[0].code, "invalid-turn-structure");
-        assert.equal(errors(r)[0].line, 4);
-        assert.deepEqual(statements(r).map(writtenOp), [op]);
-    }
+test("{§turn-disposition} any number of WAITs are admitted, each its own statement, with no diagnostic", () => {
+    const r = PlurnkParser.parse([task("WAIT"), frame("READ (a.md) <1,-1>", null), task("WAIT")].join("\n"));
+    assert.equal(r.unparsedTail, undefined);
+    assert.deepEqual(errors(r), []);
+    assert.deepEqual(statements(r).map(writtenOp), ["WAIT", "READ", "WAIT"]);
 });

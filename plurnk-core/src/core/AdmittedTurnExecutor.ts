@@ -95,10 +95,12 @@ export default class AdmittedTurnExecutor {
         onSettled?: (logEntryId: number) => void | Promise<void>;
     }): Promise<AdmittedTurnResult> {
         // {§turn-shape} — continuation is the default; lifecycle verbs express explicit intent.
+        // {§turn-disposition} — every WAIT is admitted and dispatched; together they are one park,
+        // and the last of them settles the turn.
         const dispositions = statements.filter(TurnDisposition.is);
-        const finalOp = dispositions[0];
-        if ((statements.length === 0 && !emptyTurn) || dispositions.length > 1) {
-            throw new Error("an admitted operation batch must contain operations and at most one disposition");
+        const finalOp = dispositions.at(-1);
+        if (statements.length === 0 && !emptyTurn) {
+            throw new Error("an admitted operation batch must contain operations");
         }
         // {§empty-turn} — a model response with no operation is a turn all the same: its text and
         // reasoning are kept, the packet says so, and the strike rail counts it once.
@@ -116,7 +118,7 @@ export default class AdmittedTurnExecutor {
         let wait = false;
         const pendingEngineErrors: EngineProblemKind[] = [];
         let realCommands = 0;
-        const admitted = statements.filter((statement) => statement === finalOp
+        const admitted = statements.filter((statement) => TurnDisposition.is(statement)
             || realCommands++ < maxCommands);
         const scheduled = scheduleTurnOps(admitted.flatMap(expandSafeUriTargetGroup));
         const logSelectionMaxId = (await this.#db.engine_log_selection_high_water.get<{ max_id: number }>({
@@ -300,9 +302,7 @@ export default class AdmittedTurnExecutor {
                     message: `EDIT resolution applied: ${merge.rule} - the row's merged fact has the coordinates; verify before building on it.`,
                 });
             }
-            if (scheduledStatement === finalOp) {
-                wait = result.status < 400;
-            }
+            if (TurnDisposition.is(scheduledStatement) && result.status < 400) wait = true;
         }
         if (finalOp === undefined) await settleTurn();
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");

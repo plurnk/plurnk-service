@@ -96,7 +96,8 @@ test("{§reasoning-notes}: a rejected emission cannot commit its reasoning NOTE"
         const rejectedReasoning = frame("NOTE", "This belongs to the rejected attempt.");
         const acceptedReasoning = frame("NOTE", "This belongs to the accepted attempt.");
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: [frame("WAIT", "First wait."), frame("WAIT", "Second wait.")].join("\n\n"), reasoning: rejectedReasoning } },
+            // {§unparsed-tail-boundary} — an unclosed target slot is the refusal that remains; a second WAIT is not one.
+            { assistant: { content: "````READ (unfinished", reasoning: rejectedReasoning } },
             { assistant: { content: frame("SEND", "Finished."), reasoning: acceptedReasoning } },
         ] });
         const result = await engine.runTurn({ ...context, provider, messages: [] });

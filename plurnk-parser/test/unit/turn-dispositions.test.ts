@@ -44,9 +44,18 @@ for (const [op, status] of [["WAIT", 202]] as const) {
     });
 }
 
-test("{§turn-shape} tolerating WAIT decorations does not admit duplicate waits or unclosed slots", () => {
+test("{§turn-disposition} two decorated WAITs are two statements of one turn, each keeping its label", () => {
+    const result = PlurnkParser.parse(`${PlurnkParser.frame("WAIT (sh:///one)", null)}\n${PlurnkParser.frame("WAIT (sh:///two)", null)}`);
+    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+    assert.equal(result.unparsedTail, undefined);
+    assert.deepEqual(
+        result.items.flatMap((item) => item.kind === "statement" && item.statement.op === "WAIT" ? [item.statement.target?.raw ?? null] : []),
+        ["sh:///one", "sh:///two"],
+    );
+});
+
+test("{§turn-shape} tolerating WAIT decorations does not admit unclosed slots", () => {
     for (const source of [
-        `${PlurnkParser.frame("WAIT (sh:///one)", null)}\n${PlurnkParser.frame("WAIT (sh:///two)", null)}`,
         "````WAIT (sh:///unfinished",
         "````WAIT [{\"unfinished\":",
     ]) {

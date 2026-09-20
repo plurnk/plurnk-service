@@ -29,7 +29,7 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 * WORK: Deploy a child worker (fresh log).
 * FORK: Deploy a forked worker (forked log).
 * BARE: Deploy an isolated inference query (no log or tools).
-* WAIT: Yield while awaiting workers, streams, or scheduled events.
+* WAIT: Yield until the next wake: a child's result, a message, a stream's end.
 
 ## Workflow Management
 
@@ -81,7 +81,7 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 > `SEND (worker://name)` messages a live worker.
 
 > [!TIP]
-> WAIT (path)? permits yielding for a child worker, streaming tool, or pending scheduled event.
+> WAIT yields while work is live and wakes on the next arrival; name what you wait for if you like, and several WAITs are one yield.
 
 ## Context Curation
 

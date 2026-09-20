@@ -1,6 +1,5 @@
 import {
     BaseErrorListener,
-    ParserRuleContext,
     type RecognitionException,
     type Recognizer,
     type Token,
@@ -28,22 +27,9 @@ export default class RecordingListener extends BaseErrorListener {
         msg: string,
         _e: RecognitionException | null,
     ): void {
-        let duplicateDisposition = false;
-        if (recognizer instanceof plurnkParser && offendingSymbol !== null && [
-            plurnkParser.OPEN_WAIT,
-        ].includes(offendingSymbol.type)) {
-            const containsDisposition = (context: ParserRuleContext): boolean =>
-                context.ruleIndex === plurnkParser.RULE_dispositionStatement
-                || context.children.some((child) => child instanceof ParserRuleContext && containsDisposition(child));
-            for (let context = recognizer.context; context !== null; context = context.parent) {
-                if (containsDisposition(context)) { duplicateDisposition = true; break; }
-            }
-        }
-        const structural = duplicateDisposition || recognizer instanceof plurnkParser
+        const structural = recognizer instanceof plurnkParser
             && recognizer.context?.ruleIndex === plurnkParser.RULE_document;
-        const translated = duplicateDisposition
-            ? "A turn permits only one WAIT."
-            : this.source === "lexer"
+        const translated = this.source === "lexer"
             ? PlurnkErrorStrategy.translateLexerMessage(recognizer as plurnkLexer, msg)
             : msg;
         this.errors.push(new PlurnkParseError(line, column, this.source, translated, "error", structural ? "invalid-turn-structure" : undefined));

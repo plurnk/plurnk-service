@@ -141,10 +141,10 @@ Find the capital of France from a primary source
 Await capital-checker's answer.
 ````
 
-WAIT continues the same loop: with live work—a child, an open stream, or an
-explicitly awaited event—the loop parks and wakes when that work
-settles, when a message arrives, or on an open stream's observation cadence;
-without live work it continues at once. To wake later with nothing in flight,
+WAIT continues the same loop: with live work—a child or an open stream—the
+loop parks and wakes when that work settles, when a message arrives, or on an
+open stream's observation cadence; without live work it continues at once.
+Several WAITs in one turn are one park, and what a WAIT names is its label. To wake later with nothing in flight,
 add a rule with the `schedule` family targeting yourself.
 
 WAIT on `schedule:///rules/<alias>` attaches its pending occurrence to this

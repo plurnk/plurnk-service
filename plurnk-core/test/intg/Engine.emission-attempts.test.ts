@@ -929,15 +929,13 @@ test("{§transfer-resource-selections} a malformed COPY destination cannot dispa
     }
 });
 
-test("duplicate dispositions destroy the single-turn boundary and retry wholesale", async () => {
+test("{§turn-disposition} two WAITs keep the single-turn boundary: the program is admitted whole", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("````WAIT\nWait.\n````\n````WAIT\nContinue the task.\n````\n\n````EDIT (worker:///must-not-exist)\nvalue\n````"),
-                invalid("````READ (worker:///anything)````\n````WAIT\nWait.\n````\n````WAIT\nAnother turn cannot begin here.\n````\n````EDIT (worker:///must-not-exist)\nvalue\n````"),
-                valid("accepted retry"),
+                invalid("````WAIT\nWait.\n````\n````WAIT\nContinue the task.\n````\n\n````EDIT (worker:///two-waits.md)\nvalue\n````"),
             ],
         });
 
@@ -949,19 +947,15 @@ test("duplicate dispositions destroy the single-turn boundary and retry wholesal
             messages: [{ role: "user", content: "do the task" }],
         });
 
-        assert.equal(result.status, 200);
-        assert.equal(result.emissionAttempts, 3);
-        const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: result.turnId });
-        assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 0, 1]);
+        assert.equal(result.emissionAttempts, 1, "the first emission is admitted");
+        const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
+        assert.deepEqual(attempts.map(({ accepted, parse_errors }) => [accepted, JSON.parse(parse_errors)]), [[1, []]]);
         const rows = await db.test_log_entries_by_turn.all<{
             op: string;
             origin: string;
         }>({ turn_id: result.turnId });
-        assert.equal(
-            rows.filter(({ op, origin }) => op === "EDIT" && origin === "model").length,
-            0,
-            "no parsed prefix or trailing operation from the untrustworthy frame dispatches",
-        );
+        assert.equal(rows.filter(({ op, origin }) => op === "EDIT" && origin === "model").length, 1, "the operation beside the two WAITs ran");
+        assert.equal(rows.filter(({ op }) => op === "WAIT").length, 2, "each WAIT is a row of the one admitted turn");
     } finally {
         await db.close();
     }

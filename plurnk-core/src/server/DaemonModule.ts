@@ -3,7 +3,6 @@ import type {
     ApplicationActionContext,
     ApplicationActionDescriptor,
     FindStatement,
-    DispositionStatement,
     KillStatement,
     SendStatement,
     FunctionalityCandidate,
@@ -58,7 +57,6 @@ export interface RuntimeSchemeFacet {
     prepareFind?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    wait?(statement: DispositionStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     kill?(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     // An operation the facet proposed is also the facet's to apply ({§http-outbound-proposes}).
     // Routed by the proposal's own `target`, the same claim that routed the operation itself, so
@@ -235,7 +233,6 @@ export interface WorkspaceCapabilityPublication {
 }
 
 export interface ModuleSetupSeam {
-    awaitedEvents(scheme: string): import("@plurnk/plurnk-schemes").AwaitedEventProducer;
     // {§workspace-env} Apply the workspace layer to admitted ambient values, or to
     // a provider's own reference-resolution environment. Never includes worker overrides.
     readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;

@@ -143,7 +143,6 @@ export type {
     UrlPath,
 } from "@plurnk/plurnk-contracts";
 export type { WindowResult } from "./Slicer.ts";
-export type { AwaitedEvent, AwaitedEventRecord, AwaitedEventCaps, AwaitedEventProducer } from "./awaited-events.ts";
 export type { ByteSource } from "./ByteSource.ts";
 export { default as FileByteSource } from "./FileByteSource.ts";
 export { default as GeneratedByteSource } from "./GeneratedByteSource.ts";
