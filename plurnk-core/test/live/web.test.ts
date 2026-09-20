@@ -58,7 +58,10 @@ test("live web: a discovered http:// READ atomically materializes a real URL (no
             assert.equal(entry.authority, "www.google.com", "the entry's authority is the origin host");
             const body = await db.test_get_channel.get<{ content: string }>({ entry_id: entry.id, name: "body" });
             assert.ok(body?.content.startsWith(String(r.content)), "READ projects from the stored canonical prefix");
-            assert.ok((body?.content.split("\n").length ?? 0) > 16, "the entry retains content beyond the markerless preview");
-            assert.deepEqual((r.range as { returned?: readonly number[] } | undefined)?.returned, [1, 16]);
+            assert.ok((body?.content.split("\n").length ?? 0) > 100, "the entry retains content beyond the shipped first page");
+            // The first page ships at a hundred units (4f14bc639); the live tier reads the shipped
+            // panel, so this asserts the same value shipped-defaults.test.ts pins for the Mock tier's
+            // sixteen-line fixture override. A stale 16 here hid for a day because live never gates.
+            assert.deepEqual((r.range as { returned?: readonly number[] } | undefined)?.returned, [1, 100]);
         } finally { await schemes.close(); await db.close(); }
     });
