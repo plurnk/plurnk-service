@@ -1941,7 +1941,8 @@ test("{§agui-conversation-sync}: an inference-free sync replays durable convers
             { id: "1/1/1/SEND", role: "user", content: "Prior question." },
             { id: "1/1/3/SEND", role: "assistant", content: "Prior answer." },
         ]);
-        assert.deepEqual(reads, [{ workspaceId: 3, workerId: 20, limit: 1000 }]);
+        // The bridge asks for as much history as the daemon will give; the ceiling is the daemon's panel's.
+        assert.deepEqual(reads, [{ workspaceId: 3, workerId: 20, limit: Number.MAX_SAFE_INTEGER }]);
         assert.equal(loopRuns.length, 0, "sync observes durable state without creating model work");
     } finally {
         await mod.close();

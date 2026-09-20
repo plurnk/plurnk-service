@@ -58,6 +58,19 @@ test("{§model-catalog}: search and pagination apply to the complete filtered re
     assert.equal(page.nextOffset, complete.total > 3 ? 3 : undefined);
 });
 
+test("{§model-catalog}: the panel is the page of a query that names no limit", () => {
+    const prior = process.env.PLURNK_SERVICE_MODEL_CATALOG_PAGE;
+    try {
+        process.env.PLURNK_SERVICE_MODEL_CATALOG_PAGE = "3";
+        const page = listModelCatalog({ availability: "all" }, {});
+        assert.equal(page.items.length, 3);
+        assert.equal(page.nextOffset, 3);
+        assert.equal(listModelCatalog({ availability: "all", limit: 5 }, {}).items.length, 5, "a named limit stands");
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_MODEL_CATALOG_PAGE; else process.env.PLURNK_SERVICE_MODEL_CATALOG_PAGE = prior;
+    }
+});
+
 test("{§model-catalog}: no configured provider means the default page is honestly empty", () => {
     assert.deepEqual(listModelCatalog({}, {}), { items: [], offset: 0, total: 0 });
 });

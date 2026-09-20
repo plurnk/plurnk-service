@@ -1,5 +1,6 @@
 // The client read surface: one entry with its channels, and the log projection. Split out of Daemon, which keeps the delegating entry points.
 import type { Db } from "../core/Db.ts";
+import Knob from "../core/Knob.ts";
 import Engine from "../core/Engine.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { Validator, type ClientEntryChannel, type EntryReadResult } from "@plurnk/plurnk-contracts";
@@ -301,7 +302,8 @@ export default class ClientReads {
             worker_id: workerId,
             loop_id: args.loopId ?? null, turn_id: args.turnId ?? null, since_id: args.sinceId ?? null,
             loop_seq: args.loopSeq ?? null, turn_seq: args.turnSeq ?? null, sequence: args.sequence ?? null,
-            limit: Math.min(args.limit ?? 100, 1000) });
+            // A caller asks for as many as it likes; the panel's ceiling is what it gets at most.
+            limit: Math.min(args.limit ?? Knob.integer("PLURNK_SERVICE_LOG_READ_PAGE", 1), Knob.integer("PLURNK_SERVICE_LOG_READ_MAX", 1)) });
         return rows.map((row) => LogEntry.wire(row));
     }
 

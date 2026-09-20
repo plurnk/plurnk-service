@@ -11,8 +11,7 @@ import {
     providerNameFromCatalogId,
 } from "@plurnk/plurnk-models";
 import { catalogReasoningPolicies, providerReadiness } from "@plurnk/plurnk-providers";
-
-const DEFAULT_LIMIT = 50;
+import Knob from "../core/Knob.ts";
 
 const compareText = (left: string, right: string): number => left < right ? -1 : left > right ? 1 : 0;
 
@@ -36,7 +35,7 @@ export const listModelCatalog = (
     const search = query.search?.trim().toLowerCase() ?? "";
     const availability = query.availability ?? "configured";
     const offset = query.offset ?? 0;
-    const limit = query.limit ?? DEFAULT_LIMIT;
+    const limit = query.limit ?? Knob.integer("PLURNK_SERVICE_MODEL_CATALOG_PAGE", 1);
     const providers = providerCatalogSnapshot();
     const readinessByProvider = new Map<string, ModelReadiness>();
     const entries: ModelCatalogEntry[] = [];

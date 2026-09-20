@@ -24,3 +24,28 @@ test("{§methods-log-read}: readLog honors per-worker journal isolation", async 
         } finally { ws.close(); }
     });
 });
+
+test("{§methods-log-read}: the panel is the page of a read that names no limit, and the ceiling of one that does", async () => {
+    const prior = { page: process.env.PLURNK_SERVICE_LOG_READ_PAGE, max: process.env.PLURNK_SERVICE_LOG_READ_MAX };
+    await withDaemon(null, async (_db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "readlog-page" });
+            const workspaceId = (created.result as { id: number }).id;
+            const workerId = (created.result as { workerId: number }).workerId;
+            for (let n = 1; n <= 5; n += 1) {
+                await daemon.dispatchAsClient({ workspaceId, workerId, statement: Dsl.buildEdit({ target: `worker:///note-${n}`, content: `row ${n}` }) });
+            }
+            process.env.PLURNK_SERVICE_LOG_READ_PAGE = "2";
+            process.env.PLURNK_SERVICE_LOG_READ_MAX = "4";
+            assert.equal((await daemon.readLog({ workspaceId, workerId })).length, 2, "no limit named: the page");
+            assert.equal((await daemon.readLog({ workspaceId, workerId, limit: 3 })).length, 3, "a named limit beneath the ceiling stands");
+            assert.equal((await daemon.readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER })).length, 4, "as many as it likes: the ceiling");
+        } finally {
+            ws.close();
+            for (const [name, value] of [["PLURNK_SERVICE_LOG_READ_PAGE", prior.page], ["PLURNK_SERVICE_LOG_READ_MAX", prior.max]] as const) {
+                if (value === undefined) delete process.env[name]; else process.env[name] = value;
+            }
+        }
+    });
+});

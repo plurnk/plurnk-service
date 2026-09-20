@@ -9,6 +9,7 @@ import { stat } from "node:fs/promises";
 import { matchesGlob, resolve } from "node:path";
 import { Validator, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type JsonSchema } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
+import Knob from "../core/Knob.ts";
 import type Engine from "../core/Engine.ts";
 import FileCreationPolicy, { type FileCreateScope } from "../core/file-creation-policy.ts";
 import GitMembership, { type OverlayResolution, type OverlayRow } from "../core/git-membership.ts";
@@ -33,7 +34,7 @@ const ENABLED_KEY = "PLURNK_MEMBERS_ENABLED";
 const SCOPE_KEY = "PLURNK_SERVICE_MEMBERS_MODEL_SCOPE";
 const ALIAS = /^[a-z][a-z0-9-]*$/u;
 const PATTERN_CHARACTERS = /[*?[\]{}]/u;
-const SAMPLE = 20;
+const sampleSize = (): number => Knob.integer("PLURNK_SERVICE_MEMBERS_SAMPLE", 0);
 
 type MembersProvenance = {
     readonly kind: "service-configuration" | "client-action" | "model-proposal";
@@ -153,19 +154,19 @@ const rowOf = (definition: MembersDefinition): OverlayRow => ({
 });
 
 const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
-const sample = (paths: readonly string[]): string => (paths.length === 0 ? "" : `: ${paths.slice(0, SAMPLE).join(", ")}${paths.length > SAMPLE ? ", …" : ""}`);
+const sample = (paths: readonly string[]): string => (paths.length === 0 ? "" : `: ${paths.slice(0, sampleSize()).join(", ")}${paths.length > sampleSize() ? ", …" : ""}`);
 
 const resolutionOf = (definition: MembersDefinition, overlay: OverlayResolution | null): MembersResolution => {
     const { effect, glob: pattern } = rowOf(definition);
     if (overlay === null) return { effect, pattern, matched: 0, files: [], ignored: 0 };
     if (effect === "exclude") {
         const files = overlay.excluded.filter((path) => matchesGlob(path, pattern));
-        return { effect, pattern, matched: files.length, files: files.slice(0, SAMPLE), ignored: 0 };
+        return { effect, pattern, matched: files.length, files: files.slice(0, sampleSize()), ignored: 0 };
     }
     const members = new Set(overlay.members);
     const files = (overlay.scans.get(pattern) ?? []).filter((path) => members.has(path));
     const ignored = overlay.masked.filter((path) => matchesGlob(path, pattern)).length;
-    return { effect, pattern, matched: files.length, files: files.slice(0, SAMPLE), ignored };
+    return { effect, pattern, matched: files.length, files: files.slice(0, sampleSize()), ignored };
 };
 
 // {§members-projection} — each enabled definition is one generated document under

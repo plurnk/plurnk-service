@@ -197,7 +197,7 @@ export default class RunHandler {
         // daemon's durable conversation without admitting a prompt or starting inference.
         // A live Loop remains observed; an idle one settles after its snapshot.
         if (synchronize) {
-            const history = await this.#seam().readLog({ workspaceId, workerId, limit: 1000 });
+            const history = await this.#seam().readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER });
             emit(this.#portal().replay(boundRun, history));
             if (finished) return;
             const observing = await this.#portal().synchronize(workspaceId, boundRun);
@@ -258,7 +258,7 @@ export default class RunHandler {
         if (prompt === null || currentUser === null) throw new Error("conversation AG-UI Run reached dispatch without a validated prompt");
 
         if (reattached) {
-            const history = await this.#seam().readLog({ workspaceId, workerId, limit: 1000 }).catch(() => null);
+            const history = await this.#seam().readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER }).catch(() => null);
             if (history !== null && !RunHandler.#isOriented(input, history)) {
                 const replayUser = currentUser ?? undefined;
                 emit(this.#portal().replay(boundRun, history, replayUser));
