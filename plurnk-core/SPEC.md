@@ -2999,13 +2999,12 @@ inventory; allocation never rewrites the submitted operation's target.
 
 §exec-readpure-ungated A `read` runtime (observes external state, e.g. search) or `pure` runtime (no observable effect, e.g. `:memory:` sqlite) is side-effect-free → **auto-run**: no proposal, no human gate, no notification. Core persists the prepared operation before applying it; that write-ahead staging has no resolution waiter and therefore cannot enter proposal discovery ({§proposal-list}). It skips the gate a host command faces, but it does NOT resolve in-band — like every exec it backgrounds and streams, its output reaching the model through the environment-observation injector (a foisted READ of newly publishable stream content each turn, {§exec-stream}), never a same-turn receipt.
 
-§effect-policy-tunable **Effect admission is deployment-tunable.** The default
-map (`host` proposes; `read`/`pure` auto-run) is the contract; the operator may
-override it deployment-wide with `PLURNK_SERVICE_EFFECT_POLICY`, a
-comma-separated `<effect>:<policy>` list (e.g. `read:propose` proposes even
-read effects). Unlisted effects keep the default. An invalid entry — unknown
-effect, unknown policy, or a non-`<effect>:<policy>` shape — fails daemon boot
-loudly rather than degrading admission.
+§effect-policy-tunable **Effect admission is one knob per effect.**
+`PLURNK_SERVICE_EFFECT_HOST`, `PLURNK_SERVICE_EFFECT_READ` and
+`PLURNK_SERVICE_EFFECT_PURE` each say `propose` or `auto`, and together they are
+the whole map: no effect's admission is held in code, so a deployment that
+proposes even reads says so in one place an operator can read. An invalid value
+fails daemon boot by the knob's name rather than degrading admission.
 
 After all non-WAIT operations dispatch, the initiating turn applies {§worker-optimistic-settlement} to only the execution streams it started, then resolves the whole program against the refreshed lifecycle state. An older stream receives no renewed opportunity merely because another turn began. This is a settlement barrier before completion, not sibling-operation serialization: dependent executions remain separate observed turns.
 

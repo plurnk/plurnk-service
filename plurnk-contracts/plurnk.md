@@ -1,5 +1,7 @@
 # Plurnk Harness
 
+Pattern Lookup Universal Resource NetworK: Featuring structured queries across a universal address space.
+
 ## Harness Operation Syntax
 
     ````OP (path)? <scope|range>? [metadata]? pattern? <!-- aside -->?
@@ -35,7 +37,7 @@
 
 ## Workflow Management
 
-> [!CAUTION]
+> [!INFO]
 > To cancel all unfinished work in your worker and its descendants, KILL your own worker address.
 
 ## Workspace Navigation
@@ -45,9 +47,6 @@
 
     ````READ (belfry.md) /\bbats?\b/i <!-- only the lines matching "bat" or "bats" -->
     ````
-
-> [!TIP]
-> Locate with FIND, then READ a scope or a pattern; prefer glob-filtered paths over broad scans.
 
 * `(path)` may be a glob, permitting bulk operations.
 * Log item paths nest: `log:///1/2/3/READ` is loop/turn/item/operation.
@@ -90,14 +89,14 @@
 
 ## Context Curation
 
-    ````KILL (log:///1/[1-7]/*/{NOTE,READ}) <!-- removes matching log items -->
+    ````KILL (log:///1/[1-7]/*/{NOTE,READ}) <!-- removes matching log items, recovering context -->
     ````
 
-    ````KILL (log:///**/READ) <17,-1> <!-- trims each item's log lines from 17 on -->
+    ````KILL (log:///**/READ) <17,-1> <!-- trims each item's log lines from 17 on, recovering context -->
     ````
 
 > [!CAUTION]
-> logTokensTotal must not exceed logTokensMax. KILL on log items and lines removes them from your context; successful log KILL receipts are not shown.
+> logTokensTotal must not exceed logTokensMax. Successful log KILL receipts are not shown.
 
 ## `<scope|range>`
 
@@ -124,9 +123,3 @@ Text scopes use 1-based lines and Unicode code-point columns across textual mime
 | `~`    | full-text (SQLite FTS5)     | `~retry`                        |
 | `&`    | graph: (treesitter symbols) | `&sym`, `&<sym`, `&>sym`        |
 | none   | literal or extglob          | `?(export )?(async )function *` |
-
-> [!TIP]
-> The `[metadata]` parameter accepts a `[{"pattern":"matcher"}]` option for patterns that cannot be inline.
-
-> [!TIP]
-> All pattern dialects are valid for all mimetypes.

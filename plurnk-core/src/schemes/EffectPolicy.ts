@@ -1,4 +1,5 @@
 import type { Effect } from "@plurnk/plurnk-execs";
+import Knob from "../core/Knob.ts";
 
 export type ExecPolicy = "propose" | "auto";
 
@@ -6,24 +7,29 @@ export type ExecPolicy = "propose" | "auto";
 // lifecycle. The executor declares the FACT (does this invocation mutate the
 // host?); the service decides the POLICY (does it need a human gate?).
 //
-// {§exec-host-proposes} `host` runs code / mutates the host → propose;
-// `read` (observes external state) and `pure` (no observable effect) are
-// side-effect-free → auto-run, no human in the loop ({§exec-readpure-ungated}).
+// {§exec-host-proposes} `host` runs code / mutates the host; `read` observes
+// external state and `pure` has no observable effect ({§exec-readpure-ungated}).
 // Conservative by construction — an undeclared/unknown effect classifies as
-// `host` upstream (BaseExecutor.effect defaults to host), so it lands here as
-// propose.
+// `host` upstream (BaseExecutor.effect), so it lands here as whatever the
+// panel says of `host`.
 //
-// {§effect-policy-tunable} — the default map is the contract; the operator may
-// override it deployment-wide with `PLURNK_SERVICE_EFFECT_POLICY` (a
-// comma-separated `<effect>:<policy>` list, e.g. `read:propose` for a
-// high-security deployment proposing even reads). Unlisted effects keep the
-// default. Invalid entries fail configuration, never degrade silently.
-export const EFFECT_POLICY_ENV = "PLURNK_SERVICE_EFFECT_POLICY";
+// {§effect-policy-tunable} — one knob per effect, and the panel is the whole
+// map: no entry is held in code, so an effect's admission is always a value an
+// operator can read. An invalid value fails boot, never degrades admission.
+const POLICIES: readonly ExecPolicy[] = ["propose", "auto"];
+const KNOBS: Readonly<Record<Effect, string>> = Object.freeze({
+    host: "PLURNK_SERVICE_EFFECT_HOST",
+    read: "PLURNK_SERVICE_EFFECT_READ",
+    pure: "PLURNK_SERVICE_EFFECT_PURE",
+});
 
-const DEFAULT_POLICY: Readonly<Record<Effect, ExecPolicy>> = {
-    host: "propose",
-    read: "auto",
-    pure: "auto",
+// The composite list this replaced held its unlisted effects in code.
+const shedRetiredComposite = (): void => {
+    const composite = "PLURNK_SERVICE_EFFECT_POLICY";
+    const stale = process.env[composite];
+    if (stale !== undefined && stale.length > 0) {
+        throw new Error(`${composite} is retired: state ${Object.values(KNOBS).join(", ")} instead, one effect each.`);
+    }
 };
 
 export default class EffectPolicy {
@@ -32,30 +38,11 @@ export default class EffectPolicy {
     }
 
     static validateConfiguration(): void {
-        EffectPolicy.#parse(process.env[EFFECT_POLICY_ENV] ?? "");
+        shedRetiredComposite();
+        for (const effect of Object.keys(KNOBS) as Effect[]) EffectPolicy.decide(effect);
     }
 
     static decide(effect: Effect): ExecPolicy {
-        return EffectPolicy.#parse(process.env[EFFECT_POLICY_ENV] ?? "")[effect] ?? DEFAULT_POLICY[effect];
-    }
-
-    static #parse(raw: string): Partial<Record<Effect, ExecPolicy>> {
-        const map: Partial<Record<Effect, ExecPolicy>> = {};
-        for (const entry of raw.split(",").map((item) => item.trim()).filter((item) => item.length > 0)) {
-            const colon = entry.indexOf(":");
-            if (colon <= 0) {
-                throw new Error(`${EFFECT_POLICY_ENV} entry ${JSON.stringify(entry)} must be <effect>:<policy>.`);
-            }
-            const effect = entry.slice(0, colon);
-            const policy = entry.slice(colon + 1);
-            if (!EffectPolicy.isEffect(effect)) {
-                throw new Error(`${EFFECT_POLICY_ENV}: unknown effect ${JSON.stringify(effect)} (host, read, pure).`);
-            }
-            if (policy !== "propose" && policy !== "auto") {
-                throw new Error(`${EFFECT_POLICY_ENV}: unknown policy ${JSON.stringify(policy)} (propose, auto).`);
-            }
-            map[effect] = policy;
-        }
-        return map;
+        return Knob.choice(KNOBS[effect], POLICIES);
     }
 }

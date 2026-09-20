@@ -17,9 +17,9 @@ const execStmt = (runtime: string, body: string): ExecStatement => ({
     runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: null, lineMarker: null, body, position: { line: 1, column: 1 },
 });
 
-test("{§effect-policy-tunable}: pure:propose routes an otherwise-auto execution through the human gate", async () => {
-    const prior = process.env.PLURNK_SERVICE_EFFECT_POLICY;
-    process.env.PLURNK_SERVICE_EFFECT_POLICY = "pure:propose";
+test("{§effect-policy-tunable}: proposing pure routes an otherwise-auto execution through the human gate", async () => {
+    const prior = process.env.PLURNK_SERVICE_EFFECT_PURE;
+    process.env.PLURNK_SERVICE_EFFECT_PURE = "propose";
     const db = await openMigrated();
     try {
         const schemes = new SchemeRegistry();
@@ -45,8 +45,8 @@ test("{§effect-policy-tunable}: pure:propose routes an otherwise-auto execution
         await exec.idle();
         assert.equal(result.status, 200, "the accepted override-gated execution completes normally");
     } finally {
-        if (prior === undefined) delete process.env.PLURNK_SERVICE_EFFECT_POLICY;
-        else process.env.PLURNK_SERVICE_EFFECT_POLICY = prior;
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_EFFECT_PURE;
+        else process.env.PLURNK_SERVICE_EFFECT_PURE = prior;
         await db.close();
     }
 });

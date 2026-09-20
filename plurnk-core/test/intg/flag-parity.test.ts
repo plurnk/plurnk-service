@@ -15,7 +15,9 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 
 // Alias-scoped packet-policy flags are read through one scoped key list, and MD_* via a
 // startsWith prefix — a literal-token scan can't see them, so they're declared-dynamic here.
-const DYNAMIC_READS = new Set(["PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_PROMPT_PROJECTION", "PLURNK_SERVICE_SAFETY", "PLURNK_SERVICE_LIVE_TIMEOUT"]);
+const DYNAMIC_READS = new Set(["PLURNK_SERVICE_PROMPT_PROJECTION", "PLURNK_SERVICE_LIVE_TIMEOUT"]);
+// Named by the source only to be refused: a retired key is declared nowhere, by design.
+const RETIRED = new Set(["PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_SAFETY", "PLURNK_SERVICE_EFFECT_POLICY"]);
 const DYNAMIC_PREFIXES = ["PLURNK_SERVICE_SQLITE_", "PLURNK_SERVICE_PROMPT_BUDGET_", "PLURNK_SERVICE_PROMPT_PROJECTION_", "PLURNK_SERVICE_SAFETY_"];
 
 test("every shipped service flag has an adjacent description for CLI help", () => {
@@ -51,6 +53,8 @@ test("every PLURNK_SERVICE_* the code reads is in .env.defaults, and vice versa"
     assert.deepEqual(declaredNotRead, [], `declared in .env.defaults but never read by src (dead flags?): ${declaredNotRead.join(", ")}`);
 
     // Every literal read has a declared line (a code reader with no template entry = no CLI flag, no floor).
-    const readNotDeclared = [...read].filter((f) => !declared.has(f) && !DYNAMIC_READS.has(f) && !underDynamicPrefix(f));
+    const readNotDeclared = [...read].filter((f) => !declared.has(f) && !DYNAMIC_READS.has(f) && !RETIRED.has(f) && !underDynamicPrefix(f));
     assert.deepEqual(readNotDeclared, [], `read by src but missing from .env.defaults (no floor, no --flag): ${readNotDeclared.join(", ")}`);
+    const retiredDeclared = [...RETIRED].filter((f) => declared.has(f));
+    assert.deepEqual(retiredDeclared, [], `retired yet still declared: ${retiredDeclared.join(", ")}`);
 });
