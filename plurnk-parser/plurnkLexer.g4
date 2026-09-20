@@ -511,8 +511,9 @@ QUOTE : { this.atLineStart() && this.fenceOpens() }? (FENCE [0-9]* NAME? | '~~~'
 // {§interstitial-fence} - a fence naming nothing known, or nothing at all, is prose outside a block.
 WS : [ \t\r\n]+ -> channel(HIDDEN) ;
 // {§whitespace-contract} - outside text has no AST or execution semantics.
-THINK_BLOCK : '<think>' .*? '</think>' -> type(TEXT), channel(HIDDEN) ;
-CHANNEL_BLOCK : '<|channel>' .*? '<channel|>' -> type(TEXT), channel(HIDDEN) ;
+// {§provider-tagged-reasoning} - a route that delivers reasoning inline declares it, and the
+// provider peels that one leading envelope. Here a reasoning tag is prose: no rule in this mode
+// crosses a line start unanchored, so no substring found in text can re-read the program after it.
 TEXT_RUN : ~[ \t\r\n`]+ { this.inlineChain = false; } -> type(TEXT), channel(HIDDEN) ;
 TEXT_TICK : '`' { this.inlineChain = false; } -> type(TEXT), channel(HIDDEN) ;
 
