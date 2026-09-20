@@ -102,7 +102,7 @@ export const aliasOf = (glob: string): string => {
 const foldAlias = (suffix: string): string => suffix.toLowerCase().replaceAll("_", "-");
 
 const jsonStrings = (raw: string | undefined, key: string): string[] => {
-    if (raw === undefined || raw.trim().length === 0) return [];
+    if (raw === undefined) throw new Error(`${key} is missing from the assembled environment floor.`);
     let parsed: unknown;
     try { parsed = JSON.parse(raw); } catch (cause) { throw new Error(`${key} must be a JSON array of aliases.`, { cause }); }
     if (!Array.isArray(parsed) || parsed.some((entry) => typeof entry !== "string")) throw new Error(`${key} must be a JSON array of aliases.`);
@@ -110,8 +110,8 @@ const jsonStrings = (raw: string | undefined, key: string): string[] => {
 };
 
 // {§members-configuration} — the operator's definitions: PLURNK_MEMBERS_<ALIAS>=<glob> (`!glob`
-// excludes) and PLURNK_MEMBERS_ENABLED=[…] naming the subset enabled by default (absent or []
-// enables none) — the shape PLURNK_MCP_* already has.
+// excludes) and PLURNK_MEMBERS_ENABLED=[…] naming the subset enabled by default ([] enables
+// none) — the shape PLURNK_MCP_* already has.
 export const serviceMembers = (environ: NodeJS.ProcessEnv = process.env): FunctionalityServiceDefinition[] => {
     const targets = new Map<string, { key: string; glob: string }>();
     for (const [key, value] of Object.entries(environ)) {
@@ -133,13 +133,10 @@ export const serviceMembers = (environ: NodeJS.ProcessEnv = process.env): Functi
     });
 };
 
-// {§members-model-scope} — the ceiling a model's `add` is admitted against; unset is `none`,
-// the guarantee ({§membership-baseline}).
-export const modelScope = (environ: NodeJS.ProcessEnv = process.env): FileCreateScope => {
-    const raw = environ[SCOPE_KEY];
-    if (raw === undefined || raw.trim().length === 0) return "none";
-    return FileCreationPolicy.parse(raw, SCOPE_KEY);
-};
+// {§members-model-scope} — the ceiling a model's `add` is admitted against. The panel states it;
+// an unset or empty key is a broken deployment and fails by name, never a quiet `none`.
+export const modelScope = (environ: NodeJS.ProcessEnv = process.env): FileCreateScope =>
+    FileCreationPolicy.parse(environ[SCOPE_KEY], SCOPE_KEY);
 
 const outsideRoot = (pattern: string): boolean =>
     pattern.startsWith("/") || pattern === ".." || pattern.startsWith("../") || pattern.includes("/../") || pattern.endsWith("/..");

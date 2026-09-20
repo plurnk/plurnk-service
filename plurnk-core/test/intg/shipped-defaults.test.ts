@@ -31,10 +31,11 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     assert.equal(env.get("PLURNK_MODEL"), undefined, "no active PLURNK_MODEL ships");
     // {§operator-config-env-defaults} — a knob has exactly one owner, and this file declares ONLY
     // the service's: PLURNK_SERVICE_* plus the daemon's own unprefixed surface (HOST/PORT, the
-    // PLUGINS trust gate and initialization reasoning view). Sibling knobs (PROVIDERS/EXECS/SCHEMES/
+    // PLUGINS trust gate, initialization reasoning view, and the members Functionality family,
+    // which core itself implements). Sibling knobs (PROVIDERS/EXECS/SCHEMES/
     // MIMETYPES/AGUI/MODEL/BASE) live in the owning packages' shipped .env.defaults — a stray
     // here is a boot-crash collision waiting on the next sibling pub.
-    const SERVICE_OWNED = /^(PLURNK_SERVICE_|PLURNK_HOST$|PLURNK_PORT$|PLURNK_PLUGINS_|PLURNK_REASONING_VIEW_LINES$)/;
+    const SERVICE_OWNED = /^(PLURNK_SERVICE_|PLURNK_HOST$|PLURNK_PORT$|PLURNK_PLUGINS_|PLURNK_REASONING_VIEW_LINES$|PLURNK_MEMBERS_)/;
     const foreign = [...env.keys()].filter((k) => !SERVICE_OWNED.test(k));
     assert.deepEqual(foreign, [], `the template declares only service-owned knobs; foreign: ${foreign.join(", ")}`);
     // Provider physics and generation policy ship in the provider package.

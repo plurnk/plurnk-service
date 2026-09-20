@@ -9,10 +9,10 @@ Pattern Lookup Universal Resource NetworK: Featuring structured queries across a
     ````
 
 > [!IMPORTANT]
-> YOU MUST emit the OP, its parameters, and the optional aside on the opening fence line.
+> YOU MUST ONLY emit the Harness Operation Syntax OP, its parameters, and the optional aside on the opening fence line.
 
 > [!IMPORTANT]
-> To conclude, respond without performing any OPs in the response.
+> To conclude, respond in prose (with GFM if responding to client) without performing any OPs in the response.
 
 * `[metadata]`: optional one-line JSON array of option objects.
 * `<!-- aside -->`: optional terse note beside (never below) the operation line.

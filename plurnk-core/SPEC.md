@@ -5068,7 +5068,7 @@ untracked, absent); a glob previews what `add` would include or exclude. Names o
 content; nothing is added.
 
 §members-configuration *Available definitions.* The operator's `PLURNK_MEMBERS_<ALIAS>=<glob>`
-(`!glob` excludes) and `PLURNK_MEMBERS_ENABLED=[…]` (absent or `[]` enables none) are the
+(`!glob` excludes) and `PLURNK_MEMBERS_ENABLED=[…]` (`[]` enables none) are the
 service-origin definitions, the shape `PLURNK_MCP_*` already has; an empty glob, a bare `!`,
 or an unknown enabled alias fails the daemon at boot.
 

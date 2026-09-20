@@ -16,13 +16,15 @@ test("serviceMembers parses PLURNK_MEMBERS_<ALIAS> and PLURNK_MEMBERS_ENABLED; a
         { alias: "docs", definition: { glob: "docs/**", provenance: { kind: "service-configuration", source: "PLURNK_MEMBERS_DOCS" } }, enabled: true },
         { alias: "no-locks", definition: { glob: "!**/*.lock", provenance: { kind: "service-configuration", source: "PLURNK_MEMBERS_NO_LOCKS" } }, enabled: false },
     ]);
-    assert.deepEqual(serviceMembers({}), []);
+    assert.deepEqual(serviceMembers({ PLURNK_MEMBERS_ENABLED: "[]" }), []);
+    assert.throws(() => serviceMembers({}), /PLURNK_MEMBERS_ENABLED is missing from the assembled environment floor/u);
 });
 
 test("serviceMembers fails hard on an unknown enabled alias, an empty glob, or a bare exclusion", () => {
     assert.throws(() => serviceMembers({ PLURNK_MEMBERS_DOCS: "docs/**", PLURNK_MEMBERS_ENABLED: "[\"nope\"]" }), /unknown members alias 'nope'/u);
-    assert.throws(() => serviceMembers({ PLURNK_MEMBERS_DOCS: "  " }), /PLURNK_MEMBERS_DOCS names no pattern/u);
-    assert.throws(() => serviceMembers({ PLURNK_MEMBERS_NONE: "!" }), /PLURNK_MEMBERS_NONE names no pattern/u);
+    assert.throws(() => serviceMembers({ PLURNK_MEMBERS_DOCS: "  ", PLURNK_MEMBERS_ENABLED: "[]" }), /PLURNK_MEMBERS_DOCS names no pattern/u);
+    assert.throws(() => serviceMembers({ PLURNK_MEMBERS_NONE: "!", PLURNK_MEMBERS_ENABLED: "[]" }), /PLURNK_MEMBERS_NONE names no pattern/u);
+    assert.throws(() => serviceMembers({ PLURNK_MEMBERS_DOCS: "docs/**", PLURNK_MEMBERS_ENABLED: "" }), /must be a JSON array/u);
     assert.throws(() => serviceMembers({ PLURNK_MEMBERS_DOCS: "docs/**", PLURNK_MEMBERS_ENABLED: "docs" }), /must be a JSON array/u);
 });
 
@@ -33,9 +35,10 @@ test("aliasOf suggests a legal alias from any glob; an exclusion is prefixed no-
     assert.equal(aliasOf("2024/*.md"), "p-2024-md");
 });
 
-test("modelScope defaults to none and parses the lattice", () => {
-    assert.equal(modelScope({}), "none");
-    assert.equal(modelScope({ PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "" }), "none");
+test("{§members-model-scope} modelScope is the panel's word in the lattice, and an unset or empty key fails by name", () => {
+    assert.throws(() => modelScope({}), /PLURNK_SERVICE_MEMBERS_MODEL_SCOPE must be one of none, root, namespace; got undefined/u);
+    assert.throws(() => modelScope({ PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "" }), /PLURNK_SERVICE_MEMBERS_MODEL_SCOPE must be one of none, root, namespace/u);
+    assert.equal(modelScope({ PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "none" }), "none");
     assert.equal(modelScope({ PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "root" }), "root");
     assert.throws(() => modelScope({ PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "wide" }), /PLURNK_SERVICE_MEMBERS_MODEL_SCOPE/u);
 });
