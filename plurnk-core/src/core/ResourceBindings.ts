@@ -47,10 +47,11 @@ export default class ResourceBindings {
         const scheme = schemeNameOf(target);
         if (scheme === null) return undefined;
         const handler = this.#schemes.get(scheme, this.#ctx.workspaceId);
-        if (!(handler instanceof ExecOutputScheme && handler.claimsLiveResource(target))) {
-            const manifest = await ExecutionOutputs.manifest(this.#ctx.db, this.#ctx.workspaceId, target);
-            if (manifest !== null) return { handler: this.#schemes.outputResource(manifest), manifest };
+        if (handler instanceof ExecOutputScheme && handler.claimsLiveResource(target)) {
+            return { handler, manifest: handler.manifestAt(target) };
         }
+        const manifest = await ExecutionOutputs.manifest(this.#ctx.db, this.#ctx.workspaceId, target);
+        if (manifest !== null) return { handler: this.#schemes.outputResource(manifest), manifest };
         return handler === undefined ? undefined : { handler, manifest: Manifest.of(handler, scheme) };
     }
 }

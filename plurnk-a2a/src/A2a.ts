@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import {
     TaskState,
     type StreamResponse,
@@ -15,19 +14,15 @@ import {
     type RepresentationPreparationRequest,
     type RepresentationPreparationResult,
     type SchemeCtx,
-    type SchemeHandler,
-    type SchemeManifest,
     type SchemeResult,
     type SendStatement,
     type StreamSubscription,
     type ParsedPath,
-    type SchemeAddressCtx,
     type FindStatement,
 } from "@plurnk/plurnk-schemes";
 import A2aMessage from "./A2aMessage.ts";
 import A2aProjection, { type A2aEntryProjection, type A2aResource } from "./A2aProjection.ts";
 
-const documentation = await readFile(new URL("../docs/a2a.md", import.meta.url), "utf-8");
 const OWNER = "scheme:a2a";
 
 // {§a2a-outbound-definition} — the scheme resolves an alias against the
@@ -47,37 +42,33 @@ type A2aClientResolution =
     | { readonly client: Client }
     | { readonly problem: SchemeResult };
 
-/** Outbound A2A v1 resources and Task obligations over the ordinary scheme API. */
-export default class A2a implements SchemeHandler {
+/**
+ * {§a2a-scheme-face} Outbound A2A v1 resources and Task obligations: the live half of the `a2a`
+ * runtime's scheme. The family manager's stored executions keep `a2a:///<loop>/<turn>/<sequence>`;
+ * every other coordinate opens with an agent alias, or with `contexts` for a hosted message.
+ */
+export default class A2a {
+    // The face's own representation: the alias is the URI authority, and a resource reads as `#body`.
+    readonly manifest = {
+        authority: "resource",
+        channels: { body: "text/markdown", json: "application/json" },
+        defaultChannel: "body",
+    } as const;
     readonly #messages = new MessageScheme("a2a");
 
     static #hostedMessage(target: ParsedPath | null): boolean {
         return target?.kind === "url" && /^\/contexts\/[^/]+\/tasks\/[^/]+\/messages\/[^/]+$/.test(target.pathname);
     }
 
-    async resolveEntryAddress(target: ParsedPath, ctx: SchemeAddressCtx, access: "read" | "write" = "read") {
-        if (A2a.#hostedMessage(target)) return this.#messages.resolveEntryAddress(target, ctx, access);
-        const resolved = A2a.#address(target);
-        return "problem" in resolved ? resolved.problem : resolved.address;
+    // Claimed by the authority folded into the path: a stored execution's coordinate is numeric
+    // throughout, and an alias opens with a letter.
+    claims(pathname: string): boolean {
+        return /^\/[a-z]/u.test(pathname);
     }
 
     async prepareFind(_statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult> {
         return ctx.messages.prepare();
     }
-    static manifest: SchemeManifest = {
-        name: "a2a",
-        authority: "resource",
-        channels: { body: "text/markdown", json: "application/json" },
-        defaultChannel: "body",
-        category: "data",
-        writableBy: ["model", "client"],
-        volatile: true,
-        modelVisible: true,
-        folderScopes: true,
-        glyph: "🤝",
-        traits: ["web"],
-        documentation,
-    };
 
     readonly #resolveClient: A2aClientResolver;
 
@@ -168,7 +159,7 @@ export default class A2a implements SchemeHandler {
         if (A2a.#hostedMessage(statement.target)) return A2a.#passthrough(await ctx.messages.reply(statement));
         const captured = await MessageAttachments.capture(statement.metadata, ctx.resources, OWNER);
         if ("failure" in captured) return A2a.#passthrough(captured.failure);
-        const resolvedAddress = A2a.#address(statement.target);
+        const resolvedAddress = this.#address(statement.target);
         if ("problem" in resolvedAddress) return A2a.#passthrough(resolvedAddress.problem);
         const { address } = resolvedAddress;
         const text = statement.body?.raw ?? "";
@@ -380,7 +371,7 @@ export default class A2a implements SchemeHandler {
         }
     }
 
-    static #address(target: SendStatement["target"]): A2aAddressResolution {
+    #address(target: SendStatement["target"]): A2aAddressResolution {
         if (target === null || target.kind !== "url" || target.scheme !== "a2a" || target.hostname === null) {
             return {
                 problem: A2a.#problem("bad-target", 400, "An A2A target uses a2a://<agent>.", {
@@ -397,11 +388,11 @@ export default class A2a implements SchemeHandler {
                 }),
             };
         }
-        if (target.fragment !== null && !Object.hasOwn(A2a.manifest.channels, target.fragment)) {
+        if (target.fragment !== null && !Object.hasOwn(this.manifest.channels, target.fragment)) {
             return {
                 problem: A2a.#problem("channel-not-found", 400, `A2A resources have no #${target.fragment} channel.`, {
                     requestedChannel: target.fragment,
-                    availableChannels: Object.keys(A2a.manifest.channels),
+                    availableChannels: Object.keys(this.manifest.channels),
                     retryable: false,
                 }),
             };

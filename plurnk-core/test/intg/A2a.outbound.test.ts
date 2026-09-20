@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { A2a, connectHttpJsonAgent } from "@plurnk/plurnk-a2a";
+import { connectHttpJsonAgent } from "@plurnk/plurnk-a2a";
 import { Mock } from "@plurnk/plurnk-providers";
 import { TaskState } from "@a2a-js/sdk";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
@@ -10,6 +10,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { startDemoAgent } from "../../../plurnk-a2a/test/fixtures/DemoAgent.ts";
 import { DEFAULT_MIMETYPES, openMigrated, seedEnvelope, fixtureExecutors } from "./_helpers.ts";
+import { registerA2aFace } from "./_a2a.ts";
 import { sendStmt } from "./_dsl.ts";
 import { waitFor } from "./_rpc.ts";
 
@@ -40,9 +41,9 @@ test("{§a2a-outbound-turn-rhythm}: a parsed KILL cancels the remote Task and se
     const envelope = await seedEnvelope(db, `a2a-cancel-${crypto.randomUUID()}`);
     const wakes: WakeWorkerPayload[] = [];
     const schemes = new SchemeRegistry();
-    schemes.register("a2a", new A2a((authority) => authority === "researcher" ? client : null));
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES,
         wakeWorkerNotify: (payload) => { wakes.push(payload); } });
+    registerA2aFace(engine, (authority) => authority === "researcher" ? client : null);
     let sequence = 0;
     const run = (header: string, body: string | null = null) => {
         const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(header, body), { executors: fixtureExecutors(PlurnkParser.frame(header, body)) });
@@ -75,13 +76,13 @@ test("outbound A2A uses Core's ordinary 102 subscription and terminal READ path"
     const envelope = await seedEnvelope(db, `a2a-outbound-${crypto.randomUUID()}`);
     const wakes: WakeWorkerPayload[] = [];
     const schemes = new SchemeRegistry();
-    schemes.register("a2a", new A2a((authority) => authority === "researcher" ? client : null));
     const engine = new Engine({
         db,
         schemes,
         mimetypes: DEFAULT_MIMETYPES,
         wakeWorkerNotify: (payload) => { wakes.push(payload); },
     });
+    registerA2aFace(engine, (authority) => authority === "researcher" ? client : null);
 
     const started = await engine.dispatch({
         statement: directedSend("core composition witness"),

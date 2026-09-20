@@ -27,12 +27,12 @@ test("{§service-worker-composition} live workspaces expose the default worker r
 
         const skill = await read("skill://plurnk/SKILL.md");
         assert.equal(skill.status, 200);
-        for (const reference of ["worker", "members", "skills", "mcp", "agents", "a2a", "sh", "schedule"]) {
+        for (const reference of ["worker", "members", "skills", "mcp", "a2a", "sh", "schedule"]) {
             const result = await read(`worker:///_plurnk/plurnk/${reference}.md`);
             assert.equal(result.status, 200, `${reference}.md is READ-able in the worker's actual generated tree`);
             assert.match(String(result.content), /\S/, `${reference}.md contains its contract`);
         }
-        for (const family of ["skills", "mcp", "agents", "members", "schedule"]) {
+        for (const family of ["skills", "mcp", "a2a", "members", "schedule"]) {
             const result = Validator.assertFunctionalityListResult(
                 await workspace.invokeWorkspaceAction(`workspace.${family}.list`, {}),
             );

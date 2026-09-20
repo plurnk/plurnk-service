@@ -234,7 +234,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                     { scheme: "skill", hostname: "*", pathname: "/SKILL.md" },
                     { scheme: "worker", hostname: null, pathname: "/_plurnk/plurnk/*.md" },
                     { scheme: "worker", hostname: null, pathname: "/_plurnk/tools/*.md" },
-                    { scheme: "worker", hostname: null, pathname: "/_plurnk/agents/*.md" },
+                    { scheme: "worker", hostname: null, pathname: "/_plurnk/a2a/*.md" },
                     { scheme: "worker", hostname: null, pathname: "/_plurnk/members/*.md" },
                     { scheme: null, hostname: null, pathname: "*" },
                     { scheme: "worker", hostname: null, pathname: "/*" },

@@ -5,6 +5,7 @@ import type {
     FindStatement,
     DispositionStatement,
     KillStatement,
+    SendStatement,
     FunctionalityCandidate,
     FunctionalityDiscoverQuery,
     JsonSchema,
@@ -14,6 +15,7 @@ import type {
     RepresentationPreparationRequest,
     RepresentationPreparationResult,
     SchemeCtx,
+    SchemeManifest,
     SchemeResult,
 } from "@plurnk/plurnk-schemes";
 import type { Executor } from "../core/ExecutorRegistry.ts";
@@ -38,15 +40,23 @@ export interface ModuleActionRegistration {
 export type ModuleActionDescriptor = ApplicationActionDescriptor;
 
 // A module-owned executor may expose protocol resources under the same scheme
-// name as its output streams. The facet claims only its own path subtree;
-// unclaimed coordinates retain the standard executor-output behavior.
+// name as its output streams. The facet claims only its own path subtree, and
+// there it is the scheme's whole live half: every operation it implements is
+// its own. Unclaimed coordinates retain the standard executor-output behavior.
 export interface RuntimeSchemeFacet {
     claims(pathname: string): boolean;
+    // The representation of the claimed resources where it is not the executor's own output
+    // contract: whether the URI authority names the resource, their channels, and the one a
+    // fragmentless address reads and a subscription publishes. `claims` always sees the authority
+    // folded into the pathname.
+    readonly manifest?: Partial<Pick<SchemeManifest, "authority" | "channels" | "defaultChannel">>;
     prepareRepresentation?(
         request: RepresentationPreparationRequest,
         ctx: SchemeCtx,
     ): Promise<RepresentationPreparationResult>;
+    prepareFind?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     wait?(statement: DispositionStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     kill?(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult>;
 }
@@ -159,6 +169,9 @@ export interface FunctionalityPrepared {
 
 export interface FunctionalityAdapter {
     readonly scheme?: RuntimeSchemeFacet;
+    // {§capability-admission} — general policy facts of the family's runtime and the resources its
+    // scheme face serves (`web` for a family that reaches the network): what a capability policy selects on.
+    readonly traits?: readonly string[];
     // The action segment (`workspace.<family>.<verb>`, or `worker.<family>.<verb>` for a
     // worker-scoped family) and the runtime family tag.
     readonly family: string;

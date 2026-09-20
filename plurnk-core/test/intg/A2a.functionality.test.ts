@@ -1,5 +1,5 @@
-// {§a2a-agents-functionality} {§a2a-agents-catalog} — outbound A2A agents as the
-// workspace `agents` family through the daemon: the environment baseline,
+// {§a2a-functionality} {§a2a-catalog} — outbound A2A agents as the
+// workspace `a2a` family through the daemon: the environment baseline,
 // per-alias catalog, shared hot enable/disable, and exact Problems.
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -26,7 +26,7 @@ const rejectedProblem = async (run: () => Promise<unknown>): Promise<ProblemDeta
     assert.fail("Expected the action to reject.");
 };
 
-test("{§a2a-agents-functionality} outbound agents are workspace Functionality: baseline, catalog, shared hot enable/disable, exact Problems", async () => {
+test("{§a2a-functionality} outbound agents are workspace Functionality: baseline, catalog, shared hot enable/disable, exact Problems", async () => {
     const agent = await startDemoAgent();
     const db: Db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `a2a-agents-${crypto.randomUUID()}`);
@@ -42,20 +42,20 @@ test("{§a2a-agents-functionality} outbound agents are workspace Functionality: 
     }));
     await daemon.start();
     const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>): Promise<T> =>
-        daemon.invokeModuleAction(`workspace.agents.${verb}`, params, { scope: "workspace", workspaceId }) as Promise<T>;
+        daemon.invokeModuleAction(`workspace.a2a.${verb}`, params, { scope: "workspace", workspaceId }) as Promise<T>;
     type Listed = { alias: string; origin: string; state: string; detail?: { name: string; skills: string[] }; problem?: ProblemDetails };
     const states = async (): Promise<string[]> =>
         (await invoke<{ definitions: Listed[] }>("list", {})).definitions.map(({ alias, origin, state }) => `${alias}:${origin}:${state}`);
     const document = async (alias: string, workerId = model): Promise<string | undefined> => {
         const references = await daemon.engine.referenceEntries(workspaceId);
-        return references.find(({ pathname }) => pathname === `/_plurnk/agents/${alias}.md`)?.content;
+        return references.find(({ pathname }) => pathname === `/_plurnk/a2a/${alias}.md`)?.content;
     };
     const send = (alias: string, workerId = client) =>
         daemon.dispatchAsClient({ workspaceId, workerId, statement: { ...sendStmt(target(alias), "ping"), target: target(alias) } });
     try {
         assert.deepEqual(
-            daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("workspace.agents.")),
-            ["workspace.agents.add", "workspace.agents.disable", "workspace.agents.discover", "workspace.agents.enable", "workspace.agents.list", "workspace.agents.remove"],
+            daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("workspace.a2a.")),
+            ["workspace.a2a.add", "workspace.a2a.disable", "workspace.a2a.discover", "workspace.a2a.enable", "workspace.a2a.list", "workspace.a2a.remove"],
         );
         // The environment baseline: researcher enabled by default, scribe available but disabled.
         assert.deepEqual(await states(), ["researcher:service:active", "scribe:service:disabled"]);

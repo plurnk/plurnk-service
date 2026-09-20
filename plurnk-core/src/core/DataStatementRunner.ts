@@ -118,7 +118,7 @@ export default class DataStatementRunner {
         }
         const resourceRead = statement.op === "READ" || statement.op === "FIND";
         const binding = resourceRead ? await ResourceBindings.resolve(statement.target, ctx) : undefined;
-        const manifest = resourceRead ? binding?.manifest : this.#schemes.manifestFor(schemeName, ctx.workspaceId);
+        const manifest = resourceRead ? binding?.manifest : this.#schemes.manifestAt(schemeName, statement.target, ctx.workspaceId);
         const handler = (resourceRead ? binding?.handler : this.#schemes.get(schemeName, ctx.workspaceId)) as SchemeMethods | undefined;
         if (handler === undefined) {
             return this.#failure(

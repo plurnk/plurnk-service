@@ -187,6 +187,56 @@ test("a runtime resource facet claims only its subtree and preserves output-stre
     }
 });
 
+test("{§runtime-resource-binding}: a facet that states its representation owns address, default channel, SEND and the log record on its subtree", async () => {
+    const db = await openMigrated();
+    try {
+        const { engine } = wire(db);
+        const sent: string[] = [];
+        engine.registerRuntime("peers", fakeEntry("peers"), {
+            claims: (pathname) => /^\/[a-z]/u.test(pathname),
+            manifest: { authority: "resource", channels: { body: "text/plain" }, defaultChannel: "body" },
+            prepareRepresentation: async (request, ctx) => {
+                assert.deepEqual([request.authority, request.pathname], ["ada", "/card"], "the facet's authority names the resource");
+                const written = await ctx.entries.write(request.pathname, { channels: { body: { content: "ada's card", mimetype: "text/plain" } } });
+                assert.ok(written.status === 200 || written.status === 201);
+                return { status: 200 };
+            },
+            send: async (statement) => {
+                sent.push(statement.body?.raw ?? "");
+                return { status: 200 };
+            },
+        });
+        const workspaceId = await insertWorkspace(db, `facet-representation-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        const turnId = await insertTurn(db, loopId, 1);
+        const parse = (body: string) => {
+            const parsed = PlurnkParser.parseStatements(body, { executors: fixtureExecutors(body) });
+            const item = parsed.items[0];
+            if (parsed.items.length !== 1 || item?.kind !== "statement") throw new Error("Expected one operation");
+            return item.statement;
+        };
+
+        const card = await engine.look({ workspaceId, workerId, loopId, statement: parse("````READ (peers://ada/card) <1,-1>````") });
+        assert.equal(card.content, "ada's card", "a fragmentless READ selects the facet's default channel, not the executor's");
+
+        let sequence = 0;
+        const dispatch = (body: string) => engine.dispatch({ workspaceId, workerId, loopId, turnId, sequence: ++sequence, origin: "model", statement: parse(body) });
+        assert.equal((await dispatch("````SEND (peers://ada)\nhello\n````")).status, 200);
+        assert.deepEqual(sent, ["hello"], "a claimed SEND is the facet's");
+        const stored = await dispatch("````SEND (peers:///1/1/1)\nstdin\n````");
+        assert.notEqual(stored.status, 200, "an unclaimed SEND still addresses a stored execution's process");
+        assert.deepEqual(sent, ["hello"], "the facet never sees an execution coordinate");
+
+        const rows = (await db.test_log_entries_by_turn.all<{ scheme: string | null; hostname: string | null; pathname: string | null }>({ turn_id: turnId }))
+            .map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname }));
+        assert.deepEqual(rows[0], { scheme: "peers", hostname: "ada", pathname: "" }, "the log keeps the authored address of a claimed resource");
+        assert.deepEqual(rows[1], { scheme: "peers", hostname: null, pathname: "/1/1/1" }, "a stored execution keeps namespace authority");
+    } finally {
+        await db.close();
+    }
+});
+
 test("{§runtime-resource-binding}: READ, FIND, COPY, execution, and BARE use the workspace attachment and channel", async () => {
     const db = await openMigrated();
     try {

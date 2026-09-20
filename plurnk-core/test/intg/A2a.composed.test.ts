@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-    A2a,
     Module as A2aModule,
     OutboundModule as A2aOutboundModule,
     connectHttpJsonAgent,
@@ -12,7 +11,7 @@ import {
 } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { A2A_LISTENER, a2aCard } from "./_a2a.ts";
+import { A2A_LISTENER, a2aCard, a2aFace } from "./_a2a.ts";
 import { openMigrated } from "./_helpers.ts";
 import { makeMockResponse } from "./_rpc.ts";
 
@@ -97,8 +96,10 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
         assert.ok(listener !== null);
         const address = (listener as A2aModule).address();
         const agentUrl = `http://${address.host}:${address.port}`;
-        await caller.registerScheme("a2a", new A2a(async (authority) =>
-            authority === "remote" ? await connectHttpJsonAgent(agentUrl) : null));
+        caller.registerModule({
+            setup: (seam) => seam.registerRuntimes([a2aFace(async (authority) =>
+                authority === "remote" ? await connectHttpJsonAgent(agentUrl) : null)]),
+        });
         await caller.start();
         const worker = await caller.createConversationWorker({
             workspaceId: callerWorkspace.workspaceId,
@@ -164,9 +165,9 @@ test("{§a2a-inbound-exposure}{§a2a-outbound-resources}: two Plurnk daemons com
     }
 });
 
-// {§a2a-agents-functionality} {§a2a-agents-catalog} — the production composed
+// {§a2a-functionality} {§a2a-catalog} — the production composed
 // path: the caller attaches the peer service through its environment and the
-// Worker `agents` family (no injected resolver), delegates twice, and the
+// Worker `a2a` family (no injected resolver), delegates twice, and the
 // composition respects both the Context/Task ↔ Worker mapping on the hosted
 // side and topology-scoped ambience on the calling side.
 test("composed production path: env-attached agent, two delegated Tasks, topology-scoped ambience", async () => {
@@ -231,7 +232,7 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
         const agentUrl = `http://${address.host}:${address.port}`;
 
         // The production attachment: the environment defines the peer; the
-        // Worker `agents` family owns availability, enablement, and resolution.
+        // Worker `a2a` family owns availability, enablement, and resolution.
         caller = new Daemon({ db: callerDb, provider: routedProvider });
         caller.registerModule(A2aOutboundModule.init({
             PLURNK_A2A_ERROR_DETAIL_LIMIT: "512",
@@ -252,7 +253,7 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
             workspaceId: callerWorkspace.workspaceId,
             name: "bystander",
         });
-        const listed = await caller.invokeModuleAction("workspace.agents.list", {}, {
+        const listed = await caller.invokeModuleAction("workspace.a2a.list", {}, {
             scope: "workspace",
             workspaceId: callerWorkspace.workspaceId,
         }) as { definitions: Array<{ alias: string; origin: string; state: string }> };

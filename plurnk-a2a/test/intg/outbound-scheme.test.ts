@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { TaskState } from "@a2a-js/sdk";
-import {
-    Manifest,
-    type SendStatement,
-    type UrlPath,
-} from "@plurnk/plurnk-schemes";
+import type { SendStatement, UrlPath } from "@plurnk/plurnk-schemes";
 import {
     A2a,
     A2aProjection,
@@ -49,17 +45,16 @@ const pathnameOf = (resource: string): string => {
     return resource.slice("a2a://researcher".length);
 };
 
-test("{§a2a-resource-projection} declares a resource-authority scheme with concise model documentation", async (t) => {
-    const agent = await startDemoAgent();
-    t.after(() => agent.close());
-    const client = await connectHttpJsonAgent(agent.baseUrl);
-    const handler = new A2a((authority) => authority === "researcher" ? client : null);
+test("{§a2a-scheme-face} {§a2a-resource-projection} the face keeps resource authority, and claims an alias or a hosted message but never a stored execution", () => {
+    const face = new A2a(() => null);
 
-    const manifest = Manifest.of(handler, "a2a");
-    assert.equal(manifest.authority, "resource");
-    assert.equal(manifest.defaultChannel, "body");
-    assert.equal(manifest.documentation?.includes("## Summary"), true);
-    assert.equal(manifest.documentation?.includes("````SEND (a2a://"), true);
+    assert.deepEqual(face.manifest, { authority: "resource", channels: { body: "text/markdown", json: "application/json" }, defaultChannel: "body" });
+    for (const claimed of ["/researcher", "/researcher/tasks/7", "/contexts/c/tasks/t/messages/m"]) {
+        assert.equal(face.claims(claimed), true, claimed);
+    }
+    for (const stored of ["/", "/12/3/1", "/12/3/1/resources/report.pdf"]) {
+        assert.equal(face.claims(stored), false, `${stored} stays the manager's stored execution`);
+    }
 });
 
 test("READ of an agent root materializes its discovered Agent Card", async (t) => {

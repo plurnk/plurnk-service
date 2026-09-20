@@ -45,23 +45,24 @@ PLURNK_A2A_RESEARCH_BEARER=${A2A_RESEARCH_TOKEN}
 PLURNK_A2A_ENABLED=["research"]
 ```
 
-In the service those definitions are the baseline of the workspace `agents`
+In the service those definitions are the baseline of the workspace `a2a`
 Functionality family (`OutboundModule`): every Worker lists, discovers, adds,
 enables, disables, and removes outbound agents through the common
-`workspace.agents.*` actions or the generated ```` ```agents ```` manager, and the
+`workspace.a2a.*` actions or the generated ```` ```a2a ```` manager, and the
 `a2a://<alias>` scheme resolves an alias against the workspace's enabled
-snapshot. Enabled agents appear in Turn 0 as one `worker:///_plurnk/agents/<alias>.md`
+snapshot. Enabled agents appear in Turn 0 as one `worker:///_plurnk/a2a/<alias>.md`
 catalog row each; the exact Agent Card stays pullable with `READ a2a://<alias>`.
 
-The package also exports the outbound `a2a://` scheme handler for embedding.
-Its resolver maps each URI authority, in the operation's workspace, to
-one client while keeping alias and credential policy outside the
+The package also exports the scheme's live face for embedding: a runtime named
+`a2a` carries it as its `scheme`, and it claims every coordinate that opens
+with an alias. Its resolver maps each URI authority, in the operation's
+workspace, to one client while keeping alias and credential policy outside the
 protocol/resource owner:
 
 ```ts
 import { A2a, connectHttpJsonAgent } from "@plurnk/plurnk-a2a";
 
-const scheme = new A2a(async (alias, ctx) =>
+const face = new A2a(async (alias, ctx) =>
     alias === "research" && ctx.workspaceId === 1 ? await connectHttpJsonAgent("https://agent.example") : null);
 ```
 

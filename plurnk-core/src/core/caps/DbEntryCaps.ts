@@ -93,7 +93,7 @@ export default class DbEntryCaps implements EntryCaps {
         return EntryCrud.writeEntry({ authority: this.#authority, pathname }, {
             channels: entry.channels,
             ...(entry.attributes === undefined ? {} : { attributes: entry.attributes }),
-        }, this.#ctx, this.#scheme);
+        }, this.#ctx, this.#scheme, { defaultChannel: this.#manifest.defaultChannel });
     }
 
     async delete(pathname: string, channel?: string): Promise<SchemeResult> {

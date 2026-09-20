@@ -1416,7 +1416,7 @@ export default class Dispatcher {
         const routedScheme = schemeNameOf(path);
         const manifest = routedScheme === null
             ? undefined
-            : this.#schemes.manifestFor(routedScheme, workspaceId);
+            : this.#schemes.manifestAt(routedScheme, path, workspaceId);
         const foldNs = scheme !== null
             && manifest !== undefined
             && (manifest.authority ?? "namespace") === "namespace";

@@ -12,6 +12,7 @@ import {
     type PacketSectionTransformer,
     type SchemeHandler,
 } from "@plurnk/plurnk-schemes";
+import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "./scheme-types.ts";
 import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
@@ -321,6 +322,13 @@ export default class SchemeRegistry {
     manifestFor(name: string, workspaceId?: number): SchemeManifest | undefined {
         const handler = this.get(name, workspaceId);
         return handler === undefined ? undefined : Manifest.of(handler, name);
+    }
+
+    // {§runtime-resource-binding} The manifest that governs one coordinate: the live half of a
+    // runtime scheme may state a representation of its own.
+    manifestAt(name: string, target: ParsedPath | null, workspaceId?: number): SchemeManifest | undefined {
+        const handler = this.get(name, workspaceId);
+        return handler instanceof ExecOutputScheme ? handler.manifestAt(target) : this.manifestFor(name, workspaceId);
     }
 
     list(workspaceId?: number): string[] {

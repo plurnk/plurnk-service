@@ -244,7 +244,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
             [
                 "worker:///_plurnk/plurnk/*.md",
                 "worker:///_plurnk/tools/*.md",
-                "worker:///_plurnk/agents/*.md",
+                "worker:///_plurnk/a2a/*.md",
                 "worker:///_plurnk/members/*.md",
                 "*",
             ],

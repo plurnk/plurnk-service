@@ -39,7 +39,7 @@ test("{§operator-config-precedence} empty environment definitions stay absent t
         await daemon.start();
         const invoke = (family: string, verb: string, params: Record<string, unknown> = {}) =>
             daemon.invokeModuleAction(`workspace.${family}.${verb}`, params, { scope: "workspace", workspaceId });
-        for (const family of ["mcp", "agents", "schedule"]) {
+        for (const family of ["mcp", "a2a", "schedule"]) {
             const result = await invoke(family, "list") as FunctionalityListResult;
             assert.deepEqual(result.definitions.map(({ alias, state, origin }) => ({ alias, state, origin })), [
                 { alias: "other", state: "disabled", origin: "service" },
@@ -54,7 +54,7 @@ test("{§operator-config-precedence} empty environment definitions stay absent t
         }
         for (const [family, configuration] of [
             ["mcp", { PLURNK_MCP_OTHER: "", PLURNK_MCP_OTHER_ARGS: "not JSON" }],
-            ["agents", { PLURNK_A2A_OTHER: "", PLURNK_A2A_OTHER_HEADERS: "not JSON" }],
+            ["a2a", { PLURNK_A2A_OTHER: "", PLURNK_A2A_OTHER_HEADERS: "not JSON" }],
         ] as const) {
             const result = await invoke(family, "discover", { configuration }) as { candidates: unknown[] };
             assert.deepEqual(result.candidates, [], family);

@@ -46,6 +46,7 @@ const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; detai
 });
 
 export type FunctionalityTeaching = {
+    readonly traits?: readonly string[];
     readonly inputSchemas: Readonly<Record<FunctionalityVerb, JsonSchema>>;
     readonly example?: { readonly alias: string; readonly definition: object };
     readonly discovery?: { readonly details: string };
@@ -77,7 +78,7 @@ export default class FunctionalityManager extends BaseExecutor {
         this.#coordinator = args.coordinator;
         this.#workspaceId = args.workspaceId;
         this.#workerId = args.workerId;
-        this.#teaching = { inputSchemas: args.inputSchemas, example: args.example, discovery: args.discovery };
+        this.#teaching = { traits: args.traits, inputSchemas: args.inputSchemas, example: args.example, discovery: args.discovery };
     }
 
     // {§functionality-model-projection} — the published manager closes over the workspace; Core binds
@@ -91,6 +92,10 @@ export default class FunctionalityManager extends BaseExecutor {
 
     get channels(): Readonly<Record<string, ChannelDecl>> {
         return { [CHANNEL]: { mimetype: "application/json" } };
+    }
+
+    override get traits(): ReadonlyArray<string> | undefined {
+        return this.#teaching.traits;
     }
 
     override async probe(): Promise<RuntimeAvailability> {

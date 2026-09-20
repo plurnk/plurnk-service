@@ -17,7 +17,7 @@ cards are protocol projections, not configuration files.
 | Family | Variables | Meaning |
 |---|---|---|
 | Outbound definition | `PLURNK_A2A_<ALIAS>=<absolute HTTP(S) URL>` plus optional `_CARD_PATH`, `_HEADERS`, and `_BEARER` companions | Defines one available remote agent without fetching or enabling it. `_BEARER` contains only a symbolic `${NAME}` reference; secrets remain environment-owned. |
-| Outbound defaults | `PLURNK_A2A_ENABLED` | JSON array selecting the exact aliases enabled by default for the workspace's `agents` family ({§a2a-agents-functionality}); workspace state may override enabledness. |
+| Outbound defaults | `PLURNK_A2A_ENABLED` | JSON array selecting the exact aliases enabled by default for the workspace's `a2a` family ({§a2a-functionality}); workspace state may override enabledness. |
 | Timeouts | `PLURNK_A2A_CONNECT_TIMEOUT`, `PLURNK_A2A_REQUEST_TIMEOUT` | Positive integer milliseconds owned by the A2A package. |
 | Diagnostics | `PLURNK_A2A_ERROR_DETAIL_LIMIT` | Non-negative character bound for one caught upstream diagnostic admitted to a model-facing A2A Problem; complete causes remain internal. |
 | Inbound listener | `PLURNK_A2A_EXPOSE`, `_HOST`, `_PORT`, `_ENDPOINT_PATH`, `_ENDPOINT_URL` | `EXPOSE=1` admits one optional HTTP+JSON listener; `0` admits none. |
@@ -138,12 +138,11 @@ not the Worker directory's creation order.
 | Content | Artifacts are omitted unless requested; the SDK applies the requested history limit. |
 | Invalid cursor | Standard `RequestMalformedError`; never silently restart at the first page. |
 
-## §a2a-agents-functionality Outbound agents as workspace Functionality
+## §a2a-functionality Outbound agents as workspace Functionality
 
-The package registers, through `OutboundModule`, the `a2a` resource scheme and
-one workspace Functionality family named `agents` ({§functionality-adapter} in
-core). The family is not tagged `a2a` because every executor tag is also a
-scheme face and would collide with the `a2a://` resource scheme. Its definition
+The package registers, through `OutboundModule`, one workspace Functionality
+family named `a2a` ({§functionality-adapter} in core): the package, its keys,
+the family and the scheme share one name. Its definition
 is the `A2aAgentDefinition` contract — local alias `name`, remote `url`,
 optional `cardPath`, `headers`, and symbolic bearer `authorization` —
 exactly the environment's `PLURNK_A2A_<ALIAS>*` projection.
@@ -164,9 +163,10 @@ Agent Card at the definition's URL (`card-unreachable`), and connects only
 through an advertised HTTP+JSON `1.0` interface (`interface-unsupported`),
 reusing an unchanged attachment across publications. The outcome detail carries
 the card's name, version, description, skill identifiers, and streaming
-capability. The family publishes no runtimes; its snapshot is the workspace's
-`alias → client` map, and the `a2a` scheme resolves an authority against the
-Functionality of the operation's workspace (`ctx.workspaceId`):
+capability. The family publishes no runtimes of its own; its snapshot is the
+workspace's `alias → client` map, and its scheme face ({§a2a-scheme-face})
+resolves an authority against the Functionality of the operation's workspace
+(`ctx.workspaceId`):
 an unknown or disabled alias is 404 `agent-not-configured`, an unavailable
 alias carries its one exact preparation Problem. Every worker in a workspace
 resolves the same alias definition; independent workspaces may differ.
@@ -177,12 +177,12 @@ prose. A decision-relevant caught configuration, discovery, or interface
 diagnostic is admitted only through `PLURNK_A2A_ERROR_DETAIL_LIMIT`; the exact
 cause remains attached for daemon diagnostics.
 
-§a2a-agents-catalog **Turn 0 shows enabled agents concisely.** Preparation
-publishes one `worker:///_plurnk/agents/<alias>.md` document per active
+§a2a-catalog **Turn 0 shows enabled agents concisely.** Preparation
+publishes one `worker:///_plurnk/a2a/<alias>.md` document per active
 alias — an H1 alias, an H2 `Summary` whose one line is
 `a2a://<alias> — <card name> v<version>: <description>`, and the invocation
 form — and nothing for disabled or unavailable aliases. Core's seventh turn-0
-survey (```` ```FIND (worker:///_plurnk/agents/*.md) <1,-1> ````,
+survey (```` ```FIND (worker:///_plurnk/a2a/*.md) <1,-1> ````,
 {§actor-boundary-catalog-preview}) therefore presents every effective agent as
 one summary row. The document embeds neither the card nor its skills; both stay
 pullable exactly through `READ a2a://<alias>` ({§a2a-outbound-definition}).
@@ -195,8 +195,21 @@ and subscription contracts. Its URI authority is the configured remote-agent
 alias. The adapter is not a Worker producer, scheduler, Task store, or alternate
 operation runtime.
 
+§a2a-scheme-face **The scheme is the live half of the family's own runtime.**
+Every executor tag is a scheme of the same name, so the `a2a` manager and the
+`a2a://` resources are one scheme with two halves ({§runtime-resource-binding}
+in core). The manager's stored executions keep `a2a:///<loop>/<turn>/<sequence>`,
+numeric throughout; the package's face claims every other coordinate — one that
+opens with an agent alias, or with `contexts` for a hosted message — and owns
+READ, FIND preparation and SEND there; KILL of a live Task is the ordinary
+stream control. The face declares its own representation — resource authority,
+`#body` and `#json` — so a resource keeps the one address `a2a://planner/tasks/7`
+in what the model writes, in its log, and in the wake that concludes a Task.
+The family states the `web` trait, so a capability policy that selects on it
+covers the manager and every resource alike.
+
 §a2a-outbound-definition An enabled outbound alias resolves through its
-workspace's `agents` Functionality snapshot ({§a2a-agents-functionality}), whose
+workspace's `a2a` Functionality snapshot ({§a2a-functionality}), whose
 preparation discovered and validated the remote standard Agent Card and
 selected only an advertised HTTP+JSON `1.0` interface. The local alias,
 target, optional card path, symbolic authentication, and provenance are local

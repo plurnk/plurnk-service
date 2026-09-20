@@ -301,7 +301,7 @@ try {
     await tui.waitFor(/MCP servers: none/);
     tui.write("/skills\r");
     await tui.waitFor(/plurnk\s+active\s+service/);
-    tui.write("/agents\r");
+    tui.write("/a2a\r");
     await tui.waitFor(/A2A agents: none/);
     tui.write("Exercise the installed interactive terminal.\r");
     await tui.waitFor(/The installed interactive journey is complete\./);
@@ -386,7 +386,7 @@ try {
     if (durable.definitions.some((definition) => definition.alias === "client-only")) {
         throw new Error("a discovered client candidate entered the workspace's durable set");
     }
-    for (const family of ["skills", "agents"]) {
+    for (const family of ["skills", "a2a"]) {
         const listed = await terminal.rpc(`workspace.${family}.list`);
         if (!Array.isArray(listed.definitions)) {
             throw new Error(`workspace.${family}.list returned no Functionality definitions`);

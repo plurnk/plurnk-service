@@ -1,10 +1,9 @@
-// {§a2a-agents-functionality} — outbound A2A agents as one workspace Functionality
-// family named `agents`. The adapter owns protocol truth: the environment's
-// definitions, inert Agent Card discovery, admission of an authored definition,
-// two-phase preparation (card discovery + HTTP+JSON client per alias), and the
-// workspace snapshot the `a2a` scheme resolves aliases against. The family is
-// not tagged `a2a` because every executor tag is also a scheme face and would
-// collide with the `a2a://` resource scheme.
+// {§a2a-functionality} — outbound A2A agents as one workspace Functionality
+// family named `a2a`: the package, the keys, the family and the scheme share one
+// name. The adapter owns protocol truth: the environment's definitions, inert
+// Agent Card discovery, admission of an authored definition, two-phase
+// preparation (card discovery + HTTP+JSON client per alias), and the workspace
+// snapshot its scheme face ({§a2a-scheme-face}) resolves aliases against.
 import { fileURLToPath } from "node:url";
 import type { AgentCard } from "@a2a-js/sdk";
 import type { Client } from "@a2a-js/sdk/client";
@@ -17,12 +16,13 @@ import {
     type JsonSchema,
     type ProblemDetails,
 } from "@plurnk/plurnk-contracts";
+import A2a from "./A2a.ts";
 import { outboundDefinitions, serviceEnabledNames } from "./config.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 import { connectHttpJsonAgentFromCard, discoverAgentCard } from "./HttpJsonClient.ts";
 
-export const AGENTS_FAMILY = "agents";
-export const AGENTS_OWNER = "@plurnk/plurnk-a2a";
+export const A2A_FAMILY = "a2a";
+export const A2A_OWNER = "@plurnk/plurnk-a2a";
 const DEFINITION = { $ref: "https://schemas.plurnk.xyz/v0/A2aAgentDefinition.json" } as const satisfies JsonSchema;
 const ALIAS = /^[a-z][a-z0-9-]*$/u;
 const ENV_REFERENCE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/u;
@@ -124,7 +124,7 @@ export const aliasOfCard = (card: AgentCard): string => {
     return ALIAS.test(candidate) ? candidate : "agent";
 };
 
-// {§a2a-agents-catalog} — one concise model-facing document per active alias:
+// {§a2a-catalog} — one concise model-facing document per active alias:
 // identity to choose among agents and the invocation form; the exact card and
 // its skills stay pullable through `READ a2a://<alias>`.
 export const renderAgent = (alias: string, card: AgentCard): string => {
@@ -150,9 +150,11 @@ export const renderAgent = (alias: string, card: AgentCard): string => {
 };
 
 export default class A2aFunctionality {
-    readonly family = AGENTS_FAMILY;
-    readonly namespaceOwner = AGENTS_OWNER;
+    readonly family = A2A_FAMILY;
+    readonly namespaceOwner = A2A_OWNER;
     readonly summary = "Manage A2A agents";
+    readonly traits = ["web"];
+    readonly scheme = new A2a((authority, ctx) => this.resolve(authority, ctx.workspaceId));
     readonly definitionSchema: JsonSchema = DEFINITION;
     readonly example = { alias: "planner", definition: { name: "planner", url: "https://agents.example.com/planner" } };
     readonly docsDir = fileURLToPath(new URL("..", import.meta.url));
@@ -173,11 +175,11 @@ export default class A2aFunctionality {
     }
 
     get handle(): FunctionalityFamilyHandle {
-        if (this.#handle === null) throw new Error("A2A agents Functionality is not attached to its coordinator handle.");
+        if (this.#handle === null) throw new Error("A2A Functionality is not attached to its coordinator handle.");
         return this.#handle;
     }
 
-    // The `a2a` scheme's resolver: the alias in the Functionality of the workspace
+    // The scheme face's resolver: the alias in the Functionality of the workspace
     // the operation acts in. Unknown or disabled → null (404 at the scheme);
     // unavailable → its one exact preparation Problem.
     resolve(authority: string, workspaceId: number): Client | null {
@@ -333,7 +335,7 @@ export default class A2aFunctionality {
         }
         const documents = [...attachments]
             .toSorted(([left], [right]) => left.localeCompare(right))
-            .map(([alias, { card }]) => ({ pathname: `agents/${encodeURIComponent(alias)}.md`, content: renderAgent(alias, card) }));
+            .map(([alias, { card }]) => ({ pathname: `a2a/${encodeURIComponent(alias)}.md`, content: renderAgent(alias, card) }));
         const snapshot: Snapshot = { attachments, unavailable };
         const { workspaceId } = preparation;
         return {

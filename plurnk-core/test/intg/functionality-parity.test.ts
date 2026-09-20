@@ -203,8 +203,8 @@ const agentsFamily = async (): Promise<Family> => {
     const send = (alias: string) => async (context: Context) =>
         (await dispatch(context, sendStmt(a2aTarget(alias), "parity"))).status;
     return {
-        family: "agents",
-        documentOf: (alias) => `/_plurnk/agents/${alias}.md`,
+        family: "a2a",
+        documentOf: (alias) => `/_plurnk/a2a/${alias}.md`,
         teaching: /## Working with an added agent/u,
         service: { alias: "researcher", definition: { name: "researcher", url: agentA.baseUrl }, probe: send("researcher") },
         addable: { alias: "extra", definition: { name: "extra", url: agentA.baseUrl }, probe: send("extra") },

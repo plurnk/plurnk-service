@@ -12,6 +12,7 @@ import { InvalidOperationResultError, type SchemeCtx, type SchemeHandler, type S
 import { type BoundEntryAddress as ResolvedDataEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
 import type { DispatchResult, SchemeWithEntryAddress } from "./Dispatcher.ts";
 import ResourceBindings from "./ResourceBindings.ts";
+import ExecOutputScheme from "../schemes/ExecOutputScheme.ts";
 import ChannelWrite from "./ChannelWrite.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 
@@ -84,7 +85,8 @@ export default class KillHandler {
         // log:/// KILL has already gone through the projection-curation owner.
         // This path owns scheme-specific world and process KILL semantics.
         const killable = binding?.handler as SchemeHandler | undefined;
-        if (killable !== undefined && typeof killable.kill === "function") {
+        if (killable !== undefined && typeof killable.kill === "function"
+            && (!(killable instanceof ExecOutputScheme) || killable.kills(path))) {
             let handlerCtx: SchemeCtxImpl | null;
             if (manifest?.category === "data") {
                 const resolved = await this.#resolveDataEntryAddress({

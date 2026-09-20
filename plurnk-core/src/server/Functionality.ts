@@ -696,7 +696,7 @@ export default class Functionality {
                 decl: functionalityRuntimeDecl(adapter.family, adapter.summary, await this.#documentBody(adapter)),
                 executor: new FunctionalityManager({
                     family: adapter.family, workspaceId: identity.workspaceId, coordinator: this,
-                    inputSchemas: this.#schemas.get(adapter.family)!, example: adapter.example, discovery: adapter.discovery,
+                    traits: adapter.traits, inputSchemas: this.#schemas.get(adapter.family)!, example: adapter.example, discovery: adapter.discovery,
                 }),
                 availability: { available: true, detail: "workspace Functionality manager" },
                 ...(adapter.scheme === undefined ? {} : { scheme: adapter.scheme }),

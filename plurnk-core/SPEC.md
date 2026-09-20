@@ -351,7 +351,7 @@ narrow or omit the reference catalogs under {§capability-admission}.
 | Agent Skills | `skill://*/SKILL.md` | `<1,-1>`; {§skills-resources} |
 | Plurnk references: executors, schemes, family managers | `worker:///_plurnk/plurnk/*.md` | `<1,-1>` |
 | Enabled tools | `worker:///_plurnk/tools/*.md` | `<1,-1>`; configured expansions follow under {§tools-resource-materialization} |
-| Enabled agents | `worker:///_plurnk/agents/*.md` | `<1,-1>`; {§a2a-agents-catalog} |
+| Enabled agents | `worker:///_plurnk/a2a/*.md` | `<1,-1>`; {§a2a-catalog} |
 | Enabled members | `worker:///_plurnk/members/*.md` | `<1,-1>`; {§members-projection} |
 | Project filesystem | `*` | File cap below; `project root member files` |
 | Workspace entries | `worker:///*` | Markerless; `workspace knowledgebase entries` |
@@ -3951,9 +3951,18 @@ module actions. Optional `forget` releases an installed or provisioned
 definition before removal; failure rejects removal ({§skills-remove}).
 
 An adapter may expose a `scheme` facet beneath its family's runtime namespace
-({§runtime-resource-binding}); its resources use the same READ/FIND and optional
-KILL/WAIT handler contract as other runtime facets. Event producers register
-through the module setup seam ({§scheme-awaited-events}).
+({§runtime-resource-binding}). A facet claims a path subtree and is the scheme's
+whole live half there: READ and FIND preparation, FIND, SEND, WAIT and KILL are
+its own wherever it implements them. A claimed KILL the facet does not implement
+is the ordinary entry KILL ({§stream-control}); an unclaimed coordinate keeps the
+stored-execution behaviour, SEND to a process included. Where its resources are
+not shaped like the executor's output, the facet states their representation —
+resource authority, channels, the default channel — and that manifest governs
+every claimed coordinate: its address, its fragmentless READ, the channel a
+subscription publishes. An adapter states the `traits` of its runtime — `web`
+for a family that reaches the network — so {§capability-admission} selects its
+manager and its resources alike. Event producers register through the module
+setup seam ({§scheme-awaited-events}).
 
 §env-functionality **Environment is a scoped family.** Ambient names admitted by the
 operator's ceiling ({§exec-env-scoped}, service origin) precede workspace defaults and
