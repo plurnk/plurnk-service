@@ -137,14 +137,13 @@ repeatable `--env-file-if-exists` flags the LAST flag wins. The live/demo tier
 
 1. the operator's shell env — `scripts/operator-environment.sh` sources `~/.bashrc`
    before running, so the `<PROVIDER>_API_KEY` credentials (e.g. `DEEPSEEK_API_KEY`)
-   are present and `PLURNK_MODEL=<selector>` here overrides the committed gate default,
-2. `plurnk-core/.env.test` — the committed real-model gate profile
-   (model selection declared there, `PLURNK_SERVICE_FILES_ITEMS=-1`,
-   `PLURNK_SERVICE_GIT_AUTO=1`),
+   are present and `PLURNK_MODEL=<selector>` here selects the model for one run,
+2. `plurnk-core/.env.test` — the committed real-model gate profile: the posture that is the
+   same on every machine (`PLURNK_SERVICE_FILES_ITEMS=-1`, `PLURNK_SERVICE_GIT_AUTO=1`,
+   ambient operator surfaces cleared). It names no model,
 3. `./.env`, then `$XDG_CONFIG_HOME/plurnk/.env` — operator files. The user file declares the
-   model aliases (`PLURNK_MODEL_<alias>=<provider>/<model>`, e.g.
-   `PLURNK_MODEL_deepdumb=deepseek/deepseek-v4-flash`); both are operator-owned and
-   never committed,
+   model aliases (`PLURNK_MODEL_<alias>=<provider>/<model>`) and may set `PLURNK_MODEL`
+   as this machine's standing selection; both are operator-owned and never committed,
 4. per-package `.env.defaults` — committed safe defaults plus the authoritative env docs,
 5. `test/floor.ts` — the assembled `.env.defaults` of every installed package,
    applied set-if-unset so it only fills genuinely-unset knobs.
@@ -155,8 +154,8 @@ declares an optional reusable tuning scope (provider ids in
 `plurnk-models/src/providers.json`). Resolution is `resolveActiveRoute()`
 (plurnk-aliases) then `loadActiveProvider()` (plurnk-providers). Declare reusable
 aliases once in `$XDG_CONFIG_HOME/plurnk/.env` and select them per run; never
-redeclare one inline. `plurnk-core/.env.test` owns the committed gate selector;
-the repo never ships a credential.
+redeclare one inline. With no selector anywhere the daemon boots modelless and says
+so; the repository ships neither a model nor a credential.
 
 The root drill (`npm test`) ends with a client conformance phase: it
 boots the built service and compares the terminal client's

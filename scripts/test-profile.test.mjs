@@ -11,7 +11,6 @@ const root = resolve(import.meta.dirname, "..");
 const profilePath = resolve(root, "plurnk-core", ".env.test");
 const operatorEnvironment = resolve(root, "scripts", "operator-environment.sh");
 const expectedProfile = {
-    PLURNK_MODEL: "rtx5070",
     PLURNK_SERVICE_FILES_ITEMS: "-1",
     PLURNK_SERVICE_GIT_AUTO: "1",
     PLURNK_SERVICE_UNATTENDED_PROPOSALS: "accept",
