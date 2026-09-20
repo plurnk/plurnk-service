@@ -6,26 +6,23 @@ export default class PlurnkParseError extends Error {
     readonly column: number;
     readonly source: ErrorSource;
     readonly severity: Severity;
-    readonly code?: "invalid-turn-structure";
 
-    constructor(line: number, column: number, source: ErrorSource, message: string, severity: Severity = "error", code?: PlurnkParseError["code"]) {
+    constructor(line: number, column: number, source: ErrorSource, message: string, severity: Severity = "error") {
         super(message);
         this.name = "PlurnkParseError";
         this.line = line;
         this.column = column;
         this.source = source;
         this.severity = severity;
-        this.code = code;
     }
 
-    toJSON(): { line: number; column: number; source: ErrorSource; severity: Severity; message: string; code?: PlurnkParseError["code"] } {
+    toJSON(): { line: number; column: number; source: ErrorSource; severity: Severity; message: string } {
         return {
             line: this.line,
             column: this.column,
             source: this.source,
             severity: this.severity,
             message: this.message,
-            ...(this.code === undefined ? {} : { code: this.code }),
         };
     }
 }

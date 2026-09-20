@@ -1052,8 +1052,9 @@ found.`), which the host may admit as an empty turn rather than reject
 ({§disposition-anywhere}). An omitted WAIT produces no synthesized statement, diagnostic, receipt,
 warning, or strike. The authored operations and source remain unchanged.
 Unfinished blocks never receive inferred closers.
-Bounded operation errors retain valid siblings. A failed document boundary
-remains a structural failure.
+Bounded operation errors retain valid siblings, and so does a lost boundary:
+the statements that closed before `unparsedTail.from` are facts, and only what
+follows is undefined ({§unparsed-tail-boundary}).
 
 The host records programs per turn; no operation acts as a separator between
 saved programs. There is no outer Markdown program wrapper; the executable
@@ -1390,7 +1391,6 @@ class PlurnkParseError extends Error {
     readonly column: number;
     readonly source: ErrorSource;
     readonly severity: Severity;
-    readonly code?: "invalid-turn-structure";
 }
 ```
 
@@ -1429,9 +1429,7 @@ the sole and complete owner of syntax-error messaging because it holds the
 parse state, lexer mode, and expected-token set that no consumer has. It
 produces the final diagnostic message, deduplicated expected-token lists, and
 turn-shape diagnostics ({§turn-shape}). An omitted lifecycle declaration produces no diagnostic, and
-neither does the position of a present one ({§disposition-anywhere}). A failed
-document boundary carries `code: "invalid-turn-structure"`, which cannot be
-recovered as an individual failed operation. Source with no
+neither does the position of a present one ({§disposition-anywhere}). Source with no
 parsed operation yields `no valid Plurnk operation was found.` Targeted
 diagnostics are:
 
@@ -1553,7 +1551,9 @@ without a closer is not such a case: it ends under {§closer-fallback}. `ParseRe
 before that point; recovered contexts and diagnostics at or beyond it are not
 public results. The tail is one separate boundary fact, not an additional
 malformed-statement diagnostic. Consumers must treat anything from that point
-onward as undefined and must never dispatch a recovered statement from it.
+onward as undefined and must never dispatch a recovered statement from it; the
+facts before it are ordinary facts, and a consumer that runs them owes the
+author the tail's reason.
 
 | Consumer duty      | Contract                                                                                                       |
 |--------------------|----------------------------------------------------------------------------------------------------------------|

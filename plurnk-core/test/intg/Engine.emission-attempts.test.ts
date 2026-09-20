@@ -508,33 +508,17 @@ test("a provider-authoritative charge is the settled turn and loop cost", async 
     }
 });
 
-test("finish=length is forensic evidence: an unfinished modifier retries wholesale while a complete frame is admitted", async () => {
+test("finish=length is forensic evidence: a frame that lost its boundary after a statement is admitted with the loss as its diagnostic", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
-        const rejectedPrefix = [
+        const lostPrefix = [
             "",
             "````READ (worker:///missing)````",
             "````EDIT (worker:///notes.md",
         ].join("\n");
-        const accepted = "\n````SEND\ndone\n````";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
-            responses: [
-                {
-                    assistant: {
-                        content: rejectedPrefix,
-                        reasoning: null,
-                        finishReason: "length",
-                    },
-                },
-                {
-                    assistant: {
-                        content: accepted,
-                        reasoning: null,
-                        finishReason: "length",
-                    },
-                },
-            ],
+            responses: [{ assistant: { content: lostPrefix, reasoning: null, finishReason: "length" } }],
         });
 
         const result = await engine.runTurn({
@@ -545,15 +529,13 @@ test("finish=length is forensic evidence: an unfinished modifier retries wholesa
             messages: [{ role: "user", content: "do the task" }],
         });
 
-        assert.equal(result.status, 200);
-        assert.equal(result.emissionAttempts, 2);
+        assert.equal(result.emissionAttempts, 1, "the frame is admitted on its first attempt");
         const attempts = await db.test_turn_attempts.all<{
             accepted: number;
             finish_reason: string | null;
             parse_errors: string;
         }>({ turn_id: result.turnId });
         assert.deepEqual(attempts.map(({ accepted, finish_reason }) => ({ accepted, finish_reason })), [
-            { accepted: 0, finish_reason: "length" },
             { accepted: 1, finish_reason: "length" },
         ]);
         assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), [{
@@ -561,18 +543,15 @@ test("finish=length is forensic evidence: an unfinished modifier retries wholesa
             line: 3,
             column: 0,
             source: "grammar",
-        }], "the rejected attempt preserves one tail fact and no recovered-tail diagnostics");
+        }], "the admitted attempt preserves one tail fact and no recovered-tail diagnostics");
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: result.turnId });
-        assert.equal(
-            rows.filter(({ op, origin }) => origin === "model" && op === "READ").length,
-            0,
-            "the valid prefix of a rejected frame never dispatches",
-        );
+        assert.equal(rows.filter(({ op, origin }) => origin === "model" && op === "READ").length, 1, "the statement that closed before the loss dispatched");
+        assert.equal(rows.filter(({ op, origin }) => origin === "model" && op === "error").length, 1, "the loss is a row");
         const turn = await db.test_get_turn.get<{ packet: string; finish_reason: string | null }>({ id: result.turnId });
-        assert.equal(turn?.finish_reason, "length", "a complete frame remains valid even when the provider reports length");
+        assert.equal(turn?.finish_reason, "length", "the provider's finish reason is evidence, not a rejection rule");
         assert.equal(
             (JSON.parse(turn?.packet ?? "{}") as { assistant?: { content?: string } }).assistant?.content,
-            accepted,
+            lostPrefix,
         );
     } finally {
         await db.close();
@@ -961,44 +940,46 @@ test("{§turn-disposition} two WAITs keep the single-turn boundary: the program 
     }
 });
 
-test("{§error-shape}: informed fence recovery explains the boundary, preserves the body, and dispatches no rejected prefix", async () => {
+test("{§error-shape} {§unparsed-tail-boundary}: a boundary lost after a statement is a row, not a resample: the prefix runs and the next packet carries the lexer's reason", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const body = "The example:\n```ts\nconst value = 42;\n```\nVerified.";
-        // {§unparsed-tail-boundary} — an unfinished target slot at the end of the input is the one
-        // boundary loss left; a missing or mismatched closer no longer is ({§closer-fallback}).
-        const rejected = [
-            PlurnkParser.frame("EDIT (worker:///must-not-exist)", "never write"),
+        // An unfinished target slot at the end of the input is the one boundary loss left; a missing
+        // or mismatched closer never is ({§closer-fallback}).
+        const lost = [
+            PlurnkParser.frame("EDIT (worker:///before-loss.md)", "kept"),
             "````SEND (worker://reviewer",
         ].join("\n");
         const corrected = PlurnkParser.frame("SEND", body);
         const provider = new AttemptWitness({
             contextWindow: 100_000,
-            responses: [invalid(rejected), invalid(rejected), invalid(rejected), invalid(corrected)],
+            responses: [invalid(lost), invalid(corrected)],
         });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId,
             messages: [{ role: "user", content: "Report the result with its code example." }],
         });
         assert.equal(result.result.status, 200);
-        assert.equal(result.turnIds.length, 3, "initialization, rejected turn, and informed recovery");
-        const [, failedTurn, recoveryTurn] = result.turnIds;
-        const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: failedTurn });
-        assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 0, 0]);
+        assert.equal(result.turnIds.length, 3, "initialization, the admitted turn with its loss, and the reply");
+        const [, lossTurn, replyTurn] = result.turnIds;
         const message = "target slot of `SEND` opened at line 4 but never closed - add `)`";
-        for (const attempt of attempts) assert.deepEqual(JSON.parse(attempt.parse_errors), [{
+        const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: lossTurn });
+        assert.deepEqual(attempts.map(({ accepted, parse_errors }) => [accepted, JSON.parse(parse_errors)]), [[1, [{
             line: 4, column: 0, source: "grammar", message,
-        }]);
-        assert.equal(new Set(provider.packets.slice(0, 3)).size, 1, "private resamples keep the same cacheable packet");
-        assert.ok(provider.packets[3]?.includes(message), "the informed recovery sees the parser-owned boundary diagnosis");
-        assert.doesNotMatch(provider.packets[3]!, /No tasks were supplied/, "the unfinished SEND is not misreported as an absent lifecycle declaration");
-        const recoveryAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: recoveryTurn });
-        assert.deepEqual(recoveryAttempts.map(({ accepted }) => accepted), [1]);
-        const rows = await db.engine_render_log.all<{ op: string; origin: string; tx: string }>({ worker_id: workerId });
-        assert.equal(rows.filter(({ op, origin }) => op === "EDIT" && origin === "model").length, 0);
+        }]]], "one admitted attempt, the tail preserved as its diagnostic");
+        assert.equal(provider.packets.length, 2, "no private resample: the loss is the model's to see");
+        assert.ok(provider.packets[1]?.includes(message), "the next packet carries the parser-owned boundary diagnosis");
+        assert.doesNotMatch(provider.packets[1]!, /No tasks were supplied/, "the unfinished SEND is not misreported as an absent lifecycle declaration");
+        const replyAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: replyTurn });
+        assert.deepEqual(replyAttempts.map(({ accepted }) => accepted), [1]);
+        const rows = await db.engine_render_log.all<{ op: string; origin: string; tx: string; rx: string }>({ worker_id: workerId });
+        assert.equal(rows.filter(({ op, origin }) => op === "EDIT" && origin === "model").length, 1, "the statement that closed before the loss ran");
         assert.equal(rows.filter(({ op, origin }) => op === "SEND" && origin === "model").length, 1);
+        const loss = rows.find(({ op, origin }) => op === "error" && origin === "model");
+        assert.ok(loss, "the loss is a failed row");
+        assert.equal(JSON.parse(loss.rx).problem?.detail, message);
         const entries = await db.test_list_entries_by_workspace_workspace_pathname.all<{ pathname: string }>({ workspace_id: workspaceId });
-        assert.equal(entries.some(({ pathname }) => pathname === "/must-not-exist"), false);
+        assert.equal(entries.some(({ pathname }) => pathname === "/before-loss.md"), true);
         const send = rows.find(({ op, origin }) => op === "SEND" && origin === "model");
         assert.equal(JSON.parse(send!.tx).body?.raw, body, "the durable message retains the complete literal body");
     } finally { await db.close(); }

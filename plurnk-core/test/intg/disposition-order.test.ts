@@ -67,33 +67,31 @@ test("SEND authored first: later operations run in authored order and completion
     } finally { await db.close(); }
 });
 
-test("an unclosed trailing target dispatches no part of the rejected attempt", async () => {
-    for (const tail of ["````READ (unfinished"]) {
-        const db = await openMigrated();
-        try {
-            const workspaceId = await insertWorkspace(db, "rejected-disposition");
-            const workerId = await insertWorker(db, workspaceId);
-            const loopId = await insertLoop(db, workerId, 1);
-            const engine = new Engine({ db, schemes: new SchemeRegistry() });
-            const result = await engine.runTurn({
-                provider: new Mock({ contextWindow: 100_000, responses: [
-                    response(`\`\`\`\`EDIT (worker:///must-not-exist)
-No effect.
-\`\`\`\`
-\`\`\`\`WAIT
-Continue.
-\`\`\`\`
-${tail}`),
-                    response("````SEND\nRecovered.\n````"),
-                ] }), workspaceId, workerId, loopId, messages: [],
-            });
-            assert.equal(result.status, 200);
-            const rows = await db.test_log_entries_by_turn.all<{ op: string | null }>({ turn_id: result.turnId });
-            assert.equal(rows.some(({ op }) => op === "EDIT"), false);
-            const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: result.turnId });
-            assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 1]);
-        } finally { await db.close(); }
-    }
+test("{§unparsed-tail-boundary} a lost boundary refuses only what follows it: the statements before it run, the loss is a row", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, "admit-before-loss");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const result = await engine.runTurn({
+            provider: new Mock({ contextWindow: 100_000, responses: [
+                response("````EDIT (worker:///before-loss.md)\nKept.\n````\n````WAIT\nContinue.\n````\n````READ (unfinished"),
+            ] }), workspaceId, workerId, loopId, messages: [],
+        });
+        assert.equal(result.status, 102, "the failed row keeps the loop going; nothing was resampled");
+        const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
+        assert.deepEqual(attempts.map(({ accepted, parse_errors }) => [accepted, JSON.parse(parse_errors)]), [[1, [{
+            message: "target slot of `READ` opened at line 7 but never closed - add `)`", line: 7, column: 0, source: "grammar",
+        }]]], "the one attempt is admitted and carries the tail as its diagnostic");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string }>({ turn_id: result.turnId });
+        assert.equal(rows.some(({ op }) => op === "EDIT"), true, "the statement that closed before the loss ran");
+        const loss = rows.find(({ op }) => op === "error");
+        assert.ok(loss, "the loss is a failed row of the same turn");
+        const problem = JSON.parse(loss.rx).problem;
+        assert.equal(problem.detail, "target slot of `READ` opened at line 7 but never closed - add `)`");
+        assert.equal(problem.siblingsRetained, true);
+    } finally { await db.close(); }
 });
 
 test("internal turn programs admit a disposition anywhere like model turns", () => {

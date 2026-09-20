@@ -1206,7 +1206,7 @@ Three current entry points:
 
 ### §emission-admission Provider emission admission
 
-A completed provider exchange is an **emission attempt**, not necessarily an engine turn. ANTLR admits at least one parsed source operation, no `unparsedTail`, and at most one WAIT. WAIT is optional under {§turn-shape}; omission invents no operation, diagnostic, warning or strike. Bounded operation errors retain useful siblings and participate in the ordinary struck turn; statements after WAIT remain admitted in authored order and WAIT is scheduled last ({§disposition-anywhere}). Duplicate WAITs or an unfinished heading slot at the end of the input reject the exchange; no recovered prefix dispatches. A missing closer never rejects ({§closer-fallback}). An exchange with no operation and no other hard error is not rejected: it is admitted as an empty turn ({§empty-turn}). Parser warnings remain admissible. `finish=length` is evidence of likely truncation, not an independent rejection rule. Provider-declared interruption never reaches admission ({§provider-interrupted-attempt}). Accepted source bytes and statement positions remain exact in response evidence and `turnOps`. Execution follows {§op-execution-order}.
+A completed provider exchange is an **emission attempt**, not necessarily an engine turn. **The harness admits every program whose meaning it can determine, runs what it admitted, and reports — never refuses — what it could not read**; a refusal is for undecidable text alone. ANTLR admits at least one parsed source operation. WAIT is optional under {§turn-shape}; omission invents no operation, diagnostic, warning or strike; any number of WAITs are one park, scheduled last ({§disposition-anywhere}), and statements after them remain admitted in authored order. Bounded operation errors retain useful siblings and participate in the ordinary struck turn. An unfinished heading slot ({§unparsed-tail-boundary}) refuses only what follows it: the statements that closed before it run, and the loss is one more hard diagnostic — a failed row with the lexer's own reason; an exchange that lost its boundary before any statement closed has nothing admissible and is rejected. A missing closer never rejects ({§closer-fallback}). An exchange with no operation and no other hard error is not rejected: it is admitted as an empty turn ({§empty-turn}). Parser warnings remain admissible. `finish=length` is evidence of likely truncation, not an independent rejection rule. Provider-declared interruption never reaches admission ({§provider-interrupted-attempt}). Accepted source bytes and statement positions remain exact in response evidence and `turnOps`. Execution follows {§op-execution-order}.
 
 §safe-uri-target-groups After source and authored-command admission, Core tolerates one target group on READ or KILL only when splitting its raw target at top-level comma or whitespace separators produces at least two members and every member independently parses as an explicit `scheme://` URI. Request-metadata blocks are opaque to this split. Each member becomes one ordinary statement with an independent dispatch outcome and log row, in authored member order at that operation's position under {§op-execution-order}. Otherwise the target remains exactly singular, including local filenames containing spaces or commas. The stored `turnOps` and authored command count remain unexpanded, and no other operation admits target groups.
 
@@ -1218,10 +1218,10 @@ Outside-block text has no execution, message, or receipt semantics under
 {§whitespace-contract}. The `ops://<worker>/` source retains it verbatim under
 {§turn-ops-log-curation}; execution never reconstructs source from the AST.
 
-An admitted program may contain bounded malformed statements.
-Parsed operations still dispatch; each hard parser diagnostic
-becomes one durable model-origin `error` row with the parser's exact detail under
-{§parse-diagnostics} and status 400. These failures are committed before the
+An admitted program may contain bounded malformed statements, or end in a lost
+boundary. Parsed operations still dispatch; each hard parser diagnostic — the
+tail's reason included — becomes one durable model-origin `error` row with the
+parser's exact detail under {§parse-diagnostics} and status 400. These failures are committed before the
 explicit WAIT, or at the end of a program without WAIT, participate in the ordinary strike rail, and prevent
 completion before the model sees them in the next packet.
 WAIT without a live obligation continues to those results.

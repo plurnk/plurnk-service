@@ -12,7 +12,7 @@ import type { BareStatement, PlurnkStatement, ReadStatement, UrlPath, FindStatem
 // Internal-only — collected from PlurnkParser output, then translated to
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
 // before being pushed to the loop's notices buffer.
-export type ParseErrorInfo = Pick<PlurnkParseError, "message" | "line" | "column" | "code"> & { source: string };
+export type ParseErrorInfo = Pick<PlurnkParseError, "message" | "line" | "column"> & { source: string };
 const comparePosition = (
     a: { line: number; column: number },
     b: { line: number; column: number },
@@ -1776,7 +1776,7 @@ export default class TurnRunner {
                                 parserSource: err.source,
                             });
                         } else {
-                            parseErrors.push({ message: err.message, line: err.line, column: err.column, source: err.source, ...(err.code === undefined ? {} : { code: err.code }) });
+                            parseErrors.push({ message: err.message, line: err.line, column: err.column, source: err.source });
                         }
                     } else {
                         const msg = (err as { message?: string } | undefined)?.message ?? "parse error";
@@ -1784,8 +1784,10 @@ export default class TurnRunner {
                     }
                 }
             }
-            // Boundary loss is the parser's one public fact from `unparsedTail.from` onward;
-            // preserve it with the rejected forensic attempt. {§unparsed-tail-boundary}
+            // {§unparsed-tail-boundary} — the lexer's one boundary fact: from `unparsedTail.from` on,
+            // nothing was read. The statements that closed before it are ordinary facts and run; the
+            // loss itself is one more hard diagnostic, a failed row the model sees. An emission that
+            // lost its boundary before any statement closed has nothing admissible and is resampled.
             const tail = parsed.unparsedTail;
             if (tail !== undefined) {
                 hasUnparsedTail = true;
@@ -1817,6 +1819,9 @@ export default class TurnRunner {
             parseErrors.length = 0;
             ops.push(proseAnswer);
         }
+        // The statements the content itself closed: a lost boundary is admissible only behind one
+        // of these, never behind a reasoning NOTE alone ({§reasoning-notes}).
+        const contentStatementCount = ops.filter(({ position }) => position.line > 0).length;
         const reasoning = assistant.reasoning ?? null;
         const notes = reasoning === null ? [] : PlurnkParser.parseReasoningNotes(reasoning);
         ops.unshift(...notes);
@@ -1827,28 +1832,20 @@ export default class TurnRunner {
             }
         }
         const sourceStatementCount = ops.filter(({ position }) => position.line > 0).length;
-        const trustworthyBoundary = !hasUnparsedTail;
-        // {§turn-shape} — bounded operation errors are recoverable and ride with the
-        // admitted program; document-boundary failures still reject it.
-        const recoverableParseErrors = trustworthyBoundary
-            ? parseErrors.filter(
-                (error) =>
-                    error.code !== "invalid-turn-structure",
-            ).toSorted(comparePosition)
-            : [];
+        // {§turn-shape} — every hard diagnostic is recoverable and rides with the admitted program
+        // as a failed row; a lost boundary refuses only what follows it. The harness admits every
+        // program whose meaning it can determine and reports what it could not read.
+        const recoverableParseErrors = [...parseErrors].toSorted(comparePosition);
         // {§empty-turn} — no operation and no other hard error: admitted as an empty turn, never
-        // resampled; its advisories ({§bare-heading-advisory}) ride as notices.
+        // resampled; its advisories ({§bare-heading-advisory}) ride as notices. A boundary lost
+        // before any statement closed is not an empty turn: the model tried, and is resampled.
         const emptyTurn = preParsedOps === undefined
-            && trustworthyBoundary
+            && !hasUnparsedTail
             && sourceStatementCount === 0
             && parseErrors.every((error) => error.message === PlurnkParser.NO_VALID_OPERATION);
         const emissionValid = preParsedOps !== undefined
             || emptyTurn
-            || (
-                trustworthyBoundary
-                && sourceStatementCount > 0
-                && recoverableParseErrors.length === parseErrors.length
-            );
+            || (hasUnparsedTail ? contentStatementCount > 0 : sourceStatementCount > 0);
         return {
             packetAssistant: { content: assistant.content, ops, reasoning },
             sourceBacked: preParsedOps === undefined,
@@ -1861,8 +1858,8 @@ export default class TurnRunner {
             // The ANTLR model-turn parser is authoritative. At least one source
             // operation is required; lifecycle omission continues silently. Bounded
             // statement failures become durable operation results.
-            // Boundary loss and an unparsed tail still reject
-            // wholesale. Pre-parsed ops are Mock's trusted test seam.
+            // A boundary lost before any statement closed rejects; after one, the
+            // statements run and the loss is a row. Pre-parsed ops are Mock's trusted test seam.
             emissionValid,
         };
     }
