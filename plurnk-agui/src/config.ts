@@ -2,6 +2,7 @@ export interface ModuleOptions {
     readonly host: string;
     readonly port: number;
     readonly token?: string;
+    readonly allowOrigin?: string;
     readonly maxTurns?: number;
     readonly heartbeatMs?: number;
     readonly env?: NodeJS.ProcessEnv;
@@ -11,6 +12,7 @@ export interface ResolvedModuleOptions {
     readonly host: string;
     readonly port: number;
     readonly token: string;
+    readonly allowOrigin: string;
     readonly maxTurns?: number;
     readonly heartbeatMs: number;
 }
@@ -44,10 +46,14 @@ export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOpti
     if (typeof token !== "string") {
         throw new Error(`ModuleOptions.token must be a string; got ${JSON.stringify(token)}.`);
     }
+    // {§agui-cors} — the panel states the origin; only its own empty value sends no CORS header.
+    const allowOrigin = options.allowOrigin === undefined ? env.PLURNK_AGUI_ALLOW_ORIGIN : options.allowOrigin;
+    if (allowOrigin === undefined) throw new Error("PLURNK_AGUI_ALLOW_ORIGIN is missing from the assembled environment floor.");
     return {
         host: options.host,
         port: options.port,
         token,
+        allowOrigin,
         maxTurns: options.maxTurns === undefined
             ? environmentMaxTurns(env.PLURNK_AGUI_MAX_TURNS)
             : safeInteger(options.maxTurns, "ModuleOptions.maxTurns", -1),

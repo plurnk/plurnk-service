@@ -2242,6 +2242,32 @@ test("an action naming an unknown workspace is a 404 Problem and creates nothing
     } finally { await mod.close(); }
 });
 
+test("{§agui-cors} the panel states which pages may read a reply, and its empty value sends no CORS header", async () => {
+    const { seam } = mockSeam();
+    const cors = async (allowOrigin: string): Promise<{ origin: string | null; headers: string | null; preflight: number }> => {
+        const mod = await Module.init({
+            host: "127.0.0.1", port: 0,
+            env: { PLURNK_AGUI_TOKEN: "expected", PLURNK_AGUI_ALLOW_ORIGIN: allowOrigin, PLURNK_AGUI_HEARTBEAT_MS: "0" },
+        }).start(seam);
+        try {
+            const base = `http://127.0.0.1:${mod.address().port}`;
+            const preflight = await fetch(base, { method: "OPTIONS" });
+            const refused = await fetch(base, { method: "POST", body: "{}" });
+            assert.equal(refused.status, 401, "CORS never stands in for the bearer");
+            return {
+                origin: refused.headers.get("access-control-allow-origin"),
+                headers: refused.headers.get("access-control-allow-headers"),
+                preflight: preflight.status,
+            };
+        } finally {
+            await mod.close();
+        }
+    };
+    assert.deepEqual(await cors("*"), { origin: "*", headers: "content-type, authorization", preflight: 204 });
+    assert.deepEqual(await cors("https://portal.example"), { origin: "https://portal.example", headers: "content-type, authorization", preflight: 204 });
+    assert.deepEqual(await cors(""), { origin: null, headers: null, preflight: 204 }, "no page reads a reply");
+});
+
 test("PLURNK-owned HTTP failures use application/problem+json with stable Problems", async () => {
     const { seam } = mockSeam();
     const mod = await Module.init({
@@ -2249,6 +2275,7 @@ test("PLURNK-owned HTTP failures use application/problem+json with stable Proble
         port: 0,
         env: {
             PLURNK_AGUI_TOKEN: "expected",
+            PLURNK_AGUI_ALLOW_ORIGIN: "*",
             PLURNK_AGUI_HEARTBEAT_MS: "0",
         },
     }).start(seam);
@@ -2668,7 +2695,7 @@ test("[{§agui-configuration}] the environment heartbeat cadence reaches the SSE
     const mod = await Module.init({
         host: "127.0.0.1",
         port: 0,
-        env: { PLURNK_AGUI_TOKEN: "", PLURNK_AGUI_HEARTBEAT_MS: "40" },
+        env: { PLURNK_AGUI_TOKEN: "", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "40" },
     }).start(seam);
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
@@ -2688,7 +2715,7 @@ test("[{§agui-configuration}] heartbeat cadence 0 emits no comment frames", asy
     const mod = await Module.init({
         host: "127.0.0.1",
         port: 0,
-        env: { PLURNK_AGUI_TOKEN: "", PLURNK_AGUI_HEARTBEAT_MS: "0" },
+        env: { PLURNK_AGUI_TOKEN: "", PLURNK_AGUI_ALLOW_ORIGIN: "*", PLURNK_AGUI_HEARTBEAT_MS: "0" },
     }).start(seam);
     try {
         const res = await fetch(`http://127.0.0.1:${mod.address().port}/`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(standardInput({ threadId: "w", runId: "r1", messages: [{ role: "user", content: "think long" }], forwardedProps: { plurnk: { workspace: "w" } } })) });
@@ -2712,6 +2739,7 @@ test("[{§agui-configuration}] the environment turn default yields to the Run va
         port: 0,
         env: {
             PLURNK_AGUI_TOKEN: "",
+            PLURNK_AGUI_ALLOW_ORIGIN: "*",
             PLURNK_AGUI_MAX_TURNS: "7",
             PLURNK_AGUI_HEARTBEAT_MS: "0",
         },

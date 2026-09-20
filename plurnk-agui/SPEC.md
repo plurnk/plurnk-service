@@ -546,6 +546,7 @@ values for direct in-process composition. The listener address remains service-o
 | ---------------------------------- | ------- | -------------------------------------- | ----------------------------------- | ------ |
 | `PLURNK_HOST` / `PLURNK_PORT`      | Service | Invalid at service boot                | Service-valid host and port         | Service binds the address through `Module.bind`; direct compositions may use `Module.init`. |
 | `PLURNK_AGUI_TOKEN`                | AG-UI   | No module-level bearer requirement     | Any string                          | A non-empty value requires the exact bearer on every non-preflight request. |
+| `PLURNK_AGUI_ALLOW_ORIGIN`         | AG-UI   | Empty: no CORS headers; absent: invalid | `*` or one origin                   | The origin whose pages a browser lets read replies ({§agui-cors}). |
 | `PLURNK_AGUI_MAX_TURNS`            | AG-UI   | No module-level default                | `-1` or a non-negative safe integer | Supplies `maxTurns` only when the Run does not carry its own value. |
 | `PLURNK_AGUI_HEARTBEAT_MS`         | AG-UI   | Invalid; the package floor is required | Integer `0` through `2147483647`    | SSE comment-frame cadence in milliseconds; `0` disables it. |
 
@@ -580,6 +581,14 @@ non-preflight request must carry that exact value as an
 `authorization: Bearer <token>` header. Authorization precedes request-body
 reading. A missing or mismatched credential returns the stable 401
 `bearer-token-required` Problem.
+
+§agui-cors Every response carries `access-control-allow-origin` with the value
+of `PLURNK_AGUI_ALLOW_ORIGIN`, and allows the `content-type` and
+`authorization` request headers; an empty value sends neither header, so no
+browser page can read a reply. CORS narrows which pages may *read*; it does
+not authenticate a request and is no substitute for the bearer
+({§agui-http-authorization}). A preflight is answered `204` before
+authorization.
 
 §agui-http-failure Failures before SSE headers are sent use
 `application/problem+json` with exact

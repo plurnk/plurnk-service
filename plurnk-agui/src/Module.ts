@@ -225,8 +225,11 @@ export default class Module {
 
     async #routeSettled(req: IncomingMessage, res: ServerResponse): Promise<void> {
         try {
-            res.setHeader("access-control-allow-origin", "*");
-            res.setHeader("access-control-allow-headers", "content-type, authorization");
+            // {§agui-cors} — which pages may read a reply is the panel's; none at all when it says nothing.
+            if (this.#opts.allowOrigin.length > 0) {
+                res.setHeader("access-control-allow-origin", this.#opts.allowOrigin);
+                res.setHeader("access-control-allow-headers", "content-type, authorization");
+            }
             if (req.method === "OPTIONS") { res.writeHead(204).end(); return; }
             // The perimeter ({§agui-http-authorization}): bearer check before any body read.
             const token = this.#opts.token ?? "";

@@ -136,7 +136,7 @@ const bootStart = (env = {}, probe) => new Promise((res) => {
     // Run from OUTSIDE the install dir so discovery must resolve plugins package-relative,
     // not from CWD/node_modules — the global-dogfood scenario (start from your own project).
     const childEnv = { ...process.env };
-    for (const key of ["PLURNK_AGUI_TOKEN", "PLURNK_AGUI_MAX_TURNS", "PLURNK_AGUI_HEARTBEAT_MS"]) delete childEnv[key];
+    for (const key of ["PLURNK_AGUI_TOKEN", "PLURNK_AGUI_ALLOW_ORIGIN", "PLURNK_AGUI_MAX_TURNS", "PLURNK_AGUI_HEARTBEAT_MS"]) delete childEnv[key];
     for (const key of Object.keys(childEnv)) {
         if (key.startsWith("PLURNK_MCP_")) delete childEnv[key];
     }
