@@ -138,4 +138,13 @@ test("outbound A2A uses Core's ordinary 102 subscription and terminal READ path"
     assert.equal(result.mimetype, "text/markdown");
     assert.match(result.content, /state: completed/);
     assert.match(result.content, /a2a:\/\/researcher\/tasks\/.*\/artifacts\//);
+
+    // {§a2a-scheme-face} — a folder scope over the face's resources searches under the face's own
+    // representation, where the alias is the authority, and answers in the one authored address.
+    const parsed = PlurnkParser.parseStatements(PlurnkParser.frame("FIND (a2a://researcher/tasks/*) <1,-1>", null), { executors: fixtureExecutors("") });
+    const find = parsed.items[0];
+    assert.ok(find?.kind === "statement");
+    const found = await engine.dispatch({ ...envelope, statement: find.statement, sequence: 2, origin: "model" });
+    assert.equal(found.status, 200, JSON.stringify(found));
+    assert.match(JSON.stringify(found.results), new RegExp(resource.replaceAll("/", "\\/")), "the retained Task is found by a glob over its agent");
 });

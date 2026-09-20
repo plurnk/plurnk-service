@@ -90,12 +90,12 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
                 content: null, mimetype: null, results: [], itemsWeightTotal: 0, returnedItemsWeightTotal: 0,
                 matchingPathCount: 0, matchLocationCount: 0,
             }, { retryable: false }) as FindResult;
+        // A facet without a find of its own is searched as ordinary entries, under its own
+        // representation and after whatever it prepares.
+        const prepared = await this.#facet?.prepareFind?.(statement, await this.#facetContext(ctx, statement.target));
+        if (prepared !== undefined && prepared.status >= 300) return prepared as FindResult;
         const core = this.coreContext(ctx);
-        return EntryFind.findWorkspaceEntries(statement, core, this.manifest, {});
-    }
-
-    async prepareFind(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
-        return this.#facet?.prepareFind?.(statement, await this.#facetContext(ctx)) ?? { status: 200 };
+        return EntryFind.findWorkspaceEntries(statement, core, this.manifestAt(statement.target), {});
     }
 
     // {§exec-input} reaches a stored execution's process; a claimed resource is a recipient of its own.
