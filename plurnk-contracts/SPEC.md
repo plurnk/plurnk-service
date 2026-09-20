@@ -9,7 +9,7 @@ is the single code API for those contracts.
 | Surface                                                                         | Canonical export or artifact                        |
 | ------------------------------------------------------------------------------- | --------------------------------------------------- |
 | Parser, AST, validators, Problems, results, Notices, text regions and extents   | `@plurnk/plurnk-contracts`                          |
-| Capability and loop policies                                                    | `CapabilityPolicy`, `DEFAULT_CAPABILITY_POLICY`, `LoopPolicy`, `LoopPolicyRequest`, `PROPOSAL_POLICIES` |
+| Capability and loop policies                                                    | `CapabilityPolicy`, `LoopPolicy`, `LoopPolicyRequest`, `PROPOSAL_POLICIES` |
 | Durable reasoning intent                                                        | `ReasoningPolicy`, `REASONING_POLICIES`             |
 | Model route and catalog discovery                                               | `ModelRoute`, `ModelCatalogQuery`, `ModelCatalogPage`, `ModelReadiness` |
 | Stopped-world client contract                                                   | `ProposalDisposition`, `ProposalProjection`         |

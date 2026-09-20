@@ -354,7 +354,7 @@ function topLevel(a, b) [50-60]
 type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "facts";
 ```
 
-- **Default set: `symbols`, `deepJson`, `deepXml`, `references`, `content`** (five).
+- **A call that names no channels asks for every structural projection: `symbols`, `deepJson`, `deepXml`, `references`, `content`** (five). `facts` is only ever named.
 - **Unrequested channels are not computed and their fields are absent** from `ProcessResult`. A channel an entry legitimately lacks (flat text has no deep tree) comes back *present but empty* (`[]` / `null` / `""`) — absence means "not asked," emptiness means "asked, nothing there."
 - **`channels: []` is valid** — metadata only (`mimetype`, `ok`, `totalLines`), with no projection parse unless `parseIssues: true` or `summary: true` independently requests its owning inspection evidence.
 - The default deep-xml projection consumes one deep-json result, then lazily falls back to one symbol outline. Already-requested dependency results are reused; dependencies computed only for `deepXml` remain unexposed.

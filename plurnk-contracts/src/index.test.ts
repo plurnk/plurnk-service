@@ -12,7 +12,6 @@ test("ProposalProjection's op keywords are the closed operation alphabet; a runt
 test("the package root exposes exactly the supported runtime values", () => {
     assert.deepEqual(Object.keys(Contracts).sort(), [
         "CapabilityAdmission",
-        "DEFAULT_CAPABILITY_POLICY",
         "INTERNAL_ROW_OPS",
         "InvalidA2aAgentDefinitionError",
         "InvalidAguiClientConformanceError",

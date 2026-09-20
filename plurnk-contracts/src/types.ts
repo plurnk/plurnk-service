@@ -6,7 +6,6 @@ import loopPolicySchema from "../schema/LoopPolicy.json" with { type: "json" };
 import reasoningPolicySchema from "../schema/ReasoningPolicy.json" with { type: "json" };
 import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
 import type {
-    CapabilityPolicy,
     ClientStatement,
     LoopPolicy,
     Position,
@@ -66,8 +65,6 @@ export type ProviderRequestObserver = (
 export const REASONING_POLICIES = Object.freeze(
     reasoningPolicySchema.enum as ReasoningPolicy[],
 ) as readonly ReasoningPolicy[];
-
-export const DEFAULT_CAPABILITY_POLICY: CapabilityPolicy = Object.freeze({});
 
 // Schema-owned vocabulary of `LoopPolicy.proposals`. {§loop-policy}
 export const PROPOSAL_POLICIES = Object.freeze(

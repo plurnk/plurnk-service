@@ -37,7 +37,8 @@ import type {
 // The caller-selected projection vocabulary ({§mimetype-channel-selection}).
 export type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "content" | "facts";
 
-const DEFAULT_CHANNELS: readonly Channel[] = ["symbols", "deepJson", "deepXml", "references", "content"];
+// Every structural projection: what a call that names no channels asks for. `facts` is only ever named.
+const STRUCTURAL_CHANNELS: readonly Channel[] = ["symbols", "deepJson", "deepXml", "references", "content"];
 const FRAMEWORK_PROJECTION_REVISION = "2";
 const HANDLER_METHODS = [
     "extractRaw",
@@ -464,7 +465,7 @@ export default class Mimetypes {
     // Detect, read, route, validate, and materialize the selected projections
     // under {§mimetype-handler-authority} and {§mimetype-error-policy}.
     async process(input: ProcessInput, options: ProcessOptions = {}): Promise<ProcessResult> {
-        const channels = new Set<Channel>(options.channels ?? DEFAULT_CHANNELS);
+        const channels = new Set<Channel>(options.channels ?? STRUCTURAL_CHANNELS);
         const mimetype = await this.detect(input);
 
         if (mimetype === null) {

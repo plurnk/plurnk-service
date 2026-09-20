@@ -49,6 +49,6 @@ export { aguiConformanceReport } from "./AguiConformance.ts";
 export type { AguiConformanceRow } from "./AguiConformance.ts";
 export type * from "./ApplicationPort.ts";
 
-export { DEFAULT_CAPABILITY_POLICY, PLURNK_FENCE, PLURNK_OPS, PROPOSAL_POLICIES, RUNTIME_TAG, INTERNAL_ROW_OPS, isExecution, isExecutionOp, writtenOp, REASONING_POLICIES, WORKER_NAME, SKILL_NAME, UNKNOWN_POSITION } from "./types.ts";
+export { PLURNK_FENCE, PLURNK_OPS, PROPOSAL_POLICIES, RUNTIME_TAG, INTERNAL_ROW_OPS, isExecution, isExecutionOp, writtenOp, REASONING_POLICIES, WORKER_NAME, SKILL_NAME, UNKNOWN_POSITION } from "./types.ts";
 export type * from "./types.ts";
 export type { ErrorSource, Severity } from "./PlurnkParseError.ts";
