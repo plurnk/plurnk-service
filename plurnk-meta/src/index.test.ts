@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Meta, { TEACHING_CORPUS, type PluginAttributionContext } from "./index.ts";
@@ -26,10 +27,22 @@ test("teaching corpus: the meta owner publishes one exact immutable membership",
     assert.equal(Object.isFrozen(TEACHING_CORPUS.schemeDocs), true);
 });
 
-test("isTrusted: gate off (unset / empty / '0') trusts everything", () => {
-    for (const v of [undefined, "", "0"]) {
+test("isTrusted: gate off ('' / '0') trusts everything", () => {
+    for (const v of ["", "0"]) {
         assert.equal(Meta.isTrusted("@acme/rogue", { PLURNK_PLUGINS_TRUSTED_ONLY: v }), true, `gate ${JSON.stringify(v)}`);
     }
+});
+
+// {§operator-config-only-home} — the gate is asked while the floor is still being assembled, so an
+// unset key defers to the panel that owns it, never to a value in code: change the panel and the
+// unset answer changes with it.
+test("isTrusted: an unset key is answered by this package's own panel", () => {
+    const panel = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
+    const declared = /^PLURNK_PLUGINS_TRUSTED_ONLY=(.*)$/mu.exec(panel)?.[1];
+    assert.ok(declared !== undefined, "the owner declares the key it is asked about");
+    const off = declared.trim() === "" || declared.trim() === "0";
+    assert.equal(Meta.isTrusted("@acme/rogue", {}), off, `the shipped declaration ${JSON.stringify(declared)} governs an unset environment`);
+    assert.equal(Meta.isTrusted("@plurnk/plurnk-execs", {}), true, "a first-party package is trusted under either reading");
 });
 
 test("isTrusted: gate on — @plurnk/* always, allowlist admits, everything else refused", () => {

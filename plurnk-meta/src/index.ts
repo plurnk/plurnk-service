@@ -18,8 +18,10 @@
 //                         the fallback is the caller's policy.
 
 import { readdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { parseEnv } from "node:util";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export interface PackageCandidate {
     dir: string;
@@ -67,20 +69,40 @@ export type TeachingCorpusSource =
     | (typeof TEACHING_CORPUS.schemeDocs)[keyof typeof TEACHING_CORPUS.schemeDocs];
 
 
+const TRUSTED_ONLY = "PLURNK_PLUGINS_TRUSTED_ONLY";
 const RESERVED_ATTRIBUTION_PREFIX = "@plurnk/";
 const EMPTY_ATTRIBUTION: PluginAttribution = Object.freeze([] as string[]);
 
 export default class Meta {
+    static #shippedTrust: string | undefined;
+
     static declaresKind(manifest: unknown, kind: PluginKind): boolean {
         if (typeof manifest !== "object" || manifest === null) return false;
         return (manifest as { kind?: unknown }).kind === kind;
     }
 
-    // unset / "" / "0" → gate OFF: everything installed is trusted.
+    // {§operator-config-only-home} — the trust gate is asked while the floor is still being
+    // assembled (it decides whose panel joins it), so an unset key cannot mean "the panel said
+    // nothing". This package owns the key, so it reads its own panel: the operator's environment
+    // first, then the shipped declaration. A value in code would outrank both.
+    static #panelTrust(): string {
+        if (Meta.#shippedTrust === undefined) {
+            const panel = path.join(fileURLToPath(new URL("..", import.meta.url)), ".env.defaults");
+            const declared = (parseEnv(readFileSync(panel, "utf8")) as Record<string, string>)[TRUSTED_ONLY];
+            if (declared === undefined) {
+                throw new Error(`@plurnk/plurnk-meta: ${TRUSTED_ONLY} is missing from its own .env.defaults — the shipped floor is not optional.`);
+            }
+            Meta.#shippedTrust = declared;
+        }
+        return Meta.#shippedTrust;
+    }
+
+    // "" / "0" → gate OFF: everything installed is trusted.
     // any other value  → gate ON: @plurnk/* always trusted, plus a comma-separated
     //                    allowlist; "1" (naming no real package) = on, zero third-party.
     static isTrusted(packageName: string, env: Record<string, string | undefined> = process.env): boolean {
-        const value = env.PLURNK_PLUGINS_TRUSTED_ONLY?.trim() ?? "";
+        const stated = env[TRUSTED_ONLY];
+        const value = (stated === undefined ? Meta.#panelTrust() : stated).trim();
         if (value === "" || value === "0") return true;
         if (packageName.startsWith("@plurnk/")) return true;
         return value.split(",").map((s) => s.trim()).includes(packageName);

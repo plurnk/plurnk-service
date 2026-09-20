@@ -21,6 +21,10 @@ const SOURCE_EXTENSIONS = /\.(?:ts|mjs|js|cjs)$/u;
 // that keeps the panel free of knobs nobody would turn.
 const CONFESSING = /(?:^|_)(?:MS|SEC|SECONDS|MINUTES|TIMEOUT|DEADLINE|INTERVAL|TTL|GRACE|DELAY|BACKOFF|RETRY|RETRIES|ATTEMPTS|ROUNDS|LIMIT|MAX|MAXIMUM|MIN|MINIMUM|FLOOR|CEILING|CAP|BYTES|SIZE|LINES|CHARS|CODEPOINTS|POINTS|ITEMS|SAMPLE|SAMPLES|PREVIEW|WIDTH|DEPTH|PASSES|FRACTION|MARGIN|TOKENS|PATHS|CONCURRENCY|WINDOW|PAGE)(?:_|$)/u;
 const NUMERIC_CONSTANT = /\b(?:const|static(?:\s+readonly)?)\s+#?([A-Z][A-Z0-9_]*)\s*(?::[^=\n]+)?=\s*-?(?:0x[0-9a-fA-F_]+|\d[\d_]*(?:\.\d+)?)n?(?:\s*\*\s*\d[\d_]*)*\s*;/gu;
+// A read and the value it carries, seen through the normalising calls a read applies first
+// (`env.PLURNK_X?.trim() ?? "…"`). A bare property is a question ABOUT the value, not the value.
+const FALLBACK = /(?:\.(PLURNK_[A-Z0-9_]+)|\[\s*["'`](PLURNK_[A-Z0-9_]+)["'`]\s*\])(?:\??\.[A-Za-z_$][\w$]*\s*\([^()\n]*\))*\s*(?:\?\?|\|\|)\s*(""|''|``|["'`][^"'`\n]*["'`]|-?\d[\d_]*|true\b|false\b)/gu;
+
 // A bare number handed to a timer or a deadline has no name to confess with, so it has no register:
 // it is named, or it is read from the panel.
 const TIMER_LITERAL = /\b(?:setTimeout|setInterval|delay|sleep|AbortSignal\.timeout)\s*\([^()\n]*?\b\d[\d_]+\s*[,)]/gu;
@@ -136,11 +140,16 @@ export const measure = ({ panels, sources, corpus, manifests = [] }) => {
             const key = match[1] ?? match[2];
             if (!named.has(key)) named.set(key, name);
         }
-        // A read that carries its own value is a default living in code.
-        const fallbacks = [...code.matchAll(
-            /(?:\.PLURNK_[A-Z0-9_]+|\[\s*["'`]PLURNK_[A-Z0-9_]+["'`]\s*\])\s*(?:\?\?|\|\|)\s*(?:["'`]|-?\d|true\b|false\b)/gu,
-        )].length;
-        if (fallbacks > 0) count("fallback", name, fallbacks);
+        // A read that carries its own value is a default living in code — including through an
+        // accessor (`env.PLURNK_X?.trim() ?? …`), and including an empty one when the panel states a
+        // live value, because then the code and the panel disagree about what unset means. An
+        // OPTIONAL key's empty fallback is its absence, which is the law: unset means off.
+        for (const match of code.matchAll(FALLBACK)) {
+            const key = match[1] ?? match[2];
+            const value = match[3];
+            if (/^(?:""|''|``)$/u.test(value) && !live.has(key)) continue;
+            count("fallback", name);
+        }
         // By its own name, a default that lives in code.
         const constants = [...code.matchAll(/\b(?:const|let|static(?:\s+readonly)?)\s+#?DEFAULT_[A-Z0-9_]+\b/gu)].length;
         if (constants > 0) count("default-constant", name, constants);
