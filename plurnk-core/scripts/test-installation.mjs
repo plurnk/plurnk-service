@@ -343,9 +343,18 @@ ok(mig.code === 0 && /migrated:/.test(mig.stdout), "`migrate` boots the DB from 
 // packed dist/digest/digest.sql resolved beside Digest.js.
 const packedDigestDir = resolve(sandbox, "packed-digest");
 const packedTurnOps = "````SEND\n````";
-const digestFixture = new SqlRiteSync({
+// The schema's own indexes call `sha256` (migrations 003 and 005), so a connection that does not
+// register the packaged function module cannot even prepare a statement against it. The daemon
+// registers the same three; this fixture is a second consumer of the installed dist, not a
+// different contract.
+const installedFunction = (name) => resolve(
+    sandbox, "node_modules", "@plurnk", "plurnk-service", "dist", "core", `${name}.js`,
+);
+// `SqlRiteSync.open` is the constructor that registers them; `new SqlRiteSync` never does.
+const digestFixture = await SqlRiteSync.open({
     path: migratedDb,
     dir: dirname(fileURLToPath(import.meta.url)),
+    functions: ["content_weight", "glob_match", "sha256"].map(installedFunction),
 });
 try {
     const workspace = digestFixture.installation_insert_workspace.get({ name: "packed-digest-workspace" });
@@ -542,8 +551,13 @@ const dormantWorkspaceId = skillBoot.probeResult?.primary?.id;
 if (!Number.isSafeInteger(dormantWorkspaceId) || dormantWorkspaceId <= 0) {
     throw new Error(`packed workspace.create returned no usable id: ${JSON.stringify(skillBoot.probeResult)}`);
 }
-const readPackedCapabilityDocs = () => {
-    const skillDb = new SqlRiteSync({ path: packedSkillDb, dir: import.meta.dirname });
+const readPackedCapabilityDocs = async () => {
+    // Same registration requirement as the digest fixture: the schema's indexes call `sha256`.
+    const skillDb = await SqlRiteSync.open({
+        path: packedSkillDb,
+        dir: import.meta.dirname,
+        functions: ["content_weight", "glob_match", "sha256"].map(installedFunction),
+    });
     try {
         return new Map(
             skillDb.installation_select_capability_docs.all()
@@ -555,7 +569,7 @@ const readPackedCapabilityDocs = () => {
     }
 };
 ok(
-    readPackedCapabilityDocs().size === 0,
+    (await readPackedCapabilityDocs()).size === 0,
     "passive packed workspace bootstrap publishes no capability documentation",
 );
 
@@ -661,7 +675,7 @@ ok(
         && dormantBoot.probeResult?.states?.echo === "active",
     "one unavailable packed MCP remains visible without withholding its healthy peer",
 );
-const packedSkills = readPackedCapabilityDocs();
+const packedSkills = await readPackedCapabilityDocs();
 ok(
     dormantBoot.probeResult?.ownSkillReads?.length === 5
         && dormantBoot.probeResult.ownSkillReads.every((result) => result.status === 200)
