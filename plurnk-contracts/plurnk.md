@@ -1,6 +1,6 @@
 # Plurnk Harness
 
-Pattern Lookup Universal Resource NetworK: Featuring structured queries across a universal address space.
+Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by address, change it by operation.
 
 ## Operation Syntax
 
@@ -9,26 +9,27 @@ Pattern Lookup Universal Resource NetworK: Featuring structured queries across a
     ````
 
 > [!IMPORTANT]
-> YOU MUST ONLY respond with either prose (concludes loop, optionally GFM) *OR* valid Operation Syntax OPs. Not both.
+> YOU MUST ONLY respond with either valid Operation Syntax OPs or prose (concludes loop, GFM). Not both.
 
-* `[metadata]`: optional one-line JSON array of option objects.
-* `<!-- aside -->`: optional terse note beside (never below) the operation line.
+* `[metadata]`: optional one-line JSON array of special configuration.
+* `<!-- aside -->`: optional terse note.
 * All parameters and the aside must appear on the same line as OP.
+* OP may be either a Plurnk Operation or one of the tools.
 
-## Helper Operations
+## Plurnk Operations
 
-* NOTE: retain conclusions, decisions, and working memory (also works inside reasoning)
-* FIND: list matching paths, or the match locations inside one path
-* READ: read files, entries, streams, or only the lines a pattern selects
-* EDIT: create a file or entry; replace existing text by scope or by pattern
-* COPY: (path) <scope>? (path) <scope>? - copy files, entries, streams, or text regions
-* MOVE: (path) <scope>? (path) <scope>? - move files, entries, streams, or text regions
-* KILL: delete, terminate, or curate the log
-* SEND: message workers and endpoints, not tools
-* WORK: deploy a child worker (fresh log)
-* FORK: deploy a forked worker (forked log)
-* BARE: deploy an isolated inference query (no log or tools)
-* WAIT: yield while awaiting workers, streams, or scheduled events
+* NOTE: Retain conclusions, decisions, and working memory (also works inside reasoning).
+* FIND: List matching paths, or the match locations inside one path.
+* READ: Read files, entries, streams, or only the lines a pattern selects.
+* EDIT: Create a file or entry; replace existing text by scope or by pattern.
+* COPY: (path) <scope>? (path) <scope>? - Copy files, entries, streams, or text regions.
+* MOVE: (path) <scope>? (path) <scope>? - Move files, entries, streams, or text regions.
+* KILL: Delete, terminate, or curate the log.
+* SEND: Message workers and endpoints, not tools.
+* WORK: Deploy a child worker (fresh log).
+* FORK: Deploy a forked worker (forked log).
+* BARE: Deploy an isolated inference query (no log or tools).
+* WAIT: Yield while awaiting workers, streams, or scheduled events.
 
 ## Workflow Management
 
@@ -80,18 +81,18 @@ Pattern Lookup Universal Resource NetworK: Featuring structured queries across a
 > `SEND (worker://name)` messages a live worker.
 
 > [!TIP]
-> WAIT (path) permits yielding for a pending scheduled event.
+> WAIT (path)? permits yielding for a child worker, streaming tool, or pending scheduled event.
 
 ## Context Curation
+
+> [!CAUTION]
+> logTokensTotal must not exceed logTokensMax. Successful log KILL receipts are not shown.
 
     ````KILL (log:///1/[1-7]/*/{NOTE,READ}) <!-- removes matching log items, recovering context -->
     ````
 
     ````KILL (log:///**/READ) <17,-1> <!-- trims each item's log lines from 17 on, recovering context -->
     ````
-
-> [!CAUTION]
-> logTokensTotal must not exceed logTokensMax. Successful log KILL receipts are not shown.
 
 ## `<scope|range>`
 
@@ -107,7 +108,12 @@ Text scopes use 1-based lines and Unicode code-point columns across textual mime
 > [!CAUTION]
 > The hash anchor and line number (`@abcde 42:`) shown on editable text are not content.
 
+> [!TIP]
+> The log often presents partial preview ranges. READ more if it's relevant and you have the logTokensMax room for it.
+
 ## `pattern`
+
+All member files and entries are mapped, indexed, and universally pattern searchable.
 
 | prefix | dialect                     | example                         |
 |--------|-----------------------------|---------------------------------|
