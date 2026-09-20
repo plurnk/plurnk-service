@@ -33,6 +33,11 @@ const fixture = {
     // provider failure parks a loop after 1.5 s of 20 ms-based backoff instead of fifteen minutes.
     PLURNK_SERVICE_PROVIDER_RECOVERY: "1500",
     PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "20",
+    // The Mock tier's fixtures are sized against a sixteen-line first page, so a truncation is a
+    // forty-line file rather than a thousand-line one. The shipped page is the panel's, and
+    // shipped-defaults.test.ts is where it is asserted.
+    PLURNK_SERVICE_PREVIEW_LINES: "16",
+    PLURNK_SERVICE_PREVIEW_CHARS: "2560",
     PLURNK_SERVICE_DB_PATH: "./plurnk.test.db",
     // Retained module files belong with this tier's disposable database evidence.
     XDG_STATE_HOME: fileURLToPath(new URL("./intg/.tmp/host-state", import.meta.url)),
