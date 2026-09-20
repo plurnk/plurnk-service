@@ -11,10 +11,9 @@ import type {
     ProposalProjection,
     ProposalResolution,
 } from "@plurnk/plurnk-contracts";
-import {
-    DEFAULT_LOOP_POLICY,
-    type ClientInteractionResolution,
-} from "@plurnk/plurnk-contracts";
+import type { ClientInteractionResolution } from "@plurnk/plurnk-contracts";
+
+const LOOP_POLICY = Object.freeze({ proposals: "review", attended: true } as const);
 
 const proposal = (over: Partial<ProposalProjection> = {}): ProposalProjection => ({
     logEntryId: 5,
@@ -25,7 +24,7 @@ const proposal = (over: Partial<ProposalProjection> = {}): ProposalProjection =>
     target: { scheme: "file", authority: null, pathname: "a" },
     body: "diff",
     attrs: {},
-    policy: DEFAULT_LOOP_POLICY,
+    policy: LOOP_POLICY,
     disposition: { owner: "client" },
     ...over,
 });
@@ -209,12 +208,12 @@ test("proposal disposition, not loop policy, owns live tool-call presentation", 
     hitl.start();
     m.fire(7, "loop/proposal", proposal({
         logEntryId: 50,
-        policy: { proposals: "accept" },
+        policy: { proposals: "accept", attended: true },
         disposition: { owner: "loop", decision: "accept" },
     }));
     m.fire(7, "loop/proposal", proposal({
         logEntryId: 51,
-        op: "sh", policy: { proposals: "reject" },
+        op: "sh", policy: { proposals: "reject", attended: true },
         disposition: { owner: "loop", decision: "reject", outcome: "no_review_channel" },
     }));
     assert.equal(emitted.length, 0, "server settles in-process; the stream continues");
@@ -223,7 +222,7 @@ test("proposal disposition, not loop policy, owns live tool-call presentation", 
         op: "SEND",
         body: "",
         attrs: { question: "Which environment?" },
-        policy: { proposals: "accept" },
+        policy: { proposals: "accept", attended: true },
         disposition: { owner: "client" },
     }));
     assert.equal(emitted.length, 1, "the validated client disposition remains authoritative");

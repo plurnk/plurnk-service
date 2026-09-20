@@ -17,6 +17,9 @@ test("{§operator-config-only-home} a knob is the panel's value, read from the s
     withEnv("PLURNK_TEST_KNOB", "-1", () => assert.equal(Knob.integer("PLURNK_TEST_KNOB", -1), -1, "a sentinel the floor admits is a value"));
     withEnv("PLURNK_TEST_KNOB", " a, b ,,c ", () => assert.deepEqual(Knob.list("PLURNK_TEST_KNOB"), ["a", "b", "c"]));
     withEnv("PLURNK_TEST_KNOB", "", () => assert.deepEqual(Knob.list("PLURNK_TEST_KNOB"), [], "the panel's empty value is the empty list"));
+    withEnv("PLURNK_TEST_KNOB", "1", () => assert.equal(Knob.flag("PLURNK_TEST_KNOB"), true));
+    withEnv("PLURNK_TEST_KNOB", "0", () => assert.equal(Knob.flag("PLURNK_TEST_KNOB"), false));
+    withEnv("PLURNK_TEST_KNOB", "reject", () => assert.equal(Knob.choice("PLURNK_TEST_KNOB", ["accept", "reject"]), "reject"));
 });
 
 test("{§operator-config-only-home} an unset key is a broken floor and an invalid one is the operator's mistake: both crash by name", () => {
@@ -29,10 +32,19 @@ test("{§operator-config-only-home} an unset key is a broken floor and an invali
     }
     // A bound limits what the operator may say; it is never a value used in the operator's place.
     withEnv("PLURNK_TEST_KNOB", "0", () => assert.throws(() => Knob.integer("PLURNK_TEST_KNOB", 1), /at least 1; got "0"/));
+    for (const bad of ["", "true", "yes", "2", " 1"]) {
+        withEnv("PLURNK_TEST_KNOB", bad, () => assert.throws(() => Knob.flag("PLURNK_TEST_KNOB"), /PLURNK_TEST_KNOB must be 0 or 1; got /, JSON.stringify(bad)));
+    }
+    withEnv("PLURNK_TEST_KNOB", "review", () => assert.throws(
+        () => Knob.choice("PLURNK_TEST_KNOB", ["accept", "reject"]),
+        /PLURNK_TEST_KNOB must be one of accept, reject; got "review"/,
+    ));
 });
 
 test("{§operator-config-only-home} no reader accepts a value: a default cannot be written at a read", () => {
     assert.equal(Knob.text.length, 1);
     assert.equal(Knob.list.length, 1);
     assert.equal(Knob.integer.length, 2, "a name and a bound, and nothing that could stand in for the panel");
+    assert.equal(Knob.flag.length, 1);
+    assert.equal(Knob.choice.length, 2, "a name and a vocabulary, and nothing that could stand in for the panel");
 });

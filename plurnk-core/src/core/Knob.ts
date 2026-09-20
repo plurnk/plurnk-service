@@ -14,6 +14,22 @@ export default class Knob {
         return Knob.text(name).split(",").map((item) => item.trim()).filter((item) => item.length > 0);
     }
 
+    // The house switch: exactly 0 or 1.
+    static flag(name: string): boolean {
+        const raw = Knob.text(name);
+        if (raw !== "0" && raw !== "1") throw new Error(`${name} must be 0 or 1; got ${JSON.stringify(raw)}.`);
+        return raw === "1";
+    }
+
+    // `options` is the vocabulary the operator chooses from, never a choice made for them.
+    static choice<T extends string>(name: string, options: readonly T[]): T {
+        const raw = Knob.text(name);
+        if (!(options as readonly string[]).includes(raw)) {
+            throw new Error(`${name} must be one of ${options.join(", ")}; got ${JSON.stringify(raw)}.`);
+        }
+        return raw as T;
+    }
+
     // `floor` is a bound on what the operator may say, never a value used in the operator's place.
     static integer(name: string, floor: number): number {
         const raw = Knob.text(name);

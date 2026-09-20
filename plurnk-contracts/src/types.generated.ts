@@ -756,9 +756,23 @@ removed?: true
  */
 
 export interface LoopPolicy {
+/**
+ * review holds a proposal for a client's answer; accept applies it and reject refuses it inside the loop.
+ */
 proposals: ("review" | "accept" | "reject")
 /**
- * Whether an interactive partner exists who can answer. False declares an unattended run: no human-in-the-loop surface is offered, and a wait nobody could end becomes a conclusion. Absent means true, so a policy written before this field keeps its meaning.
+ * Whether an interactive partner exists who can answer. False declares an unattended loop: no human-in-the-loop surface is offered, and a wait nobody could end becomes a conclusion.
+ */
+attended: boolean
+}
+
+export interface LoopPolicyRequest {
+/**
+ * review holds a proposal for a client's answer; accept applies it and reject refuses it inside the loop.
+ */
+proposals?: ("review" | "accept" | "reject")
+/**
+ * Whether an interactive partner exists who can answer. False declares an unattended loop: no human-in-the-loop surface is offered, and a wait nobody could end becomes a conclusion.
  */
 attended?: boolean
 }
@@ -1152,7 +1166,7 @@ policy: LoopPolicy
 disposition: ProposalDisposition
 }
 /**
- * One loop's immutable disposition: how proposals are settled, and whether anyone is attending who could answer a question. Workspace capability admission precedes both.
+ * One loop's complete, immutable policy: how its proposals are settled, and whether anyone is attending who could answer. A creator states any part of it as a LoopPolicyRequest and the daemon's panel supplies the rest before the loop is persisted. Workspace capability admission precedes both.
  */
 
 export type ProviderCost = ({

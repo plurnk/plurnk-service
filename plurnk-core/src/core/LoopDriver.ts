@@ -8,7 +8,6 @@ import NoticeChannel from "./NoticeChannel.ts";
 import StrikeRail from "./StrikeRail.ts";
 import Knob from "./Knob.ts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
-import { isAttended } from "@plurnk/plurnk-contracts";
 import { type ChatMessage } from "./PacketBuilder.ts";
 import TurnRunner, { LOOP_TIMEOUT_REASON } from "./TurnRunner.ts";
 import { observed } from "../observe/spans.ts";
@@ -246,7 +245,7 @@ export default class LoopDriver {
                     // {§loop-attendance} — except that parking here stops the execution clock, so an
                     // unattended loop would wait with nothing counting and nobody coming. It concludes
                     // instead, naming the provider rather than pretending the model gave up (#765).
-                    if (!isAttended(await LoopPolicyReader.read(this.#db, loopId))) {
+                    if (!(await LoopPolicyReader.read(this.#db, loopId)).attended) {
                         if (turn.providerFailure === undefined) {
                             throw new Error("a provider-recovery stop requires its exact failure to conclude unattended");
                         }

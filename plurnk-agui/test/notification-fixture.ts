@@ -1,6 +1,8 @@
-import { DEFAULT_LOOP_POLICY, type OperationResult } from "@plurnk/plurnk-contracts";
+import type { OperationResult } from "@plurnk/plurnk-contracts";
 import type { TerminatedNotification } from "../src/types.ts";
 import { loopUsage } from "./accounting-fixture.ts";
+
+const LOOP_POLICY = Object.freeze({ proposals: "review", attended: true } as const);
 
 export const termination = (
     overrides: Partial<TerminatedNotification> = {},
@@ -50,7 +52,7 @@ export const proposal = Object.freeze({
     target: { scheme: "file", authority: null, pathname: "/tmp/example" },
     body: "replacement",
     attrs: {},
-    policy: DEFAULT_LOOP_POLICY,
+    policy: LOOP_POLICY,
     disposition: { owner: "client" },
 });
 

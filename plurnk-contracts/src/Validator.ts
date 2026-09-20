@@ -22,6 +22,7 @@ import capabilityPolicySchema from "../schema/CapabilityPolicy.json" with { type
 import capabilityProjectionSchema from "../schema/CapabilityProjection.json" with { type: "json" };
 import capabilitySelectorSchema from "../schema/CapabilitySelector.json" with { type: "json" };
 import loopPolicySchema from "../schema/LoopPolicy.json" with { type: "json" };
+import loopPolicyRequestSchema from "../schema/LoopPolicyRequest.json" with { type: "json" };
 import clientDisplayCapabilitiesSchema from "../schema/ClientDisplayCapabilities.json" with { type: "json" };
 import mcpServerDefinitionSchema from "../schema/McpServerDefinition.json" with { type: "json" };
 import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
@@ -49,7 +50,7 @@ import providerAccountingSchema from "../schema/ProviderAccounting.json" with { 
 import providerRequestAccountingSchema from "../schema/ProviderRequestAccounting.json" with { type: "json" };
 import providerUsageSchema from "../schema/ProviderUsage.json" with { type: "json" };
 import providerCostSchema from "../schema/ProviderCost.json" with { type: "json" };
-import type { A2AAgentDefinition as A2aAgentDefinition, AguiClientConformance, AguiConformanceKit, AguiDiscovery, CapabilityDescriptor, CapabilityPolicy, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, LoopPolicy, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, ReasoningPolicy, SkillDefinition, TextRegion } from "./types.generated.ts";
+import type { A2AAgentDefinition as A2aAgentDefinition, AguiClientConformance, AguiConformanceKit, AguiDiscovery, CapabilityDescriptor, CapabilityPolicy, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, LoopPolicy, LoopPolicyRequest, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, ReasoningPolicy, SkillDefinition, TextRegion } from "./types.generated.ts";
 import type { JsonSchema } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
@@ -134,10 +135,8 @@ export default class Validator {
         capabilityPolicySchema,
         [capabilitySelectorSchema],
     );
-    static #loopPolicy = Validator.#withRefs(
-        loopPolicySchema,
-        [capabilityPolicySchema, capabilitySelectorSchema],
-    );
+    static #loopPolicy = new CfValidator(loopPolicySchema as Schema, "2020-12");
+    static #loopPolicyRequest = Validator.#withRefs(loopPolicyRequestSchema, [loopPolicySchema]);
     static #proposalProjection = Validator.#withRefs(
         proposalProjectionSchema,
         [proposalDispositionSchema, loopPolicySchema, capabilityPolicySchema, capabilitySelectorSchema],
@@ -260,6 +259,7 @@ export default class Validator {
         problemDetailsSchema,
         problemProjectionSchema,
         loopPolicySchema,
+        loopPolicyRequestSchema,
         proposalDispositionSchema,
         proposalProjectionSchema,
         providerAccountingSchema,
@@ -375,6 +375,10 @@ export default class Validator {
 
     static validateLoopPolicy(value: unknown): ValidationResult {
         return Validator.#validate(Validator.#loopPolicy, value);
+    }
+
+    static validateLoopPolicyRequest(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#loopPolicyRequest, value);
     }
 
     static validateProposalProjection(value: unknown): ValidationResult {
@@ -596,6 +600,14 @@ export default class Validator {
         const result = Validator.validateLoopPolicy(value);
         if (!result.valid) {
             throw new InvalidLoopPolicyError(`invalid LoopPolicy: ${JSON.stringify(result.errors)}`);
+        }
+        return value;
+    }
+
+    static assertLoopPolicyRequest<T extends LoopPolicyRequest>(value: T): T {
+        const result = Validator.validateLoopPolicyRequest(value);
+        if (!result.valid) {
+            throw new InvalidLoopPolicyError(`invalid LoopPolicyRequest: ${JSON.stringify(result.errors)}`);
         }
         return value;
     }

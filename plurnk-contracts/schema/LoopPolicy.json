@@ -2,10 +2,11 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/LoopPolicy.json",
     "title": "LoopPolicy",
-    "description": "One loop's immutable disposition: how proposals are settled, and whether anyone is attending who could answer a question. Workspace capability admission precedes both.",
+    "description": "One loop's complete, immutable policy: how its proposals are settled, and whether anyone is attending who could answer. A creator states any part of it as a LoopPolicyRequest and the daemon's panel supplies the rest before the loop is persisted. Workspace capability admission precedes both.",
     "type": "object",
     "required": [
-        "proposals"
+        "proposals",
+        "attended"
     ],
     "additionalProperties": false,
     "properties": {
@@ -14,11 +15,27 @@
                 "review",
                 "accept",
                 "reject"
-            ]
+            ],
+            "description": "review holds a proposal for a client's answer; accept applies it and reject refuses it inside the loop."
         },
         "attended": {
             "type": "boolean",
-            "description": "Whether an interactive partner exists who can answer. False declares an unattended run: no human-in-the-loop surface is offered, and a wait nobody could end becomes a conclusion. Absent means true, so a policy written before this field keeps its meaning."
+            "description": "Whether an interactive partner exists who can answer. False declares an unattended loop: no human-in-the-loop surface is offered, and a wait nobody could end becomes a conclusion."
+        }
+    },
+    "not": {
+        "description": "An unattended loop cannot hold a proposal for review: nobody is present to answer.",
+        "required": [
+            "proposals",
+            "attended"
+        ],
+        "properties": {
+            "proposals": {
+                "const": "review"
+            },
+            "attended": {
+                "const": false
+            }
         }
     }
 }

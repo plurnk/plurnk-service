@@ -9,9 +9,9 @@ import type { Db } from "../core/Db.ts";
 import type { LoopUsage } from "../core/Engine.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
-import { DEFAULT_LOOP_POLICY } from "../core/scheme-types.ts";
 import Knob from "../core/Knob.ts";
-import type { LoopPolicy } from "../core/types.ts";
+import LoopPolicies from "../core/LoopPolicies.ts";
+import type { LoopPolicy, LoopPolicyRequest } from "../core/types.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import { observed } from "../observe/spans.ts";
 import { LOOP_TERMINALS, recordCounter } from "../observe/metrics.ts";
@@ -51,7 +51,7 @@ export type DrainInjectionArgs = {
     systemPrompt: string;
     childProviderSpec?: ProviderSpec | null;
     turnCeiling?: TurnCeilingSelection;
-    policy?: Partial<LoopPolicy>;
+    policy?: LoopPolicyRequest;
     // Delegated authority applies only when injection creates a fresh loop;
     // active and parked loops retain their immutable policy.
     freshLoopPolicy?: LoopPolicy;
@@ -296,7 +296,7 @@ export default class DrainSupervisor {
         reasoningPolicy: ReasoningPolicy;
         childProviderSpec: ProviderSpec | null;
         maxTurns?: number;
-        policy?: Partial<LoopPolicy>;
+        policy?: LoopPolicyRequest;
         openPaths?: string[];
     }): Promise<{ loopId: number }> {
         // {§worker-model-selection} — resolve the complete route before persistence;
@@ -311,7 +311,8 @@ export default class DrainSupervisor {
             spawn_model_route_id: spawnRouteId,
             reasoning_policy: args.reasoningPolicy,
             max_turns: args.maxTurns ?? Knob.integer("PLURNK_SERVICE_MAX_TURNS", -1),
-            policy: JSON.stringify({ ...DEFAULT_LOOP_POLICY, ...args.policy }),
+            // {§loop-policy-composition} — the one place a fresh loop's policy is made whole.
+            policy: JSON.stringify(LoopPolicies.compose(args.policy ?? {})),
         });
         if (loopRow === undefined) throw new Error("enqueueFreshLoop: loop enqueue returned no row");
         // {§message-arrival}: the loop's initial message is ordinal 1 of its inbox; the loop row's

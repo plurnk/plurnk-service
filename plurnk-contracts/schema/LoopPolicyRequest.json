@@ -1,0 +1,16 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/LoopPolicyRequest.json",
+    "title": "LoopPolicyRequest",
+    "description": "The part of a LoopPolicy a loop's creator chose to state. Every field it leaves out is the daemon's to supply from its panel, so a creator with nothing to say sends an empty object or no policy at all.",
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+        "proposals": {
+            "$ref": "https://schemas.plurnk.xyz/v0/LoopPolicy.json#/properties/proposals"
+        },
+        "attended": {
+            "$ref": "https://schemas.plurnk.xyz/v0/LoopPolicy.json#/properties/attended"
+        }
+    }
+}

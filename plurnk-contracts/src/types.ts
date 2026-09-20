@@ -2,6 +2,7 @@
 // the single import surface for consumers. Run `npm run build:types` to regenerate.
 export * from "./types.generated.ts";
 
+import loopPolicySchema from "../schema/LoopPolicy.json" with { type: "json" };
 import reasoningPolicySchema from "../schema/ReasoningPolicy.json" with { type: "json" };
 import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
 import type {
@@ -72,15 +73,10 @@ export const REASONING_POLICIES = Object.freeze(
 
 export const DEFAULT_CAPABILITY_POLICY: CapabilityPolicy = Object.freeze({});
 
-export const DEFAULT_LOOP_POLICY: LoopPolicy = Object.freeze({
-    proposals: "review",
-    attended: true,
-});
-
-// {§loop-attendance} — one reading of "is anyone there?", so no wait site re-derives it. An absent
-// field is attended: a policy written before attendance existed keeps its meaning, and a run only
-// becomes unattended by saying so.
-export const isAttended = (policy: LoopPolicy): boolean => policy.attended !== false;
+// Schema-owned vocabulary of `LoopPolicy.proposals`. {§loop-policy}
+export const PROPOSAL_POLICIES = Object.freeze(
+    loopPolicySchema.properties.proposals.enum as LoopPolicy["proposals"][],
+) as readonly LoopPolicy["proposals"][];
 
 // Minting predicate only; URL ingestion deliberately remains permissive. {§worker-name}
 export const WORKER_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/;

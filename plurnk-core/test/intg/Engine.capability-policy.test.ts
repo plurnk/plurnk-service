@@ -118,7 +118,7 @@ const setPolicies = async (
     policy: ReturnType<typeof policies>,
 ): Promise<void> => {
     await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ capabilities: policy.capabilities }) });
-    await db.test_set_loop_policy.run({ loop_id: loopId, policy: JSON.stringify({ proposals: policy.proposals }) });
+    await db.test_set_loop_policy.run({ loop_id: loopId, policy: JSON.stringify({ proposals: policy.proposals, attended: true }) });
 };
 
 test("{§send-resource-attachments}: attachment acquisition obeys ordinary READ policy before source preparation", async (t) => {
@@ -140,7 +140,7 @@ test("{§send-resource-attachments}: attachment acquisition obeys ordinary READ 
 test("invalid persisted loop policy fails at its durable owner before dispatch", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
-        await db.test_set_loop_policy.run({ loop_id: loopId, policy: JSON.stringify({ proposals: "sometimes" }) });
+        await db.test_set_loop_policy.run({ loop_id: loopId, policy: JSON.stringify({ proposals: "sometimes", attended: true }) });
         await assert.rejects(
             engine.dispatch({
                 statement: editStmt(urlPath("write-test", "x"), "body"),

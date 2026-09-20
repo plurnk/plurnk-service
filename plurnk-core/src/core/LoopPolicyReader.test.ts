@@ -1,17 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-    DEFAULT_LOOP_POLICY,
-    InvalidLoopPolicyError,
-} from "@plurnk/plurnk-contracts";
+import { InvalidLoopPolicyError } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
 
-test("persisted loop policy is one complete contracts-owned snapshot", () => {
-    assert.deepEqual(
-        LoopPolicyReader.parse(JSON.stringify(DEFAULT_LOOP_POLICY), 41),
-        DEFAULT_LOOP_POLICY,
-    );
+test("{§loop-policy-effective-read} persisted loop policy is one complete contracts-owned snapshot", () => {
+    const policy = { proposals: "accept", attended: false };
+    assert.deepEqual(LoopPolicyReader.parse(JSON.stringify(policy), 41), policy);
 });
 
 test("every invalid persisted representation fails causally at its loop coordinate", () => {
@@ -20,7 +15,11 @@ test("every invalid persisted representation fails causally at its loop coordina
         { raw: "null", causeName: "TypeError" },
         { raw: "[]", causeName: "TypeError" },
         { raw: "{}", causeName: InvalidLoopPolicyError.name },
-        { raw: JSON.stringify({ proposals: "auto" }), causeName: InvalidLoopPolicyError.name },
+        { raw: JSON.stringify({ proposals: "auto", attended: true }), causeName: InvalidLoopPolicyError.name },
+        // Complete means a reader assumes nothing: a snapshot missing a field is not read as its default.
+        { raw: JSON.stringify({ proposals: "review" }), causeName: InvalidLoopPolicyError.name },
+        { raw: JSON.stringify({ attended: true }), causeName: InvalidLoopPolicyError.name },
+        { raw: JSON.stringify({ proposals: "review", attended: false }), causeName: InvalidLoopPolicyError.name },
         { raw: JSON.stringify({ extra: false }), causeName: InvalidLoopPolicyError.name },
     ];
 

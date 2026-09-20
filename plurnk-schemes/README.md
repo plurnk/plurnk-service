@@ -111,7 +111,7 @@ That's the whole contract: declare, `implements SchemeHandler`, manifest with se
 
 ### Types
 
-- Manifest: `SchemeManifest` (including capability `traits`, `documentation`, and client-only `glyph`) and `WriterTier`; contracts-owned `LoopPolicy` / `DEFAULT_LOOP_POLICY` are re-exported.
+- Manifest: `SchemeManifest` (including capability `traits`, `documentation`, and client-only `glyph`) and `WriterTier`.
 - Behavior contract: `SchemeHandler`, numeric-only `ResolvedEditStatement` (also exported as `EditStatement`), and optional `PacketSectionTransformer` (`PacketSectionDraft`); the remaining re-exported scheme-facing grammar types (`PlurnkStatement` + per-op statements + `ParsedPath` / `LocalPath` / `UrlPath`).
 - Results: universal `SchemeResult` plus RFC 9457 `ProblemDetails`, optional `EntryResult` / `ProposalResult` / `PassthroughResult` authoring shapes, `SchemeResultBase`, matcher navigation `MatchEvidence`, and target-shaped standard `EntryFindResult` pagination/count metadata.
 - Capability ctx: `SchemeCtx` and its entry, channel, notification, projection, and subscription domains. Entry schemes reuse typed standard operations at canonical workspace addresses.

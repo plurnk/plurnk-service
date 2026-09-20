@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { PROPOSAL_POLICIES } from "./types.ts";
 import Validator, {
     InvalidClientInteractionProjectionError,
     InvalidClientInteractionRequestError,
@@ -704,7 +705,7 @@ test("CapabilityPolicy and LoopPolicy accept only their canonical wire shapes", 
         only: [{ operation: "READ" as const }, { runtime: "brave" }],
         deny: [{ traits: ["interaction"] }],
     };
-    const policy = { proposals: "review" as const };
+    const policy = { proposals: "review" as const, attended: true };
     assert.equal(Validator.assertCapabilityDescriptor(descriptor), descriptor);
     assert.equal(Validator.assertCapabilityPolicy(capabilities), capabilities);
     assert.equal(Validator.assertLoopPolicy(policy), policy);
@@ -736,6 +737,31 @@ test("CapabilityPolicy and LoopPolicy accept only their canonical wire shapes", 
     }
 });
 
+test("{§loop-policy}: a loop has a complete policy, and its creator states any part of one", () => {
+    // Complete means nothing is left for a reader to assume.
+    for (const partial of [{ proposals: "accept" }, { attended: false }]) {
+        assert.equal(Validator.validateLoopPolicy(partial).valid, false);
+        assert.equal(Validator.assertLoopPolicyRequest(partial as never), partial);
+    }
+    assert.equal(Validator.validateLoopPolicyRequest({}).valid, true);
+    for (const lawful of [
+        { proposals: "review", attended: true },
+        { proposals: "accept", attended: true },
+        { proposals: "reject", attended: true },
+        { proposals: "accept", attended: false },
+        { proposals: "reject", attended: false },
+    ]) assert.equal(Validator.validateLoopPolicy(lawful).valid, true, JSON.stringify(lawful));
+    // Nobody is present to answer, so review is a wait nothing could end.
+    assert.equal(Validator.validateLoopPolicy({ proposals: "review", attended: false }).valid, false);
+    // A request is only part of a policy, so it cannot be held to the law until it is composed.
+    assert.equal(Validator.validateLoopPolicyRequest({ proposals: "review", attended: false }).valid, true);
+    for (const invalid of [{ proposals: "auto" }, { attended: "no" }, { capabilities: {} }, null, []]) {
+        assert.equal(Validator.validateLoopPolicyRequest(invalid).valid, false);
+        assert.throws(() => Validator.assertLoopPolicyRequest(invalid as never), InvalidLoopPolicyError);
+    }
+    assert.deepEqual(PROPOSAL_POLICIES, ["review", "accept", "reject"]);
+});
+
 test("ProposalProjection validates one complete disposition-bearing client view", () => {
     const proposal = {
         logEntryId: 1,
@@ -746,7 +772,7 @@ test("ProposalProjection validates one complete disposition-bearing client view"
         target: { scheme: null, authority: null, pathname: null },
         body: "",
         attrs: { question: "Which environment?" },
-        policy: { proposals: "review" as const },
+        policy: { proposals: "review" as const, attended: true },
         disposition: { owner: "client" as const },
     };
     assert.equal(Validator.assertProposalProjection(proposal), proposal);

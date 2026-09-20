@@ -1,5 +1,4 @@
 import {
-    isAttended,
     Validator,
     type CapabilityPolicy,
 } from "@plurnk/plurnk-contracts";
@@ -59,7 +58,7 @@ export default class CapabilityPolicies {
             { scope: "workspace" as const, policy: workspace.capabilities },
         ];
         if (loopId === undefined) return base;
-        const attended = isAttended(await LoopPolicyReader.read(db, loopId));
+        const { attended } = await LoopPolicyReader.read(db, loopId);
         return attended ? base : [...base, { scope: "loop" as const, policy: CapabilityPolicies.UNATTENDED }];
     }
 }

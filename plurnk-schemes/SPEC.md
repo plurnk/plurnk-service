@@ -332,7 +332,7 @@ does not reverse a landed mutation.
 - §scheme-catalog-parse-issues An `EntryCatalogChannel` may carry a positive `parseIssues` count when its exact content projection reported parser recovery sites. Zero and unavailable evidence are omitted. This is advisory metadata and never a validity gate or operation failure.
 - Capability ctx (see §3.bis): `SchemeCtx`, `StreamSubscription`, and the domain capabilities. Entry authors additionally receive `EntryOperationCaps`, `EntryAddress`, and typed standard-operation results. `editBatch` receives the numeric splices of one operation for one canonical resource and channel; it validates against one snapshot and commits one revision or none ({§edit-batch}). Core calls it separately for each authored EDIT, in execution order.
 
-Behavior ships as `export default class` (one class per file, static methods) — the ecosystem class paradigm. Type-only modules, the barrel, and the frozen `DEFAULT_LOOP_POLICY` constant are the only non-class files.
+Behavior ships as `export default class` (one class per file, static methods) — the ecosystem class paradigm. Type-only modules and the barrel are the only non-class files.
 
 ### §network-address Network address identity
 

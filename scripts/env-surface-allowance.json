@@ -1,6 +1,6 @@
 {
     "default-constant": {
-        "plurnk-contracts/src/types.ts": 3,
+        "plurnk-contracts/src/types.ts": 2,
         "plurnk-core/src/schemes/EffectPolicy.ts": 1,
         "plurnk-core/src/server/model-catalog.ts": 1,
         "plurnk-mcp/src/tasks.ts": 1,

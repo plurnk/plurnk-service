@@ -546,7 +546,7 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
 - §worker-spawn-no-branch **WORK and FORK take a worker path and a prompt, nothing else.** Branch
 delegation was removed outright (#396). A model manages git branches through ordinary
 the `git` runtime — never engine machinery.
-- §worker-delegation-inherits-policy **Fresh delegated loops inherit proposal disposition.** WORK, FORK, and SEND to an idle Worker carry the sender's proposal disposition. SEND into an active or parked loop leaves its immutable policy untouched. All workers share live workspace capability policy; delegation creates no capability snapshot or bound.
+- §worker-delegation-inherits-policy **Fresh delegated loops inherit the sender's policy.** WORK, FORK, and SEND to an idle Worker carry the sender's complete loop policy, disposition and attendance alike. SEND into an active or parked loop leaves its immutable policy untouched. All workers share live workspace capability policy; delegation creates no capability snapshot or bound.
 - §worker-lifecycle-wake-requeue-not-terminal **A wake re-queue is not a terminal.** A conclusion-wake resumes a 202-blocked loop by re-queueing it (202 → 100); when that lands while the loop's own live drain is between turns, the drain **re-claims and continues** (atomic 100 → 102; the injected prompt is already the next turn). The internal re-queue is never reported as an outward terminal.
 
 - §worker-scheme-collect **Collect** — each concluded child loop reaches its direct
@@ -3241,42 +3241,37 @@ only after authority crosses the client boundary.
 
 ### §proposal-disposition Settlement authority and precedence
 
-§loop-attendance **A run says whether anyone is attending, and a wait nobody could
-end is never taken.** `LoopPolicy.attended` is the whole of it: `true` (the default, and
-what an absent field means, so a policy written before this existed keeps its meaning)
-says an interactive partner is present; `false` declares an unattended run. The client's
-`--auto` sets it, because `--auto` asserts that nobody is watching rather than merely
-choosing a proposal disposition. A fresh delegated loop inherits it with the rest of the
-policy ({§worker-delegation-inherits-policy}), so a child of a headless run is headless too.
+§loop-attendance **A loop says whether anyone is attending, and a wait nobody could end is
+never taken.** `LoopPolicy.attended` is the whole of it: `true` says an interactive partner is
+present, `false` declares an unattended loop. It is one field of the loop's complete policy, so
+its creator states it or leaves it to the panel ({§loop-policy-composition}); the client's
+`--auto` is exactly the statement `attended: false`. A fresh delegated loop inherits it with the
+rest of the policy ({§worker-delegation-inherits-policy}), so a child of a headless run is
+headless too.
 
-Unattended, two things follow and nothing else does:
+Unattended, three things follow and nothing else does:
 
+- **A proposal is never held for review.** `{ proposals: "review", attended: false }` is not a
+  `LoopPolicy`: the schema refuses the pair, so no loop can persist it. The panel cannot produce
+  it, because attendance picks which disposition knob answers. Only a creator's own statement
+  can ask for it, and that is refused **400 `loop-policy-invalid`** naming the way out.
 - **No interactive partner is offered.** `ClientInteractions.request` refuses **501
   `loop-unattended`** instead of writing the request down and waiting. Every wiring funnels
   through that one request — the `question` runtime ({§question-tool}), the execution input
-  bridge, the scheme interaction caps, and MCP elicitation — so one
-  refusal covers them all. This matters because the `question` runtime's effect is `read`
-  and it is therefore never proposal-gated: `proposals: "accept"` does nothing for it, and
-  before this a headless run could be handed a question whose only bound was the 24 h
-  execution allowance. The refusal is the asking executor's **own result**, never a thrown
-  contract violation: the model has to read why it cannot ask, and "the executor failed
-  outside its operation result contract" teaches it nothing it can act on.
+  bridge, the scheme interaction caps, and MCP elicitation — so one refusal covers them all. The
+  `question` runtime's effect is `read`, so it is never proposal-gated and a disposition does
+  nothing for it. The refusal is the asking executor's **own result**, never a thrown contract
+  violation: the model has to read why it cannot ask.
 
-  Dispatch refuses it at the **loop ring** of the capability cascade: an unattended run's own
-  layer denies the `interact` access class ({§worker-tool-admission}), and that 403 names the ring,
-  the reason and the recovery — a subtracted tool must say why it is gone and what to do instead,
-  or the model has learned only that something vanished. Every other ring is operator configuration
-  and speaks for itself; the loop ring is the one the model can act on. The 501 at the interaction
-  itself remains the backstop for the paths that do not cross dispatch (MCP elicitation raised
-  inside a tool call, the execution-input bridge).
-
-  Known gap: the reserved tool tree is one artifact **per workspace**, reconciled by a
-  workspace-scoped, memoized materializer, because two loops in one workspace may differ in
-  attendance and cannot both be right at the same pathname. So the loop ring reaches dispatch but
-  not the turn-0 catalog listing: an unattended model still *sees* the question document in the
-  reserved tree and still spends one turn discovering it is refused. Closing that means the
-  reserved tree's FIND/READ faces filtering their results against the dispatching loop's layers
-  rather than relying on the document's absence.
+  Dispatch refuses it first, at the **loop ring** of the capability cascade: an unattended loop's
+  own layer denies the `interact` access class ({§worker-tool-admission}), and that 403 names the
+  ring, the reason and the recovery — a subtracted tool must say why it is gone and what to do
+  instead. Every other ring is operator configuration and speaks for itself; the loop ring is the
+  one the model can act on. The 501 at the interaction itself is the backstop for the paths that
+  do not cross dispatch (MCP elicitation raised inside a tool call, the execution-input bridge).
+  The ring reaches dispatch but not the reserved tree's listing, which is one artifact per
+  workspace: an unattended model still sees the question document and learns at dispatch that it
+  is refused (#770).
 - **A provider-recovery park becomes a conclusion** ({§provider-recovery}), carrying the
   provider's own exact Problem. Never a substituted "the model gave up".
 
@@ -3286,18 +3281,24 @@ violation and throws, so a park site added later fails loudly on its first unatt
 instead of idling until some caller's clock notices. It is a tripwire, not a fallback: the
 provider-recovery path concludes before reaching it.
 
-Attendance changes nothing else: it is not a capability layer, it does not alter proposal
-disposition, and it never converts a legitimate wait that has a real waker — a `WAIT`, an
-open stream, a delegated child, an awaited event — into a termination. Those have wakers;
-a human question does not. A prompt prefix selects a disposition, never an attendance:
-typing `?` cannot conjure a reviewer into a headless run.
+Attendance never converts a legitimate wait that has a real waker — a `WAIT`, an open stream,
+a delegated child, an awaited event — into a termination. Those have wakers; a human question
+does not. A prompt prefix states a disposition, never an attendance: typing `?` asks for review,
+and an unattended loop refuses that statement rather than conjuring a reviewer.
 
-Origin: measured, `plurnk-bench` `dumbox-20260918` run4. Two 600 s provider cuts spent the
-recovery budget; the root loop parked at 17:53:32 and the client's own clock cancelled it
-at 18:48:02 — **54 minutes 30 seconds of an 88-minute budget in silence.** `LoopLifecycle.park`
-calls `#stopExecution`, which clears the loop-timeout timer, and `DrainSupervisor` arms a wake
-timer only when an open exec stream exists. There was none. Nothing was scheduled, nothing was
-coming, and nothing was counting.
+§loop-policy-composition **A loop's policy is what its creator stated over what the panel
+says.** A creator — a client's `loop.run`, a schedule definition, a transport module — states
+any part of a policy as a `LoopPolicyRequest`, or nothing. The request stays exactly as stated
+until a fresh loop is persisted: an omitted field is no opinion, so a fold compares only what
+was said ({§methods-loop-run-fold-consistency}). `LoopPolicies.compose` then makes it whole,
+once. `PLURNK_SERVICE_ATTENDED` answers an unstated attendance, and the attendance picks which
+knob answers an unstated disposition: `PLURNK_SERVICE_PROPOSALS` for an attended loop,
+`PLURNK_SERVICE_UNATTENDED_PROPOSALS` for an unattended one, whose vocabulary has no `review`.
+Every panel state is therefore lawful, and an invalid knob fails boot by its name. No code,
+schema or column holds a default ({§operator-config-only-home}): `loops.policy` and
+`loops.max_turns` carry none, so every insert states both, and an administrative loop — a
+client's direct statements, the runtime's own narration — states the panel's policy like any
+other loop whose creator said nothing.
 
 §loop-policy-effective-read `loops.policy` persists one complete immutable
 `LoopPolicy`; every runtime policy read validates that snapshot before use.
@@ -4115,7 +4116,7 @@ already durable on the loop remains authoritative:
 |-----------------------|------------------------------------------------------|--------------------------------|--------------------------------------|
 | Provider/model        | The resolved request selection must still agree.     | Fold.                          | 409 provider conflict.               |
 | `maxTurns`            | Keep the durable ceiling.                            | Fold.                          | 409 turn-ceiling conflict.           |
-| Partial `policy`      | Keep the complete durable loop policy.               | Fold.                          | 409 policy conflict.                 |
+| `policy` request      | Keep the complete durable loop policy.               | Fold.                          | 409 policy conflict.                 |
 
 The conflict names both selections and directs the caller to cancel or conclude
 the loop before changing configuration. A newly enqueued loop instead persists

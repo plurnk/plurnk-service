@@ -29,22 +29,11 @@ test("{§send-resource-attachments} message resources are validated before publi
 test("{§operator-config-workspace-settings} client input accepts the complete settings shape", () => {
     assert.equal(ClientInput.assertProjectRoot("workspace.create", "/srv/project"), "/srv/project");
     assert.equal(ClientInput.assertProjectRoot("workspace.create", null), null);
-    // {§loop-attendance} — a policy that says nothing about attendance is attended, so a caller
-    // written before the field keeps its meaning (#765).
-    assert.deepEqual(ClientInput.normalizeLoopPolicy("loop.run", {
-        proposals: "reject",
-    }), {
-        proposals: "reject",
-        attended: true,
-    });
-    assert.deepEqual(ClientInput.normalizeLoopPolicy("loop.run", {
-        proposals: "accept",
-        attended: false,
-    }), {
-        proposals: "accept",
-        attended: false,
-    }, "and a client that declares an unattended run is believed");
-    assert.equal(ClientInput.normalizeLoopPolicy("loop.run", undefined).attended, true);
+    // {§loop-policy-composition} — the door returns what was stated and nothing more: a field the
+    // creator left out is no opinion, and an opinion invented here would be held against a fold.
+    assert.deepEqual(ClientInput.normalizeLoopPolicy("loop.run", { proposals: "reject" }), { proposals: "reject" });
+    assert.deepEqual(ClientInput.normalizeLoopPolicy("loop.run", { attended: false }), { attended: false });
+    assert.deepEqual(ClientInput.normalizeLoopPolicy("loop.run", {}), {});
     assert.deepEqual(JSON.parse(ClientInput.parseSettings({
         filesItems: 3,
         maxCommands: 2,

@@ -42,6 +42,7 @@ import Fork from "../core/fork.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import Knob from "../core/Knob.ts";
+import LoopPolicies from "../core/LoopPolicies.ts";
 import LoopPolicyReader from "../core/LoopPolicyReader.ts";
 import { contentWeight } from "../core/content-weight.ts";
 import MessageResources from "../core/MessageResources.ts";
@@ -49,7 +50,7 @@ import type { ApplicationMessage, MessageResource, MessageEvidence } from "@plur
 import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import { parseAliasesFromEnv, resolveActiveRoute } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
-import type { LoopPolicy } from "../core/types.ts";
+import type { LoopPolicy, LoopPolicyRequest } from "../core/types.ts";
 import type { CapabilityPolicy } from "@plurnk/plurnk-contracts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
@@ -456,7 +457,7 @@ export default class Daemon implements ApplicationPort {
     // the provider and the law-file system prompt are core's and stay inside. Returns immediately — the
     // loop runs async and its outcome arrives on the event source (loop/terminated). `cancelDrain` (public)
     // is the cancel hook. Both funnel through the unified `inject`, which owns the drain lifecycle.
-    async runLoop(args: { workspaceId: number; workerId: number; prompt: string; source?: string; messageAddress?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; policy?: Partial<LoopPolicy>; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+    async runLoop(args: { workspaceId: number; workerId: number; prompt: string; source?: string; messageAddress?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; policy?: LoopPolicyRequest; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         const workspaceId = ClientInput.assertId("runLoop", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("runLoop", "workerId", args.workerId);
         await this.#assertModelWorker(workspaceId, workerId);
@@ -1498,6 +1499,7 @@ export default class Daemon implements ApplicationPort {
                 detail: "in-process" } }]);
         // {§effect-policy-tunable} — invalid operator policy fails boot, not the first execution.
         EffectPolicy.validateConfiguration();
+        LoopPolicies.validateConfiguration();
         // {§exec} — mint a scheme per runtime tag so exec output entries address by tag
         // authority (sh:///l/t/s). The "exec" scheme stays for execution dispatch.
         this.#schemes.registerRuntimeSchemes(executors);
@@ -1751,7 +1753,7 @@ export default class Daemon implements ApplicationPort {
     }
 
     // {§methods-loop-run-fold-consistency} — a folded prompt cannot reconfigure its loop.
-    async #assertFoldPosture(workerId: number, policy: Partial<LoopPolicy> | undefined, loopId: number): Promise<void> {
+    async #assertFoldPosture(workerId: number, policy: LoopPolicyRequest | undefined, loopId: number): Promise<void> {
         if (policy === undefined || Object.keys(policy).length === 0) return;
         const effective = await LoopPolicyReader.read(this.#db, loopId);
         const requested = Object.entries(policy) as Array<[keyof LoopPolicy, LoopPolicy[keyof LoopPolicy] | undefined]>;

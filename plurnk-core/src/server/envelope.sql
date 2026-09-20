@@ -132,8 +132,9 @@ LIMIT $limit;
 -- PREP: envelope_insert_client_loop
 -- sequence is auto-computed: 1 + max(existing sequence in this worker) so
 -- multiple client connections attaching to the same worker get distinct loops.
-INSERT INTO loops (worker_id, sequence, status, prompt)
-VALUES ($worker_id, COALESCE((SELECT MAX(sequence) FROM loops WHERE worker_id = $worker_id), 0) + 1, 102, '')
+-- An administrative loop runs no model turns, so no turn ceiling governs it (-1).
+INSERT INTO loops (worker_id, sequence, status, prompt, policy, max_turns)
+VALUES ($worker_id, COALESCE((SELECT MAX(sequence) FROM loops WHERE worker_id = $worker_id), 0) + 1, 102, '', $policy, -1)
 RETURNING id, sequence;
 
 -- PREP: envelope_close_client_loop

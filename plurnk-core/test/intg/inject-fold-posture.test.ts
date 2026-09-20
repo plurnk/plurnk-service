@@ -69,7 +69,7 @@ test("inject surfaces contract-invalid durable posture before comparing it (#169
             await waitFor(() => proposals(), (p) => p.length >= 1, { timeoutMs: 10_000 });
             await db.test_set_loop_policy.run({
                 loop_id: loopId,
-                policy: JSON.stringify({ proposals: "sometimes" }),
+                policy: JSON.stringify({ proposals: "sometimes", attended: true }),
             });
 
             await assert.rejects(
@@ -84,7 +84,7 @@ test("inject surfaces contract-invalid durable posture before comparing it (#169
 
             await db.test_set_loop_policy.run({
                 loop_id: loopId,
-                policy: JSON.stringify({ proposals: "review" }),
+                policy: JSON.stringify({ proposals: "review", attended: true }),
             });
             const pending = proposals() as Array<{ logEntryId: number }>;
             await rpcCall(ws, 3, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });

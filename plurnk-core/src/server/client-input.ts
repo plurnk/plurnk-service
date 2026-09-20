@@ -7,10 +7,10 @@ import FileCreationPolicy, { FILE_CREATE_SCOPES, type FileCreateScope } from "..
 import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
 import WorkerName, { WorkerNameError } from "../core/WorkerName.ts";
 import {
+    PROPOSAL_POLICIES,
     Validator,
-    DEFAULT_LOOP_POLICY,
     type CapabilityPolicy,
-    type LoopPolicy,
+    type LoopPolicyRequest,
     type ClientInteractionResolution,
     type MessageResource,
 } from "@plurnk/plurnk-contracts";
@@ -333,42 +333,19 @@ export default class ClientInput {
         }
     }
 
-    static normalizeLoopPolicy(context: string, policy: unknown): LoopPolicy {
-        if (policy === undefined) return DEFAULT_LOOP_POLICY;
-        if (typeof policy !== "object" || policy === null || Array.isArray(policy)) {
-            ClientInput.#invalid(
-                context,
-                "loop-policy-invalid",
-                "policy is not an object.",
-                { field: "policy", recovery: "Provide a proposal disposition." },
-            );
-        }
-        const partial = policy as { proposals?: unknown; attended?: unknown };
-        if (Object.keys(partial).some((key) => key !== "proposals" && key !== "attended")) {
-            ClientInput.#invalid(
-                context,
-                "loop-policy-invalid",
-                "policy contains an unsupported field.",
-                { field: "policy", recovery: "Use only proposals and attended." },
-            );
-        }
-        const candidate = {
-            proposals: partial.proposals ?? DEFAULT_LOOP_POLICY.proposals,
-            attended: partial.attended ?? DEFAULT_LOOP_POLICY.attended,
-        };
-        try {
-            return Validator.assertLoopPolicy(candidate as LoopPolicy);
-        } catch {
-            ClientInput.#invalid(
-                context,
-                "loop-policy-invalid",
-                "policy is not a valid loop policy.",
-                {
-                    field: "policy",
-                    recovery: "Use proposals review, accept, or reject.",
-                },
-            );
-        }
+    // {§loop-policy-composition} — the stated part of a policy, exactly as stated. Nothing is filled
+    // in here: an omitted field is no opinion until a fresh loop composes it against the panel.
+    static normalizeLoopPolicy(context: string, policy: unknown): LoopPolicyRequest {
+        if (Validator.validateLoopPolicyRequest(policy).valid) return policy as LoopPolicyRequest;
+        ClientInput.#invalid(
+            context,
+            "loop-policy-invalid",
+            "policy is not a valid loop policy request.",
+            {
+                field: "policy",
+                recovery: `State proposals ${PROPOSAL_POLICIES.join(", ")} and attended true or false; omit what you leave to the daemon.`,
+            },
+        );
     }
 
     // {§operator-config} — validate and serialize the client open-context bag. filesItems is a scalar (replace);

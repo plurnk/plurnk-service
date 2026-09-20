@@ -1,13 +1,13 @@
 // {§schedule-family} — the one definition `add` accepts and the coordinator persists: the rule
 // text ({§schedule-rule}), the worker the message is delivered to, the message, and optionally
-// the proposal policy of a loop the delivery starts ({§schedule-delivery}).
-import { Validator, WORKER_NAME, type JsonSchema, type LoopPolicy } from "@plurnk/plurnk-contracts";
+// what the delivery states about the policy of a loop it starts ({§schedule-delivery}).
+import { Validator, WORKER_NAME, type JsonSchema, type LoopPolicyRequest } from "@plurnk/plurnk-contracts";
 
 export interface ScheduleDefinition {
     readonly rule: string;
     readonly target: string;
     readonly prompt: string;
-    readonly policy?: LoopPolicy;
+    readonly policy?: LoopPolicyRequest;
 }
 
 export const TARGET = new RegExp(`^worker://(${WORKER_NAME.source.slice(1, -1)})$`, "u");
@@ -33,8 +33,8 @@ export const DEFINITION_SCHEMA = Object.freeze({
             description: "The message delivered at each occurrence.",
         },
         policy: {
-            $ref: "https://schemas.plurnk.xyz/v0/LoopPolicy.json",
-            description: "Proposal disposition for a loop the delivery starts; absent means the worker's default.",
+            $ref: "https://schemas.plurnk.xyz/v0/LoopPolicyRequest.json",
+            description: "What the delivery states about the policy of a loop it starts; every field left out is the daemon's to supply.",
         },
     },
 }) satisfies JsonSchema;

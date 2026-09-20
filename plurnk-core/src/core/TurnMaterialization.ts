@@ -13,6 +13,7 @@ import TerminalResult from "./TerminalResult.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
 import WorkerControlAddress from "./WorkerControlAddress.ts";
 import Turn from "./Turn.ts";
+import AdministrativeLoop from "./AdministrativeLoop.ts";
 import RuntimeWorker from "./RuntimeWorker.ts";
 import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
@@ -269,8 +270,7 @@ export default class TurnMaterialization {
         if (divergences.length === 0) return;
         const gitByPath = new Map(gitStatus?.files.map(({ path, status }) => [path, status] as const) ?? []);
         const workerId = await RuntimeWorker.ensure(this.#db, workspaceId);
-        const loop = await this.#db.envelope_insert_client_loop.get<{ id: number }>({ worker_id: workerId });
-        if (loop === undefined) throw new Error("logFsFictions: loop insert returned no row");
+        const loop = await AdministrativeLoop.open(this.#db, workerId);
         const turn = await Turn.open(this.#db, { loopId: loop.id, producer: "_plurnk", kind: "operation" });
         let turnOpen = true;
         try {

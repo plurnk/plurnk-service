@@ -168,7 +168,7 @@ test("WORK(worker://name):task spawns a same-workspace sister, seeded via inject
         assert.equal(calls.length, 1, "exactly one injectWorker call");
         const { freshLoopPolicy: spawnPolicy, ...spawnRest } = calls[0];
         assert.deepEqual(spawnRest, { workspaceId, workerId: worker.id, sourceLoopId: loopId, prompt: "investigate the bug", spawn: true }, "the new worker is started with its delegator's causal identity");
-        assert.deepEqual(spawnPolicy, { proposals: "review" }, "the delegating loop's policy rides the injection ({§worker-delegation-inherits-policy})");
+        assert.deepEqual(spawnPolicy, { proposals: "review", attended: true }, "the delegating loop's policy rides the injection ({§worker-delegation-inherits-policy})");
     } finally { await db.close(); }
 });
 
@@ -258,7 +258,7 @@ for (const op of ["WORK", "FORK"] as const) {
                 assert.equal(lineage?.parent_worker_id, parentId);
                 assert.equal(call.workspaceId, workspaceId);
                 assert.equal(call.prompt, "Inspect the project.");
-                assert.deepEqual(call.freshLoopPolicy, { proposals: "review" });
+                assert.deepEqual(call.freshLoopPolicy, { proposals: "review", attended: true });
                 const inherited = await db.test_fork_loops.all({ worker_id: call.workerId });
                 assert.equal(inherited.length, op === "FORK" ? 1 : 0, "FORK copies history; WORK starts fresh");
                 const addressed = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: child.name });
@@ -279,7 +279,7 @@ for (const op of ["WORK", "FORK"] as const) test(`{§workspace-capability-policy
         const parentId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, parentId, 1, "delegate");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        await db.test_set_loop_policy.run({ loop_id: loopId, policy: JSON.stringify({ proposals: "accept" }) });
+        await db.test_set_loop_policy.run({ loop_id: loopId, policy: JSON.stringify({ proposals: "accept", attended: true }) });
         const seed = await engine.dispatch({
             statement: editStmt(workerEntry("", "note.md"), "shared source"),
             workspaceId, workerId: parentId, loopId, turnId, sequence: 1, origin: "model",
@@ -293,7 +293,7 @@ for (const op of ["WORK", "FORK"] as const) test(`{§workspace-capability-policy
             workspaceId, workerId: parentId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(spawned.status, 200);
-        assert.deepEqual(calls[0]?.freshLoopPolicy, { proposals: "accept" });
+        assert.deepEqual(calls[0]?.freshLoopPolicy, { proposals: "accept", attended: true });
         const childId = calls[0]!.workerId;
         const childLoop = await insertLoop(db, childId, op === "FORK" ? 2 : 1, "continue");
         const childTurn = await insertTurn(db, childLoop, 1, 102);
@@ -714,7 +714,7 @@ test("SEND(worker://name):msg delivers to a sister; a missing sister is 404", as
         assert.equal(ok.status, 200, "irc to an existing sister returns 200");
         const { freshLoopPolicy: ircPolicy, ...ircRest } = calls.at(-1)!;
         assert.deepEqual(ircRest, { workspaceId, workerId: sisterId, sourceLoopId: loopId, prompt: "what's your status?" }, "the message is delivered with the sender's causal identity");
-        assert.deepEqual(ircPolicy, { proposals: "review" }, "the sender's policy rides the irc ({§worker-delegation-inherits-policy})");
+        assert.deepEqual(ircPolicy, { proposals: "review", attended: true }, "the sender's policy rides the irc ({§worker-delegation-inherits-policy})");
 
         const missing = await engine.dispatch({
             statement: sendStmt(workerPath("ghost"), "anyone there?"),
@@ -739,9 +739,7 @@ test("{§worker-delegation-inherits-policy}: a fresh IRC loop receives the sende
         const loopId = await insertLoop(db, workerId, 1, "delegate");
         await db.test_set_loop_policy.run({
             loop_id: loopId,
-            policy: JSON.stringify({
-                proposals: "accept",
-            }),
+            policy: JSON.stringify({ proposals: "accept", attended: true }),
         });
         const turnId = await insertTurn(db, loopId, 1, 102);
         await insertWorker(db, workspaceId, null, "sister");
@@ -757,9 +755,8 @@ test("{§worker-delegation-inherits-policy}: a fresh IRC loop receives the sende
         });
 
         assert.equal(result.status, 200);
-        assert.deepEqual(calls[0]?.freshLoopPolicy, {
-            proposals: "accept",
-        });
+        // The whole snapshot is inherited, attendance included: a child of a headless run is headless.
+        assert.deepEqual(calls[0]?.freshLoopPolicy, { proposals: "accept", attended: true });
     } finally { await db.close(); }
 });
 
@@ -774,7 +771,7 @@ test("worker IRC rejects contract-invalid delegator policy before inheritance (#
         await insertWorker(db, workspaceId, null, "worker");
         await db.test_set_loop_policy.run({
             loop_id: loopId,
-            policy: JSON.stringify({ proposals: "sometimes" }),
+            policy: JSON.stringify({ proposals: "sometimes", attended: true }),
         });
 
         await assert.rejects(
@@ -840,7 +837,7 @@ test("FORK(worker://name):task forks a NAMED branch — started via injectWorker
         assert.notEqual(branch.id, workerId, "the branch is a distinct worker");
         const { freshLoopPolicy: forkPolicy, ...forkRest } = calls.at(-1)!;
         assert.deepEqual(forkRest, { workspaceId, workerId: branch.id, sourceLoopId: loopId, prompt: "take the other branch", spawn: true }, "the branch is continued with its delegator's causal identity");
-        assert.deepEqual(forkPolicy, { proposals: "review" }, "the forking loop's policy rides the injection ({§worker-delegation-inherits-policy})");
+        assert.deepEqual(forkPolicy, { proposals: "review", attended: true }, "the forking loop's policy rides the injection ({§worker-delegation-inherits-policy})");
     } finally { await db.close(); }
 });
 

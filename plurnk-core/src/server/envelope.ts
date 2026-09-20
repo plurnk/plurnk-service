@@ -4,6 +4,7 @@
 // or attach call. Core creates or selects the client worker but retains no transport
 // binding; each dispatched client action allocates and settles its own administrative loop.
 
+import AdministrativeLoop from "../core/AdministrativeLoop.ts";
 import type { Db } from "../core/Db.ts";
 import { randomBytes } from "node:crypto";
 import GitMembership from "../core/git-membership.ts";
@@ -189,9 +190,7 @@ export default class Envelope {
     // Client action loop allocator. One action allocates one administrative
     // loop; its statements become ordered turns and settlement closes the loop.
     static async ensureClientLoop(db: Db, workerId: number): Promise<number> {
-        const loop = await db.envelope_insert_client_loop.get<{ id: number }>({ worker_id: workerId });
-        if (loop === undefined) throw new Error("ensureClientLoop: loop insert returned no row");
-        return loop.id;
+        return (await AdministrativeLoop.open(db, workerId)).id;
     }
 
     // Lazy model-worker allocator ({§connection-lifecycle}, {§machine-processes} — the client writes to its own worker).

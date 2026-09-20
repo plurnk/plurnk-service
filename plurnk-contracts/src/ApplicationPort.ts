@@ -8,7 +8,7 @@ import type {
     ClientInteractionResolution,
     EntryReadResult,
     JsonSchema,
-    LoopPolicy,
+    LoopPolicyRequest,
     ModelCatalogPage,
     ModelCatalogQuery,
     ModelRoute,
@@ -130,7 +130,7 @@ export interface ApplicationPort {
         readonly attachments?: readonly MessageResource[];
         readonly envelope?: Readonly<Record<string, unknown>>;
         readonly maxTurns?: number;
-        readonly policy?: Partial<LoopPolicy>;
+        readonly policy?: LoopPolicyRequest;
         readonly openPaths?: string[];
         readonly selector?: string;
         readonly childSelector?: string | null;

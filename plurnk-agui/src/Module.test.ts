@@ -15,12 +15,14 @@ import type {
 } from "@plurnk/plurnk-contracts";
 import type { AguiEvent } from "./types.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { DEFAULT_LOOP_POLICY, Problems, Validator } from "@plurnk/plurnk-contracts";
+import { Problems, Validator } from "@plurnk/plurnk-contracts";
 import { loopUsage } from "../test/accounting-fixture.ts";
 import { streamConclusion, streamEvent, termination } from "../test/notification-fixture.ts";
 import { HttpAgent } from "@ag-ui/client";
 import { isExecution } from "@plurnk/plurnk-contracts";
 import { replayState } from "../test/state-replay.ts";
+
+const LOOP_POLICY = Object.freeze({ proposals: "review", attended: true } as const);
 
 const MODULE_INPUT_SCHEMA = Object.freeze({
     type: "object",
@@ -1397,7 +1399,7 @@ test("a loop-owned proposal cannot terminate a concurrent loop.inject action Run
             op: "sh", target: { scheme: "gitea", authority: null, pathname: "search_repos" },
             body: "{}",
             attrs: {},
-            policy: DEFAULT_LOOP_POLICY,
+            policy: LOOP_POLICY,
             disposition: { owner: "client" },
         });
         releaseInjection.resolve();
@@ -1555,7 +1557,7 @@ test("a standard resume resolves the paused proposal without driving a new loop"
         target: { scheme: "file", authority: null, pathname: "a" },
         body: "diff",
         attrs: {},
-        policy: DEFAULT_LOOP_POLICY,
+        policy: LOOP_POLICY,
         disposition: { owner: "client" },
     }];
     seam.pendingProposals = async () => pending;
@@ -1743,7 +1745,7 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
         op: "sh", target: { scheme: "sh", authority: null, pathname: "" },
         body: "printf ok",
         attrs: {},
-        policy: DEFAULT_LOOP_POLICY,
+        policy: LOOP_POLICY,
         disposition: { owner: "client" },
     };
     let pending: ProposalProjection[] = [];
@@ -1956,7 +1958,7 @@ test("{§agui-conversation-sync}: sync re-surfaces a durable interrupt without d
         op: "sh", target: { scheme: "sh", authority: null, pathname: "" },
         body: "printf ok",
         attrs: {},
-        policy: DEFAULT_LOOP_POLICY,
+        policy: LOOP_POLICY,
         disposition: { owner: "client" },
     };
     seam.pendingProposals = async () => [proposal];

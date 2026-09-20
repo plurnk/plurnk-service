@@ -16,13 +16,15 @@ CREATE TABLE IF NOT EXISTS loops (
     -- NULL means the owning worker itself. Denormalized headline of the loop's
     -- first message ({§message-arrival}); the inbox row below is the one published.
     prompt_source TEXT CHECK (prompt_source IS NULL OR length(prompt_source) > 0),
-    policy   TEXT    NOT NULL DEFAULT '{"proposals":"review"}' CHECK (json_valid(policy)),
+    -- {§loop-policy-composition}: every insert states the complete policy; a column default would
+    -- be a second home for a choice the panel owns. Likewise max_turns below.
+    policy   TEXT    NOT NULL CHECK (json_valid(policy)),
     -- {§worker-model-selection}: immutable loop snapshots of the resolved model route and the
     -- effective spawn route (was provider_spec/child_provider_spec JSON).
     model_route_id       INTEGER          REFERENCES model_routes(id),
     spawn_model_route_id INTEGER          REFERENCES model_routes(id),
     reasoning_policy TEXT CHECK (reasoning_policy IS NULL OR length(reasoning_policy) > 0),
-    max_turns INTEGER NOT NULL DEFAULT 50 CHECK (max_turns >= -1),
+    max_turns INTEGER NOT NULL CHECK (max_turns >= -1),
     -- {§loop-execution-allowance}: initialized on first execution, charged with disposition.
     execution_budget_ms INTEGER CHECK (execution_budget_ms IS NULL OR execution_budget_ms > 0),
     execution_elapsed_ms REAL NOT NULL DEFAULT 0 CHECK (execution_elapsed_ms >= 0),

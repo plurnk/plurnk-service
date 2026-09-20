@@ -38,6 +38,7 @@ import {
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import Turn from "../core/Turn.ts";
+import AdministrativeLoop from "../core/AdministrativeLoop.ts";
 import RuntimeWorker from "../core/RuntimeWorker.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import LogEntryProjection from "../core/LogEntryProjection.ts";
@@ -954,8 +955,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 );
                 if (narration === null) {
                     const workerId = await RuntimeWorker.ensure(db, ctx.workspaceId);
-                    const loop = await db.envelope_insert_client_loop.get<{ id: number; sequence: number }>({ worker_id: workerId });
-                    if (loop === undefined) throw new Error("entry(): loop insert returned no row");
+                    const loop = await AdministrativeLoop.open(db, workerId);
                     const turn = await Turn.open(db, {
                         loopId: loop.id,
                         producer: "_plurnk",

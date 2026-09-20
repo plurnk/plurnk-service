@@ -1,5 +1,4 @@
 import {
-    isAttended,
     Validator,
     type ClientInteractionProjection,
     type ClientInteractionRequest,
@@ -89,7 +88,7 @@ export default class ClientInteractions {
         signal?.throwIfAborted();
         // {§loop-attendance} — every interaction wiring funnels here (the question tool, the exec
         // bridge, the scheme caps and MCP elicitation), so one refusal covers them all.
-        if (!isAttended(await LoopPolicyReader.read(this.#db, ids.loopId))) throw unattendedRefusal(ids.loopId);
+        if (!(await LoopPolicyReader.read(this.#db, ids.loopId)).attended) throw unattendedRefusal(ids.loopId);
         const inserted = await this.#db.client_interaction_insert.get<{ id: number }>({
             workspace_id: ids.workspaceId,
             worker_id: ids.workerId,

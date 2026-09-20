@@ -12,12 +12,13 @@ VALUES ($workspace_id, $name, $parent_worker_id, $origin)
 RETURNING id;
 
 -- PREP: test_insert_loop
--- A NULL $policy takes the column default, so every existing caller is unchanged.
-INSERT INTO loops (worker_id, sequence, prompt, policy)
-VALUES ($worker_id, $sequence, $prompt, COALESCE($policy, '{"proposals":"review"}')) RETURNING id;
+-- A NULL $policy takes this fixture's attended review policy; the column itself carries no default.
+INSERT INTO loops (worker_id, sequence, prompt, policy, max_turns)
+VALUES ($worker_id, $sequence, $prompt, COALESCE($policy, '{"proposals":"review","attended":true}'), -1) RETURNING id;
 
 -- PREP: test_insert_queued_loop
-INSERT INTO loops (worker_id, sequence, prompt, status) VALUES ($worker_id, $sequence, $prompt, 100) RETURNING id;
+INSERT INTO loops (worker_id, sequence, prompt, status, policy, max_turns)
+VALUES ($worker_id, $sequence, $prompt, 100, '{"proposals":"review","attended":true}', -1) RETURNING id;
 
 -- PREP: test_get_loop_claimed_at
 SELECT claimed_at FROM loops WHERE id = $id;

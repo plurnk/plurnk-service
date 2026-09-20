@@ -13,7 +13,6 @@ test("the package root exposes exactly the supported runtime values", () => {
     assert.deepEqual(Object.keys(Contracts).sort(), [
         "CapabilityAdmission",
         "DEFAULT_CAPABILITY_POLICY",
-        "DEFAULT_LOOP_POLICY",
         "DEFAULT_RETRIEVAL_LIMIT",
         "INTERNAL_ROW_OPS",
         "InvalidA2aAgentDefinitionError",
@@ -50,6 +49,7 @@ test("the package root exposes exactly the supported runtime values", () => {
         "InvalidTextRegionError",
         "PLURNK_FENCE",
         "PLURNK_OPS",
+        "PROPOSAL_POLICIES",
         "PathSyntax",
         "PlurnkParseError",
         "Problems",
@@ -62,7 +62,6 @@ test("the package root exposes exactly the supported runtime values", () => {
         "WORKER_NAME",
         "aguiConformanceReport",
         "formatJsonDocument",
-        "isAttended",
         "isExecution",
         "isExecutionOp",
         "lifecycleOfLoopStatus",

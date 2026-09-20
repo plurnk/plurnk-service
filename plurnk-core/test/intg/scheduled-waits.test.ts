@@ -7,6 +7,24 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { openMigrated } from "./_helpers.ts";
 import { waitForDb } from "./_rpc.ts";
 import type { AwaitedEventRow } from "../../src/core/AwaitedEvents.ts";
+import { OperationFailureError } from "../../src/core/results.ts";
+
+// A client retries the one retryable refusal: 409 workspace-busy, while the turn that parked the
+// loop still holds the workspace for its last moment ({§module-workspace-quiescence}). The 202 is
+// durable a beat before that turn lets go, so a test that reads the database can arrive in between.
+const whenSettled = async <T>(daemon: Daemon, name: string, params: Readonly<Record<string, unknown>>, workspaceId: number): Promise<T> => {
+    const outcome = await waitForDb(async () => {
+        try {
+            return { value: await daemon.invokeModuleAction(name, params, { scope: "workspace", workspaceId }) as T };
+        } catch (error) {
+            if (!(error instanceof OperationFailureError) || !error.result.problem!.type.endsWith("/workspace-busy")) throw error;
+            assert.equal(error.result.status, 409);
+            assert.equal(error.result.problem!.retryable, true);
+            return null;
+        }
+    }, (settled) => settled !== null);
+    return outcome!.value;
+};
 
 const INITIAL = Date.UTC(2026, 8, 17, 12, 0, 0, 250);
 
@@ -160,7 +178,7 @@ for (const verb of ["disable", "remove"] as const) {
             await waitForDb(() => lifecycle.status(loopId), (status) => status === 202 || status >= 400);
             assert.equal(await lifecycle.status(loopId), 202);
             const [attachment] = await db.awaited_event_packet.all<AwaitedEventRow>({ loop_id: loopId });
-            const result = await daemon.invokeModuleAction(`workspace.schedule.${verb}`, { alias: "reminder" }, { scope: "workspace", workspaceId }) as { status: number };
+            const result = await whenSettled<{ status: number }>(daemon, `workspace.schedule.${verb}`, { alias: "reminder" }, workspaceId);
             assert.ok(result.status < 400);
             await waitForDb(() => lifecycle.status(loopId), (status) => status === 200 || status >= 400);
             assert.equal(await lifecycle.status(loopId), 200);
@@ -170,7 +188,7 @@ for (const verb of ["disable", "remove"] as const) {
             assert.equal(JSON.parse(settled!.result!).status, 410);
             assert.equal(settled!.observed, 1);
             if (verb === "disable") {
-                await daemon.invokeModuleAction("workspace.schedule.enable", { alias: "reminder" }, { scope: "workspace", workspaceId });
+                await whenSettled(daemon, "workspace.schedule.enable", { alias: "reminder" }, workspaceId);
                 assert.deepEqual(await db.awaited_event_pending.all({ scheme: "schedule" }), [], "enable does not revive old attachments");
             }
         });
@@ -256,7 +274,7 @@ test("{§awaited-event}: settlement wakes only the attached loop when a worker h
         assert.equal(await lifecycle.status(first.loopId), 202);
         assert.equal(await lifecycle.status(second.loopId), 202);
         assert.notEqual(first.loopId, second.loopId);
-        await daemon.invokeModuleAction("workspace.schedule.disable", { alias: "other" }, { scope: "workspace", workspaceId });
+        await whenSettled(daemon, "workspace.schedule.disable", { alias: "other" }, workspaceId);
         await waitForDb(() => lifecycle.status(second.loopId), (status) => status === 200 || status >= 400);
         assert.equal(await lifecycle.status(second.loopId), 200);
         assert.equal(await lifecycle.status(first.loopId), 202, "a settlement is not a worker-wide wake");

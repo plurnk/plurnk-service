@@ -9,8 +9,8 @@ INSERT INTO workers (workspace_id, name, origin)
 VALUES ($workspace_id, $name, 'model') RETURNING id;
 
 -- PREP: installation_insert_loop
-INSERT INTO loops (worker_id, sequence, prompt)
-VALUES ($worker_id, 1, $prompt) RETURNING id;
+INSERT INTO loops (worker_id, sequence, prompt, policy, max_turns)
+VALUES ($worker_id, 1, $prompt, '{"proposals":"review","attended":true}', -1) RETURNING id;
 
 -- PREP: installation_insert_turn
 INSERT INTO turns (loop_id, sequence, producer, kind, status)

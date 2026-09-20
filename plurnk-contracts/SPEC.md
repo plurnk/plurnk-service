@@ -9,7 +9,7 @@ is the single code API for those contracts.
 | Surface                                                                         | Canonical export or artifact                        |
 | ------------------------------------------------------------------------------- | --------------------------------------------------- |
 | Parser, AST, validators, Problems, results, Notices, text regions and extents   | `@plurnk/plurnk-contracts`                          |
-| Capability and loop policies with their defaults                                | `CapabilityPolicy`, `LoopPolicy`, `DEFAULT_CAPABILITY_POLICY`, `DEFAULT_LOOP_POLICY` |
+| Capability and loop policies                                                    | `CapabilityPolicy`, `DEFAULT_CAPABILITY_POLICY`, `LoopPolicy`, `LoopPolicyRequest`, `PROPOSAL_POLICIES` |
 | Durable reasoning intent                                                        | `ReasoningPolicy`, `REASONING_POLICIES`             |
 | Model route and catalog discovery                                               | `ModelRoute`, `ModelCatalogQuery`, `ModelCatalogPage`, `ModelReadiness` |
 | Stopped-world client contract                                                   | `ProposalDisposition`, `ProposalProjection`         |
@@ -168,11 +168,15 @@ workspace layer and their normalized intersection: `service`, `workspace`, and
 capability policy or inherited bound; every actor uses the same live workspace
 policy. A client never derives effective authority from the mutable layer alone.
 
-§loop-policy `DEFAULT_CAPABILITY_POLICY` and `DEFAULT_LOOP_POLICY` are the
-contracts-owned complete defaults. A loop policy is immutable after creation;
-its `proposals` field chooses one downstream settlement posture, independently
-of workspace capability policy. Capability
-admission precedes effect classification and proposal settlement.
+§loop-policy A `LoopPolicy` is complete and immutable after creation:
+`proposals` chooses one downstream settlement posture and `attended` says
+whether anyone can answer, independently of workspace capability policy. An
+unattended loop cannot hold a proposal for review, so the schema refuses that
+pair. A `LoopPolicyRequest` is the part of a policy its creator chose to state.
+Contracts hold no default for the rest: the daemon's panel supplies it
+({§loop-policy-composition}). `PROPOSAL_POLICIES` is the schema-owned
+vocabulary of `proposals`. Capability admission precedes effect
+classification and proposal settlement.
 
 §reasoning-policy-wire `ReasoningPolicy` is exactly `off | adaptive | low |
 medium | high`. The schema owns this shared wire vocabulary. Providers own the

@@ -2,7 +2,6 @@ import type { Db } from "./Db.ts";
 import Results, { type SchemeResult } from "./results.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
-import { isAttended } from "@plurnk/plurnk-contracts";
 
 interface CancelledLoop {
     loopId: number;
@@ -92,7 +91,7 @@ export default class LoopLifecycle {
     // fallback: the provider-recovery path concludes before it reaches this, and a future park site
     // that forgets attendance fails loudly on its first unattended run instead of silently hanging.
     async park(loopId: number, { wakenBy }: { wakenBy: string | null }): Promise<boolean> {
-        if (wakenBy === null && !isAttended(await LoopPolicyReader.read(this.#db, loopId))) {
+        if (wakenBy === null && !(await LoopPolicyReader.read(this.#db, loopId)).attended) {
             throw new Error(`loop ${loopId} cannot park with no waker in an unattended run; conclude instead`);
         }
         return (await this.#db.lifecycle_park_loop.get<{ id: number }>({
