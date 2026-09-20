@@ -364,8 +364,8 @@ supplies examples and complete instructions on demand. A shallow
 result renders direct entries normally and every deeper first-segment directory
 as an actionable `dir/**` summary with its recursive `items` and `tokens`;
 tool-family rows also carry the concise `{§scheme-catalog-aside}` that drives
-on-demand capability discovery. Ordinary surveys use FIND's markerless first-16
-page, whose range metadata reports the requested and returned page against the
+on-demand capability discovery. Ordinary surveys use FIND's markerless first
+page ({§markerless-first-page}), whose range metadata reports the requested and returned page against the
 complete result total; only the small capability-reference surfaces
 explicitly select all. The opening survey demonstrates both `*` and `**` without
 normalizing an all-results override. Every survey executes even when empty
@@ -2011,7 +2011,7 @@ READ is the one fan-out core performs ({§read-fan-out}).
 - §read-bytes A binary channel, and the `#bytes` view of
   any resource whose scheme supplies bytes, reads as the source bytes one hexadecimal
   octet per line: coordinate = line = byte, so `<a,b>` selects bytes, the markerless
-  default is the same `<1,16>`, `<1,-1>` is the whole resource, and the extent carries
+  default is the shared first page ({§markerless-first-page}), `<1,-1>` is the whole resource, and the extent carries
   `unit: "byte"`. The result keeps the source mimetype and names `projection: "hex"`;
   anchors do not exist there (400). Bytes are read from the source at READ time, sized
   then windowed: `file:` supplies them from the member on disk, DB-backed schemes
@@ -2564,8 +2564,8 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
   that shape, while deeper first-segment directories collapse to the one-element
   group `[{ path: "dir/**", items, weight }]`, where the selector and both aggregates
   describe the exact recursive subtree. Scope summaries are navigation
-  metadata, not resources. Markerless FIND returns positions 1–16 in the
-  selected unit; `<N,M>` selects an inclusive page and `<1,-1>` explicitly
+  metadata, not resources. Markerless FIND returns the first page
+  ({§markerless-first-page}) of positions in the selected unit; `<N,M>` selects an inclusive page and `<1,-1>` explicitly
   selects all. `range` reports the unit, complete result total, normalized
   request, and returned positions ({§range-extent}). `itemsWeightTotal` weighs the complete matched set while
   `returnedItemsWeightTotal` weighs the returned resource page; in exact
@@ -4780,6 +4780,11 @@ reasoning continuation. Readable reasoning remains independent.
 | structured `EDIT` receipt or textual `COPY`/`MOVE` effects | complete receipt-owned join context |
 | every other nonempty body | head bounded independently by `PLURNK_SERVICE_PREVIEW_LINES` and `PLURNK_SERVICE_PREVIEW_CHARS` |
 | bodyless row | metadata only; no coordinate lines; `logTokens` includes any selected native part |
+
+§markerless-first-page **Every markerless retrieval takes the same implicit marker.** A marker's
+unit is whatever its projection counts, so `PLURNK_SERVICE_PREVIEW_LINES` is the first page of
+all of them: lines of text, bytes of a byte view ({§read-bytes}), positions of a FIND. It is one
+choice with one home; no operation carries a page size of its own.
 
 Markerless text READs select their page with the same line/character bound as
 ordinary previews, before result storage and packet rendering. Explicit scopes

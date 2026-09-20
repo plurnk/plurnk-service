@@ -12,8 +12,9 @@
 //   signal  — classifies the durable FIND log item; never filters resources
 //   <L>     — result pagination: resource or match-location positions N..M
 
-import { DEFAULT_RETRIEVAL_LIMIT, PathSyntax, renderJsonResult, type FindStatement, type RangeExtent, type TextRegion } from "@plurnk/plurnk-contracts";
+import { PathSyntax, renderJsonResult, type FindStatement, type RangeExtent, type TextRegion } from "@plurnk/plurnk-contracts";
 import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
+import BodyPreview from "../content/body-preview.ts";
 import ByteView, { type ByteSource } from "../content/byte-view.ts";
 import { binaryInputMaximum } from "@plurnk/plurnk-mimetypes";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
@@ -185,7 +186,7 @@ export const projectFindResult = (
         completeItems = resourceItems;
     }
 
-    const marker = statement.lineMarker ?? { marks: [1, DEFAULT_RETRIEVAL_LIMIT] };
+    const marker = statement.lineMarker ?? BodyPreview.firstPage();
     const unit = locationMode ? "matchLocation" : "resource";
     const page = LineMarkerOps.page(completeItems, marker, { unit });
     if (page.status !== 200) {

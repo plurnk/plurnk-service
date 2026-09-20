@@ -118,3 +118,28 @@ test("{§find-bytes} a FIND over a binary member matches bytes and reports byte 
         await rm(root, { recursive: true, force: true });
     }
 });
+
+test("{§markerless-first-page} one knob is the first page of every markerless retrieval, whatever its unit", async () => {
+    const { root, db, ctx } = await setup();
+    const prior = process.env.PLURNK_SERVICE_PREVIEW_LINES;
+    try {
+        for (let n = 1; n <= 7; n += 1) {
+            await writeFile(join(root, `page${n}.md`), "findable\n");
+            await EntryCrud.writeEntry({ authority: "", pathname: `page${n}.md` }, { channels: { body: { content: "findable\n", mimetype: "text/markdown" } } }, ctx, "file");
+        }
+        process.env.PLURNK_SERVICE_PREVIEW_LINES = "5";
+
+        const bytes = await lookThroughScheme("file", null, readStmt("blob.bin"), ctx);
+        assert.deepEqual(bytes.range, { unit: "byte", total: 40, requested: [1, 5], returned: [1, 5] }, "bytes of a byte view");
+
+        const found = await new File().find(findStmt("page*.md", "findable"), ctx);
+        assert.equal(found.status, 200, JSON.stringify(found.problem));
+        assert.deepEqual(found.range?.requested, [1, 5], "positions of a FIND");
+        assert.deepEqual(found.range?.returned, [1, 5]);
+        assert.equal(found.range?.total, 7, "the complete result stays addressable");
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_LINES; else process.env.PLURNK_SERVICE_PREVIEW_LINES = prior;
+        await db.close();
+        await rm(root, { recursive: true, force: true });
+    }
+});

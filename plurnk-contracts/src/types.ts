@@ -29,10 +29,6 @@ export const PLURNK_OPS = [
 // ordinary markup and is quoted, never run, so every producer of a statement writes THIS.
 export const PLURNK_FENCE = "````";
 
-// Markerless model-facing retrievals share one fixed first page. Producers use
-// an explicit <1,-1> when they deliberately require the complete projection.
-export const DEFAULT_RETRIEVAL_LIMIT = 16;
-
 export type PlurnkOp = (typeof PLURNK_OPS)[number];
 
 // An execution is written as its runtime's fence, so its operation IS the runtime tag: lowercase

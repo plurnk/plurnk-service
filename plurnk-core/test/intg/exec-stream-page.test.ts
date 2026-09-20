@@ -4,7 +4,6 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DEFAULT_RETRIEVAL_LIMIT } from "@plurnk/plurnk-contracts";
 import StreamMock from "./_stream-mock.ts";
 import { connect, makeMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { logEntries, packetSection } from "./_helpers.ts";
@@ -43,7 +42,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
                 "log:///1/2/2/sh", "publication identity retains the exact durable invocation relationship");
             const rx = JSON.parse(foisted.rx) as { exitCode: number; content: string; mimetype: string; startLine: number; range: { unit: string; total: number; returned: [number, number] } };
             assert.equal(rx.exitCode, 0, "the exact subprocess conclusion remains durable");
-            assert.equal(rx.content.split("\n").filter((l) => l !== "").length, DEFAULT_RETRIEVAL_LIMIT, "exactly the retrieval page");
+            assert.equal(rx.content.split("\n").filter((l) => l !== "").length, Number(process.env.PLURNK_SERVICE_PREVIEW_LINES), "exactly the panel's first page");
             assert.equal(rx.content.startsWith("1\n2\n"), true, "the page is the FIRST page — a markerless READ");
             assert.equal(rx.startLine, 1);
             assert.deepEqual(rx.range, { unit: "line", total: 40, requested: [1, 16], returned: [1, 16] });

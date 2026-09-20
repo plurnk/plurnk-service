@@ -1853,13 +1853,13 @@ test("preview bounds are exact and reject invalid configuration", () => {
         process.env.PLURNK_SERVICE_PREVIEW_LINES = "0";
         assert.throws(
             () => PacketWire.renderLog([{ coordinate: "1/1/1", op: "SEND", origin: "model", status: 200, tx: { body: "x" } }], tok),
-            /PLURNK_SERVICE_PREVIEW_LINES must be a positive safe integer/,
+            /PLURNK_SERVICE_PREVIEW_LINES must be a safe integer of at least 1; got "0"/,
         );
         process.env.PLURNK_SERVICE_PREVIEW_LINES = "16";
         process.env.PLURNK_SERVICE_PREVIEW_CHARS = "NaN";
         assert.throws(
             () => PacketWire.renderLog([{ coordinate: "1/1/1", op: "SEND", origin: "model", status: 200, tx: { body: "x" } }], tok),
-            /PLURNK_SERVICE_PREVIEW_CHARS must be a positive safe integer/,
+            /PLURNK_SERVICE_PREVIEW_CHARS must be a safe integer of at least 1; got "NaN"/,
         );
     } finally {
         if (previousLines === undefined) delete process.env.PLURNK_SERVICE_PREVIEW_LINES;

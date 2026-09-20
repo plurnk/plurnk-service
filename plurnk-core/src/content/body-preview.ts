@@ -1,20 +1,19 @@
 import type { LineMarker } from "@plurnk/plurnk-contracts";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import Knob from "../core/Knob.ts";
 
 // {§body-projection} — one selector for ordinary packet previews and implicit
 // text acquisition. Explicit operation scopes never pass through this policy.
 export default class BodyPreview {
+    // {§markerless-first-page} — the implicit marker of every markerless retrieval. A marker's unit
+    // is whatever the projection counts: lines of text, bytes of a byte view, results of a FIND.
+    static firstPage(): LineMarker {
+        return { marks: [1, Knob.integer("PLURNK_SERVICE_PREVIEW_LINES", 1)] };
+    }
+
     static select(text: string): { end: number; marker: LineMarker } {
-        const rawLines = process.env.PLURNK_SERVICE_PREVIEW_LINES;
-        const rawChars = process.env.PLURNK_SERVICE_PREVIEW_CHARS;
-        const maxLines = Number(rawLines);
-        const maxChars = Number(rawChars);
-        if (!Number.isSafeInteger(maxLines) || maxLines < 1) {
-            throw new Error(`PLURNK_SERVICE_PREVIEW_LINES must be a positive safe integer, got ${JSON.stringify(rawLines)}`);
-        }
-        if (!Number.isSafeInteger(maxChars) || maxChars < 1) {
-            throw new Error(`PLURNK_SERVICE_PREVIEW_CHARS must be a positive safe integer, got ${JSON.stringify(rawChars)}`);
-        }
+        const maxLines = Knob.integer("PLURNK_SERVICE_PREVIEW_LINES", 1);
+        const maxChars = Knob.integer("PLURNK_SERVICE_PREVIEW_CHARS", 1);
         const coordinates = new TextCoordinates(text);
         const lines = coordinates.logicalLines();
         const lineEnd = lines.length > maxLines ? lines[maxLines - 1]!.end : text.length;

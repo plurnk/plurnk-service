@@ -1,4 +1,4 @@
-import { DEFAULT_RETRIEVAL_LIMIT, type LineMarker, type ReadStatement } from "@plurnk/plurnk-contracts";
+import type { LineMarker, ReadStatement } from "@plurnk/plurnk-contracts";
 import { binaryInputMaximum, MimetypeInputLimitError, type Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type {
     EntryReadResult,
@@ -6,6 +6,7 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import type { SchemeManifest } from "../core/scheme-types.ts";
 import Results from "../core/results.ts";
+import BodyPreview from "./body-preview.ts";
 import LineAnchors from "./line-anchors.ts";
 import LineMarkerOps from "./line-marker.ts";
 import ByteView, { type ByteSource } from "./byte-view.ts";
@@ -130,7 +131,7 @@ export default class ReadProjector {
         }
         const total = await source.size();
         if (total === null) return failure("entry-not-found", 404, `No bytes exist at ${target}.`);
-        const marker: LineMarker = statement.lineMarker ?? { marks: [1, DEFAULT_RETRIEVAL_LIMIT] };
+        const marker: LineMarker = statement.lineMarker ?? BodyPreview.firstPage();
         const window = LineMarkerOps.window(marker, total, "byte");
         if (window.status !== 200) {
             return {
