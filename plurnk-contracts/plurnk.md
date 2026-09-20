@@ -80,9 +80,6 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 > [!TIP]
 > `SEND (worker://name)` messages a live worker.
 
-> [!TIP]
-> WAIT yields while work is live and wakes on the next arrival; name what you wait for if you like, and several WAITs are one yield.
-
 ## Context Curation
 
 > [!CAUTION]
