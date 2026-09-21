@@ -1,10 +1,10 @@
 // {§digest-forensic-fidelity} — settled requests without any usage are named on the
 // worker's Cost line instead of silently pricing the run as if they were free.
 import test from "node:test";
+import { testArtifactPath } from "../../../scripts/test-artifacts.ts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import Digest from "../../src/digest/Digest.ts";
 import type { Db } from "../../src/core/Db.ts";
@@ -23,7 +23,7 @@ const MODEL_PACKET: DurablePacket = {
     assistantRaw: null,
 };
 
-const TMP_DIR = fileURLToPath(new URL(".tmp/", import.meta.url));
+const TMP_DIR = testArtifactPath("core");
 
 const recordAttempt = async (db: Db, turnId: number, accounting: ProviderRequestAccounting, failed: boolean): Promise<void> => {
     const modelCall = await db.engine_open_model_call.get<{ id: number }>({

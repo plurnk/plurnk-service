@@ -2,6 +2,7 @@
 // action, the occurrence fires, and the target worker's log carries the message as an arrival row
 // from `schedule://<alias>` ({§message-causal-source}); the family's list names the next occurrence.
 import assert from "node:assert/strict";
+import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -29,8 +30,8 @@ const assertDelivery = async (workerName: string): Promise<void> => {
         contextWindow: 32768,
         responses: [makeMockResponse("````SEND\nBeat taken.\n````", 10)],
     });
-    const artifacts = resolve(import.meta.dirname, ".tmp");
-    const db = await openMigrated(join(artifacts, `db-${crypto.randomUUID()}.db`));
+    // {§test-artifact-retention} — this lane's run directory, beside every other harness's.
+    const db = await openMigrated(join(await testArtifactDirectory("schedule"), `db-${crypto.randomUUID()}.db`));
     const root = await mkdtemp(join(tmpdir(), "plurnk-schedule-"));
     const workspaceId = await insertWorkspace(db, "scheduled");
     await rootWorkspace(db, workspaceId, root);

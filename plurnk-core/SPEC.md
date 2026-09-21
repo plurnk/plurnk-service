@@ -5478,15 +5478,13 @@ execution. The ledger and classification taxonomy live in
 distinct from model failures and repeated stochastic failures separately from
 stable ones, never with weakened assertions.
 
-§test-artifact-retention **File-backed test databases use lane-local current-run
-retention.** Each workspace's normal intg runner clears its own
-`test/intg/.tmp/` once before the suite, reports that forensic directory, and
-retains every artifact the current run creates; a direct `node --test <file>` run bypasses that
-runner, so each test process prunes artifacts older than a day once, and never the current run's. A cross-package test may reuse
-Core's migration fixture only by passing a path inside the caller's artifact
-directory; independently scheduled lanes never share a reset target. A failed
-suite therefore leaves its own evidence intact, and the next normal run of that
-lane removes it before creating anything. Direct `node --test` invocations
-bypass the runner boundary and must invoke the same cleanup procedure
-explicitly when isolation matters. Live/demo run directories are benchmark
-artifacts outside `.tmp` and retain their separate lifecycle.
+§test-artifact-retention **Every harness writes its run into one home.** A file-backed test
+database is a benchmark artifact like any other: the lane's run directory lives under
+`PLURNK_BENCHMARKS` (`~/benchmarks` by default) beside live, demo and benchlet runs, and the
+checkout holds source only — never run output. `test:intg` stamps `PLURNK_TEST_RUN` once and every
+test process inherits it, so one suite's databases land in one directory without a pretest step, a
+marker file or a sweep; an unstamped invocation is not a special case with its own rules, it is
+simply an unstamped run with its own directory. Nothing counts, reuses, moves, hides or
+conditionally clears an artifact, so a failed suite's evidence is exactly where the run reported
+it. A cross-package test may reuse Core's migration fixture only by passing a path inside the
+caller's own run directory.

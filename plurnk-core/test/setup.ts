@@ -11,7 +11,8 @@
 // the committed .env.test selects the real-model gate default.
 // This bootstrap is the Mock tier's parallel and overrides that selection with a fake `mocktest`
 // alias (Mocks are injected, so it's never dialed) whose fixture-scaled reserves no real model sees.
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import { testArtifactPath } from "../../scripts/test-artifacts.ts";
 
 const fixture = {
     // A fake alias — never dialed (the tests inject Mock providers); it only gives the
@@ -39,8 +40,9 @@ const fixture = {
     PLURNK_SERVICE_PREVIEW_LINES: "16",
     PLURNK_SERVICE_PREVIEW_CHARS: "2560",
     PLURNK_SERVICE_DB_PATH: "./plurnk.test.db",
-    // Retained module files belong with this tier's disposable database evidence.
-    XDG_STATE_HOME: fileURLToPath(new URL("./intg/.tmp/host-state", import.meta.url)),
+    // Retained module files belong with this tier's database evidence, in the run's own
+    // directory under PLURNK_BENCHMARKS ({§test-artifact-retention}).
+    XDG_STATE_HOME: join(testArtifactPath("core"), "host-state"),
     PLURNK_PORT: "3045",
 } as const;
 

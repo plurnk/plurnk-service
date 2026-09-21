@@ -1,7 +1,8 @@
 import SqlRite from "@possumtech/sqlrite";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
+import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
 import { Paths } from "../../src/index.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -216,41 +217,20 @@ export function testExecutors(): Promise<ExecutorRegistry> {
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const MIGRATIONS_DIR = resolve(PROJECT_ROOT, "migrations");
-const TMP_DIR = resolve(PROJECT_ROOT, "test/intg/.tmp");
-
 // File-backed per-test DB so on-disk consumers (digest tool, future
 // forensics) exercise the same artifacts the suite produces. `:memory:`
 // hid a column-rename regression in bin/digest.ts for an unknown number
 // of PRs. Per-test UUID filenames eliminate parallel collisions.
 //
-// DBs are KEPT on close — any test that surfaces something worth review
-// can be tossed straight at `npm run dev:digest -- test/intg/.tmp/db-<id>.db`
-// without rebuilding plumbing. The normal integration runner clears the prior
-// run once before starting, reports this directory, and retains everything
-// created by the current run ({§test-artifact-retention}). A bare `node --test
-// <file>` bypasses that boundary; use `npm run artifacts:clean` first when
-// invoking the integration tests directly.
-// {§test-artifact-retention} — the runner clears the directory once per suite; a direct
-// `node --test <file>` run bypasses it, so each test process also prunes artifacts older than a
-// day, once, without touching the current run's. A prune racing another process is harmless.
-const STALE_ARTIFACT_MS = 24 * 3_600_000;
-let pruned: Promise<void> | null = null;
-const pruneStaleArtifacts = (): Promise<void> => {
-    pruned ??= (async () => {
-        await mkdir(TMP_DIR, { recursive: true });
-        const cutoff = Date.now() - STALE_ARTIFACT_MS;
-        for (const name of await readdir(TMP_DIR)) {
-            const path = join(TMP_DIR, name);
-            const age = await stat(path).then((s) => s.mtimeMs, () => null);
-            if (age !== null && age < cutoff) await rm(path, { recursive: true, force: true });
-        }
-    })();
-    return pruned;
-};
+// {§test-artifact-retention} — the run's directory lives under PLURNK_BENCHMARKS beside every
+// other harness's artifacts, so a database is born where it lives: nothing is written into the
+// checkout, nothing is swept, and any test worth review is handed straight to
+// `npm run dev:digest -- <the path the run reported>`.
+let artifacts: Promise<string> | null = null;
+const artifactDirectory = (): Promise<string> => (artifacts ??= testArtifactDirectory("core"));
 
 export const openMigrated = async (atPath?: string): Promise<Db> => {
-    await pruneStaleArtifacts();
-    const dbPath = atPath ?? join(TMP_DIR, `db-${crypto.randomUUID()}.db`);
+    const dbPath = atPath ?? join(await artifactDirectory(), `db-${crypto.randomUUID()}.db`);
     await mkdir(dirname(dbPath), { recursive: true });
     const db = (await SqlRite.open({
         path: dbPath,

@@ -1,9 +1,9 @@
 // {§digest-requiem} — a synthetic interview carries a complete self-root identity.
 import test from "node:test";
+import { testArtifactPath } from "../../../scripts/test-artifacts.ts";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import type { ChatMessage, ProviderAccounting, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import Digest from "../../src/digest/Digest.ts";
@@ -34,7 +34,7 @@ const MODEL_PACKET = (worker: string): DurablePacket => ({
     assistantRaw: null,
 });
 
-const TMP_DIR = fileURLToPath(new URL(".tmp/", import.meta.url));
+const TMP_DIR = testArtifactPath("core");
 
 const recordResponseAttempt = async (db: Db, args: {
     turnId: number;

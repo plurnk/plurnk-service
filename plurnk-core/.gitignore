@@ -16,9 +16,8 @@ dist/
 *.db-wal
 
 # Forensic artifacts written by bin/digest.js — instance-specific, regenerated on demand
-# by `npm run test:digest`. Integration scratch databases live under test/intg/.tmp.
+# by `npm run test:digest`. Integration databases are run artifacts under PLURNK_BENCHMARKS.
 test/digest/
-test/intg/.tmp/
 
 # Live-fire / provider scratch — not source.
 scratch-*

@@ -28,12 +28,9 @@
     },
     "scripts": {
         "test": "npm run test:lint && npm run test:unit && npm run test:intg",
-        "artifacts:begin": "node ../scripts/test-artifacts.mjs begin",
-        "pretest:intg": "npm run artifacts:begin",
         "test:lint": "tsc --noEmit",
         "test:unit": "node --conditions=plurnk-dev --env-file-if-exists=.env.defaults --test src/*.test.ts",
-        "test:intg": "node --conditions=plurnk-dev --env-file-if-exists=.env.defaults --test test/intg/*.test.ts",
-        "artifacts:clean": "node ../scripts/test-artifacts.mjs clean",
+        "test:intg": "PLURNK_TEST_RUN=$(date -u +%Y%m%dT%H%M%SZ) node --conditions=plurnk-dev --env-file-if-exists=.env.defaults --test test/intg/*.test.ts",
         "prepublishOnly": "npm test",
         "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",

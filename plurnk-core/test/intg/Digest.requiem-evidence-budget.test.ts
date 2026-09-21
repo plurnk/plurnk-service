@@ -1,9 +1,9 @@
 // {§digest-requiem-evidence-budget} — quoted evidence is budgeted to the witness window;
 // overflow elides the oldest attempts behind an explicit marker and the interview succeeds.
 import test from "node:test";
+import { testArtifactPath } from "../../../scripts/test-artifacts.ts";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import type { ChatMessage, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import Digest from "../../src/digest/Digest.ts";
@@ -31,7 +31,7 @@ const MODEL_PACKET: DurablePacket = {
     assistantRaw: null,
 };
 
-const TMP_DIR = fileURLToPath(new URL(".tmp/", import.meta.url));
+const TMP_DIR = testArtifactPath("core");
 
 const recordFatAttempt = async (db: Db, turnId: number, marker: string): Promise<void> => {
     const modelCall = await db.engine_open_model_call.get<{ id: number }>({
