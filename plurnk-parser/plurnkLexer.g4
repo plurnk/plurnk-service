@@ -114,7 +114,7 @@ private noteTag(): void {
     const known = Object.hasOwn(plurnkLexer.OPERATIONS, tag) || this.knownExecutor(tag);
     if (short && !known) return;
     // A markdown wrapper is a polite envelope, not a missed operation ({§quotation}).
-    if (!known && (tag === "markdown" || tag === "md")) return;
+    if (!known && ["markdown", "md"].includes(tag.toLowerCase())) return;
     const reason = !known ? "unknown" : short ? "short" : "indented";
     this.unknownTags.push({ line: (this as any).currentTokenStartLine, column: (this as any).currentTokenColumn, tag, reason });
 }
