@@ -12,7 +12,6 @@ import { isGrammarNotInstalled } from "./TreeSitterExtractor.ts";
 import BaseHandler from "./BaseHandler.ts";
 import MimetypeInputError, { isMimetypeInputError } from "./MimetypeInputError.ts";
 import MimetypeInputLimitError from "./MimetypeInputLimitError.ts";
-import Tokenizers, { type TokenizerResolution } from "./Tokenizers.ts";
 import { classifyMimetype, classifyWithHandler, type MimeClassification } from "./classify.ts";
 import { mimetypeSource, type Notice } from "./Notice.ts";
 import MimetypePluginError from "./MimetypePluginError.ts";
@@ -56,7 +55,6 @@ const HANDLER_METHODS = [
 ] as const;
 
 // Public seam types stay reachable from the orchestrator module.
-export type { TokenizerResolution } from "./Tokenizers.ts";
 
 // Default and caller-owned loading modes ({§mimetype-package-resolution}).
 export type HandlerLoader = (packageName: string) => Promise<unknown>;
@@ -159,7 +157,6 @@ export default class Mimetypes {
     readonly #defaultMimetype: string | null;
     readonly #handlerInstances = new Map<string, Promise<BaseHandler>>();
     readonly #grammarFingerprints = new Map<string, Promise<string>>();
-    readonly #tokenizers: Tokenizers;
     #discovery: DiscoveryResult | null = null;
 
     // Every consumer of discovery runs after ready(); a call that reaches here first is a
@@ -175,7 +172,6 @@ export default class Mimetypes {
         this.#discoverOptions = options.discoverOptions ?? {};
         this.#loader = options.loader ?? defaultLoader(this.#discoverOptions.cwd ?? process.cwd());
         this.#defaultMimetype = options.defaultMimetype ?? null;
-        this.#tokenizers = new Tokenizers(this.#loader);
         if (options.discovery !== undefined) {
             this.#discovery = {
                 ...options.discovery,
@@ -561,12 +557,6 @@ export default class Mimetypes {
         });
     }
 
-    // Exact-or-explicitly-degraded vocabulary counting
-    // ({§mimetype-tokenizer}).
-    async tokenizer(modelRef: string, options?: { strict?: boolean }): Promise<TokenizerResolution> {
-        return this.#tokenizers.tokenizer(modelRef, options);
-    }
-
     // Release artifact resources and handler instances ({§mimetype-lifecycle}).
     async dispose(): Promise<void> {
         if (this.#disposePromise !== null) return this.#disposePromise;
@@ -584,7 +574,6 @@ export default class Mimetypes {
         this.#handlerInstances.clear();
         this.#grammarFingerprints.clear();
         const results = await Promise.allSettled([
-            this.#tokenizers.dispose(),
             ...handlers.map(async (handler) => (await handler).dispose?.()),
         ]);
         const errors = results

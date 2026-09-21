@@ -153,7 +153,6 @@
     },
     "devDependencies": {
         "@opentelemetry/core": "^2.11.0",
-        "@plurnk/plurnk-mimetypes-tokenizers": "1.18.0",
         "@types/diff": "^7.0.2"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-core#readme",

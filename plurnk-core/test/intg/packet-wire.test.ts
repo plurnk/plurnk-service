@@ -1,13 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolve as resolveTokenizer } from "@plurnk/plurnk-mimetypes-tokenizers";
+import { contentWeight } from "../../src/core/content-weight.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import GitState from "../../src/core/git-state.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 
-// Per-row `tokens` tests assert on bodies/substrings, not tokenizer-specific
-// values; the metadata-budget contract below separately uses the bundled exact
-// tokenizer to make packet-weight drift reviewable.
+// Per-row `tokens` tests assert on bodies/substrings, not model-specific values; the
+// metadata-budget contract below weighs the projection with the agnostic ruler that actually
+// governs packet weights ({§tokenomics-agnostic-ruler}), so drift stays reviewable in the
+// unit the system budgets in rather than one model's vocabulary.
+// The reviewed scope projection, in the agnostic ruler the packet budgets in.
+const METADATA_WEIGHT = 454;
 const tok = (s: string): number => Math.ceil(s.length / 4);
 
 test("{§log-address-metadata}: addressed operands and record identities remain distinct across operation families", async (t) => {
@@ -1059,11 +1062,8 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
         }
     }
 
-    const tokenizer = await resolveTokenizer("gemma");
-    if (tokenizer === null) throw new Error("The bundled Gemma tokenizer is required for the metadata budget contract.");
-    assert.equal(tokenizer.tokenizerId, "5f7eee611703c5ce");
-    const metadataTokens = await tokenizer.countTokens(metadata.map((row) => JSON.stringify(row)).join("\n"));
-    assert.equal(metadataTokens, 303, "canonical retrieval metadata uses the reviewed scope projection (previously 389 Gemma tokens)");
+    const metadataWeight = contentWeight(metadata.map((row) => JSON.stringify(row)).join("\n"));
+    assert.equal(metadataWeight, METADATA_WEIGHT, "canonical retrieval metadata uses the reviewed scope projection");
 
     assert.throws(
         () => PacketWire.renderLog([{

@@ -614,7 +614,7 @@ For the rare format where neither tree-sitter nor grammars-v4 has coverage and t
 
 ## 10. Tokenization — a consumer concern
 
-The framework neither tokenizes nor budgets content for its own projection pipeline. Token counting is wholly a consumer concern. Plurnk-service uses one stable model-independent ruler for stored, catalog, and model-facing packet weights ({§tokenomics-agnostic-ruler}); a provider's counter is confined to its physical packet-admission check. The `Mimetypes.tokenizer()` seam ({§mimetype-tokenizer}) supplies model-vocabulary counting to consumers but never participates in the framework's own projection budgeting.
+The framework neither tokenizes nor budgets content for its own projection pipeline. Token counting is wholly a consumer concern. Plurnk-service uses one stable model-independent ruler for stored, catalog, and model-facing packet weights ({§tokenomics-agnostic-ruler}); a provider's counter is confined to its physical packet-admission check. A consumer that needs model-vocabulary counting brings its own counter; the framework exposes no seam for one, so nothing here can be mistaken for the ruler that governs weights.
 
 ## §mimetype-query 11. Body-matcher query
 
@@ -1090,15 +1090,6 @@ addresses the channel that was queried. Structural queries over a text source
 also retain its parser-backed coordinates; the existence of a separate readable
 projection does not suppress them. Byte-derived or synthetic results without
 a source mapping and computed scalars remain locator-only ({§mimetype-query}).
-
-## §mimetype-tokenizer 19. Tokenizer seam
-
-`Mimetypes.tokenizer()` supplies a model-vocabulary counter for consumers that
-need one. The independently published
-`@plurnk/plurnk-mimetypes-tokenizers` is an optional general artifact for every
-composition, including the default service. The framework resolves it lazily
-when installed. The artifact owns its vocabulary catalog and reproducibility;
-the framework owns resolution, lifecycle, and explicit degradation.
 
 The exported `TokenizerResolution` type owns the surface:
 

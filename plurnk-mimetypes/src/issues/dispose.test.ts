@@ -16,7 +16,6 @@ import type {
 import type { HandlerMetadata, MimeSymbol } from "../types.ts";
 import type { Discovery, HandlerInfo, Registry } from "../types.ts";
 
-const TOK_PKG = "@plurnk/plurnk-mimetypes-tokenizers";
 
 const INFO: HandlerInfo = {
     mimetype: "text/x-test",
@@ -28,27 +27,27 @@ const INFO: HandlerInfo = {
     source: "package",
 };
 
+const INFO2: HandlerInfo = { ...INFO, mimetype: "text/x-test2", packageName: "@plurnk/x2", extensions: [".tst2"] };
+
+// Two owned handlers, so teardown aggregation is tested across more than one disposable.
 function makeDiscovery(): Discovery {
     const registry: Registry = {
-        byExtension: new Map([[".tst", "text/x-test"]]),
+        byExtension: new Map([[".tst", "text/x-test"], [".tst2", "text/x-test2"]]),
         byFilename: new Map(),
     };
-    return { registry, handlers: new Map([["text/x-test", INFO]]), skipped: [] };
+    return { registry, handlers: new Map([["text/x-test", INFO], ["text/x-test2", INFO2]]), skipped: [] };
 }
 
 function lifecycleMimetypes({
     Handler = BaseHandler,
-    tokenizers,
+    Second = BaseHandler,
 }: {
     Handler?: new (metadata: HandlerMetadata) => BaseHandler;
-    tokenizers?: unknown;
+    Second?: new (metadata: HandlerMetadata) => BaseHandler;
 } = {}): Mimetypes {
     return new Mimetypes({
         discovery: makeDiscovery(),
-        loader: async (pkg) => {
-            if (pkg === TOK_PKG) return tokenizers;
-            return { default: Handler };
-        },
+        loader: async (pkg) => ({ default: pkg === INFO2.packageName ? Second : Handler }),
     });
 }
 
@@ -117,19 +116,6 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
         await assert.doesNotReject(m.dispose());
     });
 
-    for (const artifact of ["tokenizer"] as const) {
-        it(`reports ${artifact} acquisition failure to its caller, not again during teardown`, async () => {
-            const failure = new Error(`${artifact} artifact initialization failed`);
-            const m = new Mimetypes({
-                discovery: makeDiscovery(),
-                loader: async () => { throw failure; },
-            });
-            const acquisition = m.tokenizer("test-model");
-            await assert.rejects(acquisition, (error) => error === failure);
-            await assert.doesNotReject(m.dispose());
-        });
-    }
-
     it("D5: clears cached handler instances", async () => {
         const m = lifecycleMimetypes();
         await m.process({ path: "a.tst", content: "x\ny" }, { channels: ["symbols"] });
@@ -171,32 +157,24 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
         assert.equal(disposals, 2);
     });
 
-    it("attempts every handler and artifact teardown and preserves every failure", async () => {
-        const tokenizerFailure = new Error("tokenizer dispose failed");
-        const handlerFailure = new Error("handler dispose failed");
-        class Handler extends BaseHandler {
-            override async dispose(): Promise<void> {
-                throw handlerFailure;
-            }
+    it("attempts every handler teardown and preserves every failure", async () => {
+        const firstFailure = new Error("first handler dispose failed");
+        const secondFailure = new Error("second handler dispose failed");
+        class First extends BaseHandler {
+            override async dispose(): Promise<void> { throw firstFailure; }
         }
-        const m = lifecycleMimetypes({
-            Handler,
-            tokenizers: {
-                async resolve(): Promise<null> { return null; },
-                async dispose(): Promise<void> { throw tokenizerFailure; },
-            },
-        });
-        await Promise.all([
-            m.getHandler(INFO.mimetype),
-            m.tokenizer("test-model"),
-        ]);
+        class Second extends BaseHandler {
+            override async dispose(): Promise<void> { throw secondFailure; }
+        }
+        const m = lifecycleMimetypes({ Handler: First, Second });
+        await Promise.all([m.getHandler(INFO.mimetype), m.getHandler(INFO2.mimetype)]);
 
         await assert.rejects(
             () => m.dispose(),
             (error: unknown) => {
                 assert.ok(error instanceof AggregateError);
                 assert.equal(error.message, "mimetype resource shutdown failed");
-                assert.deepEqual(error.errors, [tokenizerFailure, handlerFailure]);
+                assert.deepEqual(new Set(error.errors), new Set([firstFailure, secondFailure]));
                 return true;
             },
         );
@@ -206,17 +184,15 @@ describe("{§mimetype-lifecycle} — Mimetypes.dispose()", () => {
         const entered = Promise.withResolvers<void>();
         const release = Promise.withResolvers<void>();
         let disposals = 0;
-        const m = lifecycleMimetypes({
-            tokenizers: {
-                async resolve(): Promise<null> { return null; },
-                async dispose(): Promise<void> {
-                    disposals += 1;
-                    entered.resolve();
-                    await release.promise;
-                },
-            },
-        });
-        await m.tokenizer("test-model");
+        class Blocking extends BaseHandler {
+            override async dispose(): Promise<void> {
+                disposals += 1;
+                entered.resolve();
+                await release.promise;
+            }
+        }
+        const m = lifecycleMimetypes({ Handler: Blocking });
+        await m.getHandler(INFO.mimetype);
 
         const first = m.dispose();
         await entered.promise;

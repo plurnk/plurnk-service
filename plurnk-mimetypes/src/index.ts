@@ -104,8 +104,6 @@ export type {
 export { classifyMimetype } from "./classify.ts";
 export type { MimeClassification } from "./classify.ts";
 
-// Public tokenizer seam types ({§mimetype-tokenizer}).
-export type { TokenCountOptions, TokenizerResolution } from "./Tokenizers.ts";
 
 // Grammar compilation utilities (for handler authors building their own pipeline)
 export { injectBaseImports, rewriteImports, runCompile } from "./compile.ts";

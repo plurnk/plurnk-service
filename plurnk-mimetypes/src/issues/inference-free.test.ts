@@ -7,5 +7,10 @@ test("{§mimetype-channel-selection} content projection exposes no embedding inf
         assert.equal(method in api.Mimetypes.prototype, false, `${method} must not remain a framework capability`);
     }
     assert.equal("EmbeddingVector" in api, false);
-    assert.equal(typeof api.Mimetypes.prototype.tokenizer, "function", "prompt tokenization remains independent");
+    // Token counting is wholly a consumer concern: the framework neither tokenizes nor budgets
+    // for its own projection, so it offers no vocabulary seam to mistake for one.
+    for (const gone of ["tokenizer", "countTokens"]) {
+        assert.equal(gone in api.Mimetypes.prototype, false, `${gone} must not remain a framework capability`);
+    }
+    for (const gone of ["TokenizerResolution", "TokenCountOptions"]) assert.equal(gone in api, false);
 });

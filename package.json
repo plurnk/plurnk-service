@@ -2,7 +2,7 @@
     "name": "@plurnk/monorepo",
     "private": true,
     "version": "1.0.0",
-    "description": "The plurnk platform monorepo \u2014 daemon core, contract, and bundled families. Root is orchestration only; every workspace publishes individually.",
+    "description": "The plurnk platform monorepo — daemon core, contract, and bundled families. Root is orchestration only; every workspace publishes individually.",
     "license": "MIT",
     "type": "module",
     "engines": {
@@ -30,7 +30,6 @@
         "plurnk-mimetypes-text-diff",
         "plurnk-mimetypes-text-ini",
         "plurnk-mimetypes-text-dotenv",
-        "plurnk-mimetypes-tokenizers",
         "plurnk-mimetypes",
         "plurnk-schemes",
         "plurnk-schemes-http",

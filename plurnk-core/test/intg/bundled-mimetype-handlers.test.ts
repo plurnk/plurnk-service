@@ -138,7 +138,6 @@ test("the default service installs its image and PDF owners without inference or
     assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-application-pdf"], serviceManifest.version);
     assert.deepEqual(pdfManifest.dependencies, undefined, "the PDF owner pulls no extraction or rendering stack");
     assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-embeddings"], undefined);
-    assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-tokenizers"], undefined);
 });
 
 for (const c of CASES) {

@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
-import { installPacked, installSandbox, uninstallSandbox, sandbox } from "./install-sandbox.mjs";
+import { installSandbox, uninstallSandbox, sandbox } from "./install-sandbox.mjs";
 import { installedGrammars } from "./installed-grammars.mjs";
 
 let failures = 0;
@@ -18,7 +18,6 @@ const ok = (cond, msg) => { process.stdout.write(`  ${cond ? "✓" : "✗"} ${ms
 const bin = resolve(sandbox, "node_modules", ".bin", "plurnk-service");
 const imagePackage = "@plurnk/plurnk-mimetypes-image";
 const pdfPackage = "@plurnk/plurnk-mimetypes-application-pdf";
-const tokenizersPackage = "@plurnk/plurnk-mimetypes-tokenizers";
 const sandboxHostEnv = {
     HOME: sandbox,
     XDG_CONFIG_HOME: resolve(sandbox, ".config"),
@@ -64,7 +63,7 @@ const packedExecInventory = (env = {}) => {
     }));
 };
 
-const packedMimetypeInventory = (tokenizerRef = "gemma") => {
+const packedMimetypeInventory = () => {
     const program = `
         import { resolve } from "node:path";
         import { pathToFileURL } from "node:url";
@@ -90,15 +89,10 @@ const packedMimetypeInventory = (tokenizerRef = "gemma") => {
             },
             { channels: ["content", "facts"] },
         );
-        const tokenizer = await mimetypes.tokenizer(${JSON.stringify(tokenizerRef)});
         process.stdout.write(JSON.stringify({
             owners: Object.fromEntries([...discovery.handlers].map(([name, info]) => [name, info.packageName])),
             json: { ok: json.ok, mimetype: json.mimetype },
             image: { ok: image.ok, mimetype: image.mimetype, content: image.content, facts: image.facts },
-            tokenizer: {
-                exact: tokenizer.exact,
-                plurnkPackage: tokenizer.notices?.[0]?.plurnkPackage ?? null,
-            },
         }));
         await mimetypes.dispose();
     `;
@@ -220,7 +214,7 @@ const markerCount = (path) => existsSync(path)
 
 process.stdout.write("== plurnk-service installation e2e ==\n");
 process.stdout.write("-- local sandbox install --\n");
-const { tarballs } = installSandbox();
+installSandbox();
 ok(existsSync(bin), "plurnk-service bin linked in the sandbox");
 
 const mods = resolve(sandbox, "node_modules");
@@ -303,30 +297,15 @@ ok(
     mimetypeInventory.json.ok === true && mimetypeInventory.json.mimetype === "application/json",
     "a packed default handler loads through the composed service module graph",
 );
-ok(
-    mimetypeInventory.tokenizer.exact === false
-        && mimetypeInventory.tokenizer.plurnkPackage === tokenizersPackage,
-    "the clean service reports the optional general tokenizer catalog honestly absent",
-);
 
 // {§mimetype-pdf-facts} (#542) — the PDF owner is a header-only leaf that ships by default like
 // the image owner; no extraction or rendering stack rides with it.
 const pdfRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-application-pdf");
-const tokenizersRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-tokenizers");
 ok(existsSync(resolve(pdfRoot, "package.json")), "the header-only PDF owner ships in the clean service composition");
 ok(mimetypeInventory.owners["application/pdf"] === pdfPackage, "application/pdf is discovered from the packed PDF leaf");
 for (const heavy of ["pdfjs-dist", "@napi-rs/canvas"]) {
     ok(!existsSync(resolve(mods, heavy)), `${heavy} is absent from a clean service install`);
 }
-ok(!existsSync(tokenizersRoot), "the general tokenizer vocabulary catalog is absent from a clean service install");
-
-process.stdout.write("-- optional mimetype lifecycle --\n");
-installPacked(tarballs, tokenizersPackage);
-ok(existsSync(resolve(tokenizersRoot, "package.json")), "the optional general tokenizer catalog installs independently");
-ok(
-    packedMimetypeInventory("gemma").tokenizer.exact === true,
-    "the installed general tokenizer catalog resolves through the unchanged framework seam",
-);
 
 ok(!existsSync(resolve(mods, "@plurnk", "plurnk-mimetypes-embeddings")), "search ships without an embedding runtime or model artifact");
 for (const [providerPackage, provider] of [
