@@ -20,6 +20,9 @@ export type StrikeOutcome = {
 
 type RailState = { strike_streak: number; cycle_history: string; cycle_wait_revision: number };
 
+// {§engine-rails} — the three progress-contract sources, as a crossing terminal names them.
+export type StrikeSource = "repetition" | "operation" | "no_operation";
+
 const isExecutorEvidence = ({ problemType }: StrikeOutcome): boolean =>
     typeof problemType === "string" && problemType.startsWith(EXECUTOR_EVIDENCE_PREFIX);
 
@@ -58,9 +61,6 @@ export default class StrikeRail {
         return createHash("sha256").update(canonical).digest("hex");
     }
 
-    // {§engine-rails} cycle detector. For each candidate period k in [1, maxCyclePeriod],
-    // check whether the last k*minCycles entries form minCycles repetitions of the
-    // same length-k pattern. O(maxCyclePeriod × minCycles × max k) ≈ tiny.
     // {§engine-cycle-evidence} — an empty turn performed no activity, so its text IS its
     // observable output and is what the detector compares. Fingerprinting the empty program
     // instead makes every empty turn identical, and the detector then reports a cycle over a
@@ -70,6 +70,9 @@ export default class StrikeRail {
         return createHash("sha256").update(`empty:${text.trim()}`).digest("hex");
     }
 
+    // {§engine-rails} cycle detector. For each candidate period k in [1, maxCyclePeriod],
+    // check whether the last k*minCycles entries form minCycles repetitions of the
+    // same length-k pattern. O(maxCyclePeriod × minCycles × max k) ≈ tiny.
     static detectCycle(
         history: ReadonlyArray<string>,
         minCycles: number,
@@ -118,7 +121,7 @@ export default class StrikeRail {
         minCycles: number;
         maxCyclePeriod: number;
         maxStrikes: number;
-    }): Promise<{ cycleDetected: boolean; thresholdCrossed: boolean }> {
+    }): Promise<{ cycleDetected: boolean; thresholdCrossed: boolean; crossedBy: StrikeSource | null }> {
         // {§engine-rails}: cycle detection. Push this turn's fingerprint to
         // history and scan for repetition patterns. Detection is intentionally
         // not a model-facing notice; it is private engine accounting.
@@ -140,6 +143,13 @@ export default class StrikeRail {
         // {§empty-turn} — a turn with no operation is one progress-contract strike.
         const struck = recordedFailed || cycle.detected || turn.emptyTurn === true;
         const streak = struck ? state.strike_streak + 1 : 0;
+        // {§engine-rails} — which source struck this turn, so a crossing terminal can say what
+        // actually happened instead of calling an unfenced reply a failed operation. A turn may
+        // match more than one; the most specific wins, and repetition is the most specific fact.
+        const crossedBy: StrikeSource | null = !struck ? null
+            : cycle.detected ? "repetition"
+            : recordedFailed ? "operation"
+            : "no_operation";
         const saved = await this.#db.strike_rail_assess.run({
             loop_id: loopId,
             streak,
@@ -147,6 +157,6 @@ export default class StrikeRail {
             wait_revision: turn.waitRevision,
         });
         if (saved.changes !== 1) throw new Error(`strike rail loop ${loopId} disappeared during assessment`);
-        return { cycleDetected: cycle.detected, thresholdCrossed: struck && streak >= turn.maxStrikes };
+        return { cycleDetected: cycle.detected, thresholdCrossed: struck && streak >= turn.maxStrikes, crossedBy };
     }
 }

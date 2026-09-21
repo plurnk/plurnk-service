@@ -40,6 +40,8 @@ import { homedir } from "node:os";
 // name (no separator) is refused by name rather than resolved against anything.
 // {§prose-conclusion}
 const ANSWER_FENCE = /^(`{3,}|~{3,})(?:markdown|md)[ \t]*$/iu;
+// {§conclusion-recovery} — the one token that redeems the offer an empty turn earned.
+const CONCLUSION_RECOVERY_TOKEN = "200";
 
 export const answerFence = (content: string): { readonly concludes: boolean; readonly answer: string } => {
     // Blank lines go, per-line indentation stays: trimming the whole string would erase the
@@ -155,6 +157,7 @@ import ProviderInstantiate from "./ProviderInstantiate.ts";
 import TurnMaterialization from "./TurnMaterialization.ts";
 import BareBatchRunner from "./BareBatchRunner.ts";
 import { ENGINE_PROBLEMS, TURN_STATUS_IMPLICIT_CONTINUE } from "./turn-signals.ts";
+import { unconcludedEmission } from "./unconcluded-emission.ts";
 import AdmittedTurnExecutor from "./AdmittedTurnExecutor.ts";
 
 // Split-out call-metadata that travels with the parsed packet but lands in
@@ -349,6 +352,8 @@ type ProviderAttempts = {
     split: SplitProviderResponse | undefined;
     railGrammar: string | undefined;
     railEvidence: GrammarEvidence | undefined;
+    // {§conclusion-recovery} — the prior empty turn's retained text, or null when no offer stands.
+    unconcluded: string | null;
     emissionAttempts: number;
     callInFlight: boolean;
     modelCallSequence: number;
@@ -1134,6 +1139,7 @@ export default class TurnRunner {
             split: undefined,
             railGrammar: undefined,
             railEvidence: undefined,
+            unconcluded: null,
             emissionAttempts: 0,
             callInFlight: false,
             modelCallSequence: 0,
@@ -1161,6 +1167,8 @@ export default class TurnRunner {
         // {§turn-lifecycle}: bracket the complete provider-attempt window with liveness notices.
         if (!signal?.aborted) this.#notices.push(workspaceId, workerId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
         attempts.railGrammar = await this.#operatorGrammar(provider);
+        // {§conclusion-recovery} — the offer stands for exactly one turn, so the bound is this one.
+        attempts.unconcluded = (await unconcludedEmission(this.#db, loopId, request.seq))?.retained ?? null;
         const attemptLimit = readEmissionAttempts();
         const strikeStreak = await this.#strikes.streak(loopId);
         for (let attempt = 1; attempt <= attemptLimit;) {
@@ -1278,7 +1286,7 @@ export default class TurnRunner {
         attempts.turnWireAccounting.push(...completedResponse.accounting);
         await modelCall.observeResponse(completedResponse, null, attempts.wire.nativeInputs);
         attempts.railEvidence = attempts.railGrammar === undefined ? undefined : completedResponse.grammarEvidence;
-        const split = this.#splitResponse(completedResponse, this.#executors()?.availableRuntimes(workspaceId) ?? []);
+        const split = this.#splitResponse(completedResponse, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.unconcluded);
         attempts.split = split;
         await this.#classifyProviderAttempt(attempts, attemptRow.id, split, attempt, split.emissionValid);
         return split.emissionValid ? "admitted" : "rejected";
@@ -1759,7 +1767,7 @@ export default class TurnRunner {
     // its assistant payload to skip the parse roundtrip. The wire Provider
     // contract has no `ops` field; only Mock exposes one. Real providers
     // always take the parse path because their `assistant.ops` is undefined.
-    #splitResponse(response: ProviderAttempt, executors: readonly string[] = []): SplitProviderResponse {
+    #splitResponse(response: ProviderAttempt, executors: readonly string[] = [], unconcluded: string | null = null): SplitProviderResponse {
         const { assistant } = response;
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
         const ops: PlurnkStatement[] = [];
@@ -1823,15 +1831,22 @@ export default class TurnRunner {
         // {§prose-conclusion} — the markdown fence is the exit; a turn that merely failed to yield
         // an operation is non-responsive and falls to {§empty-turn}.
         const answered = answerFence(assistant.content);
-        const prose = answered.answer;
-        const concludes = preParsedOps === undefined
-            && answered.concludes
+        // A reply that is nothing but its own text: no operation closed, none attempted, no
+        // boundary lost, nothing cut off. Both exits are reached from here.
+        const textOnly = preParsedOps === undefined
             && ops.length === 0
             && !hasUnparsedTail
-            && prose.length > 0
             && assistant.finishReason !== "length"
             && parseErrors.every((error) => error.message === PlurnkParser.NO_VALID_OPERATION)
             && PlurnkParser.operationAttempt(assistant.content, executors) === null;
+        // {§conclusion-recovery} — the empty turn kept its text and was asked whether that was the
+        // answer; `200` alone says yes, envelope or not. What concludes is that retained text: the
+        // token released the answer, it is not the answer.
+        const redeems = textOnly
+            && unconcluded !== null
+            && (answered.concludes ? answered.answer : assistant.content).trim() === CONCLUSION_RECOVERY_TOKEN;
+        const prose = redeems ? unconcluded : answered.answer;
+        const concludes = textOnly && prose.length > 0 && (redeems || answered.concludes);
         const proseAnswer = concludes
             ? { op: "SEND", aside: null, target: null, metadata: null, lineMarker: null, body: { raw: prose, json: null }, position: { line: 1, column: 0 } } as PlurnkStatement
             : null;

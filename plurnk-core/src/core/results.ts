@@ -52,6 +52,13 @@ export default class Results {
 
     static assert<T extends SchemeResult>(result: T): T { return _Results.assert(result); }
 
+    // {§terminal-evidence} — extension members added to a failure already built. Only a failed
+    // result carries a problem to extend; anything else is a contract violation, not a no-op.
+    static extend<T extends SchemeResult>(result: T, extensions: Readonly<Record<string, unknown>>): T {
+        if (result.problem === undefined) throw new TypeError("only a failed result carries extension members");
+        return _Results.assert({ ...result, problem: { ...result.problem, ...extensions } }) as T;
+    }
+
     static assertReadResult<T extends SchemeResult>(result: T): T {
         return _Results.assertReadResult(result);
     }

@@ -106,11 +106,16 @@ export default class AdmittedTurnExecutor {
         // reasoning are kept, the packet says so, and the strike rail counts it once.
         if (statements.length === 0) {
             if (source !== null) await Turn.recordSource(this.#db, turnId, "ops", source, { modelCallId: sourceModelCallId });
+            // {§conclusion-recovery} — the offer is only made when there is text to submit; a turn
+            // that said nothing at all is told what it did, and nothing that is not true of it.
+            const offer = source !== null && source.trim().length > 0
+                ? " Reply 200 to submit the previous turn as final."
+                : "";
             this.#notices.push(workspaceId, workerId, loopId, {
                 source: "engine:turn",
                 kind: "turn_no_operations",
                 level: "warn",
-                message: "Emission contained no OPs or conclusion.",
+                message: `Turn contains no OPs. A final response is a \`markdown\` OP.${offer}`,
             });
             await Turn.complete(this.#db, turnId, TURN_STATUS_IMPLICIT_CONTINUE);
             return { status: TURN_STATUS_IMPLICIT_CONTINUE, outcomes: [], fingerprint: StrikeRail.fingerprintEmptyTurn(source ?? ""), emptyTurn: true };

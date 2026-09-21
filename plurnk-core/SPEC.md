@@ -1160,6 +1160,17 @@ independent turn ceiling terminates at **429** ({§loop-terminals}). The streak
 and cycle verdict are absent from model packets; only the concrete occurrences
 in the table are shown. The streak never leaves the daemon.
 
+A crossing terminal names the source that struck the crossing turn — `repetition`,
+`operation`, or `no_operation` — in its detail, most specific first when a turn matches more
+than one. The three are not interchangeable: a turn that attempted no operation did not *fail*
+one, and reporting it as a failed turn misreads a model answering without the fence as a model
+whose operations broke. This is the crossing turn's source, not the streak's composition; the
+rail rules on the crossing and does not retain the kinds behind it. What the crossing turn
+actually said is cited, not discarded ({§terminal-evidence}). Naming the source is not the
+private accounting {§rail-accounting-private} withholds: the streak, the cycle verdict and
+attempt counts stay inside the daemon — this is the terminal telling the truth about its own
+cause, which the reader already sees the shape of.
+
 §loop-rail-continuity Rail state belongs to the durable loop, not its execution
 segment. The strike streak and bounded cycle history survive driver cleanup and
 restart; curation of log evidence cannot alter them.
@@ -2602,7 +2613,7 @@ conclusion carries its execution outcome under {§send-undelivered-child-term}, 
 | `NULL` | The model's own terminal or an engine verdict whose exact result already carries the story. | No authorship marker. |
 | `cancel` | The structured scope was explicitly cancelled, through the client or worker KILL ({§methods-loop-cancel}). | COLLECT and the termination delta prepend a cancellation marker to the exact Problem's presentation, so cancellation cannot masquerade as a deliverable. The model's prior log rows remain untouched. |
 
-The engine's failure terminals — **500** (strike threshold) and **508** (cycle), {§engine-rails} — are never the model's to pick; they are the engine ruling the loop failed. The model answers, waits or cancels its scope; the engine derives the lifecycle outcome from that state.
+The engine's failure terminals — **500** (strike threshold) and **508** (cycle), {§engine-rails} — are never the model's to pick; they are the engine ruling the loop failed. The model answers, waits or cancels its scope; the engine derives the lifecycle outcome from that state. The ruling never softens, and it never destroys the evidence: every terminal cites what the model last left unconcluded ({§terminal-evidence}).
 
 Disposition outcomes follow {§wait-obligation-matrix},
 {§completion-joins-live-work}, and {§completion-defers-to-results}. Strike
@@ -2647,7 +2658,9 @@ accounting and model-visible failure evidence remain separately owned by
 - §loop-answer **A loop's address is what it said.** READ `ops://<worker>/<loop>` resolves to
   the latest reply the loop gave to the message that started it: a prose conclusion's text or
   the body of a SEND that targeted that message. A running loop without one is 425; a loop that
-  ended without one is its terminal problem (404 when it ended 2xx). `ops://<worker>/<loop>/<turn>`
+  ended without one is its terminal problem (404 when it ended 2xx) — and that problem cites what
+  the model last left unconcluded, so the loop's own address never reports silence from a loop that
+  spoke ({§terminal-evidence}). `ops://<worker>/<loop>/<turn>`
   remains that turn's emission. A concluded child's `loop_termination` row to its parent carries
   `answer: ops://<child>/<loop>` beside its status. Witness: `test/intg/loop-answer.test.ts`.
 - §empty-turn **A response with no operation that is not an answer is a turn, not a retry.**
@@ -2664,6 +2677,43 @@ accounting and model-visible failure evidence remain separately owned by
   strikes out without being called a loop. Fingerprinting the empty program instead made every
   empty turn identical, so any weak model answering in prose terminated 508 "loop detected" for
   a loop that never repeated anything (corrected 2026-09-21, #805).
+- §conclusion-recovery **A turn that answered without the fence is asked once, and `200` submits
+  it.** An empty turn that kept text ({§empty-turn}) makes its notice an offer — *Turn contains no
+  OPs. A final response is a `markdown` OP. Reply 200 to submit the previous turn as final.* — and
+  the next admitted response redeems it when that response is `200` and nothing else, trimmed, with
+  or without the envelope ({§prose-conclusion}'s `markdown` or `md` fence). Redemption concludes the
+  loop on the **retained text**, not on the token: the token releases the answer the model already
+  wrote, at `ops://<worker>/<loop>/<turn>`, and the concluding row is an ordinary prose conclusion.
+  A response that merely contains `200`, or that carries any operation, attempts one, lost its
+  boundary or was cut at the allowance, redeems nothing and is read as itself. The offer stands for
+  exactly one turn and is read off the record — the turn immediately before this one, and only
+  while its admitted program was empty — so a stale offer cannot be redeemed later and a restart
+  between the offer and its reply cannot leave a bare `200` standing as a loop's answer. An
+  unredeemed offer lapses silently; the empty turn keeps the one strike it already took
+  ({§engine-rails}), because the recovery buys the answer back, not the turn (operator,
+  2026-09-21, #805). A turn that emitted no text at all is offered nothing: there is
+  nothing to submit, and the notice says only what is true of it.
+- §terminal-evidence **A terminal rules the loop over; it does not decide the model said nothing.**
+  Every engine terminal — strike threshold (500), cycle (508), turn ceiling (429), loop timeout
+  (504), provider unavailable ({§provider-recovery}) — keeps its status and its authorship: the
+  engine ruled, the model did not conclude, and no terminal is ever softened into a 200 the model
+  never declared. What a terminal may not do is discard the last thing the model said. When the
+  loop's last inference turn emitted no operation and kept text — the same turn {§empty-turn}
+  retains — the terminal's Problem Details carries the extension member `unconcluded`, the
+  `ops://<worker>/<loop>/<turn>` address of that emission. It is a citation, never the bytes
+  ({§turn-ops-entry}: the reader READs the source, and an emission of any length never rides
+  wholesale into a parent's packet). The member is named for what it is — an emission left
+  unconcluded — and never `answer`: the harness cannot warrant that text is complete or final,
+  because the model never said it was, through the fence ({§prose-conclusion}) or through the
+  handshake ({§conclusion-recovery}). The engine neither delivers it as an answer nor destroys it;
+  the reader decides, and a parent worker taking a child's `loop_termination` is the reader best
+  placed to, being a model with the context to judge. A terminal whose last inference turn
+  performed operations carries no `unconcluded` at all: an absent member is not an empty one.
+  Rationale: the fence exists to separate *concluding* from *continuing*, and at a terminal there
+  is nothing left to continue — applying it there would enforce a rule past the end of its own
+  reason, and a weak model that answers in prose is not a model that said nothing (operator,
+  2026-09-21, #805). Attachment is owned by the one terminal seam, so a terminal added later
+  cannot forget it.
 - §metadata-ignored **Options a scheme does not take are dropped, not refused.** A READ, FIND,
   EDIT or KILL carrying `[metadata]` for a scheme whose manifest takes none runs without it,
   and the packet carries one `metadata_ignored` notice naming the scheme (operator,
@@ -4504,7 +4554,9 @@ flowchart TD
   | 504 | Loop timeout or exec-timeout restamp |
 
   An empty WAIT continues at 102. The exact terminal result retains its Problem;
-  status classes are not catch-all replacements for that evidence.
+  status classes are not catch-all replacements for that evidence. No failing status
+  here is ever softened because the model wrote something the harness could not read;
+  every one of them cites it instead ({§terminal-evidence}).
 
 ### §env-delta The environment delta: what changed since the model last looked
 

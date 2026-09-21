@@ -10,6 +10,7 @@ import Knob from "./Knob.ts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
 import { type ChatMessage } from "./PacketBuilder.ts";
 import TurnRunner, { LOOP_TIMEOUT_REASON } from "./TurnRunner.ts";
+import { unconcludedEmission } from "./unconcluded-emission.ts";
 import { observed } from "../observe/spans.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 import type { AcquireWorkspaceTurn, WorkspaceTurnStarting } from "./Engine.ts";
@@ -98,7 +99,13 @@ export default class LoopDriver {
         this.#loopSignals.set(loopId, executionSignal);
         const timedOut = (): boolean => executionSignal.aborted && executionSignal.reason === LOOP_TIMEOUT_REASON;
         const ruleTerminal = async (failure: SchemeResult, reason: TerminalReason): Promise<LoopResult> => {
-            const finished = await this.#lifecycle.finish(loopId, failure);
+            // {§terminal-evidence} — the ruling is the engine's and the status never softens, but
+            // the last thing the model said is not the engine's to destroy. Cited, never embedded
+            // ({§turn-ops-entry}): the reader READs it, and a long emission never rides into a
+            // parent's packet. Attached here, so no terminal can be added that forgets.
+            const unconcluded = await unconcludedEmission(this.#db, loopId);
+            const ruled = unconcluded === null ? failure : Results.extend(failure, { unconcluded: unconcluded.resource });
+            const finished = await this.#lifecycle.finish(loopId, ruled);
             const result = finished ?? await this.#lifecycle.result(loopId);
             if (result === null) throw new Error(`loop ${loopId} has no result after ${reason} settlement`);
             cleanup("forceful", reason);
@@ -272,13 +279,19 @@ export default class LoopDriver {
                     // {§engine-rails} — the source on the crossing turn classifies
                     // the engine verdict: cycle-driven is 508; every other strike is 500.
                     const status = verdict.cycleDetected ? 508 : 500;
+                    // {§engine-rails} — the terminal names the source that crossed. An emission
+                    // that attempted nothing did not "fail": calling it a failed turn misreads a
+                    // model that answered without the fence as one whose operations broke.
+                    const because = {
+                        repetition: "its operations and results repeated",
+                        operation: "consecutive turns failed",
+                        no_operation: "consecutive turns performed no operation",
+                    }[verdict.crossedBy ?? "operation"];
                     const failure = Results.failure(
                         "engine:rails",
                         "strike-threshold",
                         status,
-                        verdict.cycleDetected
-                            ? `The loop reached its strike threshold after ${modelTurnCount} model turns because its operations and results repeated.`
-                            : `The loop reached its strike threshold after ${modelTurnCount} model turns because consecutive turns failed.`,
+                        `The loop reached its strike threshold after ${modelTurnCount} model turns because ${because}.`,
                         {},
                         {
                             turns: modelTurnCount,
