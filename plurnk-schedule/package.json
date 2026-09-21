@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-schedule",
-    "version": "1.19.1",
+    "version": "1.19.2",
     "description": "Scheduled messages for Plurnk workers, on RFC 5545 recurrence rules",
     "type": "module",
     "license": "MIT",
@@ -42,8 +42,8 @@
         "rrule-temporal": "2.2.6"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-contracts": "^1.19.1",
-        "@plurnk/plurnk-schemes": "^1.19.1"
+        "@plurnk/plurnk-contracts": "^1.19.2",
+        "@plurnk/plurnk-schemes": "^1.19.2"
     },
     "keywords": [
         "plurnk",
