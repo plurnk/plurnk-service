@@ -39,7 +39,7 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "rrule-temporal": "2.2.5"
+        "rrule-temporal": "2.2.6"
     },
     "peerDependencies": {
         "@plurnk/plurnk-contracts": "^1.18.0",
