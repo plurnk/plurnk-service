@@ -449,9 +449,13 @@ diagnostic, notice or teaching mentions the reading (#760).
 as the model's answer, or an operation attempt. `PlurnkParser.operationAttempt(input,
 executors)` names the attempt: a line opening a four-backtick fence, a heading outside
 any fence ({§bare-heading-advisory}; a known executor's name is a heading only when a
-slot follows it), native tool-call markup that {§native-tool-calls} did not read, or
-echoed packet rows (`### log://…`). Anything else, three-backtick code blocks included,
-is prose (#761).
+slot follows it), a three-backtick fence naming an operation — a miscounted heading is a
+typo, not an answer, so the loop continues and the next packet carries `needs four
+backticks to run` (#801) — native tool-call markup that {§native-tool-calls} did not
+read, or echoed packet rows (`### log://…`). The three-backtick rule reads the raw text,
+since such a fence quotes itself, and it takes the executor rule with it: ```` ```sh ````
+is an ordinary code block, ```` ```sh (x) ```` is a miscounted heading. Anything else,
+code blocks under a bare language tag included, is prose (#761).
 
 §bare-heading-advisory An operation name that opens a line outside any block in the
 shape of a heading (`READ (…)`, `NOTE`, …) is prose and runs nothing. The parser

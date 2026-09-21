@@ -109,6 +109,17 @@ export default class PlurnkParser {
     static operationAttempt(input: string, executors: readonly string[] = []): string | null {
         const helpers = ["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "WORK", "FORK", "BARE", "KILL", "NOTE", "WAIT"];
         const runtimes = executors.map((name) => name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"));
+        // A three-backtick fence naming an operation is a miscounted heading, not prose: the model
+        // meant to run it, so the loop continues and the next packet carries the advisory. This is
+        // judged on the RAW text — the fence quotes itself, so {§quotation} would blank it first.
+        // Same rule as the bare heading below: ```sh is an ordinary code block, ```sh (x) is not.
+        const helpersOrRuntimes = [
+            `(?:${["FIND", "READ", "EDIT", "COPY", "MOVE", "SEND", "WORK", "FORK", "BARE", "KILL", "NOTE", "WAIT"].join("|")})(?=\\s*(?:\\(|<|\\[|$))`,
+            `(?:sh${executors.length === 0 ? "" : `|${executors.map((name) => name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")).join("|")}`})(?=\\s*(?:\\(|<|\\[))`,
+        ];
+        if (new RegExp(`^\`{3}[0-9]*(?:${helpersOrRuntimes.join("|")})`, "mu").test(input)) {
+            return "an operation heading under three backticks";
+        }
         // {§quotation} quoted examples are data: only unquoted text can attempt an operation.
         input = PlurnkParser.unquoted(input, executors);
         const known = [...helpers, "sh", ...runtimes].join("|");
