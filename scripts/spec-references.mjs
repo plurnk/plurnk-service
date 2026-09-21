@@ -13,7 +13,9 @@ const TABLE_ROW_DECLARATION = new RegExp(`^ {0,3}\\|[ \\t]*${NAMED_TAG}`);
 const PARAGRAPH_DECLARATION = new RegExp(`^ {0,3}${NAMED_TAG}`);
 const REFERENCE_TAG = /\{§([a-z][a-z0-9-]*)\}(?![a-z0-9_-])/g;
 const UNBRACED_NAMED_TAG = /§([A-Za-z][A-Za-z0-9_-]*)/g;
-const AMBIGUOUS_ISSUE_SHORTHAND = /\b((?:plurnk-[a-z0-9-]+|service|svc|(?:grammar|schemes|mimetypes|providers|execs|embeddings|endpoint)(?:-[a-z0-9-]+)?)#\d+)\b/g;
+// A qualified cross-repo citation (`plurnk/plurnk-bench#38`) is the correct form, not an
+// ambiguous shorthand: the lookbehind keeps the match from starting after the owner's slash.
+const AMBIGUOUS_ISSUE_SHORTHAND = /(?<![\w/-])((?:plurnk-[a-z0-9-]+|service|svc|(?:grammar|schemes|mimetypes|providers|execs|embeddings|endpoint)(?:-[a-z0-9-]+)?)#\d+)\b/g;
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 const INLINE_CODE = /(`+)([^`]*?)\1/g;
 const UNBRACED_SOURCE_EXTENSIONS = new Set([

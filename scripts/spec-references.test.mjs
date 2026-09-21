@@ -39,6 +39,17 @@ test("legacy repository issue shorthands are distinct from valid citation forms"
     ]);
 });
 
+test("a qualified cross-repo citation is the correct form, not an ambiguous shorthand", () => {
+    const bare = issueShorthand("plurnk-bench", 38);
+    const files = [
+        { name: "CHANGELOG.md", text: `- http: an operator host policy (plurnk/${bare})` },
+        { name: "docs/a.md", text: `bare ${bare} has no owner` },
+    ];
+    assert.deepEqual(ambiguousIssueShorthands(files), [
+        { name: "docs/a.md", line: 1, reference: bare },
+    ], "owner/repo#N resolves; the bare shorthand does not");
+});
+
 test("the first semantic token of a SPEC heading, paragraph, list item, or table row declares a tag", () => {
     const files = [
         {
