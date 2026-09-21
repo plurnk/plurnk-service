@@ -1476,6 +1476,15 @@ diagnostics are:
   `FIND (src/parser.ts) [{"pattern": "/\\bparse\\w+\\b/"}]`. `^` claims the regex
   dialect without slashes or flags: the whole text is the pattern, so
   `READ (notes.md) ^Decision:.*` selects lines beginning with `Decision:`.
+  `^` is deliberately absent from `plurnk.md`'s dialect table and belongs here instead
+  (operator, 2026-09-21, #804). It is carried because `^` meaning "anchor" is among the
+  strongest instincts a model arrives with: it will write `^Decision:.*` whether or not it
+  was taught to, and the engine honours what it will reach for anyway. Teaching it would
+  spend hot-path weight on a line that changes no behaviour. The omission is therefore not
+  drift between the teaching and the engine, and closing it in either direction is a
+  regression: restoring the row pays for nothing, and retiring the prefix makes the
+  pretrained spelling a glob that matches a literal caret — silence in place of the
+  selection the model asked for.
 - §trailing-slots **Slots after the matcher peel off the right.** The heading text after
   the matcher is read backwards: a trailing `<!-- aside -->`, a trailing `<scope>` in the
   shapes the lexer admits (result positions on FIND, text coordinates elsewhere) and a
