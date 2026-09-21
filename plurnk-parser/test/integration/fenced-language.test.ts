@@ -28,7 +28,7 @@ for (const entrypoint of ["parse", "parseStatements", "parseClient"] as const) {
             const diagnostics = parsed.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
             assert.deepEqual(diagnostics.map((error) => ({ severity: error.severity, message: error.message })), runtime === null ? [{
                 severity: "warning",
-                message: "`js` is not an operation or a known executor here; the block was read as prose and nothing ran.",
+                message: "`js` is not an operation or a known executor here.",
             }] : []);
             assert.equal(parsed.unparsedTail, undefined);
             const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);

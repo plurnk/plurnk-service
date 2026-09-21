@@ -216,7 +216,7 @@ test("{§metadata-ignored}: metadata on a file READ is ignored with a notice and
     } finally { await db.close(); }
 });
 
-test("{§quotation}: an indented program is a failed attempt, never an answer", async () => {
+test("{§quotation}: prose carrying an offset example is an answer, and concludes the loop", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `indented-program-${crypto.randomUUID()}`);
@@ -231,10 +231,14 @@ test("{§quotation}: an indented program is a failed attempt, never an answer", 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 4, maxStrikes: 3, messages: [{ role: "user", content: "Read the note." }] });
         assert.equal(result.result.status, 200);
-        assert.equal(provider.received.length, 2, "the indented program did not conclude the loop");
-        assert.ok(notices.some(({ kind }) => kind === "turn_no_operations"), "it is an empty turn");
-        assert.ok(notices.some(({ message }) => (message ?? "").includes("must start its line to run")), "the parser's word reaches the next packet");
+        assert.equal(provider.received.length, 1, "prose concludes the loop; the second response is never asked for");
+        assert.deepEqual(notices.filter(({ kind }) => kind === "turn_no_operations"), [], "prose is an answer, not an empty turn");
+        assert.deepEqual(notices.filter(({ message }) => /must start its line|nothing ran/u.test(message ?? "")), [], "an offset example draws no complaint");
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds.at(-1)! });
-        assert.equal(JSON.parse(rows.find(({ origin, op }) => origin === "model" && op === "SEND")!.tx).body.raw, "It says: Keep this note.");
+        assert.equal(
+            JSON.parse(rows.find(({ origin, op }) => origin === "model" && op === "SEND")!.tx).body.raw,
+            "I'll read it now.\n\n    ````READ (worker:///notes.md)\n    ````",
+            "the whole reply is delivered, offset example and all",
+        );
     } finally { await db.close(); }
 });

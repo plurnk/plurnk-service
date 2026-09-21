@@ -200,7 +200,7 @@ test("{§unclosed-aside}: an aside that never closes on its line is the aside to
     assert.equal((statements(closed)[0] as { aside: string | null }).aside, "ok");
 });
 
-test("{§quotation}: an indented operation fence is shown, not run, and each draws the must-start-its-line warning", () => {
+test("{§quotation}: an offset operation fence is shown, not run, and draws no complaint", () => {
     const source = [
         "    ````EDIT (ark/json-schema/scope.ts) <@VaKRz> <!-- restore the union -->",
         "    \t\"boolean|TypeWithNoKeywords\",",
@@ -217,8 +217,7 @@ test("{§quotation}: an indented operation fence is shown, not run, and each dra
     const result = PlurnkParser.parse(source);
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(statements(result).map(writtenOp), ["WAIT"], "only the column-0 WAIT runs");
-    assert.deepEqual(errors(result).map(({ severity, message }) => [severity, message.split(" ")[0]]), [["warning", "`EDIT`"], ["warning", "`READ`"], ["warning", "`sh`"]]);
-    assert.ok(errors(result).every(({ message }) => message.includes("must start its line to run")));
+    assert.deepEqual(errors(result), [], "plurnk.md tells the model to offset an example, so the form is correct and silent");
 });
 
 test("{§one-line-turn}: a whole turn on one line parses from its line start, including opener after heading", () => {

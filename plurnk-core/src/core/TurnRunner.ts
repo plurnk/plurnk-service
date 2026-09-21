@@ -1808,10 +1808,7 @@ export default class TurnRunner {
             && PlurnkParser.operationAttempt(assistant.content, executors) === null
             // {§quotation} an answer says something of its own: a reply that is nothing but quoted
             // material is a misfenced program, not prose (operator, 2026-09-18).
-            && PlurnkParser.unquoted(prose, executors).trim().length > 0
-            // {§quotation} an operation fence that merely missed column zero is a misplaced program,
-            // never an answer: the loop continues and the next packet carries the parser's word.
-            && !parseNotices.some(({ message }) => (message ?? "").includes("must start its line to run"));
+            && PlurnkParser.unquoted(prose, executors).trim().length > 0;
         const proseAnswer = concludes
             ? { op: "SEND", aside: null, target: null, metadata: null, lineMarker: null, body: { raw: prose, json: null }, position: { line: 1, column: 0 } } as PlurnkStatement
             : null;

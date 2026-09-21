@@ -81,9 +81,9 @@ test("{§four-backtick-operations}: a three-backtick fence is markdown; one nami
         item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
     const statements = (input: string) => PlurnkParser.parse(input, { executors: ["sh"] }).items.filter((item) => item.kind === "statement").length;
     assert.equal(statements("```READ (notes.md)\n```\n\n```sh\nnpm test\n```"), 0, "three backticks never open an operation");
-    assert.deepEqual(warnings("```READ (notes.md)\n```"), ["`READ` needs four backticks to run; the three-backtick block was read as prose and nothing ran."]);
-    assert.deepEqual(warnings("```sh\nnpm test\n```"), ["`sh` needs four backticks to run; the three-backtick block was read as prose and nothing ran."]);
+    assert.deepEqual(warnings("```READ (notes.md)\n```"), ["`READ` needs four backticks to run."]);
+    assert.deepEqual(warnings("```sh\nnpm test\n```"), ["`sh` needs four backticks to run."]);
     assert.deepEqual(warnings("The config:\n\n```ts\nexport default {};\n```"), [], "an ordinary code block draws nothing");
-    assert.deepEqual(warnings("````typo (x)\n````"), ["`typo` is not an operation or a known executor here; the block was read as prose and nothing ran."]);
+    assert.deepEqual(warnings("````typo (x)\n````"), ["`typo` is not an operation or a known executor here."]);
     assert.equal(statements("````READ (notes.md)\n````"), 1);
 });

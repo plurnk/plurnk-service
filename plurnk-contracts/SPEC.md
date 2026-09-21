@@ -343,9 +343,11 @@ own lines' indentation. An OPENER is different: an operation's backticks follow 
 directly (operator, 2026-09-18), so an indented fence opens a quotation, never an operation —
 CommonMark reads an indented block as code, and `plurnk.md` shows its own examples that way. This
 reverses the 2026-09-12 tolerance (then measured at five to ten percent of emissions on
-GLM-5.3-flash; 2.8% of that lane's emissions today). The cost is paid loudly: an indented fence
-naming a known operation draws `must start its line to run` and is an operation attempt, never an
-answer ({§prose-conclusion}), so the loop continues instead of delivering a program as prose.
+GLM-5.3-flash; 2.8% of that lane's emissions today). An offset fence is prose and draws nothing:
+`plurnk.md` instructs the model to offset any example it does not intend to execute, so the form
+is correct by construction and there is no mistake to report (operator, 2026-09-21). The parser
+presumes nothing about why a fence is offset, and {§prose-conclusion} judges the reply on its own
+terms.
 
 §inline-chain A closer on a heading line, or on a body's closing line, may be
 followed on that same line by the next opener; the closer still closes, and the

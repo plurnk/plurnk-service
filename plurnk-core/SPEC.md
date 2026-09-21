@@ -2622,9 +2622,10 @@ accounting and model-visible failure evidence remain separately owned by
   delivery evidence, never log visibility or the mere existence of a later SEND.
 - §prose-conclusion **Prose is the answer.** An admitted response whose content has no
   operation, attempts none ({§operation-attempt}), was not cut at the output
-  allowance, is not empty, says something outside its quotations ({§quotation}: a reply that is
-  nothing but quoted material is a misfenced program) and holds no misplaced operation fence
-  (`must start its line to run`) is the model's answer (operator, 2026-09-18, #761): the engine
+  allowance, is not empty and says something outside its quotations ({§quotation}: a reply that is
+  nothing but quoted material is a misfenced program) is the model's answer (operator, 2026-09-18,
+  #761). An offset operation fence is one of those quotations and disqualifies nothing: `plurnk.md`
+  tells the model to offset an example it does not intend to execute (operator, 2026-09-21). The engine
   admits it as a targetless SEND whose body is the trimmed content, positioned on line 1. It
   answers the open messages, reaches clients and a parent exactly as a SEND does, and meets the
   completion barrier as a SEND does ({§completion-joins-live-work},
