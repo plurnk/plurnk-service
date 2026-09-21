@@ -152,9 +152,19 @@ test("{§proposal-ownership-notification} proposals=reject settles the same admi
                 policy: { proposals: "reject" },
             });
             assert.equal(result.result.status, 200);
-            const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; scheme: string }>({ loop_id: result.loopId });
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; scheme: string; rx: string }>({ loop_id: result.loopId });
             const edit = rows.find((row) => row.op === "EDIT" && row.scheme === "proposing-test");
             assert.equal(edit?.status_rx, 400, "the admitted action was declined, not denied at capability admission");
+            // {§proposal-reject-fails} — the harness decided this rejection, so it owes the reason
+            // and an exit. An outcome token alone left a benchlet run to discover the wall by
+            // exhaustion over thirteen turns (#789).
+            const refusal = JSON.parse(edit!.rx) as { outcome?: string; problem?: { detail?: string; recovery?: string } };
+            const detail = refusal.problem?.detail ?? "";
+            const recovery = refusal.problem?.recovery ?? "";
+            assert.equal(refusal.outcome, "no_review_channel", "the forensic token is unchanged");
+            assert.match(detail, /unattended/u, `detail names the condition: ${detail}`);
+            assert.match(detail, /nobody is present to answer/u, `detail says why: ${detail}`);
+            assert.match(recovery, /State proposals accept or reject/u, `recovery names an exit: ${recovery}`);
             const [proposal] = await waitFor(
                 () => proposals() as Array<{ disposition?: unknown; policy?: unknown }>,
                 (items) => items.length > 0,

@@ -62,6 +62,38 @@ interface ProposalWaiter {
 const abortOutcome = (reason: unknown): string =>
     typeof reason === "string" && reason.length > 0 ? reason : "loop_cancelled";
 
+// {§proposal-reject-fails} — a settlement the harness decided for itself says what it decided and
+// how to avoid it next time. A reviewer's outcome is the reviewer's word and is reported as given;
+// these are the ones where nobody was present to explain, so the harness owes the sentence. An
+// outcome token alone ("no_review_channel") names a condition the reader cannot act on.
+const HARNESS_SETTLEMENTS: Readonly<Record<string, { readonly condition: string; readonly recovery: string }>> = {
+    // The same fact LoopPolicies already states when composing an impossible policy.
+    no_review_channel: {
+        condition: "this loop is unattended, so a proposal has no reviewer and nobody is present to answer",
+        recovery: "State proposals accept or reject when the loop is created, or attend the loop.",
+    },
+    timeout: {
+        condition: "no answer arrived before the operator's proposal deadline",
+        recovery: "Answer the proposal, or give the loop a longer proposal deadline.",
+    },
+    daemon_stopping: {
+        condition: "the daemon stopped while this proposal was still waiting for an answer",
+        recovery: "Run the operation again once the daemon is running.",
+    },
+    loop_timeout: {
+        condition: "the loop reached its deadline while this proposal was waiting for an answer",
+        recovery: "Answer proposals before the loop's deadline, or give the loop a longer one.",
+    },
+    loop_forceful_termination: {
+        condition: "the loop was terminated while this proposal was waiting for an answer",
+        recovery: "Run the operation again in a loop that is not being terminated.",
+    },
+    loop_cancelled: {
+        condition: "the loop was cancelled while this proposal was waiting for an answer",
+        recovery: "Run the operation again in a loop that is not being cancelled.",
+    },
+};
+
 export interface ProposalSettlement {
     resolution: ProposalResolution;
     applied?: DispatchResult;
@@ -654,12 +686,16 @@ export default class ProposalLifecycle {
         } else {
             const code = decision === "reject" ? "rejected" : "cancelled";
             const action = decision === "reject" ? "rejected" : "cancelled";
-            const detail = `The proposal was ${action}${outcome === null ? "." : ` (${outcome}).`}`;
+            const settled = outcome === null ? undefined : HARNESS_SETTLEMENTS[outcome];
+            const detail = settled === undefined
+                ? `The proposal was ${action}${outcome === null ? "." : ` (${outcome}).`}`
+                : `The proposal was ${action}: ${settled.condition}.`;
             result = Results.failure("proposal", code, status, detail, {
                 ...(outcome !== null ? { outcome } : {}),
             }, {
                 stage: "proposal-settlement",
                 retryable: false,
+                ...(settled === undefined ? {} : { recovery: settled.recovery }),
             });
         }
         const coordinate = await this.#db.engine_log_entry_coordinate.get<{
