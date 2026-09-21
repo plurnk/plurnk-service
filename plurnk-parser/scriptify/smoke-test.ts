@@ -135,7 +135,8 @@ console.log("OK: the parser is consumable through one installed entrypoint.");
 
     process.stdout.write("[smoke] running the CLI against a turn...\n");
     const cli = join(installedRoot, "bin", "plurnk-parser.js");
-    await writeFile(join(tempDir, "turn.plurnk"), "```WAIT\n```\n");
+    // An operation opens with four backticks; three is markdown ({§four-backtick-operations}, #761).
+    await writeFile(join(tempDir, "turn.plurnk"), "````WAIT\n````\n");
     const { stdout: cliOut } = await run("node", [cli, "turn.plurnk"], { cwd: tempDir });
     const cliResult = JSON.parse(cliOut) as { items: Array<{ kind: string }> };
     if (cliResult.items.some(({ kind }) => kind === "error")) throw new Error(`CLI reported parse errors: ${cliOut}`);
@@ -158,7 +159,7 @@ export const parse = (input) => PlurnkParser.parse(input);
     const browserConsumer = await import(`${pathToFileURL(browserBundle).href}?${crypto.randomUUID()}`) as {
         parse(input: string): { items: Array<{ kind: string }> };
     };
-    const browserResult = browserConsumer.parse("```NOTE\nbrowser bundle initialized\n```");
+    const browserResult = browserConsumer.parse("````NOTE\nbrowser bundle initialized\n````");
     if (browserResult.items.some(({ kind }) => kind === "error")) {
         throw new Error(`browser bundle returned parse errors: ${JSON.stringify(browserResult.items)}`);
     }
