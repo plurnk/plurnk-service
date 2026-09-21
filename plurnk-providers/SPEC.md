@@ -477,9 +477,9 @@ forcing a vendor-owned resource prefix into PLURNK aliases. Ambiguous suffixes
 fail to resolve.
 
 The catalog package identifies the protocol family, not a mandatory client
-implementation. xAI uses its documented OpenAI-compatible response directly
-because that wire includes exact cost ticks the corresponding AI SDK projection
-omits.
+implementation. OpenRouter and DeepInfra carry exact charges their AI SDK
+projection omits, so each supplies a cost normalizer that reads the documented
+response rather than the projection.
 
 §provider-fact-authority Provider declarations configure facts, not
 credentials, and Models.dev is authoritative for cataloged providers: package

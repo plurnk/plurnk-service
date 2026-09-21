@@ -312,7 +312,6 @@ for (const [providerPackage, provider] of [
     ["@ai-sdk/openai-compatible", "OpenAI-compatible and Cloudflare"],
     ["@ai-sdk/google", "Google"],
     ["@openrouter/ai-sdk-provider", "OpenRouter"],
-    ["@ai-sdk/xai", "xAI"],
 ]) {
     let installed = false;
     try {
