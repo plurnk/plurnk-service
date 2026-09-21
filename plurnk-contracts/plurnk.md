@@ -32,9 +32,9 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 * WORK: Deploy a child worker (fresh log).
 * FORK: Deploy a forked worker (forked log).
 * BARE: Deploy an isolated inference query (no log or tools).
-* WAIT: Yield until the next wake: a child's result, a message, a stream's end.
+* WAIT: Yield until the next wake: a child worker's result, a message, a stream's end.
 
-* markdown: Final response alone, concluding the entire loop.
+* markdown: Final response alone, concluding the entire loop. All other OPs, child workers, or streams are finished.
 
 ## Workflow Management
 
@@ -60,7 +60,6 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 * Log item paths nest: `log:///1/2/3/READ` is loop/turn/item/operation.
 * FIND results hold one inner array per path: its channels, default first; append `#channel` to select another.
 * Percent-encode `(` as `%28` and `)` as `%29`.
-* Creating a file creates missing parent directories.
 
 ## File Editing
 
@@ -79,6 +78,9 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 
 > [!TIP]
 > The EDIT body is literal text. YOU SHOULD address lines by `<@hash>` or `<@start,@end>`; stale targets are rejected.
+
+> [!TIP]
+> Creating a file creates missing parent directories.
 
 ## Delegation
 
@@ -130,5 +132,5 @@ All member files and entries are mapped, indexed, and universally pattern search
 | `//`   | xpath (1.0)                 | `//dependencies/*`              |
 | `$`    | jsonpath (RFC 9535)         | `$.items[?(@.price>500)]`       |
 | `~`    | full-text (SQLite FTS5)     | `~retry`                        |
-| `&`    | graph: (treesitter symbols) | `&sym`, `&<sym`, `&>sym`        |
+| `&`    | graph (treesitter symbols)  | `&sym`, `&<sym`, `&>sym`        |
 | none   | literal or extglob          | `?(export )?(async )function *` |
