@@ -1100,6 +1100,10 @@ are excluded from results; the complete note body still distinguishes activity. 
 irrelevant; operation and array order are preserved. Only the configured
 `MIN_CYCLES × MAX_CYCLE_PERIOD` history window is retained. Repeated addresses
 alone are not a cycle: changing inputs or observations distinguish activity.
+A turn that executed nothing has no activity to identify, so an empty turn's
+identity is its **text** ({§empty-turn}) — the same principle, applied to the only
+output it produced. Identifying it by its absent program instead makes every empty
+turn identical, and changing words then read as a repeating one.
 This is an exact-repetition backstop, not a semantic judgment of task progress;
 new asynchronous invocation identities do not prove repetition of their eventual
 effects. Ordinary contract strikes and operator budgets remain independent.
@@ -2654,8 +2658,12 @@ accounting and model-visible failure evidence remain separately owned by
   stays in the next packet's history, that packet carries one `turn_no_operations` notice and
   any {§bare-heading-advisory} notices, the turn continues at 102, and the strike rail counts
   one progress-contract strike, so a model that only talks strikes out at the ordinary
-  threshold instead of being resampled three times on an identical packet. Its fingerprint is
-  the empty program, so repeated empty turns also trip cycle detection.
+  threshold instead of being resampled three times on an identical packet. It performed no
+  activity, so its **text** is its cycle fingerprint ({§engine-cycle-evidence}): a model that
+  repeats the same words trips cycle detection, and a model that says three different things
+  strikes out without being called a loop. Fingerprinting the empty program instead made every
+  empty turn identical, so any weak model answering in prose terminated 508 "loop detected" for
+  a loop that never repeated anything (corrected 2026-09-21, #805).
 - §metadata-ignored **Options a scheme does not take are dropped, not refused.** A READ, FIND,
   EDIT or KILL carrying `[metadata]` for a scheme whose manifest takes none runs without it,
   and the packet carries one `metadata_ignored` notice naming the scheme (operator,

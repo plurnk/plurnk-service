@@ -61,6 +61,15 @@ export default class StrikeRail {
     // {§engine-rails} cycle detector. For each candidate period k in [1, maxCyclePeriod],
     // check whether the last k*minCycles entries form minCycles repetitions of the
     // same length-k pattern. O(maxCyclePeriod × minCycles × max k) ≈ tiny.
+    // {§engine-cycle-evidence} — an empty turn performed no activity, so its text IS its
+    // observable output and is what the detector compares. Fingerprinting the empty program
+    // instead makes every empty turn identical, and the detector then reports a cycle over a
+    // model that merely spoke three different times ({§empty-turn}) — 508 "loop detected" for a
+    // loop that never repeated anything.
+    static fingerprintEmptyTurn(text: string): string {
+        return createHash("sha256").update(`empty:${text.trim()}`).digest("hex");
+    }
+
     static detectCycle(
         history: ReadonlyArray<string>,
         minCycles: number,

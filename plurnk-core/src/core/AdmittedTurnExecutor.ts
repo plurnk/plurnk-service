@@ -113,7 +113,7 @@ export default class AdmittedTurnExecutor {
                 message: "Emission contained no OPs or conclusion.",
             });
             await Turn.complete(this.#db, turnId, TURN_STATUS_IMPLICIT_CONTINUE);
-            return { status: TURN_STATUS_IMPLICIT_CONTINUE, outcomes: [], fingerprint: StrikeRail.fingerprintTurn([]), emptyTurn: true };
+            return { status: TURN_STATUS_IMPLICIT_CONTINUE, outcomes: [], fingerprint: StrikeRail.fingerprintEmptyTurn(source ?? ""), emptyTurn: true };
         }
         let wait = false;
         const pendingEngineErrors: EngineProblemKind[] = [];
