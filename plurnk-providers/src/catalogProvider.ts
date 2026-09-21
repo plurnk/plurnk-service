@@ -53,7 +53,7 @@ const reasoningStyleFromEnv = (
     if (value === undefined || value.length === 0) return undefined;
     const styles: readonly ReasoningStyle[] = [
         "none", "think", "include_reasoning", "effort",
-        "effort_explicit", "effort_required", "thinking_effort", "thinking_config", "template", "anthropic",
+        "effort_explicit", "effort_required", "thinking_effort", "template", "anthropic",
     ];
     if (!styles.includes(value as ReasoningStyle)) {
         throw new Error(`${name} provider: ${key} has invalid value "${value}"`);
@@ -173,9 +173,8 @@ const supportedReasoningPolicies = ({
     // not, and a word the template does not know fails loudly on the first request.
     if (style === "template") return REASONING_POLICIES;
     if (info !== undefined && info.reasoning !== true) return activationPolicies;
-    // {§google-reasoning-request} — the declared wire's whole vocabulary: Gemini reasons
-    // unconditionally and takes exactly these levels.
-    if (style === "thinking_config") return reasoningWithoutOff;
+    // The declared wire's whole vocabulary: a route that reasons unconditionally still
+    // admits only the levels the catalog advertises for it.
     if (info?.reasoningOptions !== undefined) {
         return catalogSupportedReasoningPolicies({ info, native, style, declared });
     }

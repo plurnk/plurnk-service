@@ -1,4 +1,7 @@
 // {§provider-request-accounting} Provider reasoning usage persists as cardinal request and digest evidence.
+// {§provider-open-reasoning} {§methods-readable-reasoning} — readable reasoning is projected when a
+// route returns it; a route that bills reasoning tokens and returns no text is reported as spend
+// with nothing behind it, never compensated for.
 
 import test from "node:test";
 import assert from "node:assert/strict";

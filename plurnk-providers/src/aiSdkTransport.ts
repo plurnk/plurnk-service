@@ -162,38 +162,6 @@ const recordOf = (value: unknown): Record<string, unknown> | null =>
         ? value as Record<string, unknown>
         : null;
 
-// {§google-thought-response} — Gemini behind an OpenAI-compatible endpoint returns its readable
-// thought summary as ordinary `content` wrapped `<thought>…</thought>` and flagged
-// `extra_content.google.thought`. Whole, the flagged message holds wrapper and answer; streamed,
-// the flagged deltas hold `<thought>` and the thought, and the first unflagged delta opens with
-// `</thought>` before the answer.
-const googleThoughtFlagged = (message: Record<string, unknown> | null): boolean =>
-    recordOf(recordOf(message?.extra_content)?.google)?.thought === true;
-
-const THOUGHT_OPEN = "<thought>";
-const THOUGHT_CLOSE = "</thought>";
-const splitGoogleThought = (content: string): { thought: string; answer: string } | null => {
-    if (!content.startsWith(THOUGHT_OPEN)) return null;
-    const close = content.indexOf(THOUGHT_CLOSE);
-    if (close === -1) return null;
-    return { thought: content.slice(THOUGHT_OPEN.length, close), answer: content.slice(close + THOUGHT_CLOSE.length) };
-};
-
-const unwrapThoughtDelta = (text: string): string => {
-    const opened = text.startsWith(THOUGHT_OPEN) ? text.slice(THOUGHT_OPEN.length) : text;
-    return opened.endsWith(THOUGHT_CLOSE) ? opened.slice(0, -THOUGHT_CLOSE.length) : opened;
-};
-
-const rawChunkThought = (value: unknown): boolean => {
-    const choices = recordOf(value)?.choices;
-    return Array.isArray(choices) && googleThoughtFlagged(recordOf(recordOf(choices[0])?.delta));
-};
-
-const wholeResponseThought = (values: readonly unknown[]): boolean => values.some((value) => {
-    const choices = recordOf(value)?.choices;
-    return Array.isArray(choices) && googleThoughtFlagged(recordOf(recordOf(choices[0])?.message));
-});
-
 const metadataOf = (values: readonly unknown[]): Record<string, unknown> => {
     const metadata: Record<string, unknown> = {};
     for (const value of values) {
@@ -233,11 +201,6 @@ export type AiSdkTransportResponse = {
     usage?: ProviderUsage;
     usageRefusal?: UsageRefusal;
     metadata: Record<string, unknown>;
-    reasoningEncrypted: Array<{
-        id: string | null;
-        subtype: string;
-        encrypted: Array<{ data: string; format: string | null }>;
-    }>;
     logprobs: TokenLogprob[];
     chargeEvidence: ProviderChargeEvidence;
     rawBody?: unknown;
@@ -495,17 +458,15 @@ const executeModelOnce = async (
         const accountingUsage = wireUsageEvidenceOf(values);
         const reasoningText = evidence.reasoning || result.reasoningText || "";
         const rawFinishReason = result.rawFinishReason;
-        const thought = wholeResponseThought(values) ? splitGoogleThought(result.text) : null;
         return {
             model: result.response.modelId,
-            content: thought === null ? result.text : thought.answer,
+            content: result.text,
             reasoning: reasoningText,
             reasoningProjected: evidence.reasoningProjected,
             finishReason: finishReasonOf(rawFinishReason),
             ...(rawFinishReason === undefined ? {} : { rawFinishReason }),
             ...settledUsage(values, result.usage),
             metadata: metadataOf(values),
-            reasoningEncrypted: evidence.reasoningEncrypted,
             logprobs: evidence.logprobs,
             chargeEvidence: {
                 ...(wireChargeEvidenceOf(values) === undefined
@@ -535,31 +496,17 @@ const executeModelOnce = async (
     const rawChunks: unknown[] = [];
     let streamError: unknown;
     let outputObserved = false;
-    // The SDK enqueues each raw chunk before the deltas it yields, so the latest raw chunk's
-    // thought flag classifies the text deltas that follow ({§google-thought-response}).
-    let thoughtChunk = false;
-    let thoughtSeen = false;
     let answer = "";
     try {
         for await (const part of result.fullStream) {
             if (part.type === "raw") {
                 rawChunks.push(part.rawValue);
-                thoughtChunk = rawChunkThought(part.rawValue);
             }
             if (part.type === "text-delta" && part.text.length > 0) {
                 outputObserved = true;
                 liftAttemptDeadline();
-                if (thoughtChunk) {
-                    thoughtSeen = true;
-                    const thought = unwrapThoughtDelta(part.text);
-                    if (thought.length > 0) request.observeReasoning?.(thought);
-                } else {
-                    const text = thoughtSeen && answer.length === 0 && part.text.startsWith(THOUGHT_CLOSE)
-                        ? part.text.slice(THOUGHT_CLOSE.length)
-                        : part.text;
-                    answer += text;
-                    if (text.length > 0) request.observeText?.(text);
-                }
+                answer += part.text;
+                request.observeText?.(part.text);
             }
             if (part.type === "reasoning-delta" && part.text.length > 0) {
                 outputObserved = true;
@@ -580,7 +527,7 @@ const executeModelOnce = async (
     }
     const evidence = extractEvidence(rawChunks);
     const accountingUsage = wireUsageEvidenceOf(rawChunks);
-    const content = thoughtSeen ? answer : await result.text;
+    const content = await result.text;
     const reasoningText = evidence.reasoning || (await result.reasoningText) || "";
     const rawFinishReason = await result.rawFinishReason;
     const [response, providerMetadata, warnings] = await Promise.all([
@@ -597,7 +544,6 @@ const executeModelOnce = async (
         ...(rawFinishReason === undefined ? {} : { rawFinishReason }),
         ...settledUsage(rawChunks, await result.usage),
         metadata: metadataOf(rawChunks),
-        reasoningEncrypted: evidence.reasoningEncrypted,
         logprobs: evidence.logprobs,
         chargeEvidence: {
             ...(wireChargeEvidenceOf(rawChunks) === undefined
@@ -704,16 +650,13 @@ export const transportFailureEvidence = (
 };
 
 const extractEvidence = (values: unknown[]): {
-    reasoningEncrypted: AiSdkTransportResponse["reasoningEncrypted"];
     logprobs: TokenLogprob[];
     reasoning: string;
     reasoningProjected: boolean;
 } => {
-    const encrypted = new Map<string, AiSdkTransportResponse["reasoningEncrypted"][number]>();
     const logprobs: TokenLogprob[] = [];
     let reasoning = "";
     let reasoningProjected = false;
-    let anonymous = 0;
     for (const value of values) {
         const choices = recordOf(value)?.choices;
         if (!Array.isArray(choices)) continue;
@@ -746,42 +689,8 @@ const extractEvidence = (values: unknown[]): {
                 reasoning += message[key];
             }
         }
-        if (googleThoughtFlagged(message) && typeof message.content === "string") {
-            const thought = delta !== null ? unwrapThoughtDelta(message.content) : splitGoogleThought(message.content)?.thought;
-            if (thought !== undefined) {
-                reasoningProjected = true;
-                reasoning += thought;
-            }
-        }
-        if (!Array.isArray(message.reasoning_details)) continue;
-        for (const value of message.reasoning_details) {
-            const detail = recordOf(value);
-            if (detail?.type !== "reasoning.encrypted" || typeof detail.data !== "string") continue;
-            const id = typeof detail.id === "string" ? detail.id : null;
-            const key = typeof detail.index === "number"
-                ? `index:${detail.index}`
-                : id === null ? `anonymous:${anonymous++}` : `id:${id}`;
-            const item: AiSdkTransportResponse["reasoningEncrypted"][number] = encrypted.get(key) ?? {
-                id,
-                // {§provider-encrypted-reasoning} The documented wire location
-                // is the assistant message. `id` above still identifies only
-                // this provider detail, never a downstream message entity.
-                subtype: "message",
-                encrypted: [],
-            };
-            const format = typeof detail.format === "string" ? detail.format : null;
-            const prior = item.encrypted.at(-1);
-            if (prior !== undefined) {
-                prior.data += detail.data;
-                if (prior.format === null && format !== null) prior.format = format;
-            } else {
-                item.encrypted.push({ data: detail.data, format });
-            }
-            encrypted.set(key, item);
-        }
     }
     return {
-        reasoningEncrypted: [...encrypted.values()],
         logprobs,
         reasoning,
         reasoningProjected,

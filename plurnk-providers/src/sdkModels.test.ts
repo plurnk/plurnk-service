@@ -103,16 +103,6 @@ test("{§model-catalog-readiness}: an authenticated operator declaration reports
     );
 });
 
-test("{§provider-sdk-boundary} createSdkModel uses Models.dev provider facts and operator credentials", () => {
-    const sdk = createSdkModel("xai", "grok-build-0.1", { XAI_API_KEY: "test-key" });
-    assert.notEqual(sdk, null);
-    assert.equal(sdk?.catalog?.npm, "@ai-sdk/xai");
-    assert.notEqual(sdk?.languageModel, undefined);
-    assert.equal(sdk?.compatible, undefined);
-    assert.deepEqual(sdk?.cacheAffinity, { target: "header", name: "x-grok-conv-id" });
-    assert.notEqual(sdk?.normalizeCost, undefined);
-});
-
 test("createSdkModel constructs Cerebras from Models.dev facts", () => {
     const sdk = createSdkModel("cerebras", "gemma-4-31b", {
         CEREBRAS_API_KEY: "test-key",

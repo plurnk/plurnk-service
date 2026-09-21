@@ -4,6 +4,7 @@
 // tool-result maps back to the EXACT pending proposal via the toolCallId.
 
 import { test } from "node:test";
+import type { JsonPatch } from "@ag-ui/core";
 import assert from "node:assert/strict";
 import {
     actionResult,
@@ -28,8 +29,11 @@ const LOOP_POLICY = Object.freeze({ proposals: "review", attended: true } as con
 
 test("{§agui-state-patches}: the replay witness refuses non-replace or undefined state paths", () => {
     const snapshot = stateSnapshot({ status: statusState(null, null) });
+    // The point of this witness is feeding operations the replayer must refuse, so the patch is
+    // deliberately not a conforming JsonPatch ({§agui-state-patches}).
     for (const op of ["add", "remove"]) {
-        assert.throws(() => replayState([snapshot, stateDelta([{ op, path: "/budget/contextTokens", value: 12 }])]), /unexpected patch operation/u);
+        const invalid = [{ op, path: "/budget/contextTokens", value: 12 }] as unknown as JsonPatch;
+        assert.throws(() => replayState([snapshot, stateDelta(invalid)]), /unexpected patch operation/u);
     }
     for (const path of ["/missing", "/plurnk/status/missing"]) {
         assert.throws(() => replayState([snapshot, stateDelta([{ op: "replace", path, value: 12 }])]), JSONPatchError);

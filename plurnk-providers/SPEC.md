@@ -301,11 +301,13 @@ Models.dev identifies the route's controls but not a provider-specific toggle
 or budget field name. The adapter supplies that last-mile mechanism; it never
 invents a cataloged effort value.
 
-§provider-readable-reasoning When the effective reasoning posture is not
-`off`, a native adapter MUST request readable reasoning summaries if its
-provider requires a separate response-visibility option. That option neither
-activates reasoning nor selects its depth. The exact wire projection belongs to
-the provider adapter; Models.dev's reasoning bit remains capability metadata.
+§provider-readable-reasoning **Reasoning is verbatim or it is nothing.** A route
+either returns the model's own reasoning text or it returns none; the service
+carries no projection that requests, unwraps, or reconstitutes a summarized,
+redacted, or otherwise abridged reasoning stream. A route that bills reasoning
+tokens and returns no reasoning text is a route whose `reasoning://` is empty,
+and that is reported rather than compensated for. Models.dev's reasoning bit
+remains capability metadata.
 
 §provider-sdk-warning AI SDK compatibility, unsupported-feature, deprecation,
 and other call warnings become source-attributed provider Notices on the
@@ -345,36 +347,8 @@ therefore advertises only `off`, `adaptive`, and `high`.
 reasoning controls take. `PLURNK_PROVIDERS_PROVIDER_<PREFIX>_REASONING_STYLE`
 declares it for every route of a provider; `PLURNK_PROVIDERS_REASONING_STYLE`,
 alias-scopable like every bare knob, declares it for one route and wins. One
-provider can serve models whose controls differ: Cloudflare's AI Gateway
-serves its `@cf/…` models (`effort_required`) and Gemini
-(`thinking_config`) from the same compatible endpoint. The daemon never infers a
+provider can serve models whose controls differ, so a route states its own style. The daemon never infers a
 style from a model name.
-
-§google-reasoning-request The `thinking_config` style maps the common
-reasoning intent to Gemini's OpenAI-compatible extension. Gemini refuses
-`reasoning_effort` beside a `thinking_config`, and returns readable thoughts
-only when asked ({§provider-readable-reasoning}):
-
-| PLURNK posture | Request body |
-| --- | --- |
-| `off` | Not admitted: Gemini cannot turn reasoning off |
-| `adaptive` | `extra_body.google.thinking_config: { include_thoughts: true }` |
-| `low` / `medium` / `high` | the same, with `thinking_level` set to the posture |
-
-Gemini refuses the levels `none`, `minimal`, `xhigh`, and `max` (probed
-2026-09-18), so the style admits exactly `adaptive`, `low`, `medium`, and `high`.
-
-§google-thought-response Gemini behind an OpenAI-compatible endpoint returns its
-readable thought summary as ordinary `content`, wrapped `<thought>…</thought>`
-and flagged `extra_content.google.thought: true`. Streamed, the flagged deltas
-carry the opening tag and the thought, and the first unflagged delta opens with
-the closing tag before the answer; every flagged delta, unwrapped, is observed
-and settled as reasoning and never reaches the emission, and the closing tag is
-dropped from the answer. Whole, the flagged message leads with the wrapper and
-the answer follows it; the wrapper's interior is reasoning and the remainder is
-content. Content is inspected for the wrapper only when Google's flag is
-present. The reading does not
-depend on the request style, because the flag is Google's own.
 
 The compatible transport is deliberately retained for:
 
@@ -808,17 +782,14 @@ counter turned a complete response into a retryable `network_failure` and lost
 the response (#580). Covered by `aiSdkTransport.test.ts` and
 `AiSdkProvider.test.ts`.
 
-§provider-encrypted-reasoning **Readable reasoning and encrypted reasoning are
-separate.** Encrypted payload bytes remain opaque and are never decoded. The
-provider boundary distinguishes preserved detail evidence from derived entity
-classification:
-
-| Provider fact                    | Meaning |
-| -------------------------------- | ------- |
-| `id`                             | The provider's reasoning-detail identity, or `null`; never an AG-UI message or tool-call identity. |
-| `subtype`                        | A provider-normalized classification supported by wire structure. OpenAI-compatible `message.reasoning_details` is `message`; no PLURNK operation is reclassified as a native tool call. |
-| `encrypted[*].data` / `format`   | Ordered provider evidence, retained without decoding or concatenation across distinct details. |
-
+§provider-open-reasoning **Plurnk reads the model's own reasoning.** The service is
+built for open models, whose reasoning arrives as text it can read, address at
+`reasoning://`, and let a model curate with NOTE. Encrypted, redacted and
+summarized reasoning carry no text to read, so the service does not collect them:
+there is no encrypted-reasoning carrier, no summary unwrapping, and no request
+option that asks for either. A route that withholds its reasoning is not refused
+and not compensated for — its `reasoning://` is simply empty, and the reasoning
+tokens it bills are visible in accounting as spend with nothing behind it.
 Unrecognized detail shapes are omitted at this normalization boundary. Core
 may preserve normalized items as forensic evidence, but a client protocol must
 correlate them to an entity it actually created rather than reusing `id`.

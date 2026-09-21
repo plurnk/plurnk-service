@@ -7,6 +7,7 @@
 // shared STATE. This is the flagship choreography de-risked as logic before code.
 
 import { EventType, type AguiEvent, type ProposalNotification } from "./types.ts";
+import type { JsonPatch } from "@ag-ui/core";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
 import { lifecycleOfLoopStatus, type LoopLifecycle } from "@plurnk/plurnk-contracts";
 import type {
@@ -202,7 +203,9 @@ export const stateSnapshot = (s: AguiPlusState): AguiEvent => ({
     type: EventType.STATE_SNAPSHOT,
     snapshot: { plurnk: s, budget: EMPTY_BUDGET },
 });
-export const stateDelta = (patches: Array<{ op: string; path: string; value?: unknown }>): AguiEvent => ({ type: EventType.STATE_DELTA, delta: patches });
+// {§agui-daemon-client} — AG-UI 1.0 types STATE_DELTA as a real RFC 6902 patch, so the
+// operation union is the parameter type rather than a loose object shape.
+export const stateDelta = (patches: JsonPatch): AguiEvent => ({ type: EventType.STATE_DELTA, delta: patches });
 
 // ── §3 — management actions: forwardedProps in, CUSTOM out ────────────
 // Reads are STATE (§2); ACTIONS are verbs (rename, set-root, constrain, exec, fork,

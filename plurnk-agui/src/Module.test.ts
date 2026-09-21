@@ -231,8 +231,8 @@ for (const status of [200, 502]) {
             assert.ok(initial?.type === "STATE_SNAPSHOT");
             const patches = events.flatMap((event) => event.type === "STATE_DELTA" ? event.delta : []);
             assert.ok(patches.some(({ path }) => path === "/plurnk/status"), "the whole-gauge replacement is exercised");
-            assert.ok(patches.some(({ path, value }) => path === "/plurnk/status/activity" && value?.percent === 50), "derivation reaches state");
-            assert.ok(patches.some(({ path, value }) => path === "/plurnk/status/children" && value === 1), "child activity reaches state");
+            assert.ok(patches.some((op) => op.path === "/plurnk/status/activity" && "value" in op && (op.value as { percent?: number })?.percent === 50), "derivation reaches state");
+            assert.ok(patches.some((op) => op.path === "/plurnk/status/children" && "value" in op && op.value === 1), "child activity reaches state");
             assert.deepEqual(replayState(events), {
                 ...initial.snapshot,
                 plurnk: { ...initial.snapshot.plurnk, status: {

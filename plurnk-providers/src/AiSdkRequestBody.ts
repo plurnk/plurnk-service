@@ -201,14 +201,6 @@ export default class AiSdkRequestBody {
                     thinking: { type: "enabled" },
                     reasoning_effort: fixedEffort(mode),
                 };
-            // {§google-reasoning-request} — Gemini's OpenAI-compatible extension. Readable
-            // thoughts ride on every reasoning request; Gemini refuses `reasoning_effort` beside a
-            // thinking_config, so the level travels inside it. Gemini cannot turn reasoning off.
-            case "thinking_config": {
-                if (mode === "off") throw new TypeError(`${this.#source}: thinking_config reasoning has no off projection`);
-                const level = mode === "adaptive" ? {} : { thinking_level: fixedEffort(mode) };
-                return { extra_body: { google: { thinking_config: { include_thoughts: true, ...level } } } };
-            }
             // Anthropic-compatible native dynamic or manual budget mode.
             case "anthropic": return mode === "off"
                 ? { thinking: { type: "disabled" } }

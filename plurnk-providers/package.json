@@ -83,7 +83,6 @@
         "@ai-sdk/openai": "^4.0.0",
         "@ai-sdk/openai-compatible": "^3.0.14",
         "@ai-sdk/togetherai": "^3.0.0",
-        "@ai-sdk/xai": "^4.0.0",
         "@openrouter/ai-sdk-provider": "^3.0.0",
         "@plurnk/plurnk-aliases": "1.19.0",
         "@plurnk/plurnk-contracts": "1.19.0",

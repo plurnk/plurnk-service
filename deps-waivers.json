@@ -4,26 +4,6 @@
             "reason": "npm's stable latest tag is the legacy 0.1 line; 0.2.0-alpha.11 is the exact current 2026-07-28 conformance referee",
             "issue": "https://repo.possumtech.com/plurnk/plurnk-service/issues/253",
             "lane": "mcp"
-        },
-        "json-p3": {
-            "reason": "2.3.0 declares types but ships no .d.ts (0 of 10 files; 2.2.2 shipped 35); pinned until upstream restores dist/index.d.ts",
-            "issue": "https://repo.possumtech.com/plurnk/plurnk-service/issues/486",
-            "lane": "mimetypes"
-        },
-        "@ag-ui/client": {
-            "reason": "1.0.0 is the protocol library's first stable major and the open client declares the same range; the two repos must cross it together or risk a published platform and client disagreeing on the wire",
-            "issue": "https://repo.possumtech.com/plurnk/plurnk-service/issues/792",
-            "lane": "agui"
-        },
-        "@ag-ui/core": {
-            "reason": "1.0.0 is the protocol library's first stable major and the open client declares the same range; the two repos must cross it together or risk a published platform and client disagreeing on the wire",
-            "issue": "https://repo.possumtech.com/plurnk/plurnk-service/issues/792",
-            "lane": "agui"
-        },
-        "@ai-sdk/xai": {
-            "reason": "5.x while every other @ai-sdk adapter is on the 4.x line; a lone major in a family of peers is a compatibility question, and xai is not a rail we run",
-            "issue": "https://repo.possumtech.com/plurnk/plurnk-service/issues/793",
-            "lane": "providers"
         }
     },
     "ownerVeto": []

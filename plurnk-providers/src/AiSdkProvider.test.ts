@@ -868,71 +868,6 @@ test("{§provider-connectivity} a wedged transport that ignores the abort still 
     );
 });
 
-test("compatible xAI wire usage becomes an exact tick charge without raw-body capture", async () => {
-    const p = testProvider({
-        model: "grok-test",
-        url: "http://x/v1/chat/completions",
-        fetchTimeoutMs: 5_000,
-        temperature: 0.2,
-        repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
-        retryAttempts: 0,
-        streaming: false,
-        normalizeCost: providerCostNormalizer("@ai-sdk/xai"),
-    });
-    installFetchJson({
-        id: "response-1",
-        model: "grok-test",
-        choices: [{ message: { content: "ok" }, finish_reason: "stop" }],
-        usage: {
-            prompt_tokens: 2,
-            completion_tokens: 1,
-            total_tokens: 3,
-            cost_in_usd_ticks: 15_493_500,
-        },
-    });
-    const response = await p.generate({ workerId: "xai", messages: [] });
-    assert.deepEqual(response.accounting[0]?.cost, {
-        kind: "charged",
-        amount: { amount: "15493500", currency: "USDTICK" },
-        usdEquivalent: "0.00154935",
-        source: "xAI response usage.cost_in_usd_ticks",
-    });
-    assert.equal(response.rawBody, undefined);
-});
-
-test("streamed xAI final usage retains its exact tick charge", async () => {
-    const p = testProvider({
-        model: "grok-test",
-        url: "http://x/v1/chat/completions",
-        fetchTimeoutMs: 5_000,
-        temperature: 0.2,
-        repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
-        retryAttempts: 0,
-        normalizeCost: providerCostNormalizer("@ai-sdk/xai"),
-    });
-    installFetch([
-        { choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] },
-        {
-            choices: [],
-            usage: {
-                prompt_tokens: 2,
-                completion_tokens: 1,
-                total_tokens: 3,
-                cost_in_usd_ticks: 15_493_500,
-            },
-        },
-    ]);
-    const response = await p.generate({ workerId: "xai", messages: [] });
-    assert.deepEqual(response.accounting[0]?.cost, {
-        kind: "charged",
-        amount: { amount: "15493500", currency: "USDTICK" },
-        usdEquivalent: "0.00154935",
-        source: "xAI response usage.cost_in_usd_ticks",
-    });
-});
-
 test("generate surfaces and normalizes an out-of-set finish_reason", async () => {
     const warnings: Array<{ message: string; code?: string }> = [];
     mock.method(process, "emitWarning", (message: string | Error, options?: string | { code?: string }) => {
@@ -1058,7 +993,6 @@ test("generate aggregates reasoning deltas under multiple field names", async ()
     installFetch([{ choices: [{ delta: { reasoning_content: "be", thinking: "cause" } }] }]);
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
     assert.equal(assistant.reasoning, "because");
-    assert.equal("reasoningEncrypted" in assistant, false); // open reasoning only -> field absent
 });
 
 for (const style of ["think-tags", "template-think", "template-channel"] as const) test(`{§provider-reasoning-observer} ${style} reasoning arrives while the response is still open`, async () => {
@@ -1275,60 +1209,6 @@ test("{§provider-tagged-reasoning} grammar evidence retains the exact pre-proje
         contentStart: [..."<think>🧠reason</think>"].length,
         transported: true,
     });
-});
-
-test("encrypted reasoning (non-streamed): encrypted entries normalize and text entries stay separate", async () => {
-    // The live o4-mini-via-OpenRouter shape: reasoning null, one encrypted entry.
-    installFetchJson({ model: "m", choices: [{ message: {
-        content: "4", reasoning: null,
-        reasoning_details: [
-            { type: "reasoning.encrypted", data: "gAAAAABqBLOB", format: "openai-responses-v1", id: "rs_1", index: 0 },
-            { type: "reasoning.text", text: "never surfaced here" },
-        ],
-    }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
-    const { assistant } = await p.generate({ workerId: "r", messages: [] });
-    // Wire detail ID is preserved; the assistant-message location supports the
-    // derived classification but supplies no downstream client entity ID.
-    assert.deepEqual(assistant.reasoningEncrypted, [{ id: "rs_1", subtype: "message", encrypted: [{ data: "gAAAAABqBLOB", format: "openai-responses-v1" }] }]);
-    assert.equal(assistant.reasoning, null); // Encrypted turn: nothing readable.
-    assert.equal(assistant.content, "4");
-});
-
-test("distinct encrypted-reasoning wire ids stay distinct items", async () => {
-    installFetchJson({ model: "m", choices: [{ message: { content: "ok", reasoning: null, reasoning_details: [
-        { type: "reasoning.encrypted", data: "AAA", format: "openai-responses-v1", id: "rs_1" },
-        { type: "reasoning.encrypted", data: "BBB", format: "openai-responses-v1", id: "rs_2" },
-    ] }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
-    const { assistant } = await p.generate({ workerId: "r", messages: [] });
-    assert.equal(assistant.reasoningEncrypted?.length, 2);
-    assert.deepEqual(assistant.reasoningEncrypted?.map((i) => i.id), ["rs_1", "rs_2"]);
-});
-
-test("assistant-message location classifies encrypted reasoning without inventing a missing detail id", async () => {
-    installFetchJson({ model: "m", choices: [{ message: { content: "ok", reasoning_details: [
-        { type: "reasoning.encrypted", data: "OPAQUE", format: "openai-responses-v1", id: null, index: 0 },
-    ] }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
-    const { assistant } = await p.generate({ workerId: "r", messages: [] });
-    assert.deepEqual(assistant.reasoningEncrypted, [{
-        id: null,
-        subtype: "message",
-        encrypted: [{ data: "OPAQUE", format: "openai-responses-v1" }],
-    }]);
-});
-
-test("encrypted reasoning (streamed): chunked blob concatenates per entry index", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
-    installFetch([
-        { choices: [{ delta: { reasoning_details: [{ type: "reasoning.encrypted", data: "gAAAA", format: "openai-responses-v1", id: "rs_1", index: 0 }] } }] },
-        { choices: [{ delta: { reasoning_details: [{ type: "reasoning.encrypted", data: "BqXYZ", id: "rs_1", index: 0 }] } }] },
-        { choices: [{ delta: { content: "4" }, finish_reason: "stop" }] },
-    ]);
-    const { assistant } = await p.generate({ workerId: "r", messages: [] });
-    assert.deepEqual(assistant.reasoningEncrypted, [{ id: "rs_1", subtype: "message", encrypted: [{ data: "gAAAABqXYZ", format: "openai-responses-v1" }] }]);
-    assert.equal(assistant.content, "4");
 });
 
 test("reasoningStyle 'think' follows activation (magnitude is irrelevant to the boolean wire control)", async () => {

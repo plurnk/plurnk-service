@@ -16,17 +16,6 @@ const evidence = ({ providerMetadata, usage, charge }: {
     response: { id: "response-1" },
 });
 
-test("xAI response ticks normalize to a directly charged request", () => {
-    const normalize = providerCostNormalizer("@ai-sdk/xai");
-    assert.notEqual(normalize, undefined);
-    assert.deepEqual(normalize!(evidence({ usage: { cost_in_usd_ticks: 15_493_500 } })), {
-        kind: "charged",
-        amount: { amount: "15493500", currency: "USDTICK" },
-        usdEquivalent: "0.00154935",
-        source: "xAI response usage.cost_in_usd_ticks",
-    });
-});
-
 test("OpenRouter response cost normalizes without rate reconstruction", () => {
     const normalize = providerCostNormalizer("@openrouter/ai-sdk-provider");
     assert.notEqual(normalize, undefined);
@@ -49,10 +38,10 @@ test("DeepInfra's documented response estimate remains estimated", () => {
 
 test("response cost normalization is an explicit adapter capability", () => {
     assert.equal(providerCostNormalizer("@ai-sdk/anthropic"), undefined);
-    assert.equal(providerCostNormalizer("@ai-sdk/xai")!(evidence({ usage: {} })), undefined);
+    assert.equal(providerCostNormalizer("@ai-sdk/deepinfra")!(evidence({ usage: {} })), undefined);
     assert.throws(
-        () => providerCostNormalizer("@ai-sdk/xai")!(evidence({ usage: { cost_in_usd_ticks: "1" } })),
-        /cost_in_usd_ticks must be numeric/,
+        () => providerCostNormalizer("@ai-sdk/deepinfra")!(evidence({ usage: { estimated_cost: "1" } })),
+        /estimated_cost must be numeric/,
     );
 });
 

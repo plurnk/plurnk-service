@@ -1,14 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { EventType } from "@ag-ui/core";
+// AG-UI 1.0 ships its runtime validators on the schemas subpath; the root export is types only.
 import {
-    EventType,
     MessagesSnapshotEventSchema,
     ReasoningEndEventSchema,
     ReasoningMessageContentEventSchema,
     ReasoningMessageEndEventSchema,
     ReasoningMessageStartEventSchema,
     ReasoningStartEventSchema,
-} from "@ag-ui/core";
+} from "@ag-ui/core/schemas";
 import Translator from "./Translator.ts";
 import type { LogEntryNotification, TerminatedNotification } from "./types.ts";
 import { loopUsage } from "../test/accounting-fixture.ts";
@@ -99,7 +100,8 @@ test("{§agui-projection} addressed replies project by conversation, including a
         const expected = thread === "th-1" ? [native] : [];
         assert.deepEqual(events.filter((event) => event.type === "TEXT_MESSAGE_CONTENT").map((event) => event.delta), expected);
         const row = events.find((event) => event.type === "CUSTOM" && event.name === "plurnk.row");
-        assert.equal(row?.value.tx.body.raw, native);
+        assert.ok(row !== undefined && row.type === "CUSTOM");
+        assert.equal((row.value as { tx: { body: { raw: string } } }).tx.body.raw, native);
         const [snapshot] = t().replay([record.entry]);
         assert.equal(snapshot.type, "MESSAGES_SNAPSHOT");
         if (snapshot.type === "MESSAGES_SNAPSHOT") assert.deepEqual(snapshot.messages.map((message) => message.content), expected);
@@ -361,17 +363,19 @@ test("reasoning READs remain operation receipts without duplicating standard rea
     assert.equal(snapshot.messages.filter(({ role }) => role === "assistant").length, 1);
 });
 
-test("{§agui-encrypted-reasoning} unknown opaque fields do not create client reasoning state", () => {
+test("{§agui-encrypted-reasoning} the encrypted-reasoning interface is not implemented", () => {
     const tr = t();
-    const send = entry({ op: "SEND", coordinate: "1/1/8/SEND", tx: { body: "answer" },
-        reasoningEncrypted: [{ data: "SEALED" }],
-    } as never);
-    const events = tr.logEntry(send);
-    assert.ok(events.some(({ type }) => type === "TEXT_MESSAGE_CONTENT"));
-    assert.ok(!events.some(({ type }) => type === "REASONING_ENCRYPTED_VALUE"));
-    const snapshot = tr.replay([send.entry]).find(({ type }) => type === "MESSAGES_SNAPSHOT");
-    assert.ok(snapshot?.type === "MESSAGES_SNAPSHOT");
-    assert.deepEqual(snapshot.messages, [{ id: "1/1/8/SEND", role: "assistant", content: "answer" }]);
+    // Readable reasoning becomes a reasoning message; AG-UI's encrypted-reasoning events are
+    // never emitted, because the service collects no encrypted reasoning to put in them.
+    const events = tr.logEntry(entry({
+        id: 9, op: "SEND", status_rx: 200, origin: "model", turn_id: 1,
+        tx: { body: "Answer." }, reasoning: "Readable provider text.",
+    }));
+    assert.ok(events.some(({ type }) => String(type).startsWith("REASONING")), "readable reasoning still streams");
+    assert.ok(
+        events.every(({ type }) => !String(type).includes("ENCRYPTED")),
+        JSON.stringify(events.map((e) => e.type)),
+    );
 });
 
 test("turn boundaries are STEPs; termination closes the step and flags the outcome", () => {

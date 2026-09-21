@@ -54,7 +54,7 @@ const raceAgainstDeadline = async <T>(work: PromiseLike<T>, signal: AbortSignal)
 
 // Backend wire spellings for the resolved reasoning intent. The switch beside each
 // mapping retains any backend-specific omission/explicit-disable constraint.
-export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "effort_explicit" | "effort_required" | "thinking_effort" | "thinking_config" | "template" | "anthropic";
+export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "effort_explicit" | "effort_required" | "thinking_effort" | "template" | "anthropic";
 
 export type NativeReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 export type CompatibleReasoningEffort = NativeReasoningEffort | "max";
@@ -993,9 +993,6 @@ export default class AiSdkProvider implements Provider {
         const assistant = {
             content: raw.content,
             reasoning: raw.reasoning.length > 0 ? raw.reasoning : null,
-            ...(raw.reasoningEncrypted.length > 0
-                ? { reasoningEncrypted: raw.reasoningEncrypted }
-                : {}),
             model: raw.model,
             ...(logprobs !== undefined ? { logprobs, meanLogprob } : {}),
         };

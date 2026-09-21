@@ -31,31 +31,6 @@ const decimalFromNumber = (value: number, subject: string): string => {
     return `${digits.slice(0, point)}.${digits.slice(point)}`;
 };
 
-const usdFromTicks = (ticks: number): string => {
-    if (!Number.isSafeInteger(ticks) || ticks < 0) {
-        throw new TypeError("xAI costInUsdTicks must be a non-negative safe integer");
-    }
-    const digits = String(ticks).padStart(11, "0");
-    const integer = digits.slice(0, -10).replace(/^0+(?=\d)/, "");
-    const fraction = digits.slice(-10).replace(/0+$/, "");
-    return fraction === "" ? integer : `${integer}.${fraction}`;
-};
-
-const xaiCost: ProviderCostNormalizer = ({ usage }) => {
-    const wireUsage = recordOf(usage);
-    if (wireUsage === null || !("cost_in_usd_ticks" in wireUsage)) return undefined;
-    const ticks = wireUsage.cost_in_usd_ticks;
-    if (typeof ticks !== "number") {
-        throw new TypeError("xAI usage.cost_in_usd_ticks must be numeric");
-    }
-    return {
-        kind: "charged",
-        amount: { amount: String(ticks), currency: "USDTICK" },
-        usdEquivalent: usdFromTicks(ticks),
-        source: "xAI response usage.cost_in_usd_ticks",
-    };
-};
-
 const openRouterCost: ProviderCostNormalizer = ({ providerMetadata }) => {
     const usage = recordOf(recordOf(recordOf(providerMetadata)?.openrouter)?.usage);
     if (usage === null || !("cost" in usage)) return undefined;
@@ -84,7 +59,6 @@ export const providerCostNormalizer = (
     sdkPackage: string,
 ): ProviderCostNormalizer | undefined => {
     switch (sdkPackage) {
-        case "@ai-sdk/xai": return xaiCost;
         case "@ai-sdk/deepinfra": return deepInfraCost;
         case "@openrouter/ai-sdk-provider": return openRouterCost;
         default: return undefined;

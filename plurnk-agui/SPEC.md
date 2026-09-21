@@ -121,10 +121,11 @@ sequence.
   delta: a dispatched plurnk op is atomic), its rx the result. The log-shaped richness the
   core vocabulary can't hold (curation metadata, tags, coordinates) stays on the row inside
   `plurnk.ambient`/`TOOL_CALL_RESULT` payloads.
-- §agui-encrypted-reasoning **Opaque provider state is not a client conversation.**
-  AG-UI emits no encrypted-reasoning events or message values. Original provider
-  evidence retains those fields under {§encrypted-reasoning-carrier}; readable
-  reasoning streams and conversation replay remain {§agui-readable-reasoning}.
+- §agui-encrypted-reasoning **The encrypted-reasoning interface is not implemented.**
+  AG-UI defines encrypted-reasoning events and message values; plurnk emits none and
+  stores none ({§provider-open-reasoning}). Implementing a transport for bytes the
+  service cannot read would add surface without adding capability. Readable reasoning
+  streams and conversation replay remain {§agui-readable-reasoning}.
 - §agui-custom-namespace **The custom namespace** — plurnk-specific metadata rides
   `CUSTOM` events named `plurnk.*` (`plurnk.send`, `plurnk.ambient`,
   `plurnk.notice`, `plurnk.stream`, `plurnk.terminated` — the full loop

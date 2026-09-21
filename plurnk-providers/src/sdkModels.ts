@@ -7,7 +7,6 @@ import { createGroq } from "@ai-sdk/groq";
 import { createMistral } from "@ai-sdk/mistral";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createTogetherAI } from "@ai-sdk/togetherai";
-import { createXai } from "@ai-sdk/xai";
 import { createOpenRouter, type OpenRouterChatSettings } from "@openrouter/ai-sdk-provider";
 import {
     resolveModel,
@@ -391,15 +390,6 @@ export const createSdkModel = (
                 reasoningResponseProviderOptions: {
                     google: { thinkingConfig: { includeThoughts: true } },
                 },
-                catalog,
-            };
-        case "@ai-sdk/xai":
-            return {
-                languageModel: createXai({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).chat(model),
-                ...(catalog.id === "xai"
-                    ? { cacheAffinity: { target: "header" as const, name: "x-grok-conv-id" } }
-                    : {}),
-                ...(normalizeCost === undefined ? {} : { normalizeCost }),
                 catalog,
             };
         case "@ai-sdk/anthropic":

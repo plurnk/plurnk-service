@@ -7,7 +7,7 @@
 
 import { chatMessageText } from "./types.ts";
 import type { InputModality } from "./types.ts";
-import type { ChatMessage, FinishReason, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderCost, ProviderEncryptedReasoningItem, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ProviderUsage } from "./types.ts";
+import type { ChatMessage, FinishReason, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAssistant, ProviderCost, ProviderRequestAccounting, ProviderRequestCapacity, ProviderResponse, ProviderUsage } from "./types.ts";
 import { resolveGenerationEnvelopeFromEnv } from "./env.ts";
 import { REASONING_POLICIES } from "@plurnk/plurnk-contracts";
 import { validateProviderRequestAccounting } from "./accounting.ts";
@@ -20,7 +20,6 @@ export type MockAssistant = {
     finishReason?: FinishReason;
     model?: string;
     // Provider-normalized encrypted reasoning fixture.
-    reasoningEncrypted?: ReadonlyArray<ProviderEncryptedReasoningItem>;
     // Pre-parsed ops — intg-only escape hatch. Typed `unknown[]` so the
     // framework carries no parser dependency; plurnk-service
     // casts these to PlurnkStatement[] on its side. Production providers never
@@ -172,7 +171,6 @@ export default class Mock implements Provider {
         const assistant: MockReturnedAssistant = {
             content: a.content,
             reasoning: a.reasoning,
-            ...(a.reasoningEncrypted !== undefined ? { reasoningEncrypted: a.reasoningEncrypted } : {}),
             finishReason: a.finishReason ?? "stop",
             model: a.model ?? "mock",
             ...(a.ops !== undefined ? { ops: a.ops } : {}),

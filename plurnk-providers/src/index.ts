@@ -9,7 +9,7 @@ export type {
     AiSdkProviderPlugin,
     ProviderOptions,
     ProviderResponse,
-    ProviderEncryptedReasoningItem,
+
     ProviderAccounting,
     ProviderCost,
     ProviderCostNormalizer,
