@@ -481,7 +481,7 @@ beside owner metadata, not only a matcher carried inside its `pattern` option.
 |---|---|
 | Fence name | Reserved native OP, otherwise a registered executor or attached MCP service |
 | `(path)` | Target/program/tool slot; COPY and MOVE each have two resource operands |
-| `[metadata]` | One JSON array of option objects, owner-interpreted; options, never the op's input |
+| `[metadata]` | One owner-interpreted block; options, never the op's input |
 | `<scope>` | Operation-specific numeric or anchored coordinates |
 | `<!-- … -->` | Optional final, single-line aside |
 | Body | Literal content between framing newlines |
@@ -511,15 +511,23 @@ for the narrowly owned {§misplaced-aside-advisory}.
 
 §scheme-metadata-modifier A target may carry one single-line `[metadata]`
 block after its scope; executor and SEND fences also admit it without a target.
-Read with its brackets, the block is a JSON array of option objects, merged
-left to right with later keys winning; the keys belong to the selected scheme
-or executor, which owns interpretation, validation and authority. The language
-assigns no meaning to the content and stores each block's exact inner text:
-balanced brackets inside the block are retained, and double-quoted strings
-protect their brackets. Brackets inside `(path)` remain ordinary path and
-glob characters. A block that is not valid JSON, or a second block on one
+The block belongs to the selected scheme or executor, which owns its shape,
+interpretation, validation and authority. The language assigns no meaning to
+the content and stores each block's exact inner text: balanced brackets inside
+the block are retained, and double-quoted strings protect their brackets.
+Brackets inside `(path)` remain ordinary path and
+glob characters. A block the owner cannot read, or a second block on one
 operand, is the owner's `400`, never a parser diagnostic. An unfinished block
-or multiline metadata loses its boundary. Two keys never reach an owner:
+or multiline metadata loses its boundary.
+
+**House policy, not a language rule:** every first-party scheme and executor
+reads its block through the shared `MetadataOptions` reader, which takes the
+block with its brackets as a JSON array of option objects, merged left to
+right with later keys winning. A third-party owner may read its block any way
+it likes — the language guarantees only the exact inner text. Documentation
+for a first-party owner therefore shows the bracketed array form.
+
+Two keys never reach an owner:
 `pattern`, the language's own ({§matcher-option}), and `env`, reserved for the
 service's environment option on the operations that open a process or a
 Worker; the shared reader withholds both from the owner's options.
@@ -556,7 +564,7 @@ whose block left no metadata back bare when the bare form reads back identically
 | Executor name | Letters, digits, `_`, `.`, `+`, or `-`; reserved OPs win |
 | Fence | Three or more backticks, matched by exact count |
 | `(path)` | Local path, URI, program or tool name; §5 |
-| `[metadata]` | One JSON array of owner-defined option objects |
+| `[metadata]` | One owner-interpreted block of owner-defined options |
 | `<scope>` | Numeric or anchored coordinates; §7 |
 | Body | Literal text; never recursively interpreted as operations |
 

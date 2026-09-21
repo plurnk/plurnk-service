@@ -8,7 +8,8 @@ type Accepted = { args?: boolean; stdin?: boolean };
 type Parsed = { options: Options } | { failure: SchemeResult };
 
 // {§executor-metadata} The executor framework owns these options, not Core. The
-// heading's `[metadata]` is one JSON array of option objects ({§scheme-metadata-modifier});
+// framework READS the heading's `[metadata]` as a JSON array of option objects — house policy,
+// not a language rule ({§scheme-metadata-modifier});
 // the keys this framework knows are `cwd`, `args`, and `stdin`.
 export default class InvocationMetadata {
     static parse(input: ExecInput, accepted: Accepted = {}): Parsed {
