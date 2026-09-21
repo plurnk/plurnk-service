@@ -110,7 +110,7 @@ export default class AdmittedTurnExecutor {
                 source: "engine:turn",
                 kind: "turn_no_operations",
                 level: "warn",
-                message: "This turn emitted no operations; its text was kept and nothing ran. An operation opens with four backticks and its name on the fence line.",
+                message: "Emission contained no OPs or conclusion.",
             });
             await Turn.complete(this.#db, turnId, TURN_STATUS_IMPLICIT_CONTINUE);
             return { status: TURN_STATUS_IMPLICIT_CONTINUE, outcomes: [], fingerprint: StrikeRail.fingerprintTurn([]), emptyTurn: true };

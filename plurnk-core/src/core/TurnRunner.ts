@@ -39,7 +39,7 @@ import { homedir } from "node:os";
 // relative to the daemon's working directory. The service ships no grammar profile, so a bare
 // name (no separator) is refused by name rather than resolved against anything.
 // {§prose-conclusion}
-const ANSWER_FENCE = /^(`{3,}|~{3,})(?:markdown|md)[ \t]*$/u;
+const ANSWER_FENCE = /^(`{3,}|~{3,})(?:markdown|md)[ \t]*$/iu;
 
 export const answerFence = (content: string): { readonly concludes: boolean; readonly answer: string } => {
     // Blank lines go, per-line indentation stays: trimming the whole string would erase the
@@ -49,15 +49,19 @@ export const answerFence = (content: string): { readonly concludes: boolean; rea
     while (lines.length > 0 && lines[lines.length - 1]!.trim() === "") lines.pop();
     const openers = lines.flatMap((line, index) => ANSWER_FENCE.test(line) ? [index] : []);
     if (openers.length === 0) return { concludes: false, answer: "" };
-    if (openers.length > 1) return { concludes: true, answer: lines.join("\n") };
     const opener = openers[0]!;
     const run = ANSWER_FENCE.exec(lines[opener]!)![1]!;
-    const closers = lines.flatMap((line, index) => index > opener && line.trimEnd() === run ? [index] : []);
-    if (closers.length !== 1) return { concludes: true, answer: lines.join("\n") };
-    return {
-        concludes: true,
-        answer: lines.filter((_, index) => index !== opener && index !== closers[0]).join("\n").trim(),
-    };
+    // Opening with the envelope IS the intent: whatever is inside is the answer, inner fences
+    // included. An answer that explains Markdown carries markdown fences of its own, and counting
+    // them would refuse to unwrap the very reply that needed it most.
+    if (opener === 0) {
+        const last = lines.length - 1;
+        const closed = last > 0 && lines[last]!.trimEnd() === run;
+        return { concludes: true, answer: lines.slice(1, closed ? last : undefined).join("\n").trim() };
+    }
+    // The envelope opened mid-reply: its extent is ambiguous, so nothing is stripped and nothing
+    // the model wrote is discarded.
+    return { concludes: true, answer: lines.join("\n") };
 };
 
 export const resolveOperatorGrammarPath = (value: string): string => {

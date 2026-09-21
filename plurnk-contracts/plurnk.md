@@ -9,16 +9,12 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
     ````
 
 > [!IMPORTANT]
-> YOU MUST ONLY respond with either valid Operation Syntax OPs or markdown. Not both. A markdown response concludes the loop.
-
-    ````markdown
-    The answer is 42.
-    ````
+> YOU MUST ONLY respond with valid Operation Syntax OPs, responding with only fenced markdown if concluding.
 
 > [!WARNING]
 > YOU MUST offset any example OP you do not intend to execute with a hard or soft tab.
 
-* `[metadata]`: optional one-line JSON array of special configuration.
+* `[metadata]`: optional one-line special configuration.
 * `<!-- aside -->`: optional terse note.
 * All parameters and the aside must appear on the same line as OP.
 * OP may be either a Plurnk Operation or one of the tools.
@@ -38,7 +34,16 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 * BARE: Deploy an isolated inference query (no log or tools).
 * WAIT: Yield until the next wake: a child's result, a message, a stream's end.
 
+* markdown: Final response alone, concluding the entire loop.
+
 ## Workflow Management
+
+> [!IMPORTANT]
+> The markdown response must be the only OP emitted in the final turn.
+
+    ````markdown
+    The answer is 42.
+    ````
 
 > [!INFO]
 > To cancel all unfinished work in your worker and its descendants, KILL your own worker address.
@@ -122,7 +127,6 @@ All member files and entries are mapped, indexed, and universally pattern search
 | prefix | dialect                     | example                         |
 |--------|-----------------------------|---------------------------------|
 | `/`    | regex (ECMAScript)          | `/\btimeout\b/i`                |
-| `^`    | regex anchored to a line    | `^ERROR:.*`                     |
 | `//`   | xpath (1.0)                 | `//dependencies/*`              |
 | `$`    | jsonpath (RFC 9535)         | `$.items[?(@.price>500)]`       |
 | `~`    | full-text (SQLite FTS5)     | `~retry`                        |
