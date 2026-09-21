@@ -38,6 +38,28 @@ import { homedir } from "node:os";
 // {§operator-grammar} — an operator's own GBNF is a file path: absolute, `~`-relative, or
 // relative to the daemon's working directory. The service ships no grammar profile, so a bare
 // name (no separator) is refused by name rather than resolved against anything.
+// {§prose-conclusion}
+const ANSWER_FENCE = /^(`{3,}|~{3,})(?:markdown|md)[ \t]*$/u;
+
+export const answerFence = (content: string): { readonly concludes: boolean; readonly answer: string } => {
+    // Blank lines go, per-line indentation stays: trimming the whole string would erase the
+    // offset that keeps an EXAMPLE fence from concluding ({§quotation}).
+    const lines = content.split("\n");
+    while (lines.length > 0 && lines[0]!.trim() === "") lines.shift();
+    while (lines.length > 0 && lines[lines.length - 1]!.trim() === "") lines.pop();
+    const openers = lines.flatMap((line, index) => ANSWER_FENCE.test(line) ? [index] : []);
+    if (openers.length === 0) return { concludes: false, answer: "" };
+    if (openers.length > 1) return { concludes: true, answer: lines.join("\n") };
+    const opener = openers[0]!;
+    const run = ANSWER_FENCE.exec(lines[opener]!)![1]!;
+    const closers = lines.flatMap((line, index) => index > opener && line.trimEnd() === run ? [index] : []);
+    if (closers.length !== 1) return { concludes: true, answer: lines.join("\n") };
+    return {
+        concludes: true,
+        answer: lines.filter((_, index) => index !== opener && index !== closers[0]).join("\n").trim(),
+    };
+};
+
 export const resolveOperatorGrammarPath = (value: string): string => {
     if (value === "~" || value.startsWith("~/")) return resolvePath(homedir(), value.slice(2));
     if (value.startsWith("/") || value.startsWith(".") || value.includes("/")) return resolvePath(value);
@@ -1794,21 +1816,18 @@ export default class TurnRunner {
                 parseErrors.push({ message: tail.reason, line: tail.from.line, column: tail.from.column, source: "grammar" });
             }
         }
-        // {§prose-conclusion} — a response whose content is prose (no operation, no attempt at one,
-        // not cut at the output allowance) is the model's answer: a SEND to the open messages.
-        // {§quotation} a reply wrapped whole in one markdown fence is delivered as its content.
-        const wrapped = /^(`{3,}|~{3,})(?:markdown|md)[ \t]*\n([\s\S]*?)\n\1[ \t]*$/u.exec(assistant.content.trim());
-        const prose = (wrapped?.[2] ?? assistant.content).trim();
+        // {§prose-conclusion} — the markdown fence is the exit; a turn that merely failed to yield
+        // an operation is non-responsive and falls to {§empty-turn}.
+        const answered = answerFence(assistant.content);
+        const prose = answered.answer;
         const concludes = preParsedOps === undefined
+            && answered.concludes
             && ops.length === 0
             && !hasUnparsedTail
             && prose.length > 0
             && assistant.finishReason !== "length"
             && parseErrors.every((error) => error.message === PlurnkParser.NO_VALID_OPERATION)
-            && PlurnkParser.operationAttempt(assistant.content, executors) === null
-            // {§quotation} an answer says something of its own: a reply that is nothing but quoted
-            // material is a misfenced program, not prose (operator, 2026-09-18).
-            && PlurnkParser.unquoted(prose, executors).trim().length > 0;
+            && PlurnkParser.operationAttempt(assistant.content, executors) === null;
         const proseAnswer = concludes
             ? { op: "SEND", aside: null, target: null, metadata: null, lineMarker: null, body: { raw: prose, json: null }, position: { line: 1, column: 0 } } as PlurnkStatement
             : null;

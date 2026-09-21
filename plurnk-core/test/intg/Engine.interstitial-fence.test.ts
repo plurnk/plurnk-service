@@ -5,6 +5,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection, seedEntryWithChannel } from "./_helpers.ts";
+const FENCE = "`".repeat(4);
 
 const memory = PlurnkParser.frame("NOTE", "Examples reviewed.");
 
@@ -89,7 +90,7 @@ test("{§prose-conclusion}: a prose response, code block and all, answers the op
         const loopId = await insertLoop(db, workerId, 1, "How do I run the tests?");
         const answer = "The runner is configured in the package root:\n\n```ts\nexport default { timeout: 30_000 };\n```\n\nIt takes about a minute.";
         const notices: Array<{ kind: string }> = [];
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: `\n${answer}\n`, reasoning: "simple question" } }] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "\n" + FENCE + "markdown\n" + answer + "\n" + FENCE + "\n", reasoning: "simple question" } }] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string }) });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId, maxTurns: 3, maxStrikes: 3,
@@ -114,7 +115,9 @@ test("{§quotation}: a reply wrapped whole in a markdown fence is delivered unwr
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "How do I read a file?");
         const answer = "An operation opens with four backticks:\n\n```text\n````READ (notes.md)\n````\n```";
-        const result = await engineRun(db, workspaceId, workerId, loopId, "````markdown\n" + answer + "\n````", "How do I read a file?");
+        // The outer fence must outrun every fence inside it: this answer demonstrates
+        // four-backtick operations, so its envelope takes five ({§prose-conclusion}).
+        const result = await engineRun(db, workspaceId, workerId, loopId, "`````markdown\n" + answer + "\n`````", "How do I read a file?");
         assert.equal(result.result.status, 200);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds.at(-1)! });
         const send = rows.find(({ origin, op }) => origin === "model" && op === "SEND");
@@ -138,7 +141,7 @@ for (const [label, content, finishReason] of [
             const notices: Array<{ kind: string }> = [];
             const provider = new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content, reasoning: "thinking about it", finishReason } },
-                { assistant: { content: "Done.", reasoning: null } },
+                { assistant: { content: "````markdown\nDone.\n````", reasoning: null } },
             ] });
             const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string }) });
             const result = await engine.runLoop({
@@ -216,7 +219,7 @@ test("{§metadata-ignored}: metadata on a file READ is ignored with a notice and
     } finally { await db.close(); }
 });
 
-test("{§quotation}: prose carrying an offset example is an answer, and concludes the loop", async () => {
+test("{§quotation}: an offset example draws no complaint, and does not conclude the loop", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `indented-program-${crypto.randomUUID()}`);
@@ -225,20 +228,23 @@ test("{§quotation}: prose carrying an offset example is an answer, and conclude
         await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Keep this note." });
         const notices: Array<{ kind: string; message?: string }> = [];
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "I'll read it now.\n\n    ````READ (worker:///notes.md)\n    ````", reasoning: null } },
-            { assistant: { content: "It says: Keep this note.", reasoning: null } },
+            { assistant: { content: "I'll read it now.\n\n    " + FENCE + "READ (worker:///notes.md)\n    " + FENCE, reasoning: null } },
+            { assistant: { content: FENCE + "markdown\nIt says: Keep this note.\n" + FENCE, reasoning: null } },
         ] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 4, maxStrikes: 3, messages: [{ role: "user", content: "Read the note." }] });
         assert.equal(result.result.status, 200);
-        assert.equal(provider.received.length, 1, "prose concludes the loop; the second response is never asked for");
-        assert.deepEqual(notices.filter(({ kind }) => kind === "turn_no_operations"), [], "prose is an answer, not an empty turn");
-        assert.deepEqual(notices.filter(({ message }) => /must start its line|nothing ran/u.test(message ?? "")), [], "an offset example draws no complaint");
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds.at(-1)! });
+        assert.equal(provider.received.length, 2, "the offset example is not an answer: the model gets another turn");
+        assert.ok(notices.some(({ kind }) => kind === "turn_no_operations"), "it is an empty turn, not a conclusion");
+        // #799: the parser presumes nothing about why a fence is offset. The empty-turn notice is
+        // expected here and is not a complaint about the offset.
+        assert.deepEqual(notices.filter(({ kind, message }) => kind !== "turn_no_operations" && /must start its line|read as prose/u.test(message ?? "")), [], "an offset example still draws no parser advisory");
+        const all = await Promise.all(result.turnIds.map((id) => db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: id })));
+        assert.equal(all.flat().filter(({ origin, op }) => origin === "model" && op === "READ").length, 0, "the offset example never ran");
         assert.equal(
-            JSON.parse(rows.find(({ origin, op }) => origin === "model" && op === "SEND")!.tx).body.raw,
-            "I'll read it now.\n\n    ````READ (worker:///notes.md)\n    ````",
-            "the whole reply is delivered, offset example and all",
+            JSON.parse(all.at(-1)!.find(({ origin, op }) => origin === "model" && op === "SEND")!.tx).body.raw,
+            "It says: Keep this note.",
+            "the fenced answer concludes, stripped of its envelope",
         );
     } finally { await db.close(); }
 });

@@ -233,14 +233,14 @@ test("separator-free provider preamble does not reject a complete model turn", a
             messages: [{ role: "user", content: "do the task" }],
         });
 
-        assert.equal(result.status, 200);
+        // The glued preamble keeps the SEND off its own line, so nothing parses. The turn is still
+        // ADMITTED on its only attempt — never rejected, never resampled — and the loop continues
+        // ({§empty-turn}) so the model can emit again, rather than a provider artifact ending the run.
+        assert.equal(result.status, 102);
         assert.equal(result.emissionAttempts, 1);
         assert.equal(result.emissionExhausted, false);
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
-        assert.deepEqual(attempts.map(({ accepted, parse_errors }) => ({
-            accepted,
-            parseErrors: JSON.parse(parse_errors),
-        })), [{ accepted: 1, parseErrors: [] }]);
+        assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "admitted on its only attempt");
         const turn = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
         assert.equal((JSON.parse(turn?.packet ?? "{}") as { assistant?: { content?: string } }).assistant?.content, content);
     } finally {

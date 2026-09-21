@@ -9,7 +9,11 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
     ````
 
 > [!IMPORTANT]
-> YOU MUST ONLY respond with either valid Operation Syntax OPs or prose. Any prose in the body concludes the loop. Not both.
+> YOU MUST ONLY respond with either valid Operation Syntax OPs or markdown. Not both. A markdown response concludes the loop.
+
+    ````markdown
+    The answer is 42.
+    ````
 
 > [!WARNING]
 > YOU MUST offset any example OP you do not intend to execute with a hard or soft tab.
