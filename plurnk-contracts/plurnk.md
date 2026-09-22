@@ -9,7 +9,7 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
     ````
 
 > [!IMPORTANT]
-> YOU MUST ONLY use valid Operation Syntax OPs.
+> YOU MUST ONLY respond with valid Operation Syntax OPs.
 
 > [!TIP]
 > YOU SHOULD offset any example OP you do not intend to execute with a hard or soft tab.
