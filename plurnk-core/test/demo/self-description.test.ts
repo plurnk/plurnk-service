@@ -8,6 +8,7 @@
 // when the final text happens to be right.
 
 import { liveTest as test } from "../live-test.ts";
+import { TurnDisposition, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -21,7 +22,7 @@ const MUTATING = new Set(["EDIT", "KILL", "COPY", "MOVE", "WORK", "FORK"]);
 interface Conversation {
     readonly finalStatus: number;
     readonly reply: string;
-    readonly ops: Array<{ op: string | null; status: number }>;
+    readonly ops: Array<{ op: string | null; status: number; completion: boolean }>;
     readonly notices: string[];
 }
 
@@ -34,8 +35,12 @@ const converse = async (opts: { signal: AbortSignal; label: string; prompt: stri
         const s = await liveWorkspace({ name: `demo-${opts.label}-${crypto.randomUUID()}`, projectRoot: fixture.workspace });
         lifetime.defer(s.cleanup);
         const loop = await liveLoop(s, 2, { prompt: opts.prompt, maxTurns: opts.maxTurns ?? 6 }, { signal: opts.signal });
-        const rows = await s.db.test_log_entries_by_worker.all<{ op: string | null; origin: string; status_rx: number }>({ worker_id: loop.modelWorkerId });
-        const ops = rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => ({ op, status: status_rx }));
+        const rows = (await Promise.all(loop.turnIds.map((turn_id) =>
+            s.db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; tx: string }>({ turn_id }),
+        ))).flat();
+        const ops = rows.filter(({ origin }) => origin === "model").map(({ op, status_rx, tx }) => ({
+            op, status: status_rx, completion: TurnDisposition.isCompletion(JSON.parse(tx) as PlurnkStatement),
+        }));
         // Every notice the packets carried: the model's own complaint surface.
         const notices: string[] = [];
         for (const turnId of loop.turnIds) {
@@ -64,10 +69,11 @@ test("conversation: plurnk explains its own operations, and shows examples witho
         assert.ok(result.reply.length > 0, "the answer reaches the client");
         const named = ["READ", "EDIT", "FIND", "SEND", "KILL"].filter((op) => result.reply.includes(op));
         assert.ok(named.length >= 4, `the answer names plurnk's operations; named ${JSON.stringify(named)}`);
-        const ran = result.ops.filter(({ op }) => op !== null && MUTATING.has(op));
+        assert.match(result.reply, /\b(?:READ|EDIT|FIND) \([^\r\n)]+\)/u, "examples reach the client, not merely a pointer to an internal note");
+        const ran = result.ops.filter(({ op, completion }) => !completion && op !== null && MUTATING.has(op));
         assert.deepEqual(ran, [], "showing an operation never runs it");
         assert.equal(await readFile(notes, "utf8"), before, "the fixture is untouched");
-        assert.deepEqual(result.notices.filter((message) => /advisory|nothing ran|must start its line|needs four backticks/i.test(message)), [], "the model's examples draw no parser complaint");
+        assert.deepEqual(result.notices.filter((message) => /advisory|turn_no_operations|nothing ran|must start its line|needs four backticks/i.test(message)), [], "the model's examples draw no parser complaint");
     } finally { await cleanup(); }
 });
 
@@ -80,7 +86,8 @@ test("conversation: asked to show a deletion without doing it, plurnk shows it a
     try {
         assert.equal(result.finalStatus, 200, "the question is answered");
         assert.ok(/KILL/.test(result.reply), "the answer shows the operation it would use");
-        assert.deepEqual(result.ops.filter(({ op }) => op !== null && MUTATING.has(op)), [], "nothing was deleted");
+        assert.deepEqual(result.ops.filter(({ op, completion }) => !completion && op !== null && MUTATING.has(op)), [], "nothing was deleted");
         assert.ok((await readFile(notes, "utf8")).length > 0, "notes.md is still there");
+        assert.deepEqual(result.notices.filter((message) => /advisory|turn_no_operations|nothing ran|must start its line|needs four backticks/i.test(message)), [], "showing the deletion draws no parser complaint");
     } finally { await cleanup(); }
 });

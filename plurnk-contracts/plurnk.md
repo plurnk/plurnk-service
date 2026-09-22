@@ -37,7 +37,7 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 ## Workflow Management
 
 > [!IMPORTANT]
-> YOU MAY conclude the loop with a turn containing ONLY a parameterless KILL.
+> YOU MAY answer and conclude the loop with a turn containing ONLY a parameterless KILL.
 
     ````KILL
     The answer is **42**.
