@@ -47,8 +47,10 @@ test("{§quotation}: an operation inside an unlabeled fence never runs, and a de
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: turnId });
         const model = rows.filter(({ origin, op }) => origin === "model" && op !== null);
-        assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [["SEND", 200], ["NOTE", 200]]);
-        assert.equal(JSON.parse(model[0]!.tx).body.raw, "````KILL (worker:///quoted.md)````", "the quoted heading stayed body under the delimiter");
+        assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [["NOTE", 200], ["SEND", 200], ["NOTE", 200]]);
+        assert.match(JSON.parse(model[0]!.tx).body, /^An unlabeled fence quotes[\s\S]*````KILL \(worker:\/\/\/notes\.md\)````/u,
+            "the prose and its quoted KILL are kept literally as the model's NOTE");
+        assert.equal(JSON.parse(model[1]!.tx).body.raw, "````KILL (worker:///quoted.md)````", "the quoted heading stayed body under the delimiter");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "ops")?.content, source, "/ops stays exact");
         const note = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "worker", name: "body" });
@@ -58,15 +60,14 @@ test("{§quotation}: an operation inside an unlabeled fence never runs, and a de
     } finally { await db.close(); }
 });
 
-test("{§invalid-output}: an unfenced heading is invalid output, never executed or delivered", async () => {
+test("{§response-text-note}: an unfenced heading is kept as the model's NOTE, never executed or delivered", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `bare-heading-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Show the examples.");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Keep this note." });
-        const notices: Array<{ kind: string; message?: string }> = [];
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const source = ["KILL (worker:///notes.md)", PlurnkParser.frame("SEND", "Explained."), memory].join("\n\n");
         const result = await engine.runLoop({
             provider: new Mock({ contextWindow: 100_000, responses: [
@@ -78,11 +79,10 @@ test("{§invalid-output}: an unfenced heading is invalid output, never executed 
         });
         assert.equal(result.result.status, 200);
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: result.turnIds.at(-2)! });
-        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["SEND", "NOTE"]);
-        assert.equal(JSON.parse(rows.find(({ origin, op }) => origin === "model" && op === "SEND")!.tx).body.raw,
-            "Explained.", "only the authored SEND is delivered");
-        assert.deepEqual(notices.filter(({ kind }) => kind === "invalid_output").map(({ message }) => message),
-            ["25 characters of invalid output between OPs"]);
+        const model = rows.filter(({ origin }) => origin === "model");
+        assert.deepEqual(model.map(({ op }) => op), ["NOTE", "SEND", "NOTE"]);
+        assert.equal(JSON.parse(model[0]!.tx).body, "KILL (worker:///notes.md)", "the heading is kept as written, as a NOTE");
+        assert.equal(JSON.parse(model[1]!.tx).body.raw, "Explained.", "only the authored SEND is delivered");
         const note = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "worker", name: "body" });
         assert.equal(note?.content, "Keep this note.");
     } finally { await db.close(); }
@@ -242,13 +242,13 @@ test("{§quotation}: an offset example draws no parser advisory, and does not co
         assert.equal(provider.received.length, 2, "the offset example is not an answer: the model gets another turn");
         // #799: the parser presumes nothing about why a fence is offset. The turn is an empty turn
         // rather than a conclusion — proven by the second provider call above. The strike is silent
-        // ({§empty-turn}); the text outside every operation is reported ({§invalid-output}).
+        // ({§empty-turn}); the text outside every operation is kept as the model's NOTE ({§response-text-note}).
         assert.deepEqual(notices.filter(({ kind }) => kind === "turn_no_operations"), [], "silent");
-        assert.deepEqual(notices.filter(({ kind }) => kind === "invalid_output").map(({ message }) => message),
-            ["61 characters of invalid output between OPs"]);
         assert.deepEqual(notices.filter(({ kind, message }) => kind !== "turn_no_operations" && /must start its line|read as prose/u.test(message ?? "")), [], "an offset example still draws no parser advisory");
         const all = await Promise.all(result.turnIds.map((id) => db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: id })));
         assert.equal(all.flat().filter(({ origin, op }) => origin === "model" && op === "READ").length, 0, "the offset example never ran");
+        assert.deepEqual(all.at(-2)!.filter(({ origin, op }) => origin === "model" && op === "NOTE").map(({ tx }) => JSON.parse(tx).body),
+            ["I'll read it now.\n\n    " + FENCE + "READ (worker:///notes.md)\n    " + FENCE], "the prose and its example are the model's NOTE");
         assert.equal(
             JSON.parse(all.at(-1)!.find(({ origin, op }) => origin === "model" && op === "KILL")!.tx).body,
             "It says: Keep this note.",

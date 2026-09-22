@@ -169,15 +169,16 @@ test("{§kill-conclusion}: a NOTE after the messages were answered does not sile
 
 for (const response of ["200", "````markdown\nFour.\n````", "````md\nFour.\n````"]) {
     test(`{§kill-conclusion}: ${JSON.stringify(response)} cannot confirm a previous free response`, async () => {
-        const { db, turn, answer, notices } = await setup([said(send("Four.")), said(response), said(conclude("Four, precisely."))]);
+        const { db, turn, answer } = await setup([said(send("Four.")), said(response), said(conclude("Four, precisely."))]);
         try {
             assert.equal((await turn()).status, 102);
             const token = await turn();
             assert.equal(token.status, 102, "neither a numeric token nor a Markdown envelope requests completion");
             assert.equal(token.emptyTurn, true);
-            const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: token.turnId });
-            assert.equal(rows.some(({ op, origin }) => op === "SEND" && origin === "model"), false, "outside text is reported, never delivered");
-            assert.ok(notices.some(({ kind }) => kind === "invalid_output"), "and the model is told it was not an operation");
+            const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: token.turnId });
+            assert.equal(rows.some(({ op, origin }) => op === "SEND" && origin === "model"), false, "outside text is never delivered");
+            assert.deepEqual(rows.filter(({ op, origin }) => op === "NOTE" && origin === "model").map(({ tx }) => JSON.parse(tx).body),
+                [response], "it is kept, literally, as the model's NOTE");
             assert.equal((await turn()).status, 200);
             const result = await answer();
             assert.ok("content" in result);
@@ -186,7 +187,7 @@ for (const response of ["200", "````markdown\nFour.\n````", "````md\nFour.\n````
     });
 }
 
-test("{§invalid-output}: outside fragments are counted, never delivered, and valid siblings still run without a strike", async () => {
+test("{§response-text-note}: outside fragments become NOTEs in source order, never delivered, and siblings run without a strike", async () => {
     const source = `Before.\n\n${PlurnkParser.frame("NOTE", "remember")}\n\nBetween.\n\n${send("Four.")}\n\nAfter.`;
     const { db, engine, provider, ids, notices } = await setup([said(source), said(conclude())]);
     try {
@@ -195,11 +196,10 @@ test("{§invalid-output}: outside fragments are counted, never delivered, and va
         assert.equal(provider.received.length, 2);
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string; rx: string }>({ turn_id: result.turnIds.at(-2)! });
         const operations = rows.filter(({ origin, op }) => origin === "model" && ["SEND", "NOTE"].includes(op));
-        assert.deepEqual(operations.map(({ op }) => op), ["NOTE", "SEND"], "only what the model authored runs");
-        assert.deepEqual(operations.filter(({ op }) => op === "SEND").map(({ tx }) => JSON.parse(tx).body.raw), ["Four."]);
+        assert.deepEqual(operations.map(({ op, tx }) => [op, op === "SEND" ? JSON.parse(tx).body.raw : JSON.parse(tx).body]),
+            [["NOTE", "Before."], ["NOTE", "remember"], ["NOTE", "Between."], ["SEND", "Four."], ["NOTE", "After."]]);
         assert.equal(rows.some(({ op }) => op === "error"), false, "stray text is not a failed operation");
-        assert.deepEqual(notices.filter(({ kind }) => kind === "invalid_output").map(({ message }) => message),
-            ["21 characters of invalid output between OPs"], "Before. Between. After. — counted once for the turn");
+        assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error"), [], "and draws no complaint");
     } finally { await db.close(); }
 });
 
@@ -217,12 +217,12 @@ test("{§empty-turn}: operations beside stray text reset the no-operation strike
     } finally { await db.close(); }
 });
 
-for (const [label, response, reasoning, reported] of [
-    ["prose", "Four.", null, ["5 characters of invalid output between OPs"]],
+for (const [label, response, reasoning, kept] of [
+    ["prose", "Four.", null, ["Four."]],
     ["empty response", "", null, []],
-    ["reasoning NOTE only", "", PlurnkParser.frame("NOTE", "Still calculating."), []],
+    ["reasoning NOTE only", "", PlurnkParser.frame("NOTE", "Still calculating."), ["Still calculating."]],
 ] as const) {
-    test(`{§empty-turn}: ${label} earns a no-operation strike, and only stray text is reported`, async () => {
+    test(`{§empty-turn}: ${label} earns a silent no-operation strike; what it wrote is kept as NOTE`, async () => {
         const { db, engine, provider, ids, notices } = await setup([said(response, reasoning)]);
         try {
             const result = await engine.runLoop({ ...ids, provider, maxTurns: 3, maxStrikes: 1, messages: [] });
@@ -230,10 +230,11 @@ for (const [label, response, reasoning, reported] of [
             assert.ok("problem" in result.result && result.result.problem);
             assert.equal(result.result.problem.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
             assert.match(result.result.problem.detail, /performed no operation\.$/);
-            assert.deepEqual(notices.filter(({ level }) => level === "warn").map(({ message }) => message), [...reported],
-                "the missing operation is the strike's business; the notice only counts stray text");
-            const rows = await db.test_log_entries_by_turn.all<{ op: string; source: string }>({ turn_id: result.turnIds.at(-1)! });
+            assert.deepEqual(notices.filter(({ level }) => level === "warn"), [], "the strike is silent");
+            const rows = await db.test_log_entries_by_turn.all<{ op: string; source: string; origin: string; tx: string }>({ turn_id: result.turnIds.at(-1)! });
             assert.equal(rows.some(({ op, source }) => op === "error" && source === "grammar"), false);
+            assert.deepEqual(rows.filter(({ op, origin }) => op === "NOTE" && origin === "model").map(({ tx }) => JSON.parse(tx).body), [...kept],
+                "neither prose nor a reasoning NOTE counts as authored, and neither is lost");
         } finally { await db.close(); }
     });
 }
@@ -242,7 +243,7 @@ for (const [failure, operation, failedOp] of [
     ["parser", "````EDIT (worker:///broken.md) <bad>\nnot a message\n````", "error"],
     ["operation", PlurnkParser.frame("SEND (reasoning://alice/1/1)", "Not a recipient."), "SEND"],
 ] as const) {
-    test(`{§invalid-output}: stray text does not mask an actual ${failure} failure`, async () => {
+    test(`{§response-text-note}: stray text kept as a NOTE does not mask an actual ${failure} failure`, async () => {
         const source = `Working.\n\n${PlurnkParser.frame("NOTE", "Checking.")}\n\n${operation}`;
         const { db, engine, provider, ids, notices } = await setup([said(source)]);
         try {
@@ -257,7 +258,7 @@ for (const [failure, operation, failedOp] of [
 }
 
 for (const op of ["NOTE", "WAIT"] as const) {
-    test(`{§wait-obligation-matrix}: stray text beside ${op} is reported, and ${op === "WAIT" ? "the explicit park holds" : "work continues before automatic parking"}`, async () => {
+    test(`{§wait-obligation-matrix}: stray text beside ${op} is kept as a NOTE, and ${op === "WAIT" ? "the explicit park holds" : "work continues before automatic parking"}`, async () => {
         const { db, turn, ids, notices } = await setup([said(`Working.\n\n${PlurnkParser.frame(op, "Await the child.")}`)]);
         try {
             await holdChild(db, ids.workspaceId, ids.workerId);
@@ -265,9 +266,8 @@ for (const op of ["NOTE", "WAIT"] as const) {
             assert.equal(result.status, op === "WAIT" ? 202 : 102);
             const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
             assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]),
-                [[op, op === "WAIT" ? 202 : 200]], "the stray text is not delivered");
-            assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error").map(({ message }) => message),
-                ["8 characters of invalid output between OPs"]);
+                [["NOTE", 200], [op, op === "WAIT" ? 202 : 200]], "the stray text is the model's NOTE, never delivered");
+            assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error"), []);
         } finally { await db.close(); }
     });
 }

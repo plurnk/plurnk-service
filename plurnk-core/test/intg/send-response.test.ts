@@ -44,7 +44,7 @@ test("{§balanced-fences}: a complete nested reply reaches the client without ex
     });
 });
 
-test("{§empty-turn}: operations on the line after a bare fence make an empty turn, reported as invalid output; nothing runs", async () => {
+test("{§empty-turn}: operations on the line after a bare fence make an empty turn, kept as the model's NOTE; nothing runs", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeRawMockResponse(MISFENCED, 10),
         makeMockResponse("````KILL\nthe answer\n````", 10),
@@ -58,9 +58,9 @@ test("{§empty-turn}: operations on the line after a bare fence make an empty tu
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; turn_id: number }>({ loop_id: loopId });
             const model = rows.filter((r) => r.origin === "model");
-            assert.deepEqual(model.map(({ op }) => op), ["KILL"], "the text is not delivered; the corrected turn replies");
+            assert.deepEqual(model.map(({ op }) => op), ["NOTE", "KILL"], "the text is noted, not delivered; the corrected turn replies");
             assert.doesNotMatch(JSON.stringify(mock.received[1]), /No valid Operation Syntax OPs detected\./, "the strike itself is silent");
-            assert.match(JSON.stringify(mock.received[1]), /183 characters of invalid output between OPs/, "the stray text is reported");
+            assert.match(JSON.stringify(mock.received[1]), /printf plurnk/, "the next packet shows the model its own text, as its NOTE");
             assert.ok(!model.some((r) => isExecutionOp(r.op) || r.op === "READ"), "nothing ran: prose is never promoted into an operation");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: modelWorkerId! });
             const empty = sources.find((row) => row.kind === "ops" && row.content === MISFENCED);

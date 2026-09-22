@@ -1015,7 +1015,7 @@ test("Engine.runTurn: Errors includes only the immediately previous turn", async
     } finally { await db.close(); }
 });
 
-test("{§invalid-output}: free text is never delivered, and the following operation still runs", async () => {
+test("{§response-text-note}: free text is the model's NOTE, never delivered, and the following operation still runs", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -1027,8 +1027,9 @@ test("{§invalid-output}: free text is never delivered, and the following operat
             messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
         });
         assert.deepEqual(result.outcomes, [
+            { op: "NOTE", status: 200, problemType: null },
             { op: "SEND", status: 200, problemType: null },
-        ], "only the authored message is delivered, without a corrective failure");
+        ], "the text is noted, the authored message delivered, without a corrective failure");
         assert.equal(result.status, 102);
     } finally { await db.close(); }
 });

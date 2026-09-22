@@ -1740,7 +1740,6 @@ export default class TurnRunner {
         const parseErrors: ParseErrorInfo[] = [];
         let contentStatementCount = 0;
         let hasUnparsedTail = false;
-        let invalidOutput = 0;
         const parseNotices: Notice[] = [];
         if (preParsedOps !== undefined) {
             ops.push(...preParsedOps);
@@ -1760,8 +1759,14 @@ export default class TurnRunner {
                     ops.push(item.statement);
                     contentStatementCount += 1;
                 }
-                // {§invalid-output}: text outside an OP is counted and reported, never delivered.
-                else if (item.kind === "text") invalidOutput += item.content.trim().length;
+                // {§response-text-note}: text outside an OP is the model's NOTE, never delivered and never
+                // counted as authored.
+                else if (item.kind === "text") {
+                    ops.push({
+                        op: "NOTE", aside: null, target: null, metadata: null, lineMarker: null,
+                        body: item.content.trim(), position: UNKNOWN_POSITION,
+                    });
+                }
                 else if (item.kind === "error") {
                     const err = (item as { error?: PlurnkParseError }).error;
                     if (err instanceof PlurnkParseError) {
@@ -1796,10 +1801,6 @@ export default class TurnRunner {
                 hasUnparsedTail = true;
                 parseErrors.push({ message: tail.reason, line: tail.from.line, column: tail.from.column, source: "grammar" });
             }
-            if (invalidOutput > 0) parseNotices.push({
-                source: "grammar", kind: "invalid_output", level: "warn",
-                message: `${invalidOutput} characters of invalid output between OPs`,
-            });
         }
         // {§kill-conclusion}: response shape expresses completion, not reasoning-side NOTE capture.
         const finalResponse = TurnDisposition.requestsCompletion(ops)

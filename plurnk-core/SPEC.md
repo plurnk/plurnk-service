@@ -1226,7 +1226,7 @@ The parser owns its boundaries; core admits determinate work and exposes its fai
 | Parsed response | Admission |
 |---|---|
 | Bounded program, including malformed operations | Admit valid operations and record parser failures; with no authored operation, apply {§empty-turn}. |
-| Outside response text | Report it under {§invalid-output}; never deliver it or infer completion. |
+| Outside response text | Keep it as the model's NOTE under {§response-text-note}; never deliver it or infer completion. |
 | Lost boundary after a closed operation | Admit the closed operations and record the boundary diagnostic under {§unparsed-tail-boundary}. |
 | Lost boundary before any closed operation | Reject the attempt; neither outside text nor a reasoning NOTE substitutes for a closed response operation. |
 
@@ -2661,8 +2661,8 @@ accounting and model-visible failure evidence remain separately owned by
   contains exactly one KILL without a target, scope, matcher or metadata, no hard
   parse error or lost boundary, and was not cut at the provider's output allowance.
   The operation limit must admit the entire program.
-  SEND, NOTE, log-targeted KILL and outside text ({§invalid-output}) may accompany
-  it; every other operation requires continuation. This tolerance is unadvertised:
+  SEND, NOTE (outside text included, {§response-text-note}) and log-targeted KILL may
+  accompany it; every other operation requires continuation. This tolerance is unadvertised:
   model teaching requests KILL alone. Reasoning-side NOTEs remain ordinary notes.
   An aside is allowed. After the program settles, {§wait-obligation-matrix} admits the
   completion or returns a non-striking continuation/parking receipt explaining the
@@ -2674,16 +2674,17 @@ accounting and model-visible failure evidence remain separately owned by
   completion. New arrivals still guard the terminal transition atomically
   ({§completion-defers-to-messages}); an arrival concurrent with an accepted reply
   remains unanswered and keeps the loop running. No implicit successful exit exists.
-- §invalid-output **Text outside the operations is reported, never delivered.** The spans
-  {§response-text} supplies are counted, and each turn that carries any draws one warning
-  notice: `N characters of invalid output between OPs`. It is never a strike ({§empty-turn}
-  asks only whether the turn authored an operation), and the exact emission is retained.
-  Delivering the text as a SEND logged it as an answer the model gave, confirming that
-  speaking outside operations works; the plurnk thesis needs the model's self-narration in
-  NOTE, asides and KILL (operator, 2026-09-22). This is the far end of the teaching scale: text
-  outside every operation breaks the first rule of `plurnk.md` — *"YOU MUST ONLY respond
-  with valid Operation Syntax OPs"* — so the harness names it, while a departure as small
-  as a missing closer is read as meant and passes unremarked ({§closer-fallback}).
+- §response-text-note **Text outside the operations is the model's NOTE, never delivered.** Each
+  span {§response-text} supplies becomes an ordinary NOTE in source order, unmarked, so the
+  model's own log files its self-narration where it belongs. It is not an authored operation:
+  {§empty-turn} still strikes a turn that holds only text, and the exact emission is retained.
+  Delivered as a SEND, the text read as an answer and confirmed that speaking outside operations
+  works; reported as a count of invalid characters, it sent a model to repair its prose into
+  live operations (`demo-show-dont-run-qdN9u2` executed the KILL it meant to show). A NOTE
+  neither delivers nor concludes (operator, 2026-09-22). This is the far end of the teaching
+  scale: text outside every operation breaks the first rule of `plurnk.md` — *"YOU MUST ONLY
+  respond with valid Operation Syntax OPs"* — and takes the largest reinterpretation, while a
+  departure as small as a missing closer is read as meant ({§closer-fallback}).
 - §loop-answer **A loop's address is what it said.** READ `ops://<worker>/<loop>` resolves to
   the latest reply the loop gave to the message that started it: the body of a SEND
   or accepted final KILL that answered that message. A running loop without one is 425; a loop that
@@ -2693,12 +2694,12 @@ accounting and model-visible failure evidence remain separately owned by
   remains that turn's emission. A concluded child's `loop_termination` row to its parent
   READs this same loop resource. Witness: `test/intg/loop-answer.test.ts`.
 - §empty-turn **No authored response operation is a recoverable turn, never completion.**
-  Count parsed response operations before reasoning-NOTE extraction; outside text never
-  enters the count. When none exist and no boundary was lost, retain the turn and its raw
+  Count parsed response operations before outside-text and reasoning NOTEs join them;
+  neither enters the count. When none exist and no boundary was lost, retain the turn and its raw
   sources and count one progress-contract strike, whether or not the turn carried text
-  ({§invalid-output}). The strike sends no notice of its own; the threshold terminal is
-  where it becomes visible, and it says why ({§engine-rails}). A turn with no executed
-  operations uses its exact text as the cycle fingerprint ({§engine-cycle-evidence});
+  ({§response-text-note}). The strike sends no notice of its own; the threshold terminal is
+  where it becomes visible, and it says why ({§engine-rails}). An empty turn uses its exact
+  text as the cycle fingerprint ({§engine-cycle-evidence});
   different empty programs are not a repeated cycle merely because neither contained
   operations. Lost-boundary handling remains {§unparsed-tail-boundary}; no confirmation
   token or private retry is invented here.
