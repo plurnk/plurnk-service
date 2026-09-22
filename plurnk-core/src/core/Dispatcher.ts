@@ -1251,15 +1251,15 @@ export default class Dispatcher {
         return rows.map((row) => row.path);
     }
 
-    async settleProgram(ctx: { workerId: number; loopId: number; turnId: number; origin: WriterTier }, wait: boolean, finalResponse: boolean, recoveringResponse: boolean): Promise<number> {
-        return this.#disposition.settle(ctx, wait, finalResponse, recoveringResponse);
+    async settleProgram(ctx: { workerId: number; loopId: number; turnId: number; origin: WriterTier }, wait: boolean, finalResponse: boolean): Promise<number> {
+        return this.#disposition.settle(ctx, wait, finalResponse);
     }
 
     // {§send-premature-terminate}: judge observation boundaries after the whole program settles.
     async #pendingSet(workerId: number, turnId: number, loopId: number): Promise<CompletionEvidence> {
         const pending: CompletionEvidence["pending"] = [];
         // {§worker-obligations} — all held work shares one durable projection.
-        const held = await this.#db.loop_live_obligations.get<{ streams: 0 | 1; workers: 0 | 1; events: 0 | 1 }>({ loop_id: loopId });
+        const held = await this.#db.loop_live_obligations.get<{ streams: 0 | 1; workers: 0 | 1 }>({ loop_id: loopId });
         if (held === undefined) throw new Error(`loop ${loopId} does not exist`);
         if (held.streams === 1) pending.push("streams");
         if (held.workers === 1) pending.push("workers");
@@ -1299,7 +1299,7 @@ export default class Dispatcher {
 
     // {§wait-obligation-matrix}: retrievals land next turn; only held work permits parking.
     async hasLiveWork(loopId: number): Promise<boolean> {
-        const held = await this.#db.loop_live_obligations.get<{ streams: 0 | 1; workers: 0 | 1; events: 0 | 1 }>({ loop_id: loopId });
+        const held = await this.#db.loop_live_obligations.get<{ streams: 0 | 1; workers: 0 | 1 }>({ loop_id: loopId });
         return held !== undefined && (held.streams === 1 || held.workers === 1);
     }
 

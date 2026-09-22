@@ -1024,7 +1024,7 @@ boundary.
 - §worker-lifecycle-wake-liveness **A stream conclusion always reaches its worker.** The stream first persists its terminal state. A worker **blocked on a 202 wait** for that stream ({§wait-obligation-matrix}) then **awakens that loop in place** — the blocked loop *is* the continuation, so there is no fresh loop and no summary-as-prompt fiction. An already-active worker needs no injected prompt or second wake because its next packet reads the durable terminal state. A concluded worker receives no synthetic loop from ambient stream closure. The result remains available in the stream's own state under every case.
 - §worker-lifecycle-child-wake **Each child task completion notifies its parent.** Terminal-task publication, including failure and cancellation of a parked task, notifies the direct parent without injecting a prompt. Other unfinished tasks or streams in that child remain independent obligations; they cannot suppress notification. The parent's eligible waits requeue in place under {§loop-wake-identity} and the bounded {§worker-optimistic-settlement} opportunity. Durable revisioning covers completion-before-park and restart; drain teardown and whole-worker quiescence are not completion identities.
 - §worker-optimistic-settlement **Asynchronous settlement receives one bounded worker-local opportunity before model dispatch.** An initiating turn lets only the streams it started settle before program completion; separately, a stream conclusion, direct-child conclusion or addressed reply persists and publishes immediately but holds eligible parked loops' `202→100` requeues while another stream or direct child remains live. Both use `PLURNK_SERVICE_OPTIMISTIC_WAIT_MS`, shipped at five seconds; zero disables the opportunity. The wake hold ends as soon as no sibling obligation remains, never extends its original deadline, and coalesces arrivals within that window into at most one requeue per eligible loop. With no sibling obligation the wake is immediate; at the deadline, surviving work follows the ordinary monitored lifecycle. An arrival after provider dispatch begins retains its next wake, while poll, new-request and operator wakes never open this hold. Only packet/provider dispatch waits: durable state, client events, cancellation and the replying program do not. One redaction-safe span records elapsed time, quiescence versus deadline, and arrival count without entering the packet.
-- §worker-lifecycle-idle-is-concluded **Idle is not unanswered.** An empty WAIT continues; an answered, observed program without held work concludes under {§wait-obligation-matrix}. A concluded worker retains durable history; a later addressed arrival starts a new loop.
+- §worker-lifecycle-idle-is-concluded **Idle is not unanswered.** An empty WAIT continues; an eligible final response with answered messages, observed results and no held work concludes under {§wait-obligation-matrix}. A concluded worker retains durable history; a later addressed arrival starts a new loop.
 - §worker-lifecycle-no-lost-loop **A loop is never stranded by a drain's exit.** A drain relinquishes its registry slot only after a lock-held re-claim confirms the queue is empty; a loop enqueued during that teardown is either re-claimed by the exiting drain or claimed by a fresh drain that a later inject starts. The relinquish and the start are serialized, so neither the lost-loop hang nor a transient double-drain can occur.
 - §worker-lifecycle-durable-disposition **Durable disposition wins cancellation races.** At a turn boundary, the engine reads the loop's durable status before interpreting a process-local abort. A committed `202` park survives a later daemon-shutdown signal; only a loop still durably running at `102` can be terminalized by that cancellation. Wake selection rechecks shutdown and worker cancellation before requeuing each parked loop.
 - §worker-lifecycle-restart-recovery **Restart is owner-loss reconciliation, not replay.** Before opening client transports, the service holds an exclusive database-adjacent daemon lock; a second live owner fails before touching SQLite, while a dead-PID crash claim is replaced atomically without a timeout lease. Boot preserves accepted `100` loops and restores their drains. A `102` loop belonged to a vanished drain/provider call, so it settles `500` with the interruption on its durable row—never replayed across an unknown effect boundary. Every pending physical provider request first settles as an error with absent usage and explicitly unknown cost; then its logical model call closes. Recovery never fabricates zero evidence. Every durable proposed operation likewise lost its process-local resolution waiter and settles as a visible `500 owner_vanished` occurrence rather than an unresolvable interrupt ({§proposal-list}). A pending client interaction also lost its exact awaiting operation, so boot removes the orphan instead of replaying work or inventing a response ({§client-interactions}). Every durable-open subscription belonged to a vanished callable: active channels become errored and its row closes `500`. A `202` continuation requeues on an unseen completion or when no live obligation remains. Otherwise it stays parked on surviving children; the drain restores inherited stream observation through the same guarded scheduler ({§worker-wait-timing}). Child terminalization wakes its parked parent on every outcome, including provider exceptions, cancellation, and restart interruption, recursively through the durable parent edges. These operations are idempotent, so an interrupted recovery safely repeats.
@@ -1142,7 +1142,7 @@ The contracts, and the violation of each that strikes:
 | Contract | Violation that strikes |
 |---|---|
 | operation contract | a hard operation failure (status ≥ 400) in an admitted turn — soft statuses below excluded |
-| review contract | none: answered work joins live obligations ({§completion-joins-live-work}) or continues to observe results ({§completion-defers-to-results}) |
+| review contract | none: an eligible final response joins live obligations ({§completion-joins-live-work}) or continues to observe results ({§completion-defers-to-results}) |
 | progress contract | a detected operation cycle (`MIN_CYCLES` × period), or an admitted turn with no operation ({§empty-turn}) |
 | frame contract | emission attempts exhausted with no admissible turn |
 | provider response contract | the provider returned an invalid response |
@@ -2603,12 +2603,12 @@ same durable liveness.
 | Worker or loop already cancelled/terminal | Preserve that result. |
 | Administrative program | Finish its transaction without adjudicating another model loop's work. |
 | New unpublished message | Continue; publish it in the next packet. |
-| No authored response operations ({§empty-turn}), recovered response text ({§response-text-recovery}), or fresh operation/parser failure, without an authored WAIT | Continue before any automatic parking. |
-| Live work and either WAIT or no unanswered messages | Park the same loop; message arrival, child or stream settlement, or stream cadence wakes it. |
+| Fresh operation/parser failure, without an authored WAIT | Continue before any automatic parking. |
+| Neither an authored WAIT nor an eligible completion request ({§send-conclusion}) | Continue, regardless of earlier replies or live work. |
+| Live work and either WAIT or an eligible completion request with no unanswered messages | Park the same loop; message arrival, child or stream settlement, or stream cadence wakes it. |
 | WAIT without live work | Continue; never invent a future wake. |
 | Unanswered messages | Continue. |
 | Unobserved operation results, failures, child results or stream conclusions | Continue; the next packet presents them. |
-| No eligible completion request ({§send-conclusion}) | Continue. |
 | Eligible completion request with no outstanding messages, live work or unobserved results | Conclude successfully. |
 
 An empty emission is handled by {§empty-turn}. Ordinary strikes, cycles and
@@ -2725,10 +2725,11 @@ accounting and model-visible failure evidence remain separately owned by
   executed evidence, not curated rows. Fast completion, an empty result or curation cannot
   erase it. New arrivals are protected by {§completion-defers-to-messages}; no terminal verb
   or prose overrides this rule.
-- §completion-joins-live-work **Answered work still joins its live obligations.** Once all
-  observed messages are answered, live children, non-detached streams park the same loop
-  as WAIT does. Each ordinary wake presents the newly settled state; completion is evaluated
-  again after the next program. KILL owns cancellation; a reply never cancels work implicitly.
+- §completion-joins-live-work **A final response joins its live obligations.** An eligible
+  completion request with all observed messages answered parks on live children or
+  non-detached streams, as WAIT does. Ordinary programs continue regardless of earlier
+  replies. Each wake presents the newly settled state; the next program expresses its
+  own disposition. KILL owns cancellation; a reply never cancels work implicitly.
 - §completion-defers-to-results **Results keep the loop running until observed.** Same-turn
   operations and failures, plus undelivered child or stream conclusions, require the next
   packet. This is ordinary continuation, not a strike or a synthetic refusal receipt.
@@ -4524,7 +4525,7 @@ flowchart TD
   | Status | Outcome |
   |---|---|
   | 100 / 102 | Queued / running |
-  | 202 | WAIT or answered work joining a live obligation ({§wait-obligation-matrix}, {§worker-wait-timing}) |
+  | 202 | WAIT or an eligible final response joining a live obligation ({§wait-obligation-matrix}, {§worker-wait-timing}) |
   | 200 | Messages answered, results observed, held work settled |
   | 499 | Worker-scope or client cancellation |
   | 429 | Turn allowance exhausted |

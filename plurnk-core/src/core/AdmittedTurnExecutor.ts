@@ -69,7 +69,6 @@ export default class AdmittedTurnExecutor {
         failOnOperationError = false,
         recoverableParseErrors = [],
         emptyTurn = false,
-        recoveredText = false,
         finalResponse = statements.length === 1 && statements[0].op === "SEND" && statements[0].target === null,
         bare,
         signal,
@@ -89,7 +88,6 @@ export default class AdmittedTurnExecutor {
         failOnOperationError?: boolean;
         recoverableParseErrors?: readonly ParseErrorInfo[];
         emptyTurn?: boolean;
-        recoveredText?: boolean;
         finalResponse?: boolean;
         bare?: BareExecution;
         signal?: AbortSignal;
@@ -335,7 +333,7 @@ export default class AdmittedTurnExecutor {
                 ),
             });
         }
-        const turnStatus = await this.#dispatcher.settleProgram({ workerId, loopId, turnId, origin }, wait, finalResponse, emptyTurn || recoveredText);
+        const turnStatus = await this.#dispatcher.settleProgram({ workerId, loopId, turnId, origin }, wait, finalResponse);
         await Turn.complete(this.#db, turnId, turnStatus);
         return {
             status: turnStatus,

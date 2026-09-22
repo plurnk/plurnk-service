@@ -146,20 +146,16 @@ Await capital-checker's answer.
 WAIT continues the same loop: with live work—a child or an open stream—the
 loop parks and wakes when that work settles, when a message arrives, or on an
 open stream's observation cadence; without live work it continues at once.
-Several WAITs in one turn are one park, and what a WAIT names is its label. To wake later with nothing in flight,
+Several WAITs in one turn are one park, and what a WAIT names is its label.
+Scope and metadata decorations are ignored. To wake later with nothing in flight,
 add a rule with the `schedule` family targeting yourself.
-
-WAIT on `schedule:///rules/<alias>` attaches its pending occurrence to this
-loop. The attachment remains held across wakes and later bare WAITs; delivery
-or withdrawal settles it. See `schedule.md` for the rule and attachment resources.
-WAIT on other targets behaves as bare WAIT unless their scheme supports awaiting
-an event. Scope and metadata decorations are ignored.
 
 A wake ends the suspension, not its held work. Submit WAIT to wait again. Waking
 retains the loop's messages, turn allowance, and remaining execution time;
 parked time does not consume execution time. Conclude by observing the work's
 results and answering every Open Message, then submitting a turn containing only
 a targetless SEND. Its body may be empty when the answer already delivered stands.
+A final SEND joins any remaining live work instead of cancelling it.
 
 Each child task's conclusion wakes its waiting parent and arrives as an
 `_plurnk` READ of `ops://capital-checker/1`, carrying what the child said. This is the

@@ -147,7 +147,6 @@ type SplitProviderResponse = {
     parseNotices: Notice[];
     emissionValid: boolean;
     emptyTurn: boolean;
-    recoveredText: boolean;
     // {§send-conclusion}: the response alone explicitly requested completion.
     finalResponse: boolean;
 };
@@ -1703,7 +1702,6 @@ export default class TurnRunner {
             maxCommands,
             recoverableParseErrors: split.recoverableParseErrors,
             emptyTurn: split.emptyTurn,
-            recoveredText: split.recoveredText,
             finalResponse: split.finalResponse,
             bare: {
                 provider: childProvider,
@@ -1828,7 +1826,6 @@ export default class TurnRunner {
             parseErrors,
             recoverableParseErrors: emissionValid ? recoverableParseErrors : [],
             emptyTurn,
-            recoveredText,
             finalResponse,
             parseNotices,
             emissionValid,

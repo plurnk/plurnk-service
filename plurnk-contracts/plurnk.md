@@ -32,13 +32,13 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 * FORK: Deploy a forked worker (forked log).
 * BARE: Deploy an isolated inference query (no log or tools).
 * WAIT: Yield until the next wake: a child worker's result or a stream's end.
-* SEND: Message endpoints, workers, or the operator.
+* SEND: Message endpoints, workers, or deliver the final response turn.
 
 ## Workflow Management
 
 > [!IMPORTANT]
 > A parameterless SEND goes to the operator (GFM format accepted) or parent worker.
-> A turn with only a parameterless SEND is a final response (if there are no unresolved child workers or streams).
+> Only a turn with a lone parameterless SEND by itself is a final response (if there are no unresolved child workers or streams).
 
     ````SEND
     The answer is 42.

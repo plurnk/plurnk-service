@@ -4,8 +4,10 @@ import type { Notice } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock, type MockResponse } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
+import ChannelWrite from "../../src/core/ChannelWrite.ts";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { DEFAULT_MIMETYPES, holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection, seedEntryWithChannel } from "./_helpers.ts";
 import { statement } from "./reasoning-fixture.ts";
 
 const said = (content: string, reasoning: string | null = null): MockResponse => ({ assistant: { content, reasoning } });
@@ -118,6 +120,43 @@ test("{§send-conclusion}: a NOTE after the messages were answered does not sile
         assert.equal((await turn()).status, 200);
     } finally { await db.close(); }
 });
+
+for (const reply of ["authored", "recovered"] as const) {
+    for (const obligation of ["child", "stream"] as const) {
+        for (const park of ["WAIT", "SEND"] as const) {
+            test(`{§wait-obligation-matrix}: an earlier ${reply} reply does not park ordinary work before ${park} with a live ${obligation}`, async () => {
+                const first = `${reply === "authored" ? send("Working on it.") : "Working on it."}\n\n${PlurnkParser.frame("NOTE", "Continue the work.")}`;
+                const { db, turn, ids } = await setup([
+                    said(first),
+                    said(PlurnkParser.frame("NOTE", "Check the saved input.")),
+                    said(PlurnkParser.frame("READ (worker:///input.txt)", null)),
+                    said(PlurnkParser.frame(park, null)),
+                ]);
+                try {
+                    await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, scheme: "worker", pathname: "/input.txt",
+                        channel: "body", content: "input-witness", mimetype: "text/plain", state: "static" });
+                    assert.equal((await turn()).status, 102);
+                    assert.equal((await db.message_unanswered_count.get({ loop_id: ids.loopId }))?.count, 0);
+                    if (obligation === "child") await holdChild(db, ids.workspaceId, ids.workerId);
+                    else {
+                        const entryId = await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, scheme: "node", pathname: "/12345678",
+                            channel: "stdout", content: "Ready for input.", mimetype: "text/plain", state: "active" });
+                        await ChannelWrite.openSubscription(db, { workerId: ids.workerId, entryId, scheme: "node", handle: "/12345678", publishedChannel: "stdout" });
+                    }
+                    const memory = await turn();
+                    assert.equal(memory.status, 102, "an earlier delivery is not an instruction to park a later NOTE");
+                    const read = await turn();
+                    assert.equal(read.status, 102, "ordinary work continues to observe its result without a poll or external wake");
+                    const rows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: read.turnId });
+                    assert.ok(rows.some(({ op, status_rx, rx }) => op === "READ" && status_rx === 200 && JSON.parse(rx).content === "input-witness"));
+                    assert.equal(await new LoopLifecycle(db).status(ids.loopId), 102);
+                    assert.equal((await turn()).status, 202, `${park} still joins the live obligation`);
+                    assert.equal(await new LoopLifecycle(db).status(ids.loopId), 202);
+                } finally { await db.close(); }
+            });
+        }
+    }
+}
 
 for (const response of ["200", "````markdown\nFour.\n````", "````md\nFour.\n````"]) {
     test(`{§send-conclusion}: ${JSON.stringify(response)} cannot confirm a previous free response`, async () => {

@@ -31,6 +31,41 @@ test("{§exec-input}: the production loop sends stdin, waits for EOF completion,
     });
 });
 
+for (const reply of ["authored", "recovered"] as const) {
+    test(`{§wait-obligation-matrix}: an earlier ${reply} reply cannot park a later clean process launch before stdin delivery`, async () => {
+        const prefix = reply === "authored" ? "````SEND\nStarting the exchange.\n````" : "Starting the exchange.";
+        const mock = new StreamMock({ contextWindow: 100_000, responses: [
+            makeRawMockResponse(`${prefix}\n\n\`\`\`\`NOTE\nStart the process, then deliver its input.\n\`\`\`\``),
+            makeRawMockResponse("````node [{\"stdin\":\"open\"}]\nlet input = \"\"; process.stdin.on(\"data\", d => input += d); process.stdin.on(\"end\", () => console.log(\"received:\" + input));\n````"),
+            makeRawMockResponse("````SEND ($STREAM) [{\"eof\":true}]\nlater-witness\n````\n\n````WAIT\n````"),
+            makeRawMockResponse("````SEND\nVerified later-witness in the process response.\n````"),
+        ] });
+        await withDaemon(mock, async (db, _daemon, address) => {
+            const client = await connect(address);
+            try {
+                await rpcCall(client, 1, "workspace.create", { name: `earlier-reply-${reply}` });
+                const result = await runLoopToTerminal(client, 2, {
+                    prompt: "Exchange input with the process and verify its response.", policy: { proposals: "accept" },
+                });
+                assert.equal(result.finalStatus, 200);
+                assert.equal(result.turnIds?.length, 5);
+                assert.equal(mock.received.length, 4);
+                const launch = result.turnIds![2]!;
+                assert.equal((await db.test_get_turn_status.get<{ status: number }>({ id: launch }))?.status, 102,
+                    "a clean launch continues without a stream poll or external wake even after an earlier reply");
+                const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: launch });
+                assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["node", 200]],
+                    "the continuing launch contains no recovery, WAIT or reply");
+                const input = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: result.turnIds![3]! });
+                assert.ok(input.some(({ op, status_rx, rx }) => op === "SEND" && status_rx === 200 && JSON.parse(rx).bytesAccepted === 13));
+                const packet = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds![4]! });
+                assert.match(packetSection(JSON.parse(packet!.packet), "log"), /received:later-witness/,
+                    "the next model request contains the actual process response to the delivered input");
+            } finally { client.close(); }
+        });
+    });
+}
+
 for (const cause of ["operation", "parser", "commentary"] as const) {
     test(`{§wait-obligation-matrix}: ${cause} recovery continues before automatically parking an input-open process`, async () => {
         const prefix = cause === "commentary"

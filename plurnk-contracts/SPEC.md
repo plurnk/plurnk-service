@@ -953,9 +953,9 @@ operation receives empty-turn recovery, not successful completion ({§empty-turn
 | Unanswered messages or unobserved results | 102 | Continue silently |
 | No authored response operations or fresh operation/parser failure, without WAIT | 102 | Recover before automatic parking |
 | WAIT | 202 | Park when a live obligation exists; otherwise continue at 102 |
-| All messages answered, live work remains, no fresh failure | 202 | Join the held work |
+| Lone explicit targetless SEND, all messages answered, live work remains, no fresh failure | 202 | Join the held work |
 | Lone explicit targetless SEND, messages answered, results observed, no held work | 200 | Conclude under {§send-conclusion}; an empty SEND need not repeat a delivered response |
-| Other admitted program | 102 | Continue |
+| Other admitted program | 102 | Continue regardless of earlier replies or live work |
 | KILL own worker | 499 | Cancel unfinished work in that worker and its descendants |
 | Runtime or infrastructure failure | 5xx | Not a model-authored task status |
 
