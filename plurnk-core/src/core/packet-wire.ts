@@ -1,3 +1,4 @@
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // Packet → wire markdown projection. Single source of truth for how the
 // Packet's ordered list of sections renders to ChatMessage.content
@@ -166,6 +167,7 @@ interface RowIdentity {
     readonly path: string;
     readonly renderedLeaf: string;
     readonly target: string | null;
+    readonly written: string | null;
 }
 interface RowResultFacts {
     readonly findItems: number | null;
@@ -405,13 +407,7 @@ export default class PacketWire {
 
     // {§log-wire-format} Orientation precedes telemetry on every receipt.
     static #canonicalJson(obj: Record<string, unknown>): string {
-        const keys = Object.keys(obj).sort();
-        const sorted: Record<string, unknown> = {};
-        for (const key of ["path", "from", "to", "aside"]) {
-            if (Object.hasOwn(obj, key)) sorted[key] = obj[key];
-        }
-        for (const k of keys) sorted[k] = obj[k];
-        return JSON.stringify(sorted);
+        return JSON.stringify(Object.fromEntries(Object.keys(obj).sort().map((key) => [key, obj[key]])));
     }
 
     static #receiptMeta(value: unknown): Record<string, string | number> {
@@ -775,29 +771,13 @@ export default class PacketWire {
         // ({§log-kill-meta-operation}).
         if (typeof e.status === "number" && (op === "SEND" || op === "KILL" || typeof op === "string" && TurnDisposition.isOp(op) || e.status !== 200)) meta.status = e.status;
         const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
-        if (typeof tx?.aside === "string") meta.aside = tx.aside;
         const target = PacketWire.#renderActionTarget(e.target);
-        // {§log-address-metadata}: operands are independent of record identity and attribution.
-        if (op === "COPY" || op === "MOVE") {
-            const source = PacketWire.#renderSelection(
-                tx?.source?.target,
-                tx?.source?.lineMarker,
-            );
-            const destination = PacketWire.#renderSelection(
-                tx?.destination?.target,
-                tx?.destination?.lineMarker,
-            );
-            if (source !== null) meta.from = source;
-            if (destination !== null) meta.to = destination;
-            if (
-                typeof e.status === "number"
-                && e.status < 400
-                && (source === null || destination === null)
-            ) {
-                throw new Error(`A successful ${op} log row must retain both operand selections.`);
-            }
-        } else if (target !== null) {
-            meta.path = target;
+        // {§log-wire-format}: the request rides as written, never as JSON-quoted operands.
+        const written = PacketWire.#writtenHeading(op, tx, e.target);
+        if ((op === "COPY" || op === "MOVE") && typeof e.status === "number" && e.status < 400
+            && (PacketWire.#renderSelection(tx?.source?.target, tx?.source?.lineMarker) === null
+                || PacketWire.#renderSelection(tx?.destination?.target, tx?.destination?.lineMarker) === null)) {
+            throw new Error(`A successful ${op} log row must retain both operand selections.`);
         }
         // {§worker-auto-name} The created identity is an outcome, not an authored target.
         if ((op === "WORK" || op === "FORK") && e.attrs !== null && typeof e.attrs === "object"
@@ -816,7 +796,7 @@ export default class PacketWire {
         if (isExecutionOp(op) && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { stream?: unknown }).stream === "string") {
             meta.stream = (e.attrs as { stream: string }).stream;
         }
-        return { meta, op, tx, coordinate, path, renderedLeaf, target };
+        return { meta, op, tx, coordinate, path, renderedLeaf, target, written };
     }
 
     // The row's result facts from its rx: the terminal stream's exit, the Problem or detail, the
@@ -829,7 +809,7 @@ export default class PacketWire {
         }
         // {§operation-resource-receipt}: preserve the returned address, not a second authored target.
         if (rx !== null && typeof rx === "object" && typeof rx.resource === "string"
-            && rx.resource.length > 0 && rx.resource !== meta.path && rx.resource !== meta.stream) {
+            && rx.resource.length > 0 && rx.resource !== identity.target && rx.resource !== meta.stream) {
             meta.resource = rx.resource;
         }
         // {§exec-stream}: explicit and automatic READs preserve the same
@@ -872,10 +852,7 @@ export default class PacketWire {
         let findItems: number | null = null;
         let range: RangeExtent | null = null;
         const patterned = tx !== null && tx !== undefined && typeof tx === "object" && tx.matcher !== null && typeof tx.matcher === "object" && typeof tx.matcher.raw === "string";
-        if (patterned) {
-            meta.matcher = (tx as { matcher: { raw: string } }).matcher.raw;
-            if (op !== "FIND" && rx !== null && typeof rx === "object" && typeof rx.matched === "number") meta.matched = rx.matched;
-        }
+        if (patterned && op !== "FIND" && rx !== null && typeof rx === "object" && typeof rx.matched === "number") meta.matched = rx.matched;
         // {§channel-selection-visibility} — a READ names the resource's other channels with their
         // tokens, so the row itself shows the choice a FIND listing would.
         if (op === "READ" && rx !== null && typeof rx === "object" && rx.channels !== null && typeof rx.channels === "object") {
@@ -1099,11 +1076,14 @@ export default class PacketWire {
                 : "native content";
             meta.overflow = `${omitted} not shown; the log exceeded logTokensMax when this row was withheld`;
         }
+        // {§log-wire-format}: the address and its charge, the request as written, the facts, the body.
+        let logTokens = 0;
         const renderRow = (): string => {
-            const metadata = PacketWire.#canonicalJson(meta);
-            return display === "open"
-                ? `### ${path}\n${metadata}\n${body}`
-                : `### ${path}\n${metadata}`;
+            const lines = [`### ${path} · ${logTokens}`];
+            if (identity.written !== null) lines.push(identity.written);
+            if (Object.keys(meta).length > 0) lines.push(PacketWire.#canonicalJson(meta));
+            if (display === "open") lines.push(body);
+            return lines.join("\n");
         };
 
         // {§packet-attachment-parts}: retained native content shares the row's curation lifetime.
@@ -1112,10 +1092,9 @@ export default class PacketWire {
             ? native
             : null;
         if (attachment !== null) meta.tokensAttachment = attachment.weight;
-        meta.logTokens = 0;
         for (let pass = 0; pass < 8; pass += 1) {
-            const logTokens = weighContent(renderRow()) + (attachment?.weight ?? 0);
-            if (meta.logTokens === logTokens) {
+            const next = weighContent(renderRow()) + (attachment?.weight ?? 0);
+            if (next === logTokens) {
                 return {
                     content: renderRow(),
                     curationTarget: { path, logTokens },
@@ -1128,7 +1107,7 @@ export default class PacketWire {
                     newOverflow: outputWithheld && e.newOverflow === true,
                 };
             }
-            meta.logTokens = logTokens;
+            logTokens = next;
         }
         throw new Error("packet log row accounting did not converge");
     }
@@ -1195,6 +1174,32 @@ export default class PacketWire {
         if (projectRoot === null || cwd === projectRoot) return null;
         const spelled = relative(projectRoot, cwd);
         return spelled.length === 0 ? null : spelled.split(sep).join("/");
+    }
+
+    // {§log-wire-format}: the request as the model wrote it, in canonical slot order — never a JSON
+    // re-encoding, which doubles every escape a weak model reads back (#819).
+    static #writtenHeading(op: string | null, tx: StatementTx | null, rowTarget: ActionTarget | null | undefined): string | null {
+        if (op === null || op === "error" || op === "extension") return null;
+        const t = (tx !== null && typeof tx === "object" ? tx : {}) as StatementTx & { metadata?: unknown; matcher?: unknown };
+        // Operands take the packet's canonical spelling ({§scheme-address-network}, percent-encoded
+        // identity), never the statement's authored raw: the row's resolved target first, the
+        // statement's own target only when the row kept none.
+        const spelled = (target: ActionTarget | null | undefined): { kind: string; raw: string } | null => {
+            if (target === null || target === undefined) return null;
+            const local = target.kind === "local" || (target.scheme === null || target.scheme === undefined) && typeof (target as { raw?: unknown }).raw === "string";
+            const raw = local
+                ? renderTarget({ scheme: null, pathname: (target as { raw?: string }).raw ?? target.pathname ?? "", fragment: target.fragment ?? null })
+                : PacketWire.#renderActionTarget(target);
+            return raw === null ? null : { kind: local ? "local" : "url", raw };
+        };
+        const target = spelled(rowTarget ?? t.target);
+        const selection = (s: { target?: ActionTarget | null; lineMarker?: unknown } | undefined) =>
+            s === undefined ? undefined : { target: spelled(s.target), lineMarker: s.lineMarker ?? null, metadata: null, matcher: null };
+        const statement = isExecutionOp(op)
+            ? { runtime: op, aside: t.aside ?? null, target, lineMarker: null, metadata: t.metadata ?? null, body: null }
+            : { op, aside: t.aside ?? null, target, lineMarker: t.lineMarker ?? null, metadata: t.metadata ?? null,
+                matcher: t.matcher ?? null, source: selection(t.source), destination: selection(t.destination), body: null };
+        return PlurnkParser.heading(statement as never);
     }
 
     static #renderActionTarget(target: ActionTarget | null | undefined): string | null {

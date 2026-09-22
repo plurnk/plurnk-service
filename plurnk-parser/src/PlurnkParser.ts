@@ -58,6 +58,13 @@ export default class PlurnkParser {
         return `${fence}${delimiter}${header}\n${body === null ? "" : `${body}\n`}${fence}${delimiter}`;
     }
 
+    // {§log-wire-format} — one statement's heading as written, canonical slot order, no fence: what a
+    // log row echoes so the model reads its request back in the syntax it wrote it in.
+    static heading(statement: ClientStatement): string {
+        const [first] = PlurnkParser.stringify([{ ...statement, body: null } as ClientStatement]).split("\n");
+        return (first ?? "").replace(/^`+[0-9]*/u, "");
+    }
+
     // {§statement-rendering} — framing is syntax, never persisted AST state.
     static stringify(statements: readonly ClientStatement[]): string {
         return statements.map((statement) => {

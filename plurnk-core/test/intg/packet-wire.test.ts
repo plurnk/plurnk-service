@@ -10,7 +10,7 @@ import { parseLogRecords } from "../LogRecords.ts";
 // governs packet weights ({§tokenomics-agnostic-ruler}), so drift stays reviewable in the
 // unit the system budgets in rather than one model's vocabulary.
 // The reviewed scope projection, in the agnostic ruler the packet budgets in.
-const METADATA_WEIGHT = 454;
+const METADATA_WEIGHT = 308;
 const tok = (s: string): number => Math.ceil(s.length / 4);
 
 test("{§log-address-metadata}: addressed operands and record identities remain distinct across operation families", async (t) => {
@@ -23,35 +23,36 @@ test("{§log-address-metadata}: addressed operands and record identities remain 
                     : { scheme: "worker", hostname: "reviewer", pathname: "/notes.md" },
                 tx: { aside: "addressed operand", runtime: op, body: null },
             }], tok);
-            const [heading, metadataLine] = out.split("\n");
-            const metadata = JSON.parse(metadataLine!);
-            assert.equal(heading, `### log:///1/2/3/${op}`);
-            assert.equal(metadata.path, address);
-            assert.deepEqual(Object.keys(metadata).slice(0, 2), ["path", "aside"]);
-            assert.equal(metadata.target, undefined);
-            assert.equal(metadata.log, undefined);
+            const [heading, written] = out.split("\n");
+            const row = parseLogRecords(out)[0]!;
+            assert.match(heading!, new RegExp(`^### log:///1/2/3/${op} · \\d+$`), "the address carries its charge");
+            assert.equal(written, `${op} (${address}) <!-- addressed operand -->`, "the request is written, in its own syntax");
+            assert.equal(row.path, address);
+            assert.equal(row.target, undefined);
+            assert.equal(row.log, undefined);
         });
     }
-    const metadata = JSON.parse(PacketWire.renderLog([{
+    const note = parseLogRecords(PacketWire.renderLog([{
         coordinate: "1/2/4", op: "NOTE", status: 200, target: null, tx: { body: "Retain this." },
-    }], tok).split("\n")[1]!);
-    assert.equal(metadata.path, undefined, "a pathless operation does not acquire its own log address as an operand");
+    }], tok))[0]!;
+    assert.equal(note.written, "NOTE", "a pathless operation is written bare");
+    assert.equal(note.path, undefined, "a pathless operation does not acquire its own log address as an operand");
 });
 
 test("{§log-address-metadata}: COPY and MOVE operands do not overwrite the observed actor", () => {
     for (const op of ["COPY", "MOVE"]) {
-        const metadata = JSON.parse(PacketWire.renderLog([{
+        const metadata = parseLogRecords(PacketWire.renderLog([{
             coordinate: "1/2/3", op, status: 200, origin: "_plurnk", source: "worker://child",
             tx: {
                 source: { target: { scheme: "worker", hostname: "child", pathname: "/notes.md" }, lineMarker: { marks: [2, 3] } },
                 destination: { target: { scheme: "worker", pathname: "/summary.md" }, lineMarker: { marks: [0] } },
                 aside: "publish findings",
             },
-        }], tok).split("\n")[1]!);
+        }], tok))[0]!;
+        assert.equal(metadata.written, `${op} (worker://child/notes.md) <2,3> (worker:///summary.md) <0> <!-- publish findings -->`);
         assert.equal(metadata.from, "worker://child/notes.md<2,3>");
         assert.equal(metadata.to, "worker:///summary.md<0>");
         assert.equal(metadata.source, "worker://child");
-        assert.deepEqual(Object.keys(metadata).slice(0, 3), ["from", "to", "aside"]);
         assert.equal(metadata.path, undefined, "two operands are not collapsed into one path");
         assert.equal(metadata.destination, undefined);
     }
@@ -85,8 +86,8 @@ test("{§log-address-metadata}: explicit and automatic READs share one resource-
         target: { scheme: "gitea", pathname: "/abcd1234" },
         rx: { content: "result", terminal: true, range: { unit: "line", total: 1, requested: [1, 16], returned: [1, 1] } },
     };
-    const explicit = JSON.parse(PacketWire.renderLog([read], tok).split("\n")[1]!);
-    const automatic = JSON.parse(PacketWire.renderLog([{ ...read, origin: "_plurnk", attrs: { streamEnd: 6 } }], tok).split("\n")[1]!);
+    const explicit = parseLogRecords(PacketWire.renderLog([read], tok))[0]!;
+    const automatic = parseLogRecords(PacketWire.renderLog([{ ...read, origin: "_plurnk", attrs: { streamEnd: 6 } }], tok))[0]!;
     const { origin, logTokens: automaticTokens, ...automaticFacts } = automatic;
     const { logTokens: explicitTokens, ...explicitFacts } = explicit;
     assert.deepEqual(automaticFacts, explicitFacts);
@@ -94,7 +95,7 @@ test("{§log-address-metadata}: explicit and automatic READs share one resource-
     assert.equal(automatic.source, undefined);
     assert.equal(automatic.stream, undefined);
     assert.equal(origin, "_plurnk");
-    assert.ok(automaticTokens > explicitTokens, "the extra producer fact is included in the row charge");
+    assert.ok(Number(automaticTokens) > Number(explicitTokens), "the extra producer fact is included in the row charge");
 });
 
 test("{§log-address-metadata}: delivered attachments keep their resource paths without rewriting delivery evidence", () => {
@@ -105,7 +106,7 @@ test("{§log-address-metadata}: delivered attachments keep their resource paths 
         target: { scheme: "a2a", hostname: "peer", pathname: "" },
         tx: { body: "Here is the report." }, rx: { attachments },
     }], tok);
-    const metadata = JSON.parse(output.split("\n")[1]!);
+    const metadata = parseLogRecords(output)[0]!;
     assert.equal(metadata.path, "a2a://peer");
     assert.deepEqual(metadata.attachments, [{ name: "report.pdf", mediaType: "application/pdf", path: attachments[0]!.target }]);
     assert.deepEqual(attachments, before, "the durable/exterior attachment descriptor keeps its owning contract");
@@ -265,7 +266,7 @@ test("{§log-wire-format}: a present operation aside materializes and absence co
         op: "sh", status: 200,
         tx: { runtime: "gitea", aside: "Lists issues", body: null },
     }], tok);
-    assert.match(withAside, /"aside":"Lists issues"/);
+    assert.match(withAside, /^sh <!-- Lists issues -->$/m, "the aside rides the written request, never re-encoded");
 
     const absent = PacketWire.renderLog([{
         coordinate: "1/1/2",
@@ -276,7 +277,7 @@ test("{§log-wire-format}: a present operation aside materializes and absence co
     assert.doesNotMatch(absent, /"aside":/);
 });
 
-test("{§log-wire-format}: receipt metadata leads with path, then aside, before other facts", async (t) => {
+test("{§log-wire-format}: the request is written before its facts, and the facts keep one stable order", async (t) => {
     const read = {
         coordinate: "1/5/1", op: "READ", origin: "model", status: 200,
         target: { scheme: null, pathname: "/notes.md" },
@@ -320,25 +321,29 @@ test("{§log-wire-format}: receipt metadata leads with path, then aside, before 
     for (const { name, entry, target } of cases) {
         await t.test(name, () => {
             const out = PacketWire.renderLog([entry], tok);
-            const metadata = JSON.parse(out.split("\n")[1]!);
-            const orientation = Object.hasOwn(metadata, "aside") ? ["path", "aside"] : ["path"];
-            const keys = Object.keys(metadata);
-            assert.deepEqual(keys.slice(0, orientation.length), orientation);
-            assert.equal(metadata.path, target);
-            const rest = keys.slice(orientation.length);
-            assert.deepEqual(rest, [...rest].sort());
-            assert.equal(metadata.logTokens, tok(out), "ordering participates in actual row accounting");
+            const [heading, written, facts] = out.split("\n");
+            const row = parseLogRecords(out)[0]!;
+            const aside = "tx" in entry ? entry.tx.aside : undefined;
+            assert.equal(written, `${entry.op} (${target})${aside === undefined ? "" : ` <!-- ${aside} -->`}`, "the request as written follows the address");
+            assert.equal(row.path, target);
+            assert.equal(row.aside, aside);
+            if (facts !== undefined && facts.startsWith("{")) {
+                const keys = Object.keys(JSON.parse(facts) as object);
+                assert.deepEqual(keys, [...keys].sort(), "result facts keep stable alphabetical order");
+            }
+            assert.equal(row.logTokens, tok(out), "the heading's charge prices the complete row");
+            assert.match(heading!, /^### log:\/\/\/1\/5\/1\/\w+ · \d+$/);
             assert.equal(PacketWire.renderLog([entry], tok), out, "unchanged facts keep stable packet bytes");
         });
     }
 
     for (const tx of [{ runtime: "sh" }, { runtime: "sh", aside: "no resource target" }]) {
-        const entry = { ...read, runtime: "sh", target: null, tx };
+        const entry = { ...read, op: "sh", target: null, tx };
         const out = PacketWire.renderLog([entry], tok);
-        const metadata = JSON.parse(out.split("\n")[1]!);
-        const keys = Object.keys(metadata);
-        assert.deepEqual(keys, [...keys].sort(), "targetless receipts lead with aside when present");
-        assert.equal(Object.hasOwn(metadata, "path"), false, "ordering never invents a target");
+        const [, written] = out.split("\n");
+        assert.equal(written, tx.aside === undefined ? "sh" : `sh <!-- ${tx.aside} -->`, "a targetless request is written bare; the aside stays on its line");
+        const row = parseLogRecords(out)[0]!;
+        assert.equal(Object.hasOwn(row, "path"), false, "the row never invents a target");
     }
 });
 
@@ -354,7 +359,7 @@ test("{§packet-markdown}: section headings are separated from content without s
         { slot: "user", header: null, content: "bare\n" },
     ], "user");
     assert.equal(packet, `## Log\n\n${log}\n\n## Context Curation\n\nlogTokensTotal: 100\n\nbare`);
-    assert.match(packet, /### log:\/\/\/1\/2\/1\/READ\n\{/u);
+    assert.match(packet, /### log:\/\/\/1\/2\/1\/READ · \d+\nREAD \(\/?notes\.md\)\n/u);
 });
 
 test("environment-delta provenance renders as source, never a fictitious run entity", () => {
@@ -411,7 +416,7 @@ test("{§exec-stream}: a terminal stream observation states completion truth wit
     assert.match(out, /"exitCode":0/, "the executor's exact terminal fact survives packet projection");
     assert.doesNotMatch(out, /"source":/, "invocation correlation is not another content source");
     assert.match(out, /"terminal":true/, "an empty successful stream remains visibly conclusive");
-    assert.match(out, /"path":"sh:\/\/\/1\/1\/3\/sh#stdout"/, "automatic and explicit READs identify the read resource identically");
+    assert.match(out, /^READ \(sh:\/\/\/1\/1\/3\/sh#stdout\)/m, "automatic and explicit READs identify the read resource identically");
     assert.doesNotMatch(out, /"stream":|"target":/, "a READ has no alternate resource-address dialect");
     assert.doesNotMatch(out, /completed|success/i, "the receipt exposes facts without adding presumptuous narration");
 });
@@ -447,7 +452,7 @@ test("{§scheme-address-network}: a body-suppressed web identity renders https:/
         target: { scheme: "https", hostname: "en.wikipedia.org", pathname: "/wiki/Paris" },
         rx: { status: 200 },
     }], tok);
-    assert.match(out, /"path":"https:\/\/en\.wikipedia\.org\/wiki\/Paris"/, "the authority form, one spelling");
+    assert.match(out, /^EDIT \(https:\/\/en\.wikipedia\.org\/wiki\/Paris\)$/m, "the authority form, one spelling");
 });
 
 test("model-facing targets escape literal URI delimiters without rewriting percent-encoded identity", () => {
@@ -471,9 +476,8 @@ test("model-facing targets escape literal URI delimiters without rewriting perce
         },
         rx: { status: 304 },
     }], tok);
-    const spelling = String.raw`https://example.test/x?literal=\\)&encoded=%29#preview\\(`;
-    assert.ok(out.includes(`"from":"${spelling}"`));
-    assert.ok(out.includes(`"to":"${spelling}"`));
+    const spelling = String.raw`https://example.test/x?literal=\)&encoded=%29#preview\(`;
+    assert.equal(out.split(`(${spelling})`).length, 3, "both operands are written with the same escaped spelling");
 });
 
 test("COPY/MOVE render operand selections and scoped textual materialization receipts", () => {
@@ -507,8 +511,7 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
             }],
         },
     }], tok);
-    assert.match(out, /"from":"worker:\/\/\/source<2,3>"/);
-    assert.match(out, /"to":"worker:\/\/\/draft<0>"/);
+    assert.match(out, /^(COPY|MOVE) \(worker:\/\/\/source\) <2,3> \(worker:\/\/\/draft\) <0>/m);
     assert.doesNotMatch(out, /"path":"worker:\/\/\/source"/);
     assert.match(
         out,
@@ -550,8 +553,7 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
         whole,
         /"effects":\[\{"path":"worker:\/\/\/destination","action":"create"\},\{"path":"worker:\/\/\/source","action":"delete"\}\]/,
     );
-    assert.match(whole, /"from":"worker:\/\/\/source<1,-1>"/);
-    assert.match(whole, /"to":"worker:\/\/\/destination"/);
+    assert.match(whole, /^MOVE \(worker:\/\/\/source\) <1,-1> \(worker:\/\/\/destination\)$/m, "both operands are written, the selection with its marks");
     assert.doesNotMatch(whole, /"body":/, "whole-channel effects invent no text receipt — none-state is body absence (#338)");
 
     const created = PacketWire.renderLog([{
@@ -581,8 +583,7 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
             }],
         },
     }], tok);
-    assert.match(created, /"from":"worker:\/\/\/source<2,3>"/);
-    assert.match(created, /"to":"worker:\/\/\/created"/);
+    assert.match(created, /\(worker:\/\/\/source\) <2,3> \(worker:\/\/\/created\)/);
     assert.match(created, /"action":"create"[^}]*"effect":"<1,1,1,1> -> <1,2>"/);
     assert.match(created, /1:two\n2:three/);
 
@@ -606,8 +607,7 @@ test("COPY/MOVE render operand selections and scoped textual materialization rec
         },
         rx: { status: 304 },
     }], tok);
-    assert.match(unchanged, /"from":"worker:\/\/\/source<2,3>"/);
-    assert.match(unchanged, /"to":"worker:\/\/\/created"/);
+    assert.match(unchanged, /\(worker:\/\/\/source\) <2,3> \(worker:\/\/\/created\)/);
     assert.doesNotMatch(unchanged, /"effects"/);
     assert.doesNotMatch(unchanged, /"body":/, "none-state is body absence (#338)");
 });
@@ -641,8 +641,7 @@ test("COPY/MOVE retain authored line anchors in durable operand selections", () 
         },
     }], tok);
 
-    assert.match(out, /"from":"worker:\/\/\/source<@aZ09b,@0Aa9Z>"/);
-    assert.match(out, /"to":"worker:\/\/\/destination<@10Zyx,4,@zY01A,4>"/);
+    assert.match(out, /\(worker:\/\/\/source\) <@aZ09b,@0Aa9Z> \(worker:\/\/\/destination\) <@10Zyx,4,@zY01A,4>/);
 });
 
 test("a reviewer-rewritten same-resource MOVE renders one replacement effect and both operands (#172)", () => {
@@ -689,8 +688,7 @@ test("a reviewer-rewritten same-resource MOVE renders one replacement effect and
         },
     }], tok);
 
-    assert.match(out, /"from":"worker:\/\/\/document<1,2,1,4>"/);
-    assert.match(out, /"to":"worker:\/\/\/document<1,7,1,7>"/);
+    assert.match(out, /\(worker:\/\/\/document\) <1,2,1,4> \(worker:\/\/\/document\) <1,7,1,7>/);
     assert.match(
         out,
         /"effects":\[\{"path":"worker:\/\/\/document","action":"update","extent":"lines 1->2","disposition":"superseded","requested":"<1,7,1,7>","change":"-1 \+2","replacement":"<1> -> <1,2>"\}\]/,
@@ -708,9 +706,9 @@ test("log entry: a worker:// spawn renders the worker NAME in the target — aut
         { coordinate: "1/1/9", origin: "model", op: "EDIT", status: 200, target: { scheme: "worker", hostname: "worker_db", pathname: "" } },
         { coordinate: "1/1/10", origin: "model", op: "EDIT", status: 200, target: { scheme: "worker", hostname: "worker_pool", pathname: "" } },
     ], tok);
-    assert.match(out, /"path":"worker:\/\/worker_db"/, "the spawned worker name reaches the model's log");
-    assert.match(out, /"path":"worker:\/\/worker_pool"/, "distinct workers render distinctly — no bare worker://");
-    assert.doesNotMatch(out, /"path":"worker:\/\/"/, "no nameless worker:// rows (the blindness)");
+    assert.match(out, /^EDIT \(worker:\/\/worker_db\)$/m, "the spawned worker name reaches the model's log");
+    assert.match(out, /^EDIT \(worker:\/\/worker_pool\)$/m, "distinct workers render distinctly — no bare worker://");
+    assert.doesNotMatch(out, /\(worker:\/\/\)/, "no nameless worker:// rows (the blindness)");
 });
 
 test("log entry: a web host survives into the target — http://host/path, not http:///path", () => {
@@ -718,7 +716,7 @@ test("log entry: a web host survives into the target — http://host/path, not h
     const out = PacketWire.renderLog([
         { coordinate: "1/1/1", origin: "model", op: "READ", status: 200, target: { scheme: "https", hostname: "en.wikipedia.org", pathname: "/wiki/Paris" } },
     ], tok);
-    assert.match(out, /"path":"https:\/\/en\.wikipedia\.org\/wiki\/Paris"/, "the web host reaches the rendered target");
+    assert.match(out, /^READ \(https:\/\/en\.wikipedia\.org\/wiki\/Paris\)$/m, "the web host reaches the rendered target");
 });
 
 test("log entry: network target preserves port, ordered query, and channel fragment", () => {
@@ -736,7 +734,7 @@ test("log entry: network target preserves port, ordered query, and channel fragm
             fragment: "preview",
         },
     }], tok);
-    assert.match(out, /"path":"https:\/\/example\.org:8443\/a%28b%29\?b=2&a=1&a=3#preview"/);
+    assert.match(out, /^READ \(https:\/\/example\.org:8443\/a%28b%29\?b=2&a=1&a=3#preview\)$/m);
 });
 
 test("log render: READ@200 with text/markdown rx body → line-numbered Markdown content", () => {
@@ -876,7 +874,8 @@ test("log render: a pattern EDIT carries its matcher and matched count beside th
         tx: { target: { scheme: "worker", pathname: "/notes.md" }, matcher: { dialect: "glob", raw: "foo" }, lineMarker: null, body: "baz" },
         rx: { status: 200, matched: 3, receipt: receipt("1:alpha baz\n2:baz bar", "<1,7,1,10>") },
     }], tok);
-    assert.match(out, /"matched":3,"matcher":"foo"/);
+    assert.match(out, /^EDIT \(worker:\/\/\/notes\.md\) \[\{"pattern":"foo"\}\]$/m, "the matcher is written, never re-encoded");
+    assert.match(out, /"matched":3/);
     assert.doesNotMatch(out, /"rev"/, "the receipt carries no revision token");
 });
 
@@ -906,7 +905,7 @@ test("log render: a matcher FIND exposes surgical coordinates", () => {
             },
         },
     }], tok);
-    assert.match(out, /"matcher":"\/overflow\/"/);
+    assert.match(out, /^FIND \(\/?spec\.md\) \/overflow\/$/m);
     assert.doesNotMatch(out, /"matchingPathCount":/);
     assert.doesNotMatch(out, /"matchLocationCount":/);
     assert.doesNotMatch(out, /"items":|"lines":/);
@@ -1384,7 +1383,7 @@ test("a suppressed program READ receipt keeps its address and readable extent", 
         target: { scheme: "ops", hostname: "alice", pathname: "/1/1" },
         rx: { content: "\n````NOTE\nInitialized\n````", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /^### log:\/\/\/1\/1\/1\/READ\n\{"path":"ops:\/\/alice\/1\/1",/, "the READ receipt identifies the immutable source");
+    assert.match(out, /^### log:\/\/\/1\/1\/1\/READ · \d+\nREAD \(ops:\/\/alice\/1\/1\)(\n|$)/, "the READ receipt identifies the immutable source");
     assert.doesNotMatch(out, /"kind":/, "the canonical path does not duplicate source identity as metadata");
     assert.equal(parseLogRecords(out)[0]?.logTokens, tok(out), "the suppressed receipt charges only its metadata");
     assert.doesNotMatch(out, /tokensBody/);
@@ -1399,7 +1398,7 @@ test("a rejected emission renders as an addressable /attempt leaf without duplic
         attrs: { kind: "emissionAttempt" },
         rx: { content: "malformed response", mimetype: "text/plain" },
     }], tok);
-    assert.match(out, /^### log:\/\/\/1\/2\/1\/attempt$/m);
+    assert.match(out, /^### log:\/\/\/1\/2\/1\/attempt · \d+$/m);
     assert.doesNotMatch(out, /"kind":/);
 });
 
@@ -1409,7 +1408,7 @@ test("a program READ presents exact source, line-numbered", () => {
         target: { scheme: "ops", hostname: "alice", pathname: "/1/1" },
         rx: { content: "\n````NOTE\nInitialized\n````", mimetype: "text/vnd.plurnk" },
     }], tok);
-    assert.match(out, /^### log:\/\/\/1\/1\/1\/READ$/m, "the heading owns the canonical address; lines counts the navigable body");
+    assert.match(out, /^### log:\/\/\/1\/1\/1\/READ · \d+$/m, "the heading owns the canonical address and its charge; lines counts the navigable body");
     assert.doesNotMatch(out, /"kind":/, "the open source uses the same canonical leaf without duplicate metadata");
     assert.match(out, /"origin":"_plurnk"/, "the item identifies its actual producer");
     assert.match(out, /1:\n2:````NOTE\n3:Initialized\n4:````/, "the entire source, including the initial blank line, remains line-addressable");
@@ -1464,10 +1463,10 @@ Address the message.
 \`\`\`\``, mimetype: "text/vnd.plurnk" },
         },
     ], tok);
-    assert.match(out, /^### log:\/\/\/1\/1\/1\/FIND$/m, "the survey has an operation coordinate");
-    assert.match(out, /^### log:\/\/\/1\/1\/2\/NOTE$/m, "the note has an operation coordinate");
+    assert.match(out, /^### log:\/\/\/1\/1\/1\/FIND · \d+$/m, "the survey has an operation coordinate");
+    assert.match(out, /^### log:\/\/\/1\/1\/2\/NOTE · \d+$/m, "the note has an operation coordinate");
     assert.match(out, /"origin":"_plurnk"/, "the operations preserve their kernel authorship");
-    assert.match(out, /^### log:\/\/\/1\/1\/3\/READ$/m, "Turn 0's exact program arrives as an ordinary READ");
+    assert.match(out, /^### log:\/\/\/1\/1\/3\/READ · \d+$/m, "Turn 0's exact program arrives as an ordinary READ");
     assert.doesNotMatch(out, /"kind":/, "Turn 0 uses the same address-owned identity");
 });
 
@@ -1561,7 +1560,7 @@ test("{§log-wire-format}: body coordinates prevent source Markdown from creatin
         target: { scheme: null, pathname: "/doc.md" },
         rx: { content: "``````js\nx();\n``````\n\n### log:///9/9/9/READ", mimetype: "text/markdown", startLine: 1 },
     }], tok);
-    assert.match(out, /^### log:\/\/\/1\/1\/1\/READ\n/);
+    assert.match(out, /^### log:\/\/\/1\/1\/1\/READ · \d+\n/);
     assert.match(out, /1:``````js/);
     assert.match(out, /5:### log:\/\/\/9\/9\/9\/READ$/);
     assert.equal(parseLogRecords(out).length, 1, "numbered source headings remain body content");

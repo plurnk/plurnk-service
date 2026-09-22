@@ -289,7 +289,7 @@ test("{§retrieval-packet-metadata}: exact matcher FIND shows flat surgical coor
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const log = packetSection(await getPacket(db, second.turnId), "log");
 
-        assert.match(log, /"matcher":"\/target\/"/);
+        assert.match(log, /^FIND \([^)]*\) \/target\/$/m, "the matcher returns as written");
         assert.match(log, /"range":"2 match locations"/);
         assert.doesNotMatch(log, /"matchLocationCount":2/);
         assert.doesNotMatch(log, /"matchingPathCount":1/);
@@ -436,7 +436,7 @@ test("assembled packet: the skills foist surfaces the Worker's materialized skil
 
         // The materialized doc reaches the model through its private FIND, not
         // an inline packet link ({§schemes-directory}).
-        assert.match(log, /"path":"worker:\/\/\/_plurnk\/plurnk\/\*\.md"/, "the foist scopes discovery to the Worker's skills tree");
+        assert.match(log, /^FIND \(worker:\/\/\/_plurnk\/plurnk\/\*\.md\)/m, "the foist scopes discovery to the Worker's skills tree");
         assert.match(log, /worker:\/\/\/_plurnk\/plurnk\/worker\.md/, "the materialized skill surfaces in the foist's rendered result");
         assert.match(log, /"aside":"Manage shared worker entries\."/, "the catalog projects the document's Summary without opening its body");
     } finally {

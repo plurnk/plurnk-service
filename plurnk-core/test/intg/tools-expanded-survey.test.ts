@@ -82,8 +82,8 @@ test("{§tools-resource-materialization} turn 0 surveys an expanded server's too
             const log = packetSection(packet, "log");
             assert.match(log, /"matched":"````fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json -->\\n\{\\"message\\": \\"\\"\}\\n````"/, "one row per tool: opening fence, aside, preview, schema link, closing fence");
             assert.match(log, /"matched":"````fixture \(fail\) /, "every tool is a row");
-            assert.doesNotMatch(log, /"aside":"enabled tools: /, "no redundant survey aside is materialized");
-            assert.doesNotMatch(log, /"path":"worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json"/, "schema documents are not individual Turn0 discovery rows");
+            assert.doesNotMatch(log, /<!-- enabled tools: /, "no redundant survey aside is materialized");
+            assert.doesNotMatch(log, /^READ \(worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json\)/m, "schema documents are not individual Turn0 discovery rows");
         } finally {
             ws.close();
         }

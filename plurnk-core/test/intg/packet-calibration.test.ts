@@ -241,7 +241,7 @@ test("{§packet-token-accounting} scoped and whole KILL reclaim stable costs wit
     const trimmedRead = logEntries(trimmed).find(({ logPath: path }) => path === read.logPath)!;
     assert.equal(trimmedRead.body, undefined);
     const renderedRead = (packet: RequestPacket) => packetSection(packet, "log")
-        .split("\n\n").find((row) => row.startsWith(`### ${String(read.logPath)}\n`))!;
+        .split("\n\n").find((row) => row.startsWith(`### ${String(read.logPath)} · `))!;
     assert.equal(read.logTokens, contentWeight(renderedRead(before)));
     assert.equal(read.tokensBody, undefined);
     assert.equal(Number(read.logTokens) - Number(trimmedRead.logTokens),

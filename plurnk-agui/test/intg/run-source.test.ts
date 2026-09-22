@@ -319,7 +319,7 @@ test("{§agui-run-source}: a curated arrival remains readable, copyable and repl
             "and never repeats the client's UUID address",
         );
         assert.ok(
-            !logSections.some(({ content }) => /### log:\/\/\/\d+\/\d+\/\d+\/SEND\n\{[^\n]*"origin":"_plurnk"/.test(content)),
+            !logSections.some(({ content }) => /### log:\/\/\/\d+\/\d+\/\d+\/SEND · \d+\nSEND[^\n]*\n\{[^\n]*"origin":"_plurnk"/.test(content)),
             "the arrival row carries no constant origin",
         );
         const rows = await db.test_log_entries_by_loop.all({ loop_id: prompt!.loopId }) as Array<{ op: string; origin: string; status_rx: number; rx: string }>;

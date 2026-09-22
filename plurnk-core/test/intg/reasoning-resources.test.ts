@@ -131,7 +131,7 @@ for (const limit of [-1, 0, 1, 8]) test(`{§reasoning-initial-read}: configured 
             assert.deepEqual(JSON.parse(reads[0]!.lineMarker), { marks: [1, limit] });
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
             const log = packet.sections.find(({ name }: { name: string }) => name === "log").content;
-            assert.match(log, /^### log:\/\/\/\d+\/\d+\/\d+\/READ\n\{"path":"reasoning:\/\/alice\//m, "{§log-address-metadata} the assembled reasoning receipt leads with its addressed operand");
+            assert.match(log, /^### log:\/\/\/\d+\/\d+\/\d+\/READ · \d+\nREAD \(reasoning:\/\/alice\//m, "{§log-address-metadata} the assembled reasoning receipt writes its addressed operand");
             const record = parseLogRecords(log).find(({ logPath: path }) => path === `log:///${reads[0]!.loop_seq}/${reads[0]!.turn_seq}/${reads[0]!.sequence}/READ`);
             assert.ok(record);
             assert.equal(record.aside, "inspect this turn's reasoning");

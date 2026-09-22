@@ -2135,21 +2135,29 @@ type and projection facts under {§read-bytes}.
 The `## Log` section is a sequence of ordinary Markdown records separated by one blank line:
 
 ```text
-### log:///<loop>/<turn>/<item>/<leaf>
-{"oneLine":"strict JSON metadata"}
+### log:///<loop>/<turn>/<item>/<leaf> · <logTokens>
+OP (operands) <marks> [metadata] <!-- aside -->
+{"oneLine":"strict JSON result facts"}
 <coordinate-prefixed body lines when visible>
 ```
 
-The H3 is the row's complete model-facing identity and canonical READ address; metadata never repeats that identity or its operation. The following line is one strict JSON object: addressed operands ({§log-address-metadata}) precede `aside`, then all remaining members use stable alphabetical order. Absent fields are not invented. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
+| Line | Content | Rule |
+|---|---|---|
+| H3 | The row's complete model-facing identity and canonical READ address, then ` · ` and its `logTokens` charge ({§packet-token-accounting}). | Always present; nothing else repeats the identity, the operation, or the charge. |
+| written | The request as the language writes it ({§heading-slot-order}): the operation or runtime, every operand in the packet's canonical spelling ({§log-address-metadata}), marks, metadata blocks, matcher, aside. No fence, no body. | Present for every operation and execution row; absent on `error` and `extension` rows. |
+| facts | One strict JSON object of result facts in stable alphabetical order. | Present only when a fact exists; it never re-encodes the written line. |
+| body | Coordinate-prefixed lines. | Present when the row is visible. |
+
+The written line is the model's own request, so a matcher such as `/\bhello\b/i` returns exactly as it was written, never JSON-quoted. Absent fields are not invented. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
 
 §log-address-metadata **Addresses name their relationship, not the row's producer.**
 
-| Metadata | Meaning | Order |
+| Spelling | Meaning | Where |
 |---|---|---|
-| `path` | The operation's addressed operand, matching `OP (path)`: read resource, mutation subject, message recipient, or executor operand. Explicit and automatic READs use the same field. Pathless operations omit it. | First |
-| `from`, `to` | COPY/MOVE's two operand selections, each retaining its optional scope; neither replaces actor attribution or is repeated as `path`. | First, in that order |
-| `stream` | An executor invocation's separately created output address, never a READ's alternative spelling of `path`. | Remaining facts |
-| `resource` | A distinct returned resource under {§operation-resource-receipt}. | Remaining facts |
+| `OP (path)` | The operation's addressed operand: read resource, mutation subject, message recipient, or executor operand. Explicit and automatic READs are written identically. Pathless operations are written bare. | Written line |
+| `COPY (from) <marks> (to) <marks>` | COPY/MOVE's two operand selections, each retaining its optional scope; neither replaces actor attribution. | Written line |
+| `stream` | An executor invocation's separately created output address, never a READ's alternative spelling of its operand. | Facts |
+| `resource` | A distinct returned resource under {§operation-resource-receipt}. | Facts |
 
 Nested mutation effects and delivered attachments name their resource with `path`.
 These packet spellings do not rename the submitted AST, durable operation results,
@@ -2216,7 +2224,7 @@ Field absence carries defaults: `origin` is omitted for the owning model, `sourc
   records the exact READ coordinates sent without controlling retention. Missing immutable bytes are an
   internal integrity failure, never silently dropped content. No ejection message or permanent teaching is
   added. These stable curation weights are not provider-token measurements ({§tokenomics-render-weight-budget}).
-- §packet-token-accounting Every row reports one `logTokens` charge: its complete materialized H3, metadata, visible body, and selected native attachment. The completed record is measured to a fixed point, including the accounting field itself. No `tokensBody`, `tokensMetadata`, or `tokensActive` field is serialized. Hidden text is not charged; metadata-only rows still have a reclaimable charge. Source/FIND-item `tokens` measure source content, not the observation's context footprint. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page differs. All use stable curation weights, not provider tokens or dollars. Native component accounting follows {§packet-attachment-parts}; ordinary addressability and truthful errors follow {§log-wire-format}.
+- §packet-token-accounting Every row reports one `logTokens` charge on its H3 ({§log-wire-format}): its complete materialized H3, written request, facts, visible body, and selected native attachment. The completed record is measured to a fixed point, including the accounting field itself. No `tokensBody`, `tokensMetadata`, or `tokensActive` field is serialized. Hidden text is not charged; metadata-only rows still have a reclaimable charge. Source/FIND-item `tokens` measure source content, not the observation's context footprint. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page differs. All use stable curation weights, not provider tokens or dollars. Native component accounting follows {§packet-attachment-parts}; ordinary addressability and truthful errors follow {§log-wire-format}.
 
 ### §retrieval-packet-metadata READ/FIND packet metadata
 
@@ -3000,7 +3008,7 @@ two states and no others:
 | state | what the model receives |
 |---|---|
 | active | nothing in the Log. The `## Delegation` stream pointer names the stream with each channel's size and its growth since the last packet ({§child-orientation}); the model READs any range it wants, and every READ of a stream channel carries `terminal: false` while it runs and `terminal: true` once it has concluded, so an empty page is never mistaken for a finished command that printed nothing (operator, 2026-09-13). |
-| terminal | ONE `origin=_plurnk` READ at the execution's channel address, born visible, that is exactly a markerless READ of the channel — its bounded first page ({§read-selection-projection}, the whole channel when it fits, the channel's own mimetype), the `range` or `region`, terminal status and Problem, `terminal: true`, and any producer-supplied integer `exitCode`. The packet identifies the read resource with `path`, exactly as an explicit READ does ({§log-address-metadata}). |
+| terminal | ONE `origin=_plurnk` READ at the execution's channel address, born visible, that is exactly a markerless READ of the channel — its bounded first page ({§read-selection-projection}, the whole channel when it fits, the channel's own mimetype), the `range` or `region`, terminal status and Problem, `terminal: true`, and any producer-supplied integer `exitCode`. The packet writes the read resource as its operand, exactly as an explicit READ does ({§log-address-metadata}). |
 
 §stream-observation-result **One liveness fact.** The durable READ result owns
 `terminal`, derived from its selected channel's state, for explicit and automatic
@@ -4769,7 +4777,7 @@ Retired terms stay retired: the lexicon guard rejects `thinking`, the unqualifie
 | inbound `SEND` from outside the workspace | budgeted head under {§message-projection} |
 | structured `EDIT` receipt or textual `COPY`/`MOVE` effects | complete receipt-owned join context |
 | every other nonempty body | head bounded independently by `PLURNK_SERVICE_PREVIEW_LINES` and `PLURNK_SERVICE_PREVIEW_CHARS` |
-| bodyless row | metadata only; no coordinate lines; `logTokens` includes any selected native part |
+| bodyless row | heading, written request, and any facts; no coordinate lines; `logTokens` includes any selected native part |
 
 §markerless-first-page **Every markerless retrieval takes the same implicit marker.** A marker's
 unit is whatever its projection counts, so `PLURNK_SERVICE_PREVIEW_LINES` is the first page of
@@ -5441,8 +5449,8 @@ only when its content is already source-numbered, such as an effect receipt.
 An EDIT or scoped entry KILL log row renders its bounded effect receipt (`rx.receipt`) as row
 metadata and join context, not its input statement. Proposal-gated file EDITs
 compute the accepted receipt from what actually lands. Environment-delta EDITs
-render their resulting `rx.span`. COPY/MOVE rows render compact ordered
-`from` and `to` selections ({§log-address-metadata}), compact ordered `effects` metadata, and
+render their resulting `rx.span`. COPY/MOVE rows write both operand
+selections ({§log-address-metadata}), render compact ordered `effects` metadata, and
 any scoped textual receipt contexts under their `log:///` address, never under
 one operand's resource address. All generated bodies remain under
 {§body-projection}. {§edit-result-render}

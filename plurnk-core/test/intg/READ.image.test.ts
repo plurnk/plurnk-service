@@ -262,8 +262,8 @@ test("{§packet-attachment-parts} native content survives completed responses un
         assert.doesNotMatch(JSON.stringify(content), /has been ejected from context/);
     }
     assert.equal(typeof users[3]!.content, "string", "even an irrelevant KILL scope releases the atomic native observation");
-    assert.doesNotMatch(String(users[3]!.content), /### log:\/\/\/\d+\/\d+\/\d+\/READ\n\{"path":"logo\.png"/);
-    assert.match(String(users[3]!.content), /"path":"ops:\/\/[^/"]+\/1\/1"/, "the out-of-bounds text scope remains a no-op for the ordinary initialization READ");
+    assert.doesNotMatch(String(users[3]!.content), /### log:\/\/\/\d+\/\d+\/\d+\/READ · \d+\nREAD \(logo\.png\)/);
+    assert.match(String(users[3]!.content), /^READ \(ops:\/\/[^/)]+\/1\/1\)/m, "the out-of-bounds text scope remains a no-op for the ordinary initialization READ");
 });
 
 test("{§packet-attachment-parts} retained and forked READs preserve original bytes after source deletion", async () => {
@@ -315,7 +315,7 @@ test("{§log-kill-scope} a text-only route preserves ordinary scoped trimming of
     ]);
     const content = requests[2]!.find(({ role }) => role === "user")!.content;
     assert.equal(typeof content, "string");
-    assert.match(String(content), /### log:\/\/\/1\/2\/2\/READ\n/);
+    assert.match(String(content), /### log:\/\/\/1\/2\/2\/READ · \d+\n/);
     assert.doesNotMatch(String(content), /\n\s*1:89\n/u);
     assert.match(String(content), /\n\s*2:50\n/u);
 });
