@@ -360,7 +360,7 @@ test("an irc (SEND worker://name) wakes a CONCLUDED sibling on that worker's dur
 test("an empty wait continues through the real loop until the assignment is answered", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("````WAIT\nnothing running; done for now\n````", 10),
-        makeMockResponse("````SEND\n````", 10),
+        makeMockResponse("````SEND\nNo work remains.\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -396,7 +396,7 @@ test("spawn and fork carry the delegating loop's policy — an accepting parent'
         makeMockResponse("````EDIT (worker:///from-fork)\npayload\n````\n\n````SEND\nfork done\n````", 10),
         // {§send-premature-terminate}: the children observe their EDIT receipts
         // before completing. A parent claim remains gated on its child results.
-        ...Array.from({ length: 4 }, () => makeMockResponse("````SEND\n````", 10)),
+        ...Array.from({ length: 4 }, () => makeMockResponse("````SEND\nDelegated edits observed.\n````", 10)),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

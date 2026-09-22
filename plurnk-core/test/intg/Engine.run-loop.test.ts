@@ -86,7 +86,7 @@ test(`{§loop-wake-identity}: ${kind} completion ${phase} is acknowledged only b
         }
         const provider = new Mock({ contextWindow: 100_000, responses: [
             contentResponse("````SEND\nThe answer is 42.\n````"),
-            contentResponse("````NOTE\nThe answer was already delivered.\n````"),
+            contentResponse("````SEND\n````"),
         ] });
         if (phase === "during inference") {
             const generate = provider.generate.bind(provider);

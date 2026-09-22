@@ -26,6 +26,7 @@ test("{§message-source-scheme} restart retains source text and answered state a
         const provider = new Mock({ contextWindow: 100000, responses: [
             makeRawMockResponse(frame("SEND", "Original answer.")),
             makeRawMockResponse([frame("KILL (log:///**/SEND)", null), frame("SEND", "History curated.")].join("\n\n")),
+            makeRawMockResponse(frame("SEND", null)),
         ] });
         const answered = await engine.runTurn({ messages: [], provider, workspaceId, workerId, loopId });
         assert.equal(answered.status, 200);
@@ -35,6 +36,7 @@ test("{§message-source-scheme} restart retains source text and answered state a
         assert.ok(turn && original);
         const originalLog = `log:///1/${turn.sequence}/${original.sequence}/SEND`;
         const curationLoop = await insertLoop(db, workerId, 2, "Curate the prior conversation.");
+        assert.equal((await engine.runTurn({ messages: [], provider, workspaceId, workerId, loopId: curationLoop })).status, 102);
         assert.equal((await engine.runTurn({ messages: [], provider, workspaceId, workerId, loopId: curationLoop })).status, 200);
         await db.close();
         db = await openMigrated(path);
@@ -102,6 +104,7 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
         const provider = new Mock({ contextWindow: 100000, responses: [
             makeRawMockResponse(frame("SEND (worker:///_plurnk)", "Answer.")),
             makeRawMockResponse(frame(addressed ? `SEND (${address})` : "SEND", "Recovered answer.")),
+            makeRawMockResponse(frame("SEND", null)),
         ] });
         const run = () => engine.runTurn({ messages: [], provider, workspaceId, workerId, loopId });
         const failed = await run();
@@ -114,7 +117,8 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
         assert.equal(problem.recovery, "To reply, SEND to an Open Message address or omit the target. SEND (worker://<name>) sends a new message.");
         assert.equal((await db.message_unanswered_count.get({ loop_id: loopId }))?.count, 1);
 
-        assert.equal((await run()).status, 200);
+        assert.equal((await run()).status, addressed ? 102 : 200);
+        if (addressed) assert.equal((await run()).status, 200, "an addressed reply needs a later bare SEND to conclude");
         assert.equal((await db.message_unanswered_count.get({ loop_id: loopId }))?.count, 0);
         const history = await db.message_history.all<{ direction: string; body: string }>({ workspace_id: workspaceId, worker_id: workerId, loop_id: loopId });
         assert.deepEqual(history.map(({ direction, body }) => ({ direction, body })), [
@@ -210,6 +214,7 @@ for (const scope of ["", " <1,-1>"]) test(`{§message-arrival} curation${scope} 
             ].join("\n\n")),
             makeRawMockResponse(frame("NOTE", "Observed the source and copy.")),
             makeRawMockResponse(frame(`SEND (${second})`, "Second answer.")),
+            makeRawMockResponse(frame("SEND", null)),
         ] });
         const run = () => engine.runTurn({ messages: [], provider, workspaceId, workerId, loopId });
         const one = await run();
@@ -229,8 +234,9 @@ for (const scope of ["", " <1,-1>"]) test(`{§message-arrival} curation${scope} 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: two.turnId }))!.packet);
         assert.match(packetSection(packet, "messages"), new RegExp(second.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
         assert.ok(!packetSection(packet, "messages").includes(first));
-        assert.equal((await run()).status, 200, "all messages answered and results observed, without a terminal verb");
+        assert.equal((await run()).status, 102, "an addressed reply does not request completion");
         assert.equal((await db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId }))!.count, 0);
+        assert.equal((await run()).status, 200, "a bare SEND concludes after all messages are answered and results observed");
     } finally { await db.close(); }
 });
 
@@ -322,10 +328,10 @@ test("{§message-reply-delivery} another worker's addressed answer reaches both 
         });
         await run(senderId, senderLoop, frame("NOTE", "Waiting for the answer."));
         await run(ownerId, ownerLoop, frame("NOTE", "Reviewing the assignment."));
-        assert.equal((await run(responderId, responderLoop, frame(`SEND (${path})`, "Charlie's answer."))).status, 200);
+        assert.equal((await run(responderId, responderLoop, frame(`SEND (${path})`, "Charlie's answer."))).status, 102);
         const history = await db.message_history.all<{ direction: string; body: string }>({ workspace_id: workspaceId, worker_id: ownerId, loop_id: ownerLoop });
         assert.deepEqual(history.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["Charlie's answer."]);
-        const completed = await run(ownerId, ownerLoop, frame("NOTE", "The assignment was answered."));
+        const completed = await run(ownerId, ownerLoop, frame("SEND", null));
         assert.equal(completed.status, 200);
         const result = await db.lifecycle_loop_status.get<{ terminal_result: string }>({ loop_id: ownerLoop });
         assert.equal(JSON.parse(result!.terminal_result).content, undefined, "the answer remains a message, not an execution outcome");

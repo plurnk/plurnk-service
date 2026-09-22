@@ -346,8 +346,8 @@ reverses the 2026-09-12 tolerance (then measured at five to ten percent of emiss
 GLM-5.3-flash; 2.8% of that lane's emissions today). An offset fence is prose and draws nothing:
 `plurnk.md` instructs the model to offset any example it does not intend to execute, so the form
 is correct by construction and there is no mistake to report (operator, 2026-09-21). The parser
-presumes nothing about why a fence is offset, and {§prose-conclusion} judges the reply on its own
-terms.
+presumes nothing about why a fence is offset. Outside an operation, that quotation is
+response text under {§response-text}; inside a body, it stays literal body content.
 
 §inline-chain A closer on a heading line, or on a body's closing line, may be
 followed on that same line by the next opener; the closer still closes, and the
@@ -408,9 +408,8 @@ CommonMark's own rule that a backtick opener's line carries no further backtick,
 ```` ```READ (x)``` ```` is inline code and quotes nothing after it; a bare fence directly under a
 line carrying a fence run, which is an orphaned closer and quotes nothing; and a tag that is a
 missed operation — a known name under four backticks or off column zero, or an unknown name at
-operation width — which still draws one warning (`markdown` and `md` are polite envelopes and
-draw none). There is no implicit SEND: a reply is prose ({§prose-conclusion}) or an explicit
-`SEND` block. Origin (#767, 2026-09-18): under prose answers, a quoted example executed.
+operation width — which still draws one warning. Quotation outside an operation is
+response text under {§response-text}, not an executable program or a completion envelope.
 
 §interstitial-fence Superseded by {§quotation}: an unlabeled fence no longer opens nothing, it
 quotes. (It in turn replaced the retired unlabeled-fence SEND of the fences chapter, whose
@@ -444,23 +443,6 @@ Each block keeps its line count, so statement positions still name the source
 line. An invoke with an unknown name or parameter leaves the whole emission as it
 was. An emission that already yields an operation is never rewritten. No
 diagnostic, notice or teaching mentions the reading (#760).
-
-§operation-attempt An emission with no operation is either prose, which a host may take
-as the model's answer, or an operation attempt. `PlurnkParser.operationAttempt(input,
-executors)` names the attempt: a line opening a four-backtick fence, a heading outside
-any fence ({§bare-heading-advisory}; a known executor's name is a heading only when a
-slot follows it), a three-backtick fence naming an operation — a miscounted heading is a
-typo, not an answer, so the loop continues and the next packet carries `needs four
-backticks to run` (#801) — native tool-call markup that {§native-tool-calls} did not
-read, or echoed packet rows (`### log://…`). The three-backtick rule reads the raw text,
-since such a fence quotes itself, and it takes the executor rule with it: ```` ```sh ````
-is an ordinary code block, ```` ```sh (x) ```` is a miscounted heading. Anything else,
-code blocks under a bare language tag included, is prose (#761).
-
-§bare-heading-advisory An operation name that opens a line outside any block in the
-shape of a heading (`READ (…)`, `NOTE`, …) is prose and runs nothing. The parser
-emits one warning-severity advisory naming the fence form, placed after the parsed
-items, so the loss is never quiet.
 
 §empty-section Both the compact bodyless form and an empty multiline block
 normalize optional bodies to null. Closing fences are conventional, never required
@@ -592,8 +574,8 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 §note-value NOTE retains its literal body as ordinary model-owned working memory.
 It has no target, scope, metadata, or lifecycle effect. Its full body participates
 in ordinary log token accounting and model-driven curation; prior notes are not
-automatically hidden. A NOTE-only turn is subject to ordinary conclusion,
-repetition and strike rules.
+automatically hidden. A NOTE-only turn does not request completion; ordinary
+repetition and strike rules still apply.
 
 §reasoning-notes NOTE is the only operation admitted from exposed provider
 reasoning. The shared fence parser selects line-leading NOTE statements in a
@@ -969,15 +951,17 @@ operation receives empty-turn recovery, not successful completion ({§empty-turn
 | Intent | Nominal status | Meaning |
 |---|---|---|
 | Unanswered messages or unobserved results | 102 | Continue silently |
+| Fresh operation/parser failure without WAIT | 102 | Recover before automatic parking |
 | WAIT | 202 | Park when a live obligation exists; otherwise continue at 102 |
-| All messages answered, live work remains | 202 | Join the held work |
-| All messages answered, results observed, no held work | 200 | The admitted program concludes; no repeated response is required |
+| All messages answered, live work remains, no fresh failure | 202 | Join the held work |
+| Lone explicit targetless SEND, messages answered, results observed, no held work | 200 | Conclude under {§send-conclusion}; an empty SEND need not repeat a delivered response |
+| Other admitted program | 102 | Continue |
 | KILL own worker | 499 | Cancel unfinished work in that worker and its descendants |
 | Runtime or infrastructure failure | 5xx | Not a model-authored task status |
 
 ### The terminal contract (waitpid)
 
-The model may supply one WAIT per turn. The host, not the grammar, owns
+The model may supply WAIT. The host, not the grammar, owns
 turn boundaries and adjudicates the loop's actual obligations. Asking
 the human is the native `question` executor tool ({§question-tool}), not a
 disposition. The shape rules ARE structural:
@@ -999,8 +983,9 @@ disposition. The shape rules ARE structural:
   NOTE does not request parking or acknowledge messages.
   Ordinary repetition, strike and execution limits still apply.
 
-SEND with no `(path)` answers the open messages without ending the turn. SEND with
-`(path)` directs the message to that recipient. Neither changes loop status.
+SEND with no `(path)` answers the open messages. SEND with `(path)` directs the
+message to that recipient. A response containing only one explicit targetless SEND
+requests completion under {§send-conclusion}; dispatch still executes the whole program.
 
 ### §send-body SEND body projection
 
@@ -1042,14 +1027,20 @@ including leading/trailing blank lines, indentation, CRLF and literal
 backslash escapes. A formatter adds its own framing newline even when a body
 already ends in one. Interstatement whitespace belongs to no body.
 
-A header starts at column zero; the first operation may follow provider preamble
-without a separating newline. Text outside operation blocks is ignored in every
-parser tier: before, between, and after operations. It produces no AST item,
-message, receipt, or diagnostic. Exact source remains in `ops://<worker>/` under
-{§turn-ops-log-curation}; body bytes and source positions are unchanged. A matching
-closer still ends its body, and no missing closer is inferred. No generic Markdown
-rendering, indentation stripping or recursive code-block extraction occurs.
-Only a header aside has aside semantics.
+A header starts at column zero. Whitespace outside operation blocks is inert.
+Only a header aside has aside semantics. A matching closer ends its body, and no
+missing closer is inferred. No generic Markdown rendering, indentation stripping
+or recursive code-block extraction occurs. Exact source remains in `ops://<worker>/`
+under {§turn-ops-log-curation}; body bytes and source positions are unchanged.
+
+§response-text **The parser owns the partition between operations and response text.**
+The model-turn entry point returns each non-whitespace text span outside operation
+regions as an ordered `text` item with its exact content and source position.
+Quoted blocks remain literal text, including every nested operation-looking line.
+Operation bodies, asides and malformed operation regions are not response text;
+nothing at or beyond a lost boundary is recovered as text. The statement and client
+tiers ignore outside text. Core alone owns SEND recovery and strikes
+({§response-text-recovery}); parsing never infers delivery or completion intent.
 
 ## 12. Public API
 
@@ -1059,9 +1050,10 @@ types cover ordered parse items and `PlurnkParseError`, which JSON Schema cannot
 express. Consumers never receive ANTLR parse-tree or token types.
 
 §turn-shape `PlurnkParser.parse` accepts one model turn. A turn without any
-operation is reported by one hard diagnostic (`no valid Plurnk operation was
-found.`), which the host may admit as an empty turn rather than reject
-(plurnk-core `§empty-turn`). An explicit disposition may sit anywhere in it
+authored operation is reported by one hard diagnostic
+(`No valid Operation Syntax OPs detected.`), alongside any response text
+({§response-text}). Core admits this as a recoverable turn under {§empty-turn}.
+An explicit disposition may sit anywhere in it
 ({§disposition-anywhere}). An omitted WAIT produces no synthesized statement, diagnostic, receipt,
 warning, or strike. The authored operations and source remain unchanged.
 Unfinished blocks never receive inferred closers.
@@ -1077,12 +1069,13 @@ blocks themselves are the program.
 
 | Entry point                    | Accepted document                                              | Result statement type |
 |--------------------------------|----------------------------------------------------------------|-----------------------|
-| `PlurnkParser.parse`           | One operation-bearing model turn; at most one lifecycle declaration, anywhere | `PlurnkStatement`     |
+| `PlurnkParser.parse`           | One model turn, including recoverable outside text and operation diagnostics | `PlurnkStatement`     |
 | `PlurnkParser.parseStatements` | Zero or more protocol statements                              | `PlurnkStatement`     |
 | `PlurnkParser.parseClient`     | Executable blocks, including the read-shaped LOOK command        | `ClientStatement`     |
 
-Every entry point ignores outside text under {§whitespace-contract} and returns
-ordered `statement` and `error` items. When present, {§unparsed-tail-boundary} governs the result's item
+Every entry point returns ordered `statement` and `error` items. The model-turn
+entry point also returns `text` items under {§response-text}. When present,
+{§unparsed-tail-boundary} governs the result's item
 extent. The statement `op` field discriminates the generated per-operation
 union.
 

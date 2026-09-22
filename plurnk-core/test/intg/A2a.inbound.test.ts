@@ -93,8 +93,10 @@ test("{§a2a-inbound-exposure}: an unrelated addressed reply is not an A2A artif
             await daemon.runLoop({ workspaceId: workspace.workspaceId, workerId: task.id,
                 prompt: "An unrelated native request.", messageAddress: unrelatedAddress });
             program = "````NOTE\nObserve the new request before replying.\n````";
-        } else {
+        } else if (calls === 2) {
             program = `\`\`\`\`SEND (${protocolAddress})\nThe A2A answer.\n\`\`\`\`\n\n\`\`\`\`SEND (${unrelatedAddress})\nThe unrelated answer.\n\`\`\`\``;
+        } else {
+            program = "````SEND\n````";
         }
         return new Mock({ contextWindow: 100_000, responses: [makeMockResponse(program)] }).generate(args);
     });

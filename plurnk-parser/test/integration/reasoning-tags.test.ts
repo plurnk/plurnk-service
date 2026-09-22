@@ -56,10 +56,9 @@ test("{§quotation}: a reasoning tag written in prose does not unquote the fence
         assert.deepEqual(errors(result), [], mention);
         assert.deepEqual(statements(result).map(writtenOp), ["WAIT"], mention);
 
-        const lines = source.split("\n");
-        const live = PlurnkParser.unquoted(source).split("\n");
+        const text = result.items.flatMap((item) => item.kind === "text" ? [item.content] : []).join("");
         for (const quoted of ["```mermaid", "```plurnk", "````EDIT (src/config.ts) <@c8e11>"]) {
-            assert.equal(live[lines.indexOf(quoted)].trim(), "", `${mention}: ${quoted} must be data`);
+            assert.ok(text.includes(quoted), `${mention}: ${quoted} must remain literal text`);
         }
     }
 });
@@ -71,5 +70,5 @@ test("{§provider-tagged-reasoning}: the grammar peels no reasoning envelope, so
     const result = PlurnkParser.parse(source);
     assert.deepEqual(errors(result), []);
     assert.deepEqual(statements(result).map(writtenOp), ["NOTE", "WAIT"]);
-    assert.equal(PlurnkParser.unquoted(source), source);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "text" ? [item.content] : []), ["<think>\n", "\n</think>\n"]);
 });

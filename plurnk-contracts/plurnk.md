@@ -9,7 +9,7 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
     ````
 
 > [!IMPORTANT]
-> YOU MUST ONLY respond with valid Operation Syntax OPs, responding with only fenced markdown if concluding.
+> YOU MUST ONLY respond with valid Operation Syntax OPs.
 
 > [!WARNING]
 > YOU MUST offset any example OP you do not intend to execute with a hard or soft tab.
@@ -28,25 +28,24 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 * COPY: (path) <scope>? (path) <scope>? - Copy files, entries, streams, or text regions.
 * MOVE: (path) <scope>? (path) <scope>? - Move files, entries, streams, or text regions.
 * KILL: Delete, terminate, or curate the log.
-* SEND: Message workers and endpoints, not tools.
 * WORK: Deploy a child worker (fresh log).
 * FORK: Deploy a forked worker (forked log).
 * BARE: Deploy an isolated inference query (no log or tools).
-* WAIT: Yield until the next wake: a child worker's result, a message, a stream's end.
-
-* markdown: Final response alone, concluding the entire loop. All other OPs, child workers, or streams are finished.
+* WAIT: Yield until the next wake: a child worker's result or a stream's end.
+* SEND: Message endpoints, workers, or the operator.
 
 ## Workflow Management
 
 > [!IMPORTANT]
-> The markdown response must be the only OP emitted in the final turn.
+> A parameterless SEND goes to the operator (GFM format accepted) or parent worker.
+> A turn with only a parameterless SEND is a final response (if there are no unresolved child workers or streams).
 
-    ````markdown
+    ````SEND
     The answer is 42.
     ````
 
 > [!INFO]
-> To cancel all unfinished work in your worker and its descendants, KILL your own worker address.
+> To cancel and fail all unfinished work in your worker and its descendants, KILL your own worker address.
 
 ## Workspace Navigation
 

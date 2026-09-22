@@ -38,34 +38,6 @@ import { homedir } from "node:os";
 // {§operator-grammar} — an operator's own GBNF is a file path: absolute, `~`-relative, or
 // relative to the daemon's working directory. The service ships no grammar profile, so a bare
 // name (no separator) is refused by name rather than resolved against anything.
-// {§prose-conclusion}
-const ANSWER_FENCE = /^(`{3,}|~{3,})(?:markdown|md)[ \t]*$/iu;
-// {§conclusion-recovery} — the one token that redeems the offer an empty turn earned.
-const CONCLUSION_RECOVERY_TOKEN = "200";
-
-export const answerFence = (content: string): { readonly concludes: boolean; readonly answer: string } => {
-    // Blank lines go, per-line indentation stays: trimming the whole string would erase the
-    // offset that keeps an EXAMPLE fence from concluding ({§quotation}).
-    const lines = content.split("\n");
-    while (lines.length > 0 && lines[0]!.trim() === "") lines.shift();
-    while (lines.length > 0 && lines[lines.length - 1]!.trim() === "") lines.pop();
-    const openers = lines.flatMap((line, index) => ANSWER_FENCE.test(line) ? [index] : []);
-    if (openers.length === 0) return { concludes: false, answer: "" };
-    const opener = openers[0]!;
-    const run = ANSWER_FENCE.exec(lines[opener]!)![1]!;
-    // Opening with the envelope IS the intent: whatever is inside is the answer, inner fences
-    // included. An answer that explains Markdown carries markdown fences of its own, and counting
-    // them would refuse to unwrap the very reply that needed it most.
-    if (opener === 0) {
-        const last = lines.length - 1;
-        const closed = last > 0 && lines[last]!.trimEnd() === run;
-        return { concludes: true, answer: lines.slice(1, closed ? last : undefined).join("\n").trim() };
-    }
-    // The envelope opened mid-reply: its extent is ambiguous, so nothing is stripped and nothing
-    // the model wrote is discarded.
-    return { concludes: true, answer: lines.join("\n") };
-};
-
 export const resolveOperatorGrammarPath = (value: string): string => {
     if (value === "~" || value.startsWith("~/")) return resolvePath(homedir(), value.slice(2));
     if (value.startsWith("/") || value.startsWith(".") || value.includes("/")) return resolvePath(value);
@@ -157,7 +129,6 @@ import ProviderInstantiate from "./ProviderInstantiate.ts";
 import TurnMaterialization from "./TurnMaterialization.ts";
 import BareBatchRunner from "./BareBatchRunner.ts";
 import { ENGINE_PROBLEMS, TURN_STATUS_IMPLICIT_CONTINUE } from "./turn-signals.ts";
-import { unconcludedEmission } from "./unconcluded-emission.ts";
 import AdmittedTurnExecutor from "./AdmittedTurnExecutor.ts";
 
 // Split-out call-metadata that travels with the parsed packet but lands in
@@ -176,8 +147,8 @@ type SplitProviderResponse = {
     parseNotices: Notice[];
     emissionValid: boolean;
     emptyTurn: boolean;
-    // {§prose-conclusion} the targetless SEND admitted for a prose answer, or null.
-    proseAnswer: PlurnkStatement | null;
+    // {§send-conclusion}: the response alone explicitly requested completion.
+    finalResponse: boolean;
 };
 
 type MaterializedModelRequest = {
@@ -352,8 +323,6 @@ type ProviderAttempts = {
     split: SplitProviderResponse | undefined;
     railGrammar: string | undefined;
     railEvidence: GrammarEvidence | undefined;
-    // {§conclusion-recovery} — the prior empty turn's retained text, or null when no offer stands.
-    unconcluded: string | null;
     emissionAttempts: number;
     callInFlight: boolean;
     modelCallSequence: number;
@@ -1139,7 +1108,6 @@ export default class TurnRunner {
             split: undefined,
             railGrammar: undefined,
             railEvidence: undefined,
-            unconcluded: null,
             emissionAttempts: 0,
             callInFlight: false,
             modelCallSequence: 0,
@@ -1167,8 +1135,6 @@ export default class TurnRunner {
         // {§turn-lifecycle}: bracket the complete provider-attempt window with liveness notices.
         if (!signal?.aborted) this.#notices.push(workspaceId, workerId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
         attempts.railGrammar = await this.#operatorGrammar(provider);
-        // {§conclusion-recovery} — the offer stands for exactly one turn, so the bound is this one.
-        attempts.unconcluded = (await unconcludedEmission(this.#db, loopId, request.seq))?.retained ?? null;
         const attemptLimit = readEmissionAttempts();
         const strikeStreak = await this.#strikes.streak(loopId);
         for (let attempt = 1; attempt <= attemptLimit;) {
@@ -1286,7 +1252,7 @@ export default class TurnRunner {
         attempts.turnWireAccounting.push(...completedResponse.accounting);
         await modelCall.observeResponse(completedResponse, null, attempts.wire.nativeInputs);
         attempts.railEvidence = attempts.railGrammar === undefined ? undefined : completedResponse.grammarEvidence;
-        const split = this.#splitResponse(completedResponse, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.unconcluded);
+        const split = this.#splitResponse(completedResponse, this.#executors()?.availableRuntimes(workspaceId) ?? []);
         attempts.split = split;
         await this.#classifyProviderAttempt(attempts, attemptRow.id, split, attempt, split.emissionValid);
         return split.emissionValid ? "admitted" : "rejected";
@@ -1660,7 +1626,7 @@ export default class TurnRunner {
                 source: "engine:turn",
                 kind: "output_truncated",
                 level: "warn",
-                message: `${allowanceCut}; no operations were performed`,
+                message: `${allowanceCut}; no authored operations were performed`,
             });
         }
         // Non-fatal provider transport notices on an accepted turn. Forward each
@@ -1736,7 +1702,7 @@ export default class TurnRunner {
             maxCommands,
             recoverableParseErrors: split.recoverableParseErrors,
             emptyTurn: split.emptyTurn,
-            proseAnswer: split.proseAnswer,
+            finalResponse: split.finalResponse,
             bare: {
                 provider: childProvider,
                 loopSequence: request.loopSeq,
@@ -1767,18 +1733,19 @@ export default class TurnRunner {
     // its assistant payload to skip the parse roundtrip. The wire Provider
     // contract has no `ops` field; only Mock exposes one. Real providers
     // always take the parse path because their `assistant.ops` is undefined.
-    #splitResponse(response: ProviderAttempt, executors: readonly string[] = [], unconcluded: string | null = null): SplitProviderResponse {
+    #splitResponse(response: ProviderAttempt, executors: readonly string[] = []): SplitProviderResponse {
         const { assistant } = response;
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
         const ops: PlurnkStatement[] = [];
-        // Only structured operations are executable; interstitial text is not an operation.
-        // Full PlurnkParseError context is preserved on rejected attempt evidence;
-        // warnings remain admissible Notices. {§parse-diagnostics}
+        // {§response-text-recovery}: the parser owns the partition; recovery never reparses text.
         const parseErrors: ParseErrorInfo[] = [];
+        let contentStatementCount = 0;
+        let outsideText: { line: number; column: number } | null = null;
         let hasUnparsedTail = false;
         const parseNotices: Notice[] = [];
         if (preParsedOps !== undefined) {
             ops.push(...preParsedOps);
+            contentStatementCount = preParsedOps.length;
         } else {
             // {§observability-boundary} — the parse is observed without its input;
             // only the resulting statement count is attributable.
@@ -1792,6 +1759,14 @@ export default class TurnRunner {
             for (const item of parsed.items) {
                 if (item.kind === "statement") {
                     ops.push(item.statement);
+                    contentStatementCount += 1;
+                }
+                else if (item.kind === "text") {
+                    outsideText ??= item.position;
+                    ops.push({
+                        op: "SEND", aside: null, target: null, metadata: null, lineMarker: null,
+                        body: { raw: item.content, json: null }, position: UNKNOWN_POSITION,
+                    });
                 }
                 else if (item.kind === "error") {
                     const err = (item as { error?: PlurnkParseError }).error;
@@ -1828,73 +1803,35 @@ export default class TurnRunner {
                 parseErrors.push({ message: tail.reason, line: tail.from.line, column: tail.from.column, source: "grammar" });
             }
         }
-        // {§prose-conclusion} — the markdown fence is the exit; a turn that merely failed to yield
-        // an operation is non-responsive and falls to {§empty-turn}.
-        const answered = answerFence(assistant.content);
-        // A reply that is nothing but its own text: no operation closed, none attempted, no
-        // boundary lost, nothing cut off. Both exits are reached from here.
-        const textOnly = preParsedOps === undefined
-            && ops.length === 0
-            && !hasUnparsedTail
-            && assistant.finishReason !== "length"
-            && parseErrors.every((error) => error.message === PlurnkParser.NO_VALID_OPERATION)
-            && PlurnkParser.operationAttempt(assistant.content, executors) === null;
-        // {§conclusion-recovery} — the empty turn kept its text and was asked whether that was the
-        // answer; `200` alone says yes, envelope or not. What concludes is that retained text: the
-        // token released the answer, it is not the answer.
-        const redeems = textOnly
-            && unconcluded !== null
-            && (answered.concludes ? answered.answer : assistant.content).trim() === CONCLUSION_RECOVERY_TOKEN;
-        const prose = redeems ? unconcluded : answered.answer;
-        const concludes = textOnly && prose.length > 0 && (redeems || answered.concludes);
-        const proseAnswer = concludes
-            ? { op: "SEND", aside: null, target: null, metadata: null, lineMarker: null, body: { raw: prose, json: null }, position: { line: 1, column: 0 } } as PlurnkStatement
-            : null;
-        if (proseAnswer !== null) {
-            parseErrors.length = 0;
-            ops.push(proseAnswer);
-        }
-        // The statements the content itself closed: a lost boundary is admissible only behind one
-        // of these, never behind a reasoning NOTE alone ({§reasoning-notes}).
-        const contentStatementCount = ops.filter(({ position }) => position.line > 0).length;
+        // {§send-conclusion}: response shape expresses completion, not reasoning-side NOTE capture.
+        const finalResponse = ops.length === 1 && ops[0].op === "SEND" && ops[0].target === null
+            && outsideText === null && !hasUnparsedTail && parseErrors.length === 0
+            && assistant.finishReason !== "length";
+        const emptyTurn = preParsedOps === undefined && contentStatementCount === 0 && !hasUnparsedTail;
         const reasoning = assistant.reasoning ?? null;
         const notes = reasoning === null ? [] : PlurnkParser.parseReasoningNotes(reasoning);
         ops.unshift(...notes);
-        if (notes.length > 0) {
-            // A reasoned NOTE is an operation even when the content contains no program.
-            for (let index = parseErrors.length - 1; index >= 0; index--) {
-                if (parseErrors[index]!.message === PlurnkParser.NO_VALID_OPERATION) parseErrors.splice(index, 1);
-            }
-        }
-        const sourceStatementCount = ops.filter(({ position }) => position.line > 0).length;
-        // {§turn-shape} — every hard diagnostic is recoverable and rides with the admitted program
-        // as a failed row; a lost boundary refuses only what follows it. The harness admits every
-        // program whose meaning it can determine and reports what it could not read.
-        const recoverableParseErrors = [...parseErrors].toSorted(comparePosition);
-        // {§empty-turn} — no operation and no other hard error: admitted as an empty turn, never
-        // resampled; its advisories ({§bare-heading-advisory}) ride as notices. A boundary lost
-        // before any statement closed is not an empty turn: the model tried, and is resampled.
-        const emptyTurn = preParsedOps === undefined
-            && !hasUnparsedTail
-            && sourceStatementCount === 0
-            && parseErrors.every((error) => error.message === PlurnkParser.NO_VALID_OPERATION);
+        if (outsideText !== null) parseErrors.push({
+            message: "Only valid Operation Syntax OPs allowed. No free response.",
+            ...outsideText, source: "parser",
+        });
+        // {§unparsed-tail-boundary}: only a closed response operation can justify admitting a
+        // lost boundary; recovered text and reasoning NOTE do not supply that evidence.
         const emissionValid = preParsedOps !== undefined
             || emptyTurn
-            || (hasUnparsedTail ? contentStatementCount > 0 : sourceStatementCount > 0);
+            || contentStatementCount > 0;
+        const recoverableParseErrors = parseErrors
+            .filter((error) => error.message !== PlurnkParser.NO_VALID_OPERATION)
+            .toSorted(comparePosition);
         return {
             packetAssistant: { content: assistant.content, ops, reasoning },
             sourceBacked: preParsedOps === undefined,
             callMetadata: { finishReason: assistant.finishReason, model: assistant.model },
             parseErrors,
-            recoverableParseErrors: emissionValid && !emptyTurn ? recoverableParseErrors : [],
+            recoverableParseErrors: emissionValid ? recoverableParseErrors : [],
             emptyTurn,
-            proseAnswer,
+            finalResponse,
             parseNotices,
-            // The ANTLR model-turn parser is authoritative. At least one source
-            // operation is required; lifecycle omission continues silently. Bounded
-            // statement failures become durable operation results.
-            // A boundary lost before any statement closed rejects; after one, the
-            // statements run and the loss is a row. Pre-parsed ops are Mock's trusted test seam.
             emissionValid,
         };
     }

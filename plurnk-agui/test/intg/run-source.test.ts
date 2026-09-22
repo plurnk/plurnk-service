@@ -29,6 +29,51 @@ const post = async (port: number, input: Readonly<Record<string, unknown>>): Pro
         .map((frame) => JSON.parse(frame.slice(6)) as AguiEvent);
 };
 
+for (const final of ["Four, precisely.", ""]) {
+    test(`{§send-response-receipt}: a ${final ? "corrected" : "silent"} final SEND preserves AG-UI delivery and replay`, { timeout: 60_000 }, async () => {
+        await import(join(SERVICE, "test/setup.ts"));
+        const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
+        const provider = new Mock({ contextWindow: 32768, responses: [
+            { assistant: { content: "Four.", reasoning: null } },
+            { assistant: { content: PlurnkParser.frame("SEND", final), reasoning: null } },
+        ] });
+        const db = await openTestDatabase();
+        const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
+        const started = Promise.withResolvers<Module>();
+        const registration = Module.init({ host: "127.0.0.1", port: 0 });
+        daemon.registerModule({ setup: registration.setup, start: async (seam: ApplicationPort) => {
+            const module = await registration.start(seam);
+            started.resolve(module);
+            return module;
+        } });
+        try {
+            await daemon.start();
+            const { port } = (await started.promise).address();
+            await daemon.createWorkspace({ name: "recovered-reply", projectRoot: null });
+            const events = await post(port, {
+                threadId: "conversation", runId: "initial",
+                messages: [{ id: "question", role: "user", content: "What is two plus two?" }],
+                forwardedProps: { plurnk: { workspace: "recovered-reply", maxTurns: 3 } },
+            });
+            assert.equal(events.at(-1)?.type, "RUN_FINISHED", JSON.stringify(events.at(-1)));
+            assert.equal(provider.received.length, 2, "recovered text is delivered but cannot conclude");
+            assert.match(JSON.stringify(provider.received[1]), /Only valid Operation Syntax OPs allowed\. No free response\./);
+            const expected = final ? ["Four.", final] : ["Four."];
+            assert.deepEqual(events.filter(({ type }) => type === "TEXT_MESSAGE_CONTENT").map((event) => (event as { delta: string }).delta), expected);
+            const replay = await post(port, {
+                threadId: "conversation", runId: "reconnected",
+                forwardedProps: { plurnk: { workspace: "recovered-reply", mode: "sync" } },
+            });
+            const snapshot = replay.find(({ type }) => type === "MESSAGES_SNAPSHOT") as { messages: Array<{ role: string; content: string }> } | undefined;
+            assert.ok(snapshot);
+            assert.deepEqual(snapshot.messages.filter(({ role }) => role === "assistant").map(({ content }) => content), expected, "replay matches live delivery without a blank completion message");
+        } finally {
+            await daemon.stop();
+            await db.close();
+        }
+    });
+}
+
 test("{§agui-run-source}: active-loop injection keeps its source, survives curation and replays exactly once", { timeout: 60_000 }, async () => {
     await import(join(SERVICE, "test/setup.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
@@ -48,7 +93,7 @@ test("{§agui-run-source}: active-loop injection keeps its source, survives cura
     const provider = new PausedModel({ contextWindow: 32768, responses: [
         { assistant: { content: PlurnkParser.frame("NOTE", "Waiting for the injected requirement."), reasoning: null } },
         inspection,
-        { assistant: { content: PlurnkParser.frame("NOTE", "Both messages were answered and the retained source was inspected."), reasoning: null } },
+        { assistant: { content: PlurnkParser.frame("SEND", null), reasoning: null } },
     ] });
     const db = await openTestDatabase();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
@@ -102,7 +147,7 @@ test("{§agui-run-source}: active-loop injection keeps its source, survives cura
         assert.ok(arrival, "the live arrival carries the conversation identity clients use to suppress their own echo");
         const model = rows.filter(({ origin }) => origin === "model");
         assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [
-            ["NOTE", 200], ["KILL", 200], ["READ", 200], ["SEND", 200], ["SEND", 200], ["NOTE", 200],
+            ["NOTE", 200], ["KILL", 200], ["READ", 200], ["SEND", 200], ["SEND", 200], ["SEND", 200],
         ]);
         assert.equal(JSON.parse(model.find(({ op }) => op === "READ")!.rx).content, message.body);
         assert.ok(model.some(({ op, rx }) => op === "SEND" && JSON.parse(rx).answers.includes(message.source)));
@@ -146,7 +191,7 @@ test("{§agui-run-source}: a collaborator's exact reply reaches the assigned con
     }
     const provider = new PausedModel({ contextWindow: 32768, responses: [
         makeMockResponse("````NOTE\nWorking on the request.\n````"),
-        makeMockResponse("````NOTE\nThe collaborator's reply has answered the request.\n````"),
+        makeMockResponse("````SEND\n````"),
     ] });
     const db = await openTestDatabase();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
@@ -210,7 +255,7 @@ test("{§agui-run-source}: a curated arrival remains readable, copyable and repl
                 `\`\`\`\`COPY (${expected}) (worker:///retained-message.md)\n\`\`\`\``,
                 `\`\`\`\`SEND (${expected})\nNamed.\n\`\`\`\``,
             ].join("\n\n"), 10),
-            makeMockResponse("````NOTE\nThe retained message was read and copied; its reply was delivered.\n````", 10),
+            makeMockResponse("````SEND\n````", 10),
         ],
     });
     const db = await openTestDatabase();
@@ -281,8 +326,8 @@ test("{§agui-run-source}: a curated arrival remains readable, copyable and repl
         const rows = await db.test_log_entries_by_loop.all({ loop_id: prompt!.loopId }) as Array<{ op: string; origin: string; status_rx: number; rx: string }>;
         const model = rows.filter(({ origin }) => origin === "model");
         assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [
-            ["KILL", 200], ["READ", 200], ["COPY", 201], ["SEND", 200], ["NOTE", 200],
-        ], "curation does not destroy the source and observation completes without another reply");
+            ["KILL", 200], ["READ", 200], ["COPY", 201], ["SEND", 200], ["SEND", 200],
+        ], "curation does not destroy the source and a silent SEND concludes without another reply");
         assert.equal(JSON.parse(model.find(({ op }) => op === "READ")!.rx).content, "Name your sender.");
         assert.deepEqual(JSON.parse(model.find(({ op }) => op === "SEND")!.rx).answers, [expected]);
         assert.equal(events.filter((event) => event.type === "TEXT_MESSAGE_CONTENT").map((event) => (event as { delta: string }).delta).join(""), "Named.");

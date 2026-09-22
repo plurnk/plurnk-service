@@ -9,7 +9,7 @@ for (const cancelled of [false, true]) {
         const provider = new Mock({ contextWindow: 100_000, responses: [
             makeMockResponse("````FIND (worker:///)\n````\n````SEND\nFirst answer.\n````"),
             makeMockResponse("````FIND (worker:///)\n````\n````SEND\nSecond answer.\n````"),
-            makeMockResponse(cancelled ? "````KILL (worker://root)\n````" : "````NOTE\nThe observed results confirm the answer.\n````"),
+            makeMockResponse(cancelled ? "````KILL (worker://root)\n````" : "````SEND\n````"),
         ] });
         await withDaemon(provider, async (db, daemon, addr) => {
             const ws = await connect(addr);
@@ -26,7 +26,7 @@ for (const cancelled of [false, true]) {
     });
 }
 
-test("{§loop-response-messages} the live harness does not invent text for blank SEND", async () => {
+test("{§loop-response-messages} the live harness neither invents text nor acknowledges a request for blank SEND", async () => {
     const provider = new Mock({ contextWindow: 100_000, responses: [
         makeMockResponse("````SEND\n````"),
     ] });
@@ -34,8 +34,8 @@ test("{§loop-response-messages} the live harness does not invent text for blank
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "live-response-silent" });
-            const result = await liveLoop({ db, ws }, 2, { prompt: "What is the capital of France?" });
-            assert.equal(result.finalStatus, 200);
+            const result = await liveLoop({ db, ws }, 2, { prompt: "What is the capital of France?", maxTurns: 2 });
+            assert.equal(result.finalStatus, 429, "the unanswered request reaches the configured turn limit");
             assert.equal(result.lastContent, "", "blank SEND delivers no response text");
         } finally { ws.close(); }
     });

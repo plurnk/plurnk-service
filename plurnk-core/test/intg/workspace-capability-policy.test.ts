@@ -86,7 +86,7 @@ test("{§capability-policy-cascade}: one effective workspace policy filters exec
         const loopId = await insertLoop(db, workerId, 1, "policy teaching");
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(null)] } }],
+            responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(null, "No external capabilities used.")] } }],
         });
         const { turnId } = await engine.runTurn({
             provider,
@@ -129,7 +129,7 @@ test("{§capability-admission}: harness-authored initialization obeys the same w
         });
         const provider = new Mock({
             contextWindow: 100_000,
-            responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(null)] } }],
+            responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(null, "No external capabilities used.")] } }],
         });
 
         const result = await engine.runTurn({

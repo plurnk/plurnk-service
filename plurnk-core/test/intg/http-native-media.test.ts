@@ -12,7 +12,7 @@ process.env.PLURNK_MEMBERS_TASK = "**";
 process.env.PLURNK_MEMBERS_ENABLED = '["task"]';
 process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "60000";
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
-const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "");
+const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "Media inspection complete.");
 const media = [
     { kind: "image", mimetype: "image/png", bytes: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64"), facts: /PNG image/u },
     { kind: "pdf", mimetype: "application/pdf", bytes: Buffer.from(buildPdf({ title: "Contract" })), facts: /PDF document/u },

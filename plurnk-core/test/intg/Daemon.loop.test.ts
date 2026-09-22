@@ -7,7 +7,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 
 test("loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
     const dsl = "````EDIT (worker:///france/capital)\nParis\n````\n\n````SEND\nParis is the capital.\n````";
-    // {§send-premature-terminate} — the EDIT receipt lands next packet; [200] concludes on the second turn.
+    // {§send-premature-terminate} — observe the EDIT receipt before the final SEND.
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 142), makeMockResponse("````SEND\nParis is the capital.\n````", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {

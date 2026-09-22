@@ -113,8 +113,6 @@ private noteTag(): void {
     const short = width < 4;
     const known = Object.hasOwn(plurnkLexer.OPERATIONS, tag) || this.knownExecutor(tag);
     if (short && !known) return;
-    // A markdown wrapper is a polite envelope, not a missed operation ({§quotation}).
-    if (!known && ["markdown", "md"].includes(tag.toLowerCase())) return;
     const reason = !known ? "unknown" : short ? "short" : "indented";
     this.unknownTags.push({ line: (this as any).currentTokenStartLine, column: (this as any).currentTokenColumn, tag, reason });
 }
@@ -502,7 +500,7 @@ OPEN : { this.atColumnZero() || !this.reasoning && this.inlineChain }? OPENER_FE
 // {§reasoning-notes} — an enclosing code fence is quotation, including unknown tags and tildes.
 // {§quotation} - a bare fence directly under a fence line is that block's orphaned closer: it
 // closes nothing and quotes nothing (a malformed heading's block ends at its own line).
-ORPHAN_CLOSER : { this.atLineStart() && this.previousLineIsFence() }? FENCE [0-9]* [ \t]* { this.orphanAtLineEnd() }? -> type(TEXT), channel(HIDDEN) ;
+ORPHAN_CLOSER : { this.atLineStart() && this.previousLineIsFence() }? FENCE [0-9]* [ \t]* { this.orphanAtLineEnd() }? -> channel(HIDDEN) ;
 // {§quotation} - every other fence at a line start quotes to its closer or the end of the input.
 // A line-start fence whose line carries more backticks is inline code: it quotes nothing, but a
 // missed operation's tag is still worth the same word as a quotation's.

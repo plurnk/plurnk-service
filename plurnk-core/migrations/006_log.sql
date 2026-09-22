@@ -624,7 +624,12 @@ FROM (
       AND le.inherited_history = 0
       AND COALESCE(json_extract(le.attrs, '$.kind'), '') != 'message'
       AND (
-          le.op IN ('EDIT', 'COPY', 'MOVE', 'SEND', 'WORK', 'FORK')
+          le.op IN ('EDIT', 'COPY', 'MOVE', 'WORK', 'FORK')
+          OR (le.op = 'SEND' AND (
+              le.status_rx >= 400
+              OR json_extract(CASE WHEN json_valid(le.tx) THEN le.tx END, '$.target') IS NOT NULL
+              OR json_type(CASE WHEN json_valid(le.rx) THEN le.rx END, '$.answers') = 'array'
+          ))
           OR CASE WHEN json_valid(le.tx) THEN json_type(le.tx, '$.runtime') END = 'text'
           OR (le.op = 'KILL' AND COALESCE(le.scheme, 'file') != 'log')
       )

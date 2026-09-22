@@ -1015,11 +1015,9 @@ test("Engine.runTurn: Errors includes only the immediately previous turn", async
     } finally { await db.close(); }
 });
 
-test("Engine.runTurn: free text before an op is tolerated — the trailing op still parses (grammar 0.74.9)", async () => {
+test("{§response-text-recovery}: free text becomes a nonterminal SEND without losing the following operation", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        // The parser tolerates free text before a statement. The prose is
-        // non-executable, while the SEND after it still parses and dispatches.
         const provider = new Mock({
             contextWindow: 100000,
             responses: [{ assistant: { content: "Just thinking out loud here.\n\n````SEND\ndone\n````", reasoning: null } }],
@@ -1030,8 +1028,10 @@ test("Engine.runTurn: free text before an op is tolerated — the trailing op st
         });
         assert.deepEqual(result.outcomes, [
             { op: "SEND", status: 200, problemType: null },
-        ], "the message after the prose parses and dispatches");
-        assert.equal(result.status, 200, "the SEND terminates the turn; free text does not break the op");
+            { op: "SEND", status: 200, problemType: null },
+            { op: null, status: 400, problemType: "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax" },
+        ], "both recovered text and the authored message are delivered alongside the corrective failure");
+        assert.equal(result.status, 102, "outside text prevents terminal interpretation");
     } finally { await db.close(); }
 });
 

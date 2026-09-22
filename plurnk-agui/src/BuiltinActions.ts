@@ -272,8 +272,10 @@ export default class BuiltinActions {
                             }));
                             continue;
                         }
-                        statements.push(item.statement as unknown as PlurnkStatement);
-                        results.push(null);
+                        if (item.kind === "statement") {
+                            statements.push(item.statement as unknown as PlurnkStatement);
+                            results.push(null);
+                        }
                     }
                     if (parsed.unparsedTail !== undefined) {
                         results.push(parseFailureResult({

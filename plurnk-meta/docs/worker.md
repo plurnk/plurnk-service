@@ -20,7 +20,8 @@ the same meaning when passed to another worker. All scratch belongs to the
 workspace; its namespace does not require a namesake worker. Generated
 references live under `worker:///_plurnk/`; reference
 refreshes may replace those generated documents. EDIT creates or changes an
-entry, never a worker. An unscoped EDIT creates the entry from its body.
+entry, never a worker. An unscoped EDIT creates the entry from its body;
+KILL with an entry path deletes that entry, not its worker.
 
 ````EDIT (worker://reviewer/scratch/greet.mjs) <!-- create the entry from the body -->
 export const greet = (name) => `hello ${name}`;
@@ -85,7 +86,8 @@ child conclusions retain their ordinary delivery and wake behavior.
 
 Open Messages names unanswered messages; an arrival receipt's `resource` links
 to the same source. SEND to that address answers that message. A targetless SEND
-answers your observed Open Messages; SEND to a worker control address gives it
+answers your observed Open Messages, or your loop's original message when none
+remain open. An empty targetless SEND delivers nothing. SEND to a worker control address gives it
 new work instead. Curation of a message's log occurrences never deletes the
 source or changes whether it was answered. Another worker may answer it;
 the assigned worker and original sender receive that reply without a new request.
@@ -156,8 +158,8 @@ an event. Scope and metadata decorations are ignored.
 A wake ends the suspension, not its held work. Submit WAIT to wait again. Waking
 retains the loop's messages, turn allowance, and remaining execution time;
 parked time does not consume execution time. Conclude by observing the work's
-results and answering every Open Message with SEND. A later observation turn
-can conclude without repeating a response already delivered.
+results and answering every Open Message, then submitting a turn containing only
+a targetless SEND. Its body may be empty when the answer already delivered stands.
 
 Each child task's conclusion wakes its waiting parent and arrives as an
 `_plurnk` READ of `ops://capital-checker/1`, carrying what the child said. This is the

@@ -137,8 +137,6 @@ class ControlledWorkerProvider implements Provider {
         await settle?.(requestAccounting);
         return response(`\`\`\`\`SEND
 child ${index + 1} done
-\`\`\`\`
-\`\`\`\`SEND
 \`\`\`\``, capacity, grammar);
     }
 

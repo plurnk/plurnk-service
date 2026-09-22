@@ -1,4 +1,4 @@
-import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
+import { parsePath } from "@plurnk/plurnk-parser";
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import Turn from "./Turn.ts";
 import type { BareStatement, CapabilityProjection, EditStatement, FindStatement, ForkStatement, KillStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
@@ -66,8 +66,6 @@ export type DispatchContext = {
     // execution. Direct single-operation dispatch captures its own boundary.
     logSelectionMaxId?: number;
     editSequence?: EditSequence;
-    // {§prose-conclusion} this targetless SEND is the model's prose answer, not a SEND it wrote.
-    proseAnswer?: boolean;
     // Durable identity is available before a proposal can be resolved; the
     // terminal row becomes externally visible only after that proposal settles.
     onDispatch?: (logEntryId: number) => void;
@@ -534,8 +532,7 @@ export default class Dispatcher {
                 if (statement.op === "EDIT") {
                     result = await this.#resourceMutations.edit(statement, schemeCtx, context.editSequence);
                 } else if (statement.op === "SEND" && statement.target === null) {
-                    result = await this.#respond(statement, schemeCtx, origin, workerId, loopId);
-                    if (context.proseAnswer === true && result.status === 200) result = await this.#answered(result, workerId, loopId);
+                    result = await this.#respond(statement, schemeCtx, loopId);
                 } else if (statement.op === "NOTE") {
                     await Turn.recordSource(this.#db, turnId, "note", statement.body ?? "", { sequence });
                     const coordinate = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({ loop_id: loopId, turn_id: turnId });
@@ -940,7 +937,7 @@ export default class Dispatcher {
             writer: origin,
             resources: { capture: (targets) => ResourceBindings.using(this.#schemes, context,
                 (bound) => this.#resourceSelector.capture(targets, bound)) },
-            replyToMessage: (statement) => this.#respond(statement, context, origin, workerId, loopId),
+            replyToMessage: (statement) => this.#respond(statement, context, loopId),
             signal: this.#loopSignal(loopId),
             streamEventNotify: this.#streamEventNotify,
             wakeWorkerNotify: this.#wakeWorkerNotify,
@@ -1221,40 +1218,20 @@ export default class Dispatcher {
     }
 
 
-    // {§loop-answer} a prose answer's row names where the answer lives, ops://<worker>/<loop>, and
-    // renders under its own leaf ({§log-coordinate-hierarchy}) rather than as a SEND.
-    async #answered(result: DispatchResult, workerId: number, loopId: number): Promise<DispatchResult> {
-        const loop = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
-        if (loop === undefined) throw new Error(`prose answer has no loop sequence for loop ${loopId}`);
-        const resource = renderAddress({ scheme: "ops", authority: await WorkerName.forId(this.#db, workerId), pathname: `/${loop.sequence}` });
-        return { ...result, resource, attrs: { ...(result.attrs ?? {}), answer: "prose" } };
-    }
-
-    // {§send-response-receipt} {§send-looks-like-operation}
-    async #respond(statement: SendStatement, schemeCtx: PlurnkSchemeContext, origin: WriterTier, workerId: number, loopId: number): Promise<DispatchResult> {
-        if (origin === "model") {
-            const heading = this.#operationHeading(typeof statement.body === "string" ? statement.body : statement.body?.raw ?? "", schemeCtx);
-            if (heading !== null) {
-                return Dispatcher.#failure(
-                    "send-looks-like-operation",
-                    400,
-                    `The response begins with the operation heading \`${heading}\`; nothing ran and nothing was delivered.`,
-                    {},
-                    {
-                        heading,
-                        stage: "dispatch",
-                        recovery: `An operation goes on the fence line (\`\`\`\`${heading}); a quoted example goes inside a SEND body.`,
-                        retryable: false,
-                    },
-                );
-            }
-        }
+    // {§send-response-receipt}: message content is literal; only its header selects a destination.
+    async #respond(statement: SendStatement, schemeCtx: PlurnkSchemeContext, loopId: number): Promise<DispatchResult> {
         const captured = await MessageAttachments.capture(statement.metadata, schemeCtx.resources!, "message:reply");
         if ("failure" in captured) return captured.failure;
         const target = statement.target;
         let answers: string[];
         if (target === null) {
+            const content = typeof statement.body === "string" ? statement.body : statement.body?.raw ?? "";
+            if (content.trim() === "" && captured.attachments.length === 0) return { status: 200 };
             answers = await this.#openMessages(loopId);
+            if (answers.length === 0) {
+                const original = await this.#db.engine_original_message.get<{ path: string }>({ loop_id: loopId });
+                if (original !== undefined) answers = [original.path];
+            }
         } else {
             const message = await this.#db.message_source_by_address.get<{ path: string }>({
                 workspace_id: schemeCtx.workspaceId, path: target.raw,
@@ -1268,32 +1245,14 @@ export default class Dispatcher {
             ...(captured.attachments.length === 0 ? {} : { attachments: MessageAttachments.receipts(captured.attachments) }) };
     }
 
-    // The first non-blank line, when it parses alone as one clean heading naming an operation
-    // this worker could perform: a Plurnk operation, or a registered executor or MCP service.
-    #operationHeading(body: string, schemeCtx: PlurnkSchemeContext): string | null {
-        const line = body.split("\n").find((candidate) => candidate.trim().length > 0)?.trim();
-        if (line === undefined || line.startsWith("`")) return null;
-        const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(line, null), {
-            executors: schemeCtx.executors?.availableRuntimes(schemeCtx.workspaceId) ?? [],
-        });
-        if (parsed.unparsedTail !== undefined || parsed.items.length !== 1 || parsed.items[0].kind !== "statement") return null;
-        const { statement } = parsed.items[0];
-        // {§naked-pattern} lifts prose after the path on FIND, READ and KILL as a literal matcher;
-        // on a reply's first line a multi-word literal is prose, not a mis-fenced operation.
-        if ("matcher" in statement && statement.matcher?.dialect === "glob" && /\s/u.test(statement.matcher.raw)) return null;
-        if (!isExecution(statement)) return line;
-        if (schemeCtx.executors?.entry(statement.runtime, schemeCtx.workspaceId) === undefined) return null;
-        return line;
-    }
-
     // {§send-response-receipt}: published unanswered source addresses, oldest first.
     async #openMessages(loopId: number): Promise<string[]> {
         const rows = await this.#db.engine_open_messages.all<{ path: string }>({ loop_id: loopId });
         return rows.map((row) => row.path);
     }
 
-    async settleProgram(ctx: { workerId: number; loopId: number; turnId: number; origin: WriterTier }, wait: boolean): Promise<number> {
-        return this.#disposition.settle(ctx, wait);
+    async settleProgram(ctx: { workerId: number; loopId: number; turnId: number; origin: WriterTier }, wait: boolean, finalResponse: boolean): Promise<number> {
+        return this.#disposition.settle(ctx, wait, finalResponse);
     }
 
     // {§send-premature-terminate}: judge observation boundaries after the whole program settles.
@@ -1332,10 +1291,7 @@ export default class Dispatcher {
         };
     }
 
-    // A failed operation is also an unobserved result: it does not enter the
-    // model's Log until the next packet. Both explicit completion and an
-    // already-drained join must cross that observation boundary before they
-    // can honestly finish the loop.
+    // {§wait-obligation-matrix}: fresh failures precede automatic parking and completion.
     async #unobservedFailureCount(turnId: number): Promise<number> {
         const failedRows = await this.#db.engine_turn_failures.all<{ id: number }>({ turn_id: turnId });
         return failedRows.length;

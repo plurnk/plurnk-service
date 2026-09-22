@@ -1,5 +1,5 @@
 // {§loop-answer} — ops://<worker>/<loop> is what the loop said: the latest reply to the message that
-// started it, whether a prose conclusion or a SEND answered it.
+// started it.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -9,7 +9,7 @@ import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigra
 import { statement } from "./reasoning-fixture.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
-test("{§loop-answer}: a loop's address reads its answer, prose or SEND; running is 425, absent is 404", async () => {
+test("{§loop-answer}: a loop's address reads its SEND answer; running is 425, absent is 404", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loop-answer-${crypto.randomUUID()}`);
@@ -22,20 +22,17 @@ test("{§loop-answer}: a loop's address reads its answer, prose or SEND; running
         assert.equal(running.status, 425, "a loop still running has not answered yet");
         assert.equal(running.problem?.type, "https://problems.plurnk.xyz/scheme/ops/loop-running");
 
-        const prose = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````markdown\nFour.\n````", reasoning: null } }] }),
+        const firstReply = await engine.runLoop({
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````SEND\nFour.\n````", reasoning: null } }] }),
             workspaceId, workerId, loopId: first, maxTurns: 3, messages: [{ role: "user", content: "What is two plus two?" }],
         });
-        assert.equal(prose.result.status, 200);
+        assert.equal(firstReply.result.status, 200);
         const answered = await look("ops://alice/1");
         assert.equal(answered.status, 200);
         assert.ok("content" in answered);
-        assert.equal(answered.content, "Four.", "the prose conclusion is the loop's answer");
-        const row = await look("log:///1/2/2/answer");
-        assert.equal(row.status, 200, "the prose answer's row is addressed as an answer");
-        assert.equal((await look("log:///1/2/2/SEND")).status, 404, "never as a SEND the model did not write");
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: prose.turnIds.at(-1)! });
-        assert.equal(JSON.parse(rows.find(({ op, rx }) => op === "SEND" && rx.includes("ops://"))!.rx).resource, "ops://alice/1", "the row names where the answer lives");
+        assert.equal(answered.content, "Four.", "the SEND is the loop's answer");
+        const row = await look("log:///1/2/2/SEND");
+        assert.equal(row.status, 200, "a final reply is an ordinary SEND row");
 
         const second = await insertLoop(db, workerId, 2, "And three plus three?");
         const sent = await engine.runLoop({
@@ -64,7 +61,7 @@ test("{§loop-answer}: a concluded child's termination IS what it said, read at 
         const loopId = await insertLoop(db, childId, 1, "Review the draft.");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runLoop({
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````markdown\nThe draft is sound.\n````", reasoning: null } }] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````SEND\nThe draft is sound.\n````", reasoning: null } }] }),
             workspaceId, workerId: childId, loopId, maxTurns: 3, messages: [{ role: "user", content: "Review the draft." }],
         });
         assert.equal(result.result.status, 200);

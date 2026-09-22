@@ -23,7 +23,7 @@ WHERE w.workspace_id = $workspace_id AND w.name = $worker_name
 
 -- PREP: turn_source_loop_answer
 -- {§loop-answer} A loop's answer is the latest reply its own loop gave to its originating message
--- (ordinal 1): a prose conclusion or a SEND that targeted it. The loop's status says whether an
+-- (ordinal 1). The loop's status says whether an
 -- absent answer is still to come.
 SELECT l.status, l.terminal_result, l.terminated_by,
        (SELECT r.content

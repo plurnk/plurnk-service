@@ -15,7 +15,7 @@ const fixture = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures/echo-ser
 
 test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodies in interpreter summaries", { timeout: 30_000 }, async () => {
     const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse(
-        PlurnkParser.frame("SEND", ""),
+        PlurnkParser.frame("SEND", "Surveyed."),
     )] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules") });

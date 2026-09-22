@@ -7,7 +7,7 @@ import { writtenOp } from "@plurnk/plurnk-contracts";
 const task = PlurnkParser.frame("WAIT", '[{"content":"Observe the result.","status":"completed"}]');
 const statements = (result: ReturnType<typeof PlurnkParser.parse>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 
-test("{§whitespace-contract}: provider preamble on its own line is ignored; an opener after text on its line is prose ({§quotation})", () => {
+test("{§response-text}: provider preamble is text; an opener after text on its line is prose ({§quotation})", () => {
     const own = PlurnkParser.parse("plain preamble\n" + PlurnkParser.frame("READ (worker:///x)", null) + "\n" + task);
     assert.deepEqual(statements(own).map(({ op }) => op), ["READ", "WAIT"]);
     assert.deepEqual(statements(own)[0].position, { line: 2, column: 0 });
@@ -15,15 +15,15 @@ test("{§whitespace-contract}: provider preamble on its own line is ignored; an 
     assert.deepEqual(statements(inline).map(({ op }) => op), ["WAIT"], "the READ is prose; its orphaned closer quotes nothing, so the WAIT still runs");
 });
 
-test("{§fence-boundary}: ignored preamble does not promote headings or inline body examples", () => {
+test("{§fence-boundary}: preamble text does not promote headings or inline body examples", () => {
     const body = "keep inline ### READ_ (worker:///not-an-operation) as body";
     const result = PlurnkParser.parse("ordinary.## Heading! remains preamble\n" + PlurnkParser.frame("WAIT", body));
-    assert.deepEqual(result.items.map((item) => item.kind), ["statement"]);
+    assert.deepEqual(result.items.map((item) => item.kind), ["text", "statement"]);
     const first = statements(result)[0];
     assert.equal(first.op === "WAIT" ? first.body : undefined, body);
 });
 
-test("{§whitespace-contract}: the topology witness ignores a model-written result between intact operations", () => {
+test("{§response-text}: the topology witness retains a model-written result between intact operations", () => {
     const source = [
         "I'll confirm the count exactly with jq, then reply.",
         "````jq (data/users.json)",
@@ -39,7 +39,7 @@ test("{§whitespace-contract}: the topology witness ignores a model-written resu
     ].join("\n");
     const parsed = PlurnkParser.parse(source, { executors: ["jq"] });
     assert.equal(parsed.unparsedTail, undefined);
-    assert.deepEqual(parsed.items.map((item) => item.kind), ["statement", "statement", "statement"]);
+    assert.deepEqual(parsed.items.map((item) => item.kind), ["text", "statement", "text", "statement", "statement", "text"]);
     const ops = statements(parsed);
     assert.deepEqual(ops.map(writtenOp), ["jq", "SEND", "WAIT"]);
     assert.equal(isExecution(ops[0]) ? ops[0].body : null, "length");
@@ -47,7 +47,7 @@ test("{§whitespace-contract}: the topology witness ignores a model-written resu
     assert.deepEqual(ops[1].position, { line: 6, column: 0 });
 });
 
-test("{§tier-entrypoints}: every parser tier ignores outside text without changing body bytes or source positions", () => {
+test("{§tier-entrypoints}: only the model tier exposes outside text; all tiers preserve body bytes and positions", () => {
     for (const newline of ["\n", "\r\n"]) {
         const body = ["literal text", "````READ (not-executed.md)````", "3", ""].join(newline);
         const source = [
@@ -61,7 +61,9 @@ test("{§tier-entrypoints}: every parser tier ignores outside text without chang
         for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
             const parsed = parse(source);
             assert.equal(parsed.unparsedTail, undefined);
-            assert.deepEqual(parsed.items.map((item) => item.kind), ["statement", "statement", "statement"]);
+            assert.deepEqual(parsed.items.map((item) => item.kind), parse === PlurnkParser.parse
+                ? ["text", "statement", "text", "statement", "statement", "text"]
+                : ["statement", "statement", "statement"]);
             const ops = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
             assert.deepEqual(ops.map(({ op }) => op), ["EDIT", "SEND", "WAIT"]);
             assert.equal(ops[0].op === "EDIT" ? ops[0].body : null, body);
@@ -70,7 +72,7 @@ test("{§tier-entrypoints}: every parser tier ignores outside text without chang
     }
 });
 
-test("{§turn-shape}: ignored text supplies neither an operation nor a task inventory", () => {
+test("{§turn-shape}: outside text supplies neither an operation nor a task inventory", () => {
     const empty = PlurnkParser.parse("Only commentary.\nTASK completed.");
     assert.equal(statements(empty).length, 0);
     assert.deepEqual(empty.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []), [PlurnkParser.NO_VALID_OPERATION]);
@@ -79,7 +81,7 @@ test("{§turn-shape}: ignored text supplies neither an operation nor a task inve
     assert.deepEqual(missing.items.filter((item) => item.kind === "error"), []);
 });
 
-test("{§disposition-anywhere}: ignored prose hides neither an operation after WAIT nor a second WAIT", () => {
+test("{§disposition-anywhere}: outside text hides neither an operation after WAIT nor a second WAIT", () => {
     const parsed = PlurnkParser.parse(task + "\nSome prose.\n````READ (late.md)````\nMore prose.");
     assert.deepEqual(statements(parsed).map(({ op }) => op), ["WAIT", "READ"]);
     assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);

@@ -27,7 +27,7 @@ test("{§completion-joins-live-work} completion with a live child worker joins i
         const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const send200 = (loopId: number) => engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(null)] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(null, "Complete.")] } }] }),
             workspaceId, workerId: parentWorker, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -91,7 +91,7 @@ test("a newer terminal loop cannot mask a child's older unresolved work", async 
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const refused = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(null)] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [sendStmt(null, "Complete.")] } }] }),
             workspaceId, workerId: parentWorker, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -294,7 +294,7 @@ test("a successful same-turn scoped KILL continues an empty wait and permits exp
         );
 
         const concluded = await run(200);
-        assert.equal(concluded.result.status, 200, "log curation is permitted in a completion turn");
+        assert.equal(concluded.result.status, 102, "curation executes, but a sibling KILL means the SEND is not a final response");
     } finally { await db.close(); }
 });
 
@@ -328,7 +328,7 @@ test("{§completion-joins-live-work} a model declaring done with a live child pa
         const childWorker = await insertWorker(db, workspaceId, parentWorker);
         await insertLoop(db, childWorker, 1, "child");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 6 }, () => ({ assistant: { content: "", reasoning: null, ops: [sendStmt(null)] } })) });
+        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 6 }, () => ({ assistant: { content: "", reasoning: null, ops: [sendStmt(null, "Complete.")] } })) });
         const result = await engine.runLoop({ provider, workspaceId, workerId: parentWorker, loopId: parentLoop, messages: [], maxTurns: 10, maxStrikes: 3 });
         assert.equal(result.result.status, 202, "the first claim joins the live child: the loop parks");
         assert.equal(provider.received.length, 1, "no further turn runs until the child concludes and wakes the loop");

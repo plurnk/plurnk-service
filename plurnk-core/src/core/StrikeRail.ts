@@ -148,8 +148,8 @@ export default class StrikeRail {
         // match more than one; the most specific wins, and repetition is the most specific fact.
         const crossedBy: StrikeSource | null = !struck ? null
             : cycle.detected ? "repetition"
-            : recordedFailed ? "operation"
-            : "no_operation";
+            : turn.emptyTurn === true ? "no_operation"
+            : "operation";
         const saved = await this.#db.strike_rail_assess.run({
             loop_id: loopId,
             streak,

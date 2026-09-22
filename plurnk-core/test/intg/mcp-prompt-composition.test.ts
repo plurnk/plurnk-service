@@ -13,7 +13,7 @@ import { openMigrated } from "./_helpers.ts";
 import { waitForDb } from "./_rpc.ts";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
-const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "");
+const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "Media inspected.");
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
 
 class PromptReader extends Mock {

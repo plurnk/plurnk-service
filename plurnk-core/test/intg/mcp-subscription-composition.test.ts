@@ -15,7 +15,7 @@ import { makeMockResponse, waitForDb } from "./_rpc.ts";
 process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
 process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "60000";
 
-const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "");
+const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "Resource inspected.");
 const read = (uri: string) => PlurnkParser.frame(`READ (fixture://${resourcePath(uri)}) <1,-1>`, null);
 
 test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource updates refresh a later READ without changing history or waking unrelated workers", { timeout: 20_000 }, async (t) => {

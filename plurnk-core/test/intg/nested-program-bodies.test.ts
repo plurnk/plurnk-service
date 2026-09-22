@@ -31,7 +31,7 @@ for (const header of ["SEND", "EDIT (worker:///example.md)"]) {
             });
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "Preserve the examples." }] });
-            assert.equal(result.status, header === "SEND" ? 200 : 102);
+            assert.equal(result.status, 102, "the quoted body stays literal, and a sibling operation prevents conclusion");
             assert.equal(result.emissionAttempts, 1);
             assert.deepEqual(result.outcomes.map(({ op, status }) => ({ op, status })), [
                 { op: header === "SEND" ? "SEND" : "EDIT", status: header === "SEND" ? 200 : 201 },

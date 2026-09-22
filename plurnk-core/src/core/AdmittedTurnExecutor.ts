@@ -69,7 +69,7 @@ export default class AdmittedTurnExecutor {
         failOnOperationError = false,
         recoverableParseErrors = [],
         emptyTurn = false,
-        proseAnswer = null,
+        finalResponse = statements.length === 1 && statements[0].op === "SEND" && statements[0].target === null,
         bare,
         signal,
         onDispatch,
@@ -88,7 +88,7 @@ export default class AdmittedTurnExecutor {
         failOnOperationError?: boolean;
         recoverableParseErrors?: readonly ParseErrorInfo[];
         emptyTurn?: boolean;
-        proseAnswer?: PlurnkStatement | null;
+        finalResponse?: boolean;
         bare?: BareExecution;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
@@ -104,19 +104,16 @@ export default class AdmittedTurnExecutor {
         }
         // {§empty-turn} — a model response with no operation is a turn all the same: its text and
         // reasoning are kept, the packet says so, and the strike rail counts it once.
-        if (statements.length === 0) {
-            if (source !== null) await Turn.recordSource(this.#db, turnId, "ops", source, { modelCallId: sourceModelCallId });
-            // {§conclusion-recovery} — the offer is only made when there is text to submit; a turn
-            // that said nothing at all is told what it did, and nothing that is not true of it.
-            const offer = source !== null && source.trim().length > 0
-                ? " Reply 200 to submit the previous turn as final."
-                : "";
+        if (emptyTurn) {
             this.#notices.push(workspaceId, workerId, loopId, {
                 source: "engine:turn",
                 kind: "turn_no_operations",
                 level: "warn",
-                message: `Turn contains no OPs. A final response is a \`markdown\` OP.${offer}`,
+                message: "No valid Operation Syntax OPs detected.",
             });
+        }
+        if (statements.length === 0 && recoverableParseErrors.length === 0) {
+            if (source !== null) await Turn.recordSource(this.#db, turnId, "ops", source, { modelCallId: sourceModelCallId });
             await Turn.complete(this.#db, turnId, TURN_STATUS_IMPLICIT_CONTINUE);
             return { status: TURN_STATUS_IMPLICIT_CONTINUE, outcomes: [], fingerprint: StrikeRail.fingerprintEmptyTurn(source ?? ""), emptyTurn: true };
         }
@@ -273,7 +270,6 @@ export default class AdmittedTurnExecutor {
                             origin,
                             logSelectionMaxId,
                             editSequence,
-                            ...(statement === proseAnswer ? { proseAnswer: true } : {}),
                             onDispatch,
                             onSettled,
                         });
@@ -337,13 +333,13 @@ export default class AdmittedTurnExecutor {
                 ),
             });
         }
-        const turnStatus = await this.#dispatcher.settleProgram({ workerId, loopId, turnId, origin }, wait);
+        const turnStatus = await this.#dispatcher.settleProgram({ workerId, loopId, turnId, origin }, wait, finalResponse);
         await Turn.complete(this.#db, turnId, turnStatus);
         return {
             status: turnStatus,
             outcomes,
-            fingerprint: StrikeRail.fingerprintTurn(scheduled, results),
-            emptyTurn: false,
+            fingerprint: emptyTurn ? StrikeRail.fingerprintEmptyTurn(source ?? "") : StrikeRail.fingerprintTurn(scheduled, results),
+            emptyTurn,
         };
     }
 

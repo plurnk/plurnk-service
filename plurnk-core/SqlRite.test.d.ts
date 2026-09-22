@@ -279,6 +279,7 @@ export class SqlRiteSync {
 	engine_render_log: SqlRiteSyncPreparedStatements;
 	engine_admit_log_outputs: SqlRiteSyncPreparedStatements;
 	engine_open_messages: SqlRiteSyncPreparedStatements;
+	engine_original_message: SqlRiteSyncPreparedStatements;
 	engine_resolve_log_entry: SqlRiteSyncPreparedStatements;
 	engine_log_entry_coordinate: SqlRiteSyncPreparedStatements;
 	retention_retire_packets: SqlRiteSyncPreparedStatements;
@@ -855,6 +856,7 @@ export default class SqlRite {
 	engine_render_log: SqlRitePreparedStatements;
 	engine_admit_log_outputs: SqlRitePreparedStatements;
 	engine_open_messages: SqlRitePreparedStatements;
+	engine_original_message: SqlRitePreparedStatements;
 	engine_resolve_log_entry: SqlRitePreparedStatements;
 	engine_log_entry_coordinate: SqlRitePreparedStatements;
 	retention_retire_packets: SqlRitePreparedStatements;

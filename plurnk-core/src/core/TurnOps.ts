@@ -22,6 +22,10 @@ export default class TurnOps {
                 statements.push(item.statement);
                 continue;
             }
+            if (item.kind === "text") {
+                failures.push("Core programs contain only Operation Syntax OPs.");
+                continue;
+            }
             if (item.error.severity === "warning") continue;
             failures.push(item.error.message);
         }

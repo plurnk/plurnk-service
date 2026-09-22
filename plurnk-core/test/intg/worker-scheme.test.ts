@@ -1101,12 +1101,17 @@ test("an empty join cannot manufacture a terminal deliverable from its inventory
         const reader = await insertWorker(db, workspaceId);
         const collected = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
         assert.equal(collected.status, 425);
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````SEND\n````", reasoning: null } }] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            { assistant: { content: "````SEND\n````", reasoning: null } },
+            { assistant: { content: "````SEND\nThe module was tested.\n````", reasoning: null } },
+        ] });
         const completed = await engine.runTurn({ provider, workspaceId, workerId: worker, loopId: wLoop, messages: [] });
-        assert.equal(completed.status, 200);
+        assert.equal(completed.status, 102, "empty completion cannot answer an open assignment");
+        assert.equal((await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }))).status, 425);
+        assert.equal((await engine.runTurn({ provider, workspaceId, workerId: worker, loopId: wLoop, messages: [] })).status, 200);
         const done = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
         assert.equal(done.status, 200);
-        assert.equal(done.content, "", "the READ has no invented answer or invented failure");
+        assert.equal(done.content, "The module was tested.", "the READ returns only the actually delivered answer");
         assert.equal(done.resource, "ops://req-test/1");
         assert.equal((await new LoopLifecycle(db).result(wLoop))?.content ?? null, null);
     } finally { await db.close(); }

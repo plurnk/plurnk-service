@@ -527,8 +527,9 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
   parent as an `_plurnk` READ of `ops://<name>/<sequence>` ({§loop-answer}), not a message,
   and that row carries what the child said.
   The occurrence retains that loop's exact terminal result; the READ uses ordinary
-  bounded projection. Its body, when present, is initially visible. Replies are
-  independent deliveries ({§message-reply-delivery}), never copied into this outcome. Failures and
+  bounded projection of {§loop-answer}. The original delegated answer reaches the
+  parent here, not as a duplicate reply ({§message-reply-delivery}); other message
+  replies remain independent deliveries. Failures and
   cancellations retain their exact status, Problem, and visible explanation,
   including a spawn that fails before its first turn. Observation and wake-up
   follow {§env-delta-child-termination}; a later child loop cannot replace the
@@ -1161,8 +1162,8 @@ and cycle verdict are absent from model packets; only the concrete occurrences
 in the table are shown. The streak never leaves the daemon.
 
 A crossing terminal names the source that struck the crossing turn — `repetition`,
-`operation`, or `no_operation` — in its detail, most specific first when a turn matches more
-than one. The three are not interchangeable: a turn that attempted no operation did not *fail*
+`no_operation`, then `operation` — in its detail, in that order when a turn matches more
+than one. The three are not interchangeable: a turn that authored no operation did not *fail*
 one, and reporting it as a failed turn misreads a model answering without the fence as a model
 whose operations broke. This is the crossing turn's source, not the streak's composition; the
 rail rules on the crossing and does not retain the kinds behind it. What the crossing turn
@@ -1219,7 +1220,21 @@ Three current entry points:
 
 ### §emission-admission Provider emission admission
 
-A completed provider exchange is an **emission attempt**, not necessarily an engine turn. **The harness admits every program whose meaning it can determine, runs what it admitted, and reports — never refuses — what it could not read**; a refusal is for undecidable text alone. ANTLR admits at least one parsed source operation. WAIT is optional under {§turn-shape}; omission invents no operation, diagnostic, warning or strike; any number of WAITs are one park, scheduled last ({§disposition-anywhere}), and statements after them remain admitted in authored order. Bounded operation errors retain useful siblings and participate in the ordinary struck turn. An unfinished heading slot ({§unparsed-tail-boundary}) refuses only what follows it: the statements that closed before it run, and the loss is one more hard diagnostic — a failed row with the lexer's own reason; an exchange that lost its boundary before any statement closed has nothing admissible and is rejected. A missing closer never rejects ({§closer-fallback}). An exchange with no operation and no other hard error is not rejected: it is admitted as an empty turn ({§empty-turn}). Parser warnings remain admissible. `finish=length` is evidence of likely truncation, not an independent rejection rule. Provider-declared interruption never reaches admission ({§provider-interrupted-attempt}). Accepted source bytes and statement positions remain exact in response evidence and `turnOps`. Execution follows {§op-execution-order}.
+A completed provider exchange is an **emission attempt**, not necessarily an engine turn.
+The parser owns its boundaries; core admits determinate work and exposes its failures.
+
+| Parsed response | Admission |
+|---|---|
+| Bounded program, including malformed operations | Admit valid operations and record parser failures; with no authored operation, apply {§empty-turn}. |
+| Outside response text | Recover literal SENDs under {§response-text-recovery}; never infer completion. |
+| Lost boundary after a closed operation | Admit the closed operations and record the boundary diagnostic under {§unparsed-tail-boundary}. |
+| Lost boundary before any closed operation | Reject the attempt; neither recovered text nor a reasoning NOTE substitutes for a closed response operation. |
+
+Warnings and closer recovery ({§closer-fallback}) do not reject. `finish=length`
+discloses truncation and precludes completion; it is not independently a rejection.
+Provider interruption is owned by {§provider-interrupted-attempt}. Accepted source
+and positions remain exact; execution follows {§op-execution-order}. WAIT remains
+optional, with no omission warning or invented operation ({§turn-shape}).
 
 §safe-uri-target-groups After source and authored-command admission, Core tolerates one target group on READ or KILL only when splitting its raw target at top-level comma or whitespace separators produces at least two members and every member independently parses as an explicit `scheme://` URI. Request-metadata blocks are opaque to this split. Each member becomes one ordinary statement with an independent dispatch outcome and log row, in authored member order at that operation's position under {§op-execution-order}. Otherwise the target remains exactly singular, including local filenames containing spaces or commas. The stored `turnOps` and authored command count remain unexpanded, and no other operation admits target groups.
 
@@ -2574,7 +2589,7 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
 SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metadata, lineMarker }`.
 
 - **Message:** SEND delivers to an actor, endpoint or exact message address. Targetless SEND answers observed Open Messages.
-- **Workflow:** WAIT yields; successful reply delivery and settled work permit completion at the end of the whole program. NOTE retains memory.
+- **Workflow:** WAIT yields. Only a lone explicit targetless SEND requests successful completion ({§send-conclusion}). NOTE retains memory.
 
 §worker-obligations A worker holds its unresolved children and open non-detached
 streams (`worker_obligations`); `loop_obligations` names them per loop. The
@@ -2588,15 +2603,18 @@ same durable liveness.
 | Worker or loop already cancelled/terminal | Preserve that result. |
 | Administrative program | Finish its transaction without adjudicating another model loop's work. |
 | New unpublished message | Continue; publish it in the next packet. |
+| Fresh operation/parser failure without an authored WAIT | Continue for recovery before any automatic parking. |
 | Live work and either WAIT or no unanswered messages | Park the same loop; message arrival, child or stream settlement, or stream cadence wakes it. |
 | WAIT without live work | Continue; never invent a future wake. |
 | Unanswered messages | Continue. |
 | Unobserved operation results, failures, child results or stream conclusions | Continue; the next packet presents them. |
-| No outstanding messages, live work or unobserved results | Conclude successfully, without a synthetic operation. |
+| No eligible completion request ({§send-conclusion}) | Continue. |
+| Eligible completion request with no outstanding messages, live work or unobserved results | Conclude successfully. |
 
-An empty emission is handled by {§empty-turn}, not this completion rule. Ordinary strikes,
-cycles and execution limits remain independent. NOTE and successful KILL do not themselves
-require another observation turn. Failed KILL and every other operational result do.
+An empty emission is handled by {§empty-turn}. Ordinary strikes, cycles and
+execution limits remain independent. NOTE and successful KILL do not themselves
+require another observation turn, but neither requests completion. Failed KILL
+and every other operational result require observation.
 
 §loop-response-messages **A response is a recorded delivery.** A successful SEND reply records
 the exact message addresses it answers. All replies remain independently recoverable in
@@ -2630,90 +2648,68 @@ accounting and model-visible failure evidence remain separately owned by
   answers its ordinary factual 501 without grafting a guessed recovery onto it.
 - §send-response-receipt **A reply records exactly which messages it answers.** A successful
   reply carries `answers`, the immutable message addresses it answered, not recipient actors. Targetless SEND
-  answers this loop's published, unanswered messages, oldest first. SEND to an exact message
+  answers this loop's published, unanswered messages, oldest first. When none remain,
+  a nonempty targetless SEND replies to the loop's original published message, so a
+  follow-up can revise its answer. A targetless SEND with no body content or attachments
+  delivers nothing, carries no `answers`, and cannot erase an earlier reply; its authored turn
+  may still request completion under {§send-conclusion}. SEND to an exact message
   address answers only that message; SEND to an actor endpoint remains ordinary communication
   and answers no assignment implicitly. An unpublished arrival cannot be answered by the
   targetless shorthand. Failed delivery answers nothing. Reply accounting reads executed
   delivery evidence, never log visibility or the mere existence of a later SEND.
-- §prose-conclusion **A markdown answer is the answer, and concluding is deliberate.** An admitted
-  response concludes only when it is wrapped whole in one `markdown` or `md` fence — the form
-  `plurnk.md` teaches — and has no operation, attempts none ({§operation-attempt}), was not cut at
-  the output allowance, is not empty, and says something outside its quotations ({§quotation}: a
-  reply that is nothing but quoted material is a misfenced program) (operator, 2026-09-18, #761;
-  fence required 2026-09-21). A response that merely failed to yield an operation is NOT an answer:
-  it is non-responsive and falls to {§empty-turn}, taking one strike while the loop continues. That
-  asymmetry is the point — a mis-fenced operation costs a turn, never the run, because a weak model
-  under pressure fences badly and a whole rollout must not end on a typo. An offset operation fence
-  is one of those quotations and disqualifies nothing: `plurnk.md` tells the model to offset an
-  example it does not intend to execute (operator, 2026-09-21). The engine
-  admits it as a targetless SEND whose body is the trimmed content, positioned on line 1. It
-  answers the open messages, reaches clients and a parent exactly as a SEND does, and meets the
-  completion barrier as a SEND does ({§completion-joins-live-work},
-  {§completion-defers-to-results}). Reasoning NOTEs ride with it. The model is taught
-  "respond without performing any OPs" and is never taught the SEND. A reply wrapped whole in one
-  `markdown` or `md` fence is delivered as that fence's content ({§quotation}). Its row is stored as the
-  SEND that delivers it (reply accounting, delivery and clients read SEND rows) but carries
-  `attrs.answer = "prose"` and `resource: ops://<worker>/<loop>`, and is addressed and rendered
-  under the leaf `answer` (`log:///1/2/2/answer`), never as a SEND the model did not write.
+- §send-conclusion **Successful completion requires a lone authored reply.** The response
+  contains exactly one parsed operation, a targetless SEND, no outside response text,
+  no hard parse error or lost boundary, and was not cut at the provider's output allowance.
+  NOTEs extracted from the separate reasoning channel do not alter this response shape.
+  The SEND delivers normally; only after the whole admitted program settles does
+  {§wait-obligation-matrix} decide whether completion is possible. A recovered SEND,
+  addressed SEND, multiple SENDs, SEND mixed with another response operation, NOTE-only
+  or KILL-only program never requests completion. An empty SEND body is legal; it does
+  not recall or resubmit a previous turn. There is no confirmation token, Markdown
+  conclusion envelope, pending draft, special answer row or implicit successful exit.
+- §response-text-recovery **Outside response text is delivered, never terminal.** Each
+  text span supplied by {§response-text} becomes an ordinary targetless SEND in source
+  order. Bodies and quotations remain literal. The exact original emission is retained.
+  The turn carries `Only valid Operation Syntax OPs allowed. No free response.` and
+  receives one progress-contract strike; valid sibling operations still run. This
+  recoverable syntax failure requires another turn even when delivery answers every
+  Open Message; automatic parking cannot postpone recovery, but an authored WAIT
+  retains its ordinary semantics. Recovery never creates an eligible completion request, including when
+  the synthesized SEND is the turn's only operation. Multiple text spans and overlapping
+  no-operation/parse failures still count as one strike per turn.
 - §loop-answer **A loop's address is what it said.** READ `ops://<worker>/<loop>` resolves to
-  the latest reply the loop gave to the message that started it: a prose conclusion's text or
-  the body of a SEND that targeted that message. A running loop without one is 425; a loop that
+  the latest reply the loop gave to the message that started it: the body of a SEND
+  that targeted that message. A running loop without one is 425; a loop that
   ended without one is its terminal problem (404 when it ended 2xx) — and that problem cites what
   the model last left unconcluded, so the loop's own address never reports silence from a loop that
   spoke ({§terminal-evidence}). `ops://<worker>/<loop>/<turn>`
-  remains that turn's emission. A concluded child's `loop_termination` row to its parent carries
-  `answer: ops://<child>/<loop>` beside its status. Witness: `test/intg/loop-answer.test.ts`.
-- §empty-turn **A response with no operation that is not an answer is a turn, not a retry.**
-  When the parser finds no operation and no other hard error, and the response is not an
-  answer under {§prose-conclusion} — an operation attempt, prose cut at the output allowance,
-  or an empty response — it is admitted as an empty turn (operator, 2026-09-12): its text and
-  reasoning are stored like any turn's (`ops://<worker>/`, `reasoning://<worker>/`), the model's own message
-  stays in the next packet's history, that packet carries one `turn_no_operations` notice and
-  any {§bare-heading-advisory} notices, the turn continues at 102, and the strike rail counts
-  one progress-contract strike, so a model that only talks strikes out at the ordinary
-  threshold instead of being resampled three times on an identical packet. It performed no
-  activity, so its **text** is its cycle fingerprint ({§engine-cycle-evidence}): a model that
-  repeats the same words trips cycle detection, and a model that says three different things
-  strikes out without being called a loop. Fingerprinting the empty program instead made every
-  empty turn identical, so any weak model answering in prose terminated 508 "loop detected" for
-  a loop that never repeated anything (corrected 2026-09-21, #805).
-- §conclusion-recovery **A turn that answered without the fence is asked once, and `200` submits
-  it.** An empty turn that kept text ({§empty-turn}) makes its notice an offer — *Turn contains no
-  OPs. A final response is a `markdown` OP. Reply 200 to submit the previous turn as final.* — and
-  the next admitted response redeems it when that response is `200` and nothing else, trimmed, with
-  or without the envelope ({§prose-conclusion}'s `markdown` or `md` fence). Redemption concludes the
-  loop on the **retained text**, not on the token: the token releases the answer the model already
-  wrote, at `ops://<worker>/<loop>/<turn>`, and the concluding row is an ordinary prose conclusion.
-  A response that merely contains `200`, or that carries any operation, attempts one, lost its
-  boundary or was cut at the allowance, redeems nothing and is read as itself. The offer stands for
-  exactly one turn and is read off the record — the turn immediately before this one, and only
-  while its admitted program was empty — so a stale offer cannot be redeemed later and a restart
-  between the offer and its reply cannot leave a bare `200` standing as a loop's answer. An
-  unredeemed offer lapses silently; the empty turn keeps the one strike it already took
-  ({§engine-rails}), because the recovery buys the answer back, not the turn (operator,
-  2026-09-21, #805). A turn that emitted no text at all is offered nothing: there is
-  nothing to submit, and the notice says only what is true of it.
+  remains that turn's emission. A concluded child's `loop_termination` row to its parent
+  READs this same loop resource. Witness: `test/intg/loop-answer.test.ts`.
+- §empty-turn **No authored response operation is a recoverable turn, never completion.**
+  Count parsed response operations before SEND recovery and reasoning-NOTE extraction.
+  When none exist and no boundary was lost, retain the turn and its raw sources, warn
+  `No valid Operation Syntax OPs detected.`, and count one progress-contract strike.
+  Non-OP text also follows {§response-text-recovery}. Empty or reasoning-only output
+  sends nothing. A turn with no executed operations uses its exact text as the cycle
+  fingerprint ({§engine-cycle-evidence}); different empty programs are not a repeated
+  cycle merely because neither contained operations. Lost-boundary handling remains
+  {§unparsed-tail-boundary}; no confirmation token or private retry is invented here.
 - §terminal-evidence **A terminal rules the loop over; it does not decide the model said nothing.**
   Every engine terminal — strike threshold (500), cycle (508), turn ceiling (429), loop timeout
   (504), provider unavailable ({§provider-recovery}) — keeps its status and its authorship: the
   engine ruled, the model did not conclude, and no terminal is ever softened into a 200 the model
   never declared. What a terminal may not do is discard the last thing the model said. When the
-  loop's last inference turn emitted no operation and kept text — the same turn {§empty-turn}
-  retains — the terminal's Problem Details carries the extension member `unconcluded`, the
+  loop's last inference turn performed no authored operation in either response or
+  reasoning and kept text — including text recovered as SEND — its Problem Details
+  carries the extension member `unconcluded`, the
   `ops://<worker>/<loop>/<turn>` address of that emission. It is a citation, never the bytes
   ({§turn-ops-entry}: the reader READs the source, and an emission of any length never rides
   wholesale into a parent's packet). The member is named for what it is — an emission left
   unconcluded — and never `answer`: the harness cannot warrant that text is complete or final,
-  because the model never said it was, through the fence ({§prose-conclusion}) or through the
-  handshake ({§conclusion-recovery}). The engine neither delivers it as an answer nor destroys it;
-  the reader decides, and a parent worker taking a child's `loop_termination` is the reader best
-  placed to, being a model with the context to judge. A terminal whose last inference turn
-  performed operations carries no `unconcluded` at all: an absent member is not an empty one.
-  Rationale: the fence exists to separate *concluding* from *continuing*, and at a terminal there
-  is nothing left to continue — applying it there would enforce a rule past the end of its own
-  reason, and a weak model that answers in prose is not a model that said nothing (operator,
-  2026-09-21, #805). Attachment is owned by the one terminal seam, so a terminal added later
-  cannot forget it.
+  because it did not conclude under {§send-conclusion}. Earlier deliveries remain delivered;
+  the citation neither sends them again nor destroys them. A terminal whose last inference
+  turn performed authored operations carries no `unconcluded`: an absent member is not an
+  empty one. Attachment is owned by the one terminal seam.
 - §metadata-ignored **Options a scheme does not take are dropped, not refused.** A READ, FIND,
   EDIT or KILL carrying `[metadata]` for a scheme whose manifest takes none runs without it,
   and the packet carries one `metadata_ignored` notice naming the scheme (operator,
@@ -2721,26 +2717,9 @@ accounting and model-visible failure evidence remain separately owned by
   path; it is lifted into the matcher at parse time ({§matcher-option}). SEND recipients,
   executions, WORK and FORK own their input and receive it whole ({§send-resource-attachments},
   {§env-option}); a key they do not take is their own 400.
-- §send-looks-like-operation **A reply never begins with an operation heading.** When a model's
-  untargeted SEND has, as its first non-blank line, a line that parses alone as one clean
-  heading naming an operation this worker could perform — a Plurnk operation, or a registered
-  executor or MCP service — dispatch refuses it 400 `send-looks-like-operation`, naming the
-  `heading`, and delivers nothing. Since the fences chapter's unlabeled-fence SEND was retired
-  ({§interstitial-fence}), this guards only an explicit `SEND` block; a heading written outside
-  any fence is prose with the parser's own advisory ({§bare-heading-advisory}), and an emission
-  made only of such lines is an empty turn carrying those advisories ({§empty-turn}). This is
-  admission, not promotion: the line is never run as the operation it resembles, and the neutral
-  recovery says only where each intent belongs (an operation on the fence line, a quoted example
-  inside a delimited SEND body). A first line that does not parse alone (prose after the word), a
-  name no registry knows, or an inner fence is an ordinary reply; so is a heading whose
-  only irregularity is a multi-word sigil-less matcher after the path (`READ (belfry.md)
-  returned nothing because the file is empty.`), which {§naked-pattern} would otherwise lift
-  as a literal — on a reply's first line that is prose. Origin: the 2026-09-11 dogfood,
-  where four operations on the line after their fences were delivered as four 200 replies and the
-  loop then parked fifteen minutes on receipts that could never arrive.
 - §send-idle-turn **NOTE is memory, not a yield.** NOTE does not imply parking.
-  With unanswered messages it continues; after replies and observation it may be the only
-  operation in the program that concludes. Repetition remains subject to {§engine-cycle-evidence}.
+  A NOTE-only response does not request completion, even after every message is answered.
+  Repetition remains subject to {§engine-cycle-evidence}.
 - §send-premature-terminate **Completion follows observation.** Every fired operation except
   SEND, NOTE, WAIT and successful KILL requires a subsequent packet. This barrier uses durable
   executed evidence, not curated rows. Fast completion, an empty result or curation cannot
@@ -2754,7 +2733,7 @@ accounting and model-visible failure evidence remain separately owned by
   operations and failures, plus undelivered child or stream conclusions, require the next
   packet. This is ordinary continuation, not a strike or a synthetic refusal receipt.
   The already-delivered answer remains delivered. If observation warrants no further work
-  or revision, a NOTE or curation-only program can conclude without repeating the answer.
+  or revision, a lone empty targetless SEND requests completion without repeating the answer.
 - §send-administrative-terminal **Administrative programs close their own transaction.**
   Their caller closes the administrative loop after execution; no terminal operation is
   manufactured. Initialization runs in the model loop without concluding it.
@@ -4609,8 +4588,8 @@ ordinary operation evidence still reaches that child's direct parent.
 
 | Producer / event                                      | Durable occurrence                                                                                     | Observer projection                                                                                                                |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| §env-delta-child-activity Direct-child activity       | Child-authored final EDIT, COPY, MOVE, SEND, executor invocation, WORK, FORK, and non-log KILL receipts, including failures. `_plurnk` initialization, maintenance, and operation turns stay with the worker. A reply already delivered to the parent uses its reply occurrence instead ({§message-reply-delivery}). | Direct parent only; one exact attributed row born body-suppressed. Incoming message projections ({§message-arrival}), NOTE, READ (including executor-output READs), FIND, BARE, WAIT, and log KILL never create activity occurrences. Provider reasoning, calls, rejected emissions, and turn sources do not cross automatically. |
-| §env-delta-child-termination Direct-child termination | The child's exact terminal loop result, except loops containing only `_plurnk` operation or maintenance turns. A conclusion before the first turn still reports, including failed spawns. `source` names the actor; the READ target selects its exact loop result ({§worker-loop-result}). | Direct parent only; an ordinary bounded READ projection of the retained occurrence, never a fresh lookup of the child's latest loop. The outcome's own body is visible within the ordinary READ bound; replies are separate messages and are never copied or deduplicated by content ({§worker-scheme-collect}). Excluded administrative loops create no pending child-result edge. |
+| §env-delta-child-activity Direct-child activity       | Child-authored final EDIT, COPY, MOVE, SEND, executor invocation, WORK, FORK, and non-log KILL receipts, including failures. `_plurnk` initialization, maintenance, and operation turns stay with the worker. A reply already delivered to the parent uses its reply occurrence instead ({§message-reply-delivery}). | Direct parent only; one exact attributed row born body-suppressed. Incoming message projections ({§message-arrival}), successful targetless SEND without delivery ({§send-response-receipt}), NOTE, READ (including executor-output READs), FIND, BARE, WAIT, and log KILL never create activity occurrences. Provider reasoning, calls, rejected emissions, and turn sources do not cross automatically. |
+| §env-delta-child-termination Direct-child termination | The child's exact terminal loop result, except loops containing only `_plurnk` operation or maintenance turns. A conclusion before the first turn still reports, including failed spawns. `source` names the actor; the READ selects the exact loop ({§loop-answer}). | Direct parent only; bounded, initially visible READ under {§worker-scheme-collect}, never the child's potentially newer loop. Excluded administrative loops create no pending child-result edge. |
 | §env-delta-commons-mutation Commons mutation          | One successful resolved operation whose landed effects touch `worker:///...`.                         | Every existing worker; one body-suppressed row per observer, deduplicated with any lineage audience.                               |
 | §env-delta-filesystem-narration Project-file divergence | Runtime-owned reconciliation evidence remains in the runtime actor's own log.                        | No ambient observer row. Current content remains addressable and stale hash edits reject at their owned boundary.                 |
 | §env-delta-entry-materialization Executor `entry()` sink | The runtime records typed materialization evidence under its owning actor.                           | No ambient observer row unless the resulting operation itself is direct-child activity or a commons mutation ({§exec-entry-sink}). |
@@ -4818,15 +4797,17 @@ another admission is a 409 conflict, not a second message or an implicit content
 | Audience | Delivery | Effect |
 |---|---|---|
 | Assigned worker | Its conversation, even when another actor answered | Visible reply; wakes eligible parked work without a new Open Message or loop. |
-| Original native sender | That worker, if distinct from the assigned worker | The same reply, through the same wake and observation path. |
+| Original native sender | That worker, if distinct from the assigned worker; original delegated-task answers use {§worker-scheme-collect} instead | Other replies use the same wake and observation path. |
 | Exterior sender | The assigned conversation's protocol adapter | The adapter delivers the answer through its standard message channel. |
 | Replying actor | Its own executed SEND | No duplicate ambient occurrence. |
 
 The successful SEND and its addressed occurrences commit together. Reply occurrences use
 the ordinary durable ambient cursor and wake revision; curation cannot revoke delivery or
 replay it. An addressed reply replaces the same parent's generic activity observation.
-Child completion is a separate READ of its execution outcome; replies are not outcome bodies.
-The complete outcome remains available at its {§worker-loop-result} address.
+The child's reply to its original parent-delegated message reaches that parent once,
+through the conclusion READ under {§worker-scheme-collect}; it is not a separate reply
+occurrence. Other replies remain ordinary messages. The exact loop remains addressable
+under {§loop-answer}.
 Unobserved replies prevent conclusion just as unobserved child results do. All operation
 producers notify the same settlement path after durable execution; reply wake-up shares
 {§worker-optimistic-settlement}, without delaying the replying program.

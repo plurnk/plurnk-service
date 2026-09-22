@@ -67,7 +67,7 @@ test("{§completion-defers-to-results}: a successful execution receipt defers co
         contextWindow: 100_000,
         responses: [
             makeMockResponse("````sh\ntrue\n````\n````SEND\nCompleted.\n````"),
-            makeMockResponse("````NOTE\nThe observed command succeeded; the delivered answer remains correct.\n````"),
+            makeMockResponse("````SEND\n````"),
         ],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -79,9 +79,9 @@ test("{§completion-defers-to-results}: a successful execution receipt defers co
             assert.equal(provider.received.length, 2);
             assert.equal(provider.remaining, 0);
             const rows = await db.test_log_entries_by_worker.all<{ op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
-            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "SEND", "NOTE"]);
+            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "SEND", "SEND"]);
             assert.equal(result.result.content, undefined);
-        assert.equal(await lastReply(db, result.loopId), "Completed.", "observation alone can complete an answered assignment without repeating the answer");
+            assert.equal(await lastReply(db, result.loopId), "Completed.", "an empty SEND completes the observed assignment without repeating its answer");
             assert.equal(rows.filter(({ op, origin }) => isExecutionOp(op) && origin === "model").length, 1, "the submitted command was executed");
         } finally {
             ws.close();

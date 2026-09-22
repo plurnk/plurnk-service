@@ -1,6 +1,3 @@
-// {§send-looks-like-operation} — an explicit SEND whose first line is an operation heading is a
-// mis-fenced operation, refused at dispatch so nothing is silently delivered as a reply; a heading
-// outside any fence is prose with the parser's advisory ({§bare-heading-advisory}).
 // {§send-response-receipt} — a delivered reply names the open messages it answered.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -61,7 +58,7 @@ test("{§empty-turn}: operations on the line after a bare fence make an empty tu
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; turn_id: number }>({ loop_id: loopId });
             const model = rows.filter((r) => r.origin === "model");
-            assert.deepEqual(model.map(({ op }) => op), ["SEND"], "only the corrected turn produced operations");
+            assert.deepEqual(model.map(({ op }) => op), ["SEND", "error", "SEND"], "literal text is recovered as SEND with one syntax failure, then the corrected turn replies");
             assert.ok(!model.some((r) => isExecutionOp(r.op) || r.op === "READ"), "nothing ran: prose is never promoted into an operation");
             const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: model[0]!.turn_id });
             assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "the corrected turn was admitted on its first attempt: the empty turn before it was never resampled");
@@ -75,9 +72,10 @@ test("{§empty-turn}: operations on the line after a bare fence make an empty tu
     });
 });
 
-test("{§send-looks-like-operation}: prose that merely starts with an operation word, and an unregistered name, are ordinary replies", async () => {
+test("{§send-body}: messages that start with operation names remain literal replies", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND\nREAD (belfry.md) returned nothing because the file is empty.\n````\n\n````SEND\nDone\n````\n\n````SEND\nsh is the default shell here.\n````", 10),
+        makeMockResponse("````SEND\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -88,7 +86,7 @@ test("{§send-looks-like-operation}: prose that merely starts with an operation 
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: loopId });
             const sends = rows.filter((r) => r.origin === "model" && r.op === "SEND");
-            assert.deepEqual(sends.map(({ status_rx }) => status_rx), [200, 200, 200], "a first line that does not parse alone as a known operation's heading is a reply");
+            assert.deepEqual(sends.map(({ status_rx }) => status_rx), [200, 200, 200, 200], "message content is never parsed as another operation");
         } finally { ws.close(); }
     });
 });

@@ -15,7 +15,7 @@ for (const [name, parse] of [
     ["log", PlurnkParser.parseStatements],
     ["client", PlurnkParser.parseClient],
 ] as const) {
-    test(`{§interstitial-fence}: ${name} reads unlabeled fences outside a block as prose, never as a message`, () => {
+    test(`{§quotation}: ${name} reads unlabeled fences outside a block as literal text, never as executable contents`, () => {
         const bodies = [
             "Do not route this text.",
             "<!-- literal, not aside -->",
@@ -42,19 +42,16 @@ for (const [name, parse] of [
     });
 }
 
-test("{§bare-heading-advisory}: an operation heading outside any fence is prose with one warning naming the fence form", () => {
+test("{§response-text}: an unfenced heading is ordinary response text", () => {
     for (const bare of ["READ (notes.md)", "WAIT", "FIND (src/**) [{\"pattern\":\"/x/\"}]"]) {
         const result = PlurnkParser.parse("Prelude.\n" + bare + "\n" + task);
         assert.deepEqual(statements(result).map(({ op }) => op), ["WAIT"], bare);
-        const advisories = errors(result);
-        assert.equal(advisories.length, 1, bare);
-        assert.equal(advisories[0].severity, "warning");
-        assert.match(advisories[0].message, /outside any fence, so it is prose and nothing ran; an operation opens with ````/u);
-        assert.equal(advisories[0].line, 2);
+        assert.deepEqual(errors(result), []);
+        assert.deepEqual(result.items.flatMap((item) => item.kind === "text" ? [item.content] : []), [`Prelude.\n${bare}\n`]);
     }
 });
 
-test("{§bare-heading-advisory}: headings inside bodies and inside blocks never draw the advisory", () => {
+test("{§response-text}: headings inside bodies remain body content", () => {
     const body = "READ (notes.md)\nTASK";
     const result = PlurnkParser.parse(PlurnkParser.frame("SEND", body) + "\n" + task);
     assert.deepEqual(errors(result), []);

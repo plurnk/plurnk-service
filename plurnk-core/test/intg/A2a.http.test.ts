@@ -12,7 +12,6 @@ import { makeMockResponse } from "./_rpc.ts";
 
 const completed = (content: string) => makeMockResponse([
     "````SEND", content, "````",
-    "````SEND", "````",
 ].join("\n"));
 
 const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof makeMockResponse>[], token = "") => {
@@ -244,7 +243,6 @@ test("{§send-resource-attachments}: attachment-only Messages and replies round-
             assert.match(targets[1]!, /\/[a-f0-9]{8}$/u, "an unnamed Part receives an eight-character name");
             return { ...response, assistant: { ...response.assistant, content: [
                 `\`\`\`\`SEND [${JSON.stringify({ attachments: targets })}]`, "````",
-                "````SEND", "````",
             ].join("\n") } };
         }
     }

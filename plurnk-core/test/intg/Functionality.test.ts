@@ -372,7 +372,7 @@ for (const hold of ["", "fx:host"]) {
     test(`{§functionality-model-mutation} a model uses its published tool with execution hold ${hold || "disabled"}`, { timeout: 30_000 }, async () => {
         const priorHold = process.env.PLURNK_SERVICE_EXEC_HOLD;
         process.env.PLURNK_SERVICE_EXEC_HOLD = hold;
-        const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "");
+        const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "Tool result inspected.");
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeMockResponse(`${PlurnkParser.frame("fx (add)", JSON.stringify({ alias: "candidate", definition: { kind: "ok" } }))}\n${step("NOTE")}`),
             makeMockResponse(`${PlurnkParser.frame("candidate", "fixture")}\n${step("NOTE")}`),

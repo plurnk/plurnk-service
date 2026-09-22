@@ -248,7 +248,7 @@ test("separator-free provider preamble does not reject a complete model turn", a
     }
 });
 
-test("{§whitespace-contract}: interstitial text executes nothing and survives exactly in READable turnOps", async () => {
+test("{§response-text-recovery}: interstitial text is delivered without interpreting it and survives exactly in turnOps", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const source = [
@@ -267,10 +267,11 @@ test("{§whitespace-contract}: interstitial text executes nothing and survives e
         assert.equal(result.emissionExhausted, false);
         assert.equal(result.status, 102, "invented interstitial output cannot satisfy the observation barrier");
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
-        assert.deepEqual(attempts.map(({ accepted, parse_errors }) => ({ accepted, errors: JSON.parse(parse_errors) })), [{ accepted: 1, errors: [] }]);
+        assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
+        assert.deepEqual(JSON.parse(attempts[0]!.parse_errors).map(({ message }: { message: string }) => message), ["Only valid Operation Syntax OPs allowed. No free response."]);
         const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string | null; origin: string; attrs: string; rx: string }>({ turn_id: result.turnId });
         const modelRows = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(modelRows.map(({ op }) => op), ["EDIT", "SEND"], "outside text has no independent log or message row");
+        assert.deepEqual(modelRows.map(({ op }) => op), ["SEND", "EDIT", "SEND", "SEND", "SEND", "error"], "text is recovered in source order and one syntax failure is recorded");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "ops")?.content, source,
             "the complete submitted emission is retained verbatim");
@@ -830,7 +831,7 @@ test("{§extra-path-slot}: a third COPY operand preserves siblings, source evide
         const context = { workspaceId, workerId, loopId };
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(first.status, 102);
-        assert.deepEqual(first.outcomes.map(({ op, status }) => [op, status]), [["READ", 200], ["READ", 200], [null, 400]]);
+        assert.deepEqual(first.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["READ", 200], ["READ", 200], [null, 400], [null, 400]]);
         const { sequence } = (await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId }))!;
         const [readSource] = PlurnkParser.parseStatements(PlurnkParser.frame(`READ (ops://subject/1/${sequence}) <1,-1>`, null)).items;
         assert.ok(readSource.kind === "statement");
@@ -844,8 +845,9 @@ test("{§extra-path-slot}: a third COPY operand preserves siblings, source evide
         const next = await engine.runTurn({ ...context, provider, messages: [] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
         const failures = logEntries(packet).filter(({ status }) => status === 400);
-        assert.equal(failures.length, 1);
-        const problem = failures[0].problem as Record<string, unknown>;
+        assert.equal(failures.length, 2);
+        assert.equal((failures[0].problem as Record<string, unknown>).detail, "Only valid Operation Syntax OPs allowed. No free response.");
+        const problem = failures[1].problem as Record<string, unknown>;
         assert.equal(problem.type, "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax");
         assert.equal(problem.detail,
             "unexpected `(` (`(path)` slot opener); expected operation fence header, operation-heading line ending, or closing fence");
@@ -987,12 +989,7 @@ test("{§error-shape} {§unparsed-tail-boundary}: a boundary lost after a statem
 
 test("{§invalid-emission-attempts} exhausted private attempts expose the latest response and the parser's diagnostic on one recovery turn", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
-    const latestRejected = [
-        "",
-        "````READ (file:///main.go",
-        "",
-        "continue after inspection",
-    ].join("\n");
+    const latestRejected = "\n````READ (file:///main.go";
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
@@ -1033,11 +1030,11 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
         assert.equal(new Set(provider.packets.slice(0, 3)).size, 1, "private attempts retain one exact packet");
         assert.notEqual(provider.packets[3], provider.packets[2], "the informed recovery has its own packet");
         assert.match(provider.packets[3]!, /Response rejected before dispatch; no operations were performed\./);
-        assert.match(provider.packets[3]!, /2:````READ \(file:\/\/\/main\.go\\n3:.*\\n4:continue after inspection/);
+        assert.match(provider.packets[3]!, /2:````READ \(file:\/\/\/main\.go/);
         assert.doesNotMatch(provider.packets[3]!, /first private invalid|second private invalid/);
         // {§invalid-emission-attempts} — the informed turn carries the parser's diagnostic and position.
         assert.match(provider.packets[3]!, /Parser: .+ @ \d+:\d+/, "the parser's diagnosis reaches the informed turn");
-        assert.doesNotMatch(provider.packets[4]!, /2:````READ \(file:\/\/\/main\.go\\n3:.*\\n4:continue after inspection/, "the rejected emission is projected only into its recovery packet");
+        assert.doesNotMatch(provider.packets[4]!, /2:````READ \(file:\/\/\/main\.go/, "the rejected emission is projected only into its recovery packet");
 
         const [, failedTurnId, recoveryTurnId, finalTurnId] = result.turnIds;
         const failedTurn = await db.test_get_turn.get<{ status: number; packet: string }>({ id: failedTurnId });
@@ -1726,7 +1723,7 @@ test("(#478) a cut too deep to parse names the truncation, never the parser", as
         assert.equal(provider.packets.length, 3);
         assert.match(
             provider.packets[1]!,
-            /output_truncated: emission truncated at the output allowance \(\d+ tokens\); no operations were performed/,
+            /output_truncated: emission truncated at the output allowance \(\d+ tokens\); no authored operations were performed/,
             "the next packet names the engine's cut and the recovery fact",
         );
         assert.doesNotMatch(provider.packets[1]!, /emit in smaller pieces/, "the fact rides without steering");

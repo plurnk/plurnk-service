@@ -17,7 +17,7 @@ const sendOnly = (dsl: string) => makeMockResponse(dsl);
 
 test("loop.run: enqueues + drains + returns first loop's result", async () => {
     const dsl = "````EDIT (worker:///x)\nhello\n````\n\n````SEND\ndone\n````";
-    // {§send-premature-terminate} — the EDIT receipt lands next packet; [200] concludes on the second turn.
+    // {§send-premature-terminate} — observe the EDIT receipt before the final SEND.
     const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl), makeMockResponse("````SEND\ndone\n````", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {

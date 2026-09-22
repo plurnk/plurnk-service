@@ -118,8 +118,6 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
             const { name } = workers[index]!;
             emit(name, { content: `${style === "think-tags" ? "</think>" : ""}\`\`\`\`SEND
 ONLY_${name}
-\`\`\`\`
-\`\`\`\`SEND
 \`\`\`\`` }, "stop", {
                 prompt_tokens: 10 + index, completion_tokens: 20 + index, total_tokens: 30 + 2 * index,
             });
@@ -134,8 +132,6 @@ ONLY_${name}
             const response = JSON.parse(calls[0]!.response);
             assert.equal(response.assistant.reasoning, `Thinking ${name}.`);
             assert.equal(response.assistant.content, `\`\`\`\`SEND\nONLY_${name}
-\`\`\`\`
-\`\`\`\`SEND
 \`\`\`\``);
             for (const other of workers.filter((worker) => worker.workerId !== workerId)) {
                 assert.ok(!JSON.stringify(response.rawBody).includes(other.name), "forensic raw chunks belong to this request only");

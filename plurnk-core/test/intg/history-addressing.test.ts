@@ -219,6 +219,7 @@ for (const exitCode of [0, 7]) test(`{§env-delta-child-activity}: executor exit
         const childLoop = await insertLoop(db, child, 1);
         const turn = await Turn.open(db, { loopId: childLoop, producer: "model", kind: "inference" });
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
+        await engine.injectIntoLoop(childLoop, "Run the executor and report the result.", [], "worker://parent");
         const executors = await testExecutors();
         engine.setExecutors(executors);
         schemes.registerRuntimeSchemes(executors);
@@ -232,7 +233,8 @@ for (const exitCode of [0, 7]) test(`{§env-delta-child-activity}: executor exit
         await exec.idle();
         await Turn.complete(db, turn.id, 102);
         const continuation = () => new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("NOTE", "Observe."), reasoning: null } }] });
-        await engine.runTurn({ workspaceId, workerId: child, loopId: childLoop, provider: continuation(), messages: [] });
+        await engine.runTurn({ workspaceId, workerId: child, loopId: childLoop,
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("SEND", "Executor result observed."), reasoning: null } }] }), messages: [] });
         const childRows = await db.test_log_entries_by_loop.all<{ op: string; rx: string; attrs: string }>({ loop_id: childLoop });
         const output = childRows.filter(({ op, rx }) => op === "READ" && JSON.parse(rx).terminal === true);
         assert.ok(output.length > 0, "the owner's terminal observation was actually materialized");

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import StreamMock from "./_stream-mock.ts";
-import { connect, makeMockResponse, rpcCall, runLoopToTerminal, waitForDb, withDaemon } from "./_rpc.ts";
+import { connect, makeMockResponse, makeRawMockResponse, rpcCall, runLoopToTerminal, waitForDb, withDaemon } from "./_rpc.ts";
 import { executionAddress, packetSection } from "./_helpers.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 
@@ -9,7 +9,7 @@ test("{§exec-input}: the production loop sends stdin, waits for EOF completion,
     const mock = new StreamMock({ contextWindow: 100_000, responses: [
         makeMockResponse("````node [{\"stdin\": \"open\"}]\nprocess.stdin.on(\"data\", d => process.stdout.write(\"received:\" + d));\n````\n\n````NOTE\nDeliver input to the process.\n````", 10),
         makeMockResponse("````SEND ($STREAM) [{\"eof\": true}]\ninput-witness\n````\n\n````WAIT\nObserve the output.\n````", 10),
-        makeMockResponse("````SEND\nVerified the process response.\n````\n\n````SEND\n````", 10),
+        makeMockResponse("````SEND\nVerified the process response.\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, address) => {
         const client = await connect(address);
@@ -30,6 +30,43 @@ test("{§exec-input}: the production loop sends stdin, waits for EOF completion,
         } finally { client.close(); }
     });
 });
+
+for (const failure of ["operation", "parser"] as const) {
+    test(`{§wait-obligation-matrix}: a fresh ${failure} failure recovers before automatically parking an input-open process`, async () => {
+        const prefix = failure === "parser"
+            ? "Starting the input exchange.\n\n"
+            : "````SEND\nStarting the input exchange.\n````\n\n````READ (worker:///missing)\n````\n\n";
+        const mock = new StreamMock({ contextWindow: 100_000, responses: [
+            makeRawMockResponse(`${prefix}\`\`\`\`node [{"stdin":"open"}]\nlet input = ""; process.stdin.on("data", d => input += d); process.stdin.on("end", () => console.log("received:" + input));\n\`\`\`\``),
+            makeMockResponse("````SEND ($STREAM) [{\"eof\":true}]\nrecovery-witness\n````\n\n````WAIT\nObserve the response.\n````"),
+            makeMockResponse("````SEND\nVerified recovery-witness in the process response.\n````"),
+        ] });
+        await withDaemon(mock, async (db, _daemon, address) => {
+            const client = await connect(address);
+            try {
+                await rpcCall(client, 1, "workspace.create", { name: `stdin-recovery-${failure}` });
+                const result = await runLoopToTerminal(client, 2, {
+                    prompt: "Exchange input with the process and verify its response.",
+                    policy: { proposals: "accept" },
+                });
+                assert.equal(result.finalStatus, 200);
+                assert.equal(result.turnIds?.length, 4);
+                const failedTurn = result.turnIds![1]!;
+                assert.equal((await db.test_get_turn_status.get<{ status: number }>({ id: failedTurn }))?.status, 102,
+                    "the failing turn continues immediately instead of relying on a stream poll or external wake");
+                const rows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: failedTurn });
+                assert.ok(rows.some((row) => failure === "parser"
+                    ? row.op === "error" && row.status_rx === 400 && row.rx.includes("Only valid Operation Syntax OPs allowed. No free response.")
+                    : row.op === "READ" && row.status_rx === 404), "the failure is retained, not suppressed to resume the loop");
+                const input = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: result.turnIds![2]! });
+                assert.ok(input.some((row) => row.op === "SEND" && row.status_rx === 200 && row.rx.includes('"bytesAccepted":16')));
+                const packet = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds![3]! });
+                assert.match(packetSection(JSON.parse(packet!.packet), "log"), /received:recovery-witness/,
+                    "the recovery actually feeds and closes stdin, then observes the real process output");
+            } finally { client.close(); }
+        });
+    });
+}
 
 for (const action of ["cancel", "stop"] as const) {
     test(`{§exec-input}: daemon ${action} reaps a real input-open process without a spurious model wake`, async () => {

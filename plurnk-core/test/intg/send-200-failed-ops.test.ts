@@ -6,10 +6,10 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { lastReply } from "./_helpers.ts";
 
 for (const cancel of [false, true]) {
-    test(`{§completion-defers-to-results}: a failed operation is observed before ${cancel ? "scope cancellation" : "automatic completion"}`, async () => {
+    test(`{§completion-defers-to-results}: a failed operation is observed before ${cancel ? "scope cancellation" : "explicit completion"}`, async () => {
         const mock = new Mock({ contextWindow: 16384, responses: [
             makeMockResponse("\n````KILL (worker:///no-such-entry)\n````\n````SEND\nThe requested entry does not exist.\n````"),
-            makeMockResponse(cancel ? "````KILL (worker://alice)\n````" : "````NOTE\nThe missing entry was observed.\n````"),
+            makeMockResponse(cancel ? "````KILL (worker://alice)\n````" : "````SEND\n````"),
         ] });
         await withDaemon(mock, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: "failed-op-observation" });
@@ -28,7 +28,7 @@ for (const cancel of [false, true]) {
                 assert.equal(mock.received.length, 2);
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: result.loopId });
                 assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [
-                    ["KILL", 404], ["SEND", 200], [cancel ? "KILL" : "NOTE", 200],
+                    ["KILL", 404], ["SEND", 200], [cancel ? "KILL" : "SEND", 200],
                 ]);
                 const failure = rows.find(({ op, status_rx }) => op === "KILL" && status_rx === 404)!;
                 const problem = JSON.parse(failure.rx).problem;

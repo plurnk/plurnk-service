@@ -11,7 +11,7 @@ import { waitForDb } from "./_rpc.ts";
 
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
 const next = "````NOTE\nDeliver selected resources.\n````";
-const done = "````SEND\n````";
+const done = "````SEND\nAttachment handling verified.\n````";
 
 test("{§send-resource-attachments}: outbound A2A snapshots only selected resources and a failed source sends nothing", async () => {
     const remote = await startDemoAgent("direct-message");

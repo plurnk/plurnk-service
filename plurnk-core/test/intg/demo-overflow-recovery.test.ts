@@ -13,8 +13,6 @@ test("{§methods-loop-run-open-paths}: one oversized attachment is previewed wit
         makeMockResponse("````READ (incident.txt) <2>````\n````NOTE\nInspect the recovery site.\n````"),
         makeMockResponse(`\`\`\`\`SEND
 ${fixture.answer}
-\`\`\`\`
-\`\`\`\`SEND
 \`\`\`\``),
     ] });
     try {
@@ -52,9 +50,8 @@ for (const retire of [false, true]) test(`the recovery demo preserves overflow e
             makeMockResponse("````READ (incident.txt) <2>````\n````NOTE\nInspect the recovery site.\n````"),
             makeMockResponse(`${retire ? "````KILL (log:///**/READ)````\n" : ""}\`\`\`\`SEND
 ${fixture.answer}
-\`\`\`\`
-\`\`\`\`SEND
 \`\`\`\``),
+            ...(retire ? [makeMockResponse("````SEND\n````")] : []),
         ],
     });
     try {
@@ -75,7 +72,7 @@ ${fixture.answer}
                     turnIds: result.turnIds ?? [], fixture,
                 });
                 assert.equal(evidence.overflowRequests, 1);
-                assert.equal(evidence.modelTurns, 2, "withholding and final housekeeping create no extra model response");
+                assert.equal(evidence.modelTurns, retire ? 3 : 2, "curation with a reply requires a later lone SEND; withheld output itself adds no turn");
                 assert.equal(evidence.receiptActive, !retire);
                 assert.equal(provider.remaining, 0);
             } finally { ws.close(); }

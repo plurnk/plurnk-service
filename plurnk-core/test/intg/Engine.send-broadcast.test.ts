@@ -38,15 +38,16 @@ test("{§send-response-receipt} a failed endpoint SEND neither answers a message
     } finally { await db.close(); }
 });
 
-test("{§loop-response-messages} every SEND in a program executes before automatic conclusion", async () => {
+test("{§loop-response-messages} every SEND in a program executes before a later explicit conclusion", async () => {
     const { db, env, engine, lifecycle } = await setup();
     try {
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: {
             content: "", reasoning: null, ops: [sendStmt(null, "First."), sendStmt(null, "Second."), noteStmt("Both delivered.")],
-        } }] });
+        } }, { assistant: { content: "", reasoning: null, ops: [sendStmt(null, "")] } }] });
         const turn = await engine.runTurn({ ...env, provider, messages: [] });
-        assert.equal(turn.status, 200);
+        assert.equal(turn.status, 102);
         assert.deepEqual(turn.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["SEND", 200], ["NOTE", 200]]);
+        assert.equal((await engine.runTurn({ ...env, provider, messages: [] })).status, 200);
         assert.equal((await lifecycle.result(env.loopId))?.content, undefined);
         assert.equal(await lastReply(db, env.loopId), "Second.");
     } finally { await db.close(); }

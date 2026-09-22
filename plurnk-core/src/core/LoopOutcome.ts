@@ -1,5 +1,5 @@
 // {§loop-answer} — one resolution for a loop's address. `ops://<worker>/<loop>` is what the loop
-// said: the latest reply to the message that started it, whether prose or a SEND. A loop that has
+// said: the latest SEND reply to the message that started it. A loop that has
 // not answered yet is 425; one that ended without answering is how it ended, its terminal problem
 // or an empty success. The same resolution serves the model's READ, the `worker://` pull, and the
 // termination row a concluded child leaves in its parent's log, so those never disagree (#766).

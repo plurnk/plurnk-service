@@ -34,7 +34,7 @@ for (const [op, maxStrikes] of [["READ (worker:///answer.md)", 0], ["READ (worke
         const { db, engine, workspaceId, workerId, loopId } = await fixture(t);
         const provider = new Mock({ contextWindow: 100000, responses: [
             response(frame(op, op === "BARE" ? "What is six times seven?" : null), frame("SEND", "The answer is 42.")),
-            response(frame("NOTE", "The result confirms the answer.")),
+            response(frame("SEND", null)),
         ] });
         const childProvider = new Mock({ contextWindow: 100000, responses: [response("42")] });
         const result = await engine.runLoop({ provider, childProvider, workspaceId, workerId, loopId, messages: [], maxTurns: 3, maxStrikes });
@@ -45,7 +45,7 @@ for (const [op, maxStrikes] of [["READ (worker:///answer.md)", 0], ["READ (worke
         assert.match(JSON.stringify(provider.received[1]), /42/, "the observation packet contains the result");
         const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; tx: string }>({ loop_id: loopId });
         const authored = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(authored.map(({ op }) => op), [op.split(" ")[0], "SEND", "NOTE"], "no synthetic terminal operation");
+        assert.deepEqual(authored.map(({ op }) => op), [op.split(" ")[0], "SEND", "SEND"], "the model explicitly requests completion without repeating the answer");
         assert.equal(authored.find(({ op }) => op === "SEND")?.status_rx, 200, "reply delivery is not deferred");
         assert.equal(await new StrikeRail(db).streak(loopId), 0);
         const turns = await Promise.all(result.turnIds.slice(1).map((id) => db.test_get_turn.get<{ status: number }>({ id })));
@@ -68,12 +68,15 @@ test("{§loop-response-messages} observation permits a corrected reply", async (
 });
 
 for (const target of ["log:///999/*/*", "worker:///answer.md"]) {
-    test(`{§send-premature-terminate} successful KILL ${target} does not impose an observation turn`, async (t) => {
+    test(`{§send-conclusion} SEND plus successful KILL ${target} still requires an explicit final response`, async (t) => {
         const { engine, workspaceId, workerId, loopId } = await fixture(t);
-        const provider = new Mock({ contextWindow: 100000, responses: [response(frame(`KILL (${target})`, null), frame("SEND", "Finished."))] });
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 1 });
+        const provider = new Mock({ contextWindow: 100000, responses: [
+            response(frame(`KILL (${target})`, null), frame("SEND", "Finished.")),
+            response(frame("SEND", null)),
+        ] });
+        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 2 });
         assert.equal(result.result.status, 200);
-        assert.equal(provider.received.length, 1);
+        assert.equal(provider.received.length, 2);
     });
 }
 
@@ -92,7 +95,7 @@ test("{§completion-defers-to-results} repeated work costs observations, not cer
     const provider = new Mock({ contextWindow: 100000, responses: [
         response(frame("READ (worker:///answer.md)", null), frame("SEND", "The answer is 42.")),
         response(frame("FIND (worker:///answer.md)", null)),
-        response(frame("NOTE", "Confirmed.")),
+        response(frame("SEND", null)),
     ] });
     const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 4, maxStrikes: 1 });
     assert.equal(result.result.status, 200);
@@ -104,10 +107,10 @@ for (const kind of ["workers", "streams", "failed-stream-results", "late-failed-
     test(`{§completion-defers-to-results} ${kind} arriving after packet assembly prevents premature conclusion`, async (t) => {
         const { db, engine, workspaceId, workerId, loopId } = await fixture(t);
         const live = kind === "workers" || kind === "streams";
-        const operation = kind === "operation-failure" ? "READ (worker:///missing.md)" : kind === "kill-failure" ? "KILL (worker:///missing.md)" : "NOTE";
+        const operation = kind === "operation-failure" ? "READ (worker:///missing.md)" : kind === "kill-failure" ? "KILL (worker:///missing.md)" : "SEND";
         const provider = new Mock({ contextWindow: 100000, responses: [
             response(frame("READ (worker:///answer.md)", null), frame("SEND", "The answer is 42.")),
-            response(frame(operation, null)), response(frame("NOTE", "Observed the result.")),
+            response(frame(operation, null)), response(frame("SEND", null)),
         ] });
         const generate = provider.generate.bind(provider);
         t.mock.method(provider, "generate", async (args: Parameters<Mock["generate"]>[0]) => {

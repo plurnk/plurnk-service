@@ -162,3 +162,8 @@ SELECT m.id, m.path, m.key_path, CASE WHEN m.source = m.path THEN NULL ELSE m.so
 FROM unanswered_messages m
 WHERE m.loop_id = $loop_id AND m.log_entry_id IS NOT NULL
 ORDER BY m.ordinal ASC;
+
+-- PREP: engine_original_message
+-- {§send-response-receipt}: a later bare reply still answers the message that started this loop.
+SELECT path FROM message_sources
+WHERE loop_id = $loop_id AND ordinal = 1 AND log_entry_id IS NOT NULL;

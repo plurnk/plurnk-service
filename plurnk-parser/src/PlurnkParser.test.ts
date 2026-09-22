@@ -64,28 +64,23 @@ test("an unfinished outer body never dispatches a shorter inner program; it is t
     assert.equal(edit?.kind === "statement" && edit.statement.op === "EDIT" ? edit.statement.body : null, "```sh\nrm notes.md");
 });
 
-test("{§operation-attempt}: prose with code blocks concludes; every operation attempt is named", () => {
+test("{§response-text}: prose and operation-shaped text stay literal, without guessing intent", () => {
     const executors = ["sh", "node"];
-    assert.equal(PlurnkParser.operationAttempt("The answer is 42.\n\n```ts\nconst x = 1;\n```", executors), null);
-    assert.equal(PlurnkParser.operationAttempt("READ the file first, then decide.\nsh is a shell.", executors), null);
-    assert.equal(PlurnkParser.operationAttempt("````READ (x.md\n````", executors), "an operation heading that did not parse");
-    assert.equal(PlurnkParser.operationAttempt("Example:\n\n```text\n````READ (x.md\n````\n```", executors), null, "a quoted example is data, not an attempt");
-    assert.equal(PlurnkParser.operationAttempt("Let me look.\nREAD (x.md)", executors), "operation heading outside a fence");
-    // A miscounted fence is a typo, not an answer: the model meant to run it, so the loop
-    // continues and the next packet carries `needs four backticks to run` (#801).
-    assert.equal(PlurnkParser.operationAttempt("I will look.\n\n```FIND (ledger.md) /shutdown/i\n```", executors),
-        "an operation heading under three backticks");
-    assert.equal(PlurnkParser.operationAttempt("Thinking.\n\n```NOTE\nhello\n```", executors),
-        "an operation heading under three backticks");
-    assert.equal(PlurnkParser.operationAttempt("Run:\n\n```sh (x)\nnpm test\n```", executors),
-        "an operation heading under three backticks", "a runtime with a slot is a miscounted heading");
-    // A bare language tag stays an ordinary markdown code block, including known runtimes.
-    for (const tag of ["sh", "bash", "json", "ts"]) {
-        assert.equal(PlurnkParser.operationAttempt(`Code:\n\n\`\`\`${tag}\nx\n\`\`\``, executors), null, `\`\`\`${tag} is prose`);
+    for (const source of [
+        "The answer is 42.\n\n```ts\nconst x = 1;\n```",
+        "READ the file first, then decide.\nsh is a shell.",
+        "Example:\n\n```text\n````READ (x.md\n````\n```",
+        "Let me look.\nREAD (x.md)",
+        "I will look.\n\n```FIND (ledger.md) /shutdown/i\n```",
+        "Thinking.\n\n```NOTE\nhello\n```",
+        "Run:\n\n```sh (x)\nnpm test\n```",
+        "sh [{\"cwd\":\"/\"}]",
+        "### log:///1/2/3/READ\n{}",
+    ]) {
+        const parsed = PlurnkParser.parse(source, { executors });
+        assert.deepEqual(parsed.items.filter((item) => item.kind === "statement"), []);
+        assert.deepEqual(parsed.items.flatMap((item) => item.kind === "text" ? [item.content] : []), [source]);
     }
-    assert.equal(PlurnkParser.operationAttempt("sh [{\"cwd\":\"/\"}]", executors), "operation heading outside a fence");
-    assert.equal(PlurnkParser.operationAttempt("<function_calls><invoke name=\"x\"></invoke></function_calls>", executors), "native tool-call markup");
-    assert.equal(PlurnkParser.operationAttempt("### log:///1/2/3/READ\n{}", executors), "echoed packet rows");
 });
 
 test("{§four-backtick-operations}: a three-backtick fence is markdown; one naming an operation says it needs four", () => {

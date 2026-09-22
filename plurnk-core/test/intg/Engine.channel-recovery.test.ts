@@ -33,7 +33,7 @@ test("{§channel-selection-missing} channel exploration across operation owners 
             response("````EDIT (worker:///note)\nretained text\n````"),
             ...misses.map((operation) => response(operation)),
             response("````READ (worker:///note)````"),
-            response("", "SEND"),
+            { assistant: { content: "````SEND\nRetrieved the retained text.\n````", reasoning: null } },
         ] });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 15 });
         assert.equal(result.result.status, 200, JSON.stringify(result.result));

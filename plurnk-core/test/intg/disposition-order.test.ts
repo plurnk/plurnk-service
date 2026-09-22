@@ -9,7 +9,7 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_help
 const response = (content: string) => ({ assistant: { content, reasoning: null } });
 
 // {§disposition-anywhere} {§emission-admission}
-test("a KILL after SEND executes before completion: the curation lands and the reply is retained", async () => {
+test("a KILL after SEND executes: curation and the reply persist before a later conclusion", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "disposition-order");
@@ -33,7 +33,7 @@ Answer.
             provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }),
             workspaceId, workerId, loopId, messages: [],
         });
-        assert.equal(result.status, 200, "nothing was dropped, nothing failed unseen, so the completion stands");
+        assert.equal(result.status, 102, "a SEND with a sibling operation is not terminal");
         assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["KILL", 200]]);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; tx: string }>({ turn_id: result.turnId });
         assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["SEND", "KILL"]);
@@ -45,6 +45,10 @@ Answer.
         assert.equal(JSON.parse(packet.packet).assistant.content, source);
         const curated = await db.test_log_entries_by_turn.all<{ id: number; active: number }>({ turn_id: seed.turnId });
         assert.equal(curated.find(({ id }) => id === plan.id)?.active, 0, "the KILL authored after SEND curated the earlier note");
+        assert.equal((await engine.runTurn({
+            provider: new Mock({ contextWindow: 100_000, responses: [response("````SEND\n````")] }),
+            workspaceId, workerId, loopId, messages: [],
+        })).status, 200);
     } finally { await db.close(); }
 });
 
