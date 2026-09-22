@@ -135,7 +135,7 @@ console.log("OK: the parser is consumable through one installed entrypoint.");
 
     process.stdout.write("[smoke] running the CLI against a turn...\n");
     const cli = join(installedRoot, "bin", "plurnk-parser.js");
-    // An operation opens with four backticks; three is markdown ({§four-backtick-operations}, #761).
+    // {§operation-fences} — canonical output stays four; the installed CLI smoke writes the taught form.
     await writeFile(join(tempDir, "turn.plurnk"), "````WAIT\n````\n");
     const { stdout: cliOut } = await run("node", [cli, "turn.plurnk"], { cwd: tempDir });
     const cliResult = JSON.parse(cliOut) as { items: Array<{ kind: string }> };

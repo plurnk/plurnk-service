@@ -71,9 +71,9 @@ test("{§response-text}: prose and operation-shaped text stay literal, without g
         "READ the file first, then decide.\nsh is a shell.",
         "Example:\n\n```text\n````READ (x.md\n````\n```",
         "Let me look.\nREAD (x.md)",
-        "I will look.\n\n```FIND (ledger.md) /shutdown/i\n```",
-        "Thinking.\n\n```NOTE\nhello\n```",
-        "Run:\n\n```sh (x)\nnpm test\n```",
+        "I will look.\n\n ```FIND (ledger.md) /shutdown/i\n ```",
+        "Thinking.\n\n ```NOTE\nhello\n ```",
+        "Run:\n\n ```sh (x)\nnpm test\n ```",
         "sh [{\"cwd\":\"/\"}]",
         "### log:///1/2/3/READ\n{}",
     ]) {
@@ -83,18 +83,19 @@ test("{§response-text}: prose and operation-shaped text stay literal, without g
     }
 });
 
-test("{§four-backtick-operations}: a three-backtick fence is markdown; one naming an operation says it needs four", () => {
+test("{§operation-fences}: a three-backtick operation runs and is told the taught width; ordinary code stays prose", () => {
     const warnings = (input: string) => PlurnkParser.parse(input, { executors: ["sh"] }).items.flatMap((item) =>
         item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
     const statements = (input: string) => PlurnkParser.parse(input, { executors: ["sh"] }).items.filter((item) => item.kind === "statement").length;
-    assert.equal(statements("```READ (notes.md)\n```\n\n```sh\nnpm test\n```"), 0, "three backticks never open an operation");
-    assert.deepEqual(warnings("```READ (notes.md)\n```"), ["`READ` needs four backticks to run."]);
-    assert.deepEqual(warnings("```sh\nnpm test\n```"), ["`sh` needs four backticks to run."]);
+    assert.equal(statements("```READ (notes.md)\n```\n\n```sh\nnpm test\n```"), 2, "three backticks open an operation");
+    assert.deepEqual(warnings("```READ (notes.md)\n```"), ["`READ` ran with three backticks; the taught fence is four."]);
+    assert.deepEqual(warnings("```sh\nnpm test\n```"), ["`sh` ran with three backticks; the taught fence is four."]);
+    assert.deepEqual(warnings("````READ (notes.md)\n````"), [], "the taught width draws nothing");
     assert.deepEqual(warnings("The config:\n\n```ts\nexport default {};\n```"), [], "an ordinary code block draws nothing");
     // {§quotation} — the fenced example is the untaught form a weak model reaches for; it is told once.
     assert.deepEqual(warnings("Example:\n\n```\n````READ (notes.md)\n````\n```"), ["`READ` inside a code block was shown, not run."]);
     assert.deepEqual(warnings("    ````READ (notes.md)\n    ````"), [], "the taught offset draws nothing");
-    assert.deepEqual(warnings("```\n```READ (notes.md)\n```"), [], "a narrower fence inside a code block is markdown");
+    assert.deepEqual(warnings("```\n```READ (notes.md)\n```"), ["`READ` inside a code block was shown, not run."], "a wrapped three-backtick operation is told the same");
     assert.deepEqual(warnings("```plurnk\n````READ (notes.md)\n````\n```"), [], "a labeled code block is an example by declaration");
     assert.deepEqual(warnings("````typo (x)\n````"), ["`typo` is not an operation or a known executor here."]);
     assert.equal(statements("````READ (notes.md)\n````"), 1);

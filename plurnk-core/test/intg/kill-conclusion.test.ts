@@ -24,42 +24,51 @@ const setup = async (responses: MockResponse[]) => {
     };
 };
 
-// {§four-backtick-operations} — a three-backtick fence is markdown wherever it stands: the
-// operation it names is shown, never run, and the model is told it needs four.
-test("{§four-backtick-operations}: three-backtick EDIT, SEND and KILL are shown, not run, and say so", async () => {
+// {§operation-fences} — a three-backtick fence opens the operation it names: it runs through
+// ordinary dispatch and completion, and the model is told the taught width once per operation.
+test("{§operation-fences}: three-backtick EDIT, SEND and KILL use ordinary dispatch and completion, and are told the taught width", async () => {
     const f = await setup([
         { assistant: { content: "```EDIT (worker:///kept.md)\nRetained.\n```", reasoning: null } },
         { assistant: { content: "```SEND\nProgress delivered.\n```", reasoning: null } },
         { assistant: { content: "```KILL\nVerified.\n```", reasoning: null } },
     ]);
     try {
-        for (const op of ["EDIT", "SEND", "KILL"]) {
+        for (const [op, status] of [["EDIT", 102], ["SEND", 102], ["KILL", 200]] as const) {
             const turn = await f.turn();
-            assert.equal(turn.status, 102, `${op} did not run, so nothing concluded`);
-            assert.equal(turn.emptyTurn, true, "a shown operation is not an authored one");
-            assert.ok(f.notices.some(({ message }) => message === `\`${op}\` needs four backticks to run.`), `the receipt names ${op}`);
+            assert.equal(turn.status, status, `${op} ran`);
+            assert.equal(turn.emptyTurn, false, "accepted fences never become empty-turn recovery");
+            const rows = await f.db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turn.turnId });
+            assert.equal(rows.some(({ status_rx }) => status_rx >= 400), false);
+            assert.ok(f.notices.some(({ message }) => message === `\`${op}\` ran with three backticks; the taught fence is four.`), `the receipt names ${op}`);
         }
         const channel = await f.db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/kept.md", name: "body" });
-        assert.equal(channel, undefined, "nothing was created");
-        assert.deepEqual(await f.replies(), [], "nothing was delivered");
+        assert.equal(channel?.content, "Retained.");
+        assert.deepEqual(await f.replies(), ["Progress delivered.", "Verified."]);
     } finally { await f.db.close(); }
 });
 
-test("{§four-backtick-operations}: a deletion shown in a three-backtick block never deletes the entry", async () => {
-    const f = await setup([
-        { assistant: { content: "````EDIT (worker:///kept.md)\nRetained.\n````", reasoning: null } },
-        { assistant: { content: "The exact operation would be:\n\n```KILL (worker:///kept.md)\n```\n\nI have not run it.", reasoning: null } },
-    ]);
-    try {
-        assert.equal((await f.turn()).status, 102);
-        const turn = await f.turn();
-        assert.equal(turn.status, 102, "a shown deletion neither deletes nor concludes");
-        assert.equal(turn.emptyTurn, true);
-        const channel = await f.db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/kept.md", name: "body" });
-        assert.equal(channel?.content, "Retained.", "the entry survives being shown");
-        assert.ok(f.notices.some(({ message }) => message === "`KILL` needs four backticks to run."), "and the model is told why");
-    } finally { await f.db.close(); }
-});
+for (const shape of ["nested", "indented"] as const) {
+    test(`{§quotation}: a ${shape} three-backtick deletion never deletes the entry`, async () => {
+        const example = "```KILL (worker:///kept.md)\n```";
+        const answer = `Example only:\n${example}\nDo not execute it.`;
+        const source = shape === "nested" ? "```KILL\n" + answer + "\n```"
+            : example.split("\n").map((line) => ` ${line}`).join("\n") + "\n\n```KILL\nDone.\n```";
+        const f = await setup([
+            { assistant: { content: "```EDIT (worker:///kept.md)\nRetained.\n```", reasoning: null } },
+            { assistant: { content: source, reasoning: null } },
+        ]);
+        try {
+            assert.equal((await f.turn()).status, 102);
+            const turn = await f.turn();
+            assert.equal(turn.status, 200);
+            const channel = await f.db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/kept.md", name: "body" });
+            assert.equal(channel?.content, "Retained.", "quoted operations have no resource effect");
+            assert.deepEqual(await f.replies(), [shape === "nested" ? answer : "Done."], "only a KILL body is delivered, never an example outside one");
+            const rows = await f.db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turn.turnId });
+            assert.deepEqual(rows.filter(({ op }) => op === "KILL").map(({ status_rx }) => status_rx), [200]);
+        } finally { await f.db.close(); }
+    });
+}
 
 test("#809: parameterless KILL delivers its literal final answer and successfully concludes", async () => {
     const content = "The answer is **42**.\n\n```js\nconsole.log(42);\n```";

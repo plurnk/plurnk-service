@@ -281,6 +281,16 @@ export default class PlurnkParser {
             const at = items.findIndex((item) => item.kind === "statement" && (item.statement as { position?: { line: number } }).position?.line === note.line);
             if (at !== -1) items.splice(at + 1, 0, advisory);
         }
+        // {§operation-fences} — a three-backtick operation ran; the receipt names the taught width,
+        // right after its statement, so the habit is tolerated and the form is still learned.
+        for (const note of lexer.takeToleratedFences()) {
+            const advisory: ParseItem<S> = {
+                kind: "error",
+                error: new PlurnkParseError(note.line, note.column, "parser", `\`${note.tag}\` ran with three backticks; the taught fence is four.`, "warning"),
+            };
+            const at = items.findIndex((item) => item.kind === "statement" && (item.statement as { position?: { line: number } }).position?.line === note.line);
+            items.splice(at === -1 ? items.length : at + 1, 0, advisory);
+        }
 
         for (const err of errors) {
             if (!consumedErrors.has(err)
@@ -301,11 +311,9 @@ export default class PlurnkParser {
         // The rest are likely typos, so a misspelled executor is never a silent loss.
         for (const note of lexer.takeUnknownTags()) {
             if (note.reason === "indented") continue;
-            const message = note.reason === "short"
-                ? `\`${note.tag}\` needs four backticks to run.`
-                : note.reason === "quoted"
-                    ? `\`${note.tag}\` inside a code block was shown, not run.`
-                    : `\`${note.tag}\` is not an operation or a known executor here.`;
+            const message = note.reason === "quoted"
+                ? `\`${note.tag}\` inside a code block was shown, not run.`
+                : `\`${note.tag}\` is not an operation or a known executor here.`;
             items.push({ kind: "error", error: new PlurnkParseError(note.line, note.column, "parser", message, "warning") });
         }
 
