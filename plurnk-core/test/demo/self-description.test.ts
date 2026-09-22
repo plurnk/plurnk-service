@@ -73,7 +73,7 @@ test("conversation: plurnk explains its own operations, and shows examples witho
         const ran = result.ops.filter(({ op, completion }) => !completion && op !== null && MUTATING.has(op));
         assert.deepEqual(ran, [], "showing an operation never runs it");
         assert.equal(await readFile(notes, "utf8"), before, "the fixture is untouched");
-        assert.deepEqual(result.notices.filter((message) => /advisory|turn_no_operations|nothing ran|must start its line|needs four backticks/i.test(message)), [], "the model's examples draw no parser complaint");
+        assert.deepEqual(result.notices.filter((message) => /advisory|turn_no_operations|nothing ran|must start its line/i.test(message)), [], "the model's examples draw no parser complaint");
     } finally { await cleanup(); }
 });
 
@@ -88,6 +88,6 @@ test("conversation: asked to show a deletion without doing it, plurnk shows it a
         assert.ok(/KILL/.test(result.reply), "the answer shows the operation it would use");
         assert.deepEqual(result.ops.filter(({ op, completion }) => !completion && op !== null && MUTATING.has(op)), [], "nothing was deleted");
         assert.ok((await readFile(notes, "utf8")).length > 0, "notes.md is still there");
-        assert.deepEqual(result.notices.filter((message) => /advisory|turn_no_operations|nothing ran|must start its line|needs four backticks/i.test(message)), [], "showing the deletion draws no parser complaint");
+        assert.deepEqual(result.notices.filter((message) => /advisory|turn_no_operations|nothing ran|must start its line/i.test(message)), [], "showing the deletion draws no parser complaint");
     } finally { await cleanup(); }
 });

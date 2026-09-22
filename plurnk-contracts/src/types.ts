@@ -24,8 +24,7 @@ export const PLURNK_OPS = [
     "NOTE", "WAIT",
 ] as const;
 
-// {§four-backtick-operations} — the fence that opens an operation. Anything narrower is
-// ordinary markup and is quoted, never run, so every producer of a statement writes THIS.
+// {§operation-fences} — canonical teaching/rendering width; ingestion also accepts three.
 export const PLURNK_FENCE = "````";
 
 export type PlurnkOp = (typeof PLURNK_OPS)[number];

@@ -98,12 +98,13 @@ test("{§fence-heading-in-body}: a four-backtick heading ends an undelimited blo
     assert.equal(bodyText(statements(result)[2]), "not the edit");
 });
 
-test("{§fence-heading-in-body}: a closer glued to the next opener never swallows the turn", () => {
+test("{§fence-heading-in-body}: an unseparated backtick run retains its width and quotes shorter headings", () => {
     const glued = "````READ (a.md) <1,-1>\n````````READ (b.md) <1,-1>\n````````EDIT (c.md) <@abcde>\nreplacement\n````";
     const result = PlurnkParser.parse(glued + "\n" + task);
     assert.equal(result.unparsedTail, undefined);
-    assert.deepEqual(statements(result).map(writtenOp), ["READ", "READ", "EDIT", "WAIT"]);
-    assert.equal(bodyText(statements(result)[2]), "replacement");
+    assert.deepEqual(statements(result).map(writtenOp), ["READ", "READ", "EDIT"]);
+    assert.equal(bodyText(statements(result)[2]), "replacement\n````\n" + task.slice(0, task.lastIndexOf("\n")),
+        "the four-backtick WAIT remains in the unfinished eight-backtick EDIT body");
 });
 
 test("{§fence-heading-in-body}: a three-backtick executor line inside a four-backtick block is body", () => {

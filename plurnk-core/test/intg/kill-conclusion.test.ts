@@ -23,6 +23,49 @@ const setup = async (responses: MockResponse[]) => {
     };
 };
 
+test("{§operation-fences}: three-backtick EDIT, SEND and KILL use ordinary dispatch and completion", async () => {
+    const f = await setup([
+        { assistant: { content: "```EDIT (worker:///kept.md)\nRetained.\n```", reasoning: null } },
+        { assistant: { content: "```SEND\nProgress delivered.\n```", reasoning: null } },
+        { assistant: { content: "```KILL\nVerified.\n```", reasoning: null } },
+    ]);
+    try {
+        for (const status of [102, 102, 200]) {
+            const turn = await f.turn();
+            assert.equal(turn.status, status);
+            assert.equal(turn.emptyTurn, false, "accepted fences never become empty-turn recovery");
+            const rows = await f.db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turn.turnId });
+            assert.equal(rows.some(({ status_rx }) => status_rx >= 400), false);
+        }
+        const channel = await f.db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/kept.md", name: "body" });
+        assert.equal(channel?.content, "Retained.");
+        assert.deepEqual(await f.replies(), ["Progress delivered.", "Verified."]);
+    } finally { await f.db.close(); }
+});
+
+for (const shape of ["nested", "indented"] as const) {
+    test(`{§quotation}: ${shape} three-backtick deletion is delivered as text without deleting the entry`, async () => {
+        const example = "```KILL (worker:///kept.md)\n```";
+        const answer = `Example only:\n${example}\nDo not execute it.`;
+        const source = shape === "nested" ? "```KILL\n" + answer + "\n```"
+            : example.split("\n").map((line) => ` ${line}`).join("\n") + "\n\n```KILL\n```";
+        const f = await setup([
+            { assistant: { content: "```EDIT (worker:///kept.md)\nRetained.\n```", reasoning: null } },
+            { assistant: { content: source, reasoning: null } },
+        ]);
+        try {
+            assert.equal((await f.turn()).status, 102);
+            const turn = await f.turn();
+            assert.equal(turn.status, 200);
+            const channel = await f.db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/kept.md", name: "body" });
+            assert.equal(channel?.content, "Retained.", "quoted operations have no resource effect");
+            assert.deepEqual(await f.replies(), [shape === "nested" ? answer : example.split("\n").map((line) => ` ${line}`).join("\n") + "\n\n"]);
+            const rows = await f.db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turn.turnId });
+            assert.deepEqual(rows.filter(({ op }) => op === "KILL").map(({ status_rx }) => status_rx), [200]);
+        } finally { await f.db.close(); }
+    });
+}
+
 test("#809: parameterless KILL delivers its literal final answer and successfully concludes", async () => {
     const content = "The answer is **42**.\n\n```js\nconsole.log(42);\n```";
     const f = await setup([{ assistant: { content: frame("KILL", content), reasoning: null } }]);

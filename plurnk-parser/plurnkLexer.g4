@@ -37,7 +37,7 @@ private openerFollows(): boolean {
     while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
     let ticks = 0;
     while (this.inputStream.LA(cursor) === 0x60) { ticks++; cursor++; }
-    if (ticks < 4) return false;
+    if (ticks < 3) return false;
     while (this.inputStream.LA(cursor) >= 0x30 && this.inputStream.LA(cursor) <= 0x39) cursor++;
     let name = "";
     for (;;) {
@@ -84,7 +84,7 @@ private metadataDepth: number = 0;
 private metadataReady: boolean = false;
 private inlineBody: boolean = false;
 private inlineBodies: Array<{ line: number; column: number; heading: string }> = [];
-private unknownTags: Array<{ line: number; column: number; tag: string; reason: "unknown" | "short" | "indented" }> = [];
+private unknownTags: Array<{ line: number; column: number; tag: string; reason: "unknown" | "indented" }> = [];
 private quotedSpans: Array<{ start: number; end: number }> = [];
 private quoteStart: number = -1;
 
@@ -96,8 +96,8 @@ private knownHeading(): boolean {
 }
 
 // {§quotation} - a fence that opened no operation quotes. Its tag is worth a word only when it
-// looks like a missed operation: a known name under four backticks or off column zero, or an
-// unknown name at operation width. Ordinary code blocks draw nothing; reasoning quotes freely.
+// names nothing registered at canonical width. Ordinary three-backtick code blocks and
+// indented examples draw nothing; reasoning quotes freely.
 private quote(): void {
     this.quoteStart = this.tokenStartCharIndex;
     this.open();
@@ -110,10 +110,9 @@ private noteTag(): void {
     if (tag === "") return;
     let width = 0;
     while (this.text.charCodeAt(width) === 0x60) width++;
-    const short = width < 4;
     const known = Object.hasOwn(plurnkLexer.OPERATIONS, tag) || this.knownExecutor(tag);
-    if (short && !known) return;
-    const reason = !known ? "unknown" : short ? "short" : "indented";
+    if (width < 4 && !known) return;
+    const reason = known ? "indented" : "unknown";
     this.unknownTags.push({ line: (this as any).currentTokenStartLine, column: (this as any).currentTokenColumn, tag, reason });
 }
 
@@ -131,7 +130,7 @@ public takeQuotedSpans(length: number): Array<{ start: number; end: number }> {
     return taken;
 }
 
-public takeUnknownTags(): Array<{ line: number; column: number; tag: string; reason: "unknown" | "short" | "indented" }> {
+public takeUnknownTags(): Array<{ line: number; column: number; tag: string; reason: "unknown" | "indented" }> {
     const taken = this.unknownTags;
     this.unknownTags = [];
     return taken;
@@ -188,7 +187,7 @@ private previousLineIsFence(): boolean {
 }
 
 // {§quotation} CommonMark: a backtick fence's info string cannot contain a backtick, so a line
-// like ```KILL (x)``` is inline code, not an opener, and quotes nothing after it.
+// like ```text with `inline` code opens no quotation.
 private fenceOpens(): boolean {
     let cursor = 1;
     while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
@@ -330,7 +329,7 @@ private closingAt(offset: number): boolean {
     // {§inline-chain} — a closer followed on its line by the next opener still closes.
     let ticks = 0;
     while (this.inputStream.LA(cursor + ticks) === 0x60) ticks++;
-    if (ticks < 4) return false;
+    if (ticks < 3) return false;
     let at = cursor + ticks;
     while (this.inputStream.LA(at) >= 0x30 && this.inputStream.LA(at) <= 0x39) at++;
     let name = "";
@@ -350,7 +349,7 @@ private headingAt(offset: number): boolean {
     if (this.reasoning) return false;
     let cursor = offset;
     while (this.inputStream.LA(cursor) === 0x60) cursor++;
-    if (cursor - offset < 4) return false;
+    if (cursor - offset < Math.max(3, this.fenceLength)) return false;
     while (this.inputStream.LA(cursor) >= 0x30 && this.inputStream.LA(cursor) <= 0x39) cursor++;
     let name = "";
     for (;;) {
@@ -421,7 +420,7 @@ private closerWithHeadingAhead(): boolean {
 private openerFollowsAt(at: number): boolean {
     let ticks = 0;
     while (this.inputStream.LA(at + ticks) === 0x60) ticks++;
-    if (ticks < 4) return false;
+    if (ticks < 3) return false;
     let cursor = at + ticks;
     while (this.inputStream.LA(cursor) >= 0x30 && this.inputStream.LA(cursor) <= 0x39) cursor++;
     let name = "";
@@ -476,8 +475,6 @@ public isTextCoordinateOp(): boolean {
 }
 
 fragment FENCE : '```' '`'* ;
-// {§four-backtick-operations} - an operation opens with four or more backticks; fewer is markdown.
-fragment OPENER_FENCE : '````' '`'* ;
 fragment NAME : [A-Za-z0-9_.+-]+ ;
 fragment NUM : '-'? [0-9]+ ('.' [0-9]+)? ;
 fragment L_PATTERN : '<' NUM (('-' | ',' ' '?) NUM)* '>' ;
@@ -496,7 +493,7 @@ fragment EOL : '\r'? '\n' ;
 
 // {§fence-boundary} - only top-level fences can open statements. The first
 // block may terminate a provider preamble without an intervening newline.
-OPEN : { this.atColumnZero() || !this.reasoning && this.inlineChain }? OPENER_FENCE [0-9]* NAME { this.knownHeading() }? { this.open(); } -> mode(SLOTS) ;
+OPEN : { this.atColumnZero() || !this.reasoning && this.inlineChain }? FENCE [0-9]* NAME { this.knownHeading() }? { this.open(); } -> mode(SLOTS) ;
 // {§reasoning-notes} — an enclosing code fence is quotation, including unknown tags and tildes.
 // {§quotation} - a bare fence directly under a fence line is that block's orphaned closer: it
 // closes nothing and quotes nothing (a malformed heading's block ends at its own line).

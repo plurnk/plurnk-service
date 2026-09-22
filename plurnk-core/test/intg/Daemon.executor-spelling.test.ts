@@ -8,21 +8,22 @@ import { readStmt, urlPath } from "./_dsl.ts";
 import { logEntries, packetSection } from "./_helpers.ts";
 import { connect, makeRawMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 
-for (const admission of ["accept", "reject", "deny"] as const) {
-    test(`{§executor-js-spelling}: the daemon routes js through node with ${admission} admission`, async (t) => {
+for (const width of [3, 4]) for (const admission of ["accept", "reject", "deny"] as const) {
+    test(`{§executor-js-spelling}: the daemon routes ${width}-backtick js through node with ${admission} admission`, async (t) => {
         const directory = await mkdtemp(join(tmpdir(), "plurnk-js-spelling-"));
         t.after(() => rm(directory, { recursive: true, force: true }));
         const witness = join(directory, "executed.txt");
+        const fence = "`".repeat(width);
         const source = [
-            "````js",
+            `${fence}js`,
             'const fs = await import("node:fs/promises");',
             `await fs.writeFile(${JSON.stringify(witness)}, "executed");`,
             'console.log("js-runtime-witness");',
-            "````",
+            fence,
             "",
-            "````WAIT",
+            `${fence}WAIT`,
             "Observe the result.",
-            "````",
+            fence,
         ].join("\n");
         const mock = new Mock({ contextWindow: 100_000, responses: [
             makeRawMockResponse(source, 10),
