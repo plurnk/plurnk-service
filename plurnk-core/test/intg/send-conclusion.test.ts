@@ -7,7 +7,7 @@ import Engine from "../../src/core/Engine.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { DEFAULT_MIMETYPES, holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection, seedEntryWithChannel } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
 import { statement } from "./reasoning-fixture.ts";
 
 const said = (content: string, reasoning: string | null = null): MockResponse => ({ assistant: { content, reasoning } });
@@ -36,17 +36,17 @@ const setup = async (responses: MockResponse[]) => {
 
 for (const final of ["Four, precisely.", ""]) {
     test(`{§send-response-receipt}: a ${final ? "corrected" : "silent"} final KILL retains the child's answer for its parent`, async () => {
-        const { db, engine, turn, answer, ids, parentId } = await setup([said("Four."), said(conclude(final))]);
+        const { db, engine, turn, answer, ids, parentId } = await setup([said(send("Four.")), said(conclude(final))]);
         try {
-            const recovered = await turn();
-            assert.equal(recovered.status, 102, "recovered text cannot conclude");
-            assert.equal(recovered.emptyTurn, true, "recovery does not invent an authored operation");
-            const firstRows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string; rx: string }>({ turn_id: recovered.turnId });
+            const sent = await turn();
+            assert.equal(sent.status, 102, "a SEND answers but cannot conclude");
+            assert.equal(sent.emptyTurn, false, "an explicit SEND is an authored operation");
+            const firstRows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string; rx: string }>({ turn_id: sent.turnId });
             const firstSend = firstRows.find(({ op, origin }) => op === "SEND" && origin === "model");
-            assert.ok(firstSend, "the text is delivered through an ordinary SEND");
+            assert.ok(firstSend, "the answer is delivered through the authored SEND");
             assert.equal(JSON.parse(firstSend.tx).body.raw, "Four.");
             const answers: string[] = JSON.parse(firstSend.rx).answers;
-            assert.equal(answers.length, 1, "the recovered answer answers the original message");
+            assert.equal(answers.length, 1, "the SEND answers the original message");
 
             const concluded = await turn();
             assert.equal(concluded.status, 200);
@@ -122,7 +122,7 @@ for (const [label, response, reasoning, expected] of [
 }
 
 test("{§kill-conclusion}: a NOTE after the messages were answered does not silently conclude", async () => {
-    const { db, turn } = await setup([said("Four."), said(PlurnkParser.frame("NOTE", "Arithmetic checked.")), said(conclude())]);
+    const { db, turn } = await setup([said(send("Four.")), said(PlurnkParser.frame("NOTE", "Arithmetic checked.")), said(conclude())]);
     try {
         assert.equal((await turn()).status, 102);
         assert.equal((await turn()).status, 102);
@@ -130,11 +130,11 @@ test("{§kill-conclusion}: a NOTE after the messages were answered does not sile
     } finally { await db.close(); }
 });
 
-for (const reply of ["authored", "recovered"] as const) {
+{
     for (const obligation of ["child", "stream"] as const) {
         for (const park of ["WAIT", "KILL"] as const) {
-            test(`{§wait-obligation-matrix}: an earlier ${reply} reply does not park ordinary work before ${park} with a live ${obligation}`, async () => {
-                const first = `${reply === "authored" ? send("Working on it.") : "Working on it."}\n\n${PlurnkParser.frame("NOTE", "Continue the work.")}`;
+            test(`{§wait-obligation-matrix}: an earlier reply does not park ordinary work before ${park} with a live ${obligation}`, async () => {
+                const first = `${send("Working on it.")}\n\n${PlurnkParser.frame("NOTE", "Continue the work.")}`;
                 const { db, turn, ids } = await setup([
                     said(first),
                     said(PlurnkParser.frame("NOTE", "Check the saved input.")),
@@ -169,14 +169,15 @@ for (const reply of ["authored", "recovered"] as const) {
 
 for (const response of ["200", "````markdown\nFour.\n````", "````md\nFour.\n````"]) {
     test(`{§kill-conclusion}: ${JSON.stringify(response)} cannot confirm a previous free response`, async () => {
-        const { db, turn, answer } = await setup([said("Four."), said(response), said(conclude("Four, precisely."))]);
+        const { db, turn, answer, notices } = await setup([said(send("Four.")), said(response), said(conclude("Four, precisely."))]);
         try {
             assert.equal((await turn()).status, 102);
-            const recovered = await turn();
-            assert.equal(recovered.status, 102, "neither a numeric token nor a Markdown envelope requests completion");
-            assert.equal(recovered.emptyTurn, true);
-            const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: recovered.turnId });
-            assert.equal(JSON.parse(rows.find(({ op, origin }) => op === "SEND" && origin === "model")!.tx).body.raw, response, "outside text is literal, never unwrapped or substituted");
+            const token = await turn();
+            assert.equal(token.status, 102, "neither a numeric token nor a Markdown envelope requests completion");
+            assert.equal(token.emptyTurn, true);
+            const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: token.turnId });
+            assert.equal(rows.some(({ op, origin }) => op === "SEND" && origin === "model"), false, "outside text is reported, never delivered");
+            assert.ok(notices.some(({ kind }) => kind === "invalid_output"), "and the model is told it was not an operation");
             assert.equal((await turn()).status, 200);
             const result = await answer();
             assert.ok("content" in result);
@@ -185,7 +186,7 @@ for (const response of ["200", "````markdown\nFour.\n````", "````md\nFour.\n````
     });
 }
 
-test("{§response-text-recovery}: outside fragments and valid siblings execute silently in order without a strike", async () => {
+test("{§invalid-output}: outside fragments are counted, never delivered, and valid siblings still run without a strike", async () => {
     const source = `Before.\n\n${PlurnkParser.frame("NOTE", "remember")}\n\nBetween.\n\n${send("Four.")}\n\nAfter.`;
     const { db, engine, provider, ids, notices } = await setup([said(source), said(conclude())]);
     try {
@@ -194,21 +195,20 @@ test("{§response-text-recovery}: outside fragments and valid siblings execute s
         assert.equal(provider.received.length, 2);
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string; rx: string }>({ turn_id: result.turnIds.at(-2)! });
         const operations = rows.filter(({ origin, op }) => origin === "model" && ["SEND", "NOTE"].includes(op));
-        assert.deepEqual(operations.map(({ op }) => op), ["SEND", "NOTE", "SEND", "SEND", "SEND"]);
-        assert.deepEqual(operations.filter(({ op }) => op === "SEND").map(({ tx }) => JSON.parse(tx).body.raw), ["Before.\n\n", "\n\nBetween.\n\n", "Four.", "\n\nAfter."]);
-        assert.equal(rows.some(({ op }) => op === "error"), false, "commentary produces no failure receipt");
-        assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error"), [], "no corrective notice is sent");
-        const next = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds.at(-1)! });
-        assert.equal(packetSection(JSON.parse(next!.packet), "errors"), "", "the next packet has no corrective feedback");
+        assert.deepEqual(operations.map(({ op }) => op), ["NOTE", "SEND"], "only what the model authored runs");
+        assert.deepEqual(operations.filter(({ op }) => op === "SEND").map(({ tx }) => JSON.parse(tx).body.raw), ["Four."]);
+        assert.equal(rows.some(({ op }) => op === "error"), false, "stray text is not a failed operation");
+        assert.deepEqual(notices.filter(({ kind }) => kind === "invalid_output").map(({ message }) => message),
+            ["21 characters of invalid output between OPs"], "Before. Between. After. — counted once for the turn");
     } finally { await db.close(); }
 });
 
-test("{§response-text-recovery}: valid operations with commentary reset the no-operation strike streak", async () => {
+test("{§empty-turn}: operations beside stray text reset the no-operation strike streak", async () => {
     const { db, engine, provider, ids } = await setup([
         said("Thinking."),
         said(`Checking the arithmetic.\n\n${PlurnkParser.frame("NOTE", "Two plus two is four.")}`),
         said("Four."),
-        said(conclude()),
+        said(conclude("Four.")),
     ]);
     try {
         const result = await engine.runLoop({ ...ids, provider, maxTurns: 5, maxStrikes: 2, messages: [] });
@@ -217,12 +217,12 @@ test("{§response-text-recovery}: valid operations with commentary reset the no-
     } finally { await db.close(); }
 });
 
-for (const [label, response, reasoning] of [
-    ["prose", "Four.", null],
-    ["empty response", "", null],
-    ["reasoning NOTE only", "", PlurnkParser.frame("NOTE", "Still calculating.")],
+for (const [label, response, reasoning, reported] of [
+    ["prose", "Four.", null, ["5 characters of invalid output between OPs"]],
+    ["empty response", "", null, []],
+    ["reasoning NOTE only", "", PlurnkParser.frame("NOTE", "Still calculating."), []],
 ] as const) {
-    test(`{§empty-turn}: ${label} still earns a no-operation strike without a commentary diagnostic`, async () => {
+    test(`{§empty-turn}: ${label} earns a no-operation strike, and only stray text is reported`, async () => {
         const { db, engine, provider, ids, notices } = await setup([said(response, reasoning)]);
         try {
             const result = await engine.runLoop({ ...ids, provider, maxTurns: 3, maxStrikes: 1, messages: [] });
@@ -230,10 +230,8 @@ for (const [label, response, reasoning] of [
             assert.ok("problem" in result.result && result.result.problem);
             assert.equal(result.result.problem.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
             assert.match(result.result.problem.detail, /performed no operation\.$/);
-            // {§empty-turn} — the strike is silent. The 500 above is the whole proof that the turns
-            // were counted; the model is never told its reply lacked an operation, because a reply
-            // that is all prose is often the right answer to what was asked.
-            assert.deepEqual(notices.filter(({ level }) => level === "warn"), [], "no operation, no complaint");
+            assert.deepEqual(notices.filter(({ level }) => level === "warn").map(({ message }) => message), [...reported],
+                "the missing operation is the strike's business; the notice only counts stray text");
             const rows = await db.test_log_entries_by_turn.all<{ op: string; source: string }>({ turn_id: result.turnIds.at(-1)! });
             assert.equal(rows.some(({ op, source }) => op === "error" && source === "grammar"), false);
         } finally { await db.close(); }
@@ -244,7 +242,7 @@ for (const [failure, operation, failedOp] of [
     ["parser", "````EDIT (worker:///broken.md) <bad>\nnot a message\n````", "error"],
     ["operation", PlurnkParser.frame("SEND (reasoning://alice/1/1)", "Not a recipient."), "SEND"],
 ] as const) {
-    test(`{§response-text-recovery}: silence about commentary does not suppress an actual ${failure} failure`, async () => {
+    test(`{§invalid-output}: stray text does not mask an actual ${failure} failure`, async () => {
         const source = `Working.\n\n${PlurnkParser.frame("NOTE", "Checking.")}\n\n${operation}`;
         const { db, engine, provider, ids, notices } = await setup([said(source)]);
         try {
@@ -259,7 +257,7 @@ for (const [failure, operation, failedOp] of [
 }
 
 for (const op of ["NOTE", "WAIT"] as const) {
-    test(`{§wait-obligation-matrix}: silent commentary with ${op} ${op === "WAIT" ? "respects an explicit park" : "continues before automatic parking"}`, async () => {
+    test(`{§wait-obligation-matrix}: stray text beside ${op} is reported, and ${op === "WAIT" ? "the explicit park holds" : "work continues before automatic parking"}`, async () => {
         const { db, turn, ids, notices } = await setup([said(`Working.\n\n${PlurnkParser.frame(op, "Await the child.")}`)]);
         try {
             await holdChild(db, ids.workspaceId, ids.workerId);
@@ -267,8 +265,9 @@ for (const op of ["NOTE", "WAIT"] as const) {
             assert.equal(result.status, op === "WAIT" ? 202 : 102);
             const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
             assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]),
-                [["SEND", 200], [op, op === "WAIT" ? 202 : 200]]);
-            assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error"), []);
+                [[op, op === "WAIT" ? 202 : 200]], "the stray text is not delivered");
+            assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error").map(({ message }) => message),
+                ["8 characters of invalid output between OPs"]);
         } finally { await db.close(); }
     });
 }

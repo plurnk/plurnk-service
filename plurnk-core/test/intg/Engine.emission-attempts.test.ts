@@ -248,7 +248,7 @@ test("separator-free provider preamble does not reject a complete model turn", a
     }
 });
 
-test("{§response-text-recovery}: interstitial text is delivered without interpreting it and survives exactly in turnOps", async () => {
+test("{§invalid-output}: interstitial text is never delivered, and survives exactly in turnOps", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const source = [
@@ -271,7 +271,7 @@ test("{§response-text-recovery}: interstitial text is delivered without interpr
         assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), [], "commentary is not a parser error");
         const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string | null; origin: string; attrs: string; rx: string }>({ turn_id: result.turnId });
         const modelRows = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(modelRows.map(({ op }) => op), ["SEND", "EDIT", "SEND", "SEND", "SEND"], "text is silently recovered in source order");
+        assert.deepEqual(modelRows.map(({ op }) => op), ["EDIT", "SEND"], "only what the model authored runs; the stray text lives on in the retained emission");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "ops")?.content, source,
             "the complete submitted emission is retained verbatim");
@@ -831,7 +831,7 @@ test("{§extra-path-slot}: a third COPY operand preserves siblings, source evide
         const context = { workspaceId, workerId, loopId };
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(first.status, 102);
-        assert.deepEqual(first.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["READ", 200], ["READ", 200], [null, 400]]);
+        assert.deepEqual(first.outcomes.map(({ op, status }) => [op, status]), [["READ", 200], ["READ", 200], [null, 400]]);
         const { sequence } = (await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId }))!;
         const [readSource] = PlurnkParser.parseStatements(PlurnkParser.frame(`READ (ops://subject/1/${sequence}) <1,-1>`, null)).items;
         assert.ok(readSource.kind === "statement");

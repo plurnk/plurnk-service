@@ -328,7 +328,7 @@ an admission failure, and {§unparsed-tail-boundary} is not involved.
 
 `plurnk.md` teaches that operations *"begin and end with exactly four backticks, both
 immediately after a newline"*; this recovery is not taught. It sits at the quiet end of
-the scale {§response-text-recovery} describes: the model opened the operation correctly
+the scale {§invalid-output} describes: the model opened the operation correctly
 and only failed to close it, so the harness reads what it plainly meant and says nothing.
 A departure that small earns no correction — telling a model its closer was missing costs
 a sentence in every future packet to fix something already fixed.
@@ -351,7 +351,7 @@ own lines' indentation. An OPENER is different: an operation's backticks follow 
 directly (operator, 2026-09-18), so an indented fence opens a quotation, never an operation —
 CommonMark reads an indented block as code, and `plurnk.md` shows its own examples that way. This
 reverses the 2026-09-12 tolerance (then measured at five to ten percent of emissions on
-GLM-5.3-flash; 2.8% of that lane's emissions today). An offset fence is prose and draws nothing:
+GLM-5.3-flash; 2.8% of that lane's emissions today). An offset fence is prose and draws no advisory:
 `plurnk.md` instructs the model to offset any example it does not intend to execute, so the form
 is correct by construction and there is no mistake to report (operator, 2026-09-21). The parser
 presumes nothing about why a fence is offset. Outside an operation, that quotation is
@@ -424,7 +424,7 @@ you do not intend to execute with a hard or soft tab"* — and the other quoting
 not taught: a tilde fence, an unlabeled fence and an unknown three-backtick tag all quote
 too. Each is a shape a model reaches for from ordinary Markdown rather than from this
 teaching, so honouring it protects an example the model already believed was safe
-({§response-text-recovery} places the scale). The taught offset remains the one form a
+({§invalid-output} places the scale). The taught offset remains the one form a
 model should rely on, because it is the only one that survives every fence style.
 
 §interstitial-fence Superseded by {§quotation}: an unlabeled fence no longer opens nothing, it
@@ -1057,14 +1057,14 @@ regions as an ordered `text` item with its exact content and source position.
 Quoted blocks remain literal text, including every nested operation-looking line.
 Operation bodies, asides and malformed operation regions are not response text;
 nothing at or beyond a lost boundary is recovered as text. The statement and client
-tiers ignore outside text. Core alone owns silent SEND recovery
-({§response-text-recovery}) and no-operation strikes ({§empty-turn}); parsing never
-infers delivery or completion intent.
+tiers ignore outside text. Core alone owns reporting it ({§invalid-output}) and
+no-operation strikes ({§empty-turn}); parsing never infers delivery or completion
+intent.
 
 §recorded-emissions **The parser is regressed against emissions models actually produced,
 not fixtures we wrote.** `test/fixtures/recorded-emissions.jsonl` holds one real exemplar
 of every distinct parse shape observed across the live and demo drills — the operations
-authored, whether outside text was recovered, how many parameterless KILLs appeared, and
+authored, whether outside text appeared, how many parameterless KILLs appeared, and
 the status the engine recorded at the time. A fixture encodes what we believe a model
 emits; a recording encodes what one did, and the difference is not academic: the
 regressions in #802 and #809 both shipped through a fully green suite, because every
@@ -1485,7 +1485,7 @@ diagnostics are:
   position after the closing `/`. Only a leading group of `i`, `m` and `s` lifts;
   `(?i:…)` scoped modifiers are valid ECMAScript and pass through untouched.
   `plurnk.md` teaches one regex spelling, `/\btimeout\b/i`, with flags after the closing
-  slash; the lift is not taught. Unlike the tolerances on the {§response-text-recovery}
+  slash; the lift is not taught. Unlike the tolerances on the {§invalid-output}
   scale, this one forgives a departure the model did not choose: `(?i)` is the spelling
   a great many models were trained on, so refusing it would punish an instinct rather
   than a mistake ({§naked-pattern} carries `^` for the same reason). The advisory still
@@ -1534,7 +1534,7 @@ diagnostics are:
   itself ends in one of those shapes takes the option escape.
   `plurnk.md` teaches one order — `OP (path)? <scope|range>? [metadata]? pattern?
   <!-- aside -->?` — and free ordering is not taught. Small departure, small
-  reinterpretation ({§response-text-recovery}): every slot the model wrote is present and
+  reinterpretation ({§invalid-output}): every slot the model wrote is present and
   unambiguous, so only their sequence differs from the taught form, and nothing is
   invented to read it. The advisory names the canonical order rather than refusing,
   because the operation the model meant is never in doubt.

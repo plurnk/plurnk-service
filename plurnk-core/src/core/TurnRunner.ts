@@ -1737,10 +1737,10 @@ export default class TurnRunner {
         const { assistant } = response;
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
         const ops: PlurnkStatement[] = [];
-        // {§response-text-recovery}: the parser owns the partition; recovery never reparses text.
         const parseErrors: ParseErrorInfo[] = [];
         let contentStatementCount = 0;
         let hasUnparsedTail = false;
+        let invalidOutput = 0;
         const parseNotices: Notice[] = [];
         if (preParsedOps !== undefined) {
             ops.push(...preParsedOps);
@@ -1760,12 +1760,8 @@ export default class TurnRunner {
                     ops.push(item.statement);
                     contentStatementCount += 1;
                 }
-                else if (item.kind === "text") {
-                    ops.push({
-                        op: "SEND", aside: null, target: null, metadata: null, lineMarker: null,
-                        body: { raw: item.content, json: null }, position: UNKNOWN_POSITION,
-                    });
-                }
+                // {§invalid-output}: text outside an OP is counted and reported, never delivered.
+                else if (item.kind === "text") invalidOutput += item.content.trim().length;
                 else if (item.kind === "error") {
                     const err = (item as { error?: PlurnkParseError }).error;
                     if (err instanceof PlurnkParseError) {
@@ -1800,6 +1796,10 @@ export default class TurnRunner {
                 hasUnparsedTail = true;
                 parseErrors.push({ message: tail.reason, line: tail.from.line, column: tail.from.column, source: "grammar" });
             }
+            if (invalidOutput > 0) parseNotices.push({
+                source: "grammar", kind: "invalid_output", level: "warn",
+                message: `${invalidOutput} characters of invalid output between OPs`,
+            });
         }
         // {§kill-conclusion}: response shape expresses completion, not reasoning-side NOTE capture.
         const finalResponse = TurnDisposition.requestsCompletion(ops)
@@ -1810,7 +1810,7 @@ export default class TurnRunner {
         const notes = reasoning === null ? [] : PlurnkParser.parseReasoningNotes(reasoning);
         ops.unshift(...notes);
         // {§unparsed-tail-boundary}: only a closed response operation can justify admitting a
-        // lost boundary; recovered text and reasoning NOTE do not supply that evidence.
+        // lost boundary; outside text and reasoning NOTE do not supply that evidence.
         const emissionValid = preParsedOps !== undefined
             || emptyTurn
             || contentStatementCount > 0;

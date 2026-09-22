@@ -44,7 +44,7 @@ test("{§recorded-emissions}: the corpus spans the contract, not one corner of i
     for (const op of ["READ", "FIND", "EDIT", "SEND", "KILL", "NOTE", "WAIT", "WORK"]) {
         assert.ok(ops.has(op), `no recorded emission authored ${op}; the corpus has a blind spot`);
     }
-    assert.ok(records.some(({ outsideText }) => outsideText), "no recovered outside text");
+    assert.ok(records.some(({ outsideText }) => outsideText), "no outside text");
     assert.ok(records.some(({ bareKills }) => bareKills > 0), "no parameterless KILL: the conclusion path is uncovered");
     assert.ok(records.some(({ recordedStatus, bareKills }) => recordedStatus === 200 && bareKills === 0),
         "no pre-KILL conclusion retained: the corpus has forgotten that the contract used to differ");

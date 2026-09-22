@@ -1015,7 +1015,7 @@ test("Engine.runTurn: Errors includes only the immediately previous turn", async
     } finally { await db.close(); }
 });
 
-test("{§response-text-recovery}: free text becomes a nonterminal SEND without losing the following operation", async () => {
+test("{§invalid-output}: free text is never delivered, and the following operation still runs", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -1028,9 +1028,8 @@ test("{§response-text-recovery}: free text becomes a nonterminal SEND without l
         });
         assert.deepEqual(result.outcomes, [
             { op: "SEND", status: 200, problemType: null },
-            { op: "SEND", status: 200, problemType: null },
-        ], "both recovered text and the authored message are delivered without a corrective failure");
-        assert.equal(result.status, 102, "outside text prevents terminal interpretation");
+        ], "only the authored message is delivered, without a corrective failure");
+        assert.equal(result.status, 102);
     } finally { await db.close(); }
 });
 

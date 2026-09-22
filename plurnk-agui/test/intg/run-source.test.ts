@@ -34,7 +34,7 @@ for (const final of ["Four, precisely.", ""]) {
         await import(join(SERVICE, "test/setup.ts"));
         const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
         const provider = new Mock({ contextWindow: 32768, responses: [
-            { assistant: { content: "Four.", reasoning: null } },
+            { assistant: { content: PlurnkParser.frame("SEND", "Four."), reasoning: null } },
             { assistant: { content: PlurnkParser.frame("KILL", final), reasoning: null } },
         ] });
         const db = await openTestDatabase();
@@ -49,21 +49,19 @@ for (const final of ["Four, precisely.", ""]) {
         try {
             await daemon.start();
             const { port } = (await started.promise).address();
-            await daemon.createWorkspace({ name: "recovered-reply", projectRoot: null });
+            await daemon.createWorkspace({ name: "sent-reply", projectRoot: null });
             const events = await post(port, {
                 threadId: "conversation", runId: "initial",
                 messages: [{ id: "question", role: "user", content: "What is two plus two?" }],
-                forwardedProps: { plurnk: { workspace: "recovered-reply", maxTurns: 3 } },
+                forwardedProps: { plurnk: { workspace: "sent-reply", maxTurns: 3 } },
             });
             assert.equal(events.at(-1)?.type, "RUN_FINISHED", JSON.stringify(events.at(-1)));
-            assert.equal(provider.received.length, 2, "recovered text is delivered but cannot conclude");
-            assert.doesNotMatch(JSON.stringify(provider.received[1]), /No valid Operation Syntax OPs detected\./,
-                "{§empty-turn} the strike is silent: the next packet carries the recovered text, not a complaint");
+            assert.equal(provider.received.length, 2, "a SEND is delivered but cannot conclude");
             const expected = final ? ["Four.", final] : ["Four."];
             assert.deepEqual(events.filter(({ type }) => type === "TEXT_MESSAGE_CONTENT").map((event) => (event as { delta: string }).delta), expected);
             const replay = await post(port, {
                 threadId: "conversation", runId: "reconnected",
-                forwardedProps: { plurnk: { workspace: "recovered-reply", mode: "sync" } },
+                forwardedProps: { plurnk: { workspace: "sent-reply", mode: "sync" } },
             });
             const snapshot = replay.find(({ type }) => type === "MESSAGES_SNAPSHOT") as { messages: Array<{ role: string; content: string }> } | undefined;
             assert.ok(snapshot);

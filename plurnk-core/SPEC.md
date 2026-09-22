@@ -1226,9 +1226,9 @@ The parser owns its boundaries; core admits determinate work and exposes its fai
 | Parsed response | Admission |
 |---|---|
 | Bounded program, including malformed operations | Admit valid operations and record parser failures; with no authored operation, apply {§empty-turn}. |
-| Outside response text | Recover literal SENDs under {§response-text-recovery}; never infer completion. |
+| Outside response text | Report it under {§invalid-output}; never deliver it or infer completion. |
 | Lost boundary after a closed operation | Admit the closed operations and record the boundary diagnostic under {§unparsed-tail-boundary}. |
-| Lost boundary before any closed operation | Reject the attempt; neither recovered text nor a reasoning NOTE substitutes for a closed response operation. |
+| Lost boundary before any closed operation | Reject the attempt; neither outside text nor a reasoning NOTE substitutes for a closed response operation. |
 
 Warnings and closer recovery ({§closer-fallback}) do not reject. `finish=length`
 discloses truncation and precludes completion; it is not independently a rejection.
@@ -2661,7 +2661,7 @@ accounting and model-visible failure evidence remain separately owned by
   contains exactly one KILL without a target, scope, matcher or metadata, no hard
   parse error or lost boundary, and was not cut at the provider's output allowance.
   The operation limit must admit the entire program.
-  SEND (including recovered outside text), NOTE and log-targeted KILL may accompany
+  SEND, NOTE, log-targeted KILL and outside text ({§invalid-output}) may accompany
   it; every other operation requires continuation. This tolerance is unadvertised:
   model teaching requests KILL alone. Reasoning-side NOTEs remain ordinary notes.
   An aside is allowed. After the program settles, {§wait-obligation-matrix} admits the
@@ -2670,29 +2670,20 @@ accounting and model-visible failure evidence remain separately owned by
   KILL delivers its literal body through {§send-response-receipt}; a deferred body
   remains forensic evidence, never a stored draft to replay automatically. An empty
   KILL concludes without repeating an already-delivered answer, but cannot abandon an
-  unanswered message. SEND, recovered text, NOTE and targeted KILL never request
-  successful completion. New arrivals still guard the terminal transition atomically
+  unanswered message. SEND, NOTE and targeted KILL never request successful
+  completion. New arrivals still guard the terminal transition atomically
   ({§completion-defers-to-messages}); an arrival concurrent with an accepted reply
   remains unanswered and keeps the loop running. No implicit successful exit exists.
-- §response-text-recovery **Outside response text is delivered, never terminal.** Each
-  text span supplied by {§response-text} becomes an ordinary targetless SEND in source
-  order. Bodies and quotations remain literal. The exact original emission is retained.
-  Recovery produces no diagnostic, warning or strike; valid sibling operations still
-  run. With no authored response operation, {§empty-turn} independently strikes, also
-  silently; actual parser and operation failures retain their ordinary handling.
-
-  `plurnk.md` teaches the opposite — *"YOU MUST ONLY use valid Operation Syntax OPs"*,
-  the only MUST in the file — and this rule is not taught. Outside text is a direct
-  violation of the hot path's first rule, and that is exactly what licenses the salvage: the harness
-  is not second-guessing a model that complied, it is keeping the words of one that was
-  told plainly and did not. The reinterpretation is large because the departure is
-  large; a tolerance that merely reads what the model meant ({§closer-fallback}) changes
-  correspondingly little. Teaching the recovery would spend the first sentence's force
-  to buy a behaviour the model gets anyway (operator, 2026-09-22).
-  Without an authored completion request, recovered text requires continuation even
-  when delivery answers every Open Message; automatic parking cannot postpone it,
-  but an authored WAIT retains its ordinary semantics. Recovery never creates or
-  disqualifies an eligible completion request ({§kill-conclusion}).
+- §invalid-output **Text outside the operations is reported, never delivered.** The spans
+  {§response-text} supplies are counted, and each turn that carries any draws one warning
+  notice: `N characters of invalid output between OPs`. It is never a strike ({§empty-turn}
+  asks only whether the turn authored an operation), and the exact emission is retained.
+  Delivering the text as a SEND logged it as an answer the model gave, confirming that
+  speaking outside operations works; the plurnk thesis needs the model's self-narration in
+  NOTE, asides and KILL (operator, 2026-09-22). This is the far end of the teaching scale: text
+  outside every operation breaks the first rule of `plurnk.md` — *"YOU MUST ONLY respond
+  with valid Operation Syntax OPs"* — so the harness names it, while a departure as small
+  as a missing closer is read as meant and passes unremarked ({§closer-fallback}).
 - §loop-answer **A loop's address is what it said.** READ `ops://<worker>/<loop>` resolves to
   the latest reply the loop gave to the message that started it: the body of a SEND
   or accepted final KILL that answered that message. A running loop without one is 425; a loop that
@@ -2702,26 +2693,22 @@ accounting and model-visible failure evidence remain separately owned by
   remains that turn's emission. A concluded child's `loop_termination` row to its parent
   READs this same loop resource. Witness: `test/intg/loop-answer.test.ts`.
 - §empty-turn **No authored response operation is a recoverable turn, never completion.**
-  Count parsed response operations before SEND recovery and reasoning-NOTE extraction.
-  When none exist and no boundary was lost, retain the turn and its raw sources and count
-  one progress-contract strike. **The strike is silent**: no notice, no warning (operator,
-  2026-09-22). A reply that is all prose is often the correct answer to what was asked —
-  "show me the deletion without doing it" has no operation in it by design — so naming the
-  absent operation nags a model that answered well, and tells a model that answered badly
-  nothing its own emission does not already show. The accounting is liveness, not a message;
-  the threshold terminal is where it becomes visible, and it says why ({§engine-rails}).
-  Non-OP text also follows {§response-text-recovery}. Empty or reasoning-only output
-  sends nothing. A turn with no executed operations uses its exact text as the cycle
-  fingerprint ({§engine-cycle-evidence}); different empty programs are not a repeated
-  cycle merely because neither contained operations. Lost-boundary handling remains
-  {§unparsed-tail-boundary}; no confirmation token or private retry is invented here.
+  Count parsed response operations before reasoning-NOTE extraction; outside text never
+  enters the count. When none exist and no boundary was lost, retain the turn and its raw
+  sources and count one progress-contract strike, whether or not the turn carried text
+  ({§invalid-output}). The strike sends no notice of its own; the threshold terminal is
+  where it becomes visible, and it says why ({§engine-rails}). A turn with no executed
+  operations uses its exact text as the cycle fingerprint ({§engine-cycle-evidence});
+  different empty programs are not a repeated cycle merely because neither contained
+  operations. Lost-boundary handling remains {§unparsed-tail-boundary}; no confirmation
+  token or private retry is invented here.
 - §terminal-evidence **A terminal rules the loop over; it does not decide the model said nothing.**
   Every engine terminal — strike threshold (500), cycle (508), turn ceiling (429), loop timeout
   (504), provider unavailable ({§provider-recovery}) — keeps its status and its authorship: the
   engine ruled, the model did not conclude, and no terminal is ever softened into a 200 the model
   never declared. What a terminal may not do is discard the last thing the model said. When the
   loop's last inference turn performed no authored operation in either response or
-  reasoning and kept text — including text recovered as SEND — its Problem Details
+  reasoning and kept text, its Problem Details
   carries the extension member `unconcluded`, the
   `ops://<worker>/<loop>/<turn>` address of that emission. It is a citation, never the bytes
   ({§turn-ops-entry}: the reader READs the source, and an emission of any length never rides

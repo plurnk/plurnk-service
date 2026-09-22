@@ -44,7 +44,7 @@ test("{§balanced-fences}: a complete nested reply reaches the client without ex
     });
 });
 
-test("{§empty-turn}: operations on the line after a bare fence make an empty turn with the advisories as notices; nothing runs", async () => {
+test("{§empty-turn}: operations on the line after a bare fence make an empty turn, reported as invalid output; nothing runs", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeRawMockResponse(MISFENCED, 10),
         makeMockResponse("````KILL\nthe answer\n````", 10),
@@ -58,14 +58,15 @@ test("{§empty-turn}: operations on the line after a bare fence make an empty tu
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; turn_id: number }>({ loop_id: loopId });
             const model = rows.filter((r) => r.origin === "model");
-            assert.deepEqual(model.map(({ op }) => op), ["SEND", "KILL"], "literal text is silently recovered as SEND, then the corrected turn replies");
-            assert.doesNotMatch(JSON.stringify(mock.received[1]), /No valid Operation Syntax OPs detected\./,
-                "{§empty-turn} the strike is silent: recovery delivers the text and says nothing about the missing operation");
+            assert.deepEqual(model.map(({ op }) => op), ["KILL"], "the text is not delivered; the corrected turn replies");
+            assert.doesNotMatch(JSON.stringify(mock.received[1]), /No valid Operation Syntax OPs detected\./, "the strike itself is silent");
+            assert.match(JSON.stringify(mock.received[1]), /183 characters of invalid output between OPs/, "the stray text is reported");
             assert.ok(!model.some((r) => isExecutionOp(r.op) || r.op === "READ"), "nothing ran: prose is never promoted into an operation");
-            const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: model[0]!.turn_id });
-            assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "the corrected turn was admitted on its first attempt: the empty turn before it was never resampled");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: modelWorkerId! });
-            assert.ok(sources.some((row) => row.kind === "ops" && row.content === MISFENCED), "the empty turn's text is stored as its ops source");
+            const empty = sources.find((row) => row.kind === "ops" && row.content === MISFENCED);
+            assert.ok(empty, "the empty turn's text is stored as its ops source");
+            const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: empty.turn_id });
+            assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "the empty turn was admitted on its first attempt, never resampled");
             assert.equal(result.content, undefined);
             assert.equal(await lastReply(db, loopId), "the answer");
             const shells = await db.test_get_entry_by_pathname_scheme.get({ scheme: "sh", pathname: "/1/1/1/sh" });

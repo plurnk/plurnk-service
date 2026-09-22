@@ -66,13 +66,11 @@ for (const reply of ["authored", "recovered"] as const) {
     });
 }
 
-for (const cause of ["operation", "parser", "commentary"] as const) {
+for (const cause of ["operation", "parser"] as const) {
     test(`{§wait-obligation-matrix}: ${cause} recovery continues before automatically parking an input-open process`, async () => {
-        const prefix = cause === "commentary"
-            ? "Starting the input exchange.\n\n"
-            : "````SEND\nStarting the input exchange.\n````\n\n" + (cause === "parser"
-                ? "````EDIT (worker:///broken.md) <bad>\ninvalid scope\n````\n\n"
-                : "````READ (worker:///missing)\n````\n\n");
+        const prefix = "````SEND\nStarting the input exchange.\n````\n\n" + (cause === "parser"
+            ? "````EDIT (worker:///broken.md) <bad>\ninvalid scope\n````\n\n"
+            : "````READ (worker:///missing)\n````\n\n");
         const mock = new StreamMock({ contextWindow: 100_000, responses: [
             makeRawMockResponse(`${prefix}\`\`\`\`node [{"stdin":"open"}]\nlet input = ""; process.stdin.on("data", d => input += d); process.stdin.on("end", () => console.log("received:" + input));\n\`\`\`\``),
             makeMockResponse("````SEND ($STREAM) [{\"eof\":true}]\nrecovery-witness\n````\n\n````WAIT\nObserve the response.\n````"),
@@ -91,17 +89,10 @@ for (const cause of ["operation", "parser", "commentary"] as const) {
                 const recoveredTurn = result.turnIds![1]!;
                 assert.equal((await db.test_get_turn_status.get<{ status: number }>({ id: recoveredTurn }))?.status, 102,
                     "the turn continues immediately instead of relying on a stream poll or external wake");
-                const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number; rx: string; tx: string }>({ turn_id: recoveredTurn });
-                if (cause === "commentary") {
-                    assert.equal(rows.some(({ op }) => op === "error"), false, "commentary produces no failure receipt");
-                    assert.equal(JSON.parse(rows.find(({ op, origin }) => op === "SEND" && origin === "model")!.tx).body.raw, prefix, "the preface was actually delivered");
-                    const resumed = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds![2]! });
-                    assert.equal(packetSection(JSON.parse(resumed!.packet), "errors"), "", "continuation needs no corrective feedback");
-                } else {
-                    assert.ok(rows.some((row) => cause === "parser"
-                        ? row.op === "error" && row.status_rx === 400 && row.rx.includes("invalid-operation-syntax")
-                        : row.op === "READ" && row.status_rx === 404), "the actual failure is retained, not suppressed to resume the loop");
-                }
+                const rows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: recoveredTurn });
+                assert.ok(rows.some((row) => cause === "parser"
+                    ? row.op === "error" && row.status_rx === 400 && row.rx.includes("invalid-operation-syntax")
+                    : row.op === "READ" && row.status_rx === 404), "the actual failure is retained, not suppressed to resume the loop");
                 const input = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: result.turnIds![2]! });
                 assert.ok(input.some((row) => row.op === "SEND" && row.status_rx === 200 && row.rx.includes('"bytesAccepted":16')));
                 const packet = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds![3]! });

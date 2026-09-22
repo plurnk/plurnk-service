@@ -44,11 +44,11 @@ test("{§operation-fences}: three-backtick EDIT, SEND and KILL use ordinary disp
 });
 
 for (const shape of ["nested", "indented"] as const) {
-    test(`{§quotation}: ${shape} three-backtick deletion is delivered as text without deleting the entry`, async () => {
+    test(`{§quotation}: a ${shape} three-backtick deletion never deletes the entry`, async () => {
         const example = "```KILL (worker:///kept.md)\n```";
         const answer = `Example only:\n${example}\nDo not execute it.`;
         const source = shape === "nested" ? "```KILL\n" + answer + "\n```"
-            : example.split("\n").map((line) => ` ${line}`).join("\n") + "\n\n```KILL\n```";
+            : example.split("\n").map((line) => ` ${line}`).join("\n") + "\n\n```KILL\nDone.\n```";
         const f = await setup([
             { assistant: { content: "```EDIT (worker:///kept.md)\nRetained.\n```", reasoning: null } },
             { assistant: { content: source, reasoning: null } },
@@ -59,7 +59,7 @@ for (const shape of ["nested", "indented"] as const) {
             assert.equal(turn.status, 200);
             const channel = await f.db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/kept.md", name: "body" });
             assert.equal(channel?.content, "Retained.", "quoted operations have no resource effect");
-            assert.deepEqual(await f.replies(), [shape === "nested" ? answer : example.split("\n").map((line) => ` ${line}`).join("\n") + "\n\n"]);
+            assert.deepEqual(await f.replies(), [shape === "nested" ? answer : "Done."], "only a KILL body is delivered, never an example outside one");
             const rows = await f.db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turn.turnId });
             assert.deepEqual(rows.filter(({ op }) => op === "KILL").map(({ status_rx }) => status_rx), [200]);
         } finally { await f.db.close(); }
@@ -75,22 +75,34 @@ test("#809: parameterless KILL delivers its literal final answer and successfull
     } finally { await f.db.close(); }
 });
 
-for (const recovered of [false, true]) {
-    test(`#809: ${recovered ? "interstitial text" : "parameterless SEND"} delivers but only KILL concludes`, async () => {
-        const f = await setup([
-            { assistant: { content: recovered ? "42." : frame("SEND", "42."), reasoning: null } },
-            { assistant: { content: frame("KILL", ""), reasoning: null } },
-        ]);
-        try {
-            const first = await f.turn();
-            assert.equal(first.status, 102);
-            assert.equal(first.emptyTurn, recovered);
-            assert.deepEqual(await f.replies(), ["42."]);
-            assert.equal((await f.turn()).status, 200);
-            assert.deepEqual(await f.replies(), ["42."], "empty completion never repeats the answer");
-        } finally { await f.db.close(); }
-    });
-}
+test("#809: parameterless SEND delivers but only KILL concludes", async () => {
+    const f = await setup([
+        { assistant: { content: frame("SEND", "42."), reasoning: null } },
+        { assistant: { content: frame("KILL", ""), reasoning: null } },
+    ]);
+    try {
+        const first = await f.turn();
+        assert.equal(first.status, 102);
+        assert.equal(first.emptyTurn, false);
+        assert.deepEqual(await f.replies(), ["42."]);
+        assert.equal((await f.turn()).status, 200);
+        assert.deepEqual(await f.replies(), ["42."], "empty completion never repeats the answer");
+    } finally { await f.db.close(); }
+});
+
+test("{§invalid-output}: stray text answers nothing, so an empty KILL cannot conclude after it", async () => {
+    const f = await setup([
+        { assistant: { content: "42.", reasoning: null } },
+        { assistant: { content: frame("KILL", ""), reasoning: null } },
+    ]);
+    try {
+        const first = await f.turn();
+        assert.equal(first.status, 102);
+        assert.equal(first.emptyTurn, true);
+        assert.equal((await f.turn()).status, 102, "the message is still open");
+        assert.deepEqual(await f.replies(), []);
+    } finally { await f.db.close(); }
+});
 
 for (const completionFirst of [false, true]) {
     test(`#809: mixed KILL ${completionFirst ? "before" : "after"} EDIT preserves the edit but does not publish a final answer`, async () => {
