@@ -26,6 +26,10 @@ export const observedScriptExecution = (
         const result = JSON.parse(read.rx);
         return read.scheme === address.protocol.slice(0, -1) && read.pathname === address.pathname
             && read.fragment === "stdout" && result.terminal === true
-            && result.exitCode === 0 && result.content?.trim() === marker;
+            // The script must print the marker as a line of its own; a model that also lists
+            // the file or echoes the exit status around it verified its work better, and is
+            // not wrong for it (#807). A marker merely embedded in some other line is still refused.
+            && result.exitCode === 0
+            && String(result.content ?? "").split(/\r?\n/u).some((line) => line.trim() === marker);
     });
 });

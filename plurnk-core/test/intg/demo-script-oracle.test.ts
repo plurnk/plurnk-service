@@ -48,6 +48,19 @@ test("script oracle accepts native script execution and shell commands with obse
     }
 });
 
+test("#807: a model that verifies around the run is not failed for it", () => {
+    // The recorded specimen (demo-script-mGTn6u): the model listed the file, ran it, and echoed
+    // the exit status. The greeting is on its own line between the two; that is better practice
+    // than printing it alone, and the oracle must not punish it.
+    const verified = "-rwxr-xr-x 1 u u 31 Sep 21 20:00 greet.sh\nGREETING\nexit=0\n";
+    assert.equal(observedScriptExecution([execution(null, 'ls -l greet.sh; sh greet.sh; echo "exit=$?"')],
+        [receipt(verified)], "greet.sh", "GREETING"), true);
+    // A marker inside some other line is not the script printing it.
+    for (const embedded of ["say GREETING\n", "GREETINGS\n", "xGREETING\n"]) {
+        assert.equal(observedScriptExecution([execution("greet.sh")], [receipt(embedded)], "greet.sh", "GREETING"), false, embedded);
+    }
+});
+
 test("script oracle rejects claimed, unobserved, failed, unrelated and mismatched executions", () => {
     const cases: Array<[ScriptReceipt[], ScriptReceipt[]]> = [
         [[], []],
