@@ -5548,7 +5548,6 @@ database is a benchmark artifact like any other: the lane's run directory lives 
 checkout holds source only — never run output. `test:intg` stamps `PLURNK_TEST_RUN` once and every
 test process inherits it, so one suite's databases land in one directory without a pretest step, a
 marker file or a sweep; an unstamped invocation is not a special case with its own rules, it is
-simply an unstamped run with its own directory. Nothing counts, reuses, moves, hides or
-conditionally clears an artifact, so a failed suite's evidence is exactly where the run reported
-it. A cross-package test may reuse Core's migration fixture only by passing a path inside the
+simply an unstamped run with its own directory. A stamped run that passes is reclaimed when it
+exits; a failed suite's evidence is never touched and stays exactly where the run reported it. A cross-package test may reuse Core's migration fixture only by passing a path inside the
 caller's own run directory.
