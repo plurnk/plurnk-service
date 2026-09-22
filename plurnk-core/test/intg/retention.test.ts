@@ -19,7 +19,17 @@ const packet = (upTo: number): DurablePacket => {
     return { weight: 1, sections: [{ name: "log", slot: "user", header: "Log", content: items.join("\n\n"), weight: 1, items }], attributions: [] };
 };
 
-test("{§retention-policy}: the shipped defaults keep every packet and refuse malformed knobs", async () => {
+test("{§retention-policy}: the shipped panel bounds transient data by age and keeps the durable record (#788)", () => {
+    // The intg tier loads .env.defaults, so this is the real panel, not a fixture.
+    const shipped = retentionPolicy(process.env);
+    const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+    assert.equal(shipped.retainPacketMs, thirtyDays, "packets are transient evidence, collected after thirty days");
+    assert.equal(shipped.retainResponseMs, thirtyDays, "so are raw response bodies");
+    assert.equal(shipped.retainPacketTurns, -1, "a loop is already bounded by its own turns; age is what grows without limit");
+    assert.equal(shipped.retainResponseTurns, -1);
+});
+
+test("{§retention-policy}: the keep-everything fixture retires nothing and refuses malformed knobs", async () => {
     const policy = retentionPolicy(DEFAULTS);
     assert.deepEqual(policy, { retainPacketTurns: -1, retainPacketMs: -1, retainResponseTurns: -1, retainResponseMs: -1, collectPacketItems: true, collectDerivations: true, collectContents: true, intervalMs: 3_600_000, autoVacuum: "incremental", reclaimMinFreeBytes: 0 });
     assert.throws(() => retentionPolicy({ ...DEFAULTS, PLURNK_SERVICE_RETAIN_PACKET_TURNS: "-2" }), /PLURNK_SERVICE_RETAIN_PACKET_TURNS must be -1 or a non-negative safe integer/);
