@@ -2678,8 +2678,17 @@ accounting and model-visible failure evidence remain separately owned by
   text span supplied by {§response-text} becomes an ordinary targetless SEND in source
   order. Bodies and quotations remain literal. The exact original emission is retained.
   Recovery produces no diagnostic, warning or strike; valid sibling operations still
-  run. With no authored response operation, {§empty-turn} independently warns and
-  strikes; actual parser and operation failures retain their ordinary handling.
+  run. With no authored response operation, {§empty-turn} independently strikes, also
+  silently; actual parser and operation failures retain their ordinary handling.
+
+  `plurnk.md` teaches the opposite — *"YOU MUST ONLY respond with valid Operation
+  Syntax OPs"* — and this rule is not taught. Outside text is a direct violation of the
+  hot path's first sentence, and that is exactly what licenses the salvage: the harness
+  is not second-guessing a model that complied, it is keeping the words of one that was
+  told plainly and did not. The reinterpretation is large because the departure is
+  large; a tolerance that merely reads what the model meant ({§closer-fallback}) changes
+  correspondingly little. Teaching the recovery would spend the first sentence's force
+  to buy a behaviour the model gets anyway (operator, 2026-09-22).
   Without an authored completion request, recovered text requires continuation even
   when delivery answers every Open Message; automatic parking cannot postpone it,
   but an authored WAIT retains its ordinary semantics. Recovery never creates or

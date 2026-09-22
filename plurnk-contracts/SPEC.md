@@ -326,6 +326,13 @@ ending goes with it; when no bare fence line exists the body is the whole span l
 one terminating line ending. This carries no diagnostic: a missing closer is never
 an admission failure, and {§unparsed-tail-boundary} is not involved.
 
+`plurnk.md` teaches that operations *"begin and end with exactly four backticks, both
+immediately after a newline"*; this recovery is not taught. It sits at the quiet end of
+the scale {§response-text-recovery} describes: the model opened the operation correctly
+and only failed to close it, so the harness reads what it plainly meant and says nothing.
+A departure that small earns no correction — telling a model its closer was missing costs
+a sentence in every future packet to fix something already fixed.
+
 §fence-boundary Balanced nesting is resolved before local recovery. Otherwise,
 fences are read by count and delimiter, except for the heading rule above:
 
@@ -411,6 +418,14 @@ line carrying a fence run, which is an orphaned closer and quotes nothing; and a
 missed operation — an unknown name at canonical width (four or more backticks) — which still
 draws one warning. Unknown three-backtick tags and indented examples draw none. Quotation outside an operation is
 response text under {§response-text}, not an executable program or a completion envelope.
+
+`plurnk.md` teaches exactly one way to make an example inert — *"offset any example OP
+you do not intend to execute with a hard or soft tab"* — and the other quoting fences are
+not taught: a tilde fence, an unlabeled fence and an unknown three-backtick tag all quote
+too. Each is a shape a model reaches for from ordinary Markdown rather than from this
+teaching, so honouring it protects an example the model already believed was safe
+({§response-text-recovery} places the scale). The taught offset remains the one form a
+model should rely on, because it is the only one that survives every fence style.
 
 §interstitial-fence Superseded by {§quotation}: an unlabeled fence no longer opens nothing, it
 quotes. (It in turn replaced the retired unlabeled-fence SEND of the fences chapter, whose
@@ -1452,6 +1467,12 @@ diagnostics are:
   anchored regex with `i`), with one warning-severity advisory naming the flag
   position after the closing `/`. Only a leading group of `i`, `m` and `s` lifts;
   `(?i:…)` scoped modifiers are valid ECMAScript and pass through untouched.
+  `plurnk.md` teaches one regex spelling, `/\btimeout\b/i`, with flags after the closing
+  slash; the lift is not taught. Unlike the tolerances on the {§response-text-recovery}
+  scale, this one forgives a departure the model did not choose: `(?i)` is the spelling
+  a great many models were trained on, so refusing it would punish an instinct rather
+  than a mistake ({§naked-pattern} carries `^` for the same reason). The advisory still
+  names the canonical position, because here the model *can* learn a better spelling.
 - §regex-trailing-text A valid `/pattern/flags` prefix followed by horizontal
   whitespace and trailing text receives one concise trailing-content
   diagnostic, with or without flags, without assuming what the extra text was
@@ -1494,6 +1515,12 @@ diagnostics are:
   one warning-severity advisory naming the canonical order for the scope or block:
   the grammar swallows up anything that passes as legitimate plurnk. A matcher that
   itself ends in one of those shapes takes the option escape.
+  `plurnk.md` teaches one order — `OP (path)? <scope|range>? [metadata]? pattern?
+  <!-- aside -->?` — and free ordering is not taught. Small departure, small
+  reinterpretation ({§response-text-recovery}): every slot the model wrote is present and
+  unambiguous, so only their sequence differs from the taught form, and nothing is
+  invented to read it. The advisory names the canonical order rather than refusing,
+  because the operation the model meant is never in doubt.
 - §matcher-body-redirect **A body beneath those headings.** Text below the heading
   of a FIND, READ or targeted KILL is a body, and those operations take none: the builder
   keeps the statement without it and raises one warning-severity advisory (`READ
