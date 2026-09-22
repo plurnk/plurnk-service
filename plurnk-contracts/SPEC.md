@@ -1061,6 +1061,23 @@ tiers ignore outside text. Core alone owns silent SEND recovery
 ({§response-text-recovery}) and no-operation strikes ({§empty-turn}); parsing never
 infers delivery or completion intent.
 
+§recorded-emissions **The parser is regressed against emissions models actually produced,
+not fixtures we wrote.** `test/fixtures/recorded-emissions.jsonl` holds one real exemplar
+of every distinct parse shape observed across the live and demo drills — the operations
+authored, whether outside text was recovered, how many parameterless KILLs appeared, and
+the status the engine recorded at the time. A fixture encodes what we believe a model
+emits; a recording encodes what one did, and the difference is not academic: the
+regressions in #802 and #809 both shipped through a fully green suite, because every
+fixture in it was ours.
+Shape coverage, not volume, is the point — 120 exemplars are ~60 KB against ~88 MB for
+every emission ever recorded. The recorded status is **provenance, never an assertion**:
+the contract has changed under these turns and will again, so the replay asserts only that
+today's parser still reads each emission the way the corpus says it does. Regenerate with
+`scriptify/extract-emission-corpus.ts --write` after a drill; a changed shape is the
+contract moving and the diff names every shape that moved with it. The extractor also
+reports how many recorded turns concluded under a contract that no longer would, which is
+the drift between what the harness once accepted and what it accepts now.
+
 ## 12. Public API
 
 The package root is the single JavaScript and TypeScript entry point. Shared AST
