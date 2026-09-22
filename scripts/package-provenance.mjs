@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseArgs, promisify } from "node:util";
 import { packageArtifactViolations } from "./package-artifacts.mjs";
+import { projectTarball, resolveProjected } from "./package-projection.mjs";
 
 const run = promisify(execFile);
 const root = path.resolve(import.meta.dirname, "..");
@@ -96,9 +97,10 @@ try {
         }
         if (record?.filename === undefined) throw new Error(`${manifest.name}: npm pack returned no filename`);
         const archive = path.join(destination, record.filename);
-        const candidate = JSON.parse((await run("tar", ["-xOf", archive, "package/package.json"], {
-            maxBuffer: 4 * 1024 * 1024,
-        })).stdout);
+        // The tarball that ships is the projection (#797): no dev condition, every target shipped,
+        // and every export resolving into the tarball under --conditions=plurnk-dev.
+        const { manifest: candidate, files } = await projectTarball(archive);
+        await resolveProjected(archive, candidate, files);
         const packedViolations = mismatches(dir, candidate);
         if (packedViolations.length > 0) {
             throw new Error(`${manifest.name}: packed manifest violates provenance:\n  ${packedViolations.join("\n  ")}`);
@@ -116,4 +118,4 @@ try {
     await rm(destination, { recursive: true, force: true });
 }
 
-console.log(`package provenance OK: ${dirs.length} packed candidate(s)`);
+console.log(`package provenance OK: ${dirs.length} packed candidate(s), projected and resolvable`);

@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import { projectTarball } from "./package-projection.mjs";
 import { resolveClientCheckout } from "./project-topology.mjs";
 import { awaitRegistryVersion } from "./registry-visibility.mjs";
 import { probeInstalledDaemon } from "./release-daemon-probe.mjs";
@@ -60,13 +61,23 @@ const served = async (name) => {
 };
 
 console.log(`release-publish: ${order.length} workspaces at ${version}`);
-for (const { name } of order) {
-    if (await served(name) === version) { console.log(`  serves  ${name}`); continue; }
-    console.log(`  publish ${name}`);
-    // The committed stamp was built and gated once above. Publication remains
-    // script-free so no package can mutate or re-prove itself mid-train.
-    await run("npm", ["publish", "-w", name, "--access", "public", "--ignore-scripts"], { maxBuffer: 16 * 1024 * 1024 }); // Law 1: rejects on refusal
-    await awaitRegistryVersion({ name, version, lookup: served });
+const staging = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-release-publish-"));
+try {
+    for (const { name } of order) {
+        if (await served(name) === version) { console.log(`  serves  ${name}`); continue; }
+        console.log(`  publish ${name}`);
+        // The committed stamp was built and gated once above. Publication remains
+        // script-free so no package can mutate or re-prove itself mid-train, and what is
+        // published is the projected tarball (#797): the dev condition never reaches a consumer.
+        const [record] = JSON.parse((await run("npm", ["pack", "-w", name, "--json", "--ignore-scripts", "--pack-destination", staging], { maxBuffer: 64 * 1024 * 1024 })).stdout);
+        if (typeof record?.filename !== "string") throw new Error(`${name}: npm pack returned no filename`);
+        const archive = path.join(staging, record.filename);
+        await projectTarball(archive);
+        await run("npm", ["publish", archive, "--access", "public", "--ignore-scripts"], { maxBuffer: 16 * 1024 * 1024 }); // Law 1: rejects on refusal
+        await awaitRegistryVersion({ name, version, lookup: served });
+    }
+} finally {
+    await fs.rm(staging, { recursive: true, force: true });
 }
 
 // Managed leaves may depend on the just-published platform while the platform

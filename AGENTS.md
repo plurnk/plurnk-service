@@ -121,7 +121,11 @@ introduce package-local cleanup variants.
 Build inputs are runtime package inputs. Keep test-only and private harness
 helpers under their test or bench owner rather than compiling them into `dist`.
 When runtime code loads a module by exact path instead of through an export,
-assert that path in the root packed-artifact projection.
+assert that path in the root packed-artifact projection. The manifest a tarball
+carries is a projection too: `scripts/package-projection.mjs` strips the
+monorepo's `plurnk-dev` export condition from every tarball the platform packs
+(the provenance gate, the conformance harness, the publish machine) and refuses
+any remaining export whose target the tarball does not ship (#797).
 
 ## Configuration cascade and test tiers
 

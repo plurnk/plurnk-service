@@ -9,6 +9,7 @@ import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
+import { projectTarball } from "./package-projection.mjs";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { startClientJourneyModel } from "./fixtures/client-journey-model.mjs";
@@ -190,6 +191,8 @@ try {
     ]);
     await run("npm", ["init", "-y"], { cwd: install });
     const serviceSpecs = await pack(root, ["--workspaces"]);
+    // The consumer installs the projected tarballs (#797), the same bytes a release publishes.
+    for (const archive of serviceSpecs) await projectTarball(archive);
     const contractsSpec = serviceSpecs.find((spec) => spec.includes("plurnk-plurnk-contracts-"));
     if (contractsSpec === undefined) throw new Error("packed platform omitted @plurnk/plurnk-contracts");
 

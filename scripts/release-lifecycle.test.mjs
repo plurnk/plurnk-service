@@ -32,10 +32,14 @@ test("release lifecycle stamps, commits, then builds and gates before script-fre
     assert.match(publish, /usage: release-publish\.mjs <client-version>/);
     const qualification = publish.indexOf('["scripts/release-check.mjs", clientVersion]');
     const mutationClean = publish.indexOf('assertClean("before publication")');
-    const firstPublish = publish.indexOf('["publish", "-w", name');
+    const firstPublish = publish.indexOf('["publish", archive');
     assert.ok(qualification >= 0 && qualification < mutationClean && mutationClean < firstPublish);
     assert.doesNotMatch(publish, /\["run", "build"\]|\["scripts\/release-gates\.mjs"\]/);
-    assert.match(publish, /\["publish", "-w", name, "--access", "public", "--ignore-scripts"\]/);
+    assert.match(publish, /\["publish", archive, "--access", "public", "--ignore-scripts"\]/);
+    // #797: what is published is the projected tarball, never the workspace directory.
+    const projection = publish.indexOf("await projectTarball(archive)");
+    assert.ok(projection >= 0 && projection < firstPublish, "the tarball is projected before it is published");
+    assert.doesNotMatch(publish, /\["publish", "-w"/);
 
     const consumerInstall = publish.indexOf('["i", `${ROOT_PKG}@${version}`]');
     const dependencyGraph = publish.indexOf('["ls", "--all"]');
