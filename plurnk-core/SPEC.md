@@ -2603,7 +2603,7 @@ same durable liveness.
 | Worker or loop already cancelled/terminal | Preserve that result. |
 | Administrative program | Finish its transaction without adjudicating another model loop's work. |
 | New unpublished message | Continue; publish it in the next packet. |
-| Fresh operation/parser failure without an authored WAIT | Continue for recovery before any automatic parking. |
+| No authored response operations ({§empty-turn}) or fresh operation/parser failure, without an authored WAIT | Continue for recovery before any automatic parking. |
 | Live work and either WAIT or no unanswered messages | Park the same loop; message arrival, child or stream settlement, or stream cadence wakes it. |
 | WAIT without live work | Continue; never invent a future wake. |
 | Unanswered messages | Continue. |

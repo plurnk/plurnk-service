@@ -45,7 +45,7 @@ export default class TurnDispositionHandler {
             : { status: 102, detail: "Nothing is in flight. Continuing." };
     }
 
-    async settle(ctx: TurnContext, wait: boolean, finalResponse: boolean): Promise<number> {
+    async settle(ctx: TurnContext, wait: boolean, finalResponse: boolean, emptyTurn: boolean): Promise<number> {
         const { workerId, loopId, turnId, origin } = ctx;
         const status = await this.#lifecycle.status(loopId);
         if (![100, 102, 202].includes(status)) return status;
@@ -55,7 +55,7 @@ export default class TurnDispositionHandler {
         if (arrivals.length > 0) return 102;
         const unanswered = await this.#db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId });
         if (unanswered === undefined) throw new Error("The loop has no message count.");
-        const failed = await this.#unobservedFailureCount(turnId) > 0;
+        const failed = emptyTurn || await this.#unobservedFailureCount(turnId) > 0;
         if (failed && !wait) return 102;
         const { pending } = await this.#pendingSet(workerId, turnId, loopId);
         const live = pending.some((kind) => kind === "streams" || kind === "workers" || kind === "events");

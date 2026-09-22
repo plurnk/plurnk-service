@@ -333,7 +333,7 @@ export default class AdmittedTurnExecutor {
                 ),
             });
         }
-        const turnStatus = await this.#dispatcher.settleProgram({ workerId, loopId, turnId, origin }, wait, finalResponse);
+        const turnStatus = await this.#dispatcher.settleProgram({ workerId, loopId, turnId, origin }, wait, finalResponse, emptyTurn);
         await Turn.complete(this.#db, turnId, turnStatus);
         return {
             status: turnStatus,

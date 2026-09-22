@@ -4,7 +4,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock, type MockResponse } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
 import { statement } from "./reasoning-fixture.ts";
 
 const said = (content: string, reasoning: string | null = null): MockResponse => ({ assistant: { content, reasoning } });
@@ -197,5 +197,18 @@ test("{§empty-turn}: reasoning NOTEs do not rescue a response with no authored 
         assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["NOTE"]);
         assert.equal((await turn()).status, 200);
         assert.match(JSON.stringify(provider.received[1]), /No valid Operation Syntax OPs detected\./);
+    } finally { await db.close(); }
+});
+
+test("{§empty-turn}: a reasoning NOTE cannot park no-operation recovery after the messages are answered", async () => {
+    const { db, turn, ids } = await setup([said("Four."), said("", PlurnkParser.frame("NOTE", "Still checking."))]);
+    try {
+        assert.equal((await turn()).status, 102);
+        await holdChild(db, ids.workspaceId, ids.workerId);
+        const empty = await turn();
+        assert.equal(empty.emptyTurn, true);
+        assert.equal(empty.status, 102, "a persisted reasoning NOTE is not an authored response operation or a request to wait");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: empty.turnId });
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["NOTE"]);
     } finally { await db.close(); }
 });
