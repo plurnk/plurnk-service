@@ -858,10 +858,10 @@ test("Engine.runTurn: the first turn's log section contains the arrival row", as
         assert.ok(inbox[0]!.log_entry_id !== null, "the inbox row was stamped with the row it became");
         const prompt = log.find((e) => String(e.logPath).endsWith("/SEND"));
         assert.ok(prompt, "the arrival row is in the log");
-        // {§message-causal-source} — an arrival is always harness-published, so the rendered row omits
-        // the constant origin and carries only a causal source when another actor supplied one (#706).
-        assert.equal(prompt.origin, undefined, "the rendered arrival row carries no constant origin");
-        assert.equal(prompt.source, undefined, "the owner caused this message: no source");
+        // {§message-causal-source} — every other sender has an address; the operator's message is named,
+        // or it reads as the model's own SEND.
+        assert.equal(prompt.origin, "user", "the operator's message says whose it is");
+        assert.equal(prompt.source, undefined, "the operator has no actor address");
         assert.equal("path" in prompt, false, "an arrival has no addressed operand");
         assert.match(String(prompt.logPath), /\/SEND$/, "the path owns the SEND delimiter");
     } finally { await db.close(); }

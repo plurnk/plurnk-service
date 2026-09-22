@@ -749,10 +749,9 @@ export default class PacketWire {
         const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
         const renderedLeaf = LogEntryProjection.leaf(e);
         const path = PacketWire.#entryPath(coordinate, renderedLeaf);
-        // Absence = "model" — the worker's own authorship is the default,
-        // exactly as `source` absence means the owning worker (#338). An arrival is an inbound
-        // SEND row the harness published ({§message-causal-source}): its origin says nothing, so
-        // the row carries only the causal `source` when another actor supplied one (#706).
+        // Absence = "model" — the worker's own authorship is the default (#338). An arrival is an
+        // inbound SEND row the harness published ({§message-causal-source}): its stored origin says
+        // nothing, so the row names its sender instead (#706).
         if (typeof e.origin === "string" && e.origin !== "model" && !PacketWire.isArrival(e)) meta.origin = e.origin;
         // {§env-delta-attribution}: render the causal worker address or
         // subsystem token when present; absence means the owning worker.
@@ -761,6 +760,9 @@ export default class PacketWire {
         const arrivalAttrs = typeof e.attrs === "string" ? PacketWire.#safeParse(e.attrs) : e.attrs;
         const selfAddressed = arrivalAttrs !== null && typeof arrivalAttrs === "object" && (arrivalAttrs as { selfAddressed?: unknown }).selfAddressed === true;
         if (typeof e.source === "string" && e.source.length > 0 && !selfAddressed) meta.source = e.source;
+        // {§message-causal-source}: every other sender has an address; the operator's message is named
+        // for the model, or it reads as the model's own SEND.
+        if (PacketWire.isArrival(e) && meta.source === undefined) meta.origin = "user";
         if (e.source === "file" && e.attrs !== null && typeof e.attrs === "object" && "git" in e.attrs) {
             const git = (e.attrs as { git?: unknown }).git;
             if (typeof git !== "string" || git.length !== 2) {

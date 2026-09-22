@@ -79,10 +79,29 @@ test("a jumbo message renders an adaptive preview and Open Messages points to it
             assert.ok(promptSection, "the messages section exists");
             assert.equal(promptSection!.slot, "user", "the open-message pointers close the user-slot status clump");
             assert.equal(promptSection!.header, "Open Messages");
-            assert.match(promptSection!.content, /^\[\{"path":"message:\/\/[^/]+\/[0-9a-f]{8}"\}\]$/, "an immutable message address without a causal source for the owner's own request");
+            assert.match(promptSection!.content, /^\[\{"path":"message:\/\/[^/]+\/[0-9a-f]{8}","origin":"user"\}\]$/, "an immutable message address, named as the operator's own request");
             assert.doesNotMatch(promptSection!.content, /prompt line 5/, "no bodies in the section");
         } finally { ws.close(); }
     });
+});
+
+test("{§message-causal-source}: the operator's message is named for the model; every other sender shows its address", () => {
+    const countTokens = (s: string): number => Math.ceil(s.length / 4);
+    const arrival = (coordinate: string, source: string | null, selfAddressed = false) => ({
+        coordinate, origin: "_plurnk", op: "SEND", source, target: null, status: 200,
+        tx: { body: "Replace the second line." }, rx: { status: 200, resource: `message://w/${coordinate.at(-1)}` },
+        folded: [], attrs: { kind: "message", ...(selfAddressed ? { selfAddressed } : {}) },
+    });
+    const records = parseLogRecords(PacketWire.renderLog([
+        arrival("1/2/1", null),
+        arrival("1/2/2", "agui://anonymous/threads/t/messages/m", true),
+        arrival("1/2/3", "worker://peer"),
+    ], countTokens));
+    assert.deepEqual(records.map(({ origin, source }) => ({ origin, source })), [
+        { origin: "user", source: undefined },
+        { origin: "user", source: undefined },
+        { origin: undefined, source: "worker://peer" },
+    ], "left bare, the operator's row reads as the model's own SEND");
 });
 
 test("an oversized deliverable renders the universal preview and log recovery address", () => {

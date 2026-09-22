@@ -241,11 +241,12 @@ export default class PacketBuilder {
             id: number; path: string; key_path: string; source: string | null;
         }>({ loop_id: loopId });
         // {§message-short-identity}: the model is shown the short address, never a client's own
-        // transport identity; answering either reaches the same message.
+        // transport identity; answering either reaches the same message. The operator's message has
+        // no other sender to show, so it is named ({§message-causal-source}).
         const prompt = openMessages.length > 0
             ? `[${openMessages.map((m) => JSON.stringify({
                 path: m.key_path,
-                ...(m.source === null ? {} : { source: m.source }),
+                ...(m.source === null ? { origin: "user" } : { source: m.source }),
             })).join(",\n")}]`
             : "[]";
         // {§recap}: a non-empty override wins; otherwise read the meta-owned source per packet.
