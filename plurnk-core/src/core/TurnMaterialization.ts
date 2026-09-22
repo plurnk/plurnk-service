@@ -210,8 +210,13 @@ export default class TurnMaterialization {
             // range it wants. At close, ONE foisted READ that is exactly a markerless READ —
             // the first page, the extent, the terminal status and Problem — initially visible. {§exec-stream-page}
             if (ch.state !== "closed" && ch.state !== "errored") continue;
+            // An executor marks its channel closed itself; subscription settlement installs the
+            // terminal result afterwards, in a separate write. Until it has, the stream is still
+            // in flight and publishes on the turn after it settles. Reading state as "settled"
+            // threw here under load (#818), taking the whole loop down.
+            if (ch.producer_result === null) continue;
             if (skipped.has(ch.publication_id)) continue;
-            const terminal = Results.assert(JSON.parse(ch.producer_result ?? "null") as SchemeResult);
+            const terminal = Results.assert(JSON.parse(ch.producer_result) as SchemeResult);
             const sequence = fromSequence + entryIds.length;
             const page = await ReadResolve.resolve({ content: ch.content, mimetype: ch.mimetype, lineMarker: null });
             const emptySiblings = siblings.get(ch.publication_id) ?? {};
