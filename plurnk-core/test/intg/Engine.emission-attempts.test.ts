@@ -268,10 +268,10 @@ test("{§response-text-recovery}: interstitial text is delivered without interpr
         assert.equal(result.status, 102, "invented interstitial output cannot satisfy the observation barrier");
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
-        assert.deepEqual(JSON.parse(attempts[0]!.parse_errors).map(({ message }: { message: string }) => message), ["Only valid Operation Syntax OPs allowed. No free response."]);
+        assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), [], "commentary is not a parser error");
         const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string | null; origin: string; attrs: string; rx: string }>({ turn_id: result.turnId });
         const modelRows = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(modelRows.map(({ op }) => op), ["SEND", "EDIT", "SEND", "SEND", "SEND", "error"], "text is recovered in source order and one syntax failure is recorded");
+        assert.deepEqual(modelRows.map(({ op }) => op), ["SEND", "EDIT", "SEND", "SEND", "SEND"], "text is silently recovered in source order");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "ops")?.content, source,
             "the complete submitted emission is retained verbatim");
@@ -831,7 +831,7 @@ test("{§extra-path-slot}: a third COPY operand preserves siblings, source evide
         const context = { workspaceId, workerId, loopId };
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(first.status, 102);
-        assert.deepEqual(first.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["READ", 200], ["READ", 200], [null, 400], [null, 400]]);
+        assert.deepEqual(first.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["READ", 200], ["READ", 200], [null, 400]]);
         const { sequence } = (await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId }))!;
         const [readSource] = PlurnkParser.parseStatements(PlurnkParser.frame(`READ (ops://subject/1/${sequence}) <1,-1>`, null)).items;
         assert.ok(readSource.kind === "statement");
@@ -845,9 +845,8 @@ test("{§extra-path-slot}: a third COPY operand preserves siblings, source evide
         const next = await engine.runTurn({ ...context, provider, messages: [] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
         const failures = logEntries(packet).filter(({ status }) => status === 400);
-        assert.equal(failures.length, 2);
-        assert.equal((failures[0].problem as Record<string, unknown>).detail, "Only valid Operation Syntax OPs allowed. No free response.");
-        const problem = failures[1].problem as Record<string, unknown>;
+        assert.equal(failures.length, 1, "only the malformed COPY has a failure receipt");
+        const problem = failures[0].problem as Record<string, unknown>;
         assert.equal(problem.type, "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax");
         assert.equal(problem.detail,
             "unexpected `(` (`(path)` slot opener); expected operation fence header, operation-heading line ending, or closing fence");

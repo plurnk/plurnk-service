@@ -147,6 +147,7 @@ type SplitProviderResponse = {
     parseNotices: Notice[];
     emissionValid: boolean;
     emptyTurn: boolean;
+    recoveredText: boolean;
     // {§send-conclusion}: the response alone explicitly requested completion.
     finalResponse: boolean;
 };
@@ -1702,6 +1703,7 @@ export default class TurnRunner {
             maxCommands,
             recoverableParseErrors: split.recoverableParseErrors,
             emptyTurn: split.emptyTurn,
+            recoveredText: split.recoveredText,
             finalResponse: split.finalResponse,
             bare: {
                 provider: childProvider,
@@ -1740,7 +1742,7 @@ export default class TurnRunner {
         // {§response-text-recovery}: the parser owns the partition; recovery never reparses text.
         const parseErrors: ParseErrorInfo[] = [];
         let contentStatementCount = 0;
-        let outsideText: { line: number; column: number } | null = null;
+        let recoveredText = false;
         let hasUnparsedTail = false;
         const parseNotices: Notice[] = [];
         if (preParsedOps !== undefined) {
@@ -1762,7 +1764,7 @@ export default class TurnRunner {
                     contentStatementCount += 1;
                 }
                 else if (item.kind === "text") {
-                    outsideText ??= item.position;
+                    recoveredText = true;
                     ops.push({
                         op: "SEND", aside: null, target: null, metadata: null, lineMarker: null,
                         body: { raw: item.content, json: null }, position: UNKNOWN_POSITION,
@@ -1805,16 +1807,12 @@ export default class TurnRunner {
         }
         // {§send-conclusion}: response shape expresses completion, not reasoning-side NOTE capture.
         const finalResponse = ops.length === 1 && ops[0].op === "SEND" && ops[0].target === null
-            && outsideText === null && !hasUnparsedTail && parseErrors.length === 0
+            && !recoveredText && !hasUnparsedTail && parseErrors.length === 0
             && assistant.finishReason !== "length";
         const emptyTurn = preParsedOps === undefined && contentStatementCount === 0 && !hasUnparsedTail;
         const reasoning = assistant.reasoning ?? null;
         const notes = reasoning === null ? [] : PlurnkParser.parseReasoningNotes(reasoning);
         ops.unshift(...notes);
-        if (outsideText !== null) parseErrors.push({
-            message: "Only valid Operation Syntax OPs allowed. No free response.",
-            ...outsideText, source: "parser",
-        });
         // {§unparsed-tail-boundary}: only a closed response operation can justify admitting a
         // lost boundary; recovered text and reasoning NOTE do not supply that evidence.
         const emissionValid = preParsedOps !== undefined
@@ -1830,6 +1828,7 @@ export default class TurnRunner {
             parseErrors,
             recoverableParseErrors: emissionValid ? recoverableParseErrors : [],
             emptyTurn,
+            recoveredText,
             finalResponse,
             parseNotices,
             emissionValid,

@@ -57,7 +57,7 @@ for (const final of ["Four, precisely.", ""]) {
             });
             assert.equal(events.at(-1)?.type, "RUN_FINISHED", JSON.stringify(events.at(-1)));
             assert.equal(provider.received.length, 2, "recovered text is delivered but cannot conclude");
-            assert.match(JSON.stringify(provider.received[1]), /Only valid Operation Syntax OPs allowed\. No free response\./);
+            assert.match(JSON.stringify(provider.received[1]), /No valid Operation Syntax OPs detected\./);
             const expected = final ? ["Four.", final] : ["Four."];
             assert.deepEqual(events.filter(({ type }) => type === "TEXT_MESSAGE_CONTENT").map((event) => (event as { delta: string }).delta), expected);
             const replay = await post(port, {

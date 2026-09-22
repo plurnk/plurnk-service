@@ -1251,8 +1251,8 @@ export default class Dispatcher {
         return rows.map((row) => row.path);
     }
 
-    async settleProgram(ctx: { workerId: number; loopId: number; turnId: number; origin: WriterTier }, wait: boolean, finalResponse: boolean, emptyTurn: boolean): Promise<number> {
-        return this.#disposition.settle(ctx, wait, finalResponse, emptyTurn);
+    async settleProgram(ctx: { workerId: number; loopId: number; turnId: number; origin: WriterTier }, wait: boolean, finalResponse: boolean, recoveringResponse: boolean): Promise<number> {
+        return this.#disposition.settle(ctx, wait, finalResponse, recoveringResponse);
     }
 
     // {§send-premature-terminate}: judge observation boundaries after the whole program settles.

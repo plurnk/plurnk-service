@@ -45,7 +45,7 @@ export default class TurnDispositionHandler {
             : { status: 102, detail: "Nothing is in flight. Continuing." };
     }
 
-    async settle(ctx: TurnContext, wait: boolean, finalResponse: boolean, emptyTurn: boolean): Promise<number> {
+    async settle(ctx: TurnContext, wait: boolean, finalResponse: boolean, recoveringResponse: boolean): Promise<number> {
         const { workerId, loopId, turnId, origin } = ctx;
         const status = await this.#lifecycle.status(loopId);
         if (![100, 102, 202].includes(status)) return status;
@@ -55,15 +55,15 @@ export default class TurnDispositionHandler {
         if (arrivals.length > 0) return 102;
         const unanswered = await this.#db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId });
         if (unanswered === undefined) throw new Error("The loop has no message count.");
-        const failed = emptyTurn || await this.#unobservedFailureCount(turnId) > 0;
-        if (failed && !wait) return 102;
+        const recovery = recoveringResponse || await this.#unobservedFailureCount(turnId) > 0;
+        if (recovery && !wait) return 102;
         const { pending } = await this.#pendingSet(workerId, turnId, loopId);
         const live = pending.some((kind) => kind === "streams" || kind === "workers" || kind === "events");
         if (live && (wait || unanswered.count === 0)) {
             // The obligation itself is the waker: a concluding stream, child or event requeues this loop.
             return await this.#lifecycle.park(loopId, { wakenBy: "obligations" }) ? 202 : this.#lifecycle.status(loopId);
         }
-        if (!finalResponse || wait || unanswered.count > 0 || pending.length > 0 || failed) return 102;
+        if (!finalResponse || wait || unanswered.count > 0 || pending.length > 0 || recovery) return 102;
         // {§completion-defers-to-messages}: recheck unanswered arrivals atomically with conclusion.
         const finished = await this.#lifecycle.finish(loopId, TerminalResult.success(null), { requireAnswered: true });
         return finished === null ? this.#lifecycle.status(loopId) : 200;

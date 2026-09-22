@@ -1039,8 +1039,9 @@ regions as an ordered `text` item with its exact content and source position.
 Quoted blocks remain literal text, including every nested operation-looking line.
 Operation bodies, asides and malformed operation regions are not response text;
 nothing at or beyond a lost boundary is recovered as text. The statement and client
-tiers ignore outside text. Core alone owns SEND recovery and strikes
-({§response-text-recovery}); parsing never infers delivery or completion intent.
+tiers ignore outside text. Core alone owns silent SEND recovery
+({§response-text-recovery}) and no-operation strikes ({§empty-turn}); parsing never
+infers delivery or completion intent.
 
 ## 12. Public API
 

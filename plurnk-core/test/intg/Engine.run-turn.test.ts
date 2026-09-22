@@ -1029,8 +1029,7 @@ test("{§response-text-recovery}: free text becomes a nonterminal SEND without l
         assert.deepEqual(result.outcomes, [
             { op: "SEND", status: 200, problemType: null },
             { op: "SEND", status: 200, problemType: null },
-            { op: null, status: 400, problemType: "https://problems.plurnk.xyz/grammar/parser/invalid-operation-syntax" },
-        ], "both recovered text and the authored message are delivered alongside the corrective failure");
+        ], "both recovered text and the authored message are delivered without a corrective failure");
         assert.equal(result.status, 102, "outside text prevents terminal interpretation");
     } finally { await db.close(); }
 });

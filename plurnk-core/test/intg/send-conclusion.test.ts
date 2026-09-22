@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { Notice } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock, type MockResponse } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { DEFAULT_MIMETYPES, holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection } from "./_helpers.ts";
 import { statement } from "./reasoning-fixture.ts";
 
 const said = (content: string, reasoning: string | null = null): MockResponse => ({ assistant: { content, reasoning } });
@@ -16,12 +17,15 @@ const setup = async (responses: MockResponse[]) => {
     const parentId = await insertWorker(db, workspaceId, null, "lead");
     const workerId = await insertWorker(db, workspaceId, parentId, "alice");
     const loopId = await insertLoop(db, workerId, 1);
-    const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+    const notices: Notice[] = [];
+    const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
+        noticeNotify: (_id, payload) => notices.push(payload.notice as Notice),
+    });
     await engine.injectIntoLoop(loopId, "What is two plus two?", [], "worker://lead");
     const provider = new Mock({ contextWindow: 100_000, responses });
     const ids = { workspaceId, workerId, loopId };
     return {
-        db, engine, provider, ids, parentId,
+        db, engine, provider, ids, parentId, notices,
         turn: () => engine.runTurn({ provider, ...ids, messages: [] }),
         answer: () => engine.look({ ...ids, statement: statement("````READ (ops://alice/1)````") }),
     };
@@ -133,21 +137,93 @@ for (const response of ["200", "````markdown\nFour.\n````", "````md\nFour.\n````
     });
 }
 
-test("{§response-text-recovery}: outside fragments and valid siblings execute in order; the turn earns one strike", async () => {
+test("{§response-text-recovery}: outside fragments and valid siblings execute silently in order without a strike", async () => {
     const source = `Before.\n\n${PlurnkParser.frame("NOTE", "remember")}\n\nBetween.\n\n${send("Four.")}\n\nAfter.`;
-    const { db, engine, provider, ids } = await setup([said(source), said(send())]);
+    const { db, engine, provider, ids, notices } = await setup([said(source), said(send())]);
     try {
-        const result = await engine.runLoop({ ...ids, provider, maxTurns: 4, maxStrikes: 2, messages: [] });
-        assert.equal(result.result.status, 200, "multiple fragments earn one strike, so the next turn can recover");
+        const result = await engine.runLoop({ ...ids, provider, maxTurns: 4, maxStrikes: 1, messages: [] });
+        assert.equal(result.result.status, 200, "commentary does not strike even at a one-strike threshold");
         assert.equal(provider.received.length, 2);
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string; rx: string }>({ turn_id: result.turnIds.at(-2)! });
         const operations = rows.filter(({ origin, op }) => origin === "model" && ["SEND", "NOTE"].includes(op));
         assert.deepEqual(operations.map(({ op }) => op), ["SEND", "NOTE", "SEND", "SEND", "SEND"]);
         assert.deepEqual(operations.filter(({ op }) => op === "SEND").map(({ tx }) => JSON.parse(tx).body.raw), ["Before.\n\n", "\n\nBetween.\n\n", "Four.", "\n\nAfter."]);
-        const problems = rows.map(({ rx }) => JSON.parse(rx)).filter(({ problem }) => problem?.detail === "Only valid Operation Syntax OPs allowed. No free response.");
-        assert.equal(problems.length, 1);
+        assert.equal(rows.some(({ op }) => op === "error"), false, "commentary produces no failure receipt");
+        assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error"), [], "no corrective notice is sent");
+        const next = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds.at(-1)! });
+        assert.equal(packetSection(JSON.parse(next!.packet), "errors"), "", "the next packet has no corrective feedback");
     } finally { await db.close(); }
 });
+
+test("{§response-text-recovery}: valid operations with commentary reset the no-operation strike streak", async () => {
+    const { db, engine, provider, ids } = await setup([
+        said("Thinking."),
+        said(`Checking the arithmetic.\n\n${PlurnkParser.frame("NOTE", "Two plus two is four.")}`),
+        said("Four."),
+        said(send()),
+    ]);
+    try {
+        const result = await engine.runLoop({ ...ids, provider, maxTurns: 5, maxStrikes: 2, messages: [] });
+        assert.equal(result.result.status, 200, "the two prose-only turns do not form a consecutive strike streak");
+        assert.equal(provider.received.length, 4);
+    } finally { await db.close(); }
+});
+
+for (const [label, response, reasoning] of [
+    ["prose", "Four.", null],
+    ["empty response", "", null],
+    ["reasoning NOTE only", "", PlurnkParser.frame("NOTE", "Still calculating.")],
+] as const) {
+    test(`{§empty-turn}: ${label} still earns a no-operation strike without a commentary diagnostic`, async () => {
+        const { db, engine, provider, ids, notices } = await setup([said(response, reasoning)]);
+        try {
+            const result = await engine.runLoop({ ...ids, provider, maxTurns: 3, maxStrikes: 1, messages: [] });
+            assert.equal(result.result.status, 500);
+            assert.ok("problem" in result.result && result.result.problem);
+            assert.equal(result.result.problem.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
+            assert.match(result.result.problem.detail, /performed no operation\.$/);
+            const warnings = notices.filter(({ level }) => level === "warn");
+            assert.deepEqual(warnings.map(({ kind, message }) => ({ kind, message })), [
+                { kind: "turn_no_operations", message: "No valid Operation Syntax OPs detected." },
+            ]);
+            const rows = await db.test_log_entries_by_turn.all<{ op: string; source: string }>({ turn_id: result.turnIds.at(-1)! });
+            assert.equal(rows.some(({ op, source }) => op === "error" && source === "grammar"), false);
+        } finally { await db.close(); }
+    });
+}
+
+for (const [failure, operation, failedOp] of [
+    ["parser", "````EDIT (worker:///broken.md) <bad>\nnot a message\n````", "error"],
+    ["operation", PlurnkParser.frame("SEND (reasoning://alice/1/1)", "Not a recipient."), "SEND"],
+] as const) {
+    test(`{§response-text-recovery}: silence about commentary does not suppress an actual ${failure} failure`, async () => {
+        const source = `Working.\n\n${PlurnkParser.frame("NOTE", "Checking.")}\n\n${operation}`;
+        const { db, engine, provider, ids, notices } = await setup([said(source)]);
+        try {
+            const result = await engine.runLoop({ ...ids, provider, maxTurns: 3, maxStrikes: 1, messages: [] });
+            assert.equal(result.result.status, 500, "the actual failure still strikes");
+            const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnIds.at(-1)! });
+            assert.deepEqual(rows.filter(({ origin, status_rx }) => origin === "model" && status_rx >= 400)
+                .map(({ op, status_rx }) => [op, status_rx]), [[failedOp, 400]], "only the actual failure is recorded");
+            assert.equal(notices.some(({ kind }) => kind === "turn_no_operations"), false, "a valid NOTE was authored");
+        } finally { await db.close(); }
+    });
+}
+
+for (const op of ["NOTE", "WAIT"] as const) {
+    test(`{§wait-obligation-matrix}: silent commentary with ${op} ${op === "WAIT" ? "respects an explicit park" : "continues before automatic parking"}`, async () => {
+        const { db, turn, ids, notices } = await setup([said(`Working.\n\n${PlurnkParser.frame(op, "Await the child.")}`)]);
+        try {
+            await holdChild(db, ids.workspaceId, ids.workerId);
+            const result = await turn();
+            assert.equal(result.status, op === "WAIT" ? 202 : 102);
+            const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
+            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]),
+                [["SEND", 200], [op, op === "WAIT" ? 202 : 200]]);
+            assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error"), []);
+        } finally { await db.close(); }
+    });
+}
 
 test("{§send-conclusion}: SEND bodies that resemble operations remain literal messages", async () => {
     const body = "KILL (worker:///important.md)\nThis is an example, not an operation.";

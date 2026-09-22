@@ -2603,7 +2603,7 @@ same durable liveness.
 | Worker or loop already cancelled/terminal | Preserve that result. |
 | Administrative program | Finish its transaction without adjudicating another model loop's work. |
 | New unpublished message | Continue; publish it in the next packet. |
-| No authored response operations ({§empty-turn}) or fresh operation/parser failure, without an authored WAIT | Continue for recovery before any automatic parking. |
+| No authored response operations ({§empty-turn}), recovered response text ({§response-text-recovery}), or fresh operation/parser failure, without an authored WAIT | Continue before any automatic parking. |
 | Live work and either WAIT or no unanswered messages | Park the same loop; message arrival, child or stream settlement, or stream cadence wakes it. |
 | WAIT without live work | Continue; never invent a future wake. |
 | Unanswered messages | Continue. |
@@ -2670,13 +2670,13 @@ accounting and model-visible failure evidence remain separately owned by
 - §response-text-recovery **Outside response text is delivered, never terminal.** Each
   text span supplied by {§response-text} becomes an ordinary targetless SEND in source
   order. Bodies and quotations remain literal. The exact original emission is retained.
-  The turn carries `Only valid Operation Syntax OPs allowed. No free response.` and
-  receives one progress-contract strike; valid sibling operations still run. This
-  recoverable syntax failure requires another turn even when delivery answers every
-  Open Message; automatic parking cannot postpone recovery, but an authored WAIT
-  retains its ordinary semantics. Recovery never creates an eligible completion request, including when
-  the synthesized SEND is the turn's only operation. Multiple text spans and overlapping
-  no-operation/parse failures still count as one strike per turn.
+  Recovery produces no diagnostic, warning or strike; valid sibling operations still
+  run. With no authored response operation, {§empty-turn} independently warns and
+  strikes; actual parser and operation failures retain their ordinary handling.
+  Recovered text requires continuation even when delivery answers every Open Message;
+  automatic parking cannot postpone it, but an authored WAIT retains its ordinary
+  semantics. Recovery never creates an eligible completion request, including when
+  the synthesized SEND is the turn's only operation.
 - §loop-answer **A loop's address is what it said.** READ `ops://<worker>/<loop>` resolves to
   the latest reply the loop gave to the message that started it: the body of a SEND
   that targeted that message. A running loop without one is 425; a loop that
