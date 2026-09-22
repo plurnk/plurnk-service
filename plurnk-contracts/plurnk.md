@@ -26,7 +26,7 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
 * COPY: (path) <scope>? (path) <scope>? - Copy files, entries, streams, or text regions.
 * MOVE: (path) <scope>? (path) <scope>? - Move files, entries, streams, or text regions.
-* KILL: Delete, terminate, curate the log, or answer and end the loop.
+* KILL: End things — delete an entry, stop a process, retire log items, or end the loop with your answer.
 * WORK: Deploy a child worker (fresh log).
 * FORK: Deploy a forked worker (forked log).
 * BARE: Deploy an isolated inference query (no log or tools).
@@ -36,10 +36,10 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 ## Workflow Management
 
 > [!IMPORTANT]
-> YOU MAY answer and end the loop with a turn containing ONLY a parameterless KILL.
+> The loop continues until KILLed with a turn that contains ONLY a parameterless KILL with a final answer in the body.
 
     ````KILL
-    The final response KILL body accepts GFM (tables, diagrams, lists, prose).
+    The answer is **42**.
     ````
 
 > [!WARNING]
