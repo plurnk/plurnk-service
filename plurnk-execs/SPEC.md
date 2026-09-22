@@ -203,6 +203,14 @@ is cancellation, not an executor defect; the consumer preserves its distinct
 cancellation/deadline result. Other throws and invalid results become durable
 contract failures before the consumer closes the stream.
 
+§executor-page-receipt **A full page says so.** When a tool result is a JSON array whose
+length equals the page size the call asked for, or the tool schema's default for one
+(`per_page`, `page_size`, `pageSize`, `limit`, first match), the result carries
+`page: {size, returned}`, and the packet's terminal observation preserves it
+({§stream-observation-result}), so a page that may be partial is visible as one. A shorter
+array, a non-array, or a call with no page size carries nothing. The receipt states only what
+the executor knows and adds no prose.
+
 A nonzero subprocess exit directs the caller only to inspect both stdout and
 stderr because either may contain the useful diagnostic; it does not presume
 that the command should be corrected or rerun. Third-party diagnostic text

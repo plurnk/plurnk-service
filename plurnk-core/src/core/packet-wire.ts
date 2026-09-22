@@ -67,6 +67,7 @@ interface RxView {
     answers?: unknown;
     terminal?: unknown;
     exitCode?: unknown;
+    page?: unknown;
     mimetype?: unknown;
     startLine?: unknown;
     region?: unknown;
@@ -824,6 +825,14 @@ export default class PacketWire {
                     throw new TypeError("A stream READ result carries a malformed exitCode.");
                 }
                 meta.exitCode = rx.exitCode;
+            }
+            // {§executor-page-receipt} — a producer's full-page fact survives projection as written.
+            if (Object.hasOwn(rx, "page")) {
+                const page = rx.page as { size?: unknown; returned?: unknown } | null;
+                if (page === null || typeof page !== "object" || !Number.isSafeInteger(page.size) || !Number.isSafeInteger(page.returned)) {
+                    throw new TypeError("A stream READ result carries a malformed page.");
+                }
+                meta.page = { size: page.size, returned: page.returned };
             }
         }
 

@@ -416,6 +416,19 @@ test("{§exec-stream}: a terminal stream observation states completion truth wit
     assert.match(out, /"exitCode":0/, "the executor's exact terminal fact survives packet projection");
     assert.doesNotMatch(out, /"source":/, "invocation correlation is not another content source");
     assert.match(out, /"terminal":true/, "an empty successful stream remains visibly conclusive");
+    assert.doesNotMatch(out, /"page"/, "no page fact is invented for a result that carries none");
+    // {§executor-page-receipt} — a producer's full-page fact survives projection as written.
+    const paged = PacketWire.renderLog([{
+        coordinate: "1/2/5", origin: "_plurnk", op: "READ", status: 200,
+        target: { scheme: "gitea", pathname: "/1/1/4/gitea", fragment: "result" },
+        rx: { status: 200, terminal: true, page: { size: 30, returned: 30 }, content: "", mimetype: "application/json" },
+        attrs: { streamEnd: 0 },
+    }], tok);
+    assert.deepEqual(parseLogRecords(paged)[0]!.page, { size: 30, returned: 30 }, "a full page is visible as possibly partial");
+    for (const page of [null, 30, { size: 30 }, { size: "30", returned: 30 }]) {
+        assert.throws(() => PacketWire.renderLog([{ coordinate: "1/2/5", op: "READ", status: 200, target: { scheme: "gitea", pathname: "/1/1/4/gitea" }, rx: { terminal: true, page } }], tok),
+            /stream READ result carries a malformed page/);
+    }
     assert.match(out, /^READ \(sh:\/\/\/1\/1\/3\/sh#stdout\)/m, "automatic and explicit READs identify the read resource identically");
     assert.doesNotMatch(out, /"stream":|"target":/, "a READ has no alternate resource-address dialect");
     assert.doesNotMatch(out, /completed|success/i, "the receipt exposes facts without adding presumptuous narration");

@@ -212,6 +212,43 @@ test("MCP executor calls a current tool and writes its result", async () => {
     }
 });
 
+test("{§executor-page-receipt} a tool result exactly as long as the page it asked for, or the schema's default page, carries the page fact", async () => {
+    const connection = {
+        async catalog() {
+            return {
+                protocolVersion: "2026-07-28",
+                server: { name: "pager", version: "1" },
+                capabilities: {},
+                tools: [{ name: "list", inputSchema: { type: "object", properties: { per_page: { type: "integer", default: 3 } } } }],
+                resources: [],
+                resourceTemplates: [],
+                prompts: [],
+                unsupportedLists: [],
+            };
+        },
+        async callTool(_name: string, args: { per_page?: number; shape?: string }) {
+            if (args.shape === "object") return { content: [], structuredContent: { total: 3 } };
+            const items = Array.from({ length: Math.min(args.per_page ?? 3, 3) }, (_, index) => ({ id: index + 1 }));
+            return args.shape === "text"
+                ? { content: [{ type: "text", text: JSON.stringify(items) }] }
+                : { content: [], structuredContent: items };
+        },
+    } as unknown as ServerConnection;
+    const executor = new McpExecutor(
+        { runtime: "pager", glyph: "🔌" },
+        connection,
+        retainWorkspace,
+        { tools: ["list"], read: [] },
+    );
+    await executor.requireAvailable();
+    const run = async (body: string) => executor.run(harness({ runtime: "pager", target: "list", body }).args);
+    assert.deepEqual(await run("{}"), { status: 200, page: { size: 3, returned: 3 } }, "the schema's default page, filled");
+    assert.deepEqual(await run('{"per_page": 2}'), { status: 200, page: { size: 2, returned: 2 } }, "the page the call asked for, filled");
+    assert.deepEqual(await run('{"per_page": 2, "shape": "text"}'), { status: 200, page: { size: 2, returned: 2 } }, "a JSON array in a text part counts the same");
+    assert.deepEqual(await run('{"per_page": 5}'), { status: 200 }, "a shorter result is not a full page");
+    assert.deepEqual(await run('{"shape": "object"}'), { status: 200 }, "a non-array result has no page");
+});
+
 test("{§mcp-tool-problem-detail} a tool Problem names its runtime and tool and bounds the remote diagnostic", async () => {
     const connection = {
         async catalog() {

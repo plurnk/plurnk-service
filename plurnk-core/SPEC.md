@@ -3017,8 +3017,8 @@ two states and no others:
 `terminal`, derived from its selected channel's state, for explicit and automatic
 observations alike, independently of mimetype: `active` gives false, `closed` or
 `errored` gives true, and `static` has no streaming liveness field. Packet
-projection preserves that Boolean and any included
-integer `exitCode`, even for an empty body. An automatic observation's atomic
+projection preserves that Boolean, any included
+integer `exitCode`, and a producer's `page` receipt ({§executor-page-receipt}), even for an empty body. An automatic observation's atomic
 publication transition consumes the same result flag; private log attributes
 retain only the publication offset, not a second liveness value.
 

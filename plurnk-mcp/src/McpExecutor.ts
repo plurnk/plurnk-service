@@ -96,6 +96,28 @@ export const toolResultBody = async (result: ToolResultShape, runtime: string, e
     return { content: formatted ?? text, mimetype: formatted === undefined ? (parts.some((part) => part.type !== "text") ? "text/markdown" : "text/plain") : "application/json" };
 };
 
+// {§executor-page-receipt} — a JSON array exactly as long as the page the call asked for, or
+// the tool's default page, is a full page: the receipt says so, and nothing more.
+const PAGE_ARGUMENTS = Object.freeze(["per_page", "page_size", "pageSize", "limit"]);
+
+export const pageReceipt = (
+    args: Readonly<Record<string, unknown>>,
+    tool: Tool,
+    body: { readonly content: string; readonly mimetype: string },
+): { size: number; returned: number } | null => {
+    if (body.mimetype !== "application/json") return null;
+    const parsed: unknown = JSON.parse(body.content);
+    if (!Array.isArray(parsed)) return null;
+    const properties = (tool.inputSchema.properties ?? {}) as Readonly<Record<string, { default?: unknown } | undefined>>;
+    for (const name of PAGE_ARGUMENTS) {
+        const sent = args[name];
+        const size = typeof sent === "number" ? sent : properties[name]?.default;
+        if (typeof size !== "number" || !Number.isInteger(size) || size <= 0) continue;
+        return parsed.length === size ? { size, returned: parsed.length } : null;
+    }
+    return null;
+};
+
 export const runtimeDecl = (name: string, summary: RuntimeSummaryDecl, expandTools: boolean, instructions?: string): RuntimeDecl => ({
     name,
     glyph: "🔌",
@@ -393,7 +415,8 @@ export default class McpExecutor extends BaseExecutor {
                 );
             }
             setState(CHANNEL, "closed");
-            return { status: 200 };
+            const page = pageReceipt(args, tool, body);
+            return { status: 200, ...(page === null ? {} : { page }) };
         } catch (error) {
             return fail(
                 signal.aborted ? "cancelled" : "tool-call-failed",

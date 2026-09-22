@@ -102,9 +102,11 @@ export interface ExecPreparation extends SchemeResult {
 
 // Terminal result of a `run()`. The universal operation-result contract applies
 // at this plugin boundary: every failure carries RFC 9457 Problem Details.
-// `exitCode` is present only for the subprocess family.
+// `exitCode` is present only for the subprocess family; `page` only when a tool result
+// is a full page ({§executor-page-receipt}).
 export interface ExecResult extends SchemeResult {
     exitCode?: number;
+    page?: { readonly size: number; readonly returned: number };
 }
 
 // Side-effect class of an executor invocation, for the consumer's per-runtime
