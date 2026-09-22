@@ -88,6 +88,9 @@ export default class Scheduler {
     readonly #settled: (workspaceId: number, alias: string) => void;
     readonly #armed = new Map<string, Armed>();
     readonly #failures = new Map<string, ScheduleFailure>();
+    // {§schedule-first-arming} — the instant each admitted rule was read at its `add`, until its
+    // first arming consumes it. Memory of the running daemon only.
+    readonly #admissions = new Map<string, number>();
     readonly #pending = new Set<Promise<void>>();
     #port: DeliveryPort | null = null;
     #serial: Promise<void> = Promise.resolve();
@@ -143,6 +146,9 @@ export default class Scheduler {
                 const rule = rules.get(entryKey.slice(entryKey.indexOf(":") + 1));
                 if (rule === undefined || rule.parsed.text !== failed.text) this.#failures.delete(entryKey);
             }
+            for (const entryKey of this.#admissions.keys()) {
+                if (entryKey.startsWith(`${workspaceId}:`) && !rules.has(entryKey.slice(entryKey.indexOf(":") + 1))) this.#admissions.delete(entryKey);
+            }
             for (const rule of rules.values()) {
                 if (this.#failures.has(key(workspaceId, rule.alias))) continue;
                 if (this.#armed.has(key(workspaceId, rule.alias))) continue;
@@ -153,6 +159,17 @@ export default class Scheduler {
 
     failure(workspaceId: number, alias: string): ScheduleFailure | undefined {
         return this.#failures.get(key(workspaceId, alias));
+    }
+
+    // {§schedule-first-arming} — `add` read the rule at this instant; preparation and arming come later.
+    admitted(workspaceId: number, alias: string, atMs: number): void {
+        this.#admissions.set(key(workspaceId, alias), atMs);
+    }
+
+    // The instant a rule's next occurrence is judged from: its admission until the first arming
+    // consumes it, the present afterwards.
+    cursor(workspaceId: number, alias: string, nowMs: number): number {
+        return this.#admissions.get(key(workspaceId, alias)) ?? nowMs;
     }
 
     forgive(workspaceId: number, alias: string): void {
@@ -172,7 +189,8 @@ export default class Scheduler {
             this.#armed.delete(entryKey);
         }
         const now = this.#clock();
-        const due = nextOccurrence(rule.parsed, now);
+        const due = nextOccurrence(rule.parsed, this.cursor(workspaceId, rule.alias, now));
+        this.#admissions.delete(entryKey);
         if (due === null) return;
         const dueMs = due.epochMilliseconds;
         const fingerprint = createHash("sha256").update(JSON.stringify(rule.definition)).digest("hex");

@@ -264,6 +264,42 @@ test("{§schedule-delivery} an occurrence delivers the message to the target wor
     await adapter.scheduler.close();
 });
 
+test("{§schedule-first-arming} a single occurrence that passes between add and its arming still arms, fires at once, and delivers once", async () => {
+    const time = new FakeTime();
+    const adapter = family(time);
+    const port = new FakePort();
+    adapter.scheduler.start(port);
+    // The model asks for a reminder four seconds ahead; preparation and arming run five seconds later.
+    const soon = { rule: "DTSTART;TZID=UTC:20260916T123019\nRRULE:FREQ=MINUTELY;COUNT=1", target: "worker://bot", prompt: "Soon." };
+    const { definition } = await adapter.admit({ alias: "soon", definition: soon }, { workspaceId: 5 });
+    time.now = NOW + 5 * SECOND;
+    const prepared = await adapter.prepare(preparation(5, { soon: definition }));
+    const detail = (outcome: unknown): { next: string | null; exhausted: boolean } => (outcome as { detail: { next: string | null; exhausted: boolean } }).detail;
+    assert.deepEqual([detail(prepared.outcomes.get("soon")).next, detail(prepared.outcomes.get("soon")).exhausted],
+        ["2026-09-16T12:30:19+00:00[UTC]", false], "the receipt names the occurrence the add was judged against, not exhaustion");
+    await prepared.commit();
+    assert.deepEqual(adapter.scheduler.armed(5), ["soon"], "the occurrence armed although it has passed");
+    assert.deepEqual(time.delays(), [0], "and fires at once");
+    await time.advance(time.now);
+    assert.equal(port.deliveries.length, 1, "delivered once");
+    assert.equal((port.deliveries[0] as { source: string }).source, "schedule://soon");
+    assert.deepEqual(adapter.scheduler.armed(5), [], "nothing more to arm");
+    const after = await adapter.prepare(preparation(5, { soon: definition }, { previous: prepared.snapshot }));
+    assert.deepEqual([detail(after.outcomes.get("soon")).next, detail(after.outcomes.get("soon")).exhausted], [null, true], "the present is the cursor once the admission is consumed");
+    await adapter.scheduler.close();
+
+    // A daemon that starts later has no admission memory: the stored rule arms from the present.
+    const later = new FakeTime();
+    later.now = NOW + 5 * SECOND;
+    const restarted = family(later);
+    restarted.scheduler.start(new FakePort());
+    const stored = await restarted.prepare(preparation(5, { soon: definition }));
+    assert.deepEqual([detail(stored.outcomes.get("soon")).next, detail(stored.outcomes.get("soon")).exhausted], [null, true]);
+    await stored.commit();
+    assert.deepEqual(restarted.scheduler.armed(5), [], "a start arms from the present, never a backlog");
+    await restarted.scheduler.close();
+});
+
 test("{§schedule-delivery} a late fire delivers once and skips what it missed; a far occurrence arms in hops", async () => {
     const time = new FakeTime();
     const adapter = family(time);

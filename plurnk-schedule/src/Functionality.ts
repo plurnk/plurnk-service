@@ -218,9 +218,12 @@ export default class ScheduleFunctionality {
             if (!(cause instanceof DefinitionError)) throw cause;
             throw failure("definition-invalid", 400, "The schedule definition is invalid.", { errors: cause.errors, retryable: false }, cause);
         }
-        const parsed = this.#read(definition.rule, await this.#zone(identity, options), this.#scheduler.now());
+        const now = this.#scheduler.now();
+        const parsed = this.#read(definition.rule, await this.#zone(identity, options), now);
         // {§schedule-bound}
         if (!parsed.bounded) throw failure("rule-unbounded", 400, "A workspace rule ends: give the RRULE a COUNT or an UNTIL.", { retryable: false });
+        // {§schedule-first-arming} — the rule was read now; its first arming is judged from now.
+        this.#scheduler.admitted(identity.workspaceId, params.alias, now);
         return { alias: params.alias, definition: { ...definition, rule: parsed.text } };
     }
 
@@ -255,7 +258,7 @@ export default class ScheduleFunctionality {
                 outcomes.set(alias, { state: "unavailable", problem: structuredClone(failed.problem) });
                 continue;
             }
-            const next = nextOccurrence(parsed, now);
+            const next = nextOccurrence(parsed, this.#scheduler.cursor(workspaceId, alias, now));
             outcomes.set(alias, {
                 state: "active",
                 detail: {

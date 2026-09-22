@@ -75,6 +75,14 @@ rule and lists it `unavailable` with the Problem; `enable` retries. After
 every delivery attempt the family's outcomes are refreshed where the workspace
 is resident.
 
+§schedule-first-arming **A rule's first arming is judged from its `add`.** `add` reads the
+rule at the instant it admits it; preparation and arming come later, and a single
+occurrence can fall between. The first arming of an admitted rule takes the admission
+instant as its cursor, so that occurrence still arms, fires at once, and delivers once, and
+the `add` receipt names it as `next`. The present is the cursor from then on. The admission
+is remembered by the running daemon only: a daemon that starts arms every stored rule from
+the present, as above.
+
 ## §schedule-residency Residency
 
 A schedule is an obligation, not a runtime. Cooling a workspace leaves its
