@@ -234,6 +234,7 @@ export default class AdmittedTurnExecutor {
                                 loopSequence: bare.loopSequence,
                                 turnSequence: bare.turnSequence,
                                 signal: bare.signal,
+                                notice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
                             });
                             bareResults = new Map(batch.map((item) => [item.statement, item]));
                         }

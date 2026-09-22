@@ -37,10 +37,12 @@ class BareWitness implements Provider {
     readonly #allStarted: Promise<void>;
     readonly #expectedCalls: number;
     readonly #failedPrompt: string | null;
+    #failures: number;
 
-    constructor(expectedCalls: number, failedPrompt: string | null = null) {
+    constructor(expectedCalls: number, failedPrompt: string | null = null, failures = Number.POSITIVE_INFINITY) {
         this.#expectedCalls = expectedCalls;
         this.#failedPrompt = failedPrompt;
+        this.#failures = failures;
         this.#allStarted = new Promise((resolve) => { this.#release = resolve; });
     }
 
@@ -72,7 +74,8 @@ class BareWitness implements Provider {
         await this.#allStarted;
         if (prompt === "slow") await delay(20, undefined, { signal: args.signal });
 
-        const failed = prompt === this.#failedPrompt;
+        const failed = prompt === this.#failedPrompt && this.#failures > 0;
+        if (failed) this.#failures -= 1;
         const accounting: ProviderRequestAccounting = validateProviderRequestAccounting({
             provider: "provider:bare-witness",
             model: this.model,
@@ -166,6 +169,17 @@ class CancellingBareWitness implements Provider {
         throw new Error("unreachable");
     }
 }
+
+const withEnv = async <T>(overrides: Record<string, string>, run: () => Promise<T>): Promise<T> => {
+    const prior = new Map(Object.keys(overrides).map((key) => [key, process.env[key]]));
+    Object.assign(process.env, overrides);
+    try { return await run(); } finally {
+        for (const [key, value] of prior) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+    }
+};
 
 const setup = async (schemes = new SchemeRegistry()) => {
     const db = await openMigrated();
@@ -503,7 +517,7 @@ test("loop cancellation reaches every concurrent BARE call before the batch esca
 });
 
 // {§bare-inference}
-test("one BARE provider failure is an ordered operation result and does not cancel its siblings", async () => {
+test("one BARE provider failure is an ordered operation result and does not cancel its siblings", async () => await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "0" }, async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const parent = new Mock({
@@ -531,7 +545,38 @@ test("one BARE provider failure is an ordered operation result and does not canc
     } finally {
         await db.close();
     }
-});
+}));
+
+test("{§provider-recovery}: an isolated call that drops once is re-issued; the receipt is the answer and the dropped call is on the ledger", async () => await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "10" }, async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const parent = new Mock({
+            contextWindow: 32_768,
+            responses: [mainResponse("````BARE\nflaky\n````\n\n````BARE\nok\n````\n\n````NOTE\nInspect both answers.\n````")],
+        });
+        const child = new BareWitness(2, "flaky", 1);
+        const result = await engine.runTurn({
+            provider: parent,
+            childProvider: child,
+            workspaceId,
+            workerId,
+            loopId,
+            messages: [{ role: "user", content: "ask isolated questions" }],
+        });
+        assert.equal(result.status, 102);
+        assert.deepEqual(result.outcomes.filter(({ op }) => op === "BARE"), [
+            { op: "BARE", status: 200, problemType: null },
+            { op: "BARE", status: 200, problemType: null },
+        ], "the dropped call was re-issued inside the operation; nothing about the failure reaches the result");
+        assert.deepEqual(child.completions.toSorted(), ["flaky", "flaky", "ok"], "the flaky prompt was asked twice, its sibling once");
+        const calls = await db.test_model_calls.all<{ kind: string; state: string }>({ turn_id: result.turnId });
+        assert.deepEqual(calls.filter(({ kind }) => kind === "bare").map(({ state }) => state).toSorted(), ["error", "response", "response"], "the dropped call is its own model call on the ledger");
+        const answers = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: result.turnId });
+        assert.deepEqual(answers.filter(({ op }) => op === "BARE").map(({ status_rx }) => status_rx), [200, 200]);
+    } finally {
+        await db.close();
+    }
+}));
 
 // {§bare-inference} {§send-premature-terminate}
 test("a same-turn BARE response is unseen retrieval work and defers completion", async () => {

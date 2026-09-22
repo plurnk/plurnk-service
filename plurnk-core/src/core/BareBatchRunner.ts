@@ -11,6 +11,11 @@ import type { Provider } from "@plurnk/plurnk-providers";
 import { ProviderError } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import type { BareBatchResult } from "./TurnRunner.ts";
+import type NoticeChannel from "./NoticeChannel.ts";
+import ProviderRecovery from "./ProviderRecovery.ts";
+import { setTimeout as delay } from "node:timers/promises";
+
+type Notice = Parameters<NoticeChannel["push"]>[3];
 
 export default class BareBatchRunner {
     readonly #db: Db;
@@ -37,6 +42,7 @@ export default class BareBatchRunner {
         loopSequence,
         turnSequence,
         signal,
+        notice,
     }: {
         statements: readonly BareStatement[];
         preparePrompt: (statement: BareStatement) => Promise<{ prompt: string } | { result: SchemeResult }>;
@@ -47,6 +53,7 @@ export default class BareBatchRunner {
         loopSequence: number;
         turnSequence: number;
         signal: AbortSignal | undefined;
+        notice: (notice: Notice) => void;
     }): Promise<BareBatchResult[]> {
         const inputs: Array<{ statement: BareStatement } & ({ prompt: string } | { result: SchemeResult })> = [];
         for (const statement of statements) {
@@ -87,64 +94,96 @@ export default class BareBatchRunner {
 
         const settlements = await Promise.allSettled(prepared.map(async (item) => {
             if ("result" in item) return { ...item, modelCallId: null };
-            const { statement, prompt, modelCall, providerWorkerId } = item;
-            try {
-                signal?.throwIfAborted();
-                const response = await observed(
-                    genAiRequestName(provider.model),
-                    { model: provider.model, attempt: 1, kind: "bare" },
-                    async (span) => {
-                        try {
-                            const generated = await provider.generate({
-                                messages: [{ role: "user", content: prompt }],
-                                workerId: providerWorkerId,
-                                workspaceId: String(workspaceId),
-                                signal,
-                                observeRequest: modelCall.observeRequest,
-                                callKind: "bare",
-                            });
-                            modelCall.assertAccounting(generated.accounting);
-                            recordCounter(PROVIDER_CALLS, {
-                                model: provider.model,
-                                attempt: 1,
-                                status: "resolved",
-                            });
-                            span.setAttribute("status", "resolved");
-                            settleGenAiResponse(span, generated);
-                            return generated;
-                        } catch (error) {
-                            if (error instanceof ProviderError) {
-                                modelCall.assertAccounting(error.accounting);
+            const { statement, prompt, providerWorkerId } = item;
+            let { modelCall } = item;
+            // {§provider-recovery} — an isolated call takes the loop's recovery: each re-issue is its
+            // own model call on the ledger, under the same window and backoff as the loop's inference.
+            const recovery = { budget: ProviderRecovery.budget(), backoff: ProviderRecovery.backoff(), startedAt: null as number | null, failures: 0 };
+            for (let attempt = 1; ; attempt += 1) {
+                try {
+                    signal?.throwIfAborted();
+                    const call = modelCall;
+                    const response = await observed(
+                        genAiRequestName(provider.model),
+                        { model: provider.model, attempt, kind: "bare" },
+                        async (span) => {
+                            try {
+                                const generated = await provider.generate({
+                                    messages: [{ role: "user", content: prompt }],
+                                    workerId: providerWorkerId,
+                                    workspaceId: String(workspaceId),
+                                    signal,
+                                    observeRequest: call.observeRequest,
+                                    callKind: "bare",
+                                });
+                                call.assertAccounting(generated.accounting);
+                                recordCounter(PROVIDER_CALLS, {
+                                    model: provider.model,
+                                    attempt,
+                                    status: "resolved",
+                                });
+                                span.setAttribute("status", "resolved");
+                                settleGenAiResponse(span, generated);
+                                return generated;
+                            } catch (error) {
+                                if (error instanceof ProviderError) {
+                                    call.assertAccounting(error.accounting);
+                                }
+                                throw error;
                             }
-                            throw error;
-                        }
-                    },
-                    genAiRequestOptions(
-                        ProviderInstantiate.providerIdOf(provider) ?? "other",
-                        provider.model,
-                    ),
-                );
-                await modelCall.observeResponse(response);
-                return {
-                    statement,
-                    modelCallId: modelCall.id,
-                    result: Results.assert({
-                        status: 200,
-                        content: response.assistant.content,
-                        mimetype: "text/plain",
-                    }),
-                };
-            } catch (error) {
-                if (error instanceof ModelCallPersistenceError || error instanceof ProviderAccountingIntegrityError) {
-                    throw error;
+                        },
+                        genAiRequestOptions(
+                            ProviderInstantiate.providerIdOf(provider) ?? "other",
+                            provider.model,
+                        ),
+                    );
+                    await modelCall.observeResponse(response);
+                    if (recovery.failures > 0) {
+                        notice({ source: "engine:provider", kind: "provider_recovered", level: "info", message: `The isolated call answered after ${recovery.failures} re-issued call(s).` });
+                    }
+                    return {
+                        statement,
+                        modelCallId: modelCall.id,
+                        result: Results.assert({
+                            status: 200,
+                            content: response.assistant.content,
+                            mimetype: "text/plain",
+                        }),
+                    };
+                } catch (error) {
+                    if (error instanceof ModelCallPersistenceError || error instanceof ProviderAccountingIntegrityError) {
+                        throw error;
+                    }
+                    const failure = this.#providerFailure(error, signal);
+                    if (error instanceof ProviderError && error.attempt !== undefined) {
+                        await modelCall.observeResponse(error.attempt, failure);
+                    } else {
+                        await modelCall.fail(failure);
+                    }
+                    const recoverable = error instanceof ProviderError && ProviderRecovery.RECOVERABLE.has(error.kind) && signal?.aborted !== true;
+                    if (!recoverable) return { statement, modelCallId: modelCall.id, result: failure };
+                    recovery.startedAt ??= Date.now();
+                    const elapsed = Date.now() - recovery.startedAt;
+                    if (elapsed >= recovery.budget) return { statement, modelCallId: modelCall.id, result: failure };
+                    recovery.failures += 1;
+                    const wait = ProviderRecovery.wait(recovery.backoff, recovery.failures);
+                    notice({
+                        source: "engine:provider",
+                        kind: "provider_unavailable",
+                        level: "warn",
+                        message: `${failure.problem?.title ?? "Provider failure"}: re-issuing the isolated call in ${Math.round(wait / 1000)}s (${Math.round(elapsed / 1000)}s of the ${Math.round(recovery.budget / 1000)}s recovery window used).`,
+                    });
+                    // An abort during the wait re-enters generate, which refuses on the aborted signal.
+                    await delay(wait, undefined, { signal }).catch(() => undefined);
+                    const attributions = this.#providerAttributions(provider, Object.freeze({
+                        workspaceId: String(workspaceId),
+                        workerId: providerWorkerId,
+                        loop: loopSequence,
+                        turn: turnSequence,
+                        attempt: attempt + 1,
+                    }));
+                    modelCall = await ModelCall.open(this.#db, { turnId, kind: "bare", attributions, model: provider.model });
                 }
-                const failure = this.#providerFailure(error, signal);
-                if (error instanceof ProviderError && error.attempt !== undefined) {
-                    await modelCall.observeResponse(error.attempt, failure);
-                } else {
-                    await modelCall.fail(failure);
-                }
-                return { statement, modelCallId: modelCall.id, result: failure };
             }
         }));
 

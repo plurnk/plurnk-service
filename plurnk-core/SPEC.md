@@ -1109,7 +1109,10 @@ This is an exact-repetition backstop, not a semantic judgment of task progress;
 new asynchronous invocation identities do not prove repetition of their eventual
 effects. Ordinary contract strikes and operator budgets remain independent.
 
-§provider-recovery **A recoverable provider failure never ends a loop.** When a model
+§provider-recovery **A recoverable provider failure never ends a loop.** An isolated BARE
+call ({§bare-inference}) takes the same recovery as the loop's own inference: each re-issue
+is its own model call on the ledger, and a spent window leaves the operation's result as the
+provider's exact failure. When a model
 call fails with a network failure, rate limit, deadline, or interrupted resource after
 the provider's own retries, the turn records the exact Problem as a `_plurnk` row,
 notices the client (`engine:provider` / `provider_unavailable`), waits with

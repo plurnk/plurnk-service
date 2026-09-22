@@ -4,7 +4,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { PathSyntax, PlurnkParseError, TurnDisposition, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
 import { setTimeout as delay } from "node:timers/promises";
-import type { ProviderErrorKind, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
+import type { ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import type { CapabilityPolicy, Notice } from "@plurnk/plurnk-contracts";
 import type { BareStatement, PlurnkStatement, ReadStatement, UrlPath, FindStatement } from "@plurnk/plurnk-contracts";
@@ -56,6 +56,7 @@ import type ClientInteractions from "./ClientInteractions.ts";
 // that precedes provider admission; Engine retains the surrounding loop
 // lifecycle and public facade.
 import NoticeChannel from "./NoticeChannel.ts";
+import ProviderRecovery from "./ProviderRecovery.ts";
 import ProblemLog from "./ProblemLog.ts";
 import StrikeRail, { type StrikeOutcome } from "./StrikeRail.ts";
 import PacketBuilder, { type ChatMessage, type CurationOverflow } from "./PacketBuilder.ts";
@@ -233,19 +234,6 @@ const readEmissionAttempts = (): number => {
     return value;
 };
 
-const readMilliseconds = (key: string): number => {
-    const raw = process.env[key];
-    const value = Number.parseInt(raw ?? "", 10);
-    if (!Number.isInteger(value) || value < 0) throw new Error(`${key} must be a non-negative integer of milliseconds; got ${raw}`);
-    return value;
-};
-// {§provider-recovery} — how long one turn keeps re-issuing its provider call after a
-// recoverable failure before the loop parks (0 parks at once), the first backoff delay, which
-// doubles per failure, and that delay's ceiling.
-const readProviderRecovery = (): number => readMilliseconds("PLURNK_SERVICE_PROVIDER_RECOVERY");
-const readProviderRecoveryBackoff = (): number => readMilliseconds("PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF");
-const readProviderRecoveryBackoffMax = (): number => readMilliseconds("PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX");
-const RECOVERABLE_PROVIDER_FAILURES: ReadonlySet<ProviderErrorKind> = new Set(["rate_limit", "network_failure", "deadline_exceeded", "resource_interrupted"]);
 
 // The wall's abort reason — runLoop branches a mid-turn teardown to the 504 terminal on it.
 export const LOOP_TIMEOUT_REASON = "loop_timeout";
@@ -1098,8 +1086,8 @@ export default class TurnRunner {
         const wire = await this.#wireMessages(request.packet, request.systemCtx, provider);
         // {§provider-recovery} — this turn's recovery clock: the first recoverable provider
         // failure starts it; the budget and backoff are the operator's.
-        const recoveryBudget = readProviderRecovery();
-        const recoveryBackoff = readProviderRecoveryBackoff();
+        const recoveryBudget = ProviderRecovery.budget();
+        const recoveryBackoff = ProviderRecovery.backoff();
         const providerSignal = this.#loopSignal(loopId) ?? signal;
         const { workerId: providerWorkerId } = await this.#resolveWorkerProviderIdentity(workerId);
         return {
@@ -1222,7 +1210,7 @@ export default class TurnRunner {
             completedResponse = await this.#generate(args, request, attempts, modelCall, reasoning, strikeStreak);
         } catch (error) {
             if (error instanceof ProviderError
-                && RECOVERABLE_PROVIDER_FAILURES.has(error.kind)
+                && ProviderRecovery.RECOVERABLE.has(error.kind)
                 && attempts.signal?.aborted !== true) {
                 await this.#recoverProviderFailure(args, request, attempts, modelCall, attemptRow.id, error);
                 return "reissued";
@@ -1393,7 +1381,7 @@ export default class TurnRunner {
             source: "provider",
             result: failure,
         });
-        const wait = Math.min(attempts.recoveryBackoff * 2 ** (attempts.recoveryFailures - 1), readProviderRecoveryBackoffMax());
+        const wait = ProviderRecovery.wait(attempts.recoveryBackoff, attempts.recoveryFailures);
         this.#notices.push(workspaceId, workerId, loopId, {
             source: "engine:provider",
             kind: "provider_unavailable",
