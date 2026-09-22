@@ -2681,9 +2681,9 @@ accounting and model-visible failure evidence remain separately owned by
   run. With no authored response operation, {§empty-turn} independently strikes, also
   silently; actual parser and operation failures retain their ordinary handling.
 
-  `plurnk.md` teaches the opposite — *"YOU MUST ONLY respond with valid Operation
-  Syntax OPs"* — and this rule is not taught. Outside text is a direct violation of the
-  hot path's first sentence, and that is exactly what licenses the salvage: the harness
+  `plurnk.md` teaches the opposite — *"YOU MUST ONLY use valid Operation Syntax OPs"*,
+  the only MUST in the file — and this rule is not taught. Outside text is a direct
+  violation of the hot path's first rule, and that is exactly what licenses the salvage: the harness
   is not second-guessing a model that complied, it is keeping the words of one that was
   told plainly and did not. The reinterpretation is large because the departure is
   large; a tolerance that merely reads what the model meant ({§closer-fallback}) changes

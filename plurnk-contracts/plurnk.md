@@ -9,10 +9,10 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
     ````
 
 > [!IMPORTANT]
-> YOU MUST ONLY respond with valid Operation Syntax OPs.
+> YOU MUST ONLY use valid Operation Syntax OPs.
 
-> [!WARNING]
-> YOU MUST offset any example OP you do not intend to execute with a hard or soft tab.
+> [!TIP]
+> YOU SHOULD offset any example OP you do not intend to execute with a hard or soft tab.
 
 * `[metadata]`: optional one-line special configuration.
 * `<!-- aside -->`: optional terse note.
@@ -27,7 +27,7 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
 * COPY: (path) <scope>? (path) <scope>? - Copy files, entries, streams, or text regions.
 * MOVE: (path) <scope>? (path) <scope>? - Move files, entries, streams, or text regions.
-* KILL: Delete, terminate, curate the log, or end the loop.
+* KILL: Delete, terminate, curate the log, or answer and end the loop.
 * WORK: Deploy a child worker (fresh log).
 * FORK: Deploy a forked worker (forked log).
 * BARE: Deploy an isolated inference query (no log or tools).
@@ -37,14 +37,14 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 ## Workflow Management
 
 > [!IMPORTANT]
-> YOU MAY answer and conclude the loop with a turn containing ONLY a parameterless KILL.
+> YOU MAY answer and end the loop with a turn containing ONLY a parameterless KILL.
 
     ````KILL
     The answer is **42**.
     ````
 
 > [!WARNING]
-> YOU MUST NOT conclude the loop before all other OPs, child workers, and streams are resolved and reviewed.
+> YOU MAY NOT end the loop before all other OPs, child workers, and streams are resolved and reviewed.
 
 ## Workspace Navigation
 
