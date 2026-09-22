@@ -55,8 +55,9 @@ directory removed after it closes. This is file placement, not a sandbox.
 
 ## Environment
 
-Set workspace variables through [env](env.md) before discovering or adding a
-local server. Worker-local overrides do not configure shared MCP processes.
+Set workspace variables with the `env` family (`worker:///_plurnk/plurnk/env.md`)
+before discovering or adding a local server. Worker-local overrides do not configure
+shared MCP processes.
 
 ````env (add)
 {"scope":"workspace","alias":"NODE_ENV","definition":{"value":"production"}}
