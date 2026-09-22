@@ -117,10 +117,10 @@ CREATE        INDEX IF NOT EXISTS log_entries_deep_hash        ON log_entries (d
 CREATE VIEW IF NOT EXISTS log_responses AS
 SELECT le.id, le.loop_id, le.turn_id, le.worker_id, le.sequence, le.source, le.origin,
        CASE WHEN json_valid(le.rx) THEN le.rx END AS rx,
-       CASE WHEN json_valid(le.tx) THEN COALESCE(json_extract(le.tx, '$.body.raw'), '') END AS content
+       CASE WHEN json_valid(le.tx) THEN COALESCE(json_extract(le.tx, '$.body.raw'), json_extract(le.tx, '$.body'), '') END AS content
 FROM log_entries le
     WHERE le.state = 'resolved'
-      AND le.op = 'SEND' AND le.status_rx BETWEEN 200 AND 299
+      AND le.op IN ('SEND', 'KILL') AND le.status_rx BETWEEN 200 AND 299
       AND le.source IS NULL AND le.inherited_history = 0
       AND json_valid(le.tx)
       AND json_type(CASE WHEN json_valid(le.rx) THEN le.rx END, '$.answers') = 'array'
@@ -631,7 +631,8 @@ FROM (
               OR json_type(CASE WHEN json_valid(le.rx) THEN le.rx END, '$.answers') = 'array'
           ))
           OR CASE WHEN json_valid(le.tx) THEN json_type(le.tx, '$.runtime') END = 'text'
-          OR (le.op = 'KILL' AND COALESCE(le.scheme, 'file') != 'log')
+          OR (le.op = 'KILL' AND COALESCE(le.scheme, 'file') != 'log'
+              AND json_extract(CASE WHEN json_valid(le.tx) THEN le.tx END, '$.target') IS NOT NULL)
       )
       AND le.state != 'proposed'
 ) candidate

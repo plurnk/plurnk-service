@@ -564,9 +564,9 @@ lineMarker: (TextLineMarker | null)
  */
 matcher: (MatcherBody | null)
 /**
- * KILL takes no body; its matcher is the `pattern` option.
+ * Parameterless KILL carries the optional final answer. Targeted KILL takes no body; its matcher is the `pattern` option.
  */
-body: null
+body: (string | null)
 position: Position
 }
 

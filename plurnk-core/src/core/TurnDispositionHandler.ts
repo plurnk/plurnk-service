@@ -45,28 +45,46 @@ export default class TurnDispositionHandler {
             : { status: 102, detail: "Nothing is in flight. Continuing." };
     }
 
+    async completion(ctx: TurnContext, eligible: boolean, hasAnswer: boolean): Promise<DispatchResult> {
+        if (!eligible) return { status: 102, detail: "Completion deferred. Conclude with KILL alone." };
+        return this.#assess(ctx, false, true, hasAnswer);
+    }
+
     async settle(ctx: TurnContext, wait: boolean, finalResponse: boolean): Promise<number> {
+        const status = await this.#lifecycle.status(ctx.loopId);
+        if (![100, 102, 202].includes(status)) return status;
+        const decision = await this.#assess(ctx, wait, finalResponse, false);
+        if (decision.status === 202) {
+            return await this.#lifecycle.park(ctx.loopId, { wakenBy: "obligations" }) ? 202 : this.#lifecycle.status(ctx.loopId);
+        }
+        if (decision.status !== 200 || ctx.origin !== "model") return decision.status;
+        // {§completion-defers-to-messages}: recheck arrivals atomically with conclusion.
+        const finished = await this.#lifecycle.finish(ctx.loopId, TerminalResult.success(null), { requireAnswered: true });
+        return finished === null ? this.#lifecycle.status(ctx.loopId) : 200;
+    }
+
+    async #assess(ctx: TurnContext, wait: boolean, finalResponse: boolean, hasAnswer: boolean): Promise<DispatchResult> {
         const { workerId, loopId, turnId, origin } = ctx;
         const status = await this.#lifecycle.status(loopId);
-        if (![100, 102, 202].includes(status)) return status;
+        if (![100, 102, 202].includes(status)) return { status: 102, detail: "This loop is already concluded." };
         // Administrative programs do not conclude the worker's model loop (including turn0).
-        if (origin !== "model") return 200;
+        if (origin !== "model") return { status: 200 };
         const arrivals = await this.#db.drain_unpublished_messages_for_loop.all({ loop_id: loopId });
-        if (arrivals.length > 0) return 102;
+        if (arrivals.length > 0) return { status: 102, detail: "New messages await review." };
         const unanswered = await this.#db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId });
         if (unanswered === undefined) throw new Error("The loop has no message count.");
         const recovery = await this.#unobservedFailureCount(turnId) > 0;
-        if (recovery && !wait) return 102;
-        if (!wait && !finalResponse) return 102;
+        if (recovery && !wait) return { status: 102, detail: "Review this turn's errors before concluding." };
+        if (!wait && !finalResponse) return { status: 102 };
         const { pending } = await this.#pendingSet(workerId, turnId, loopId);
         const live = pending.some((kind) => kind === "streams" || kind === "workers");
-        if (live && (wait || unanswered.count === 0)) {
+        if (live && (wait || finalResponse)) {
             // The obligation itself is the waker: a concluding stream or child requeues this loop.
-            return await this.#lifecycle.park(loopId, { wakenBy: "obligations" }) ? 202 : this.#lifecycle.status(loopId);
+            return { status: 202, detail: "Completion awaits child workers or streams." };
         }
-        if (wait || unanswered.count > 0 || pending.length > 0 || recovery) return 102;
-        // {§completion-defers-to-messages}: recheck unanswered arrivals atomically with conclusion.
-        const finished = await this.#lifecycle.finish(loopId, TerminalResult.success(null), { requireAnswered: true });
-        return finished === null ? this.#lifecycle.status(loopId) : 200;
+        if (wait) return { status: 102, detail: "Nothing is in flight. Continuing." };
+        if (pending.length > 0 || recovery) return { status: 102, detail: "Results await review before completion." };
+        if (unanswered.count > 0 && !hasAnswer) return { status: 102, detail: "Open Messages remain unanswered." };
+        return { status: 200 };
     }
 }

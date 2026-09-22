@@ -11,7 +11,7 @@ import { openMigrated } from "./_helpers.ts";
 import { makeMockResponse } from "./_rpc.ts";
 
 const completed = (content: string) => makeMockResponse([
-    "````SEND", content, "````",
+    "````KILL", content, "````",
 ].join("\n"));
 
 const fixture = async (t: TestContext, responses: Mock | ReturnType<typeof makeMockResponse>[], token = "") => {
@@ -237,6 +237,7 @@ test("{§send-resource-attachments}: attachment-only Messages and replies round-
     class Echo extends Mock {
         override async generate(...args: Parameters<Mock["generate"]>) {
             const response = await super.generate(...args);
+            if (this.received.length > 1) return response;
             const packet = args[0].messages.map(chatMessageText).join("\n");
             const targets = [...packet.matchAll(/<(worker:\/\/[^>]+\/attachments\/[^>]+)>/gu)].map((match) => match[1]);
             assert.equal(targets.length, 2, "both binary Parts have independently readable addresses");
@@ -246,7 +247,7 @@ test("{§send-resource-attachments}: attachment-only Messages and replies round-
             ].join("\n") } };
         }
     }
-    const provider = new Echo({ contextWindow: 100_000, responses: [{ assistant: { content: "", reasoning: null } }] });
+    const provider = new Echo({ contextWindow: 100_000, responses: [{ assistant: { content: "", reasoning: null } }, completed("")] });
     const { request } = await fixture(t, provider);
     const parts = [
         { raw: Buffer.from([0, 255, 13, 10, 128]).toString("base64"), mediaType: "application/x-example", filename: "opaque.bin" },

@@ -31,7 +31,7 @@ test("{§fs-namespace} no packet carries the workspace's host-absolute root: exe
         // target does not resolve (the Problem used to carry the host root), then a conclusion.
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````sh\nprintf ok\n````\n\n````sh (cwd: /nowhere)\nprintf never\n````\n\n````NOTE\nran\n````", 50),
-            makeMockResponse("````SEND\ndone\n````", 50),
+            makeMockResponse("````KILL\ndone\n````", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

@@ -11,7 +11,7 @@ import { Mock, ProviderError } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, seedEntryWithChannel, testProviderCapacity, logEntries } from "./_helpers.ts";
-import { sendStmt, editStmt, readStmt, urlPath, noteStmt  } from "./_dsl.ts";
+import { concludeStmt, editStmt, readStmt, urlPath, noteStmt } from "./_dsl.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 
 // Response from raw content WITHOUT ops - forces the engine to run the real
@@ -26,7 +26,7 @@ const contentResponse = (content: string): MockResponse => ({
 
 // A complete, admitted draining turn. Its only job is to run so the model's
 // next packet drains the notices buffer on read.
-const drainTurn = contentResponse("````SEND\ndrained\n````");
+const drainTurn = contentResponse("````KILL\ndrained\n````");
 
 // A provider transport anomaly notice: the provider notice path carries observations
 // such as a decode escaping into a discarded channel ({§operator-grammar} grades nothing).
@@ -157,7 +157,7 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
             contextWindow: 100000,
             responses: [
                 stmtTurn([scopedRead, noteStmt("read")]),
-                stmtTurn([sendStmt(null, "done")]),
+                stmtTurn([concludeStmt("done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -199,7 +199,7 @@ test("an EDIT batch reports each tolerated scope once in authored order ({§text
                     editStmt(target, "G", { marks: [3, 2, 3] }),
                     noteStmt("edited"),
                 ]),
-                stmtTurn([sendStmt(null, "done")]),
+                stmtTurn([concludeStmt("done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -435,7 +435,7 @@ test("{§fence-boundary}: literal programs inside a longer fence produce no spur
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const emission = "`````EDIT (worker:///a.md) <!-- first note -->\nalpha\n````EDIT (worker:///b.md) <!-- literal example -->\nbeta\n````\n````EDIT (worker:///c.md)\ngamma\n````\n`````\n````NOTE\ncontinue\n````";
-        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("````SEND\ndone\n````")] });
+        const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("````KILL\ndone\n````")] });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         assert.equal(t1.emissionAttempts, 1);
         const edits = t1.outcomes.filter(({ op }) => op === "EDIT");

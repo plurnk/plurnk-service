@@ -27,7 +27,7 @@ for (const command of ["true", "hostname"]) {
             contextWindow: 100_000,
             responses: [
                 makeMockResponse(`\`\`\`\`sh\n${command}\n\`\`\`\`${reply}`),
-                makeMockResponse(`\`\`\`\`SEND\n${answer}\n\`\`\`\``),
+                makeMockResponse(`\`\`\`\`KILL\n${answer}\n\`\`\`\``),
             ],
         });
         await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -46,8 +46,8 @@ for (const command of ["true", "hostname"]) {
                 const rows = await db.test_log_entries_by_worker.all<{ op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
                 assert.ok(rows.some((r) => isExecutionOp(r.op)), "the stream ran");
                 assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op),
-                    ["sh", ...(earlyReply ? ["SEND"] : []), "SEND"], "no synthetic completion operation");
-                assert.equal(rows.filter((r) => r.op === "SEND" && r.origin === "model" && r.status_rx === 200).length,
+                    ["sh", ...(earlyReply ? ["SEND"] : []), "KILL"], "no synthetic completion operation");
+                assert.equal(rows.filter((r) => ["SEND", "KILL"].includes(r.op) && r.origin === "model" && r.status_rx === 200).length,
                     earlyReply ? 2 : 1, "only the authored replies were delivered");
             } finally {
                 ws.close();
@@ -67,7 +67,7 @@ test("{§completion-defers-to-results}: a successful execution receipt defers co
         contextWindow: 100_000,
         responses: [
             makeMockResponse("````sh\ntrue\n````\n````SEND\nCompleted.\n````"),
-            makeMockResponse("````SEND\n````"),
+            makeMockResponse("````KILL\n````"),
         ],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -79,9 +79,9 @@ test("{§completion-defers-to-results}: a successful execution receipt defers co
             assert.equal(provider.received.length, 2);
             assert.equal(provider.remaining, 0);
             const rows = await db.test_log_entries_by_worker.all<{ op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
-            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "SEND", "SEND"]);
+            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "SEND", "KILL"]);
             assert.equal(result.result.content, undefined);
-            assert.equal(await lastReply(db, result.loopId), "Completed.", "an empty SEND completes the observed assignment without repeating its answer");
+            assert.equal(await lastReply(db, result.loopId), "Completed.", "an empty KILL completes the observed assignment without repeating its answer");
             assert.equal(rows.filter(({ op, origin }) => isExecutionOp(op) && origin === "model").length, 1, "the submitted command was executed");
         } finally {
             ws.close();
@@ -94,7 +94,7 @@ test("{§completion-defers-to-results}: a failed same-turn stream defers complet
         contextWindow: 100_000,
         responses: [
             makeMockResponse("````sh\nexit 3\n````\n````SEND\nconcluding blind\n````"),
-            makeMockResponse("````SEND\nconcluding after reading the failure\n````"),
+            makeMockResponse("````KILL\nconcluding after reading the failure\n````"),
         ],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -105,12 +105,12 @@ test("{§completion-defers-to-results}: a failed same-turn stream defers complet
             assert.equal(result.finalStatus, 200);
             assert.equal(provider.remaining, 0, "the deferral cost exactly one more provider turn");
             const rows = await db.test_log_entries_by_worker.all<{ id: number; op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
-            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "SEND", "SEND"]);
+            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "SEND", "KILL"]);
             assert.ok(rows.some(({ op, status_rx }) => op === "READ" && status_rx === 500), "the terminal stream observation retains its failure");
             assert.match(JSON.stringify(provider.received[1]), /exit 3/, "the failed execution reaches the observation packet");
             assert.equal(result.result.content, undefined);
         assert.equal(await lastReply(db, result.loopId), "concluding after reading the failure");
-            assert.ok(rows.filter(({ origin, op }) => origin === "model" && op === "SEND").every(({ status_rx }) => status_rx === 200),
+            assert.ok(rows.filter(({ origin, op }) => origin === "model" && ["SEND", "KILL"].includes(op)).every(({ status_rx }) => status_rx === 200),
                 "both replies succeeded independently of the failed execution");
         } finally {
             ws.close();

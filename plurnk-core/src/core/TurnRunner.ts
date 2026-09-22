@@ -1,7 +1,7 @@
 import type { RequestPacket } from "./StoredPacket.ts";
 import NativeContent from "./NativeContent.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { PathSyntax, PlurnkParseError, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
+import { PathSyntax, PlurnkParseError, TurnDisposition, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderErrorKind, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
@@ -147,7 +147,7 @@ type SplitProviderResponse = {
     parseNotices: Notice[];
     emissionValid: boolean;
     emptyTurn: boolean;
-    // {§send-conclusion}: the response alone explicitly requested completion.
+    // {§kill-conclusion}: an explicit completion request, without new operational work.
     finalResponse: boolean;
 };
 
@@ -1740,7 +1740,6 @@ export default class TurnRunner {
         // {§response-text-recovery}: the parser owns the partition; recovery never reparses text.
         const parseErrors: ParseErrorInfo[] = [];
         let contentStatementCount = 0;
-        let recoveredText = false;
         let hasUnparsedTail = false;
         const parseNotices: Notice[] = [];
         if (preParsedOps !== undefined) {
@@ -1762,7 +1761,6 @@ export default class TurnRunner {
                     contentStatementCount += 1;
                 }
                 else if (item.kind === "text") {
-                    recoveredText = true;
                     ops.push({
                         op: "SEND", aside: null, target: null, metadata: null, lineMarker: null,
                         body: { raw: item.content, json: null }, position: UNKNOWN_POSITION,
@@ -1803,9 +1801,9 @@ export default class TurnRunner {
                 parseErrors.push({ message: tail.reason, line: tail.from.line, column: tail.from.column, source: "grammar" });
             }
         }
-        // {§send-conclusion}: response shape expresses completion, not reasoning-side NOTE capture.
-        const finalResponse = ops.length === 1 && ops[0].op === "SEND" && ops[0].target === null
-            && !recoveredText && !hasUnparsedTail && parseErrors.length === 0
+        // {§kill-conclusion}: response shape expresses completion, not reasoning-side NOTE capture.
+        const finalResponse = TurnDisposition.requestsCompletion(ops)
+            && !hasUnparsedTail && parseErrors.length === 0
             && assistant.finishReason !== "length";
         const emptyTurn = preParsedOps === undefined && contentStatementCount === 0 && !hasUnparsedTail;
         const reasoning = assistant.reasoning ?? null;

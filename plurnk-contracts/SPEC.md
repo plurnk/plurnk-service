@@ -526,7 +526,7 @@ language lifts only from one block that parses as a JSON array of objects;
 anything else lifts nothing and reaches the owner's `400` untouched. A
 `pattern` that is present but not a string is the language's own positioned
 diagnostic, as is a matcher of a claimed dialect that fails admission. FIND,
-READ, and KILL take no body at all: a body beneath their heading is ignored and
+READ, and targeted KILL take no body: a body beneath their heading is ignored and
 the operation still runs, with one warning-severity advisory naming the
 heading-line form (`FIND takes no body; the body was ignored. A pattern belongs
 on the opening fence line after the path.`); it is never silently read as a
@@ -566,7 +566,7 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | BARE | optional prompt resource                     | none                            | prompt; optional with a path   |
 | WORK | optional fresh `worker://name`, or a prompt resource ({§worker-spawn-prompt-resource}) | none | prompt; optional with a resource |
 | FORK | optional context-inheriting `worker://name`, or a prompt resource | none            | prompt; optional with a resource |
-| KILL | required target, including a log item        | optional text region ({§kill-scope}) | none; the matcher is the `pattern` option |
+| KILL | optional target; absent requests loop completion | optional text region on a target ({§kill-scope}) | literal final answer when parameterless; none when targeted |
 | SEND | optional recipient | recipient-defined; none for workers ({§send-directed-scope}) | message |
 | NOTE | none | none | literal working memory |
 | WAIT | optional event source ({§send-wait-scope}) | ignored | explanation of the wait |
@@ -606,7 +606,8 @@ scheduling, and its optional target is the label the row keeps, never a join;
 the AST has no independently settable lifecycle status or metadata.
 A turn admits any number of WAITs, all deferred until its other operations
 settle and together one park. End-of-program adjudication owns continuation, joining and completion
-under {§wait-obligation-matrix}; no terminal verb or synthetic receipt is required.
+under {§wait-obligation-matrix}. Parameterless KILL requests successful completion
+under {§kill-conclusion}; its optional body is the literal final answer.
 SEND delivers messages and NOTE retains memory, neither declaring an outcome.
 
 §send-wait-scope WAIT's optional target is retained as the row's label; no
@@ -629,7 +630,8 @@ disposition.
 anchored (```` ```KILL (log:///**/READ) <17,-1>``` ```` or
 ```` ```KILL (worker:///notes.md) <@aB3dE,@0Aa9Z>``` ````), and an optional matcher option that
 selects rows or lines (```` ```KILL (log:///**) [{"pattern": "~stale"}]``` ````, {§matcher-option}).
-The AST is `{ op: "KILL", target, lineMarker: TextLineMarker | null, matcher: MatcherBody | null, body: null }`.
+The AST is `{ op: "KILL", target, lineMarker: TextLineMarker | null, matcher: MatcherBody | null, body: string | null }`.
+The body is retained only on parameterless KILL ({§kill-conclusion}); targeted KILL has `body: null`.
 Without a scope, KILL retires or deletes the whole target; with one, it removes exactly
 that span — of a log body's packet projection or of an entry's content. Core owns the
 one-way semantics: there is no operation that restores a scoped-away log body.
@@ -953,15 +955,15 @@ operation receives empty-turn recovery, not successful completion ({§empty-turn
 | Unanswered messages or unobserved results | 102 | Continue silently |
 | No authored response operations or fresh operation/parser failure, without WAIT | 102 | Recover before automatic parking |
 | WAIT | 202 | Park when a live obligation exists; otherwise continue at 102 |
-| Lone explicit targetless SEND, all messages answered, live work remains, no fresh failure | 202 | Join the held work |
-| Lone explicit targetless SEND, messages answered, results observed, no held work | 200 | Conclude under {§send-conclusion}; an empty SEND need not repeat a delivered response |
+| Eligible parameterless KILL ({§kill-conclusion}), live work remains, no fresh failure | 202 | Join the held work without delivering its body |
+| Eligible parameterless KILL, results observed, no held work, messages answered or answered by its body | 200 | Deliver the answer and conclude under {§kill-conclusion}; an empty KILL need not repeat a delivered response |
 | Other admitted program | 102 | Continue regardless of earlier replies or live work |
 | KILL own worker | 499 | Cancel unfinished work in that worker and its descendants |
 | Runtime or infrastructure failure | 5xx | Not a model-authored task status |
 
 ### The terminal contract (waitpid)
 
-The model may supply WAIT. The host, not the grammar, owns
+The model may supply WAIT or request completion with parameterless KILL. The host, not the grammar, owns
 turn boundaries and adjudicates the loop's actual obligations. Asking
 the human is the native `question` executor tool ({§question-tool}), not a
 disposition. The shape rules ARE structural:
@@ -979,13 +981,13 @@ disposition. The shape rules ARE structural:
 - §park-202-only WAIT joins live work: an open stream or a live
   child. With none, it continues. It takes no scope ({§send-wait-scope});
   a future message is scheduled through the schedule family.
-- §lifecycle-only-turn A WAIT-, SEND-, or NOTE-only turn is valid.
+- §lifecycle-only-turn A WAIT-, SEND-, NOTE-, or KILL-only turn is valid.
   NOTE does not request parking or acknowledge messages.
   Ordinary repetition, strike and execution limits still apply.
 
 SEND with no `(path)` answers the open messages. SEND with `(path)` directs the
-message to that recipient. A response containing only one explicit targetless SEND
-requests completion under {§send-conclusion}; dispatch still executes the whole program.
+message to that recipient. Neither form concludes the loop. Only parameterless KILL
+requests completion under {§kill-conclusion}; dispatch still executes the whole program.
 
 ### §send-body SEND body projection
 
@@ -1490,7 +1492,7 @@ diagnostics are:
   the grammar swallows up anything that passes as legitimate plurnk. A matcher that
   itself ends in one of those shapes takes the option escape.
 - §matcher-body-redirect **A body beneath those headings.** Text below the heading
-  of a FIND, READ or KILL is a body, and those operations take none: the builder
+  of a FIND, READ or targeted KILL is a body, and those operations take none: the builder
   keeps the statement without it and raises one warning-severity advisory (`READ
   takes no body; the body was ignored. A pattern belongs on the opening fence line
   after the path.`), delivered like {§misplaced-aside-advisory} as a

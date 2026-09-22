@@ -116,7 +116,7 @@ test("{§proposal-ownership-loop-auto} proposals=accept resolves through Core wi
     const first = "````EDIT (proposing-test://x)\ny\n````\n\n````SEND\ndone\n````";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse(first, 50),
-        makeMockResponse("````SEND\ndone\n````", 0),
+        makeMockResponse("````KILL\ndone\n````", 0),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());
@@ -139,7 +139,7 @@ test("{§proposal-ownership-loop-auto} proposals=accept resolves through Core wi
 test("{§proposal-ownership-notification} proposals=reject settles the same admitted proposal without becoming a capability denial", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("````EDIT (proposing-test://x)\ny\n````\n\n````SEND\ndone\n````", 50),
-        makeMockResponse("````SEND\nthe edit was declined; concluding\n````", 50),
+        makeMockResponse("````KILL\nthe edit was declined; concluding\n````", 50),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         daemon.schemes.register("proposing-test", new ProposingTest());

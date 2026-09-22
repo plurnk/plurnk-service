@@ -1,5 +1,5 @@
 import WorkerName from "../../src/core/WorkerName.ts";
-import { sendStmt, killStmt, noteStmt  } from "./_dsl.ts";
+import { concludeStmt, sendStmt, killStmt, noteStmt } from "./_dsl.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, PlurnkStatement, UrlPath } from "@plurnk/plurnk-contracts";
@@ -85,8 +85,8 @@ test(`{§loop-wake-identity}: ${kind} completion ${phase} is acknowledged only b
             });
         }
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            contentResponse("````SEND\nThe answer is 42.\n````"),
-            contentResponse("````SEND\n````"),
+            contentResponse("````KILL\nThe answer is 42.\n````"),
+            contentResponse("````KILL\nThe answer is 42.\n````"),
         ] });
         if (phase === "during inference") {
             const generate = provider.generate.bind(provider);
@@ -116,7 +116,7 @@ test("Engine.runLoop: three edits are observed before answered work concludes", 
                 response([editStmt("/b", "2"), noteStmt("still going")]),
                 response([editStmt("/c", "3"), sendStmt(null, "done")]),
                 // {§send-premature-terminate} — the third edit needs observation before conclusion.
-                response([sendStmt(null, "done")]),
+                response([concludeStmt("done")]),
             ],
         });
         const result = await engine.runLoop({
@@ -169,7 +169,7 @@ test("maxTurns=-1 disables the turn terminator — loop ends on completed invent
                 response([editStmt("/2", "x"), noteStmt("2")]),
                 response([editStmt("/3", "x"), noteStmt("3")]),
                 response([editStmt("/4", "x"), noteStmt("4")]),
-                response([sendStmt(null, "done")]),
+                response([concludeStmt("done")]),
             ],
         });
         const result = await engine.runLoop({
@@ -208,7 +208,7 @@ test("{§completion-joins-live-work} Engine.runLoop: a completion over a live st
         const entryId = await seedEntryWithChannel(db, { workspaceId, authority: await WorkerName.forId(db, workerId), pathname: "/live-stream" });
         await db.open_subscription.get<{ id: number }>({ worker_id: workerId, entry_id: entryId, scheme: "exec", handle: "live-1" });
         const provider = new Mock({ contextWindow: 100000, responses: [
-            response([sendStmt(null, "all done")]),   // turn 1: a live stream makes this a join → 202 park
+            response([concludeStmt("all done")]),   // turn 1: a live stream makes this a join → 202 park
             response([noteStmt("Observe the settled stream.")]),
         ] });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -217,8 +217,8 @@ test("{§completion-joins-live-work} Engine.runLoop: a completion over a live st
         assert.equal(provider.remaining, 1, "no further turn runs until the stream concludes and wakes the loop");
         const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
         const modelRows = rows.filter((r) => r.origin === "model");
-        assert.deepEqual(modelRows.map(({ op, status_rx }) => [op, status_rx]), [["SEND", 200]],
-            "the reply is delivered; implicit joining invents no operation or receipt");
+        assert.deepEqual(modelRows.map(({ op, status_rx }) => [op, status_rx]), [["KILL", 202]],
+            "completion joins without delivering an unreviewed answer");
     } finally { await db.close(); }
 });
 
@@ -226,7 +226,7 @@ test("Engine.runLoop: terminates immediately if loop.status is already non-102",
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         await new LoopLifecycle(db).finish(loopId, { status: 200 });
-        const provider = new Mock({ contextWindow: 100000, responses: [response([sendStmt(null, "")])] });
+        const provider = new Mock({ contextWindow: 100000, responses: [response([concludeStmt("")])] });
         const result = await engine.runLoop({
             provider, workspaceId, workerId, loopId,
             messages: [],
@@ -306,7 +306,7 @@ test("Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async
                 response([editStmt("/state", "from turn 1"), noteStmt("stored")]),
                 // READ continues; its result enters turn 3, where it can be observed.
                 response([readStmt("/state"), noteStmt("reading")]),
-                response([sendStmt(null, "retrieved")]),
+                response([concludeStmt("retrieved")]),
             ],
         });
         const result = await engine.runLoop({
@@ -325,7 +325,7 @@ test("Engine.runLoop: signal abort between turns throws AbortError", async () =>
         const controller = new AbortController();
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([noteStmt("1")]), response([noteStmt("2")]), response([sendStmt(null, "3")])],
+            responses: [response([noteStmt("1")]), response([noteStmt("2")]), response([concludeStmt("3")])],
         });
         controller.abort();
         await assert.rejects(
@@ -343,7 +343,7 @@ test("Engine.runLoop: turn sequence numbers monotonic", async () => {
             responses: [
                 response([noteStmt("1")]),
                 response([noteStmt("2")]),
-                response([sendStmt(null, "3")]),
+                response([concludeStmt("3")]),
             ],
         });
         await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });

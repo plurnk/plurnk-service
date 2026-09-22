@@ -96,7 +96,7 @@ test("{§a2a-inbound-exposure}: an unrelated addressed reply is not an A2A artif
         } else if (calls === 2) {
             program = `\`\`\`\`SEND (${protocolAddress})\nThe A2A answer.\n\`\`\`\`\n\n\`\`\`\`SEND (${unrelatedAddress})\nThe unrelated answer.\n\`\`\`\``;
         } else {
-            program = "````SEND\n````";
+            program = "````KILL\n````";
         }
         return new Mock({ contextWindow: 100_000, responses: [makeMockResponse(program)] }).generate(args);
     });
@@ -124,8 +124,8 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
-            makeMockResponse("````SEND\nfirst composed result\n````"),
-            makeMockResponse("````SEND\nsecond composed result\n````"),
+            makeMockResponse("````KILL\nfirst composed result\n````"),
+            makeMockResponse("````KILL\nsecond composed result\n````"),
             makeMockResponse([
                 "````question",
                 "" + (JSON.stringify({
@@ -142,9 +142,9 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
                 "Waiting for the branch selection.",
                 "````",
             ].join("\n")),
-            makeMockResponse("````SEND\nselected branch\n````"),
-            makeMockResponse("````SEND\nuppercase context result\n````"),
-            makeMockResponse("````SEND\nlowercase context result\n````"),
+            makeMockResponse("````KILL\nselected branch\n````"),
+            makeMockResponse("````KILL\nuppercase context result\n````"),
+            makeMockResponse("````KILL\nlowercase context result\n````"),
         ],
     });
     const http = await bindListener();
@@ -317,7 +317,8 @@ test("{§a2a-inbound-exposure}: the official A2A client drives Context and Task 
             limit: 1_000,
         });
         assert.ok(
-            secondLog.some((row) => row.source === `worker://${first.task.id}` && row.op === "SEND"),
+            secondLog.some((row) => row.source === `worker://${first.task.id}` && row.op === "READ"
+                && JSON.stringify(row.rx).includes("first composed result")),
             "the later Task inherits the first Task's pending terminal evidence through the Context snapshot",
         );
         const namedContexts: number[] = [];
@@ -353,7 +354,7 @@ test("{§a2a-lazy-workspace}: discovery and Task observations are passive until 
         db,
         provider: new Mock({
             contextWindow: 100_000,
-            responses: [makeMockResponse("````SEND\nlazy workspace result\n````")],
+            responses: [makeMockResponse("````KILL\nlazy workspace result\n````")],
         }),
         http,
     });
@@ -431,7 +432,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
         db,
         provider: new Mock({
             contextWindow: 100_000,
-            responses: [makeMockResponse("````SEND\nfirst durable result\n````")],
+            responses: [makeMockResponse("````KILL\nfirst durable result\n````")],
         }),
         http,
     });
@@ -470,7 +471,7 @@ test("{§a2a-inbound-exposure}: a fresh adapter reconstructs durable Context and
             db,
             provider: new Mock({
                 contextWindow: 100_000,
-                responses: [makeMockResponse("````SEND\nsecond durable result\n````")],
+                responses: [makeMockResponse("````KILL\nsecond durable result\n````")],
             }),
             http,
         });

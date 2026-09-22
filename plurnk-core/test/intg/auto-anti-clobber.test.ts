@@ -28,7 +28,7 @@ test("a stale hash anchor rejects an EDIT before proposal — no silent clobber"
         const staleAnchor = LineAnchors.token("file:///doc.md", 1, "V1 original\n");
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````READ (file:///doc.md)````\n````NOTE\nReview the file.\n````", 50),
-            makeMockResponse("````SEND\nRead complete.\n````", 50),
+            makeMockResponse("````KILL\nRead complete.\n````", 50),
             makeMockResponse(`\`\`\`\`EDIT (file:///doc.md) <${staleAnchor}>
 V3 model clobber
 \`\`\`\`
@@ -38,7 +38,7 @@ done
 \`\`\`\`
 \`\`\`\`SEND
 \`\`\`\``, 50),
-            makeMockResponse("````SEND\nStale edit rejected.\n````", 50),
+            makeMockResponse("````KILL\nStale edit rejected.\n````", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

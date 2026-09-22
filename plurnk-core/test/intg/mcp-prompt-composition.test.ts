@@ -52,7 +52,7 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             turn(`\`\`\`\`READ (fixture:///prompts/inspect) <1,-1>\n\`\`\`\`\n\n${step("NOTE")}`),
             turn(`\`\`\`\`READ ($RESOURCE#bytes) <1,3>\n\`\`\`\`\n\n${step("NOTE")}`),
             turn(step("NOTE")),
-            turn(step("SEND")),
+            turn(step("KILL")),
         ] });
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules") });

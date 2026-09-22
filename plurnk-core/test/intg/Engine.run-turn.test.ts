@@ -1,4 +1,4 @@
-import { sendStmt, dispositionStmt, noteStmt  } from "./_dsl.ts";
+import { concludeStmt, sendStmt, dispositionStmt, noteStmt } from "./_dsl.ts";
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import test from "node:test";
@@ -114,7 +114,7 @@ test("Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with sta
 test("{§turn-ops-admission-path}: initialization and inference preserve turnOps beside ordinary operation outcomes", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
-        const source = "````SEND\ndone\n````";
+        const source = "````KILL\ndone\n````";
         const provider = new Mock({
             contextWindow: 100000,
             responses: [contentResp(source)],
@@ -167,7 +167,7 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         assert.equal(inferenceSource?.content, source, "the admitted source stays exact");
         assert.ok(!inferenceRows.some(({ op }) => op === null));
         assert.equal(inferenceRows.some(({ op }) => op === "PLAN"), false);
-        assert.ok(inferenceRows.some(({ op }) => op === "SEND"));
+        assert.ok(inferenceRows.some(({ op }) => op === "KILL"));
     } finally { await db.close(); }
 });
 
@@ -184,7 +184,7 @@ test("Engine.runTurn: exact request accounting preserves reasoning-inclusive pri
         const provider = new Mock({
             contextWindow: 100000,
             responses: [{
-                assistant: { content: "", ops: [sendStmt(null, "done")], reasoning: "deliberated at length" },
+                assistant: { content: "", ops: [concludeStmt("done")], reasoning: "deliberated at length" },
                 usage,
                 cost: {
                     kind: "estimated",
@@ -254,7 +254,7 @@ test("{§notifications-reasoning-event}: retries produce distinct physical-reque
                     reasoning: acceptedReasoning,
                     finishReason: "stop",
                     model: provider.model,
-                    ops: [sendStmt(null, "done")],
+                    ops: [concludeStmt("done")],
                 },
                 assistantRaw: null,
                 accounting: [failed, succeeded],
@@ -316,7 +316,7 @@ test("Engine.runTurn: admitted response does not change packet request-weight se
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([sendStmt(null, "ok")], "a deliberately non-empty admitted response")],
+            responses: [response([concludeStmt("ok")], "a deliberately non-empty admitted response")],
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
@@ -560,7 +560,7 @@ test("Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () =
                 response([readMissing("d"), noteStmt("4")]),
                 // Complete on a clean turn; a READ plus same-turn completion requires observation.
                 // ({§send-premature-terminate}), which would confound this 404-soft-failure assertion.
-                response([sendStmt(null, "done")]),
+                response([concludeStmt("done")]),
             ],
         });
         const result = await engine.runLoop({
@@ -626,7 +626,7 @@ test("Engine.runLoop: strike is engine-internal — model sees action_failure bu
             responses: [
                 response([denied(), noteStmt("1")]),
                 response([denied(), noteStmt("2")]),
-                response([sendStmt(null, "done")]),
+                response([concludeStmt("done")]),
             ],
         });
         const result = await engine.runLoop({
@@ -678,7 +678,7 @@ test("Engine.runLoop: varied per-turn fingerprints don't trip cycle detection", 
                 response([editStmt("/c", "3"), noteStmt("3")]),
                 response([editStmt("/d", "4"), noteStmt("4")]),
                 response([editStmt("/e", "5"), sendStmt(null, "done")]),
-                response([sendStmt(null, "done")]), // {§send-premature-terminate} — the last edit's observation turn
+                response([concludeStmt("done")]), // {§send-premature-terminate} — the last edit's observation turn
             ],
         });
         const result = await engine.runLoop({
@@ -788,7 +788,7 @@ test("Engine.runTurn: assistantRaw passes through into turn.packet.assistantRaw"
         const provider = new Mock({
             contextWindow: 100000,
             responses: [{
-                assistant: { content: "", ops: [sendStmt(null, "")], reasoning: null },
+                assistant: { content: "", ops: [concludeStmt("")], reasoning: null },
                 assistantRaw: raw,
             }],
         });
@@ -808,7 +808,7 @@ test("Engine.runTurn: sequence increments across multiple turn calls in the same
             responses: [
                 response([noteStmt("1")]),
                 response([noteStmt("2")]),
-                response([sendStmt(null, "3")]),
+                response([concludeStmt("3")]),
             ],
         });
         const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -903,7 +903,7 @@ test("Engine.runTurn: the log section parses an application/json rx body", async
             contextWindow: 100000,
             responses: [
                 response([editStmt("/x", "v"), noteStmt("more")]),
-                response([sendStmt(null, "done")]),
+                response([concludeStmt("done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -974,7 +974,7 @@ test("Engine.runTurn: previous-turn 403 surfaces in the next packet's Errors sec
             contextWindow: 100000,
             responses: [
                 response([denied, noteStmt("keep going")]),
-                response([sendStmt(null, "done")]),
+                response([concludeStmt("done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
@@ -1003,7 +1003,7 @@ test("Engine.runTurn: Errors includes only the immediately previous turn", async
             responses: [
                 response([denied, noteStmt("t1 had a failure")]),
                 response([editStmt("/ok", "v"), noteStmt("t2 was clean")]),
-                response([sendStmt(null, "done")]),
+                response([concludeStmt("done")]),
             ],
         });
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });   // t1: 1 failure

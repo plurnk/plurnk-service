@@ -13,7 +13,7 @@ test("{§exec-lifetime} a bounded lifetime kills the spawn at its deadline and c
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         // Park on the stream: its only conclusion is the reap, so turn 2 sees the 504 close.
         makeMockResponse("````sh [{\"lifetime\": \"1m\"}]\nsleep 120\n````\n\n````WAIT\nwaiting for the reap\n````", 10),
-        makeMockResponse("````SEND\nthe spawn timed out; done\n````", 10),
+        makeMockResponse("````KILL\nthe spawn timed out; done\n````", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

@@ -58,6 +58,8 @@ export const killStmt = (target: ParsedPath | null, lineMarker: TextLineMarker |
     position: { line: 1, column: 1 },
 });
 
+export const concludeStmt = (body: string | null = null): KillStatement => ({ ...killStmt(null), body });
+
 export const findStmt = (target: ParsedPath | null, matcher: MatcherBody | null = null): FindStatement => ({
     metadata: null,
     op: "FIND", aside: null, target, lineMarker: null, matcher, body: null,

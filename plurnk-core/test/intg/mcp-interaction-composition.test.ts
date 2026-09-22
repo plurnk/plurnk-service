@@ -35,7 +35,7 @@ const setup = async (
 ) => {
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse(`${operation}\n\n${step("WAIT")}`),
-        makeMockResponse(PlurnkParser.frame("SEND", "MCP result observed.")),
+        makeMockResponse(PlurnkParser.frame("KILL", "MCP result observed.")),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules") });

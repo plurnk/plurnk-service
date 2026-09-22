@@ -32,7 +32,7 @@ for (const body of [null, '{"query":"fixture"}']) {
             frame("fixture (inspect)", body),
             frame("READ ($INVOCATION) <17,40>", null),
             frame("READ ($STREAM) <17,40>", null),
-            frame("SEND", "The output's tail is result 40."),
+            frame("KILL", "The output's tail is result 40."),
         ].map(makeMockResponse) });
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider });

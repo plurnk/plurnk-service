@@ -36,7 +36,7 @@ const runCopy = async (seed: Record<string, Buffer>, dsl: string) => {
 
 \`\`\`\`NOTE
 working
-\`\`\`\``), mockTurn("````SEND\ndone\n````")] });
+\`\`\`\``), mockTurn("````KILL\ndone\n````")] });
     let status = 0;
     let operations: Array<{ op: string; status_rx: number; rx: string | null }> = [];
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -161,7 +161,7 @@ stashed
 \`\`\`\`NOTE
 copied
 \`\`\`\``),
-        mockTurn("````SEND\ndone\n````"),
+        mockTurn("````KILL\ndone\n````"),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

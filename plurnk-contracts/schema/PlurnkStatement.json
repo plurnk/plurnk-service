@@ -455,8 +455,8 @@
                     "description": "The selection matcher lifted from the heading's `[{\"pattern\": …}]` option ({§matcher-option}); null when the heading carries none."
                 },
                 "body": {
-                    "type": "null",
-                    "description": "KILL takes no body; its matcher is the `pattern` option."
+                    "type": ["string", "null"],
+                    "description": "Parameterless KILL carries the optional final answer. Targeted KILL takes no body; its matcher is the `pattern` option."
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"

@@ -11,7 +11,7 @@ test("{§methods-loop-run-open-paths}: one oversized attachment is previewed wit
     const content = `Telemetry: ${"sample nominal; ".repeat(12_000)}\nRecovery site: ${fixture.answer}.\n`;
     const provider = new Mock({ contextWindow: 20_000, responses: [
         makeMockResponse("````READ (incident.txt) <2>````\n````NOTE\nInspect the recovery site.\n````"),
-        makeMockResponse(`\`\`\`\`SEND
+        makeMockResponse(`\`\`\`\`KILL
 ${fixture.answer}
 \`\`\`\``),
     ] });
@@ -48,10 +48,9 @@ for (const retire of [false, true]) test(`the recovery demo preserves overflow e
         contextWindow: 20_000,
         responses: [
             makeMockResponse("````READ (incident.txt) <2>````\n````NOTE\nInspect the recovery site.\n````"),
-            makeMockResponse(`${retire ? "````KILL (log:///**/READ)````\n" : ""}\`\`\`\`SEND
+            makeMockResponse(`${retire ? "````KILL (log:///**/READ)````\n" : ""}\`\`\`\`KILL
 ${fixture.answer}
 \`\`\`\``),
-            ...(retire ? [makeMockResponse("````SEND\n````")] : []),
         ],
     });
     try {
@@ -72,7 +71,7 @@ ${fixture.answer}
                     turnIds: result.turnIds ?? [], fixture,
                 });
                 assert.equal(evidence.overflowRequests, 1);
-                assert.equal(evidence.modelTurns, retire ? 3 : 2, "curation with a reply requires a later lone SEND; withheld output itself adds no turn");
+                assert.equal(evidence.modelTurns, 2, "log curation does not disqualify explicit completion; withheld output adds no turn");
                 assert.equal(evidence.receiptActive, !retire);
                 assert.equal(provider.remaining, 0);
             } finally { ws.close(); }

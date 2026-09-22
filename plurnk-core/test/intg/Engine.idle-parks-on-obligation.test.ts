@@ -23,9 +23,9 @@ started
 \`\`\`\``, 50),
             makeMockResponse("````NOTE\nReview the independent work\n````", 50),
             makeMockResponse("````WAIT\nAwait the command\n````", 50),
-            makeMockResponse("````SEND\ndone\n````", 50),
+            makeMockResponse("````KILL\ndone\n````", 50),
             makeMockResponse("````NOTE\nnothing to wait on\n````", 50),
-            makeMockResponse("````SEND\nconcluded\n````", 50),
+            makeMockResponse("````KILL\nconcluded\n````", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

@@ -12,7 +12,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Results from "../../src/core/results.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
-import { sendStmt, execStmt, dispositionStmt  } from "./_dsl.ts";
+import { concludeStmt, execStmt, dispositionStmt } from "./_dsl.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
 import { waitFor } from "./_rpc.ts";
 
@@ -248,13 +248,13 @@ for (const specimen of [
                 "closed is not observed: the loop continues so the terminal stream observation can land next packet",
             );
             const completed = await engine.executeAdmittedTurn({
-                statements: [sendStmt(null)], source: null,
+                statements: [concludeStmt()], source: null,
                 workspaceId, workerId, loopId, turnId, fromSequence: 3, origin: "model",
             });
             assert.equal(completed.status, 102, "closed but unobserved: the completion defers to the next packet");
-            assert.deepEqual(completed.outcomes, [{ op: "SEND", status: 200, problemType: null }]);
+            assert.deepEqual(completed.outcomes, [{ op: "KILL", status: 102, problemType: null }]);
             const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: {
-                content: "````SEND\nObserved the actual execution result.\n````", reasoning: null,
+                content: "````KILL\nObserved the actual execution result.\n````", reasoning: null,
             } }] });
             const observed = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
             assert.equal(observed.status, 200);
@@ -276,10 +276,10 @@ test("{§send-premature-terminate}: an earlier turn's completed stream is identi
         await Turn.complete(db, turnId, 102);
         const { id: nextTurnId } = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
         const completed = await engine.executeAdmittedTurn({
-            statements: [sendStmt(null)], source: null,
+            statements: [concludeStmt()], source: null,
             workspaceId, workerId, loopId, turnId: nextTurnId, fromSequence: 1, origin: "model",
         });
         assert.equal(completed.status, 102);
-        assert.deepEqual(completed.outcomes, [{ op: "SEND", status: 200, problemType: null }], "the earlier execution is not invented in this program");
+        assert.deepEqual(completed.outcomes, [{ op: "KILL", status: 102, problemType: null }], "the earlier execution is not invented in this program");
     } finally { await db.close(); }
 });

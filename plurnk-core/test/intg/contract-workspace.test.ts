@@ -1,4 +1,4 @@
-import { sendStmt  } from "./_dsl.ts";
+import { concludeStmt, } from "./_dsl.ts";
 // {§membership}: workspace identity, file membership, and disk co-location.
 
 import test from "node:test";
@@ -317,7 +317,7 @@ test("out-of-band change to a member remains truthful runtime-actor evidence", a
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [mockResponse([sendStmt(null)]), mockResponse([sendStmt(null)])],
+            responses: [mockResponse([concludeStmt()]), mockResponse([concludeStmt()])],
         });
 
         await engine.runTurn({ provider, workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, messages: [] });

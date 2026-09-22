@@ -14,8 +14,8 @@ const INITIAL = Date.UTC(2026, 8, 17, 12, 0, 0, 250);
 test("{§schedule-delivery}: an occurrence runs its own loop; no WAIT holds a loop for it", { timeout: 30_000 }, async () => {
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 65536, responses: [
-        "````SEND\nDone for now; the reminder will start its own loop.\n````",
-        "````SEND\nReceived scheduled-proof.\n````",
+        "````KILL\nDone for now; the reminder will start its own loop.\n````",
+        "````KILL\nReceived scheduled-proof.\n````",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
     let now = INITIAL;
     let serial = 0;

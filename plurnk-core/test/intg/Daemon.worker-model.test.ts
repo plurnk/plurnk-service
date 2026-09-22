@@ -52,8 +52,8 @@ test("{§worker-model-selection}: an explicit selection persists onto the worker
     const mock = new Mock({
         contextWindow: 16_384,
         responses: [
-            makeMockResponse("````SEND\nfirst\n````"),
-            makeMockResponse("````SEND\nsecond\n````"),
+            makeMockResponse("````KILL\nfirst\n````"),
+            makeMockResponse("````KILL\nsecond\n````"),
         ],
     });
     ProviderInstantiate.registerInstance(mock, spec);
@@ -101,7 +101,7 @@ test("{§worker-model-selection}: an exact provider/model selector persists with
     }
     const mock = new Mock({
         contextWindow: 16_384,
-        responses: [makeMockResponse("````SEND\ndirect route complete\n````")],
+        responses: [makeMockResponse("````KILL\ndirect route complete\n````")],
     });
     ProviderInstantiate.registerInstance(mock, spec);
 
@@ -230,7 +230,7 @@ test("{§worker-reasoning-policy}: alias configuration seeds once, explicit poli
     const spec = declaredProvider("reasoning-durable", "reasoning-durable-model");
     const mock = new Mock({
         contextWindow: 16_384,
-        responses: [makeMockResponse("````SEND\nfixed reasoning\n````")],
+        responses: [makeMockResponse("````KILL\nfixed reasoning\n````")],
     });
     const aliasKnob = `PLURNK_PROVIDERS_REASONING_${spec.alias}`;
     const previous = process.env[aliasKnob];
@@ -427,12 +427,12 @@ test("{§worker-model-selection}: the spawn override persists onto the worker an
     const parent = new Mock({
         contextWindow: 16_384,
         responses: [
-            makeMockResponse("````SEND\nfirst done\n````"),
+            makeMockResponse("````KILL\nfirst done\n````"),
             makeMockResponse("````WORK (worker://kid)\ndelegate it\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````SEND\nsecond done\n````"),
+            makeMockResponse("````KILL\nsecond done\n````"),
         ],
     });
-    const child = new Mock({ contextWindow: 16_384, responses: [makeMockResponse("````SEND\nkid done\n````")] });
+    const child = new Mock({ contextWindow: 16_384, responses: [makeMockResponse("````KILL\nkid done\n````")] });
     ProviderInstantiate.registerInstance(parent, parentSpec);
     ProviderInstantiate.registerInstance(child, childSpec);
 
@@ -483,8 +483,8 @@ test("{§worker-model-selection}: an absent spawn override inherits the worker's
         contextWindow: 16_384,
         responses: [
             makeMockResponse("````WORK (worker://kid)\ndelegate it\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````SEND\ndone\n````"),
-            makeMockResponse("````SEND\nkid done\n````"),
+            makeMockResponse("````KILL\ndone\n````"),
+            makeMockResponse("````KILL\nkid done\n````"),
         ],
     });
     ProviderInstantiate.registerInstance(mock, spec);
@@ -521,8 +521,8 @@ test("{§worker-model-selection}: a redeclared alias does not rewrite the worker
     const mock = new Mock({
         contextWindow: 16_384,
         responses: [
-            makeMockResponse("````SEND\nfirst\n````"),
-            makeMockResponse("````SEND\nsecond\n````"),
+            makeMockResponse("````KILL\nfirst\n````"),
+            makeMockResponse("````KILL\nsecond\n````"),
         ],
     });
     ProviderInstantiate.registerInstance(mock, spec);
@@ -565,12 +565,12 @@ test("{§worker-model-selection}: the worker's durable model and spawn override 
     const mock = new Mock({
         contextWindow: 16_384,
         responses: [
-            makeMockResponse("````SEND\nbefore restart\n````"),
+            makeMockResponse("````KILL\nbefore restart\n````"),
             makeMockResponse("````WORK (worker://kid)\ndelegate\n````\n\n````WAIT\nwaiting\n````"),
-            makeMockResponse("````SEND\nafter restart\n````"),
+            makeMockResponse("````KILL\nafter restart\n````"),
         ],
     });
-    const child = new Mock({ contextWindow: 16_384, responses: [makeMockResponse("````SEND\nkid done\n````")] });
+    const child = new Mock({ contextWindow: 16_384, responses: [makeMockResponse("````KILL\nkid done\n````")] });
     ProviderInstantiate.registerInstance(mock, spec);
     ProviderInstantiate.registerInstance(child, childSpec);
 
@@ -629,7 +629,7 @@ for (const selection of ["model", "spawn model", "reasoning", "prompt model", "p
         const replacement = declaredProvider("replacement", "replacement-model");
         const mock = new Mock({
             contextWindow: 16_384,
-            responses: [makeMockResponse("````SEND\nnew work complete\n````")],
+            responses: [makeMockResponse("````KILL\nnew work complete\n````")],
         });
         ProviderInstantiate.registerInstance(mock, spec);
         ProviderInstantiate.registerInstance(mock, spec, process.env, "high");
@@ -729,7 +729,7 @@ test("{§worker-model-selection}: a selection while the worker holds a parked lo
         contextWindow: 16_384,
         responses: [
             makeMockResponse("````sh\nsleep 30\n````\n\n````WAIT\ndone\n````"),
-            makeMockResponse("````SEND\nresumed\n````"),
+            makeMockResponse("````KILL\nresumed\n````"),
         ],
     });
     ProviderInstantiate.registerInstance(mock, spec);

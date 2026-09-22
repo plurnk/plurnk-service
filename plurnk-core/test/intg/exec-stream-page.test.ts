@@ -25,7 +25,7 @@ test("a 40-line stream closes as its first page with the extent; a scoped READ s
         responses: [
             makeMockResponse("````sh\nseq 1 40\n````\n\n````WAIT\nwaiting\n````", 10),
             makeMockResponse("````READ ($STREAM#stdout) <38,40>````\n````NOTE\nreading the tail\n````", 10),
-            makeMockResponse("````SEND\ndone\n````", 10),
+            makeMockResponse("````KILL\ndone\n````", 10),
         ],
     });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -88,7 +88,7 @@ test("an active stream reaches the model only as a Delegation stream pointer wit
             makeMockResponse("````sh\nseq 1 5; sleep 2\n````\n\n````NOTE\nlet it run\n````", 10),
             // the stream is still running when this packet is built: only the pointer shows it
             makeMockResponse("````WAIT\nwait for it\n````", 10),
-            makeMockResponse("````SEND\ndone\n````", 10),
+            makeMockResponse("````KILL\ndone\n````", 10),
         ],
     });
     await withSettlement("200", () => withDaemon(provider, async (db, _daemon, addr) => {
@@ -136,7 +136,7 @@ process.stdout.write(${JSON.stringify(content)});
 waiting
 \`\`\`\``, 10),
         makeMockResponse("````READ ($STREAM#stdout) <1,-1>````\n````NOTE\nRead the full result.\n````", 10),
-        makeMockResponse("````SEND\ndone\n````", 10),
+        makeMockResponse("````KILL\ndone\n````", 10),
     ] });
     await withSettlement("3000", () => withDaemon(provider, async (db, _daemon, addr) => {
         const ws = await connect(addr);

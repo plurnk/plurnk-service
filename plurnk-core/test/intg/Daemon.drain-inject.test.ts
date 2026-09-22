@@ -18,7 +18,7 @@ const sendOnly = (dsl: string) => makeMockResponse(dsl);
 test("loop.run: enqueues + drains + returns first loop's result", async () => {
     const dsl = "````EDIT (worker:///x)\nhello\n````\n\n````SEND\ndone\n````";
     // {§send-premature-terminate} — observe the EDIT receipt before the final SEND.
-    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl), makeMockResponse("````SEND\ndone\n````", 0)] });
+    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl), makeMockResponse("````KILL\ndone\n````", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -39,8 +39,8 @@ test("{§worker-lifecycle-single-drain}: concurrent idle injections claim distin
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            sendOnly("````SEND\nfirst concurrent loop\n````"),
-            sendOnly("````SEND\nsecond concurrent loop\n````"),
+            sendOnly("````KILL\nfirst concurrent loop\n````"),
+            sendOnly("````KILL\nsecond concurrent loop\n````"),
         ],
     });
 
@@ -88,7 +88,7 @@ test("{§worker-lifecycle-single-drain}: concurrent idle injections claim distin
 test("{§worker-delegation-inherits-policy}: a fresh injection persists delegated authority as its loop policy", async () => {
     const mock = new Mock({
         contextWindow: 16384,
-        responses: [sendOnly("````SEND\ndone\n````")],
+        responses: [sendOnly("````KILL\ndone\n````")],
     });
     await withDaemon(mock, async (db, daemon) => {
         const workspace = await daemon.createWorkspace({ name: `fresh-loop-policy-${crypto.randomUUID()}` });
@@ -130,8 +130,8 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
         contextWindow: 16384,
         responses: [
             sendOnly("````sh\nsleep 30\n````\n\n````NOTE\nrunning\n````"),
-            sendOnly("````SEND\ndone\n````"),
-            sendOnly("````SEND\ndone\n````"),
+            sendOnly("````KILL\ndone\n````"),
+            sendOnly("````KILL\ndone\n````"),
         ],
     });
 
@@ -178,7 +178,7 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
 });
 
 test("loop.cancel: no active drain → cancelled=false", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly("````SEND\ndone\n````")] });
+    const mock = new Mock({ contextWindow: 16384, responses: [sendOnly("````KILL\ndone\n````")] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -199,9 +199,9 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
         contextWindow: 16384,
         responses: [
             sendOnly("````sh\nsleep 30\n````\n\n````NOTE\nrunning\n````"),
-            sendOnly("````SEND\ndone\n````"),
-            sendOnly("````SEND\ndone\n````"),
-            sendOnly("````SEND\ndone\n````"),
+            sendOnly("````KILL\ndone\n````"),
+            sendOnly("````KILL\ndone\n````"),
+            sendOnly("````KILL\ndone\n````"),
         ],
     });
 
@@ -255,7 +255,7 @@ test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths i
         contextWindow: 16384,
         responses: [
             sendOnly("````sh\ntrue\n````\n\n````NOTE\ncontinue after review\n````"), // proposal pauses before the required disposition
-            sendOnly("````SEND\ndone\n````"),      // turn 2 consumes the injected prompt, ends
+            sendOnly("````KILL\ndone\n````"),      // turn 2 consumes the injected prompt, ends
         ],
     });
 
@@ -475,7 +475,7 @@ test("{§message-loop-containment}: every orphaned message is recovered in order
             // ({§completion-defers-to-messages}); loop 1 ends turn 1 at its turn ceiling instead
             // (maxTurns 1 → 429), which no barrier gates: the orphan premise holds.
             sendOnly("````sh\ntrue\n````\n\n````SEND\nloop 1 reaches its turn ceiling\n````"),
-            sendOnly("````SEND\nreconciled loop ran\n````"),                              // the promoted loop
+            sendOnly("````KILL\nreconciled loop ran\n````"),                              // the promoted loop
         ],
     });
 
@@ -577,7 +577,7 @@ test("loop.cancel reaps the worker's open streams by the subscription registry (
         contextWindow: 16384,
         responses: [
             sendOnly("````sh\nsleep 30\n````\n\n````WAIT\nbackgrounded\n````"),
-            sendOnly("````SEND\ndone\n````"),
+            sendOnly("````KILL\ndone\n````"),
         ],
     });
 
@@ -617,7 +617,7 @@ test("a cancelled worker is not revived by its straggler stream's conclusion", a
         contextWindow: 16384,
         responses: [
             sendOnly("````sh\nsleep 30\n````\n\n````WAIT\nbackgrounded\n````"),
-            sendOnly("````SEND\nshould never run\n````"),
+            sendOnly("````KILL\nshould never run\n````"),
         ],
     });
 
@@ -684,8 +684,8 @@ test("{§completion-defers-to-messages}: prompts that arrive during a completing
     const mock = new GatedMock(gate, {
         contextWindow: 16384,
         responses: [
-            sendOnly("````SEND\nfirst answer, before the follow-ups\n````"),
-            sendOnly("````SEND\nanswered both follow-ups\n````"),
+            sendOnly("````KILL\nfirst answer, before the follow-ups\n````"),
+            sendOnly("````KILL\nanswered both follow-ups\n````"),
         ],
     });
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -712,9 +712,9 @@ test("{§completion-defers-to-messages}: prompts that arrive during a completing
             );
             assert.equal(done[0]!.result.status, 200, "the loop completed once the follow-ups were seen");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number | null; turn_id: number; origin: string; rx: string | null; attrs: string }>({ loop_id: loopId });
-            const replies = rows.filter((r) => r.op === "SEND" && r.origin === "model");
-            assert.deepEqual(replies.map(({ status_rx }) => status_rx), [200, 200], "each reply is delivered independently of completion");
-            assert.deepEqual(replies.map(({ rx }) => JSON.parse(rx!).answers.length), [1, 2], "a reply cannot answer arrivals it has not observed");
+            const replies = rows.filter((r) => r.op === "KILL" && r.origin === "model");
+            assert.deepEqual(replies.map(({ status_rx }) => status_rx), [102, 200], "the unreviewed completion is deferred, not published");
+            assert.deepEqual(replies.map(({ rx }) => JSON.parse(rx!).answers?.length ?? 0), [0, 3], "only the reviewed answer delivers, answering all observed messages");
             const turns = (await db.test_list_turns_in_loop.all({ loop_id: loopId })).filter(({ producer }) => producer === "model");
             assert.deepEqual(turns.map(({ status }) => status), [102, 200]);
             const prompts = rows.filter((r) => isArrivalRow(r));

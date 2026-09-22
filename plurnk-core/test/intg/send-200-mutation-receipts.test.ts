@@ -9,7 +9,7 @@ for (const curate of [false, true]) {
         const extra = curate ? "````READ (worker:///notes.md)\n````\n````READ (worker:///notes.md)\n````\n````KILL (log:///**/EDIT)\n````\n" : "";
         const mock = new Mock({ contextWindow: 16384, responses: [
             makeMockResponse("````EDIT (worker:///notes.md)\nhello\n````\n" + extra + "````SEND\nWritten.\n````"),
-            makeMockResponse("````SEND\n````"),
+            makeMockResponse("````KILL\n````"),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);
@@ -22,10 +22,10 @@ for (const curate of [false, true]) {
                 assert.equal(mock.received.length, 2, "a completed mutation needs one observation turn, no terminal ceremony");
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: result.loopId });
                 const model = rows.filter(({ origin }) => origin === "model");
-                assert.deepEqual(model.map(({ op }) => op), curate ? ["EDIT", "READ", "READ", "KILL", "SEND", "SEND"] : ["EDIT", "SEND", "SEND"]);
+                assert.deepEqual(model.map(({ op }) => op), curate ? ["EDIT", "READ", "READ", "KILL", "SEND", "KILL"] : ["EDIT", "SEND", "KILL"]);
                 assert.equal(model[0]!.status_rx, 201);
                 assert.deepEqual(model.slice(1).map(({ op, status_rx }) => [op, status_rx]),
-                    curate ? [["READ", 200], ["READ", 200], ["KILL", 204], ["SEND", 200], ["SEND", 200]] : [["SEND", 200], ["SEND", 200]],
+                    curate ? [["READ", 200], ["READ", 200], ["KILL", 204], ["SEND", 200], ["KILL", 200]] : [["SEND", 200], ["KILL", 200]],
                     "curation cannot select a same-turn receipt before it is published");
                 assert.match(JSON.stringify(mock.received[1]), /notes\.md/);
                 const entry = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "worker", name: "body" });

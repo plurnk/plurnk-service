@@ -1,4 +1,4 @@
-import { sendStmt, noteStmt  } from "./_dsl.ts";
+import { concludeStmt, noteStmt } from "./_dsl.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, PlurnkStatement, } from "@plurnk/plurnk-contracts";
@@ -48,8 +48,8 @@ test("Mock.provider: exhausted queue throws", async () => {
 test("Mock.provider: assistant and request accounting remain separate", async () => {
     const r: MockResponse = {
         assistant: {
-            content: "````SEND\ndone\n````",
-            ops: [sendStmt(null, "done")],
+            content: "````KILL\ndone\n````",
+            ops: [concludeStmt("done")],
             reasoning: "thought about it",
             finishReason: "stop",
             model: "mock-bench-v1",
@@ -58,7 +58,7 @@ test("Mock.provider: assistant and request accounting remain separate", async ()
     };
     const mock = new Mock({ contextWindow: 10_000, responses: [r] });
     const result = await mock.generate({ messages: [{ role: "user", content: "x" }] });
-    assert.equal(result.assistant.content, "````SEND\ndone\n````");
+    assert.equal(result.assistant.content, "````KILL\ndone\n````");
     assert.equal(result.accounting[0]?.usage?.outputTokens, 42);
     assert.equal(result.accounting[0]?.usage?.inputTokens, 100);
     assert.equal(result.accounting[0]?.usage?.totalTokens, 142);
@@ -66,7 +66,7 @@ test("Mock.provider: assistant and request accounting remain separate", async ()
     assert.equal(result.assistant.model, "mock-bench-v1");
     assert.equal(result.assistant.reasoning, "thought about it");
     assert.equal(result.assistant.ops?.length, 1);
-    assert.equal((result.assistant.ops as PlurnkStatement[] | undefined)?.[0]?.op, "SEND");
+    assert.equal((result.assistant.ops as PlurnkStatement[] | undefined)?.[0]?.op, "KILL");
 });
 
 test("Mock.provider: request accounting defaults fill when the fixture omits usage", async () => {

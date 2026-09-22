@@ -29,7 +29,7 @@ test("{§line-anchors} anchors rendered before an insertion above still resolve 
         const pending: { batch: string | null } = { batch: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````READ (file:///doc.md) <1,-1>````\n````NOTE\nreading\n````", 50),
-            makeMockResponse("````SEND\nread\n````", 50),
+            makeMockResponse("````KILL\nread\n````", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
@@ -40,7 +40,7 @@ test("{§line-anchors} anchors rendered before an insertion above still resolve 
 \`\`\`\`NOTE
 editing
 \`\`\`\``, 50)] }).generate(args);
-            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````SEND\nedited\n````", 50)] }).generate(args);
+            if (calls === 4) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse("````KILL\nedited\n````", 50)] }).generate(args);
             return await realGenerate(args);
         };
         await withDaemon(mock, async (db, _daemon, addr) => {

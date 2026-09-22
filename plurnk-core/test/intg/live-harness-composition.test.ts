@@ -48,7 +48,7 @@ test("{§service-worker-composition} live workspaces expose the default worker r
 test("{§service-worker-composition} specimen schedules deliver and shut down without activating operator rules", async (t) => {
     const provider = new Mock({
         contextWindow: 100_000,
-        responses: [makeMockResponse("````SEND\nScheduled message received.\n````", 10)],
+        responses: [makeMockResponse("````KILL\nScheduled message received.\n````", 10)],
     });
     t.mock.method(ProviderInstantiate, "loadActiveProvider", async () => provider);
     const inference = t.mock.method(provider, "generate");

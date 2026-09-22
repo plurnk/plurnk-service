@@ -457,6 +457,12 @@ export default class AstBuilder {
         // {§kill-scope} — the scope names lines of a log body or of an entry; null kills the whole target.
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
         const split = AstBuilder.#splitInlineBody(ctx, position);
+        if (slots.target === null && slots.lineMarker === null && slots.metadata === null) {
+            return {
+                op: "KILL", aside: AstBuilder.#asideOf(ctx), ...slots, matcher: null,
+                body: AstBuilder.#bodyTextOf(ctx), position,
+            };
+        }
         AstBuilder.#adviseBody("KILL", split.below, position);
         const lifted = AstBuilder.#liftMatcher("KILL", slots.metadata, position, split.inline ?? split.below, split.inline !== null, slots.lineMarker !== null);
         return {

@@ -20,7 +20,7 @@ test("script oracle recognizes actual shell terminal receipts through the daemon
         await writeFile(join(workspace, "greet.sh"), "#!/bin/sh\nprintf 'GREETING\\n'\n");
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "````sh (greet.sh)````\n````WAIT\nWait for the script.\n````", reasoning: null } },
-            { assistant: { content: "````SEND\nGREETING\n````", reasoning: null } },
+            { assistant: { content: "````KILL\nGREETING\n````", reasoning: null } },
         ] });
         await withDaemon(provider, async (db, _daemon, addr) => {
             const ws = await connect(addr);

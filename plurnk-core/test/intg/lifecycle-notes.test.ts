@@ -24,7 +24,7 @@ test("#713: notes have durable sources, normal log curation, and do not block co
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: frame("NOTE", "Inspect the parser next."), reasoning } },
             { assistant: { content: frame("KILL (log:///1/2/*/NOTE)", null), reasoning: null } },
-            { assistant: { content: frame("SEND", "Finished."), reasoning: frame("NOTE", "Both checks passed.") } },
+            { assistant: { content: frame("KILL", "Finished."), reasoning: frame("NOTE", "Both checks passed.") } },
         ] });
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(first.status, 102);
@@ -77,7 +77,7 @@ test("#713: empty WAIT falls through and SEND plus a retrieval observes before c
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: frame("WAIT", "Wait for results."), reasoning: null } },
             { assistant: { content: [frame("SEND", "The answer."), frame("READ (ops://alice/1/1) <1,-1>", null)].join("\n\n"), reasoning: null } },
-            { assistant: { content: frame("SEND", null), reasoning: null } },
+            { assistant: { content: frame("KILL", null), reasoning: null } },
         ] });
         assert.equal((await engine.runTurn({ ...context, provider, messages: [] })).status, 102);
         assert.equal((await engine.runTurn({ ...context, provider, messages: [] })).status, 102);
@@ -98,7 +98,7 @@ test("{§reasoning-notes}: a rejected emission cannot commit its reasoning NOTE"
         const provider = new Mock({ contextWindow: 100_000, responses: [
             // {§unparsed-tail-boundary} — an unclosed target slot is the refusal that remains; a second WAIT is not one.
             { assistant: { content: "````READ (unfinished", reasoning: rejectedReasoning } },
-            { assistant: { content: frame("SEND", "Finished."), reasoning: acceptedReasoning } },
+            { assistant: { content: frame("KILL", "Finished."), reasoning: acceptedReasoning } },
         ] });
         const result = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(result.status, 200);

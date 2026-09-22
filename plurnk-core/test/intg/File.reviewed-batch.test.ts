@@ -39,7 +39,7 @@ test("{§scheme-edit-proposal-receipt} {§edit-result-render} {§edit-execution}
                 + "````EDIT (file:///reviewed.md) <4>\nFOUR\n````\n"
                 + "````SEND\ndone\n````",
                 20,
-            ), makeMockResponse("````SEND\ndone\n````", 10)], // {§send-premature-terminate} — the edit receipts force the second turn
+            ), makeMockResponse("````KILL\ndone\n````", 10)], // {§send-premature-terminate} — the edit receipts force the second turn
         });
         const reviewed = "reviewer\nreplacement\n";
         await withDaemon(mock, async (db, _daemon, addr) => {

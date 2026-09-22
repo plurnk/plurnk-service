@@ -27,25 +27,24 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
 * COPY: (path) <scope>? (path) <scope>? - Copy files, entries, streams, or text regions.
 * MOVE: (path) <scope>? (path) <scope>? - Move files, entries, streams, or text regions.
-* KILL: Delete, terminate, or curate the log.
+* KILL: Delete, terminate, curate the log, or end the loop.
 * WORK: Deploy a child worker (fresh log).
 * FORK: Deploy a forked worker (forked log).
 * BARE: Deploy an isolated inference query (no log or tools).
 * WAIT: Yield until the next wake: a child worker's result or a stream's end.
-* SEND: Message endpoints, workers, or deliver the final response turn.
+* SEND: Message endpoints or workers.
 
 ## Workflow Management
 
 > [!IMPORTANT]
-> A parameterless SEND goes to the operator (GFM format accepted) or parent worker.
-> Only a turn with a lone parameterless SEND by itself is a final response (if there are no unresolved child workers or streams).
+> YOU MAY conclude the loop with a turn containing ONLY a parameterless KILL.
 
-    ````SEND
-    The answer is 42.
+    ````KILL
+    The answer is **42**.
     ````
 
-> [!INFO]
-> To cancel and fail all unfinished work in your worker and its descendants, KILL your own worker address.
+> [!WARNING]
+> YOU MUST NOT conclude the loop before all other OPs, child workers, and streams are resolved and reviewed.
 
 ## Workspace Navigation
 

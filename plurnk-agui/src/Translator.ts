@@ -298,7 +298,7 @@ export default class Translator {
             const response = Translator.isResponse(e, this.#threadId);
             if (e.origin !== "model" && !response) continue;
             const text = Translator.#txBody(e.tx);
-            if (e.op === "SEND" || e.op === "NOTE" || typeof e.op === "string" && TurnDisposition.isOp(e.op)) {
+            if (response || e.op === "SEND" || e.op === "NOTE" || typeof e.op === "string" && TurnDisposition.isOp(e.op)) {
                 const reasoning = Translator.#claimReasoning(deliveredReasoning, e.turn_id, e.reasoning);
                 if (reasoning.length > 0) messages.push({ id: `${id}/reasoning`, role: "reasoning", content: reasoning });
             }
@@ -399,7 +399,7 @@ export default class Translator {
 
     // {§loop-response-messages}: share admission with reattach orientation.
     static isResponse(entry: Record<string, unknown>, threadId?: string): boolean {
-        if (entry.op !== "SEND") return false;
+        if (entry.op !== "SEND" && entry.op !== "KILL") return false;
         const deliveredReply = Translator.#attrKind(entry.attrs) === "reply";
         if ((!deliveredReply && entry.source != null) || entry.inherited_history === 1) return false;
         const tx: unknown = typeof entry.tx === "string" ? JSON.parse(entry.tx) : entry.tx;

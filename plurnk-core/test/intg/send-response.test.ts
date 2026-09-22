@@ -20,10 +20,10 @@ test("{§balanced-fences}: a complete nested reply reaches the client without ex
         "````sh", "printf must-not-execute", "````",
         "The rest of the answer survives intact. 🙂",
     ].join("\n");
-    const source = `\`\`\`\`SEND\n${body}\n\`\`\`\``;
+    const source = `\`\`\`\`SEND\n${body}\n\`\`\`\`\n\n\`\`\`\`KILL\n\`\`\`\``;
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeRawMockResponse(source, 10),
-        makeMockResponse("````SEND\nUnexpected continuation.\n````", 10),
+        makeMockResponse("````KILL\nUnexpected continuation.\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -35,7 +35,7 @@ test("{§balanced-fences}: a complete nested reply reaches the client without ex
             assert.equal(await lastReply(db, loopId), body, "the client receives the entire answer, not its prefix");
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: loopId });
-            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["SEND", 200]], "quoted commands produce no dispatch, proposals or execution receipts");
+            assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["SEND", 200], ["KILL", 200]], "quoted commands produce no dispatch, proposals or execution receipts");
             const turns = await db.test_list_turns_in_loop.all<{ producer: string }>({ loop_id: loopId });
             assert.equal(turns.filter(({ producer }) => producer === "model").length, 1, "no recovery turn or unnecessary continuation");
             const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: modelWorkerId! });
@@ -47,7 +47,7 @@ test("{§balanced-fences}: a complete nested reply reaches the client without ex
 test("{§empty-turn}: operations on the line after a bare fence make an empty turn with the advisories as notices; nothing runs", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeRawMockResponse(MISFENCED, 10),
-        makeMockResponse("````SEND\nthe answer\n````", 10),
+        makeMockResponse("````KILL\nthe answer\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -58,7 +58,7 @@ test("{§empty-turn}: operations on the line after a bare fence make an empty tu
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; turn_id: number }>({ loop_id: loopId });
             const model = rows.filter((r) => r.origin === "model");
-            assert.deepEqual(model.map(({ op }) => op), ["SEND", "SEND"], "literal text is silently recovered as SEND, then the corrected turn replies");
+            assert.deepEqual(model.map(({ op }) => op), ["SEND", "KILL"], "literal text is silently recovered as SEND, then the corrected turn replies");
             assert.match(JSON.stringify(mock.received[1]), /No valid Operation Syntax OPs detected\./, "the empty-turn warning still reaches the next inference");
             assert.ok(!model.some((r) => isExecutionOp(r.op) || r.op === "READ"), "nothing ran: prose is never promoted into an operation");
             const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: model[0]!.turn_id });
@@ -76,7 +76,7 @@ test("{§empty-turn}: operations on the line after a bare fence make an empty tu
 test("{§send-body}: messages that start with operation names remain literal replies", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND\nREAD (belfry.md) returned nothing because the file is empty.\n````\n\n````SEND\nDone\n````\n\n````SEND\nsh is the default shell here.\n````", 10),
-        makeMockResponse("````SEND\n````", 10),
+        makeMockResponse("````KILL\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -87,14 +87,15 @@ test("{§send-body}: messages that start with operation names remain literal rep
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number }>({ loop_id: loopId });
             const sends = rows.filter((r) => r.origin === "model" && r.op === "SEND");
-            assert.deepEqual(sends.map(({ status_rx }) => status_rx), [200, 200, 200, 200], "message content is never parsed as another operation");
+            assert.deepEqual(sends.map(({ status_rx }) => status_rx), [200, 200, 200], "message content is never parsed as another operation");
+            assert.ok(rows.some(({ origin, op, status_rx }) => origin === "model" && op === "KILL" && status_rx === 200));
         } finally { ws.close(); }
     });
 });
 
 test("{§send-response-receipt}: a delivered reply names the open messages it answered", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
-        makeMockResponse("````SEND\nthe answer\n````", 10),
+        makeMockResponse("````KILL\nthe answer\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -104,7 +105,7 @@ test("{§send-response-receipt}: a delivered reply names the open messages it an
             assert.equal(finalStatus, 200);
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
-            const send = rows.find((r) => r.origin === "model" && r.op === "SEND");
+            const send = rows.find((r) => r.origin === "model" && r.op === "KILL");
             assert.equal(send?.status_rx, 200);
             const receipt = JSON.parse(send!.rx) as { answers: string[]; recipients?: unknown };
             assert.ok(Array.isArray(receipt.answers), "a reply names answered message addresses in answers");
@@ -123,8 +124,8 @@ test("{§send-response-receipt}: a delivered reply names the open messages it an
 test("{§packet-extent-metadata}: previewing a sent reply changes neither delivery nor its retained body", async () => {
     const body = Array.from({ length: 40 }, (_, index) => `delivered line ${index + 1}`).join("\n");
     const mock = new Mock({ contextWindow: 100_000, responses: [
-        makeMockResponse(`\`\`\`\`SEND\n${body}\n\`\`\`\``, 10),
-        makeMockResponse("````SEND\nNoted.\n````", 10),
+        makeMockResponse(`\`\`\`\`SEND\n${body}\n\`\`\`\`\n\n\`\`\`\`KILL\n\`\`\`\``, 10),
+        makeMockResponse("````KILL\nNoted.\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

@@ -33,7 +33,7 @@ Await results.
             response(collect),
             response(collect),
             response(collect),
-            response("````SEND\n42\n````"),
+            response("````KILL\n42\n````"),
         ] });
         const run = () => new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
             workspaceId, workerId, loopId, provider, messages: [], maxTurns: 8, maxStrikes: priorStrike ? 2 : 1,
@@ -96,8 +96,8 @@ test("{§join-blocking-collect} the daemon wakes a collecting parent on actual c
     const provider = new Mock({ contextWindow: 100000, responses: [
         response("````WAIT\nAwait instructions.\n````"),
         response(collect),
-        response("````SEND\nChild answer: 42.\n````"),
-        response("````SEND\nChild answer received: 42.\n````"),
+        response("````KILL\nChild answer: 42.\n````"),
+        response("````KILL\nChild answer received: 42.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "join-wake-rails" });

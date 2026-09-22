@@ -234,7 +234,7 @@ for (const exitCode of [0, 7]) test(`{§env-delta-child-activity}: executor exit
         await Turn.complete(db, turn.id, 102);
         const continuation = () => new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("NOTE", "Observe."), reasoning: null } }] });
         await engine.runTurn({ workspaceId, workerId: child, loopId: childLoop,
-            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("SEND", "Executor result observed."), reasoning: null } }] }), messages: [] });
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("KILL", "Executor result observed."), reasoning: null } }] }), messages: [] });
         const childRows = await db.test_log_entries_by_loop.all<{ op: string; rx: string; attrs: string }>({ loop_id: childLoop });
         const output = childRows.filter(({ op, rx }) => op === "READ" && JSON.parse(rx).terminal === true);
         assert.ok(output.length > 0, "the owner's terminal observation was actually materialized");

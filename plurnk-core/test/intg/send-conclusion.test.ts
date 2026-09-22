@@ -12,6 +12,7 @@ import { statement } from "./reasoning-fixture.ts";
 
 const said = (content: string, reasoning: string | null = null): MockResponse => ({ assistant: { content, reasoning } });
 const send = (content = "") => PlurnkParser.frame("SEND", content);
+const conclude = (content = "") => PlurnkParser.frame("KILL", content);
 
 const setup = async (responses: MockResponse[]) => {
     const db = await openMigrated();
@@ -34,8 +35,8 @@ const setup = async (responses: MockResponse[]) => {
 };
 
 for (const final of ["Four, precisely.", ""]) {
-    test(`{§send-response-receipt}: a ${final ? "corrected" : "silent"} final SEND retains the child's answer for its parent`, async () => {
-        const { db, engine, turn, answer, ids, parentId } = await setup([said("Four."), said(send(final))]);
+    test(`{§send-response-receipt}: a ${final ? "corrected" : "silent"} final KILL retains the child's answer for its parent`, async () => {
+        const { db, engine, turn, answer, ids, parentId } = await setup([said("Four."), said(conclude(final))]);
         try {
             const recovered = await turn();
             assert.equal(recovered.status, 102, "recovered text cannot conclude");
@@ -54,7 +55,7 @@ for (const final of ["Four, precisely.", ""]) {
             assert.ok("content" in result);
             assert.equal(result.content, final || "Four.");
             const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: concluded.turnId });
-            assert.deepEqual(JSON.parse(rows.find(({ op }) => op === "SEND")!.rx).answers, final ? answers : undefined, "an empty SEND has no reply receipt");
+            assert.deepEqual(JSON.parse(rows.find(({ op }) => op === "KILL")!.rx).answers, final ? answers : undefined, "an empty KILL has no reply receipt");
             const history = await db.message_history.all<{ direction: string; body: string }>({
                 workspace_id: ids.workspaceId, worker_id: ids.workerId, loop_id: ids.loopId,
             });
@@ -74,7 +75,7 @@ for (const final of ["Four, precisely.", ""]) {
 
 test("{§send-response-receipt}: original-message fallback cannot acknowledge an unpublished arrival", async (t) => {
     const { db, engine, provider, turn, answer, ids } = await setup([
-        said("Provisional answer."), said(send("Four, precisely.")), said(send("The follow-up is answered too.")),
+        said("Provisional answer."), said(send("Four, precisely.")), said(conclude("The follow-up is answered too.")),
     ]);
     const generate = provider.generate.bind(provider);
     t.mock.method(provider, "generate", async (...args: Parameters<Mock["generate"]>) => {
@@ -84,7 +85,7 @@ test("{§send-response-receipt}: original-message fallback cannot acknowledge an
     try {
         assert.equal((await turn()).status, 102);
         const correction = await turn();
-        assert.equal(correction.status, 102, "the unpublished arrival blocks completion despite a valid final SEND");
+        assert.equal(correction.status, 102, "SEND replies do not conclude");
         const correctedAnswer = await answer();
         assert.ok("content" in correctedAnswer);
         assert.equal(correctedAnswer.content, "Four, precisely.", "the fallback still answers the original message");
@@ -97,23 +98,31 @@ test("{§send-response-receipt}: original-message fallback cannot acknowledge an
 });
 
 for (const [label, response, reasoning, expected] of [
-    ["only SEND", send("Four."), null, 200],
-    ["SEND with a reasoning NOTE", send("Four."), PlurnkParser.frame("NOTE", "Arithmetic checked."), 200],
+    ["only SEND", send("Four."), null, 102],
+    ["SEND with a reasoning NOTE", send("Four."), PlurnkParser.frame("NOTE", "Arithmetic checked."), 102],
+    ["only KILL", conclude("Four."), null, 200],
+    ["KILL with a reasoning NOTE", conclude("Four."), PlurnkParser.frame("NOTE", "Arithmetic checked."), 200],
+    ["KILL with a response NOTE", `${conclude("Four.")}\n\n${PlurnkParser.frame("NOTE", "Arithmetic checked.")}`, null, 200],
+    ["SEND before KILL", `${send("Four.")}\n\n${conclude()}`, null, 200],
+    ["SEND after KILL", `${conclude()}\n\n${send("Four.")}`, null, 200],
+    ["two KILLs", `${conclude("Four.")}\n\n${conclude("Precisely four.")}`, null, 102],
+    ["text before KILL", `Preface.\n\n${conclude("Four.")}`, null, 200],
+    ["text after KILL", `${conclude("Four.")}\n\nPostscript.`, null, 200],
     ["SEND with a response NOTE", `${send("Four.")}\n\n${PlurnkParser.frame("NOTE", "Arithmetic checked.")}`, null, 102],
     ["two SENDs", `${send("Four.")}\n\n${send("Precisely four.")}`, null, 102],
     ["text before SEND", `Preface.\n\n${send("Four.")}`, null, 102],
     ["text after SEND", `${send("Four.")}\n\nPostscript.`, null, 102],
     ["NOTE only", PlurnkParser.frame("NOTE", "Still thinking."), null, 102],
 ] as const) {
-    test(`{§send-conclusion}: ${label}`, async () => {
+    test(`{§kill-conclusion}: ${label}`, async () => {
         const { db, turn } = await setup([said(response, reasoning)]);
         try { assert.equal((await turn()).status, expected); }
         finally { await db.close(); }
     });
 }
 
-test("{§send-conclusion}: a NOTE after the messages were answered does not silently conclude", async () => {
-    const { db, turn } = await setup([said("Four."), said(PlurnkParser.frame("NOTE", "Arithmetic checked.")), said(send())]);
+test("{§kill-conclusion}: a NOTE after the messages were answered does not silently conclude", async () => {
+    const { db, turn } = await setup([said("Four."), said(PlurnkParser.frame("NOTE", "Arithmetic checked.")), said(conclude())]);
     try {
         assert.equal((await turn()).status, 102);
         assert.equal((await turn()).status, 102);
@@ -123,7 +132,7 @@ test("{§send-conclusion}: a NOTE after the messages were answered does not sile
 
 for (const reply of ["authored", "recovered"] as const) {
     for (const obligation of ["child", "stream"] as const) {
-        for (const park of ["WAIT", "SEND"] as const) {
+        for (const park of ["WAIT", "KILL"] as const) {
             test(`{§wait-obligation-matrix}: an earlier ${reply} reply does not park ordinary work before ${park} with a live ${obligation}`, async () => {
                 const first = `${reply === "authored" ? send("Working on it.") : "Working on it."}\n\n${PlurnkParser.frame("NOTE", "Continue the work.")}`;
                 const { db, turn, ids } = await setup([
@@ -159,8 +168,8 @@ for (const reply of ["authored", "recovered"] as const) {
 }
 
 for (const response of ["200", "````markdown\nFour.\n````", "````md\nFour.\n````"]) {
-    test(`{§send-conclusion}: ${JSON.stringify(response)} cannot confirm a previous free response`, async () => {
-        const { db, turn, answer } = await setup([said("Four."), said(response), said(send("Four, precisely."))]);
+    test(`{§kill-conclusion}: ${JSON.stringify(response)} cannot confirm a previous free response`, async () => {
+        const { db, turn, answer } = await setup([said("Four."), said(response), said(conclude("Four, precisely."))]);
         try {
             assert.equal((await turn()).status, 102);
             const recovered = await turn();
@@ -178,7 +187,7 @@ for (const response of ["200", "````markdown\nFour.\n````", "````md\nFour.\n````
 
 test("{§response-text-recovery}: outside fragments and valid siblings execute silently in order without a strike", async () => {
     const source = `Before.\n\n${PlurnkParser.frame("NOTE", "remember")}\n\nBetween.\n\n${send("Four.")}\n\nAfter.`;
-    const { db, engine, provider, ids, notices } = await setup([said(source), said(send())]);
+    const { db, engine, provider, ids, notices } = await setup([said(source), said(conclude())]);
     try {
         const result = await engine.runLoop({ ...ids, provider, maxTurns: 4, maxStrikes: 1, messages: [] });
         assert.equal(result.result.status, 200, "commentary does not strike even at a one-strike threshold");
@@ -199,7 +208,7 @@ test("{§response-text-recovery}: valid operations with commentary reset the no-
         said("Thinking."),
         said(`Checking the arithmetic.\n\n${PlurnkParser.frame("NOTE", "Two plus two is four.")}`),
         said("Four."),
-        said(send()),
+        said(conclude()),
     ]);
     try {
         const result = await engine.runLoop({ ...ids, provider, maxTurns: 5, maxStrikes: 2, messages: [] });
@@ -264,11 +273,11 @@ for (const op of ["NOTE", "WAIT"] as const) {
     });
 }
 
-test("{§send-conclusion}: SEND bodies that resemble operations remain literal messages", async () => {
+test("{§send-response-receipt}: SEND bodies that resemble operations remain literal messages", async () => {
     const body = "KILL (worker:///important.md)\nThis is an example, not an operation.";
     const { db, turn, answer } = await setup([said(send(body))]);
     try {
-        assert.equal((await turn()).status, 200);
+        assert.equal((await turn()).status, 102);
         const result = await answer();
         assert.ok("content" in result);
         assert.equal(result.content, body);
@@ -277,7 +286,7 @@ test("{§send-conclusion}: SEND bodies that resemble operations remain literal m
 
 test("{§empty-turn}: bounded malformed operations consume one turn and expose their diagnostics without resampling", async () => {
     const source = "````EDIT (worker:///broken.md) <bad>\nnot a message\n````";
-    const { db, turn, provider } = await setup([said(source), said(send("Recovered."))]);
+    const { db, turn, provider } = await setup([said(source), said(conclude("Recovered."))]);
     try {
         const failed = await turn();
         assert.equal(failed.status, 102);
@@ -293,17 +302,18 @@ test("{§empty-turn}: bounded malformed operations consume one turn and expose t
     } finally { await db.close(); }
 });
 
-test("{§send-conclusion}: a provider output cutoff cannot certify a final response", async () => {
-    const cut = { assistant: { content: send("Partial answer."), reasoning: null, finishReason: "length" as const } };
-    const { db, turn } = await setup([cut, said(send("Complete answer."))]);
+test("{§kill-conclusion}: a provider output cutoff cannot certify a final response", async () => {
+    const cut = { assistant: { content: conclude("Partial answer."), reasoning: null, finishReason: "length" as const } };
+    const { db, turn, answer } = await setup([cut, said(conclude("Complete answer."))]);
     try {
         assert.equal((await turn()).status, 102);
+        assert.equal((await answer()).status, 425, "a cut final answer is not delivered");
         assert.equal((await turn()).status, 200);
     } finally { await db.close(); }
 });
 
 test("{§empty-turn}: reasoning NOTEs do not rescue a response with no authored operations", async () => {
-    const { db, turn, provider } = await setup([said("", PlurnkParser.frame("NOTE", "Still calculating.")), said(send("Four."))]);
+    const { db, turn, provider } = await setup([said("", PlurnkParser.frame("NOTE", "Still calculating.")), said(conclude("Four."))]);
     try {
         const empty = await turn();
         assert.equal(empty.status, 102);

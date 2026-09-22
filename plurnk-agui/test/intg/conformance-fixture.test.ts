@@ -75,7 +75,7 @@ test("{§agui-official-client-conformance} the official client accepts a real da
         const rows = events.filter((event) => event.type === EventType.CUSTOM && (event as { name?: string }).name === "plurnk.row")
             .map((event) => (event as unknown as { value: { op: string; origin: string } }).value);
         assert.ok(rows.some(({ op, origin }) => op === "NOTE" && origin === "_plurnk"), "the initialization note remains an ordinary operation");
-        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["SEND"], "the answer concludes the run without a synthetic terminal operation");
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["KILL"], "the authored completion carries the answer without a synthetic operation");
         assert.equal(fixture.requests.length, 1, "one actual inference request completes the run");
         assert.equal(fixture.requests[0].journey, "cli");
 

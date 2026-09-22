@@ -38,7 +38,7 @@ test("#449: a body FIND over ~2k members with a handler-crashing member answers 
 
         const mock = new Mock({ contextWindow: 200_000, responses: [
             makeMockResponse("````FIND (test/**) [{\"pattern\":\"marker case\"}]````\n\n````NOTE\nlooking\n````", 50),
-            makeMockResponse("````SEND\ndone\n````", 50),
+            makeMockResponse("````KILL\ndone\n````", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

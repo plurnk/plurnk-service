@@ -64,7 +64,7 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
             turn(task),
             turn(`\`\`\`\`KILL (log:///*/*/*/READ) <1,-1>\n\`\`\`\`\n${task}`),
             turn(`\`\`\`\`READ ($RESOURCE#bytes) <1,3>\n\`\`\`\`\n${task}`),
-            turn("````SEND\nInspected and curated the remote evidence.\n````"),
+            turn("````KILL\nInspected and curated the remote evidence.\n````"),
         ],
     });
     const db = await openMigrated();

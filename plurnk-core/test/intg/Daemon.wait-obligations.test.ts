@@ -53,7 +53,7 @@ test("{§loop-wake-identity}: a message's reported and actual receiving loop agr
 test("{§worker-lifecycle-no-resurrection}: a concurrent cancellation leaves no runnable orphan message", async (t) => {
     const provider = new Mock({ contextWindow: 65536, responses: [
         makeMockResponse("````WAIT\nWait.\n````"),
-        makeMockResponse("````SEND\nMust not execute the cancelled follow-up.\n````"),
+        makeMockResponse("````KILL\nMust not execute the cancelled follow-up.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-admission-race" });

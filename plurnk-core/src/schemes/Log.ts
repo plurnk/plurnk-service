@@ -649,6 +649,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             {
                 ...statement,
                 op: "FIND",
+                body: null,
                 lineMarker: { marks: [1, -1] },
             },
             ctx,

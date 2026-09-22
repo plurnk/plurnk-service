@@ -69,7 +69,7 @@ export default class AdmittedTurnExecutor {
         failOnOperationError = false,
         recoverableParseErrors = [],
         emptyTurn = false,
-        finalResponse = statements.length === 1 && statements[0].op === "SEND" && statements[0].target === null,
+        finalResponse = TurnDisposition.requestsCompletion(statements),
         bare,
         signal,
         onDispatch,
@@ -97,7 +97,7 @@ export default class AdmittedTurnExecutor {
         // {§turn-shape} — continuation is the default; lifecycle verbs express explicit intent.
         // {§turn-disposition} — every WAIT is admitted and dispatched; together they are one park,
         // and the last of them settles the turn.
-        const dispositions = statements.filter(TurnDisposition.is);
+        const dispositions = statements.filter((statement) => TurnDisposition.is(statement) || TurnDisposition.isCompletion(statement));
         const finalOp = dispositions.at(-1);
         if (statements.length === 0 && !emptyTurn) {
             throw new Error("an admitted operation batch must contain operations");
@@ -120,7 +120,7 @@ export default class AdmittedTurnExecutor {
         let wait = false;
         const pendingEngineErrors: EngineProblemKind[] = [];
         let realCommands = 0;
-        const admitted = statements.filter((statement) => TurnDisposition.is(statement)
+        const admitted = statements.filter((statement) => TurnDisposition.is(statement) || TurnDisposition.isCompletion(statement)
             || realCommands++ < maxCommands);
         const scheduled = scheduleTurnOps(admitted.flatMap(expandSafeUriTargetGroup));
         const logSelectionMaxId = (await this.#db.engine_log_selection_high_water.get<{ max_id: number }>({
@@ -133,6 +133,7 @@ export default class AdmittedTurnExecutor {
             (statement.op === "EDIT" || statement.op === "KILL") && LineAnchors.hasAnchor(statement.lineMarker))
             ? new EditSequence() : undefined;
         const droppedCount = statements.length - admitted.length;
+        const completionEligible = finalResponse && droppedCount === 0;
         let bareResults: ReadonlyMap<BareStatement, BareBatchResult> = new Map();
         const outcomes: StrikeOutcome[] = [];
         const results: DispatchResult[] = [];
@@ -270,6 +271,7 @@ export default class AdmittedTurnExecutor {
                             origin,
                             logSelectionMaxId,
                             editSequence,
+                            finalResponse: completionEligible,
                             onDispatch,
                             onSettled,
                         });
@@ -333,7 +335,7 @@ export default class AdmittedTurnExecutor {
                 ),
             });
         }
-        const turnStatus = await this.#dispatcher.settleProgram({ workerId, loopId, turnId, origin }, wait, finalResponse);
+        const turnStatus = await this.#dispatcher.settleProgram({ workerId, loopId, turnId, origin }, wait, completionEligible);
         await Turn.complete(this.#db, turnId, turnStatus);
         return {
             status: turnStatus,

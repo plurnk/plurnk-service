@@ -1,4 +1,4 @@
-import { TurnDisposition } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import {
     assertEditReceipt,
     assertResourceEffects,
@@ -129,7 +129,7 @@ export default class LogBody {
             return contentBody ?? EMPTY_BODY;
         }
 
-        if (row.op === "EDIT" || row.op === "KILL") {
+        if (row.op === "EDIT" || row.op === "KILL" && !(tx !== null && typeof tx === "object" && TurnDisposition.isCompletion(tx as PlurnkStatement))) {
             if (rx !== null && typeof rx === "object") {
                 const result = rx as Record<string, unknown>;
                 if (Object.hasOwn(result, "receipt")) {
@@ -190,7 +190,7 @@ export default class LogBody {
             };
         }
 
-        if (row.op === "SEND" || row.op === "WORK" || row.op === "FORK") {
+        if (row.op === "SEND" || row.op === "KILL" || row.op === "WORK" || row.op === "FORK") {
             if (tx !== null && typeof tx === "object") {
                 const body = (tx as { body?: unknown }).body;
                 const content = typeof body === "string"

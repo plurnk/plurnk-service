@@ -44,7 +44,7 @@ test("{§worker-lifecycle-poll-matrix} closure wakes the parked loop exactly onc
     process.env.PLURNK_SERVICE_EXEC_POLL_SEC = "600";
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````sh\nsleep 3; echo closed\n````\n\n````WAIT\nwaiting for closure\n````", 10),
-        makeMockResponse("````SEND\nobserved terminal closure\n````", 10),
+        makeMockResponse("````KILL\nobserved terminal closure\n````", 10),
     ] });
     try {
         await withDaemon(mock, async (_db, _daemon, addr) => {

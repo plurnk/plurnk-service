@@ -55,6 +55,26 @@ test("a model op row is a TOOL_CALL triple with its rx as the RESULT", () => {
     assert.match(args.delta, /known:\/\/\/notes\.md/, "the target rides the args");
 });
 
+test("{§kill-conclusion}: only delivered KILL answers enter AG-UI live and replay messages", () => {
+    const messages = [
+        entry({ id: 11, coordinate: "1/1/1/KILL", op: "KILL", status_rx: 102,
+            tx: { target: null, body: "Premature answer." }, rx: { status: 102, detail: "Completion requires a KILL-only turn." } }),
+        entry({ id: 12, coordinate: "1/2/1/KILL", op: "KILL", status_rx: 202,
+            tx: { target: null, body: "Unreviewed child answer." }, rx: { status: 202 } }),
+        entry({ id: 13, coordinate: "1/3/1/KILL", op: "KILL", status_rx: 200,
+            tx: { target: null, body: "The answer is **42**." }, rx: { status: 200, answers: [] } }),
+        entry({ id: 14, coordinate: "1/4/1/KILL", op: "KILL", status_rx: 200,
+            tx: { target: null, body: null }, rx: { status: 200 } }),
+    ];
+    const tr = t();
+    const live = messages.flatMap((message) => tr.logEntry(message));
+    assert.deepEqual(live.filter((event) => event.type === EventType.TEXT_MESSAGE_CONTENT).map((event) => event.delta), ["The answer is **42**."]);
+    const [snapshot] = tr.replay(messages.map(({ entry }) => entry));
+    assert.equal(snapshot.type, EventType.MESSAGES_SNAPSHOT);
+    if (snapshot.type !== EventType.MESSAGES_SNAPSHOT) assert.fail("missing snapshot");
+    assert.deepEqual(snapshot.messages.filter((message) => message.role === "assistant").map((message) => message.content), ["The answer is **42**."]);
+});
+
 test("{§agui-projection} WAIT conveys lifecycle without fabricating speech or a plan", () => {
     const tr = t();
     const events = tr.logEntry(entry({ op: "WAIT", coordinate: "1/1/3/WAIT", tx: { body: "Wait for the child." } }));

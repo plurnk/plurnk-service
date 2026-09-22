@@ -66,6 +66,7 @@ export type DispatchContext = {
     // execution. Direct single-operation dispatch captures its own boundary.
     logSelectionMaxId?: number;
     editSequence?: EditSequence;
+    finalResponse?: boolean;
     // Durable identity is available before a proposal can be resolved; the
     // terminal row becomes externally visible only after that proposal settles.
     onDispatch?: (logEntryId: number) => void;
@@ -533,6 +534,10 @@ export default class Dispatcher {
                     result = await this.#resourceMutations.edit(statement, schemeCtx, context.editSequence);
                 } else if (statement.op === "SEND" && statement.target === null) {
                     result = await this.#respond(statement, schemeCtx, loopId);
+                } else if (TurnDisposition.isCompletion(statement)) {
+                    result = await this.#disposition.completion({ workerId, loopId, turnId, origin },
+                        context.finalResponse === true, (statement.body ?? "").trim() !== "");
+                    if (result.status === 200) result = await this.#respond(statement, schemeCtx, loopId);
                 } else if (statement.op === "NOTE") {
                     await Turn.recordSource(this.#db, turnId, "note", statement.body ?? "", { sequence });
                     const coordinate = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({ loop_id: loopId, turn_id: turnId });
@@ -967,7 +972,7 @@ export default class Dispatcher {
     // - MOVE: both src (delete) and dst (write) schemes' writableBy apply.
     #checkWritable(statement: PlurnkStatement, origin: WriterTier, workspaceId: number): DispatchResult | null {
         if (!isExecution(statement) && !MUTATING_OPS.has(statement.op)) return null;
-        if (TurnDisposition.is(statement) || statement.op === "SEND" && statement.target === null) return null;
+        if (TurnDisposition.is(statement) || TurnDisposition.isCompletion(statement) || statement.op === "SEND" && statement.target === null) return null;
 
         // An execution's operation authority always belongs to the exec scheme;
         // runtime-specific resource authority is gated separately below.
@@ -1219,7 +1224,7 @@ export default class Dispatcher {
 
 
     // {§send-response-receipt}: message content is literal; only its header selects a destination.
-    async #respond(statement: SendStatement, schemeCtx: PlurnkSchemeContext, loopId: number): Promise<DispatchResult> {
+    async #respond(statement: SendStatement | KillStatement, schemeCtx: PlurnkSchemeContext, loopId: number): Promise<DispatchResult> {
         const captured = await MessageAttachments.capture(statement.metadata, schemeCtx.resources!, "message:reply");
         if ("failure" in captured) return captured.failure;
         const target = statement.target;
@@ -1344,7 +1349,7 @@ export default class Dispatcher {
     // {§proposal}/{§send} — native dispositions park; other 202 results propose.
     static #isProposal(statement: PlurnkStatement, result: DispatchResult): boolean {
         if (result.status !== 202) return false;
-        return !TurnDisposition.is(statement);
+        return !TurnDisposition.is(statement) && !TurnDisposition.isCompletion(statement);
     }
 
     // Normalize a parsed target for log storage. Bare paths and `file:///...`

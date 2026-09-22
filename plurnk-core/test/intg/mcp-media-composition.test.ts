@@ -77,7 +77,7 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             ...(form === "multipart" ? [turn(`\`\`\`\`READ ($RESOURCE)\`\`\`\`\n\n${step("NOTE")}`)] : []),
             turn(`\`\`\`\`READ ($RESOURCE${form === "inline" || form === "link" ? "#bytes" : ""}) <1,3>\`\`\`\`\n\n${step("NOTE")}`),
             turn(step("NOTE")),
-            turn(step("SEND")),
+            turn(step("KILL")),
         ] });
         provider.beforeFirstRead = () => assert.equal(resourceReads, 0, "listing a resource link does not acquire its bytes");
         const db = await openMigrated();

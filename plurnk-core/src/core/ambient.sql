@@ -17,7 +17,7 @@ END;
 DROP TRIGGER IF EXISTS log_entries_deliver_replies;
 CREATE TRIGGER log_entries_deliver_replies
 AFTER INSERT ON log_entries
-WHEN NEW.op = 'SEND' AND NEW.state = 'resolved' AND NEW.status_rx BETWEEN 200 AND 299
+WHEN NEW.op IN ('SEND', 'KILL') AND NEW.state = 'resolved' AND NEW.status_rx BETWEEN 200 AND 299
   AND NEW.source IS NULL AND NEW.inherited_history = 0
   AND json_type(CASE WHEN json_valid(NEW.rx) THEN NEW.rx END, '$.answers') = 'array'
 BEGIN
@@ -26,7 +26,7 @@ BEGIN
         kind, source_record_id, source, op, tx, mimetype_tx, rx, mimetype_rx, status_rx, state, attrs
     )
     SELECT d.workspace_id, NEW.worker_id, d.recipient_worker_id,
-        'reply', NEW.id, NULL, 'SEND', NEW.tx, NEW.mimetype_tx, NEW.rx, NEW.mimetype_rx,
+        'reply', NEW.id, NULL, NEW.op, NEW.tx, NEW.mimetype_tx, NEW.rx, NEW.mimetype_rx,
         NEW.status_rx, 'resolved', '{"kind":"reply"}'
     FROM delivered_message_replies d
     WHERE d.source_record_id = NEW.id AND d.recipient_worker_id != NEW.worker_id;

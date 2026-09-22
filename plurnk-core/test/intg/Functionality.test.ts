@@ -376,7 +376,7 @@ for (const hold of ["", "fx:host"]) {
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeMockResponse(`${PlurnkParser.frame("fx (add)", JSON.stringify({ alias: "candidate", definition: { kind: "ok" } }))}\n${step("NOTE")}`),
             makeMockResponse(`${PlurnkParser.frame("candidate", "fixture")}\n${step("NOTE")}`),
-            makeMockResponse(step("SEND")),
+            makeMockResponse(step("KILL")),
         ] });
         const db = await openMigrated();
         const log: string[] = [];

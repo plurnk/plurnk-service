@@ -31,6 +31,20 @@ test("PlurnkStatement: KILL with regex matcher", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
+test("{§kill-conclusion}: parameterless KILL preserves its literal answer and optional aside", () => {
+    for (const body of [null, "The answer is **42**.", "SEND (worker://alice)\n```sh\necho 42\n```", "{\"answer\":42}"]) {
+        const source = PlurnkParser.frame("KILL <!-- final answer -->", body);
+        const result = PlurnkParser.parse(source);
+        assert.equal(result.items.length, 1, "a final body is not a matcher or parser advisory");
+        const item = result.items[0];
+        assert.equal(item.kind, "statement");
+        if (item.kind !== "statement" || item.statement.op !== "KILL") assert.fail("expected KILL");
+        assert.equal(item.statement.body, body);
+        assert.equal(item.statement.aside, "final answer");
+        assert.equal(validateRoundTrip(source)?.valid, true);
+    }
+});
+
 test("PlurnkStatement: KILL with jsonpath matcher", () => {
     const r = validateRoundTrip('````KILL (log://**) [{"pattern": "$.status"}]````');
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));

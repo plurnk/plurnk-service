@@ -25,9 +25,9 @@ test("{§worker-lifecycle-child-matrix} a child worker concluding wakes a parent
         // Parent turn 1: spawn a child worker, then hibernate awaiting it.
         makeMockResponse("````WORK (worker://worker)\ncompute the thing and finish\n````\n\n````WAIT\nspawned worker; waiting on it\n````", 10),
         // Child turn 1: do its part and conclude → this is the wake edge for the parent.
-        makeMockResponse("````SEND\nworker done\n````", 10),
+        makeMockResponse("````KILL\nworker done\n````", 10),
         // Parent turn 2 (only reached if the child's conclusion woke it): conclude.
-        makeMockResponse("````SEND\nworker finished; all done\n````", 10),
+        makeMockResponse("````KILL\nworker finished; all done\n````", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -55,7 +55,7 @@ test("a child cancelling itself (499) also wakes the parent — any conclusion i
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````WORK (worker://doomed)\ntry the risky thing\n````\n\n````WAIT\nwaiting on doomed\n````", 10),
         makeMockResponse("````SEND\ndoomed gave up\n````\n````KILL (worker://doomed)\n````", 10),
-        makeMockResponse("````SEND\ndoomed is done (failed); concluding\n````", 10),
+        makeMockResponse("````KILL\ndoomed is done (failed); concluding\n````", 10),
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -74,7 +74,7 @@ test("{§worker-lifecycle-child-wake}: one completed child task wakes its parent
         makeMockResponse("````WAIT\nFirst task waits.\n````"),
         makeMockResponse("````WAIT\nSecond task waits.\n````"),
         makeMockResponse("````WAIT\nParent awaits results.\n````"),
-        makeMockResponse("````SEND\nFirst task result: 42.\n````"),
+        makeMockResponse("````KILL\nFirst task result: 42.\n````"),
         makeMockResponse("````WAIT\nFirst result observed; second task remains.\n````"),
     ] });
     try {
@@ -128,7 +128,7 @@ test("{§worker-lifecycle-child-wake}: cancelling a parked child notifies its wa
     const provider = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````WAIT\nChild waits.\n````"),
         makeMockResponse("````WAIT\nParent awaits child.\n````"),
-        makeMockResponse("````SEND\nChild cancellation observed.\n````"),
+        makeMockResponse("````KILL\nChild cancellation observed.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-parked-child" });
@@ -157,7 +157,7 @@ test("an empty failed child stream is observed by the child before its terminal 
         makeMockResponse("````WORK (worker://stream-child)\nrun the empty failing stream and report its outcome\n````\n\n````WAIT\nwaiting on stream-child\n````", 10),
         makeMockResponse("````sh (emptyfail)\ngo\n````\n\n````WAIT\nwaiting for emptyfail\n````", 10),
         makeMockResponse("````SEND\nemptyfail failed with no output\n````\n````KILL (worker://stream-child)\n````", 10),
-        makeMockResponse("````SEND\nthe child reported the empty stream failure\n````", 10),
+        makeMockResponse("````KILL\nthe child reported the empty stream failure\n````", 10),
     ] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         await daemon.registerRuntime({
@@ -266,9 +266,9 @@ test("wake propagates UP a grandchild chain (parent→child→grandchild)", asyn
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````WORK (worker://child)\ndo subwork\n````\n\n````WAIT\nawaiting child\n````", 10),       // parent t1
         makeMockResponse("````WORK (worker://grandchild)\ndo leaf work\n````\n\n````WAIT\nawaiting grandchild\n````", 10), // child t1
-        makeMockResponse("````SEND\nleaf done\n````", 10),                                                   // grandchild
-        makeMockResponse("````SEND\nchild done\n````", 10),                                                  // child t2 (woken)
-        makeMockResponse("````SEND\nall done\n````", 10),                                                    // parent t2 (woken)
+        makeMockResponse("````KILL\nleaf done\n````", 10),                                                   // grandchild
+        makeMockResponse("````KILL\nchild done\n````", 10),                                                  // child t2 (woken)
+        makeMockResponse("````KILL\nall done\n````", 10),                                                    // parent t2 (woken)
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -285,10 +285,10 @@ test("a parent wakes across SEQUENTIAL children (multiple wakes)", async () => {
     // static packet so the wake budget edge is the subtree, not the tool teaching.
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````WORK (worker://w1)\nfirst job\n````\n\n````WAIT\nawaiting w1\n````", 10), // parent t1
-        makeMockResponse("````SEND\nw1 done\n````", 10),                                       // w1
+        makeMockResponse("````KILL\nw1 done\n````", 10),                                       // w1
         makeMockResponse("````WORK (worker://w2)\nsecond job\n````\n\n````WAIT\nawaiting w2\n````", 10),// parent t2 (woken by w1)
-        makeMockResponse("````SEND\nw2 done\n````", 10),                                       // w2
-        makeMockResponse("````SEND\nboth done\n````", 10),                                     // parent t3 (woken by w2)
+        makeMockResponse("````KILL\nw2 done\n````", 10),                                       // w2
+        makeMockResponse("````KILL\nboth done\n````", 10),                                     // parent t3 (woken by w2)
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -315,11 +315,11 @@ test("an irc (SEND worker://name) wakes a CONCLUDED sibling on that worker's dur
     // message as its prompt (the same wake `loop.inject` proves for the operator voice), never a
     // resume-in-place of a slept loop — there is no slept loop to resume.
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("````SEND\nstanding by for the entry code\n````", 10), // loop 1 — idle actor concludes
+        makeMockResponse("````KILL\nstanding by for the entry code\n````", 10), // loop 1 — idle actor concludes
     ] });
     const directRoute: ProviderSpec = { provider: "mocktest", model: `irc-${crypto.randomUUID()}` };
     const selected = new Mock({ contextWindow: viableWindow(), responses: [
-        makeMockResponse("````SEND\nreceived the entry code and confirmed\n````", 10),
+        makeMockResponse("````KILL\nreceived the entry code and confirmed\n````", 10),
     ] });
     ProviderInstantiate.registerInstance(selected, directRoute);
     await withDaemon(mock, async (db, daemon, addr) => {
@@ -360,7 +360,7 @@ test("an irc (SEND worker://name) wakes a CONCLUDED sibling on that worker's dur
 test("an empty wait continues through the real loop until the assignment is answered", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("````WAIT\nnothing running; done for now\n````", 10),
-        makeMockResponse("````SEND\nNo work remains.\n````", 10),
+        makeMockResponse("````KILL\nNo work remains.\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -372,7 +372,7 @@ test("an empty wait continues through the real loop until the assignment is answ
             assert.equal(t.length, 1, "the loop concluded — one loop/terminated, no held-open 202");
             assert.equal(t[0].result.status, 200, "the answered assignment concludes the loop");
             const rows = await db.test_ops_by_loop.all<{ op: string; status_rx: number }>({});
-            assert.deepEqual(rows.filter(({ op }) => op === "WAIT" || op === "SEND").map(({ status_rx }) => status_rx), [102, 200]);
+            assert.deepEqual(rows.filter(({ op }) => op === "WAIT" || op === "KILL").map(({ status_rx }) => status_rx), [102, 200]);
             assert.equal(mock.remaining, 0);
         } finally { ws.close(); }
     });
@@ -396,7 +396,7 @@ test("spawn and fork carry the delegating loop's policy — an accepting parent'
         makeMockResponse("````EDIT (worker:///from-fork)\npayload\n````\n\n````SEND\nfork done\n````", 10),
         // {§send-premature-terminate}: the children observe their EDIT receipts
         // before completing. A parent claim remains gated on its child results.
-        ...Array.from({ length: 4 }, () => makeMockResponse("````SEND\nDelegated edits observed.\n````", 10)),
+        ...Array.from({ length: 4 }, () => makeMockResponse("````KILL\nDelegated edits observed.\n````", 10)),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -426,10 +426,10 @@ test("a wake re-queue (100) mid-drain is re-claimed and continued — never retu
     // (202→100) and the drain re-claims it (100→102). Exactly one terminal must fire for the parent, 200.
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````WORK (worker://helper)\ndo a quick thing\n````\n\n````WAIT\nawaiting helper\n````", 10), // parent — blocks on its child
-        makeMockResponse("````SEND\nhelper done\n````", 10),                    // helper — concludes, waking the parent
-        makeMockResponse("````SEND\nhelper delivered; concluding\n````", 10),   // parent — re-queued by the wake, concludes
-        makeMockResponse("````SEND\ndone\n````", 10),                           // buffer
-        makeMockResponse("````SEND\ndone\n````", 10),                           // buffer
+        makeMockResponse("````KILL\nhelper done\n````", 10),                    // helper — concludes, waking the parent
+        makeMockResponse("````KILL\nhelper delivered; concluding\n````", 10),   // parent — re-queued by the wake, concludes
+        makeMockResponse("````KILL\ndone\n````", 10),                           // buffer
+        makeMockResponse("````KILL\ndone\n````", 10),                           // buffer
     ] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -457,16 +457,16 @@ test("log-targeted KILL is recorded in the DB, and a failed one persists", async
         makeMockResponse("````EDIT (worker:///note)\nsome content worth folding\n````\n\n````NOTE\nwrote\n````", 10),
         // The phantom KILL fails (404); the next turn observes the failure.
         makeMockResponse("````KILL (log:///1/2/1) <1,-1>````\n````KILL (log:///9/9/9) <1,-1>````\n````NOTE\ncurated\n````", 10),
-        makeMockResponse("````SEND\nthe phantom KILL failed; curation done\n````", 10),
+        makeMockResponse("````KILL\nthe phantom KILL failed; curation done\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "meta-ops" });
-            const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "curate", policy: { proposals: "accept" } });
+            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "curate", policy: { proposals: "accept" } });
             assert.equal(finalStatus, 200, "a curation turn is work, never idleness — the loop concluded");
-            const rows = await db.test_ops_by_loop.all<{ op: string; status_rx: number }>({});
-            const kills = rows.filter((r) => r.op === "KILL");
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; tx: string }>({ loop_id: loopId });
+            const kills = rows.filter((r) => r.origin === "model" && r.op === "KILL" && JSON.parse(r.tx).target !== null);
             assert.equal(kills.length, 2, `both KILLs recorded in the DB; got ${JSON.stringify(kills)}`);
             assert.deepEqual(kills.map(({ status_rx }) => status_rx), [200, 404], "one success + one failure recorded");
         } finally { ws.close(); }

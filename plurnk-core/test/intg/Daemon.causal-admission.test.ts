@@ -63,8 +63,8 @@ Wait for the child.
 
 test("{§worker-lifecycle-no-resurrection}: cancellation wins over completion with an unread arrival and survives restart", async (t) => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        makeMockResponse("````SEND\nFinished the original request.\n````"),
-        makeMockResponse("````SEND\nIndependent new request completed.\n````"),
+        makeMockResponse("````KILL\nFinished the original request.\n````"),
+        makeMockResponse("````KILL\nIndependent new request completed.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-prompt-promotion" });

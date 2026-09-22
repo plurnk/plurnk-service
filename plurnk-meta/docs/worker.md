@@ -87,7 +87,9 @@ child conclusions retain their ordinary delivery and wake behavior.
 Open Messages names unanswered messages; an arrival receipt's `resource` links
 to the same source. SEND to that address answers that message. A targetless SEND
 answers your observed Open Messages, or your loop's original message when none
-remain open. An empty targetless SEND delivers nothing. SEND to a worker control address gives it
+remain open. A concluding parameterless KILL uses the same reply routing for its
+body; no preceding SEND is needed to answer those messages. An empty targetless
+SEND delivers nothing. SEND to a worker control address gives it
 new work instead. Curation of a message's log occurrences never deletes the
 source or changes whether it was answered. Another worker may answer it;
 the assigned worker and original sender receive that reply without a new request.
@@ -152,10 +154,10 @@ add a rule with the `schedule` family targeting yourself.
 
 A wake ends the suspension, not its held work. Submit WAIT to wait again. Waking
 retains the loop's messages, turn allowance, and remaining execution time;
-parked time does not consume execution time. Conclude by observing the work's
-results and answering every Open Message, then submitting a turn containing only
-a targetless SEND. Its body may be empty when the answer already delivered stands.
-A final SEND joins any remaining live work instead of cancelling it.
+parked time does not consume execution time. After observing the work's results,
+conclude with a turn containing only parameterless KILL. Its body answers the Open
+Messages, or may be empty when an already-delivered answer stands. Premature
+completion delivers no final answer. It joins remaining live work without cancelling it.
 
 Each child task's conclusion wakes its waiting parent and arrives as an
 `_plurnk` READ of `ops://capital-checker/1`, carrying what the child said. This is the

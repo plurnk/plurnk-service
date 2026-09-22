@@ -9,7 +9,7 @@ test("{§exec-input}: the production loop sends stdin, waits for EOF completion,
     const mock = new StreamMock({ contextWindow: 100_000, responses: [
         makeMockResponse("````node [{\"stdin\": \"open\"}]\nprocess.stdin.on(\"data\", d => process.stdout.write(\"received:\" + d));\n````\n\n````NOTE\nDeliver input to the process.\n````", 10),
         makeMockResponse("````SEND ($STREAM) [{\"eof\": true}]\ninput-witness\n````\n\n````WAIT\nObserve the output.\n````", 10),
-        makeMockResponse("````SEND\nVerified the process response.\n````", 10),
+        makeMockResponse("````KILL\nVerified the process response.\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, address) => {
         const client = await connect(address);
@@ -38,7 +38,7 @@ for (const reply of ["authored", "recovered"] as const) {
             makeRawMockResponse(`${prefix}\n\n\`\`\`\`NOTE\nStart the process, then deliver its input.\n\`\`\`\``),
             makeRawMockResponse("````node [{\"stdin\":\"open\"}]\nlet input = \"\"; process.stdin.on(\"data\", d => input += d); process.stdin.on(\"end\", () => console.log(\"received:\" + input));\n````"),
             makeRawMockResponse("````SEND ($STREAM) [{\"eof\":true}]\nlater-witness\n````\n\n````WAIT\n````"),
-            makeRawMockResponse("````SEND\nVerified later-witness in the process response.\n````"),
+            makeRawMockResponse("````KILL\nVerified later-witness in the process response.\n````"),
         ] });
         await withDaemon(mock, async (db, _daemon, address) => {
             const client = await connect(address);
@@ -76,7 +76,7 @@ for (const cause of ["operation", "parser", "commentary"] as const) {
         const mock = new StreamMock({ contextWindow: 100_000, responses: [
             makeRawMockResponse(`${prefix}\`\`\`\`node [{"stdin":"open"}]\nlet input = ""; process.stdin.on("data", d => input += d); process.stdin.on("end", () => console.log("received:" + input));\n\`\`\`\``),
             makeMockResponse("````SEND ($STREAM) [{\"eof\":true}]\nrecovery-witness\n````\n\n````WAIT\nObserve the response.\n````"),
-            makeMockResponse("````SEND\nVerified recovery-witness in the process response.\n````"),
+            makeMockResponse("````KILL\nVerified recovery-witness in the process response.\n````"),
         ] });
         await withDaemon(mock, async (db, _daemon, address) => {
             const client = await connect(address);

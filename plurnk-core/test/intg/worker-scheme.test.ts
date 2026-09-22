@@ -1102,8 +1102,8 @@ test("an empty join cannot manufacture a terminal deliverable from its inventory
         const collected = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
         assert.equal(collected.status, 425);
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "````SEND\n````", reasoning: null } },
-            { assistant: { content: "````SEND\nThe module was tested.\n````", reasoning: null } },
+            { assistant: { content: "````KILL\n````", reasoning: null } },
+            { assistant: { content: "````KILL\nThe module was tested.\n````", reasoning: null } },
         ] });
         const completed = await engine.runTurn({ provider, workspaceId, workerId: worker, loopId: wLoop, messages: [] });
         assert.equal(completed.status, 102, "empty completion cannot answer an open assignment");

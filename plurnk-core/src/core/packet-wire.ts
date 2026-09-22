@@ -880,7 +880,7 @@ export default class PacketWire {
             meta.channels = rx.channels;
         }
         // {§send-response-receipt} — a reply's row names the prompts it answered.
-        if (op === "SEND" && rx !== null && typeof rx === "object" && Array.isArray(rx.answers)) {
+        if ((op === "SEND" || op === "KILL") && rx !== null && typeof rx === "object" && Array.isArray(rx.answers)) {
             meta.answers = rx.answers;
         }
         if (op === "READ" || op === "FIND") {

@@ -1,4 +1,4 @@
-import { sendStmt, noteStmt  } from "./_dsl.ts";
+import { sendStmt, noteStmt } from "./_dsl.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { EditStatement, PlurnkStatement, UrlPath } from "@plurnk/plurnk-contracts";
@@ -123,8 +123,6 @@ test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () =
             contextWindow: 100000,
             responses: [
                 response([editStmt("/state", "from turn 1"), noteStmt("continuing")]),
-                // The pending set ({§send-premature-terminate}) forbids READ + [200] in one turn —
-                // the retrieval's result arrives next packet. Read, continue, THEN conclude.
                 response([readStmt("/state"), noteStmt("reading")]),
                 response([sendStmt(null, "done")]),
             ],
@@ -136,7 +134,7 @@ test("e2e: cross-turn state — turn 2 sees entry written in turn 1", async () =
         assert.notEqual(turn1.turnId, turn2.turnId);
         assert.deepEqual(turn1.statuses, [201, 200]);
         assert.deepEqual(turn2.statuses, [200, 200], "READ → 200; the continue receives the result next turn");
-        assert.deepEqual(turn3.statuses, [200], "the conclusion lands clean — nothing pending");
+        assert.deepEqual(turn3.statuses, [200], "the reply is delivered after the read");
 
         const turn2Reads = (await db.test_log_entries_by_turn.all<{ sequence: number; status_rx: number; pathname: string; op: string }>({ turn_id: turn2.turnId }))
             .filter((r) => r.op === "READ");

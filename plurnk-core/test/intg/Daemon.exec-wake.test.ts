@@ -42,7 +42,7 @@ const mockResponse = (dsl: string) => {
 test("{§worker-lifecycle-wake-liveness}: a peer can cancel a workspace stream and wake its initiating waiting worker", async () => {
     const mock = new Mock({ contextWindow: 65536, responses: [
         mockResponse("````sh\nsleep 30\n````\n````WAIT\nWait for the command's outcome.\n````"),
-        mockResponse("````SEND\nThe command was cancelled.\n````"),
+        mockResponse("````KILL\nThe command was cancelled.\n````"),
     ] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
@@ -102,7 +102,7 @@ test("{§notifications-stream-concluded}: a pending completion wake is not repor
     });
     const provider = new Mock({ contextWindow: 65536, responses: [
         mockResponse("````sh\nsleep 30\n````\n````WAIT\nWait for the command.\n````"),
-        mockResponse("````SEND\nA cancelled task must not reach this turn.\n````"),
+        mockResponse("````KILL\nA cancelled task must not reach this turn.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon, addr) => {
         const ws = await connect(addr);
@@ -143,13 +143,13 @@ test("{§methods-loop-run-model}: an async wake resumes with the loop's durable 
     const releasePath = join(releaseDir, "release");
     const boot = new Mock({
         contextWindow: 16384,
-        responses: [mockResponse("````SEND\nboot provider must never run this loop\n````")],
+        responses: [mockResponse("````KILL\nboot provider must never run this loop\n````")],
     });
     const selected = new Mock({
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl(`while [ ! -f '${releasePath}' ]; do sleep 0.05; done; echo selected`)),
-            mockResponse("````SEND\nresumed on selected provider\n````"),
+            mockResponse("````KILL\nresumed on selected provider\n````"),
         ],
     });
     const selectedSpec = { alias: "wakeb", provider: "openai", model: "wake-provider-b" } as const;
@@ -213,14 +213,14 @@ test("{§methods-loop-run-model}: a selector-less continuation resumes the loop'
     const releasePath = join(releaseDir, "release");
     const boot = new Mock({
         contextWindow: 16384,
-        responses: [mockResponse("````SEND\nboot provider must never run this loop\n````")],
+        responses: [mockResponse("````KILL\nboot provider must never run this loop\n````")],
     });
     const selected = new Mock({
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl(`while [ ! -f '${releasePath}' ]; do sleep 0.05; done; echo selected`)),
             mockResponse("````NOTE\nawaiting the exec before concluding\n````"),
-            mockResponse("````SEND\nresumed on selected provider\n````"),
+            mockResponse("````KILL\nresumed on selected provider\n````"),
         ],
     });
     const selectedSpec = { alias: "wakedefault", provider: "openai", model: "wake-provider-b" } as const;
@@ -266,13 +266,13 @@ test("{§methods-loop-run-model}: a selector-less continuation resumes the loop'
 test("{§methods-loop-run-model}: a parked loop retains its provider across daemon restart", async (t) => {
     const boot = new Mock({
         contextWindow: 16384,
-        responses: [mockResponse("````SEND\nboot provider must remain unused\n````")],
+        responses: [mockResponse("````KILL\nboot provider must remain unused\n````")],
     });
     const selected = new Mock({
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl("sleep 30")),
-            mockResponse("````SEND\nresumed after restart on selected provider\n````"),
+            mockResponse("````KILL\nresumed after restart on selected provider\n````"),
         ],
     });
     const selectedSpec = { alias: "restartb", provider: "openai", model: "restart-provider-b" } as const;
@@ -365,7 +365,7 @@ test("{§worker-wait-timing} wake-on-completion: a slept (202) loop resumes IN P
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl("sleep 0.05; echo hi")),
-            mockResponse("````SEND\nsaw the wake\n````"),
+            mockResponse("````KILL\nsaw the wake\n````"),
         ],
     });
 
@@ -431,7 +431,7 @@ test("{§worker-wait-timing} wake-on-completion preserves the durable loop's cum
         contextWindow: 16384,
         responses: [
             mockResponse(execDsl("sleep 0.05; echo ceiling")),
-            mockResponse("````SEND\nmust not receive a second model turn\n````"),
+            mockResponse("````KILL\nmust not receive a second model turn\n````"),
         ],
     });
 
@@ -477,7 +477,7 @@ test("wake-on-completion: active loop → daemon does NOT open a new loop (no-op
             continueResponse,
             continueResponse,
             continueResponse,
-            mockResponse("````SEND\ndone\n````"),
+            mockResponse("````KILL\ndone\n````"),
         ],
     });
 
@@ -517,7 +517,7 @@ test("wake-on-completion: streaming spawn outlives loop — wake summary reports
         responses: [
             mockResponse("````sh\nfor i in 5 4 3 2 1; do echo $i; sleep 0.4; done\n````\n\n````WAIT\nfire and forget\n````"),
             // Wake-opened loop just terminates so the test completes:
-            mockResponse("````SEND\nsaw the wake\n````"),
+            mockResponse("````KILL\nsaw the wake\n````"),
         ],
     });
 
@@ -574,7 +574,7 @@ test("{§worker-lifecycle-subscription-matrix} wake-on-completion: loop.cancel m
         contextWindow: 16384,
         responses: [
             mockResponse("````sh\nsleep 30\n````\n\n````NOTE\nrunning\n````"),
-            mockResponse("````SEND\nnever\n````"),
+            mockResponse("````KILL\nnever\n````"),
         ],
     });
 
@@ -625,7 +625,7 @@ test("loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)
         contextWindow: 16384,
         responses: [
             mockResponse("````sh\nprintf 'a\\nb\\n'; sleep 30\n````\n\n````NOTE\nrunning\n````"),
-            mockResponse("````SEND\nnever\n````"),
+            mockResponse("````KILL\nnever\n````"),
         ],
     });
 

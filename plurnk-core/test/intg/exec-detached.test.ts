@@ -41,7 +41,7 @@ ${heartbeat(file)}
 the server stays up
 \`\`\`\`
 \`\`\`\`SEND
-\`\`\`\``), mockTurn("````SEND\n````")],
+\`\`\`\``), mockTurn("````KILL\n````")],
         });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

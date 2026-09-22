@@ -46,7 +46,7 @@ Answer.
         const curated = await db.test_log_entries_by_turn.all<{ id: number; active: number }>({ turn_id: seed.turnId });
         assert.equal(curated.find(({ id }) => id === plan.id)?.active, 0, "the KILL authored after SEND curated the earlier note");
         assert.equal((await engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [response("````SEND\n````")] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [response("````KILL\n````")] }),
             workspaceId, workerId, loopId, messages: [],
         })).status, 200);
     } finally { await db.close(); }

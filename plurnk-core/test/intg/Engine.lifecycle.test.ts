@@ -27,7 +27,7 @@ for (const [name, first, detail] of [
         const workspaceId = await insertWorkspace(db, "explicit-lifecycle");
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Answer.");
-        const provider = new Mock({ contextWindow: 100000, responses: [response(first), response(frame("SEND", "Answer."))] });
+        const provider = new Mock({ contextWindow: 100000, responses: [response(first), response(frame("KILL", "Answer."))] });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
             workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3, maxStrikes: 2,
         });
@@ -44,7 +44,7 @@ for (const [name, first, detail] of [
             }).length, 1, "one durable correction, not duplicated grammar and runtime errors");
             assert.match(JSON.stringify(provider.received[1]), new RegExp(detail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
         }
-        assert.equal(rows.filter(({ op, origin }) => origin === "model" && op === "SEND").length, 1);
+        assert.equal(rows.filter(({ op, origin }) => origin === "model" && op === "KILL").length, 1);
         assert.ok(rows.every(({ op }) => !["DONE", "FAIL"].includes(op)), "no terminal operation is invented");
     });
 }
@@ -79,7 +79,7 @@ for (const [cancel, status] of [[false, 200], [true, 499]] as const) {
         const provider = new Mock({ contextWindow: 100000, responses: [
             response(`${frame("FIND (worker:///*)", "")}\n${frame("SEND", "The answer.")}`),
             response(`${frame("KILL (log:///1/2/*/SEND)", "")}\n${cancel ? frame("KILL (worker://alice)", "") : frame("NOTE", "Result observed.")}`),
-            response(frame("SEND", "")),
+            response(frame("KILL", "")),
         ] });
         const lifecycle = new LoopLifecycle(db);
         const result = await new Engine({ db, schemes: new SchemeRegistry(), cancelWorker: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); } }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3 });
@@ -89,7 +89,7 @@ for (const [cancel, status] of [[false, 200], [true, 499]] as const) {
         assert.equal((await new LoopLifecycle(db).result(loopId))?.content, undefined);
         const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number }>({ loop_id: loopId });
         assert.ok(rows.some(({ op, status_rx }) => op === "KILL" && status_rx === 200));
-        assert.equal(provider.received.length, cancel ? 2 : 3, "only explicit cancellation or a lone SEND ends the loop");
+        assert.equal(provider.received.length, cancel ? 2 : 3, "only explicit cancellation or a parameterless KILL ends the loop");
         if (cancel) assert.match(result.result.problem?.detail ?? "", /killed via worker/);
         else assert.equal(result.result.problem, undefined);
     });
@@ -103,7 +103,7 @@ test("{§loop-response-messages} a terminal response supersedes earlier delivere
     const loopId = await insertLoop(db, workerId, 1, "What is the codename?");
     const provider = new Mock({ contextWindow: 100000, responses: [
         response(`${frame("SEND", "The codename is Bumblebee.")}\n${frame("SEND", "The codename is phoenix.")}`),
-        response(frame("SEND", "")),
+        response(frame("KILL", "")),
     ] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3 });
     assert.equal(result.result.status, 200);
@@ -123,7 +123,7 @@ test("{§completion-defers-to-results} an observed cleanup failure does not inva
     const brief = "Codename: phoenix. Host: db.internal. TODO: add error handling.";
     const provider = new Mock({ contextWindow: 100000, responses: [
         response(`${frame("SEND", brief)}\n${frame("KILL (reasoning://alice/1/2) <1,-1>", "")}`, "The requested project brief is ready."),
-        response(frame("SEND", "")),
+        response(frame("KILL", "")),
     ] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4 });
     const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: loopId });
@@ -171,7 +171,7 @@ for (const [cancel, parentStatus, childStatus] of [[false, 202, 102], [true, 499
         const childLoopId = await insertLoop(db, childId, 1, "Finish delegated work.");
         const lifecycle = new LoopLifecycle(db);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelWorker: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); } });
-        const provider = new Mock({ contextWindow: 100000, responses: [response(frame(cancel ? "KILL (worker://alice)" : "SEND", cancel ? "" : "Waiting for the delegated result."))] });
+        const provider = new Mock({ contextWindow: 100000, responses: [response(frame(cancel ? "KILL (worker://alice)" : "KILL", cancel ? "" : "Waiting for the delegated result."))] });
         const result = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] });
         assert.equal(result.status, parentStatus);
         assert.equal(await lifecycle.status(loopId), parentStatus);
@@ -201,7 +201,7 @@ test("{§note-value} writing about failure in NOTE does not declare failure", as
     const loopId = await insertLoop(db, workerId, 1, "Try both approaches.");
     const provider = new Mock({ contextWindow: 100000, responses: [
         response(frame("NOTE", "First approach failed.\nTry the second approach.")),
-        response(frame("SEND", "Second approach succeeded.")),
+        response(frame("KILL", "Second approach succeeded.")),
     ] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3 });
     assert.equal(result.result.status, 200);

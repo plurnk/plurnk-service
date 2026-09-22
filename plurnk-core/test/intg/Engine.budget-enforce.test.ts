@@ -14,11 +14,11 @@ import type { ChatMessage, MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, logEntries } from "./_helpers.ts";
-import { sendStmt, noteStmt  } from "./_dsl.ts";
+import { concludeStmt, noteStmt } from "./_dsl.ts";
 const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },
 });
-const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => response([sendStmt(null, "ok")]));
+const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => response([concludeStmt("ok")]));
 
 const MESSAGES = [{ role: "system" as const, content: "You are an agent." }, { role: "user" as const, content: "go" }];
 
@@ -168,7 +168,7 @@ test("{§tokenomics-context-envelope-admission} {§provider-surface-prompt-measu
         const capacity = Math.floor((probe.weight + exactChars) / 2);
         assert.ok(probe.weight < capacity && capacity < exactChars, "fixture separates the curation ruler from provider tokens");
 
-        const provider = exactCharAt(capacity, [response([sendStmt(null, "unreachable")])]);
+        const provider = exactCharAt(capacity, [response([concludeStmt("unreachable")])]);
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(result.status, 413);
         assert.equal(result.capacityHardStop, true);
@@ -223,7 +223,7 @@ test("an upstream 413 withholds the automatic prompt body and retries without sp
         );
         const provider = new UpstreamPromptCapacityMock({
             contextWindow: 100_000,
-            responses: [response([sendStmt(null, "recovered")])],
+            responses: [response([concludeStmt("recovered")])],
         });
         const result = await plainEngine(db).runTurn({
             provider,
@@ -303,7 +303,7 @@ test("a proven request-token upper bound can authorize provider admission", asyn
     try {
         const { workspaceId, workerId, loopId } = await envelope(db);
         const engine = plainEngine(db);
-        const mock = Object.assign(mockAt(199_998, [response([sendStmt(null, "recovered")])], 200_000), {
+        const mock = Object.assign(mockAt(199_998, [response([concludeStmt("recovered")])], 200_000), {
             countPromptTokens: async () => ({
                 kind: "upper_bound" as const,
                 tokens: 1,

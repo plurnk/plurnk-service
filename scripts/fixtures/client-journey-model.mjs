@@ -11,7 +11,7 @@ const journeys = Object.freeze({
         marker: "Exercise the installed one-shot interface.",
         programs: [{
             reasoning: "I will complete the installed one-shot request through the shared protocol.",
-            content: "````SEND\nThe installed one-shot journey is complete.\n````",
+            content: "````KILL\nThe installed one-shot journey is complete.\n````",
         }],
     },
     tui: {
@@ -28,7 +28,7 @@ const journeys = Object.freeze({
             ].join("\n"),
         }, {
             reasoning: "The message was retrieved from its log address, so the journey can conclude.",
-            content: "````SEND\nThe installed interactive journey is complete.\n````",
+            content: "````KILL\nThe installed interactive journey is complete.\n````",
         }],
     },
     rejected: {

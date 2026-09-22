@@ -1511,7 +1511,7 @@ Registration precedes loop affinity:
 | Registered but inactive under flag | The flag gate returns `403 scheme-unavailable`.                         |
 | Registered and active              | Dispatch continues to the operation owner.                              |
 
-- §op-execution-order **An admitted turn is an ordered program.** Model, client, and harness operations execute in authored order. Only WAIT is deferred until all other admitted operations settle or establish their explicitly asynchronous work ({§disposition-anywhere}). The complete program then settles under {§wait-obligation-matrix}, whether or not it contains WAIT; no completion operation or inventory is invented. Existing cycle, no-operation, and resource rails remain effective. An observation records the resource state at its execution point; the model sees that receipt in the next packet. Exact submitted source and actual operation outcomes remain durable. Earlier successful effects survive a later operation failure; a producer requesting fail-on-error stops before subsequent operations.
+- §op-execution-order **An admitted turn is an ordered program.** Model, client, and harness operations execute in authored order. WAIT and parameterless KILL are deferred until all other admitted operations settle or establish their explicitly asynchronous work ({§disposition-anywhere}). The complete program then settles under {§wait-obligation-matrix}, whether or not it contains a lifecycle request; no completion operation or inventory is invented. Existing cycle, no-operation, and resource rails remain effective. An observation records the resource state at its execution point; the model sees that receipt in the next packet. Exact submitted source and actual operation outcomes remain durable. Earlier successful effects survive a later operation failure; a producer requesting fail-on-error stops before subsequent operations.
 
 §bare-inference **BARE is isolated, synchronous retrieval over the durable child-provider policy.**
 
@@ -2104,7 +2104,7 @@ streaming are independent. No later turn automatically requests reasoning.
 
 AST: `{ op: "KILL", target, matcher: MatcherBody | null, lineMarker: TextLineMarker | null, body: null }` ({§kill-scope} and {§matcher-option} in the contracts SPEC own the grammar).
 
-KILL deletes context from the **log** (`log:///`, {§packet}). Without a scope it retires the selected rows from the active projection ({§log-history-projection}). With a one-line or inclusive two-line scope it removes only that body's intersecting body-relative physical lines from the readable projection, and the row stays active. An anchor may be one published on that body or one returned by READing its `log:///` coordinate ({§line-anchors}); an anchor absent from the current body selects no line, as with an out-of-bounds numeric line. Scoped KILL is one-way: intervals accumulate, the durable body is untouched, and subsequent access follows {§log-readable-projection}. A scoped KILL on a bodyless row is a friendly 200 no-op with `matched` reported. A KILL that addresses no row is 404 on an exact coordinate and 204 on a sweep ({§log-curation-folder-idiom}). Selection composes target/glob with an optional heading pattern ({§log-curation-set-selection}); a targetless KILL is 400.
+KILL deletes context from the **log** (`log:///`, {§packet}). Without a scope it retires the selected rows from the active projection ({§log-history-projection}). With a one-line or inclusive two-line scope it removes only that body's intersecting body-relative physical lines from the readable projection, and the row stays active. An anchor may be one published on that body or one returned by READing its `log:///` coordinate ({§line-anchors}); an anchor absent from the current body selects no line, as with an out-of-bounds numeric line. Scoped KILL is one-way: intervals accumulate, the durable body is untouched, and subsequent access follows {§log-readable-projection}. A scoped KILL on a bodyless row is a friendly 200 no-op with `matched` reported. A KILL that addresses no row is 404 on an exact coordinate and 204 on a sweep ({§log-curation-folder-idiom}). Selection composes target/glob with an optional heading pattern ({§log-curation-set-selection}). Parameterless KILL instead requests completion ({§kill-conclusion}).
 
 A READ carrying active native media is atomic: any KILL scope is ignored and the entire observation is retired, including its native context contribution ({§packet-attachment-parts}). For a model turn, native activity is the attachment selection in its actual input packet; without a model packet, a native observation is atomic by default. Text-only observations in the same selection retain ordinary scoped behavior. Neither form deletes source data or forensic evidence.
 
@@ -2280,7 +2280,7 @@ single line past the end, a reversed range, empty content, a command's log row
 §rejected-emission-entry A rejected provider response is not `turnOps`: it never became an admitted turn program. The one bounded invalid-emission recovery item under {§emission-admission} has `attrs.kind="emissionAttempt"`, `origin="model"`, the canonical model-facing `/attempt` leaf, and the exact latest rejected response. The packet does not duplicate that identity as `kind` metadata. It is born durably body-suppressed and projected visibly only in the informed recovery packet; every other rejected attempt remains forensic-only.
 
 - §log-coordinate-hierarchy **Log coordinates are a hierarchical prefix; the trailing slash is optional** — a coordinate is `loop/turn/sequence`, and a PARTIAL coordinate selects its descendants: `log:///1` = loop 1's rows, `log:///1/2` = turn 1/2's rows, `log:///1/2/3` = the one row. A full coordinate is always three parts, so a one- or two-part path is unambiguously a prefix — the trailing slash is an optional alias (`log:///1/2` ≡ `log:///1/2/`), uniform with ```` ```READ (worker:///docs/) ````. A complete `[start-end]` segment in any numeric coordinate slot selects that inclusive decimal interval; brackets elsewhere retain ordinary path-glob meaning. Every rendered row appends one canonical model-facing leaf: the native operation name or invoked executor name, `/attempt` for a rejected emission. An executor leaf is derived from the durable submitted statement (its `runtime`), never an internal dispatch type or the current tool registry. Digits and punctuation in executor names remain part of the leaf. The leaf names identity rather than adding a resource level. Exact consumers tolerate the unsuffixed three-part shorthand; when supplied, the case-insensitive leaf is authoritative and a disagreement resolves 404. READ anchors use the canonical suffixed identity even when addressed by shorthand. Typed entry materialization therefore resolves as `/READ` while retaining its durable `EDIT` event ({§exec-entry-sink}). `log:///1/2/*` still selects the turn's item rows, while `log:///**/READ`, `log:///**/python3`, and `log:///**/attempt` deliberately filter canonical leaves. Executor outputs instead use workspace-wide claims such as `sh:///ab3d5678#stdout` ({§execution-output-identity}); their source operation has log coordinates, but resource lifetime and identity are independent of that observation. Error pointers, Problem instances, source attribution, and search use this same identity; client stream coordinates retain the numeric triple. Within a turn, sequence is arrival order. Inbound SEND rows publish before the program runs ({§message-arrival}); a turn receiving messages holds the first at `log:///L/T/1/SEND`, followed by further arrivals oldest first, then the model's operations ({§packet-current-turn} names `L/T`).
-- §log-curation-folder-idiom **Log curation speaks the folder idiom; a zero-match sweep is a no-op success** — KILL takes a concrete coordinate or a path-glob, and a **trailing slash or a partial coordinate means "the contents"** ({§log-coordinate-hierarchy}), like a folder-scoped FIND: ```` ```KILL (log:///1/2) <1,-1> ```` suppresses turn 1/2's bodies. A **well-formed selection that matches nothing is 204 with `matched: 0`**; a successful sweep's rx carries `matched: N`. A targetless KILL is 400.
+- §log-curation-folder-idiom **Log curation speaks the folder idiom; a zero-match sweep is a no-op success** — KILL takes a concrete coordinate or a path-glob, and a **trailing slash or a partial coordinate means "the contents"** ({§log-coordinate-hierarchy}), like a folder-scoped FIND: ```` ```KILL (log:///1/2) <1,-1> ```` suppresses turn 1/2's bodies. A **well-formed selection that matches nothing is 204 with `matched: 0`**; a successful sweep's rx carries `matched: N`. Parameterless KILL instead requests completion ({§kill-conclusion}).
 - §log-curation-set-selection **Row selection and body scope are independent** — target/glob and an optional heading pattern (```` ```KILL (log:///**) [{"pattern": "~stale"}] ````, every dialect a FIND over rows accepts) compose by intersection into the affected row set. An optional `<L>` or `<SL,EL>` then intersects each selected canonical body; it never paginates or changes the selected set. Thus ```` ```KILL (log:///**/READ) <17,-1> ```` may change long READs and no-op on short ones while reporting every selected row in `matched`.
 
 §log-kill-meta-operation **A log KILL changes working context, never the underlying resources or execution history.** Receipt visibility depends on the target and result, not the producer, attribution, or age of the turn:
@@ -2589,7 +2589,7 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
 SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metadata, lineMarker }`.
 
 - **Message:** SEND delivers to an actor, endpoint or exact message address. Targetless SEND answers observed Open Messages.
-- **Workflow:** WAIT yields. Only a lone explicit targetless SEND requests successful completion ({§send-conclusion}). NOTE retains memory.
+- **Workflow:** WAIT yields. Parameterless KILL requests successful completion ({§kill-conclusion}). NOTE retains memory.
 
 §worker-obligations A worker holds its unresolved children and open non-detached
 streams (`worker_obligations`); `loop_obligations` names them per loop. The
@@ -2604,19 +2604,19 @@ same durable liveness.
 | Administrative program | Finish its transaction without adjudicating another model loop's work. |
 | New unpublished message | Continue; publish it in the next packet. |
 | Fresh operation/parser failure, without an authored WAIT | Continue before any automatic parking. |
-| Neither an authored WAIT nor an eligible completion request ({§send-conclusion}) | Continue, regardless of earlier replies or live work. |
-| Live work and either WAIT or an eligible completion request with no unanswered messages | Park the same loop; message arrival, child or stream settlement, or stream cadence wakes it. |
+| Neither an authored WAIT nor an eligible completion request ({§kill-conclusion}) | Continue, regardless of earlier replies or live work. |
+| Live work and either WAIT or an eligible completion request | Park the same loop; message arrival, child or stream settlement, or stream cadence wakes it. No final-answer body is delivered while joining. |
 | WAIT without live work | Continue; never invent a future wake. |
 | Unanswered messages | Continue. |
 | Unobserved operation results, failures, child results or stream conclusions | Continue; the next packet presents them. |
 | Eligible completion request with no outstanding messages, live work or unobserved results | Conclude successfully. |
 
 An empty emission is handled by {§empty-turn}. Ordinary strikes, cycles and
-execution limits remain independent. NOTE and successful KILL do not themselves
+execution limits remain independent. NOTE and successful targeted KILL do not themselves
 require another observation turn, but neither requests completion. Failed KILL
 and every other operational result require observation.
 
-§loop-response-messages **A response is a recorded delivery.** A successful SEND reply records
+§loop-response-messages **A response is a recorded delivery.** A successful SEND reply or admitted final KILL answer records
 the exact message addresses it answers. All replies remain independently recoverable in
 message history, in execution order, regardless of producer. An actor-addressed SEND that
 does not answer a message, WAIT, NOTE, asides, inherited rows and ambient observations are
@@ -2651,35 +2651,42 @@ accounting and model-visible failure evidence remain separately owned by
   answers this loop's published, unanswered messages, oldest first. When none remain,
   a nonempty targetless SEND replies to the loop's original published message, so a
   follow-up can revise its answer. A targetless SEND with no body content or attachments
-  delivers nothing, carries no `answers`, and cannot erase an earlier reply; its authored turn
-  may still request completion under {§send-conclusion}. SEND to an exact message
+  delivers nothing, carries no `answers`, and cannot erase an earlier reply. An accepted
+  parameterless KILL answer uses the same reply routing and empty-body rules. SEND to an exact message
   address answers only that message; SEND to an actor endpoint remains ordinary communication
   and answers no assignment implicitly. An unpublished arrival cannot be answered by the
   targetless shorthand. Failed delivery answers nothing. Reply accounting reads executed
   delivery evidence, never log visibility or the mere existence of a later SEND.
-- §send-conclusion **Successful completion requires a lone authored reply.** The response
-  contains exactly one parsed operation, a targetless SEND, no outside response text,
-  no hard parse error or lost boundary, and was not cut at the provider's output allowance.
-  NOTEs extracted from the separate reasoning channel do not alter this response shape.
-  The SEND delivers normally; only after the whole admitted program settles does
-  {§wait-obligation-matrix} decide whether completion is possible. A recovered SEND,
-  addressed SEND, multiple SENDs, SEND mixed with another response operation, NOTE-only
-  or KILL-only program never requests completion. An empty SEND body is legal; it does
-  not recall or resubmit a previous turn. There is no confirmation token, Markdown
-  conclusion envelope, pending draft, special answer row or implicit successful exit.
+- §kill-conclusion **Successful completion requires an explicit parameterless KILL.** The response
+  contains exactly one KILL without a target, scope, matcher or metadata, no hard
+  parse error or lost boundary, and was not cut at the provider's output allowance.
+  The operation limit must admit the entire program.
+  SEND (including recovered outside text), NOTE and log-targeted KILL may accompany
+  it; every other operation requires continuation. This tolerance is unadvertised:
+  model teaching requests KILL alone. Reasoning-side NOTEs remain ordinary notes.
+  An aside is allowed. After the program settles, {§wait-obligation-matrix} admits the
+  completion or returns a non-striking continuation/parking receipt explaining the
+  outstanding condition. Valid sibling operations always execute. Only an admitted
+  KILL delivers its literal body through {§send-response-receipt}; a deferred body
+  remains forensic evidence, never a stored draft to replay automatically. An empty
+  KILL concludes without repeating an already-delivered answer, but cannot abandon an
+  unanswered message. SEND, recovered text, NOTE and targeted KILL never request
+  successful completion. New arrivals still guard the terminal transition atomically
+  ({§completion-defers-to-messages}); an arrival concurrent with an accepted reply
+  remains unanswered and keeps the loop running. No implicit successful exit exists.
 - §response-text-recovery **Outside response text is delivered, never terminal.** Each
   text span supplied by {§response-text} becomes an ordinary targetless SEND in source
   order. Bodies and quotations remain literal. The exact original emission is retained.
   Recovery produces no diagnostic, warning or strike; valid sibling operations still
   run. With no authored response operation, {§empty-turn} independently warns and
   strikes; actual parser and operation failures retain their ordinary handling.
-  Recovered text requires continuation even when delivery answers every Open Message;
-  automatic parking cannot postpone it, but an authored WAIT retains its ordinary
-  semantics. Recovery never creates an eligible completion request, including when
-  the synthesized SEND is the turn's only operation.
+  Without an authored completion request, recovered text requires continuation even
+  when delivery answers every Open Message; automatic parking cannot postpone it,
+  but an authored WAIT retains its ordinary semantics. Recovery never creates or
+  disqualifies an eligible completion request ({§kill-conclusion}).
 - §loop-answer **A loop's address is what it said.** READ `ops://<worker>/<loop>` resolves to
   the latest reply the loop gave to the message that started it: the body of a SEND
-  that targeted that message. A running loop without one is 425; a loop that
+  or accepted final KILL that answered that message. A running loop without one is 425; a loop that
   ended without one is its terminal problem (404 when it ended 2xx) — and that problem cites what
   the model last left unconcluded, so the loop's own address never reports silence from a loop that
   spoke ({§terminal-evidence}). `ops://<worker>/<loop>/<turn>`
@@ -2706,7 +2713,7 @@ accounting and model-visible failure evidence remain separately owned by
   ({§turn-ops-entry}: the reader READs the source, and an emission of any length never rides
   wholesale into a parent's packet). The member is named for what it is — an emission left
   unconcluded — and never `answer`: the harness cannot warrant that text is complete or final,
-  because it did not conclude under {§send-conclusion}. Earlier deliveries remain delivered;
+  because it did not conclude under {§kill-conclusion}. Earlier deliveries remain delivered;
   the citation neither sends them again nor destroys them. A terminal whose last inference
   turn performed authored operations carries no `unconcluded`: an absent member is not an
   empty one. Attachment is owned by the one terminal seam.
@@ -2725,16 +2732,18 @@ accounting and model-visible failure evidence remain separately owned by
   executed evidence, not curated rows. Fast completion, an empty result or curation cannot
   erase it. New arrivals are protected by {§completion-defers-to-messages}; no terminal verb
   or prose overrides this rule.
-- §completion-joins-live-work **A final response joins its live obligations.** An eligible
-  completion request with all observed messages answered parks on live children or
+- §completion-joins-live-work **A completion request joins its live obligations.** An eligible
+  parameterless KILL parks on live children or
   non-detached streams, as WAIT does. Ordinary programs continue regardless of earlier
   replies. Each wake presents the newly settled state; the next program expresses its
-  own disposition. KILL owns cancellation; a reply never cancels work implicitly.
+  own disposition. Only targeted KILL owns cancellation; parameterless KILL never
+  cancels work and delivers no final answer while joining.
 - §completion-defers-to-results **Results keep the loop running until observed.** Same-turn
   operations and failures, plus undelivered child or stream conclusions, require the next
-  packet. This is ordinary continuation, not a strike or a synthetic refusal receipt.
-  The already-delivered answer remains delivered. If observation warrants no further work
-  or revision, a lone empty targetless SEND requests completion without repeating the answer.
+  packet. This is ordinary continuation, not a strike. A premature parameterless KILL
+  receives a factual continuation receipt without delivering its body. Earlier SEND
+  replies remain delivered. If observation warrants no further work or revision, a
+  lone empty parameterless KILL requests completion without repeating an earlier answer.
 - §send-administrative-terminal **Administrative programs close their own transaction.**
   Their caller closes the administrative loop after execution; no terminal operation is
   manufactured. Initialization runs in the model loop without concluding it.
@@ -4589,7 +4598,7 @@ ordinary operation evidence still reaches that child's direct parent.
 
 | Producer / event                                      | Durable occurrence                                                                                     | Observer projection                                                                                                                |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| §env-delta-child-activity Direct-child activity       | Child-authored final EDIT, COPY, MOVE, SEND, executor invocation, WORK, FORK, and non-log KILL receipts, including failures. `_plurnk` initialization, maintenance, and operation turns stay with the worker. A reply already delivered to the parent uses its reply occurrence instead ({§message-reply-delivery}). | Direct parent only; one exact attributed row born body-suppressed. Incoming message projections ({§message-arrival}), successful targetless SEND without delivery ({§send-response-receipt}), NOTE, READ (including executor-output READs), FIND, BARE, WAIT, and log KILL never create activity occurrences. Provider reasoning, calls, rejected emissions, and turn sources do not cross automatically. |
+| §env-delta-child-activity Direct-child activity       | Child-authored final EDIT, COPY, MOVE, SEND, executor invocation, WORK, FORK, and targeted non-log KILL receipts, including failures. `_plurnk` initialization, maintenance, and operation turns stay with the worker. A reply already delivered to the parent uses its reply occurrence instead ({§message-reply-delivery}). | Direct parent only; one exact attributed row born body-suppressed. Incoming message projections ({§message-arrival}), successful targetless SEND without delivery ({§send-response-receipt}), NOTE, READ (including executor-output READs), FIND, BARE, WAIT, parameterless KILL, and log KILL never create activity occurrences. Provider reasoning, calls, rejected emissions, and turn sources do not cross automatically. |
 | §env-delta-child-termination Direct-child termination | The child's exact terminal loop result, except loops containing only `_plurnk` operation or maintenance turns. A conclusion before the first turn still reports, including failed spawns. `source` names the actor; the READ selects the exact loop ({§loop-answer}). | Direct parent only; bounded, initially visible READ under {§worker-scheme-collect}, never the child's potentially newer loop. Excluded administrative loops create no pending child-result edge. |
 | §env-delta-commons-mutation Commons mutation          | One successful resolved operation whose landed effects touch `worker:///...`.                         | Every existing worker; one body-suppressed row per observer, deduplicated with any lineage audience.                               |
 | §env-delta-filesystem-narration Project-file divergence | Runtime-owned reconciliation evidence remains in the runtime actor's own log.                        | No ambient observer row. Current content remains addressable and stale hash edits reject at their owned boundary.                 |

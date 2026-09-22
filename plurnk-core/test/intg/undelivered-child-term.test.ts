@@ -10,7 +10,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import { sendStmt, dispositionStmt  } from "./_dsl.ts";
+import { concludeStmt, dispositionStmt } from "./_dsl.ts";
 
 async function raceScenario(db: Awaited<ReturnType<typeof openMigrated>>) {
     const workspaceId = await insertWorkspace(db, `race-${crypto.randomUUID()}`);
@@ -73,10 +73,10 @@ test("a delivered answer cannot complete before the just-concluded child is obse
     const db = await openMigrated();
     try {
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);
-        const r = await engine.executeAdmittedTurn({ statements: [sendStmt(null, "done")], source: null, workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, fromSequence: 1, origin: "model" });
+        const r = await engine.executeAdmittedTurn({ statements: [concludeStmt("done")], source: null, workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, fromSequence: 1, origin: "model" });
         assert.equal(r.status, 102, "concluding over an undelivered worker result is deferred, never refused");
-        assert.deepEqual(r.outcomes, [{ op: "SEND", status: 200, problemType: null }]);
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````SEND\nThe observed value is 42.\n````", reasoning: null } }] });
+        assert.deepEqual(r.outcomes, [{ op: "KILL", status: 102, problemType: null }]);
+        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````KILL\nThe observed value is 42.\n````", reasoning: null } }] });
         const observed = await engine.runTurn({ provider, workspaceId, workerId: parent, loopId: parentLoop, messages: [] });
         assert.equal(observed.status, 200);
         assert.match(JSON.stringify(provider.received[0]), /the value is 42/);

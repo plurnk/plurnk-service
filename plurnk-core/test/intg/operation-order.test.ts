@@ -1,4 +1,4 @@
-import { TurnDisposition } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -93,7 +93,7 @@ created
 \`\`\`\`NOTE
 verify
 \`\`\`\``, 10),
-        makeMockResponse("````SEND\ndone\n````", 10),
+        makeMockResponse("````KILL\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -101,8 +101,9 @@ verify
             await rpcCall(ws, 1, "workspace.create", { name: "ordered" });
             const result = await runLoopToTerminal(ws, 2, { prompt: "run", policy: { proposals: "accept" } });
             assert.equal(result.finalStatus, 200);
-            const rows = (await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string }>({ loop_id: result.loopId }))
-                .filter(({ origin, op }) => origin === "model" && op !== "SEND" && op !== "NOTE" && !TurnDisposition.isOp(op)).slice(1);
+            const rows = (await db.test_log_entries_by_loop.all<{ op: string; origin: string; rx: string; tx: string }>({ loop_id: result.loopId }))
+                .filter(({ origin, op, tx }) => origin === "model" && op !== "SEND" && op !== "NOTE"
+                    && !TurnDisposition.isOp(op) && !TurnDisposition.isCompletion(JSON.parse(tx) as PlurnkStatement)).slice(1);
             assert.deepEqual(rows.map(({ op }) => op), fixture.order);
             assert.deepEqual(rows.filter(({ op }) => op === "READ").map(({ rx }) => JSON.parse(rx).content), fixture.reads);
             assert.deepEqual(rows.filter(({ op }) => op === "EDIT").map(({ rx }) => JSON.parse(rx).status), fixture.statuses);

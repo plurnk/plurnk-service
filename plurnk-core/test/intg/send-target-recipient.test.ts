@@ -8,7 +8,7 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flus
 test("a SEND addressed to a turn source the model may not write is refused 400 with neutral recipient guidance", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND (reasoning://alice/1/1)\nthe answer\n````", 10),
-        makeMockResponse("````SEND\nthe answer\n````", 10),
+        makeMockResponse("````KILL\nthe answer\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -26,7 +26,8 @@ test("a SEND addressed to a turn source the model may not write is refused 400 w
             assert.equal(problem?.recovery, "A targetless SEND answers the open messages; a directed SEND requires a recipient that implements SEND.");
             assert.doesNotMatch(JSON.stringify(problem), /meant|intended|wanted|tried/u);
             assert.ok(!sends.some((r) => r.status_rx === 403), "the writer rule never speaks first");
-            assert.deepEqual(sends.map(({ status_rx }) => status_rx), [400, 200]);
+            assert.deepEqual(sends.map(({ status_rx }) => status_rx), [400]);
+            assert.ok(rows.some(({ op, origin, status_rx }) => op === "KILL" && origin === "model" && status_rx === 200));
             const turns = await db.test_list_turns_in_loop.all<{ producer: string; status: number }>({ loop_id: loopId });
             assert.deepEqual(turns.filter(({ producer }) => producer === "model").map(({ status }) => status), [102, 200], "the next turn observes the failure and delivers the answer");
         } finally { ws.close(); }
@@ -36,7 +37,7 @@ test("a SEND addressed to a turn source the model may not write is refused 400 w
 test("a SEND addressed to a file path preserves the scheme's factual 501", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND (.)\nwaiting\n````", 10),
-        makeMockResponse("````SEND\ndone\n````", 10),
+        makeMockResponse("````KILL\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
         const ws = await connect(addr);

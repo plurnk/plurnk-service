@@ -100,7 +100,7 @@ const problemOf = async (run: () => Promise<unknown>): Promise<ProblemDetails> =
 
 const mockProvider = (): PacketCapturingMock => new PacketCapturingMock({
     contextWindow: viableWindow() * 2,
-    responses: Array.from({ length: 12 }, () => makeMockResponse("````SEND\ndone\n````", 20)),
+    responses: Array.from({ length: 12 }, () => makeMockResponse("````KILL\ndone\n````", 20)),
 });
 
 const packetLogRecords = (source: string): Array<Record<string, unknown>> => {
@@ -362,7 +362,8 @@ const matrix = async (family: Family): Promise<void> => {
         if (family.family === "mcp") assert.equal(await documentPresent(context(), "/_plurnk/tools/extra/echo.json"), 404,
             "disable withdraws the child schema as well as its family catalog");
         const afterDisable = await nextPacket();
-        assert.equal(packetLogRecords(afterDisable).some(({ logPath: path }) => typeof path === "string" && path.endsWith("/KILL")), false, "no reconciliation KILL receipt rides the packet (#338)");
+        assert.equal(packetLogRecords(afterDisable).some(({ logPath: path, path: target }) =>
+            typeof path === "string" && path.endsWith("/KILL") && target === family.documentOf(family.addable.alias)), false, "no reconciliation KILL receipt rides the packet (#338)");
         assert.equal((await invoke<{ definition: { state: string } }>("enable", { alias: family.addable.alias })).definition.state, "active");
         if (family.family === "mcp") assert.equal(await documentPresent(context(), "/_plurnk/tools/extra/echo.json"), 200);
         assert.equal(await live(family.addable), true);
