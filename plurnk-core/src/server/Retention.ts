@@ -95,6 +95,8 @@ export default class Retention {
         const derivations = await this.#db.retention_collect_derivations.run({ collect: collectDerivations ? 1 : 0 });
         const contents = await this.#db.retention_collect_contents.run({ collect: collectContents ? 1 : 0 });
         const reclaimedPages = await this.#reclaim();
+        // `.run`, not `.all`: `.all` is served by a read-only reader, and a checkpoint there is an I/O error.
+        await this.#db.retention_wal_truncate.run({});
         return { retiredPackets: packets.changes, retiredResponses: responses.changes, collectedItems: items.changes, collectedDerivations: derivations.changes, collectedContents: contents.changes, reclaimedPages };
     }
 

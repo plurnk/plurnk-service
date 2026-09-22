@@ -2,6 +2,9 @@
 // compositions by count or age, and collect what no row references.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import Retention, { retentionPolicy } from "../../src/server/Retention.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { DurablePacket } from "../../src/core/StoredPacket.ts";
@@ -158,6 +161,19 @@ const dropBodies = async (db: Awaited<ReturnType<typeof openMigrated>>): Promise
     }
     for (const entryId of entries) await db.crud_delete_entry.run({ entry_id: entryId });
 };
+
+test("{§db-space-reclamation}: a pass leaves no write-ahead log behind (#786)", async () => {
+    const path = join(tmpdir(), `wal-${crypto.randomUUID()}.db`);
+    const db = await openMigrated(path);
+    try {
+        const retention = new Retention(db, retentionPolicy(DEFAULTS));
+        await retention.prepareStorage();
+        await dropBodies(db);
+        assert.ok((await stat(`${path}-wal`)).size > 0, "forty stored and released bodies went through the log");
+        await retention.run();
+        assert.equal((await stat(`${path}-wal`)).size, 0, "reclaimed pages are not held hostage by the log");
+    } finally { await db.close(); }
+});
 
 test("{§db-space-reclamation}: below the reclaim floor a pass leaves free pages for reuse", async () => {
     const db = await openMigrated();

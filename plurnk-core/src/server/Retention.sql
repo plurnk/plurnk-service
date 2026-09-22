@@ -88,3 +88,8 @@ SELECT (SELECT page_count FROM pragma_page_count()) AS pages,
 
 -- PREP: retention_incremental_vacuum
 PRAGMA incremental_vacuum;
+
+-- PREP: retention_wal_truncate
+-- {§db-space-reclamation} Reclaiming pages while the WAL stays at its high-water mark is half the
+-- job. With a reader still attached this reports busy and truncates on a later pass, never blocks.
+PRAGMA wal_checkpoint(TRUNCATE);
