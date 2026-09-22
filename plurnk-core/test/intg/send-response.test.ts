@@ -59,7 +59,8 @@ test("{§empty-turn}: operations on the line after a bare fence make an empty tu
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; turn_id: number }>({ loop_id: loopId });
             const model = rows.filter((r) => r.origin === "model");
             assert.deepEqual(model.map(({ op }) => op), ["SEND", "KILL"], "literal text is silently recovered as SEND, then the corrected turn replies");
-            assert.match(JSON.stringify(mock.received[1]), /No valid Operation Syntax OPs detected\./, "the empty-turn warning still reaches the next inference");
+            assert.doesNotMatch(JSON.stringify(mock.received[1]), /No valid Operation Syntax OPs detected\./,
+                "{§empty-turn} the strike is silent: recovery delivers the text and says nothing about the missing operation");
             assert.ok(!model.some((r) => isExecutionOp(r.op) || r.op === "READ"), "nothing ran: prose is never promoted into an operation");
             const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: model[0]!.turn_id });
             assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "the corrected turn was admitted on its first attempt: the empty turn before it was never resampled");

@@ -230,10 +230,10 @@ for (const [label, response, reasoning] of [
             assert.ok("problem" in result.result && result.result.problem);
             assert.equal(result.result.problem.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
             assert.match(result.result.problem.detail, /performed no operation\.$/);
-            const warnings = notices.filter(({ level }) => level === "warn");
-            assert.deepEqual(warnings.map(({ kind, message }) => ({ kind, message })), [
-                { kind: "turn_no_operations", message: "No valid Operation Syntax OPs detected." },
-            ]);
+            // {§empty-turn} — the strike is silent. The 500 above is the whole proof that the turns
+            // were counted; the model is never told its reply lacked an operation, because a reply
+            // that is all prose is often the right answer to what was asked.
+            assert.deepEqual(notices.filter(({ level }) => level === "warn"), [], "no operation, no complaint");
             const rows = await db.test_log_entries_by_turn.all<{ op: string; source: string }>({ turn_id: result.turnIds.at(-1)! });
             assert.equal(rows.some(({ op, source }) => op === "error" && source === "grammar"), false);
         } finally { await db.close(); }
@@ -298,7 +298,8 @@ test("{§empty-turn}: bounded malformed operations consume one turn and expose t
         assert.ok(rows.filter(({ origin }) => origin === "model").every(({ op }) => op !== "EDIT" && op !== "SEND"), "malformed operation regions are not delivered as free text");
         assert.equal((await turn()).status, 200);
         assert.equal(provider.received.length, 2, "recovery sees a new packet, not a private same-packet attempt");
-        assert.match(JSON.stringify(provider.received[1]), /No valid Operation Syntax OPs detected\./);
+        assert.doesNotMatch(JSON.stringify(provider.received[1]), /No valid Operation Syntax OPs detected\./,
+            "{§empty-turn} the strike is silent: the next packet carries the turn, not a complaint about it");
     } finally { await db.close(); }
 });
 
@@ -321,7 +322,8 @@ test("{§empty-turn}: reasoning NOTEs do not rescue a response with no authored 
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: empty.turnId });
         assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["NOTE"]);
         assert.equal((await turn()).status, 200);
-        assert.match(JSON.stringify(provider.received[1]), /No valid Operation Syntax OPs detected\./);
+        assert.doesNotMatch(JSON.stringify(provider.received[1]), /No valid Operation Syntax OPs detected\./,
+            "{§empty-turn} the strike is silent: the next packet carries the turn, not a complaint about it");
     } finally { await db.close(); }
 });
 

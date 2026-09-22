@@ -2694,8 +2694,13 @@ accounting and model-visible failure evidence remain separately owned by
   READs this same loop resource. Witness: `test/intg/loop-answer.test.ts`.
 - §empty-turn **No authored response operation is a recoverable turn, never completion.**
   Count parsed response operations before SEND recovery and reasoning-NOTE extraction.
-  When none exist and no boundary was lost, retain the turn and its raw sources, warn
-  `No valid Operation Syntax OPs detected.`, and count one progress-contract strike.
+  When none exist and no boundary was lost, retain the turn and its raw sources and count
+  one progress-contract strike. **The strike is silent**: no notice, no warning (operator,
+  2026-09-22). A reply that is all prose is often the correct answer to what was asked —
+  "show me the deletion without doing it" has no operation in it by design — so naming the
+  absent operation nags a model that answered well, and tells a model that answered badly
+  nothing its own emission does not already show. The accounting is liveness, not a message;
+  the threshold terminal is where it becomes visible, and it says why ({§engine-rails}).
   Non-OP text also follows {§response-text-recovery}. Empty or reasoning-only output
   sends nothing. A turn with no executed operations uses its exact text as the cycle
   fingerprint ({§engine-cycle-evidence}); different empty programs are not a repeated

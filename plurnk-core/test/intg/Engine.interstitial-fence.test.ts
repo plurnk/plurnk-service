@@ -134,7 +134,7 @@ for (const [label, content, finishReason] of [
     ["an operation heading outside a fence", "Let me check.\n\nREAD (worker:///notes.md)", "stop"],
     ["prose cut at the output allowance", "The findings give me precise integration points. Now I'll", "length"],
 ] as const) {
-    test(`{§empty-turn}: ${label} is an empty turn with a turn_no_operations notice and one strike, never an answer`, async () => {
+    test(`{§empty-turn}: ${label} is a silent empty turn with one strike, never an answer`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `empty-turn-${crypto.randomUUID()}`);
@@ -157,7 +157,7 @@ for (const [label, content, finishReason] of [
             assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "admitted on its only attempt");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
             assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "ops")?.content, content);
-            assert.ok(notices.some(({ kind }) => kind === "turn_no_operations"), "the packet says the turn emitted no operations");
+            assert.deepEqual(notices.filter(({ kind }) => kind === "turn_no_operations"), [], "{§empty-turn} the strike is silent");
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds.at(-1)! });
             assert.equal(JSON.parse(rows.find(({ op, origin }) => origin === "model" && op === "KILL")!.tx).body, "Done.", "the later KILL answered");
             const rail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: loopId });
@@ -194,7 +194,7 @@ for (const finishReason of [undefined, "stop", "length"] as const) {
             assert.equal(packetSection(JSON.parse(turn!.packet), "messages"), "[]", "the original message is already answered");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
             assert.equal(sources.find(({ turn_id, kind }) => turn_id === emptyTurn && kind === "reasoning")?.content, reasoning);
-            assert.equal(notices.filter(({ kind }) => kind === "turn_no_operations").length, 1);
+            assert.equal(notices.filter(({ kind }) => kind === "turn_no_operations").length, 0, "{§empty-turn} the strike is silent");
         } finally { await db.close(); }
     });
 }
@@ -237,9 +237,10 @@ test("{§quotation}: an offset example draws no complaint, and does not conclude
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 4, maxStrikes: 3, messages: [{ role: "user", content: "Read the note." }] });
         assert.equal(result.result.status, 200);
         assert.equal(provider.received.length, 2, "the offset example is not an answer: the model gets another turn");
-        assert.ok(notices.some(({ kind }) => kind === "turn_no_operations"), "it is an empty turn, not a conclusion");
-        // #799: the parser presumes nothing about why a fence is offset. The empty-turn notice is
-        // expected here and is not a complaint about the offset.
+        // #799: the parser presumes nothing about why a fence is offset. The turn is an empty turn
+        // rather than a conclusion — proven by the second provider call above — and it says so to
+        // nobody: the strike is silent ({§empty-turn}).
+        assert.deepEqual(notices.filter(({ kind }) => kind === "turn_no_operations"), [], "silent");
         assert.deepEqual(notices.filter(({ kind, message }) => kind !== "turn_no_operations" && /must start its line|read as prose/u.test(message ?? "")), [], "an offset example still draws no parser advisory");
         const all = await Promise.all(result.turnIds.map((id) => db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: id })));
         assert.equal(all.flat().filter(({ origin, op }) => origin === "model" && op === "READ").length, 0, "the offset example never ran");

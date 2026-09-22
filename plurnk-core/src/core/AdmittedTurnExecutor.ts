@@ -103,15 +103,11 @@ export default class AdmittedTurnExecutor {
             throw new Error("an admitted operation batch must contain operations");
         }
         // {§empty-turn} — a model response with no operation is a turn all the same: its text and
-        // reasoning are kept, the packet says so, and the strike rail counts it once.
-        if (emptyTurn) {
-            this.#notices.push(workspaceId, workerId, loopId, {
-                source: "engine:turn",
-                kind: "turn_no_operations",
-                level: "warn",
-                message: "No valid Operation Syntax OPs detected.",
-            });
-        }
+        // reasoning are kept, and the strike rail counts it once. The strike is silent: a reply
+        // that is all prose is often the correct answer to what was asked ("show me X without
+        // doing it"), and naming the absent operation nags a model that answered well while
+        // teaching a model that answered badly nothing it cannot already see (operator,
+        // 2026-09-22). The accounting is liveness; it was never a message.
         if (statements.length === 0 && recoverableParseErrors.length === 0) {
             if (source !== null) await Turn.recordSource(this.#db, turnId, "ops", source, { modelCallId: sourceModelCallId });
             await Turn.complete(this.#db, turnId, TURN_STATUS_IMPLICIT_CONTINUE);
