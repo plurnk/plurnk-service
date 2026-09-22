@@ -16,7 +16,7 @@ import {
     type Position,
     type ResourceSelection,
 } from "@plurnk/plurnk-contracts";
-import { writtenOp } from "@plurnk/plurnk-contracts";
+import { PLURNK_OPS, writtenOp } from "@plurnk/plurnk-contracts";
 
 // Statement-bearing contexts the extraction builds into items. `statement` (statementSeq) and
 // `midStatement` (mid-turn ops) each wrap one op; the turn disposition attaches as a direct
@@ -300,6 +300,7 @@ export default class PlurnkParser {
 
         if (tier === "model") {
             items.push(...PlurnkParser.#responseText(tokens, unparsedTail?.from));
+            items.push(...PlurnkParser.#unfencedOperations(tokens, lexer.takeQuotedSpans(lexer.inputStream.size), unparsedTail?.from));
             const position = (item: ParseItem<S>): Position => item.kind === "statement" ? item.statement.position
                 : item.kind === "text" ? item.position : item.error;
             items.sort((a, b) => position(a).line - position(b).line || position(a).column - position(b).column);
@@ -328,6 +329,21 @@ export default class PlurnkParser {
             content += token.text ?? "";
         }
         flush();
+        return items;
+    }
+
+    // {§unfenced-operation}: a prose line that opens with an operation's name wrote the operation
+    // without its fence. It did not run, and the model that wrote it believes it did.
+    static #unfencedOperations(tokens: readonly Token[], quoted: ReadonlyArray<{ start: number; end: number }>, boundary?: Position): Array<Extract<ParseItem, { kind: "error" }>> {
+        const items: Array<Extract<ParseItem, { kind: "error" }>> = [];
+        for (const token of tokens) {
+            if (boundary !== undefined && !PlurnkParser.#isBefore(token, boundary)) break;
+            if (token.type !== plurnkLexer.TEXT || token.column !== 0) continue;
+            if (quoted.some(({ start, end }) => token.start >= start && token.start < end)) continue;
+            const name = /^[A-Z]+(?=$|[(<[])/u.exec(token.text ?? "")?.[0];
+            if (name === undefined || !(PLURNK_OPS as readonly string[]).includes(name)) continue;
+            items.push({ kind: "error", error: new PlurnkParseError(token.line, token.column, "parser", `\`${name}\` has no fence, so it did not run.`, "warning") });
+        }
         return items;
     }
 

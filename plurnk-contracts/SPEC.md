@@ -1061,6 +1061,15 @@ tiers ignore outside text. Core alone owns filing it as a NOTE ({§response-text
 and no-operation strikes ({§empty-turn}); parsing never infers delivery or completion
 intent.
 
+§unfenced-operation **An operation written without its fence did not run, and the parser says
+so.** An outside-text line that opens at column zero with an operation's name — `KILL The
+answer…`, `READ (a.md)` — draws one warning: `` `KILL` has no fence, so it did not run. `` The line
+stays response text ({§response-text}); quoted blocks, offset lines, names inside a sentence and
+executor tags draw nothing. The model that wrote it believes it ran: filed as a NOTE
+({§response-text-note}), an unfenced KILL read back as an answer already given, and the model
+repeated it until the cycle detector ended the loop (`demo-overflow-recovery-AC4Ul4`; the same
+shape defeated SEND recovery and a count of invalid characters; operator, 2026-09-22).
+
 §recorded-emissions **The parser is regressed against emissions models actually produced,
 not fixtures we wrote.** `test/fixtures/recorded-emissions.jsonl` holds one real exemplar
 of every distinct parse shape observed across the live and demo drills — the operations

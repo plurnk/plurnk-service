@@ -56,3 +56,21 @@ test("{§response-text}: statement and client tiers still ignore outside text", 
         assert.deepEqual(parse(source).items.map(({ kind }) => kind), ["statement"]);
     }
 });
+
+test("{§unfenced-operation}: a prose line that opens with an operation's name draws one warning; quoted, offset and mid-sentence names draw none", () => {
+    const warnings = (source: string) => PlurnkParser.parse(source, { executors: ["sh", "node"] }).items
+        .flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [[item.error.line, item.error.column, item.error.message]] : []);
+    assert.deepEqual(warnings("KILL The recovery site is **CEDAR-HARBOR-27**."), [[1, 0, "`KILL` has no fence, so it did not run."]]);
+    assert.deepEqual(warnings("Let me look.\nREAD (worker:///notes.md)\nKILL"), [
+        [2, 0, "`READ` has no fence, so it did not run."],
+        [3, 0, "`KILL` has no fence, so it did not run."],
+    ]);
+    for (const quiet of [
+        "Example:\n```\nKILL (worker:///notes.md)\n```",
+        "Example:\n\t````KILL (notes.md)\n\t````\n    KILL (notes.md)",
+        "To delete it you would issue KILL (notes.md) yourself.",
+        "NOTE: remember the hash.",
+        "node is installed; sh works too.",
+        "````SEND\nKILL (worker:///inside-a-body.md)\n````",
+    ]) assert.deepEqual(warnings(quiet), [], JSON.stringify(quiet));
+});

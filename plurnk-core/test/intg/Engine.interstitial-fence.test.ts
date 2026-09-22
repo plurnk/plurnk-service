@@ -60,14 +60,15 @@ test("{§quotation}: an operation inside an unlabeled fence never runs, and a de
     } finally { await db.close(); }
 });
 
-test("{§response-text-note}: an unfenced heading is kept as the model's NOTE, never executed or delivered", async () => {
+test("{§response-text-note} {§unfenced-operation}: an unfenced heading is kept as the model's NOTE, never run, and the model is told so", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `bare-heading-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Show the examples.");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Keep this note." });
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const notices: Array<{ kind: string; message?: string }> = [];
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
         const source = ["KILL (worker:///notes.md)", PlurnkParser.frame("SEND", "Explained."), memory].join("\n\n");
         const result = await engine.runLoop({
             provider: new Mock({ contextWindow: 100_000, responses: [
@@ -83,6 +84,8 @@ test("{§response-text-note}: an unfenced heading is kept as the model's NOTE, n
         assert.deepEqual(model.map(({ op }) => op), ["NOTE", "SEND", "NOTE"]);
         assert.equal(JSON.parse(model[0]!.tx).body, "KILL (worker:///notes.md)", "the heading is kept as written, as a NOTE");
         assert.equal(JSON.parse(model[1]!.tx).body.raw, "Explained.", "only the authored SEND is delivered");
+        assert.deepEqual(notices.filter(({ kind }) => kind === "parse_advisory").map(({ message }) => message),
+            ["`KILL` has no fence, so it did not run."]);
         const note = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "worker", name: "body" });
         assert.equal(note?.content, "Keep this note.");
     } finally { await db.close(); }

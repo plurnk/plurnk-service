@@ -42,11 +42,12 @@ for (const [name, parse] of [
     });
 }
 
-test("{§response-text}: an unfenced heading is ordinary response text", () => {
+test("{§response-text}: an unfenced heading is ordinary response text that says it did not run ({§unfenced-operation})", () => {
     for (const bare of ["READ (notes.md)", "WAIT", "FIND (src/**) [{\"pattern\":\"/x/\"}]"]) {
         const result = PlurnkParser.parse("Prelude.\n" + bare + "\n" + task);
         assert.deepEqual(statements(result).map(({ op }) => op), ["WAIT"], bare);
-        assert.deepEqual(errors(result), []);
+        assert.deepEqual(errors(result).map(({ line, column, severity, message }) => [line, column, severity, message]),
+            [[2, 0, "warning", `\`${bare.split(/[ (]/u)[0]}\` has no fence, so it did not run.`]]);
         assert.deepEqual(result.items.flatMap((item) => item.kind === "text" ? [item.content] : []), [`Prelude.\n${bare}\n`]);
     }
 });
