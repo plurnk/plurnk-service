@@ -1056,7 +1056,9 @@ express. Consumers never receive ANTLR parse-tree or token types.
 §turn-shape `PlurnkParser.parse` accepts one model turn. A turn without any
 authored operation is reported by one hard diagnostic
 (`No valid Operation Syntax OPs detected.`), alongside any response text
-({§response-text}). Core admits this as a recoverable turn under {§empty-turn}.
+({§response-text}). Core admits this as a recoverable turn under {§empty-turn},
+silently: the diagnostic is the parser's report to its host, never a notice the
+model is shown.
 An explicit disposition may sit anywhere in it
 ({§disposition-anywhere}). An omitted WAIT produces no synthesized statement, diagnostic, receipt,
 warning, or strike. The authored operations and source remain unchanged.
