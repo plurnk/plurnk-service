@@ -294,7 +294,11 @@ export default class PlurnkParser {
         // The rest are likely typos, so a misspelled executor is never a silent loss.
         for (const note of lexer.takeUnknownTags()) {
             if (note.reason === "indented") continue;
-            const message = `\`${note.tag}\` is not an operation or a known executor here.`;
+            const message = note.reason === "short"
+                ? `\`${note.tag}\` needs four backticks to run.`
+                : note.reason === "quoted"
+                    ? `\`${note.tag}\` inside a code block was shown, not run.`
+                    : `\`${note.tag}\` is not an operation or a known executor here.`;
             items.push({ kind: "error", error: new PlurnkParseError(note.line, note.column, "parser", message, "warning") });
         }
 

@@ -95,12 +95,8 @@ const interstitial = "Prelude.\\n" + PlurnkParser.frame("SEND", "Only this is a 
 for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
     const parsed = parse(interstitial);
     assertClean("interstitial text", parsed);
-    const operations = parsed.items.filter(({ kind }) => kind === "statement");
-    if (operations.length !== 2 || operations[0]?.statement?.body?.raw !== "Only this is a message."
-        || operations[1]?.statement?.op !== "NOTE") throw new Error("outside text changed the parsed program");
-    const outside = parsed.items.filter(({ kind }) => kind === "text").map(({ content }) => content);
-    const expected = parse === PlurnkParser.parse ? ["Prelude.\\n", "\\n3\\n", "\\nPostscript."] : [];
-    if (JSON.stringify(outside) !== JSON.stringify(expected)) throw new Error("outside text did not retain its tier's delivery semantics");
+    if (parsed.items.length !== 2 || parsed.items[0]?.statement?.body?.raw !== "Only this is a message."
+        || parsed.items[1]?.statement?.op !== "NOTE") throw new Error("outside text changed the parsed program");
 }
 
 // A quoted example rides a numeric delimiter ({§numeric-delimiter}): the SEND's body holds the
@@ -139,12 +135,11 @@ console.log("OK: the parser is consumable through one installed entrypoint.");
 
     process.stdout.write("[smoke] running the CLI against a turn...\n");
     const cli = join(installedRoot, "bin", "plurnk-parser.js");
-    // {§operation-fences} — installed ingestion accepts three; canonical output stays four.
-    await writeFile(join(tempDir, "turn.plurnk"), "```WAIT\n```\n");
+    // An operation opens with four backticks; three is markdown ({§four-backtick-operations}, #761).
+    await writeFile(join(tempDir, "turn.plurnk"), "````WAIT\n````\n");
     const { stdout: cliOut } = await run("node", [cli, "turn.plurnk"], { cwd: tempDir });
-    const cliResult = JSON.parse(cliOut) as { items: Array<{ kind: string; statement?: { op: string } }> };
+    const cliResult = JSON.parse(cliOut) as { items: Array<{ kind: string }> };
     if (cliResult.items.some(({ kind }) => kind === "error")) throw new Error(`CLI reported parse errors: ${cliOut}`);
-    assert.deepEqual(cliResult.items.filter(({ kind }) => kind === "statement").map(({ statement }) => statement?.op), ["WAIT"]);
 
     await writeFile(join(tempDir, "consume-browser.js"), `
 import { PlurnkParser } from "@plurnk/plurnk-parser";

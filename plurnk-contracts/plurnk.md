@@ -12,7 +12,7 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 > YOU MUST ONLY respond with valid Plurnk OPs.
 
 > [!TIP]
-> YOU SHOULD offset any example OP you do not intend to execute with a hard or soft tab.
+> YOU SHOULD tab offset any example OP you do not intend to execute.
 
 * `[metadata]`: optional one-line special configuration.
 * `<!-- aside -->`: optional terse explanation.
