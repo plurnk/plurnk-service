@@ -44,7 +44,7 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
     ````
 
 > [!WARNING]
-> YOU MAY NOT end the loop before all other OPs, child workers, and streams are resolved and reviewed.
+> YOU MAY NOT answer and end the loop before all other OPs, child workers, and streams are resolved and reviewed.
 
 ## Workspace Navigation
 
