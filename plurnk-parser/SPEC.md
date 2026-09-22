@@ -19,7 +19,10 @@ client that installs contracts installs no `antlr4ng`, `xpath`, or `json-p3`.
 ## §parser-build 2. Build and artifacts
 
 `npm run build:grammar` regenerates `src/generated` from the grammars with
-antlr-ng; generated files are artifacts, never edited, and are not tracked.
+antlr-ng; generated files are artifacts, never edited, and are not tracked. The
+build fails on any antlr error, since antlr-ng itself exits 0 over them, and it
+replaces the generated tree whole or not at all, so a bad grammar edit can never
+drill green over the previous lexer (#821).
 `npm run build` emits `dist`. `npm run test:installation` packs the built parser
 and contracts candidates, installs both into a clean consumer, verifies their
 installed versions, and exercises every tier entry point, `parsePath`, the CLI,
