@@ -2683,7 +2683,7 @@ accounting and model-visible failure evidence remain separately owned by
   live operations (`demo-show-dont-run-qdN9u2` executed the KILL it meant to show). A NOTE
   neither delivers nor concludes (operator, 2026-09-22). This is the far end of the teaching
   scale: text outside every operation breaks the first rule of `plurnk.md` — *"YOU MUST ONLY
-  respond with valid Operation Syntax OPs"* — and takes the largest reinterpretation, while a
+  respond with valid Plurnk OPs"* — and takes the largest reinterpretation, while a
   departure as small as a missing closer is read as meant ({§closer-fallback}).
 - §loop-answer **A loop's address is what it said.** READ `ops://<worker>/<loop>` resolves to
   the latest reply the loop gave to the message that started it: the body of a SEND

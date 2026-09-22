@@ -2,26 +2,25 @@
 
 Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by address, change it by operation.
 
-## Operation Syntax
+## Plurnk OP Syntax
 
     ````OP (path)? <scope|range>? [metadata]? pattern? <!-- aside -->?
     body?
     ````
 
 > [!IMPORTANT]
-> YOU MUST ONLY respond with valid Operation Syntax OPs.
+> YOU MUST ONLY respond with valid Plurnk OPs.
 
 > [!TIP]
 > YOU SHOULD offset any example OP you do not intend to execute with a hard or soft tab.
 
 * `[metadata]`: optional one-line special configuration.
-* `<!-- aside -->`: optional terse note.
-* All parameters and the aside must appear on the same line as OP.
-* OP may be either a Plurnk Operation or one of the tools.
+* `<!-- aside -->`: optional terse explanation.
+* Parameters and the aside stay on the OP line; the body starts on the next.
 
-## Plurnk Operations
+## Core Plurnk OPs
 
-* NOTE: Retain conclusions, decisions, and working memory (also works inside reasoning).
+* NOTE: Think here: conclusions, decisions, and working memory (also works inside reasoning).
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
@@ -40,11 +39,11 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 > YOU MAY answer and end the loop with a turn containing ONLY a parameterless KILL.
 
     ````KILL
-    The answer is **42**.
+    The final response KILL body accepts GFM (tables, diagrams, lists, prose).
     ````
 
 > [!WARNING]
-> YOU MAY NOT answer and end the loop before all other OPs, child workers, and streams are resolved and reviewed.
+> YOU MAY NOT answer and end the loop with KILL before all other OPs, child workers, and streams are resolved and reviewed.
 
 ## Workspace Navigation
 
@@ -95,7 +94,7 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 ## Context Curation
 
 > [!CAUTION]
-> logTokensTotal must not exceed logTokensMax. Successful log KILL receipts are not shown; one that matched nothing says so, once.
+> logTokensTotal must not exceed logTokensMax. Successful log KILL receipts are not shown.
 
     ````KILL (log:///1/[1-7]/*/{NOTE,READ}) <!-- removes matching log items, recovering context -->
     ````
@@ -105,7 +104,8 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 
 ## `<scope|range>`
 
-Text scopes use 1-based lines and Unicode code-point columns across textual mimetypes:
+> [!TIP]
+> Text scopes use 1-based lines and Unicode code-point columns across textual mimetypes:
 
 | form            | endpoint rule                  |
 |-----------------|--------------------------------|
@@ -118,11 +118,12 @@ Text scopes use 1-based lines and Unicode code-point columns across textual mime
 > The hash anchor and line number (`@abcde 42:`) shown on editable text are not content.
 
 > [!TIP]
-> The log often presents partial preview ranges. READ more if it's relevant and you have the logTokensMax room for it.
+> Log items often present partial preview ranges. READ more if it's relevant and you have the logTokensMax room for it.
 
 ## `pattern`
 
-All member files and entries are mapped, indexed, and universally pattern searchable.
+> [!TIP]
+> All member files and entries are mapped, indexed, and universally pattern searchable.
 
 | prefix | dialect                     | example                         |
 |--------|-----------------------------|---------------------------------|
