@@ -42,6 +42,13 @@ WHERE turn_id = $turn_id
   AND status_rx >= 400
   AND (op != 'error' OR source = 'grammar');
 
+-- PREP: engine_prior_idle_waits
+-- {§wait-obligation-matrix} A WAIT that found nothing to wait on already settled 102 in this loop.
+-- The first is an honest yield and says so plainly; a second is the model waiting on a wake that
+-- cannot come, so its own result names what WAIT actually does instead of reporting the weather.
+SELECT COUNT(*) AS count FROM log_entries
+WHERE loop_id = $loop_id AND origin = 'model' AND op = 'WAIT' AND status_rx = 102;
+
 -- PREP: engine_worker_has_undelivered_child_term
 -- A child conclusion newer than the parent's observation cursor is complete but
 -- not delivered. This is the same durable boundary the next packet consumes,

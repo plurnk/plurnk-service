@@ -2606,7 +2606,7 @@ same durable liveness.
 | Fresh operation/parser failure, without an authored WAIT | Continue before any automatic parking. |
 | Neither an authored WAIT nor an eligible completion request ({§kill-conclusion}) | Continue, regardless of earlier replies or live work. |
 | Live work and either WAIT or an eligible completion request | Park the same loop; message arrival, child or stream settlement, or stream cadence wakes it. No final-answer body is delivered while joining. |
-| WAIT without live work | Continue; never invent a future wake. |
+| WAIT without live work | Continue; never invent a future wake. The first such WAIT is an honest yield and its row says only `Nothing is in flight. Continuing.`; a second in the same loop is the model waiting on a wake nothing can send, so its own row instead names what WAIT is for and what to reach for — `WAIT doesn't wait unless there's a child worker or stream to wait on. Use schedule for specific timing decisions.` The correction rides the operation's own result, which is the surface the model is certain to read (operator, 2026-09-22). |
 | Unanswered messages | Continue. |
 | Unobserved operation results, failures, child results or stream conclusions | Continue; the next packet presents them. |
 | Eligible completion request with no outstanding messages, live work or unobserved results | Conclude successfully. |

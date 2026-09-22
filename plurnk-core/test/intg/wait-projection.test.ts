@@ -65,3 +65,31 @@ test("{§park-202-only} {§wait-obligation-matrix} WAIT retains literal prose wi
         assert.equal(projection.content, body);
     } finally { await db.close(); }
 });
+
+test("{§wait-obligation-matrix} a second idle WAIT says what WAIT is for, and the first does not", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `idle-wait-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const source = PlurnkParser.frame("WAIT", "Awaiting the answer.");
+        const detailOf = async () => {
+            const result = await engine.runTurn({
+                provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
+                workspaceId, workerId, loopId, messages: [],
+            });
+            assert.equal(result.status, 102, "an idle WAIT never parks and never concludes");
+            const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string }>({ turn_id: result.turnId });
+            return JSON.parse(rows.find(({ op }) => op === "WAIT")!.rx).detail as string;
+        };
+
+        assert.equal(await detailOf(), "Nothing is in flight. Continuing.", "one yield is honest and is not corrected");
+        assert.equal(
+            await detailOf(),
+            "WAIT doesn't wait unless there's a child worker or stream to wait on. Use schedule for specific timing decisions.",
+            "the repeat is waiting on a wake nothing can send, so its own row says what to reach for",
+        );
+        assert.equal(await detailOf(), "WAIT doesn't wait unless there's a child worker or stream to wait on. Use schedule for specific timing decisions.");
+    } finally { await db.close(); }
+});

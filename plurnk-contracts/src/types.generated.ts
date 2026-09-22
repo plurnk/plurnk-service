@@ -761,7 +761,7 @@ export interface LoopPolicy {
  */
 proposals: ("review" | "accept" | "reject")
 /**
- * Whether an interactive partner exists who can answer. False declares an unattended loop: no human-in-the-loop surface is offered, and a wait nobody could end becomes a conclusion.
+ * Whether an interactive partner exists who can answer. False declares an unattended loop: no human-in-the-loop surface is offered, and a provider-recovery park concludes rather than waiting for an operator. An authored WAIT is not converted: nothing concludes a loop but the model's own completion request.
  */
 attended: boolean
 }
@@ -772,7 +772,7 @@ export interface LoopPolicyRequest {
  */
 proposals?: ("review" | "accept" | "reject")
 /**
- * Whether an interactive partner exists who can answer. False declares an unattended loop: no human-in-the-loop surface is offered, and a wait nobody could end becomes a conclusion.
+ * Whether an interactive partner exists who can answer. False declares an unattended loop: no human-in-the-loop surface is offered, and a provider-recovery park concludes rather than waiting for an operator. An authored WAIT is not converted: nothing concludes a loop but the model's own completion request.
  */
 attended?: boolean
 }

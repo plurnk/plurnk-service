@@ -164,6 +164,7 @@ export class SqlRiteSync {
 	engine_turn_packet_boundaries: SqlRiteSyncPreparedStatements;
 	engine_worker_has_undelivered_stream_term: SqlRiteSyncPreparedStatements;
 	engine_turn_failures: SqlRiteSyncPreparedStatements;
+	engine_prior_idle_waits: SqlRiteSyncPreparedStatements;
 	engine_worker_has_undelivered_child_term: SqlRiteSyncPreparedStatements;
 	model_route_lookup: SqlRiteSyncPreparedStatements;
 	model_route_create: SqlRiteSyncPreparedStatements;
@@ -741,6 +742,7 @@ export default class SqlRite {
 	engine_turn_packet_boundaries: SqlRitePreparedStatements;
 	engine_worker_has_undelivered_stream_term: SqlRitePreparedStatements;
 	engine_turn_failures: SqlRitePreparedStatements;
+	engine_prior_idle_waits: SqlRitePreparedStatements;
 	engine_worker_has_undelivered_child_term: SqlRitePreparedStatements;
 	model_route_lookup: SqlRitePreparedStatements;
 	model_route_create: SqlRitePreparedStatements;
