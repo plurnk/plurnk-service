@@ -12,6 +12,10 @@ export const latestStableNodeVersion = (index: unknown): string => {
     return versions[0].version;
 };
 
+// Every well-formed non-prerelease version a text names, as `vMAJOR.MINOR.PATCH`.
+export const versionsNamed = (text: string): Set<string> =>
+    new Set([...text.matchAll(/\bv?(\d+\.\d+\.\d+)(?!-)/gi)].map((match) => `v${match[1]}`));
+
 export const namesNodeVersion = (answer: string, version: string): boolean =>
     [...answer.matchAll(/\bv?(\d+\.\d+\.\d+(?:-[\w.-]+)?)/gi)]
         .some((match) => `v${match[1]}` === version);

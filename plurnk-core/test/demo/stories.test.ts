@@ -26,7 +26,7 @@ import { join } from "node:path";
 import type { Db } from "../../src/core/Db.ts";
 import { liveWorkspace, liveLoop, type LiveWorkspace } from "../_live-harness.ts";
 import { seedDemoFixture } from "./_fixture.ts";
-import { latestStableNodeVersion, namesNodeVersion } from "./_web-oracle.ts";
+import { latestStableNodeVersion, versionsNamed } from "./_web-oracle.ts";
 import { hasAuditOutcome } from "./_audit-oracle.ts";
 import { failAfterCleanup } from "../live-failure.ts";
 import WorldState from "../intg/world-state.ts";
@@ -191,11 +191,21 @@ test("{§web-search-retrieval} story: answer a current question with search MCP 
         setup: enableMcp("brave"),
     });
     try {
-        const ok = story.finalStatus === 200 && namesNodeVersion(story.lastContent, expectedVersion);
+        // {§web-search-retrieval} — graded on retrieval (#828): the answer names a version the search
+        // results carried. The release index is information; the backend's crawl lag is not the model's.
+        const rows = (await Promise.all(story.turnIds.map((turnId) =>
+            story.db.test_log_entries_by_turn.all<{ op: string | null; scheme: string | null; status_rx: number; rx: string }>({ turn_id: turnId }),
+        ))).flat();
+        const retrieved = versionsNamed(rows.filter((row) => row.op === "READ" && row.scheme === "brave" && row.status_rx === 200).map((row) => row.rx).join("\n"));
+        const answered = versionsNamed(story.lastContent);
+        const ok = story.finalStatus === 200 && [...answered].some((version) => retrieved.has(version));
         if (!ok) await story.dump();
         assert.equal(story.finalStatus, 200);
-        assert.ok(namesNodeVersion(story.lastContent, expectedVersion),
-            `the answer identifies the current stable release ${expectedVersion}; got: ${story.lastContent.slice(0, 200)}`);
+        assert.ok(rows.some((row) => row.op === "brave" && row.status_rx === 200), "the model searched through the MCP fixture");
+        assert.ok(retrieved.size > 0, "the model read search results that name a Node version");
+        assert.ok([...answered].some((version) => retrieved.has(version)),
+            `the answer names a version the search results carried (${[...retrieved].join(", ")}); got: ${story.lastContent.slice(0, 200)}`);
+        if (!retrieved.has(expectedVersion)) console.error(`[story:web-search-mcp] the search backend lags the release index: results named ${[...retrieved].join(", ")}; the index says ${expectedVersion}`);
     } finally { await story.cleanup(); }
 });
 
