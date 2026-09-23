@@ -24,6 +24,7 @@ export default class EventRouter {
     runStarted(state?: AguiEvent): AguiEvent[] { return this.#t.runStarted(state); }
     replay(entries: Array<Record<string, unknown>>, currentUser?: UserMessage): AguiEvent[] { return this.#t.replay(entries, currentUser); }
     interrupt(): { events: AguiEvent[]; continuation: TranslatorContinuation } { return this.#t.interrupt(); }
+    get reasoningOpen(): boolean { return this.#t.reasoningOpen; }
     finish(): AguiEvent[] { return this.#t.finish(); }
 
     route(method: string, params: unknown): AguiEvent[] {

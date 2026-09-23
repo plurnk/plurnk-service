@@ -14,6 +14,7 @@ import type {
     ProposalResolution,
 } from "@plurnk/plurnk-contracts";
 import { EventType, type AguiEvent } from "./types.ts";
+import type { Interrupt } from "@ag-ui/core";
 import type { ClientInteractionResolution } from "@plurnk/plurnk-contracts";
 import { loopUsage } from "../test/accounting-fixture.ts";
 import { termination } from "../test/notification-fixture.ts";
@@ -306,17 +307,106 @@ test("a terminal arriving before the loop acknowledgement settles only its match
     portal.stop();
 });
 
-test("a worker with a durable proposal re-presents its interrupt instead of starting new work", async () => {
+test("{§agui-message-before-gate}: a message run during a durable proposal is delivered, then the interrupt is re-presented", async () => {
     const pending: ProposalProjection[] = [proposal({ op: "sh", target: { scheme: null, authority: null, pathname: null }, body: "ls" })];
     const m = mockSeam(pending);
+    const seen: AguiEvent[] = [];
+    const deliveredBeforeGate: number[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "conversation", emit: (events) => {
+        seen.push(...events);
+        if (events.some((event) => event.type === "TOOL_CALL_END")) deliveredBeforeGate.push(m.workers.length);
+    } });
+
+    assert.equal(
+        await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "new work" }),
+        null,
+        "the Run ends with the re-presented interrupt, not a loop binding",
+    );
+    assert.deepEqual(m.workers, [{ workspaceId: 3, prompt: "new work" }], "the message reaches Core");
+    assert.deepEqual(deliveredBeforeGate, [1], "the message is durable before the gate is re-presented");
+    assert.ok(seen.some((event) => event.type === "TOOL_CALL_END"), "the durable interrupt is presented again");
+    portal.stop();
+});
+
+test("{§agui-gate-deferral}: a descendant gate arriving during the conversation's reasoning is presented when the lifecycle ends", async () => {
+    const m = mockSeam([], [], {
+        workers: [worker(10), worker(20, 10)],
+        loops: new Map([
+            [10, [loop(10, 77)]],
+            [20, [loop(20, 88)]],
+        ]),
+    });
+    const seen: AguiEvent[] = [];
+    const registered: Array<Interrupt | null> = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "conversation", emit: (events) => {
+        seen.push(...events);
+        for (const event of events) {
+            if (event.type !== "TOOL_CALL_END") continue;
+            registered.push(portal.interruptForToolCall((event as { toolCallId: string }).toolCallId));
+        }
+    } });
+    await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
+
+    const call = { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1 };
+    m.fire(3, "reasoning/event", { ...call, phase: "start" });
+    m.fire(3, "reasoning/event", { ...call, phase: "content", delta: "weighing the child's request" });
+    m.fire(3, "loop/proposal", proposal({ logEntryId: 42, workerId: 20, loopId: 88 }));
+    await nextTask();
+    assert.ok(!seen.some((event) => event.type === "TOOL_CALL_END"), "a gate cannot split the open reasoning lifecycle");
+
+    m.fire(3, "reasoning/event", { ...call, phase: "end" });
+    const types = seen.map((event) => event.type);
+    assert.ok(types.includes(EventType.TOOL_CALL_END), "the held gate is presented once the lifecycle ends");
+    assert.ok(types.indexOf(EventType.REASONING_END) < types.indexOf(EventType.TOOL_CALL_END), "the reasoning message closes before the gate");
+    assert.ok(types.indexOf(EventType.TOOL_CALL_END) < types.lastIndexOf(EventType.STEP_FINISHED), "the active step closes after the gate, before the interrupt terminal");
+    assert.deepEqual(registered.map((interrupt) => interrupt?.toolCallId ?? null), ["prop:42"], "the interrupt is registered while its tool call is emitted");
+    portal.stop();
+});
+
+test("{§agui-gate-deferral}: a terminal during a held gate settles the Run and leaves the gate for the next Run", async () => {
+    const pending: ProposalProjection[] = [];
+    const gate = proposal({ logEntryId: 42, workerId: 20, loopId: 88 });
+    const m = mockSeam(pending, [], {
+        workers: [worker(10), worker(20, 10)],
+        loops: new Map([
+            [10, [loop(10, 77)]],
+            [20, [loop(20, 88)]],
+        ]),
+    });
     const seen: AguiEvent[] = [];
     const portal = new Portal(m.seam);
     portal.start();
     const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "conversation", emit: (events) => seen.push(...events) });
+    await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
 
-    assert.equal(await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "new work" }), null);
-    assert.equal(m.workers.length, 0, "a pending interrupt blocks a new internal loop");
-    assert.ok(seen.some((event) => event.type === "TOOL_CALL_END"), "the durable interrupt is presented again");
+    m.fire(3, "reasoning/event", { workerId: 10, loopId: 77, turnId: 1, modelCallId: 8, requestSequence: 1, phase: "start" });
+    m.fire(3, "loop/proposal", gate);
+    await nextTask();
+    m.fire(3, "loop/terminated", termination({
+        workerId: 10,
+        loopId: 77,
+        result: { status: 200 },
+        hitMaxTurns: false,
+        turnIds: [1],
+        usage: loopUsage({ curationBudget: 1000 }),
+    }));
+    assert.ok(seen.some((event) => event.type === "RUN_FINISHED"), "the bound terminal settles the Run");
+    assert.ok(!seen.some((event) => event.type === "TOOL_CALL_END"), "a settled Run presents no gate");
+    portal.closeRun(3, thread);
+
+    pending.push(gate);
+    const next: AguiEvent[] = [];
+    const nextThread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "conversation", emit: (events) => next.push(...events) });
+    assert.equal(await portal.run(nextThread, { workspaceId: 3, workerId: 10, prompt: "again" }), null);
+    assert.deepEqual(
+        next.filter((event) => event.type === "TOOL_CALL_END").map((event) => (event as { toolCallId: string }).toolCallId),
+        ["prop:42"],
+        "the durable gate is re-presented by the next Run",
+    );
     portal.stop();
 });
 
@@ -339,7 +429,7 @@ test("a durable client interaction re-surfaces with its exact standard Interrupt
     });
 
     assert.equal(await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "new work" }), null);
-    assert.equal(m.workers.length, 0);
+    assert.equal(m.workers.length, 1, "{§agui-message-before-gate}: the message reaches Core before the gate is re-presented");
     assert.deepEqual(interrupt, {
         id: "int:30",
         reason: "tool_call",
@@ -540,7 +630,7 @@ test("a controlling conversation re-surfaces a durable descendant interaction af
         null,
         "a durable descendant gate stops a new parent prompt",
     );
-    assert.equal(m.workers.length, 0);
+    assert.equal(m.workers.length, 1, "{§agui-message-before-gate}: the message reaches Core before the gate is re-presented");
     assert.ok(seen.some((event) => event.type === "TOOL_CALL_END"));
 
     portal.closeRun(3, thread);

@@ -37,6 +37,12 @@ test("reasoning/event validates and projects the standard live lifecycle", () =>
         () => r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, requestSequence: 1, phase: "content", delta: "" }),
         /reasoning\/event notification/,
     );
+    assert.equal(r.reasoningOpen, true, "{§agui-gate-deferral}: the lifecycle stays open until its end");
+    assert.deepEqual(
+        r.route("reasoning/event", { workerId: 10, loopId: 2, turnId: 3, modelCallId: 4, requestSequence: 1, phase: "end" }).map(({ type }) => type),
+        ["REASONING_MESSAGE_END", "REASONING_END"],
+    );
+    assert.equal(r.reasoningOpen, false, "{§agui-gate-deferral}: the end phase closes the lifecycle");
 });
 
 test("log/entry (model op) → TOOL_CALL; loop/terminated → STATE + RUN_FINISHED", () => {

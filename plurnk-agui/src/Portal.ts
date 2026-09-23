@@ -29,6 +29,8 @@ interface Thread {
     deferredFinish: AguiEvent[] | null;
     pendingTerminations: unknown[];
     resolvingInterrupts: boolean;
+    // {§agui-gate-deferral} — the stopped-world held while the bound Worker's reasoning lifecycle is open.
+    deferredDelivery: HitlDelivery | null;
     // {§agui-status-children} — the last alive-children count this thread published; null until the first refresh.
     children: number | null;
 }
@@ -118,6 +120,10 @@ export default class Portal {
             if (method === "stream/concluded") thread.openStreams.delete(Portal.#streamTarget(params));
             const out = thread.router.route(method, params);
             if (out.length > 0) thread.emit(out);
+            // {§agui-gate-deferral} — a terminal leaves the held gate durable for the next Run; any other
+            // event that closed the reasoning lifecycle presents it now.
+            if (method === "loop/terminated") thread.deferredDelivery = null;
+            else this.#presentDeferred(workspaceId, thread);
             if (method === "stream/concluded" && thread.openStreams.size === 0 && thread.deferredFinish !== null) {
                 const deferred = thread.deferredFinish;
                 thread.deferredFinish = null;
@@ -221,6 +227,12 @@ export default class Portal {
                     `worker ${thread.workerId} cannot control worker ${delivery.workerId} without an active loop`,
                 );
             }
+            // {§agui-gate-deferral} — the first gate waits on the open lifecycle; a later one stays durable
+            // and re-surfaces after the first resolves.
+            if (thread.router.reasoningOpen) {
+                thread.deferredDelivery ??= delivery;
+                continue;
+            }
             const paused = thread.router.interrupt();
             for (const interrupt of delivery.batch.interrupts) {
                 const key = interrupt.toolCallId ?? interrupt.id;
@@ -235,6 +247,13 @@ export default class Portal {
             }
             thread.emit([...delivery.batch.events, ...paused.events]);
         }
+    }
+
+    #presentDeferred(workspaceId: number, thread: Thread): void {
+        const delivery = thread.deferredDelivery;
+        if (delivery === null || thread.router.reasoningOpen) return;
+        thread.deferredDelivery = null;
+        this.#withHitl(delivery.batch, () => this.#emitDelivery(workspaceId, delivery, [thread]));
     }
 
     #withHitl(batch: HitlBatch, emit: (events: AguiEvent[]) => void): void {
@@ -388,6 +407,7 @@ export default class Portal {
             deferredFinish: null,
             pendingTerminations: [],
             resolvingInterrupts: args.resume !== undefined,
+            deferredDelivery: null,
             children: null,
         };
         let set = this.#threads.get(args.workspaceId);
@@ -485,11 +505,12 @@ export default class Portal {
     }
 
     // Drive a prompt through the loop (fire-and-forget — the outcome streams via the
-    // subscription as loop/terminated). Re-surface any pending stopped-world first.
+    // subscription as loop/terminated). {§agui-message-before-gate} — the prompt is durable in
+    // Core before any pending stopped-world is re-presented.
     async run(thread: unknown, args: Parameters<ApplicationPort["runLoop"]>[0]): Promise<{ loopId: number } | null> {
         const bound = thread as Thread;
-        if (await this.#resurfaceControlled(args.workspaceId, bound)) return null;
         const ack = await this.#seam.runLoop(args);
+        if (await this.#resurfaceControlled(args.workspaceId, bound)) return null;
         this.#bindLoop(bound, ack.loopId);
         return { loopId: ack.loopId };
     }

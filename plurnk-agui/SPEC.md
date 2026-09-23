@@ -270,6 +270,19 @@ Loop terminals received while a resume is being validated or resolved are held:
 successful resolution delivers the bound Loop's terminal once; rejected resolution
 emits its exact `RUN_ERROR`, never success from the previously interrupted Loop.
 
+§agui-gate-deferral **A gate waits for the reasoning it cannot split.** A stopped-world that
+reaches a Run while its bound Worker's readable-reasoning lifecycle is open
+({§agui-readable-reasoning}) is held by that Run, never dropped, and is presented when the
+lifecycle ends, closing the active step first. A Loop terminal that arrives while a gate is
+held settles the Run normally and leaves the gate durable for the next Run's re-presentation;
+a second gate arriving while one is held stays durable and re-surfaces after the first resolves.
+
+§agui-message-before-gate **A message is durable before a pending gate is re-presented.** A
+message Run that finds a pending stopped-world first delivers its prompt through
+`ApplicationPort.runLoop`, so Core holds it (injected into the Worker's running or parked
+Loop, otherwise enqueued as its next Loop), and only then re-presents the gate and ends with
+the interrupt. The prompt is never discarded; an admission failure is that Run's `RUN_ERROR`.
+
 An interrupt is an AG-UI Run boundary, not a Plurnk turn boundary. Before Run A's interrupt
 terminal, the projection closes any active `turn-<id>` step. Run B emits `RUN_STARTED`, its
 initial state, and a new `STEP_STARTED` for that same durable turn before releasing the stopped
@@ -522,7 +535,8 @@ their persisted loop. When no Run owns that loop, they route to their owning
 Worker's Runs so an action-produced interrupt can settle its initiating Run. When
 neither exists, they route to the nearest live ancestor conversation according to
 Core's Worker topology. They never interrupt a concurrent Run while an exact loop
-owner is live. Terminations
+owner is live, and a gate that reaches a Run inside an open reasoning lifecycle waits for
+it ({§agui-gate-deferral}). Terminations
 that race ahead of the `runLoop` acknowledgement are held until the loop identity
 is known. Sibling and concurrent loops therefore cannot end, relabel, or duplicate
 this Run.

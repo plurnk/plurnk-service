@@ -1601,6 +1601,7 @@ for (const { stage, accepted } of ["snapshot", "validation", "resolution"].flatM
                 forwardedProps: { plurnk: { workspace: "resume-race" } },
             });
             assert.deepEqual((interrupted.at(-1) as { outcome: { type: string } }).outcome.type, "interrupt");
+            assert.deepEqual(loopRuns, [{ prompt: "Review." }], "{§agui-message-before-gate}: the message reaches Core before the pending input is re-presented");
             const terminal = (): void => emit(3, "loop/terminated", termination({ workerId: 77, loopId: 9 }));
             if (!accepted && stage !== "resolution") pending = [];
             if (stage === "snapshot") {
@@ -1634,7 +1635,7 @@ for (const { stage, accepted } of ["snapshot", "validation", "resolution"].flatM
             }
             assert.equal(late.filter((event) => event.type === "RUN_FINISHED").length, accepted ? 1 : 0);
             assert.equal(resolutions, accepted || stage === "resolution" ? 1 : 0);
-            assert.equal(loopRuns.length, 0, "a resume never starts fresh inference");
+            assert.equal(loopRuns.length, 1, "a resume never starts fresh inference");
         } finally {
             await mod.close();
         }
@@ -1717,7 +1718,7 @@ test("a descendant client interaction round-trips through its controlling AG-UI 
                 responseSchema: pending[0].request.responseSchema,
             }],
         });
-        assert.equal(loopRuns.length, 0, "re-surfacing pending input does not start new model work");
+        assert.deepEqual(loopRuns, [{ prompt: "continue" }], "{§agui-message-before-gate}: the message reaches Core before the pending input is re-presented");
 
         const resumed = await post(mod.address().port, {
             threadId: "interaction-thread",

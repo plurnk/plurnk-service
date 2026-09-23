@@ -89,6 +89,9 @@ export default class Translator {
         return events;
     }
 
+    // {§agui-gate-deferral} — a stopped-world cannot split this lifecycle; the Portal holds it until the end.
+    get reasoningOpen(): boolean { return this.#activeReasoning.size > 0; }
+
     interrupt(): { events: AguiEvent[]; continuation: TranslatorContinuation } {
         if (this.#activeReasoning.size > 0) {
             throw new TypeError("An AG-UI interrupt cannot split an active readable-reasoning lifecycle.");
