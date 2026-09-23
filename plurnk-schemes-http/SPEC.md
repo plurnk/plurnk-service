@@ -339,7 +339,8 @@ Direct HTTP operations and WebSocket connections are refused with 403
 admitted hosts is cancelled with the same refusal. Automatic acquisition checks
 the target and every redirect hop, and a final URL outside the policy is the
 ordinary unavailable `null`. The policy is operator configuration, alias-free and
-not model teaching; an isolated benchmark sets `[]`.
+not model teaching; an isolated benchmark sets `[]` as its network boundary and denies the
+`web` trait ({§capability-admission}) as the model's.
 
 ### §automatic-fetch-check Automatic acquisition URL check
 
