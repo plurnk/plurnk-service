@@ -351,8 +351,9 @@ export default class PlurnkParser {
         return items;
     }
 
-    // {§unfenced-operation}: a prose line that opens with an operation's name wrote the operation
-    // without its fence. It did not run, and the model that wrote it believes it did.
+    // {§unfenced-operation}: a prose line that opens with an operation's name and anything else
+    // wrote the operation without its fence. It did not run, and the model that wrote it believes
+    // it did. The bare name alone never reaches here: the lexer opened it ({§naked-operation}).
     static #unfencedOperations(tokens: readonly Token[], quoted: ReadonlyArray<{ start: number; end: number }>, boundary?: Position): Array<Extract<ParseItem, { kind: "error" }>> {
         const items: Array<Extract<ParseItem, { kind: "error" }>> = [];
         for (const token of tokens) {

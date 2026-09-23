@@ -239,6 +239,16 @@ export default class AstBuilder {
     static #GRAPH_MATCHER = /^&[<>]?[^\s<>]\S*$/u;
 
     static build(ctx: StatementContext | MidStatementContext | DispositionStatementContext | SendStatementContext): PlurnkStatement {
+        const statement = AstBuilder.#buildAny(ctx);
+        // {§naked-operation} — the name alone opened it; the receipt names the taught form, once.
+        const opener = ctx.start?.text ?? "";
+        if (opener.length > 0 && !opener.startsWith("`")) {
+            AstBuilder.#advisories.push(new PlurnkParseError(ctx.start!.line, ctx.start!.column, "parser", `\`${opener}\` opened with no fence; the taught form is four backticks.`, "warning"));
+        }
+        return statement;
+    }
+
+    static #buildAny(ctx: StatementContext | MidStatementContext | DispositionStatementContext | SendStatementContext): PlurnkStatement {
         // Disposition and SEND contexts can arrive without a statement wrapper.
         if (ctx instanceof DispositionStatementContext) return AstBuilder.#buildDisposition(ctx);
         if (ctx instanceof SendStatementContext) return AstBuilder.#buildSend(ctx);
@@ -695,6 +705,11 @@ export default class AstBuilder {
         if (text === null) return null;
         const closer = AstBuilder.#findToken(ctx, plurnkLexer.SECTION_END);
         if (closer !== null && closer.includes("`")) return text;
+        // {§naked-operation} — a naked block expects no closer: its body is whole, to the end.
+        if (!(ctx.start?.text ?? "`").startsWith("`")) {
+            const whole = text.replace(/\r?\n$/u, "");
+            return whole === "" ? null : whole;
+        }
         const lines = text.split("\n");
         for (let index = lines.length - 1; index >= 0; index -= 1) {
             if (/^[ \t]*`{3,}[0-9]*[ \t]*\r?$/u.test(lines[index] ?? "")) {

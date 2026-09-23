@@ -63,8 +63,8 @@ test("{§unfenced-operation}: a prose line that opens with an operation's name d
     assert.deepEqual(warnings("KILL The recovery site is **CEDAR-HARBOR-27**."), [[1, 0, "`KILL` has no fence, so it did not run."]]);
     assert.deepEqual(warnings("Let me look.\nREAD (worker:///notes.md)\nKILL"), [
         [2, 0, "`READ` has no fence, so it did not run."],
-        [3, 0, "`KILL` has no fence, so it did not run."],
-    ]);
+        [3, 0, "`KILL` opened with no fence; the taught form is four backticks."],
+    ], "{§naked-operation} the bare name alone opens; the operand line still refuses");
     for (const quiet of [
         "Example:\n```\nKILL (worker:///notes.md)\n```",
         "Example:\n\t````KILL (notes.md)\n\t````\n    KILL (notes.md)",

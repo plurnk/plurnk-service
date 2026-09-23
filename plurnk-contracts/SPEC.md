@@ -311,6 +311,21 @@ teaches exactly four; other accepted widths are not taught. Every producer of a 
 parser, a client composing `/look`, a client's tab-completion — writes `PLURNK_FENCE` rather than
 its own literal (plurnk/plurnk#92).
 
+§naked-operation **A native operation's name alone on a line opens it without a fence.** A
+column-zero line outside any block that is exactly an operation's name, with nothing but
+horizontal whitespace after it, opens that operation as if it were fenced with the taught four
+backticks: no target, no modifiers, and a body that runs to a line that is exactly the name
+again, to the next four-backtick heading, or to the end of the turn. Narrower fences inside are
+body, as inside any four-backtick block; the block expects no closer, so its body is never cut
+back ({§closer-fallback}). It runs, and one warning-severity receipt follows its statement —
+`` `KILL` opened with no fence; the taught form is four backticks. `` One rule for every native
+operation: a naked `WAIT` parks, a naked `NOTE` takes its text, a naked `READ` meets the ordinary
+missing-target refusal. Only the bare name qualifies; a name with anything else on its line is
+the unfenced form and still refuses ({§unfenced-operation}), executors are runtimes rather than
+operations, and reasoning is never read this way. Measured before it was accepted (2026-09-22):
+48 naked `KILL` lines in 9,196 recorded emissions, every one followed by the deliverable, and
+three loops lost to the refusal at the strike threshold.
+
 §fence-heading-in-body Outside a complete nested block ({§balanced-fences}), a fence
 line of three or more backticks, optional digits, and a name that is a native operation
 or a known executor is a heading. Inside an open block its width must also reach the block's
@@ -1068,10 +1083,11 @@ and no-operation strikes ({§empty-turn}); parsing never infers delivery or comp
 intent.
 
 §unfenced-operation **An operation written without its fence did not run, and the parser says
-so.** An outside-text line that opens at column zero with an operation's name — `KILL The
-answer…`, `READ (a.md)` — draws one warning: `` `KILL` has no fence, so it did not run. `` The line
-stays response text ({§response-text}); quoted blocks, offset lines, names inside a sentence and
-executor tags draw nothing. The model that wrote it believes it ran: filed as a NOTE
+so.** An outside-text line that opens at column zero with an operation's name and anything else
+— `KILL The answer…`, `READ (a.md)`, `KILL (notes.md)` — draws one warning: `` `KILL` has no
+fence, so it did not run. `` The line stays response text ({§response-text}); the bare name alone
+opens the operation instead ({§naked-operation}), and quoted blocks, offset lines, names inside a
+sentence and executor tags draw nothing. The model that wrote it believes it ran: filed as a NOTE
 ({§response-text-note}), an unfenced KILL read back as an answer already given, and the model
 repeated it until the cycle detector ended the loop (`demo-overflow-recovery-AC4Ul4`; the same
 shape defeated SEND recovery and a count of invalid characters; operator, 2026-09-22).

@@ -47,6 +47,18 @@ test("{§operation-fences}: three-backtick EDIT, SEND and KILL use ordinary disp
     } finally { await f.db.close(); }
 });
 
+test("{§naked-operation}: a bare KILL line concludes with everything beneath it as the delivered answer", async () => {
+    const answer = "The answer is **42**.\n\n```sh\necho hi\n```\n\nDone.";
+    const f = await setup([{ assistant: { content: `KILL\n${answer}\n`, reasoning: null } }]);
+    try {
+        const turn = await f.turn();
+        assert.equal(turn.status, 200, "the loop concluded");
+        assert.equal(turn.emptyTurn, false);
+        assert.deepEqual(await f.replies(), [answer], "the whole body, code block included, is the deliverable");
+        assert.ok(f.notices.some(({ message }) => message === "`KILL` opened with no fence; the taught form is four backticks."), "the receipt names the taught form");
+    } finally { await f.db.close(); }
+});
+
 for (const shape of ["nested", "indented"] as const) {
     test(`{§quotation}: a ${shape} three-backtick deletion never deletes the entry`, async () => {
         const example = "```KILL (worker:///kept.md)\n```";

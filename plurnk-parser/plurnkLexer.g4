@@ -173,7 +173,44 @@ private static readonly OPERATIONS: Readonly<Record<string, number>> = {
     LOOK: plurnkLexer.OPEN_LOOK,
 };
 
+// {§naked-operation} - a native operation's name alone on a column-zero line: the next run of
+// capitals is a known operation and nothing but horizontal whitespace follows it on the line.
+private nakedHeadingAhead(): boolean {
+    let name = "";
+    for (let cursor = 1; ; cursor++) {
+        const c = this.inputStream.LA(cursor);
+        if (c >= 0x41 && c <= 0x5A) { name += String.fromCharCode(c); continue; }
+        const after = this.skipHorizontal(cursor);
+        const end = this.inputStream.LA(after);
+        return Object.hasOwn(plurnkLexer.OPERATIONS, name) && (end <= 0 || end === 0x0A || end === 0x0D);
+    }
+}
+
+// The naked block opens as if fenced with the taught four backticks, undelimited.
+private openNaked(): void {
+    this.open(this.text);
+    this.fenceLength = 4;
+    this.fenceCharacter = 0x60;
+    this.fenceDelimiter = "";
+    this.naked = true;
+}
+
+// {§naked-operation} - the name alone again, on its own line outside any nested block, closes the
+// naked block it opened.
+private nakedCloserAfterEol(): boolean {
+    const after = this.offsetAfterEol(1);
+    if (after === null || this.balancedEnd() !== null) return false;
+    for (let index = 0; index < this.openOp.length; index++) {
+        if (this.inputStream.LA(after + index) !== this.openOp.charCodeAt(index)) return false;
+    }
+    const end = this.inputStream.LA(this.skipHorizontal(after + this.openOp.length));
+    return end <= 0 || end === 0x0A || end === 0x0D;
+}
+
+private naked: boolean = false;
+
 private open(implicitName?: string): void {
+    this.naked = false;
     this.fenceLength = 0;
     this.fenceCharacter = this.text.charCodeAt(0);
     while (this.text.charCodeAt(this.fenceLength) === this.fenceCharacter) this.fenceLength++;
@@ -523,6 +560,8 @@ fragment EOL : '\r'? '\n' ;
 // {§fence-boundary} - only top-level fences can open statements. The first
 // block may terminate a provider preamble without an intervening newline.
 OPEN : { this.atColumnZero() || !this.reasoning && this.inlineChain }? FENCE [0-9]* NAME { this.knownHeading() }? { this.open(); this.noteTolerated(); } -> mode(SLOTS) ;
+// {§naked-operation} - the name alone on a column-zero line opens the operation without a fence.
+NAKED_OPEN : { this.atColumnZero() && !this.reasoning && this.nakedHeadingAhead() }? [A-Z]+ { this.openNaked(); } -> mode(SLOTS) ;
 // {§reasoning-notes} — an enclosing code fence is quotation, including unknown tags and tildes.
 // {§quotation} - a bare fence directly under a fence line is that block's orphaned closer: it
 // closes nothing and quotes nothing (a malformed heading's block ends at its own line).
@@ -615,6 +654,8 @@ B_EMPTY_END : { (this.atLineStart() || this.inlineBody) && this.closingAt(1) }? 
 // {§transparent-inline-closer} — the heading already carried its closer, so the matcher or inline
 // body after it ends with that line and the block never reaches for the next operation.
 B_CLOSED_EOL : { this.inlineCloserSeen }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
+// {§naked-operation} - a naked block also closes at its own name alone on a line.
+B_NAKED_END : { this.naked && this.nakedCloserAfterEol() }? EOL [ \t]* [A-Z]+ [ \t]* -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_NEXT_HEADING : { this.fenceDelimiter === "" && this.headingAfterEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_RUN : ~[\r\n`]+ -> type(BODY_TEXT) ;
 B_TICK : '`' -> type(BODY_TEXT) ;
