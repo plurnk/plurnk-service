@@ -26,10 +26,12 @@ export default class ServiceTeardown {
         throw cause;
     }
 
-    request(reportFailure: (cause: unknown) => void): void {
+    // The settlement is reported once, to exactly one of the two callbacks: the process ends
+    // itself either way ({§crash-only-stop}, #823).
+    request(reportFailure: (cause: unknown) => void, onClosed: () => void = () => {}): void {
         if (this.#requested) return;
         this.#requested = true;
-        void this.close().catch(reportFailure);
+        void this.close().then(onClosed, reportFailure);
     }
 
     static diagnostic(label: string, cause: unknown): string {

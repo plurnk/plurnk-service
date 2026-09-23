@@ -97,6 +97,23 @@ test("a repeated signal request performs and reports failed teardown once", asyn
     assert.deepEqual(reported, [failure]);
 });
 
+test("{§crash-only-stop} a clean request reports its settlement once, to the closed callback alone", async () => {
+    let closes = 0;
+    let closed = 0;
+    const reported: unknown[] = [];
+    let resolveClosed: (() => void) | undefined;
+    const settled = new Promise<void>((resolve) => { resolveClosed = resolve; });
+    const teardown = new ServiceTeardown(async () => { closes += 1; }, async () => {});
+    const onClosed = (): void => { closed += 1; resolveClosed?.(); };
+    teardown.request((cause) => { reported.push(cause); }, onClosed);
+    teardown.request((cause) => { reported.push(cause); }, onClosed);
+    await settled;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(closes, 1, "the teardown ran once");
+    assert.equal(closed, 1, "settlement was reported once");
+    assert.deepEqual(reported, [], "nothing failed, so nothing was reported as a failure");
+});
+
 test("service teardown diagnostics enumerate aggregate failures", () => {
     const cause = new AggregateError([
         new Error("daemon stop failed"),

@@ -269,13 +269,18 @@ export default class Service {
             process.stdout.write(`plurnk-service agui=http://${aguiAddr.host}:${aguiAddr.port} db=${dbPath} ${routeText}\n`);
 
             const shutdown = (): void => {
-                teardown.request((cause) => {
-                    process.exitCode = 1;
-                    process.stderr.write(
-                        ServiceTeardown.diagnostic("plurnk-service shutdown", cause),
-                        () => process.exit(1),
-                    );
-                });
+                teardown.request(
+                    (cause) => {
+                        process.exitCode = 1;
+                        process.stderr.write(
+                            ServiceTeardown.diagnostic("plurnk-service shutdown", cause),
+                            () => process.exit(1),
+                        );
+                    },
+                    // {§crash-only-stop} — a clean teardown ends the process itself: a handle an
+                    // abandoned wait left alive must never keep a stopped daemon running (#823).
+                    () => process.exit(process.exitCode ?? 0),
+                );
             };
             process.on("SIGINT", shutdown);
             process.on("SIGTERM", shutdown);

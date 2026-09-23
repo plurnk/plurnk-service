@@ -3810,7 +3810,10 @@ The database may be released only after the final settlement barrier resolves.
 (`PLURNK_SERVICE_STOP_TIMEOUT_MS`, default 30000): past the deadline each wait
 is abandoned with a named error instead of hanging the daemon on a child that
 never closes. A wedged child costs a forced shutdown; it must never cost an
-unbounded one.
+unbounded one. When the teardown settles, success or failure, the process ends
+itself: `0` after a clean teardown, `1` after a reported one. A handle an abandoned
+wait left alive never keeps a stopped daemon running; the supervisor's kill is a
+backstop, not the exit.
 
 ```mermaid
 flowchart LR
