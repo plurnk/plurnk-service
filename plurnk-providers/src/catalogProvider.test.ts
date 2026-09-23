@@ -8,6 +8,19 @@ import { calculateCostUsdDecimal } from "./usage.ts";
 
 // A rate literal breaks at every catalog refresh (the 1.17.0 stamp moved DeepSeek's rates); the
 // claim under test is that the estimate is the catalog's rates applied to the reported usage.
+// {§provider-reasoning-policy} — witnesses derive a route's effort vocabulary from the catalog it
+// ships with, so they pin the mechanism (catalog → policies) and never one snapshot's data (#796).
+const catalogEffortsOf = (provider: string, model: string): readonly string[] =>
+    resolveModel(provider, model)?.info.reasoningOptions?.filter((option) => option.type === "effort").flatMap((option) => option.values).flatMap((effort) => effort === null ? [] : [effort]) ?? [];
+const EFFORT_ORDER = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+const policiesOver = (efforts: Iterable<string>, off = false): string[] => {
+    const set = new Set(efforts);
+    return [...(off ? ["off"] : []), "adaptive", ...EFFORT_ORDER.filter((effort) => effort !== "minimal" && set.has(effort))];
+};
+const strongestOf = (efforts: Iterable<string>): string | undefined => {
+    const set = new Set(efforts);
+    return EFFORT_ORDER.findLast((effort) => set.has(effort));
+};
 const catalogRatesOf = (provider: string, model: string) => {
     const cost = resolveModel(provider, model)?.info.cost;
     if (cost === undefined) throw new Error(`${provider}/${model} has no catalog rates`);
@@ -207,7 +220,7 @@ test("Models.dev controls Cloudflare's exact effort vocabulary", async () => {
         ...cloudflareEnv,
         PLURNK_PROVIDERS_REASONING: "low",
     }, "@cf/qwen/qwen3.8-27b");
-    assert.deepEqual(low?.supportedReasoningPolicies, ["adaptive", "low", "medium", "xhigh"]);
+    assert.deepEqual(low?.supportedReasoningPolicies, policiesOver(catalogEffortsOf("cloudflare-workers-ai", "@cf/qwen/qwen3.8-27b")));
     await low?.generate({ workerId: "cloudflare-low", messages: [{ role: "user", content: "hello" }] });
 
     const adaptive = catalogProviderFromEnv("cloudflare-workers-ai", {
@@ -227,10 +240,10 @@ test("Models.dev controls Cloudflare's exact effort vocabulary", async () => {
         ...cloudflareEnv,
         PLURNK_PROVIDERS_REASONING: "adaptive",
     }, "@cf/zai-org/glm-5.3-flash");
-    assert.deepEqual(ungradedReasoner?.supportedReasoningPolicies, ["adaptive"]);
+    assert.deepEqual(ungradedReasoner?.supportedReasoningPolicies, policiesOver(catalogEffortsOf("cloudflare-workers-ai", "@cf/zai-org/glm-5.3-flash")), "the catalog's vocabulary, exactly");
     await ungradedReasoner?.generate({ workerId: "cloudflare-ungraded", messages: [{ role: "user", content: "hello" }] });
 
-    assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", "xhigh", undefined, undefined]);
+    assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", "xhigh", undefined, strongestOf(catalogEffortsOf("cloudflare-workers-ai", "@cf/zai-org/glm-5.3-flash"))], "adaptive takes the strongest catalog effort, or none when the catalog lists none");
     assert.throws(
         () => catalogProviderFromEnv("cloudflare-workers-ai", cloudflareEnv, "@cf/qwen/qwen3.8-27b"),
         /reasoning policy 'off' is unsupported; supported policies: adaptive, low, medium/,
@@ -268,17 +281,17 @@ test("an operator-declared effort vocabulary extends Models.dev's for a provider
     };
     // Models.dev lists this route as reasoning with no effort vocabulary; the declaration supplies one.
     const low = catalogProviderFromEnv("cloudflare-workers-ai", { ...declaredEnv, PLURNK_PROVIDERS_REASONING: "low" }, "@cf/zai-org/glm-5.3-flash");
-    assert.deepEqual(low?.supportedReasoningPolicies, ["adaptive", "low", "medium", "high"]);
+    assert.deepEqual(low?.supportedReasoningPolicies, policiesOver([...catalogEffortsOf("cloudflare-workers-ai", "@cf/zai-org/glm-5.3-flash"), "low", "medium", "high"]), "the declaration joins the catalog's vocabulary");
     await low?.generate({ workerId: "declared-low", messages: [{ role: "user", content: "hello" }] });
     const adaptive = catalogProviderFromEnv("cloudflare-workers-ai", { ...declaredEnv, PLURNK_PROVIDERS_REASONING: "adaptive" }, "@cf/zai-org/glm-5.3-flash");
     await adaptive?.generate({ workerId: "declared-adaptive", messages: [{ role: "user", content: "hello" }] });
-    assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", "high"], "a fixed level keeps its name; adaptive takes the strongest declared effort");
+    assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", strongestOf([...catalogEffortsOf("cloudflare-workers-ai", "@cf/zai-org/glm-5.3-flash"), "low", "medium", "high"])], "a fixed level keeps its name; adaptive takes the strongest effort in the union");
     // A declared `none` admits `off` on an effort transport; the catalog's own vocabulary stays in the union.
     const withOff = catalogProviderFromEnv("cloudflare-workers-ai", {
         ...declaredEnv,
         PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_EFFORTS: "none,high",
     }, "@cf/qwen/qwen3.8-27b");
-    assert.deepEqual(withOff?.supportedReasoningPolicies, ["off", "adaptive", "low", "medium", "high", "xhigh"]);
+    assert.deepEqual(withOff?.supportedReasoningPolicies, policiesOver([...catalogEffortsOf("cloudflare-workers-ai", "@cf/qwen/qwen3.8-27b"), "high"], true));
     // The declaration never turns a non-reasoning route into a reasoning one.
     const nonReasoning = catalogProviderFromEnv("cloudflare-workers-ai", { ...declaredEnv, PLURNK_PROVIDERS_REASONING: "adaptive" }, "@cf/ibm-granite/granite-4.0-h-micro");
     assert.deepEqual(nonReasoning?.supportedReasoningPolicies, ["off", "adaptive"]);
