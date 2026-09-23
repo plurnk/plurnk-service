@@ -15,17 +15,21 @@ test("live executor input: SEND feeds a running Node process", async (t) => {
         assert.equal(result.hitMaxTurns, false);
         const rows = (await Promise.all(result.turnIds.map((turnId) =>
             s.db.test_log_entries_by_turn.all<{ op: string; scheme: string | null; pathname: string | null; status_rx: number; rx: string }>({ turn_id: turnId })))).flat();
-        const send = rows.find((row) => row.op === "SEND" && row.scheme === "node" && row.status_rx === 200);
-        assert.ok(send, "a real directed SEND reached the Node invocation");
+        // The launcher is the model's choice (node, or sh running node); the input contract under test
+        // is the executor's (#830).
+        const launchers = new Set(["node", "sh"]);
+        const send = rows.find((row) => row.op === "SEND" && row.scheme !== null && launchers.has(row.scheme) && row.status_rx === 200);
+        const launcher = send?.scheme ?? null;
+        assert.ok(send !== undefined && launcher !== null, "a real directed SEND reached the Node invocation");
         assert.equal(JSON.parse(send.rx).bytesAccepted, 7);
         assert.equal(JSON.parse(send.rx).inputClosed, true);
         assert.ok(send.pathname);
         const channel = await s.db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({
-            pathname: send.pathname, scheme: "node", name: "stdout",
+            pathname: send.pathname, scheme: launcher, name: "stdout",
         });
         assert.equal(channel?.content.trim(), "segnaro", "the live process transformed the delivered input");
         assert.equal(channel?.state, "closed");
-        assert.ok(rows.some((row) => row.op === "READ" && row.scheme === "node" && row.rx.includes("segnaro")),
+        assert.ok(rows.some((row) => row.op === "READ" && row.scheme === launcher && row.rx.includes("segnaro")),
             "the model received the actual output before completion");
     } finally { await s.cleanup(); }
 });
