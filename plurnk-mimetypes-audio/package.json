@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-mimetypes-audio",
-    "version": "1.19.3",
+    "version": "1.20.0",
     "description": "Audio format and duration facts for ordinary PLURNK READ and native model input.",
     "keywords": [
         "plurnk",
@@ -125,7 +125,7 @@
         "music-metadata": "^11.15.0"
     },
     "peerDependencies": {
-        "@plurnk/plurnk-mimetypes": "^1.19.3"
+        "@plurnk/plurnk-mimetypes": "^1.20.0"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-mimetypes-audio#readme",
     "bugs": {
