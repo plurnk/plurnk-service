@@ -37,7 +37,10 @@ does not recompute them.
   it exists (forks and prior conversations are addressable as threads; a client connection's
   worker or the runtime actor `_plurnk` is never a conversation, and a thread named after one
   fails at minting rather than binding), minted via `createConversationWorker`
-  if it doesn't. The core workspace envelope carries only the workspace and selected client
+  if it doesn't. A name the daemon no longer holds (a fresh database, a deleted worker) is minted
+  anew with no history under the same name; the run-start status gauge then reports `loopId: null`
+  where the previous run's reported a loop, which is how a client tells a new conversation from a
+  resumed one. The core workspace envelope carries only the workspace and selected client
   actor ({§methods-rebind}); AG-UI owns the separate per-thread conversation binding.
   Process-local bindings use the complete `(workspace, threadId)` identity; equal thread names
   in different workspaces never share an envelope, Worker, replay, state, or active Run.
