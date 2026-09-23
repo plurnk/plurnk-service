@@ -1090,7 +1090,8 @@ under {§turn-ops-log-curation}; body bytes and source positions are unchanged.
 The model-turn entry point returns each non-whitespace text span outside operation
 regions as an ordered `text` item with its exact content and source position.
 Quoted blocks remain literal text, including every nested operation-looking line.
-Operation bodies, asides and malformed operation regions are not response text;
+Operation bodies, asides, malformed operation regions and unfenced operation lines
+({§unfenced-operation}) are not response text;
 nothing at or beyond a lost boundary is recovered as text. The statement and client
 tiers ignore outside text. Core alone owns filing it as a NOTE ({§response-text-note})
 and no-operation strikes ({§empty-turn}); parsing never infers delivery or completion
@@ -1099,12 +1100,15 @@ intent.
 §unfenced-operation **An operation written without its fence did not run, and the parser says
 so.** An outside-text line that opens at column zero with an operation's name and anything else
 — `KILL The answer…`, `READ (a.md)`, `KILL (notes.md)` — draws one warning: `` `KILL` has no
-fence, so it did not run. `` The line stays response text ({§response-text}); the bare name alone
+fence, so it did not run. `` The line is not response text ({§response-text}): it is neither filed as
+a NOTE nor echoed into the next packet, and the exact emission remains at `ops://` (operator,
+2026-09-23); the bare name alone
 opens the operation instead ({§naked-operation}), and quoted blocks, offset lines, names inside a
-sentence and executor tags draw nothing. The model that wrote it believes it ran: filed as a NOTE
-({§response-text-note}), an unfenced KILL read back as an answer already given, and the model
-repeated it until the cycle detector ended the loop (`demo-overflow-recovery-AC4Ul4`; the same
-shape defeated SEND recovery and a count of invalid characters; operator, 2026-09-22).
+sentence and executor tags draw nothing. The model that wrote it believes it ran: while the line was
+still filed as a NOTE ({§response-text-note}), an unfenced KILL read back as an answer already given,
+and the model repeated it until the cycle detector ended the loop (`demo-overflow-recovery-AC4Ul4`;
+the same shape defeated SEND recovery and a count of invalid characters; operator, 2026-09-22). The
+warning and the exclusion together end that echo.
 
 §recorded-emissions **The parser is regressed against emissions models actually produced,
 not fixtures we wrote.** `test/fixtures/recorded-emissions.jsonl` holds one real exemplar

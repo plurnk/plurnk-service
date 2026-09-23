@@ -60,7 +60,7 @@ test("{§quotation}: an operation inside an unlabeled fence never runs, and a de
     } finally { await db.close(); }
 });
 
-test("{§response-text-note} {§unfenced-operation}: an unfenced heading is kept as the model's NOTE, never run, and the model is told so", async () => {
+test("{§response-text-note} {§unfenced-operation}: an unfenced heading is never run, never a NOTE, and the model is told so", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `bare-heading-${crypto.randomUUID()}`);
@@ -81,9 +81,8 @@ test("{§response-text-note} {§unfenced-operation}: an unfenced heading is kept
         assert.equal(result.result.status, 200);
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: result.turnIds.at(-2)! });
         const model = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(model.map(({ op }) => op), ["NOTE", "SEND", "NOTE"]);
-        assert.equal(JSON.parse(model[0]!.tx).body, "KILL (worker:///notes.md)", "the heading is kept as written, as a NOTE");
-        assert.equal(JSON.parse(model[1]!.tx).body.raw, "Explained.", "only the authored SEND is delivered");
+        assert.deepEqual(model.map(({ op }) => op), ["SEND", "NOTE"], "the unfenced heading is not response text: never run, never a NOTE ({§unfenced-operation})");
+        assert.equal(JSON.parse(model[0]!.tx).body.raw, "Explained.", "only the authored SEND is delivered");
         assert.deepEqual(notices.filter(({ kind }) => kind === "parse_advisory").map(({ message }) => message),
             ["`KILL` has no fence, so it did not run."]);
         const note = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "worker", name: "body" });
@@ -172,6 +171,38 @@ for (const [label, content, finishReason] of [
     });
 }
 
+test("{§response-text-note}: storing interstitial text is a privilege of a working turn, and only narration earns it", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `interstitial-privilege-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "Do the thing.");
+        const narration = "Let me look at the failing test first.";
+        const toxin = '<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name="READ">\n<｜｜DSML｜｜ parameter name="path" string="true">sh:///67f57ccd#stdout</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>';
+        const brokenOp = "Checking the source.\n\nREAD (worker:///notes.md)";
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            { assistant: { content: `${narration}\n\n\`\`\`\`NOTE\nplan\n\`\`\`\``, reasoning: null, finishReason: "stop" } },
+            { assistant: { content: narration, reasoning: null, finishReason: "stop" } },
+            { assistant: { content: toxin, reasoning: null, finishReason: "stop" } },
+            { assistant: { content: `${brokenOp}\n\n\`\`\`\`NOTE\nstill here\n\`\`\`\``, reasoning: null, finishReason: "stop" } },
+            { assistant: { content: "````KILL\nDone.\n````", reasoning: null } },
+        ] });
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Do the thing." }] });
+        assert.equal(result.result.status, 200);
+        const [, workingTurn, proseTurn, toxinTurn, brokenTurn] = result.turnIds;
+        const notesOf = async (turnId: number) => (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: turnId }))
+            .filter(({ origin, op }) => origin === "model" && op === "NOTE").map(({ tx }) => JSON.parse(tx).body as string);
+        assert.deepEqual(await notesOf(workingTurn!), [narration, "plan"], "narration beside a real operation is the model's NOTE, in source order");
+        assert.deepEqual(await notesOf(proseTurn!), [], "an empty turn earns no NOTE, however plain its prose");
+        assert.deepEqual(await notesOf(toxinTurn!), [], "a foreign tool-call grammar retains nothing");
+        assert.deepEqual(await notesOf(brokenTurn!), ["Checking the source.", "still here"], "the unfenced heading is not response text, the narration around it is, and the fenced NOTE stays");
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        assert.equal(sources.find((row) => row.turn_id === toxinTurn && row.kind === "ops")?.content, toxin, "the exact emission stays readable at ops://");
+        assert.equal(sources.find((row) => row.turn_id === proseTurn && row.kind === "ops")?.content, narration);
+    } finally { await db.close(); }
+});
+
 for (const finishReason of [undefined, "stop", "length"] as const) {
     test(`{§empty-turn}: reasoning without operations does not conclude settled work (finish=${finishReason ?? "absent"})`, async () => {
         const db = await openMigrated();
@@ -245,13 +276,13 @@ test("{§quotation}: an offset example draws no parser advisory, and does not co
         assert.equal(provider.received.length, 2, "the offset example is not an answer: the model gets another turn");
         // #799: the parser presumes nothing about why a fence is offset. The turn is an empty turn
         // rather than a conclusion — proven by the second provider call above. The strike is silent
-        // ({§empty-turn}); the text outside every operation is kept as the model's NOTE ({§response-text-note}).
+        // ({§empty-turn}); the text stays at ops:// and is not filed as a NOTE ({§response-text-note}).
         assert.deepEqual(notices.filter(({ kind }) => kind === "turn_no_operations"), [], "silent");
         assert.deepEqual(notices.filter(({ kind, message }) => kind !== "turn_no_operations" && /must start its line|read as prose/u.test(message ?? "")), [], "an offset example still draws no parser advisory");
         const all = await Promise.all(result.turnIds.map((id) => db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: id })));
         assert.equal(all.flat().filter(({ origin, op }) => origin === "model" && op === "READ").length, 0, "the offset example never ran");
         assert.deepEqual(all.at(-2)!.filter(({ origin, op }) => origin === "model" && op === "NOTE").map(({ tx }) => JSON.parse(tx).body),
-            ["I'll read it now.\n\n    " + FENCE + "READ (worker:///notes.md)\n    " + FENCE], "the prose and its example are the model's NOTE");
+            [], "an empty turn keeps no NOTE: storing interstitial text is a privilege of a working turn ({§response-text-note}); the emission stays at ops://");
         assert.equal(
             JSON.parse(all.at(-1)!.find(({ origin, op }) => origin === "model" && op === "KILL")!.tx).body,
             "It says: Keep this note.",

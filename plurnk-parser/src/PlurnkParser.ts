@@ -318,8 +318,11 @@ export default class PlurnkParser {
         }
 
         if (tier === "model") {
-            items.push(...PlurnkParser.#responseText(tokens, unparsedTail?.from));
-            items.push(...PlurnkParser.#unfencedOperations(tokens, lexer.takeQuotedSpans(lexer.inputStream.size), unparsedTail?.from));
+            // {§unfenced-operation}: the line that wrote an operation without its fence is a broken
+            // program, not response text — it draws its warning and never becomes narration.
+            const unfenced = PlurnkParser.#unfencedOperations(tokens, lexer.takeQuotedSpans(lexer.inputStream.size), unparsedTail?.from);
+            items.push(...PlurnkParser.#responseText(tokens, new Set(unfenced.map(({ line }) => line)), unparsedTail?.from));
+            items.push(...unfenced.map(({ item }) => item));
             const position = (item: ParseItem<S>): Position => item.kind === "statement" ? item.statement.position
                 : item.kind === "text" ? item.position : item.error;
             items.sort((a, b) => position(a).line - position(b).line || position(a).column - position(b).column);
@@ -329,7 +332,8 @@ export default class PlurnkParser {
 
     // {§response-text}: only the lexer's outside-text channel is recoverable; a malformed
     // operation remains an operation region even when it produces no AST statement.
-    static #responseText(tokens: readonly Token[], boundary?: Position): Extract<ParseItem, { kind: "text" }>[] {
+    // `excludedLines` are the unfenced operation lines ({§unfenced-operation}): the whole line, operand included.
+    static #responseText(tokens: readonly Token[], excludedLines: ReadonlySet<number>, boundary?: Position): Extract<ParseItem, { kind: "text" }>[] {
         const items: Extract<ParseItem, { kind: "text" }>[] = [];
         let content = "";
         let position: Position | null = null;
@@ -344,6 +348,10 @@ export default class PlurnkParser {
                 flush();
                 continue;
             }
+            if (excludedLines.has(token.line)) {
+                flush();
+                continue;
+            }
             position ??= { line: token.line, column: token.column };
             content += token.text ?? "";
         }
@@ -354,15 +362,15 @@ export default class PlurnkParser {
     // {§unfenced-operation}: a prose line that opens with an operation's name and anything else
     // wrote the operation without its fence. It did not run, and the model that wrote it believes
     // it did. The bare name alone never reaches here: the lexer opened it ({§naked-operation}).
-    static #unfencedOperations(tokens: readonly Token[], quoted: ReadonlyArray<{ start: number; end: number }>, boundary?: Position): Array<Extract<ParseItem, { kind: "error" }>> {
-        const items: Array<Extract<ParseItem, { kind: "error" }>> = [];
+    static #unfencedOperations(tokens: readonly Token[], quoted: ReadonlyArray<{ start: number; end: number }>, boundary?: Position): Array<{ line: number; item: Extract<ParseItem, { kind: "error" }> }> {
+        const items: Array<{ line: number; item: Extract<ParseItem, { kind: "error" }> }> = [];
         for (const token of tokens) {
             if (boundary !== undefined && !PlurnkParser.#isBefore(token, boundary)) break;
             if (token.type !== plurnkLexer.TEXT || token.column !== 0) continue;
             if (quoted.some(({ start, end }) => token.start >= start && token.start < end)) continue;
             const name = /^[A-Z]+(?=$|[(<[])/u.exec(token.text ?? "")?.[0];
             if (name === undefined || !(PLURNK_OPS as readonly string[]).includes(name)) continue;
-            items.push({ kind: "error", error: new PlurnkParseError(token.line, token.column, "parser", `\`${name}\` has no fence, so it did not run.`, "warning") });
+            items.push({ line: token.line, item: { kind: "error", error: new PlurnkParseError(token.line, token.column, "parser", `\`${name}\` has no fence, so it did not run.`, "warning") } });
         }
         return items;
     }

@@ -177,35 +177,37 @@ FROM loops l JOIN workers w ON w.id = l.worker_id WHERE l.id = $loop_id;
 SELECT streams, workers FROM loop_obligations WHERE loop_id = $loop_id;
 
 -- PREP: lifecycle_tree_budget
--- {§turn-cap-counts-the-tree} — the budget of the worker tree a loop belongs to. The root
--- worker's loop current when this loop began owns the ceiling; every model call on that loop
--- and on any later loop of a descendant worker spends it, emission and BARE alike, open or
--- settled, one per call however many physical requests it took.
-WITH RECURSIVE up(id, parent_worker_id) AS (
-    SELECT w.id, w.parent_worker_id FROM workers w
+-- {§turn-cap-counts-the-tree} — the budget of the worker tree a loop belongs to. The owner is
+-- the current loop (id at or below this loop's) of the topmost ancestor-or-self worker that has
+-- one: for a tree a client started, the root worker's loop current when this loop began; a loop
+-- with no such ancestor owns its own budget. Every model call on the owner's loop and on any
+-- later loop of the owner's descendants spends it, emission and BARE alike, open or settled, one
+-- per call however many physical requests it took.
+WITH RECURSIVE up(id, parent_worker_id, depth) AS (
+    SELECT w.id, w.parent_worker_id, 0 FROM workers w
     WHERE w.id = (SELECT worker_id FROM loops WHERE id = $loop_id)
     UNION ALL
-    SELECT w.id, w.parent_worker_id FROM workers w JOIN up ON w.id = up.parent_worker_id
+    SELECT w.id, w.parent_worker_id, up.depth + 1 FROM workers w JOIN up ON w.id = up.parent_worker_id
 ),
-root AS (SELECT id FROM up WHERE parent_worker_id IS NULL),
-root_loop AS (
-    SELECT l.id, l.max_turns FROM loops l
-    WHERE l.worker_id = (SELECT id FROM root) AND l.id <= $loop_id
-    ORDER BY l.id DESC LIMIT 1
+owner AS (
+    SELECT l.id AS loop_id, l.max_turns, up.id AS worker_id FROM up
+    JOIN loops l ON l.worker_id = up.id
+    WHERE l.id <= $loop_id
+    ORDER BY up.depth DESC, l.id DESC LIMIT 1
 ),
 tree(id) AS (
-    SELECT id FROM root
+    SELECT worker_id FROM owner
     UNION ALL
     SELECT w.id FROM workers w JOIN tree ON w.parent_worker_id = tree.id
 )
 SELECT
-    (SELECT id FROM root_loop) AS root_loop_id,
-    (SELECT max_turns FROM root_loop) AS max_turns,
+    (SELECT loop_id FROM owner) AS root_loop_id,
+    (SELECT max_turns FROM owner) AS max_turns,
     (SELECT COUNT(*) FROM inference_calls ic
         JOIN turns t ON t.id = ic.turn_id
         JOIN loops l ON l.id = t.loop_id
-        WHERE l.id = (SELECT id FROM root_loop)
+        WHERE l.id = (SELECT loop_id FROM owner)
            OR (l.worker_id IN (SELECT id FROM tree)
-               AND l.worker_id != (SELECT id FROM root)
-               AND l.id > (SELECT id FROM root_loop))
+               AND l.worker_id != (SELECT worker_id FROM owner)
+               AND l.id > (SELECT loop_id FROM owner))
     ) AS count;

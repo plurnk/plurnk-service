@@ -68,9 +68,7 @@ test("{§response-text}: prose and operation-shaped text stay literal, without g
     const executors = ["sh", "node"];
     for (const source of [
         "The answer is 42.\n\n```ts\nconst x = 1;\n```",
-        "READ the file first, then decide.\nsh is a shell.",
         "Example:\n\n```text\n````READ (x.md\n````\n```",
-        "Let me look.\nREAD (x.md)",
         "I will look.\n\n ```FIND (ledger.md) /shutdown/i\n ```",
         "Thinking.\n\n ```NOTE\nhello\n ```",
         "Run:\n\n ```sh (x)\nnpm test\n ```",
@@ -80,6 +78,21 @@ test("{§response-text}: prose and operation-shaped text stay literal, without g
         const parsed = PlurnkParser.parse(source, { executors });
         assert.deepEqual(parsed.items.filter((item) => item.kind === "statement"), []);
         assert.deepEqual(parsed.items.flatMap((item) => item.kind === "text" ? [item.content] : []), [source]);
+    }
+});
+
+test("{§unfenced-operation}: an operation written without its fence is not response text; the prose beside it is", () => {
+    // A column-zero line that opens with an operation's name and anything else is the unfenced
+    // shape, whether an operand or a sentence follows ("KILL The answer…" in the declaration).
+    for (const [source, texts] of [
+        ["Let me look.\nREAD (x.md)", ["Let me look.\n"]],
+        ["READ the file first, then decide.\nsh is a shell.", ["sh is a shell."]],
+    ] as const) {
+        const parsed = PlurnkParser.parse(source, { executors: ["sh", "node"] });
+        assert.deepEqual(parsed.items.filter((item) => item.kind === "statement"), [], source);
+        assert.deepEqual(parsed.items.flatMap((item) => item.kind === "text" ? [item.content] : []), [...texts], source);
+        assert.deepEqual(parsed.items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []),
+            ["`READ` has no fence, so it did not run."], source);
     }
 });
 

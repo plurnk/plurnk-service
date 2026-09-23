@@ -2692,7 +2692,13 @@ accounting and model-visible failure evidence remain separately owned by
   Delivered as a SEND, the text read as an answer and confirmed that speaking outside operations
   works; reported as a count of invalid characters, it sent a model to repair its prose into
   live operations (`demo-show-dont-run-qdN9u2` executed the KILL it meant to show). A NOTE
-  neither delivers nor concludes (operator, 2026-09-22). This is the far end of the teaching
+  neither delivers nor concludes (operator, 2026-09-22). Storing interstitial text is a
+  privilege, not a right (operator, 2026-09-23): a span is retained only on a turn that
+  executed at least one operation, and only when it is narration. An empty turn retains no
+  NOTE, and on any turn a span that carries a known foreign tool-call grammar, a leaked
+  template token, or an operation attempt outside its fence retains none either. The exact
+  emission stays at `ops://`, and the packet never echoes the grammar that broke a turn for
+  the next turn to imitate. The registers are mechanism (`KnownToxins`). This is the far end of the teaching
   scale: text outside every operation breaks the first rule of `plurnk.md` — *"YOU MUST ONLY
   use valid Plurnk OPs"* — and takes the largest reinterpretation, while a
   departure as small as a missing closer is read as meant ({§closer-fallback}).
@@ -3680,11 +3686,12 @@ is red because provider capacity did not derive for
 a fresh-user configuration.
 
 §turn-cap-counts-the-tree **The turn ceiling is the worker tree's budget of model
-calls.** The root worker's loop current when a loop began owns the ceiling (its
-`max_turns`: the client's `maxTurns` clamped by the operator ceiling below); every model
-call on that loop and on any later loop of a descendant worker spends it, emission turns
-and BARE calls alike, open or settled, one per call however many physical requests it
-took. `LoopDriver` reads the tree's count before each turn and rules the `max-turns` 429
+calls.** The owner is the current loop of the topmost ancestor-or-self worker that has
+one: for a tree a client started, the root worker's loop current when this loop began (its
+`max_turns`: the client's `maxTurns` clamped by the operator ceiling below); a loop with no
+such ancestor owns its own budget. Every model call on the owner's loop and on any later
+loop of the owner's descendants spends it, emission turns and BARE calls alike, open or
+settled, one per call however many physical requests it took. `LoopDriver` reads the tree's count before each turn and rules the `max-turns` 429
 terminal ({§loop-terminals}) when the ceiling is met; a BARE beyond the budget is refused
 429 `max-turns` before any provider call, so one turn cannot spend past it with a batch. A
 child loop inherits the value and binds the same count.
