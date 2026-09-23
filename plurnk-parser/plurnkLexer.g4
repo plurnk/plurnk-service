@@ -84,6 +84,8 @@ private metadataDepth: number = 0;
 private metadataReady: boolean = false;
 private inlineBody: boolean = false;
 private inlineBodies: Array<{ line: number; column: number; heading: string }> = [];
+// {§bare-option-object} - true once this heading carried a [...] block.
+private headingMetadata: boolean = false;
 private unknownTags: Array<{ line: number; column: number; tag: string; reason: "unknown" | "indented" | "quoted" }> = [];
 private toleratedFences: Array<{ line: number; column: number; tag: string }> = [];
 private quotedSpans: Array<{ start: number; end: number }> = [];
@@ -211,6 +213,7 @@ private naked: boolean = false;
 
 private open(implicitName?: string): void {
     this.naked = false;
+    this.headingMetadata = false;
     this.fenceLength = 0;
     this.fenceCharacter = this.text.charCodeAt(0);
     while (this.text.charCodeAt(this.fenceLength) === this.fenceCharacter) this.fenceLength++;
@@ -516,7 +519,28 @@ private noteInlineBody(): void {
     const first = this.text.charCodeAt(0) === 0x60 ? this.inputStream.LA(1) : this.text.charCodeAt(0);
     if (first === 0x2F || first === 0x24 || first === 0x7E || first === 0x26 || first === 0x5E) return;
     if (this.openOp === "FIND" || this.openOp === "READ" || this.openOp === "KILL") return;
+    // {§bare-option-object} - one JSON object where the option block goes is the option block: the
+    // builder lifts it, and its receipt stands in for this advisory.
+    if (first === 0x7B && this.bareOptionObjectOnLine()) return;
     this.inlineBodies.push({ line: this.getOpenTagLine(), column: this.getOpenTagColumn(), heading: this.getOpenHeading() });
+}
+
+private bareOptionObjectOnLine(): boolean {
+    if (this.headingMetadata || this.text.charCodeAt(0) === 0x60) return false;
+    if (!(this.execFence || this.openOp === "SEND" || this.openOp === "BARE" || this.openOp === "WORK" || this.openOp === "FORK")) return false;
+    let rest = this.text;
+    for (let offset = 1; ; offset++) {
+        const c = this.inputStream.LA(offset);
+        if (c <= 0 || c === 0x0A || c === 0x0D) break;
+        rest += String.fromCodePoint(c);
+    }
+    // a closing fence on the heading line is not part of the object
+    const fence = rest.lastIndexOf("\x60\x60\x60");
+    if (fence !== -1 && rest.slice(fence).replace(/[\x600-9 \t]/gu, "") === "") rest = rest.slice(0, fence);
+    rest = rest.trim();
+    let parsed: unknown;
+    try { parsed = JSON.parse(rest); } catch { return false; }
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed);
 }
 
 public takeInlineBodies(): Array<{ line: number; column: number; heading: string }> {
@@ -644,7 +668,7 @@ METADATA_TICK : '`' -> type(METADATA_TEXT) ;
 METADATA_QUOTE : '"' -> type(METADATA_TEXT) ;
 METADATA_NEST_OPEN : '[' { this.metadataDepth++; } -> type(METADATA_TEXT) ;
 METADATA_NEST_END : { this.metadataDepth > 0 }? ']' { this.metadataDepth--; } -> type(METADATA_TEXT) ;
-METADATA_END : ']' { this.slotReady = true; this.metadataReady = true; } -> type(RBRACKET), mode(SLOTS) ;
+METADATA_END : ']' { this.slotReady = true; this.metadataReady = true; this.headingMetadata = true; } -> type(RBRACKET), mode(SLOTS) ;
 
 mode BODY;
 // {§fence-closer} the block's own closer; {§fence-heading-in-body} a heading ends it instead, and

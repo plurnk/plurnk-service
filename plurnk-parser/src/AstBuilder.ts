@@ -156,6 +156,9 @@ export default class AstBuilder {
         if (ticked !== null && AstBuilder.#SIGIL.test(ticked[1]!)) text = ticked[1]!;
         if (AstBuilder.#SIGIL.test(text)) return { text, aside, scope, metadata };
         if (!inline || (op !== "FIND" && op !== "READ" && op !== "KILL")) return null;
+        // {§bare-option-object} — here the same text is the matcher; a JSON object is named, so the
+        // collision with the option form is learned in the turn it happens.
+        if (metadataFree && text.startsWith("{") && AstBuilder.#isJsonObject(text)) AstBuilder.#adviseTrailing(position, "`{…}` was read as the matcher; an option block is `[{…}]`.");
         return { text, aside, scope, metadata };
     }
 
@@ -166,6 +169,25 @@ export default class AstBuilder {
 
     static #isJsonArrayOfObjects(inner: string): boolean {
         return AstBuilder.metadataOptions([inner]) !== null;
+    }
+
+    static #isJsonObject(text: string): boolean {
+        let parsed: unknown;
+        try { parsed = JSON.parse(text); }
+        catch (cause) {
+            if (!(cause instanceof SyntaxError)) throw cause;
+            return false;
+        }
+        return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed);
+    }
+
+    // {§bare-option-object} — one JSON object where the option block goes, on an operation that takes
+    // options and no bare matcher: read as `[{…}]`, so every consumer sees the taught shape. The receipt
+    // names the indulgence once, in place of the inline-body advisory the lexer withheld.
+    static #liftBareOptionObject(tag: string, metadata: SchemeMetadata, split: { inline: string | null; below: string | null }, position: Position): { metadata: SchemeMetadata; lifted: boolean } {
+        if (metadata !== null || split.inline === null || !AstBuilder.#isJsonObject(split.inline.trim())) return { metadata, lifted: false };
+        AstBuilder.#advisories.push(new PlurnkParseError(position.line, position.column, "parser", `\`${tag}\` took a bare option object; the taught form is \`[{…}]\`.`, "warning"));
+        return { metadata: [split.inline.trim()], lifted: true };
     }
 
     // {§matcher-option} — shared by admission and rendering; invalid blocks remain owner input.
@@ -416,12 +438,14 @@ export default class AstBuilder {
     static #buildSend(ctx: SendStatementContext): SendStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractSlots(ctx.resourceSelection(), position);
-        const raw = AstBuilder.#bodyTextOf(ctx);
+        const split = AstBuilder.#splitInlineBody(ctx, position);
+        const options = AstBuilder.#liftBareOptionObject("SEND", AstBuilder.#metadataFromCtx(ctx), split, position);
+        const raw = options.lifted ? split.below : AstBuilder.#bodyTextOf(ctx);
         return {
             op: "SEND",
             aside: AstBuilder.#asideOf(ctx),
             ...slots,
-            metadata: AstBuilder.#metadataFromCtx(ctx),
+            metadata: options.metadata,
             body: raw !== null ? AstBuilder.#parseSendBody(raw) : null,
             position,
         };
@@ -431,11 +455,14 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const runtime = AstBuilder.#executorOf(ctx);
         const slots = AstBuilder.#extractExecSlots(ctx.execModifiers(), position, runtime);
+        const split = AstBuilder.#splitInlineBody(ctx, position);
+        const options = AstBuilder.#liftBareOptionObject(runtime, slots.metadata, split, position);
         return {
             runtime,
             aside: AstBuilder.#asideOf(ctx),
             ...slots,
-            body: AstBuilder.#bodyTextOf(ctx),
+            metadata: options.metadata,
+            body: options.lifted ? split.below : AstBuilder.#bodyTextOf(ctx),
             position,
         };
     }
@@ -451,13 +478,15 @@ export default class AstBuilder {
     static #buildBare(ctx: BareStatementContext): BareStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractBranchSlots(ctx.targetWithMetadata(), position);
+        const split = AstBuilder.#splitInlineBody(ctx, position);
+        const options = AstBuilder.#liftBareOptionObject("BARE", slots.metadata, split, position);
         return {
             op: "BARE",
             aside: AstBuilder.#asideOf(ctx),
             target: slots.target,
-            metadata: slots.metadata,
+            metadata: options.metadata,
             lineMarker: null,
-            body: AstBuilder.#requiredBodyTextOf(ctx),
+            body: options.lifted ? split.below ?? "" : AstBuilder.#requiredBodyTextOf(ctx),
             position,
         };
     }
@@ -490,12 +519,15 @@ export default class AstBuilder {
     static #buildWork(ctx: WorkStatementContext): WorkStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractBranchSlots(ctx.targetWithMetadata(), position);
+        const split = AstBuilder.#splitInlineBody(ctx, position);
+        const options = AstBuilder.#liftBareOptionObject("WORK", slots.metadata, split, position);
         return {
             op: "WORK",
             aside: AstBuilder.#asideOf(ctx),
             ...slots,
+            metadata: options.metadata,
             lineMarker: null,
-            body: AstBuilder.#requiredBodyTextOf(ctx),
+            body: options.lifted ? split.below ?? "" : AstBuilder.#requiredBodyTextOf(ctx),
             position,
         };
     }
@@ -503,12 +535,15 @@ export default class AstBuilder {
     static #buildFork(ctx: ForkStatementContext): ForkStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractBranchSlots(ctx.targetWithMetadata(), position);
+        const split = AstBuilder.#splitInlineBody(ctx, position);
+        const options = AstBuilder.#liftBareOptionObject("FORK", slots.metadata, split, position);
         return {
             op: "FORK",
             aside: AstBuilder.#asideOf(ctx),
             ...slots,
+            metadata: options.metadata,
             lineMarker: null,
-            body: AstBuilder.#requiredBodyTextOf(ctx),
+            body: options.lifted ? split.below ?? "" : AstBuilder.#requiredBodyTextOf(ctx),
             position,
         };
     }

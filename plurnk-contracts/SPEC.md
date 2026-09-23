@@ -522,6 +522,20 @@ The ingester tolerates body text after horizontal whitespace on the header,
 preserves it, and emits one warning stating that normalization. This does not
 change the meaning of a compact empty block or permit unmatched fences.
 
+§bare-option-object A bare option object is the option block. On an
+operation that takes an option block and no bare matcher — SEND, BARE, WORK,
+FORK and every executor fence — heading text after the slots that is exactly
+one JSON object `{…}` is read as `[{…}]`: the AST carries the array form, the
+written heading renders it, every consumer sees the taught shape, and one
+warning-severity receipt names the indulgence in place of the
+{§heading-inline-body} advisory: "`SEND` took a bare option object; the taught
+form is `[{…}]`." A heading that already carries a block keeps the object as
+inline body. On FIND, READ and KILL the same text is the matcher
+({§naked-pattern}), because a search for JSON text is legitimate; a bare matcher
+that parses as a JSON object draws one advisory naming the option form ("`{…}`
+was read as the matcher; an option block is `[{…}]`."), so the collision is
+learned in the turn it happens.
+
 §operation-aside The final header modifier may be one single-line HTML
 comment. AstBuilder removes its delimiters and surrounding whitespace into
 `aside: string | null`. It is durable descriptive text, not authority,
