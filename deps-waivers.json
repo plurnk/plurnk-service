@@ -4,6 +4,11 @@
             "reason": "npm's stable latest tag is the legacy 0.1 line; 0.2.0-alpha.11 is the exact current 2026-07-28 conformance referee",
             "issue": "https://repo.possumtech.com/plurnk/plurnk-service/issues/253",
             "lane": "mcp"
+        },
+        "json-p3": {
+            "reason": "2.3.2 tarball omits dist/index.d.ts, its declared types; TS7016 in the plurnk-parser build. Held at 2.3.1 until a release ships the declaration.",
+            "issue": "https://repo.possumtech.com/plurnk/plurnk-service/issues/833",
+            "lane": "parser"
         }
     },
     "ownerVeto": []
