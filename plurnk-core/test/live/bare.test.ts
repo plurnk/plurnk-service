@@ -18,9 +18,12 @@ test("{§bare-inference} live: delegate two isolated questions and consume their
         const calls = (await Promise.all(turnIds.map((turnId) =>
             s.db.test_model_calls.all<{ kind: string; state: string; log_entry_id: number | null }>({ turn_id: turnId }),
         ))).flat().filter(({ kind }) => kind === "bare");
-        assert.equal(calls.length, 2, "two actual isolated provider calls served the requested delegation");
-        assert.ok(calls.every(({ state }) => state === "response"), "both BARE calls returned provider responses");
-        assert.ok(calls.every(({ log_entry_id }) => log_entry_id !== null), "both responses have ordinary durable log receipts");
+        // {§provider-recovery} — a failed BARE is re-issued as its own call (#829): count the served
+        // delegations, not the attempts.
+        const served = calls.filter(({ state }) => state === "response");
+        assert.equal(served.length, 2, "two served isolated provider calls answered the requested delegation");
+        assert.ok(calls.every(({ state }) => state !== "open"), "no BARE call is left open");
+        assert.ok(served.every(({ log_entry_id }) => log_entry_id !== null), "both responses have ordinary durable log receipts");
         const rows = (await Promise.all(turnIds.map((turnId) =>
             s.db.test_log_entries_by_turn.all<{ op: string | null; pathname: string | null }>({ turn_id: turnId }),
         ))).flat();
