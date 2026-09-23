@@ -12,13 +12,21 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   - deep-json (deepJson): the parsed TOML value via `smol-toml`. This is
 //     what jsonpath queries against — users writing `$.server.host` want
 //     the parsed value tree.
+// smol-toml (1.9+) hands back null-prototype objects; the deep-JSON tree is plain JSON, so every
+// table is re-homed on Object and every array walked. Dates and scalars pass through untouched.
+const plain = (value: unknown): unknown => Array.isArray(value)
+    ? value.map(plain)
+    : value !== null && typeof value === "object" && Object.getPrototypeOf(value) === null
+        ? Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, plain(inner)]))
+        : value;
+
 export async function deepJson(content: string): Promise<unknown> {
     const { parse, TomlError } = await import("smol-toml" as string) as {
         parse(text: string): unknown;
         TomlError: new (...args: never[]) => Error;
     };
     try {
-        return parse(content);
+        return plain(parse(content));
     } catch (cause) {
         if (cause instanceof TomlError) {
             throw new MimetypeInputError({ mimetype: "application/toml", cause });
