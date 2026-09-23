@@ -90,13 +90,16 @@ if (JSON.stringify(reparsedSelection.items[0]?.statement) !== JSON.stringify(sel
     throw new Error("rendering erased the resource selection");
 }
 
+// The model tier also records free text as text items; the program is its statements.
+const statementsOf = (parsed) => parsed.items.filter((item) => item.kind === "statement").map((item) => item.statement);
 const interstitial = "Prelude.\\n" + PlurnkParser.frame("SEND", "Only this is a message.")
     + "\\n3\\n" + program + "\\nPostscript.";
 for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
     const parsed = parse(interstitial);
     assertClean("interstitial text", parsed);
-    if (parsed.items.length !== 2 || parsed.items[0]?.statement?.body?.raw !== "Only this is a message."
-        || parsed.items[1]?.statement?.op !== "NOTE") throw new Error("outside text changed the parsed program");
+    const statements = statementsOf(parsed);
+    if (statements.length !== 2 || statements[0]?.body?.raw !== "Only this is a message."
+        || statements[1]?.op !== "NOTE") throw new Error("outside text changed the parsed program");
 }
 
 // A quoted example rides a numeric delimiter ({§numeric-delimiter}): the SEND's body holds the
@@ -106,17 +109,19 @@ const outer = String.fromCharCode(96).repeat(5);
 const quoted = outer + "42SEND <!-- literal example -->\\n" + literalExample + "\\n" + outer + "42\\n" + program;
 const quotedSend = PlurnkParser.parse(quoted);
 assertClean("delimited SEND", quotedSend);
-if (quotedSend.items.length !== 2 || quotedSend.items[0]?.statement?.op !== "SEND"
-    || quotedSend.items[0]?.statement?.aside !== "literal example"
-    || quotedSend.items[0]?.statement?.body?.raw !== literalExample
-    || quotedSend.items[1]?.statement?.op !== "NOTE") throw new Error("delimited SEND did not quote its literal example");
+const quotedStatements = statementsOf(quotedSend);
+if (quotedStatements.length !== 2 || quotedStatements[0]?.op !== "SEND"
+    || quotedStatements[0]?.aside !== "literal example"
+    || quotedStatements[0]?.body?.raw !== literalExample
+    || quotedStatements[1]?.op !== "NOTE") throw new Error("delimited SEND did not quote its literal example");
 
 const balancedBody = "Literal example:\\n" + literalExample + "\\nThe answer continues here.";
 const balanced = PlurnkParser.parse(outer + "SEND\\n" + balancedBody + "\\n" + outer + "\\n" + program);
 assertClean("balanced SEND", balanced);
-if (balanced.items.length !== 2 || balanced.items[0]?.statement?.op !== "SEND"
-    || balanced.items[0]?.statement?.body?.raw !== balancedBody
-    || balanced.items[1]?.statement?.op !== "NOTE") throw new Error("balanced nesting truncated the reply or executed its example");
+const balancedStatements = statementsOf(balanced);
+if (balancedStatements.length !== 2 || balancedStatements[0]?.op !== "SEND"
+    || balancedStatements[0]?.body?.raw !== balancedBody
+    || balancedStatements[1]?.op !== "NOTE") throw new Error("balanced nesting truncated the reply or executed its example");
 
 const item = result.items[0];
 if (item.kind !== "statement") throw new Error("expected statement, got " + item.kind);
