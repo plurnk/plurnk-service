@@ -3679,6 +3679,16 @@ The floor reports every removed key. A gate that succeeds only with those pins
 is red because provider capacity did not derive for
 a fresh-user configuration.
 
+§turn-cap-counts-the-tree **The turn ceiling is the worker tree's budget of model
+calls.** The root worker's loop current when a loop began owns the ceiling (its
+`max_turns`: the client's `maxTurns` clamped by the operator ceiling below); every model
+call on that loop and on any later loop of a descendant worker spends it, emission turns
+and BARE calls alike, open or settled, one per call however many physical requests it
+took. `LoopDriver` reads the tree's count before each turn and rules the `max-turns` 429
+terminal ({§loop-terminals}) when the ceiling is met; a BARE beyond the budget is refused
+429 `max-turns` before any provider call, so one turn cannot spend past it with a batch. A
+child loop inherits the value and binds the same count.
+
 §operator-config-max-turns-ceiling Enforcement is per-use-site — no central most-restrictive pass; each ceiling is checked where it bites. `PLURNK_SERVICE_MAX_TURNS` ships **off** (`-1` = no cap; the loop ends via SEND, budget, strikes, or cycle detection) and, when an operator sets a positive value, the per-call request is `min()`-capped against it.
 
 §operator-config-workspace-settings **Client open-context (per workspace).**

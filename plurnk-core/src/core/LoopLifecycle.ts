@@ -179,6 +179,17 @@ export default class LoopLifecycle {
         return row.count;
     }
 
+    // {§turn-cap-counts-the-tree} — the ceiling and the model calls already spent against it, tree-wide.
+    async treeBudget(loopId: number): Promise<{ rootLoopId: number; maxTurns: number; count: number }> {
+        const row = await this.#db.lifecycle_tree_budget.get<{ root_loop_id: number | null; max_turns: number | null; count: number }>({
+            loop_id: loopId,
+        });
+        if (row === undefined || row.root_loop_id === null || row.max_turns === null) {
+            throw new Error(`loop ${loopId} has no root loop to own its turn ceiling`);
+        }
+        return { rootLoopId: row.root_loop_id, maxTurns: row.max_turns, count: row.count };
+    }
+
     async cancelTree(workerId: number, reason: string, includeRoot: boolean): Promise<CancelledTree> {
         const boundedReason = ErrorDetail.preview(reason) || "no reason was supplied";
         const params = {

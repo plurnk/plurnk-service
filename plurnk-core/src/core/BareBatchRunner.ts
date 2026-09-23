@@ -39,6 +39,7 @@ export default class BareBatchRunner {
         turnId,
         workspaceId,
         workerId,
+        loopId,
         loopSequence,
         turnSequence,
         signal,
@@ -50,6 +51,7 @@ export default class BareBatchRunner {
         turnId: number;
         workspaceId: number;
         workerId: number;
+        loopId: number;
         loopSequence: number;
         turnSequence: number;
         signal: AbortSignal | undefined;
@@ -61,6 +63,22 @@ export default class BareBatchRunner {
             inputs.push({ statement, ...await preparePrompt(statement) });
         }
         signal?.throwIfAborted();
+        // {§turn-cap-counts-the-tree} — every isolated call spends the worker tree's budget; a
+        // batch stops opening calls at the ceiling instead of spending past it in one turn.
+        const budget = await this.#db.lifecycle_tree_budget.get<{ root_loop_id: number | null; max_turns: number | null; count: number }>({ loop_id: loopId });
+        if (budget === undefined || budget.max_turns === null) throw new Error(`loop ${loopId} has no root loop to own its turn ceiling`);
+        const ceiling = budget.max_turns;
+        let spent = budget.count;
+        const exhausted = (): SchemeResult | null => ceiling >= 0 && spent >= ceiling
+            ? Results.failure(
+                "engine:rails",
+                "max-turns",
+                429,
+                `The configured turn ceiling (${ceiling}) is exhausted: ${spent} model calls across the worker tree; this BARE made no call.`,
+                {},
+                { maximumTurns: ceiling, treeModelCalls: spent, stage: "loop", retryable: false },
+            )
+            : null;
         const prepared: Array<{
             statement: BareStatement;
         } & ({ result: SchemeResult } | {
@@ -74,6 +92,11 @@ export default class BareBatchRunner {
                 continue;
             }
             const { statement, prompt } = input;
+            const refused = exhausted();
+            if (refused !== null) {
+                prepared.push({ statement, result: refused });
+                continue;
+            }
             const providerWorkerId = randomUUID();
             const attributionContext: PluginAttributionContext = Object.freeze({
                 workspaceId: String(workspaceId),
@@ -89,6 +112,7 @@ export default class BareBatchRunner {
                 attributions,
                 model: provider.model,
             });
+            spent += 1;
             prepared.push({ statement, prompt, modelCall, providerWorkerId });
         }
 
@@ -182,6 +206,8 @@ export default class BareBatchRunner {
                         turn: turnSequence,
                         attempt: attempt + 1,
                     }));
+                    if (exhausted() !== null) return { statement, modelCallId: modelCall.id, result: failure };
+                    spent += 1;
                     modelCall = await ModelCall.open(this.#db, { turnId, kind: "bare", attributions, model: provider.model });
                 }
             }

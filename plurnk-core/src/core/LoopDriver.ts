@@ -176,15 +176,22 @@ export default class LoopDriver {
                 if (timedOut()) return await ruleTimeout();
                 executionSignal.throwIfAborted();
 
-                if (maxTurns >= 0 && modelTurnCount >= maxTurns) {
+                // {§turn-cap-counts-the-tree} — the ceiling is the worker tree's budget of model
+                // calls: this loop's turns, its descendants' turns and every BARE spend it.
+                // The root loop's ceiling is this driver's own argument (the daemon passes the durable
+                // row's value; a direct Engine caller passes its own); a descendant binds the root row's.
+                const budget = await this.#lifecycle.treeBudget(loopId);
+                const ceiling = budget.rootLoopId === loopId ? maxTurns : budget.maxTurns;
+                if (ceiling >= 0 && budget.count >= ceiling) {
                     const failure = Results.failure(
                         "engine:rails",
                         "max-turns",
                         429,
-                        `The configured turn ceiling (${maxTurns}) is exhausted.`,
+                        `The configured turn ceiling (${ceiling}) is exhausted: ${budget.count} model calls across the worker tree.`,
                         {},
                         {
-                            maximumTurns: maxTurns,
+                            maximumTurns: ceiling,
+                            treeModelCalls: budget.count,
                             stage: "loop",
                             retryable: false },
                     );
