@@ -29,7 +29,7 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 * KILL: End things — delete an entry, stop a process, retire log items, or end the loop with final deliverable response.
 * WORK: Deploy a child worker (fresh log).
 * FORK: Deploy a forked worker (forked log).
-* BARE: Deploy an isolated inference query (no log or tools).
+* BARE: Deploy an isolated inference over a resource, the fence body, or both (no log or tools).
 * WAIT: Yield until the next wake: a child worker's result or a stream's end.
 * SEND: Message endpoints or workers.
 
@@ -86,6 +86,10 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 
     ````WORK (worker://reviewer) [{"env": {"NODE_ENV": "test"}}] <!-- the child's result lands in your log -->
     Review src/ for unhandled promise rejections.
+    ````
+
+    ````BARE (draft.md)
+    Name the weakest step in this argument.
     ````
 
     ````KILL (sh:///ab3d5678) <!-- stops a running command -->
