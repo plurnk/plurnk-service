@@ -103,7 +103,7 @@ Names match `[A-Za-z0-9][A-Za-z0-9_-]{0,62}` and are case-sensitive.
 A path outside the `worker://` scheme is the child's prompt resource, as for
 BARE: `WORK (specs/feature.md)` reads the file whole as the task,
 an inline body follows it after a blank line, and the child is auto-named.
-Use SEND to give an existing worker a follow-up task.
+SEND to an existing worker gives it a follow-up task.
 
 SEND accepts `[{"attachments":["report.pdf","worker:///example.md"]}]`.
 It delivers send-time copies through ordinary resource links, not native media
@@ -120,10 +120,10 @@ BARE makes one isolated call to the child model, not a persistent worker.
 It receives no parent history or tools. Give it a prompt resource, an inline
 prompt, or both; resource text precedes an inline body with a blank line between.
 
-````BARE (worker://reviewer/question.md)
+````BARE (worker://reviewer/draft.md)
 ````
-````BARE
-What is the capital of Germany?
+````BARE (worker://reviewer/draft.md)
+Assess the argument above; name its weakest step.
 ````
 
 The resource supplies its complete current READ text, not a preview. Neither
@@ -137,12 +137,12 @@ Their answers are ordinary BARE receipts, visible in the next packet.
 **Continue or wait.** Ordinary operations keep the loop working while children
 run; WAIT joins their activity:
 
-````WORK (worker://capital-checker)
-Find the capital of France from a primary source
+````WORK (worker://reviewer)
+Review src/ for unhandled promise rejections; report each with file and line.
 ````
 
 ````WAIT
-Await capital-checker's answer.
+Await the reviewer's report.
 ````
 
 WAIT continues the same loop: with live work—a child or an open stream—the
@@ -160,11 +160,11 @@ Messages, or may be empty when an already-delivered answer stands. Premature
 completion delivers no final answer. It joins remaining live work without cancelling it.
 
 Each child task's conclusion wakes its waiting parent and arrives as an
-`_plurnk` READ of `ops://capital-checker/1`, carrying what the child said. This is the
+`_plurnk` READ of `ops://reviewer/1`, carrying what the child said. This is the
 execution outcome, not another message, and it arrives once: an answer to the task you
 delegated is not delivered again as a separate reply. A failure retains its status and Problem.
 READ that address with a scope to inspect more of the exact result, even after
-the child starts another task. Bare `READ (worker://capital-checker)` collects
+the child starts another task. Bare `READ (worker://reviewer)` collects
 the current result instead, naming its exact source in `resource`. While the child is running it returns
 `425`; ordinary operations continue and WAIT explicitly joins.
 A result does not imply that every task in that worker has finished.
