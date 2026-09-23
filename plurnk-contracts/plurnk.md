@@ -20,13 +20,13 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 
 ## Core Plurnk OPs
 
-* NOTE: Think here: conclusions, decisions, and working memory (also works inside reasoning).
+* NOTE: Reasoning scratchpad for remembering model conclusions, decisions, and facts.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
 * COPY: (path) <scope>? (path) <scope>? - Copy files, entries, streams, or text regions.
 * MOVE: (path) <scope>? (path) <scope>? - Move files, entries, streams, or text regions.
-* KILL: End things — delete an entry, stop a process, retire log items, or end the loop.
+* KILL: End things — delete an entry, stop a process, retire log items, or end the loop with final deliverable response.
 * WORK: Deploy a child worker (fresh log).
 * FORK: Deploy a forked worker (forked log).
 * BARE: Deploy an isolated inference query (no log or tools).
@@ -36,7 +36,7 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
 ## Workflow Management
 
 > [!IMPORTANT]
-> The loop continues until KILLed with a turn that contains ONLY a parameterless KILL (with optional final response in body).
+> The loop continues until KILLed with a turn that contains ONLY a parameterless KILL (with optional final deliverable response in body).
 
 > [!WARNING]
 > YOU MAY NOT end the loop with KILL before all other OPs, child workers, and streams are resolved and reviewed.
@@ -44,6 +44,9 @@ Pattern Lookup Universal Resource NetworK: find anything by pattern, read it by 
     ````KILL
     The answer is **42**.
     ````
+
+> [!TIP]
+> Free text, NOTEs, and other messages are not the final deliverable response.
 
 ## Workspace Navigation
 
