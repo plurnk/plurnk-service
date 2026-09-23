@@ -105,6 +105,9 @@ const pack = async (cwd, args = []) => {
     return packed.map(({ filename }) => join(temp, filename));
 };
 
+// A sentence the terminal may have wrapped anywhere between its words.
+const wrapped = (sentence) => new RegExp(sentence.split(" ").map((word) => word.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")).join("[\\s\\S]*?"), "u");
+
 const assertIncludes = (actual, expected, context) => {
     if (!actual.includes(expected)) {
         throw new Error(`${context} omitted ${JSON.stringify(expected)}\n${actual}`);
@@ -323,7 +326,7 @@ try {
     // repeated it — and the place (workspace, loop, turn, worker) is the prompt prefix's,
     // asserted separately below.
     // The client renders a chosen effort as `alias[low]` and a seeded default as `alias(low)` (plurnk SPEC, identity effort).
-    await tui.waitFor(/⏹️  · \d+ms · ↓800 ↑160 · 🎲 journey(?:[[(]adaptive[\])])?/);   // two spaces after the glyph (plurnk#67)
+    await tui.waitFor(/⏹️  · 🎲 journey(?:[[(]adaptive[\])])? · \d+ms · ↓800 ↑160/);   // two spaces after the glyph (plurnk#67); the model leads (plurnk#104)
     // {plurnk#58} — the prompt prefix names the place: [workspace/~worker(loop/turn)].
     await tui.waitFor(/\[installed-tui\/[\s\S]{0,80}?~Tui_Worker(?:\(\d+\/\d+\))?\]/);
     const tuiOutput = tui.output();
@@ -344,11 +347,13 @@ try {
     ], clientEnv);
     await tui.waitFor(/workspace: installed-rejected/);
     tui.write("Exercise the rejected provider request.\r");
-    await tui.waitFor(/The requested model is unavailable; select an available model\./);
+    // The Problem rides the alert's title line (plurnk#104); at this width the terminal wraps it at a
+    // word boundary that moves with the title, and the renderer may repaint between the rows.
+    await tui.waitFor(wrapped("The requested model is unavailable; select an available model."));
     // {plurnk#58} — the glyph is the lifecycle and the turn count left the status line.
-    await tui.waitFor(/❌  · \d/);
+    await tui.waitFor(/❌  · 🎲 journey(?:[[(]adaptive[\])])? · \d/);
     tui.write("/workers\r");
-    await tui.waitFor(/rejected-worker[^\n]*← bound[\s\S]*❌  · \d/);
+    await tui.waitFor(/rejected-worker[^\n]*← bound[\s\S]*❌  · 🎲 journey(?:[[(]adaptive[\])])? · \d/);
     if (tui.output().includes("Strike threshold") || tui.output().includes("⏹️")) {
         throw new Error(`installed TUI lost the provider failure\n${tui.output()}`);
     }
