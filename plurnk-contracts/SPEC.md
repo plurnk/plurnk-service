@@ -1540,6 +1540,14 @@ diagnostics are:
   diagnostic, with or without flags, without assuming what the extra text was
   intended to represent. Invalid patterns or flags retain the native
   regex failure; no branch silently removes or executes trailing content.
+- §unclosed-regex **A regex that never closes.** A `/pattern` matcher with no closing
+  `/` is read as the whole pattern with no flags, with one warning-severity advisory
+  naming the closing slash and the flag position. The reading is deterministic because
+  the heading's own boundaries bound it ({§naked-pattern}: the matcher runs to the end
+  of the heading, and an aside is lexed apart from it). A bare `/` with nothing after
+  it has no pattern to read and is refused as `invalid-operation-syntax` naming what
+  is missing. A matcher with a second unescaped `/` is not unclosed: it is
+  `/pattern/flags`, and invalid flags keep their native failure with the escape hint.
 - §naked-pattern **The matcher rides the heading bare.** After the path, and any
   scope or option block, the rest of a FIND, READ or KILL heading line is the
   matcher, in whichever dialect its first characters claim

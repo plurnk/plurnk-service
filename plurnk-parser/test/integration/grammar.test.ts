@@ -666,12 +666,28 @@ test("{§regex-trailing-text} a malformed regex pattern receives a bounded diale
     assert.equal(errors.length, 1);
     assert.equal(errors[0]?.message, "Regex matcher has trailing text after `/pattern/flags`.");
     assert.doesNotMatch(errors[0]?.message ?? "", /ABS_MODULE_PATH|\*\*\/\*\.go/u, "the receipt does not echo the submitted matcher or target");
-    for (const pattern of ["/x/z", "/x/ii", "/(/i", "/unclosed"]) {
+    for (const pattern of ["/x/z", "/x/ii", "/(/i", "/"]) {
         const error = firstError(`\`\`\`\`FIND (src/**) [{"pattern": ${JSON.stringify(pattern)}}]\`\`\`\``);
         assert.equal(error.severity, "error");
         assert.doesNotMatch(error.message, /Regex matcher has trailing text/u, pattern);
-        assert.match(error.message, /not a valid.*regex|no closing/u, pattern);
+        assert.match(error.message, /not a valid.*regex|no pattern follows/u, pattern);
     }
+});
+
+test("{§unclosed-regex} a /pattern with no closing slash is the whole pattern with no flags, with one advisory; a bare / names what is missing", () => {
+    const source = "````FIND (tests/staticfiles_tests/**) /get_script_prefix|SCRIPT_NAME\n````\n";
+    const statement = oneStatement(source);
+    if (statement.op !== "FIND" || statement.matcher?.dialect !== "regex") assert.fail("regex matcher expected");
+    assert.equal(statement.matcher.pattern, "get_script_prefix|SCRIPT_NAME");
+    assert.equal(statement.matcher.flags, "");
+    const advisories = errorsOf(source);
+    assert.deepEqual(advisories.map(({ severity }) => severity), ["warning"]);
+    assert.match(advisories[0]!.message, /has no closing `\/`; it was read as the whole pattern with no flags/u);
+    // The dogfood and bench case of 2026-09-23: a heading ending in a lone slash has nothing to read.
+    const bare = firstError("````FIND (tests/staticfiles_tests/**) /\n````\n");
+    assert.equal(bare.severity, "error");
+    assert.match(bare.message, /no pattern follows it/u);
+    assert.doesNotMatch(bare.message, /no closing/u);
 });
 
 test("a pattern with flags parses; an invalid one drops only its own statement", () => {
@@ -999,7 +1015,7 @@ test("regex patterns retain pattern, flags, escaped delimiters, and character cl
 
 test("declared matcher prefixes fail as their declared dialect instead of falling back", () => {
     for (const [pattern, message] of [
-        ["/unclosed-regex", /has no closing `\/`/],
+        ["/", /no pattern follows/],
         ["/(abc/", /not a valid `\/pattern\/flags` regex/],
         ["/hello/i:", /Invalid flags/],
         ["//book[unterminated", /not a valid xpath selector/],

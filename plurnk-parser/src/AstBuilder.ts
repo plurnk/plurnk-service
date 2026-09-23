@@ -928,8 +928,8 @@ export default class AstBuilder {
             // not take the blame for a broken one).
             const excerpt = raw.length > 80 ? `${raw.slice(0, 80)}…` : raw;
             throw new PlurnkParseError(pos.line, pos.column, "visitor",
-                regex.reason === "unclosed"
-                    ? `regex matcher must use \`/pattern/flags\`; this matcher has no closing \`/\`: \`${excerpt}\``
+                regex.reason === "empty"
+                    ? "`/` opens a regex matcher but no pattern follows it; write `/pattern/flags`, flags optional."
                     : `pattern leads with \`/\` but is not a valid \`/pattern/flags\` regex - ${regex.detail}${slashRecovery}: \`${excerpt}\``);
         }
         if (raw.startsWith("$")) {
@@ -977,7 +977,7 @@ export default class AstBuilder {
 
     static #tryParseSlashRegex(raw: string, pos: Position):
         { ok: true; pattern: string; flags: string }
-        | { ok: false; reason: "unclosed" }
+        | { ok: false; reason: "empty" }
         | { ok: false; reason: "trailing" }
         | { ok: false; reason: "invalid"; detail: string; flags: string } {
         let i = 1;
@@ -997,7 +997,17 @@ export default class AstBuilder {
             if (raw[i] === "/" && !inClass) break;
             i++;
         }
-        if (i >= raw.length) return { ok: false, reason: "unclosed" };
+        if (i >= raw.length) {
+            // {§unclosed-regex} — the heading's own boundaries make the rest the whole pattern.
+            if (raw.length === 1) return { ok: false, reason: "empty" };
+            const inline = AstBuilder.#liftInlineFlags(raw.slice(1), "", pos);
+            try { new RegExp(inline.pattern, inline.flags); }
+            catch (e) { return { ok: false, reason: "invalid", detail: AstBuilder.#detail(e), flags: inline.flags }; }
+            const excerpt = raw.length > 80 ? `${raw.slice(0, 80)}…` : raw;
+            AstBuilder.#advisories.push(new PlurnkParseError(pos.line, pos.column, "parser",
+                `\`${excerpt}\` has no closing \`/\`; it was read as the whole pattern with no flags. A regex closes with \`/\` and takes its flags after it.`, "warning"));
+            return { ok: true, pattern: inline.pattern, flags: inline.flags };
+        }
         const authored = raw.slice(i + 1);
         const trailing = /^([A-Za-z]*)[\t ]/u.exec(authored);
         const inline = AstBuilder.#liftInlineFlags(raw.slice(1, i), trailing?.[1] ?? authored, pos);
