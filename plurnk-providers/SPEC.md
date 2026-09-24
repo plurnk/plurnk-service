@@ -769,6 +769,16 @@ When enabled, raw per-token model logprob is canonical; alternatives are
 preserved when returned. Raw body/chunks preserve wire evidence the normalized
 record omits.
 
+§provider-wire-emission **The emission is retained as the wire carried it, on every
+response.** Beside the normalized `content` and `reasoning`, the transport record keeps
+`wire`: the number of raw chunks, the chunks that carried no field at all, every delta or
+message field the stream carried with the number of chunks carrying it, tool calls merged
+by index with their arguments as streamed, the finish reasons seen, and the verbatim text
+of every string field the record does not already hold. Nothing is opt-in and nothing is
+reinterpreted: a blank emission reads as thirteen chunks that carried nothing, or as a
+tool-call section the model emitted into a channel the protocol does not read, instead of
+being guessed at from token counts. Covered by `aiSdkTransport.test.ts`.
+
 §provider-usage-refusal **The provider's bookkeeping is not the exchange.** Usage
 normalization is exact and refuses counters that contradict each other (a
 reasoning detail larger than its output aggregate, a total that disagrees with

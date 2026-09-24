@@ -361,6 +361,63 @@ test("normalizeRetryAttemptError — only provider-directed waits retry: 429, Re
     assert.equal((normalizeRetryAttemptError(bareServerError) as APICallError).isRetryable, false, "a bare 5xx surfaces at once for the engine's recovery");
 });
 
+// {§provider-wire-emission} — a blank emission is readable: what the stream carried is kept, channel by channel.
+test("the transport record keeps the wire emission: empty chunks, tool calls and channels the protocol does not read", async (t) => {
+    const usage = { prompt_tokens: 10, completion_tokens: 13, total_tokens: 23, completion_tokens_details: { reasoning_tokens: 4 } };
+    await t.test("streamed", async () => {
+        const chunks = [
+            { id: "r", object: "chat.completion.chunk", created: 1, model: "served-model", choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }] },
+            { id: "r", object: "chat.completion.chunk", created: 1, model: "served-model", choices: [{ index: 0, delta: { reasoning_content: "Let me read it." }, finish_reason: null }] },
+            { id: "r", object: "chat.completion.chunk", created: 1, model: "served-model", choices: [{ index: 0, delta: {}, finish_reason: null }] },
+            { id: "r", object: "chat.completion.chunk", created: 1, model: "served-model", choices: [{ index: 0, delta: { content: null }, finish_reason: null }] },
+            { id: "r", object: "chat.completion.chunk", created: 1, model: "served-model", choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "call-1", type: "function", function: { name: "READ", arguments: "{\"path\": \"dja" } }] }, finish_reason: null }] },
+            { id: "r", object: "chat.completion.chunk", created: 1, model: "served-model", choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: "ngo/views/debug.py\"}" } }] }, finish_reason: null }] },
+            { id: "r", object: "chat.completion.chunk", created: 1, model: "served-model", choices: [{ index: 0, delta: { refusal: "no" }, finish_reason: null }] },
+            { id: "r", object: "chat.completion.chunk", created: 1, model: "served-model", choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage },
+        ];
+        const result = await executeOpenAICompatible({
+            ...request,
+            streaming: true,
+            fetch: async () => new Response(new ReadableStream({
+                start(controller) {
+                    for (const chunk of chunks) controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`));
+                    controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+                    controller.close();
+                },
+            }), { headers: { "content-type": "text/event-stream" } }),
+        });
+        assert.equal(result.content, "", "the protocol's channel was blank");
+        assert.equal(result.reasoning, "Let me read it.");
+        assert.deepEqual(result.wire, {
+            chunks: 8,
+            emptyChunks: 4,
+            fields: { reasoning_content: 1, tool_calls: 2, refusal: 1 },
+            channels: { refusal: "no" },
+            toolCalls: [{ index: 0, id: "call-1", type: "function", name: "READ", arguments: "{\"path\": \"django/views/debug.py\"}" }],
+            finishReasons: ["stop"],
+        }, "the record says what the thirteen billed tokens were");
+    });
+    await t.test("unstreamed", async () => {
+        const result = await executeOpenAICompatible({
+            ...request,
+            fetch: async () => new Response(JSON.stringify({
+                id: "response-1", object: "chat.completion", created: 1, model: "served-model",
+                choices: [{ index: 0, message: { role: "assistant", content: "answer", reasoning_content: "why", tool_calls: [{ id: "c", type: "function", function: { name: "FIND", arguments: "{}" } }] }, finish_reason: "stop" }],
+                usage: { prompt_tokens: 1, completion_tokens: 5, total_tokens: 6 },
+            }), { headers: { "content-type": "application/json" } }),
+        });
+        assert.equal(result.content, "answer");
+        assert.deepEqual(result.wire, {
+            chunks: 1,
+            emptyChunks: 0,
+            fields: { content: 1, reasoning_content: 1, tool_calls: 1 },
+            channels: {},
+            toolCalls: [{ index: 0, id: "c", type: "function", name: "FIND", arguments: "{}" }],
+            finishReasons: ["stop"],
+        });
+    });
+});
+
 // {§provider-usage-refusal} (#580) — the provider's counters disagree with themselves; the
 // exchange is not the casualty.
 test("inconsistent usage counters refuse normalization without failing the response, in both shapes", async (t) => {

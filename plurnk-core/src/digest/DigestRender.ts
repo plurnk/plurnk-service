@@ -276,8 +276,28 @@ export default class DigestRender {
         const reasoningLine = reasoning && reasoning.length > 0
             ? `  ↳ reasoning: ${DigestRender.#summarize(reasoning, 100)}`
             : null;
+        // {§provider-wire-emission} — an empty emission is read from what the wire carried, never guessed at.
+        const wireLine = content.length === 0 && packet !== null && StoredPacket.isAdmitted(packet) ? DigestRender.wireLine(packet.assistantRaw) : null;
         const opLines = DigestRender.#renderOpLines(m.logEntriesByTurn.get(turn.id) ?? [], m);
-        return [head, ...(summary ? [summary] : []), ...(reasoningLine ? [reasoningLine] : []), ...opLines].join("\n");
+        return [head, ...(summary ? [summary] : []), ...(reasoningLine ? [reasoningLine] : []), ...(wireLine ? [wireLine] : []), ...opLines].join("\n");
+    }
+
+    // {§provider-wire-emission} — public so the line can be witnessed on its own.
+    static wireLine(assistantRaw: unknown): string | null {
+        const wire = typeof assistantRaw === "object" && assistantRaw !== null ? (assistantRaw as { wire?: unknown }).wire : undefined;
+        if (typeof wire !== "object" || wire === null) return null;
+        const { chunks, emptyChunks, fields, channels, toolCalls } = wire as {
+            chunks?: number; emptyChunks?: number; fields?: Record<string, number>; channels?: Record<string, string>;
+            toolCalls?: ReadonlyArray<{ name?: string; arguments: string }>;
+        };
+        const parts = [
+            `${chunks ?? 0} chunks`,
+            (emptyChunks ?? 0) > 0 ? `${emptyChunks} carried nothing` : null,
+            ...Object.entries(fields ?? {}).map(([field, count]) => `${field}×${count}`),
+            ...(toolCalls ?? []).map((call) => `tool call ${call.name ?? "?"}(${DigestRender.#summarize(call.arguments, 60)})`),
+            ...Object.entries(channels ?? {}).map(([channel, text]) => `${channel}: ${DigestRender.#summarize(text, 60)}`),
+        ].filter((part) => part !== null);
+        return `  ↳ wire: ${parts.join(", ")}`;
     }
 
     static #renderWorkerShape(worker: WorkerRow, m: DigestModel): string {

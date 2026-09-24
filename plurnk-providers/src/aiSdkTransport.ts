@@ -191,11 +191,27 @@ export type AiSdkTransportRequest = {
     observeText?: (delta: string) => void;
 };
 
+// {§provider-wire-emission} — what the wire carried, every channel, kept on every response.
+export type WireEmission = {
+    // Raw chunks seen (one for an unstreamed body).
+    readonly chunks: number;
+    // Chunks whose choice carried no field at all beyond a role: output the wire billed but never showed.
+    readonly emptyChunks: number;
+    // Every delta or message field seen with a non-null value, with the number of chunks carrying it.
+    readonly fields: Record<string, number>;
+    // Verbatim text of every string field except content and the reasoning fields, which the record keeps already.
+    readonly channels: Record<string, string>;
+    // Tool calls merged by index, arguments concatenated as streamed.
+    readonly toolCalls: ReadonlyArray<{ index: number; id?: string; type?: string; name?: string; arguments: string }>;
+    readonly finishReasons: readonly string[];
+};
+
 export type AiSdkTransportResponse = {
     model: string;
     content: string;
     reasoning: string;
     reasoningProjected: boolean;
+    wire: WireEmission;
     finishReason: ProviderAttemptFinishReason;
     rawFinishReason?: string;
     usage?: ProviderUsage;
@@ -463,6 +479,7 @@ const executeModelOnce = async (
             content: result.text,
             reasoning: reasoningText,
             reasoningProjected: evidence.reasoningProjected,
+            wire: wireEmissionOf(values),
             finishReason: finishReasonOf(rawFinishReason),
             ...(rawFinishReason === undefined ? {} : { rawFinishReason }),
             ...settledUsage(values, result.usage),
@@ -540,6 +557,7 @@ const executeModelOnce = async (
         content,
         reasoning: reasoningText,
         reasoningProjected: evidence.reasoningProjected,
+        wire: wireEmissionOf(rawChunks),
         finishReason: finishReasonOf(rawFinishReason),
         ...(rawFinishReason === undefined ? {} : { rawFinishReason }),
         ...settledUsage(rawChunks, await result.usage),
@@ -646,6 +664,66 @@ export const transportFailureEvidence = (
             response: {},
         },
         ...(status === undefined ? {} : { status }),
+    };
+};
+
+const RETAINED_FIELDS = new Set(["content", "reasoning_content", "reasoning", "thinking", "role"]); // lexicon-allow: backend wire fields
+
+// {§provider-wire-emission} — the emission as the wire carried it: field counts, chunks that
+// carried nothing, merged tool calls, and the verbatim text of every channel the normalized record
+// does not already hold. A blank emission is then readable instead of guessed at.
+export const wireEmissionOf = (values: readonly unknown[]): WireEmission => {
+    let chunks = 0;
+    let emptyChunks = 0;
+    const fields: Record<string, number> = {};
+    const channels: Record<string, string> = {};
+    const toolCalls = new Map<number, { index: number; id?: string; type?: string; name?: string; arguments: string }>();
+    const finishReasons = new Set<string>();
+    for (const value of values) {
+        const record = recordOf(value);
+        if (record === null) continue;
+        chunks += 1;
+        const choices = Array.isArray(record.choices) ? record.choices : [];
+        let carried = false;
+        for (const item of choices) {
+            const choice = recordOf(item);
+            if (choice === null) continue;
+            if (typeof choice.finish_reason === "string") finishReasons.add(choice.finish_reason);
+            const message = recordOf(choice.delta) ?? recordOf(choice.message);
+            if (message === null) continue;
+            for (const [key, field] of Object.entries(message)) {
+                if (field === null || field === undefined || key === "role") continue;
+                if (typeof field === "string" && field.length === 0) continue;
+                carried = true;
+                fields[key] = (fields[key] ?? 0) + 1;
+                if (key === "tool_calls" && Array.isArray(field)) {
+                    for (const [position, callValue] of field.entries()) {
+                        const call = recordOf(callValue);
+                        if (call === null) continue;
+                        const index = typeof call.index === "number" ? call.index : position;
+                        const merged = toolCalls.get(index) ?? { index, arguments: "" };
+                        if (typeof call.id === "string") merged.id = call.id;
+                        if (typeof call.type === "string") merged.type = call.type;
+                        const fn = recordOf(call.function);
+                        if (typeof fn?.name === "string") merged.name = fn.name;
+                        if (typeof fn?.arguments === "string") merged.arguments += fn.arguments;
+                        toolCalls.set(index, merged);
+                    }
+                    continue;
+                }
+                if (RETAINED_FIELDS.has(key)) continue;
+                channels[key] = (channels[key] ?? "") + (typeof field === "string" ? field : JSON.stringify(field));
+            }
+        }
+        if (choices.length > 0 && !carried) emptyChunks += 1;
+    }
+    return {
+        chunks,
+        emptyChunks,
+        fields,
+        channels,
+        toolCalls: [...toolCalls.values()].sort((a, b) => a.index - b.index),
+        finishReasons: [...finishReasons],
     };
 };
 
