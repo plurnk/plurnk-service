@@ -7,17 +7,18 @@
 // fences and never taught. Any call this cannot map exactly leaves the whole input as it was.
 
 const OPERATIONS = new Set(["FIND", "READ", "EDIT", "COPY", "MOVE", "KILL", "SEND", "NOTE", "WAIT", "BARE", "WORK", "FORK"]);
-const SLOT_OF: Readonly<Record<string, "path" | "scope" | "pattern" | "aside" | "body">> = Object.freeze({
+const SLOT_OF: Readonly<Record<string, "path" | "scope" | "pattern" | "aside" | "body" | "start" | "end" | "limit">> = Object.freeze({
     path: "path", target: "path", file_path: "path", filepath: "path", file: "path", filename: "path", resource: "path", uri: "path", url: "path",
     scope: "scope", range: "scope", lines: "scope",
+    start: "start", start_line: "start", from: "start", offset: "start",
+    end: "end", end_line: "end", to: "end",
+    limit: "limit",
     pattern: "pattern", regex: "pattern", query: "pattern",
     aside: "aside",
     body: "body", content: "body", command: "body", text: "body", input: "body",
 });
 
 const DSML = "(?:｜｜DSML｜｜\\s*)?";
-const CALLS_OPEN = new RegExp(`^\\s*<${DSML}(?:calls|function_calls)>\\s*$`);
-const CALLS_CLOSE = new RegExp(`^\\s*</${DSML}(?:calls|function_calls)>\\s*$`);
 const INVOKE_OPEN = new RegExp(`^\\s*<${DSML}invoke\\s+name="([^"]+)"(.*)$`);
 const INVOKE_CLOSE = new RegExp(`^\\s*</${DSML}invoke>\\s*$`);
 const PARAMETER = new RegExp(`^\\s*<${DSML}parameter\\s+name="([^"]+)"[^>]*>(.*?)</${DSML}parameter>\\s*$`);
@@ -25,7 +26,7 @@ const STRAY_PARAMETER_CLOSE = new RegExp(`^\\s*</${DSML}parameter>\\s*$`);
 const FENCE_LINE = /^\s*`{3,}\s*$/;
 const MARKERS = ["DSML", "<function_calls>", "<invoke ", "<tool_call", "<function=", "[TOOL_CALLS]", "<|python_tag|>", "<|tool_call"];
 
-type Slots = { path?: string; scope?: string; pattern?: string; aside?: string; body: string[]; extra: string };
+type Slots = { path?: string; scope?: string; pattern?: string; aside?: string; start?: string; end?: string; limit?: string; body: string[]; extra: string };
 type Call = { name: string; slots: Slots; line: number };
 // A block of markup: its character span, the lines it covers, and the calls it names (null when unmappable).
 type Block = { from: number; to: number; startLine: number; endLine: number; calls: Call[] | null };
@@ -80,6 +81,7 @@ export default class NativeToolCalls {
         while (position < input.length) {
             const found = NativeToolCalls.#next(input, position, known);
             if (found === null) break;
+            if (found.calls !== null && found.calls.some((call) => !NativeToolCalls.#coherent(call.slots))) found.calls = null;
             // A block ends on the line its last character sits on; a block that ends on an empty line ends there.
             blocks.push({ ...found, startLine: lineOf(found.from), endLine: lineOf(found.to) });
             position = found.to;
@@ -97,7 +99,7 @@ export default class NativeToolCalls {
             const m = re.exec(input);
             return m === null ? -1 : m.index;
         };
-        const callsOpen = at(/^[ \t]*<(?:｜｜DSML｜｜\s*)?(?:calls|function_calls)>[ \t]*$/m);
+        const callsOpen = at(/<(?:｜｜DSML｜｜\s*)?(?:calls|function_calls)>/);
         if (callsOpen !== -1) candidates.push({ at: callsOpen, read: () => NativeToolCalls.#elementBlock(input, callsOpen, known) });
         const toolCall = at(/<tool_call(?:\s[^>]*)?>/);
         if (toolCall !== -1) candidates.push({ at: toolCall, read: () => NativeToolCalls.#toolCallBlock(input, toolCall, known) });
@@ -118,25 +120,46 @@ export default class NativeToolCalls {
     }
 
     // DSML and Anthropic-style: `<calls>`/`<function_calls>` holding `invoke` elements with `parameter` children.
+    // A block written on one line is read as if each tag had its own line.
     static #elementBlock(input: string, from: number, known: ReadonlySet<string>): Omit<Block, "startLine" | "endLine"> | null {
-        const lines = input.split("\n");
+        const open = /<(?:｜｜DSML｜｜\s*)?(?:calls|function_calls)>/y;
+        open.lastIndex = from;
+        const opened = open.exec(input)!;
+        const contentStart = from + opened[0].length;
+        const closeRe = /<\/(?:｜｜DSML｜｜\s*)?(?:calls|function_calls)>/g;
+        closeRe.lastIndex = contentStart;
+        const close = closeRe.exec(input);
+        const nextOpen = /<(?:｜｜DSML｜｜\s*)?(?:calls|function_calls)>/g;
+        nextOpen.lastIndex = contentStart;
+        const next = nextOpen.exec(input);
+        const closeAt = close === null ? -1 : close.index;
+        const nextAt = next === null ? -1 : next.index;
+        const contentEnd = closeAt !== -1 && (nextAt === -1 || closeAt < nextAt) ? closeAt : nextAt !== -1 ? nextAt : input.length;
+        // A block cut short by the next opener ends before that opener's line.
+        const to = contentEnd === closeAt ? closeAt + close![0].length
+            : contentEnd > from && input[contentEnd - 1] === "\n" ? contentEnd - 1 : contentEnd;
         const startLine = input.slice(0, from).split("\n").length - 1;
+        const region = input.slice(contentStart, contentEnd);
+        const inline = !region.includes("\n");
+        const normalized = inline
+            ? region.replace(/(<(?:｜｜DSML｜｜\s*)?(?:invoke|parameter)\b|<\/(?:｜｜DSML｜｜\s*)?invoke>)/g, "\n$1").replace(/(<\/(?:｜｜DSML｜｜\s*)?parameter>)/g, "$1\n")
+            : region;
+        const lines = normalized.split("\n");
         const calls: Call[] = [];
         let current: { name: string; slots: Slots; line: number } | null = null;
         let mappable = true;
         const finish = (): void => { if (current !== null) calls.push(current); current = null; };
-        let endLine = lines.length - 1;
-        for (let i = startLine + 1; i < lines.length; i += 1) {
+        for (let i = 0; i < lines.length; i += 1) {
             const line = lines[i]!;
-            if (CALLS_CLOSE.test(line)) { endLine = i; break; }
-            if (CALLS_OPEN.test(line)) { endLine = i - 1; break; }
+            // A multi-line block's first line is the opener's own; its calls sit on the lines after it.
+            const sourceLine = inline ? startLine : startLine + i;
             const invoke = INVOKE_OPEN.exec(line);
             if (invoke !== null) {
                 finish();
                 const name = NativeToolCalls.#operation(invoke[1]!, known);
                 const slots = NativeToolCalls.#headingSlots(invoke[2]!);
                 if (name === null || slots === null) { mappable = false; continue; }
-                current = { name, slots, line: i };
+                current = { name, slots, line: sourceLine };
                 continue;
             }
             if (INVOKE_CLOSE.test(line) || STRAY_PARAMETER_CLOSE.test(line) || FENCE_LINE.test(line)) { finish(); continue; }
@@ -152,8 +175,7 @@ export default class NativeToolCalls {
             current.slots.body.push(line);
         }
         finish();
-        const to = lines.slice(0, endLine + 1).join("\n").length;
-        return { from: lines.slice(0, startLine).join("\n").length + (startLine > 0 ? 1 : 0), to, calls: mappable ? calls : null };
+        return { from, to, calls: mappable ? calls : null };
     }
 
     // `<tool_call>…</tool_call>` in its three shapes: `<function=NAME>` with `<parameter=key>` children
@@ -341,6 +363,19 @@ export default class NativeToolCalls {
         return null;
     }
 
+    // `start`/`end` written as separate parameters are one scope; `offset`/`limit` (a first line and a
+    // count, as some tool schemas spell it) likewise. A lone `end` or `limit` names no scope.
+    static #scopeOf(slots: Slots): string {
+        if (slots.start === undefined) return "";
+        const start = slots.start.trim();
+        if (slots.end !== undefined) return `<${start},${slots.end.trim()}>`;
+        if (slots.limit !== undefined) {
+            const first = Number(start); const count = Number(slots.limit);
+            return Number.isSafeInteger(first) && Number.isSafeInteger(count) && count > 0 ? `<${first},${first + count - 1}>` : `<${start}>`;
+        }
+        return `<${start}>`;
+    }
+
     static #stringOf(value: unknown): string {
         return typeof value === "string" ? value : JSON.stringify(value);
     }
@@ -374,17 +409,20 @@ export default class NativeToolCalls {
         const slots: Slots = { body: [], extra: "" };
         let remainder = tagClosed ? rest.replace(/(?<!--)\/?>\s*$/, "") : rest;
         for (const [whole, key, value] of remainder.matchAll(/\s([a-z_]+)="([^"]*)"/g)) {
-            const slot = SLOT_OF[key!];
-            if (slot === undefined || slot === "body") return null;
-            slots[slot] = value!;
+            if (!NativeToolCalls.#assign(slots, key!, value!) || SLOT_OF[key!] === "body") return null;
             remainder = remainder.replace(whole, "");
         }
         slots.extra = remainder.trim();
         return slots;
     }
 
+    // A call whose scope came as `end` or `limit` without a `start` names no scope; it is unmappable.
+    static #coherent(slots: Slots): boolean {
+        return slots.start !== undefined || (slots.end === undefined && slots.limit === undefined);
+    }
+
     static #fence(name: string, slots: Slots): string[] {
-        const scope = slots.scope === undefined ? "" : slots.scope.trim();
+        const scope = slots.scope !== undefined ? slots.scope.trim() : NativeToolCalls.#scopeOf(slots);
         const heading = [
             name,
             slots.path === undefined ? "" : `(${slots.path.trim()})`,

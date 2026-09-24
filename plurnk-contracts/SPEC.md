@@ -474,7 +474,8 @@ followed by `<arg_key>`/`<arg_value>` pairs (GLM); a bare `<function=NAME>` elem
 (Llama); Mistral's `[TOOL_CALLS]` JSON array; Llama's `<|python_tag|>` JSON object; and
 Kimi's `<|tool_call_begin|>` sections. Each call is read as that operation's
 canonical fence: `path`/`target`/`file_path`/`file`/`resource`/`uri` fill the target,
-`scope`/`range`/`lines` the scope, `pattern`/`regex`/`query` a matcher option, `aside`
+`scope`/`range`/`lines` the scope, as do `start`/`end` written apart and `offset`/`limit`
+(a first line and a count), `pattern`/`regex`/`query` a matcher option, `aside`
 the aside, and `body`/`content`/`command`/`text`/`input` or plain text inside the
 call the body; plurnk slots written after the name are kept, a trailing scope's own
 bracket may close the tag. A block keeps its line count where its lines allow, so

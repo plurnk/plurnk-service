@@ -88,7 +88,7 @@ test("{§native-tool-calls} a call naming a tool plurnk does not have, or a para
     for (const input of [
         "<tool_call>\n{\"name\": \"read_file\", \"arguments\": {\"path\": \"x\"}}\n</tool_call>",
         "<tool_call><function=EDIT><parameter=old_string>a</parameter><parameter=new_string>b</parameter></function></tool_call>",
-        "[TOOL_CALLS][{\"name\": \"READ\", \"arguments\": {\"offset\": 3}}]",
+        "[TOOL_CALLS][{\"name\": \"READ\", \"arguments\": {\"encoding\": \"utf8\"}}]",
         "<|tool_call_begin|>functions.bash:0<|tool_call_argument_begin|>{\"command\": \"ls\"}<|tool_call_end|>",
     ]) {
         assert.deepEqual(ops(input), [], `no operation is invented from ${input.slice(0, 40)}`);
@@ -102,4 +102,14 @@ test("{§native-tool-calls} prose around a block survives on its own lines, and 
     assert.deepEqual(result.items.filter((item) => item.kind === "text").map((item) => item.kind === "text" ? item.content.trim() : ""), ["Let me look.", "Then decide."]);
     const quoted = "````\n<tool_call>\n{\"name\": \"READ\", \"arguments\": {\"path\": \"a.md\"}}\n</tool_call>\n````";
     assert.deepEqual(ops(quoted), [], "a fenced example of the markup never runs");
+});
+
+test("{§native-tool-calls} start/end and offset/limit parameters are one scope; a DSML block on one line reads like one on many (deepdumb, django-11620)", () => {
+    const deepdumb = "<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name=\"READ\">\n<｜｜DSML｜｜ parameter name=\"path\" string=\"true\">ops://daeb2d14/1/25</｜｜DSML｜｜ parameter>\n<｜｜DSML｜｜ parameter name=\"start\" string=\"false\">1</｜｜DSML｜｜ parameter>\n<｜｜DSML｜｜ parameter name=\"end\" string=\"false\">-1</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>";
+    assert.deepEqual(withoutPosition(ops(deepdumb)), canonical("````READ (ops://daeb2d14/1/25) <1,-1>\n````"));
+    const offset = "<tool_call>\n{\"name\": \"READ\", \"arguments\": {\"file_path\": \"django/views/debug.py\", \"offset\": 455, \"limit\": 20}}\n</tool_call>";
+    assert.deepEqual(withoutPosition(ops(offset)), canonical("````READ (django/views/debug.py) <455,474>\n````"));
+    const inline = "<｜｜DSML｜｜ calls><｜｜DSML｜｜ invoke name=\"READ\"><｜｜DSML｜｜ parameter name=\"path\" string=\"true\">sh:///9c471159#stdout</｜｜DSML｜｜ parameter><｜｜DSML｜｜ parameter name=\"range\" string=\"true\"><100,-1></｜｜DSML｜｜ parameter></｜｜DSML｜｜ invoke></｜｜DSML｜｜ calls>";
+    assert.deepEqual(withoutPosition(ops(inline)), canonical("````READ (sh:///9c471159#stdout) <100,-1>\n````"));
+    assert.deepEqual(ops("<tool_call>\n{\"name\": \"READ\", \"arguments\": {\"path\": \"a.md\", \"limit\": 5}}\n</tool_call>"), [], "a count without a first line names no scope");
 });
