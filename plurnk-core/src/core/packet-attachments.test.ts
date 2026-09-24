@@ -62,7 +62,7 @@ test("{§packet-attachment-parts} a visible READ of an image weighs the picture 
     assert.equal(imageWeight(640, 480), 410);
     assert.deepEqual(rendered.attachments, [{ contentHash, coordinate: "1/1/2", path: "file:///logo.png", scheme: "file", pathname: "/logo.png", mimetype: "image/png", kind: "image", width: 640, height: 480, weight: 410 }]);
     assert.match(rendered.content, /"tokensAttachment":410/);
-    const active = Number(/^### log:\/\/\/1\/1\/2\/READ \(file:\/\/\/logo\.png\) · (\d+)$/m.exec(rendered.content)?.[1]);
+    const active = Number(/^### log:\/\/\/1\/1\/2\/READ → file:\/\/\/logo\.png · (\d+)$/m.exec(rendered.content)?.[1]);
     assert.ok(active > 410, `logTokens carries the picture: ${active}`);
 });
 
@@ -155,7 +155,7 @@ test("{§packet-attachment-parts} a stored packet admits attachments of a known 
 test("{§packet-attachment-parts} native-only observations are weighed, reclaimable, and subject to output admission", () => {
     const row = readRow({ id: 42, output_admission_turn_id: null, rx: { content: "", mimetype: "text/markdown", image: { mimetype: "image/png", width: 640, height: 480, bytes: 12345 } } });
     const rendered = PacketWire.renderLogWithAccounting([row], weigh);
-    const charge = Number(/^### log:\/\/\/1\/1\/2\/READ \(file:\/\/\/logo\.png\) · (\d+)$/mu.exec(rendered.content)?.[1]);
+    const charge = Number(/^### log:\/\/\/1\/1\/2\/READ → file:\/\/\/logo\.png · (\d+)$/mu.exec(rendered.content)?.[1]);
     assert.equal(charge, weigh(rendered.content) + 410);
     assert.deepEqual(rendered.curationTargets, [{ path: "log:///1/1/2/READ", logTokens: charge }]);
     assert.deepEqual(rendered.unadmittedOutput, [42]);

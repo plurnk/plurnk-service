@@ -773,7 +773,7 @@ export default class PacketWire {
         if (typeof e.status === "number" && (op === "SEND" || op === "KILL" || typeof op === "string" && TurnDisposition.isOp(op) || e.status !== 200)) meta.status = e.status;
         const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
         const target = PacketWire.#renderActionTarget(e.target);
-        // {§log-wire-format}: operands retain their language spelling on the receipt heading.
+        // {§log-wire-format}: receipt operands are links, not invocation slots.
         const modifiers = PacketWire.#requestModifiers(op, tx, e.target);
         if ((op === "COPY" || op === "MOVE") && typeof e.status === "number" && e.status < 400
             && (PacketWire.#renderSelection(tx?.source?.target, tx?.source?.lineMarker) === null
@@ -1184,7 +1184,7 @@ export default class PacketWire {
         return spelled.length === 0 ? null : spelled.split(sep).join("/");
     }
 
-    // {§log-wire-format}: reuse canonical slot rendering without repeating the operation name.
+    // {§log-wire-format}: canonical modifiers, with arrows instead of invocation parentheses.
     static #requestModifiers(op: string | null, tx: StatementTx | null, rowTarget: ActionTarget | null | undefined): string | null {
         if (op === null || op === "error" || op === "extension") return null;
         const t = (tx !== null && typeof tx === "object" ? tx : {}) as StatementTx & { metadata?: unknown; matcher?: unknown };
@@ -1208,7 +1208,23 @@ export default class PacketWire {
                 matcher: t.matcher ?? null, source: selection(t.source), destination: selection(t.destination), body: null };
         const heading = PlurnkParser.heading(statement as never);
         const separator = heading.indexOf(" ");
-        return separator < 0 ? null : heading.slice(separator + 1);
+        if (separator < 0) return null;
+        const modifiers = heading.slice(separator + 1);
+        const operands = op === "COPY" || op === "MOVE" ? [selection(t.source), selection(t.destination)] : [{ target, lineMarker: null }];
+        let offset = 0;
+        const links: string[] = [];
+        for (const operand of operands) {
+            if (operand?.target === null || operand?.target === undefined) continue;
+            const path = operand.target.raw;
+            const slot = `(${path})`;
+            if (!modifiers.startsWith(slot, offset)) throw new TypeError("Receipt operand differs from its canonical heading.");
+            offset += slot.length;
+            const scope = operand.lineMarker === null ? "" : ` <${(operand.lineMarker as TextLineMarker).marks.join(",")}>`;
+            offset += scope.length;
+            links.push(`→ ${path}${scope}`);
+            if (modifiers[offset] === " ") offset += 1;
+        }
+        return [...links, modifiers.slice(offset)].filter((part) => part.length > 0).join(" ");
     }
 
     static #renderActionTarget(target: ActionTarget | null | undefined): string | null {

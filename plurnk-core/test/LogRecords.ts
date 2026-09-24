@@ -8,6 +8,17 @@ const COORDINATE = /^(?: *[1-9]\d*:|@[0-9A-Za-z]{5} +[1-9]\d*:)/;
 // the address with its request modifiers and charge, one JSON object of facts, the body.
 // Production never needs to parse its own model-facing packet.
 const operands = (written: string, op: string): Record<string, unknown> => {
+    // Fixture addresses are whitespace-free; restore only their leading arrow operands,
+    // leaving literal parentheses/arrows in matchers, metadata, and asides untouched.
+    let remaining = written.slice(op.length + 1);
+    const slots: string[] = [];
+    for (let index = 0; index < (op === "COPY" || op === "MOVE" ? 2 : 1); index += 1) {
+        const operand = /^→ (\S+)(?: (<[^>]+>))?(?: |$)/u.exec(remaining);
+        if (operand === null) break;
+        slots.push(`(${operand[1]})${operand[2] === undefined ? "" : ` ${operand[2]}`}`);
+        remaining = remaining.slice(operand[0].length);
+    }
+    written = [op, ...slots, remaining].filter((part) => part.length > 0).join(" ");
     const executors = /^[a-z]/.test(op) ? [op] : [];
     const [item] = PlurnkParser.parseStatements(PlurnkParser.frame(written, null), { executors }).items;
     if (item === undefined || item.kind !== "statement") return {};

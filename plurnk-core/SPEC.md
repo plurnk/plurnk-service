@@ -2150,25 +2150,25 @@ type and projection facts under {§read-bytes}.
 The `## Log` section is a sequence of ordinary Markdown records separated by one blank line:
 
 ```text
-### log:///<loop>/<turn>/<item>/<leaf> (operands) <marks> [metadata] pattern <!-- aside --> · <logTokens>
+### log:///<loop>/<turn>/<item>/<leaf> → path <marks> [metadata] pattern <!-- aside --> · <logTokens>
 {"oneLine":"strict JSON result facts"}
 <coordinate-prefixed body lines when visible>
 ```
 
 | Line | Content | Rule |
 |---|---|---|
-| H3 | The row's complete model-facing identity and canonical READ address, its request modifiers in language slot order ({§heading-slot-order}), then ` · ` and its `logTokens` charge ({§packet-token-accounting}). | Always present. Modifiers retain canonical operands ({§log-address-metadata}), marks, metadata blocks, matcher, and aside when present; `error` and `extension` rows have no request modifiers. The operation appears only in the URI leaf, never as a standalone invocation. |
+| H3 | The row's complete model-facing identity and canonical READ address, its request modifiers in language slot order ({§heading-slot-order}), then ` · ` and its `logTokens` charge ({§packet-token-accounting}). | Always present. Canonical operands follow arrows ({§log-address-metadata}), not invocation parentheses. Marks, metadata blocks, matcher, and aside remain when present; `error` and `extension` rows have no request modifiers. The operation appears only in the URI leaf, never as a standalone invocation. |
 | facts | One strict JSON object of result facts in stable alphabetical order. | Present only when a fact exists; it never re-encodes the heading. |
 | body | Coordinate-prefixed lines. | Present when the row is visible. |
 
-Request modifiers retain their language spelling, so a matcher such as `/\bhello\b/i` returns exactly as it was written, never JSON-quoted. Absent fields are not invented. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
+Except for the operand arrows, request modifiers retain their language spelling, so a matcher such as `/\bhello\b/i` returns exactly as it was written, never JSON-quoted. Absent fields are not invented. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
 
 §log-address-metadata **Addresses name their relationship, not the row's producer.**
 
 | Spelling | Meaning | Where |
 |---|---|---|
-| `(path)` | The operation's addressed operand: read resource, mutation subject, message recipient, or executor operand. Explicit and automatic READs share this spelling. Pathless operations have no operand. | H3 |
-| `(from) <marks> (to) <marks>` | COPY/MOVE's two operand selections, each retaining its optional scope; neither replaces actor attribution. | H3 |
+| `→ path` | The operation's addressed operand: read resource, mutation subject, message recipient, or executor operand. Explicit and automatic READs share this spelling. Pathless operations have no operand. | H3 |
+| `→ from <marks> → to <marks>` | COPY/MOVE's two operand selections, each retaining its optional scope; neither replaces actor attribution. | H3 |
 | `stream` | An executor invocation's separately created output address, never a READ's alternative spelling of its operand. | Facts |
 | `resource` | A distinct returned resource under {§operation-resource-receipt}. | Facts |
 

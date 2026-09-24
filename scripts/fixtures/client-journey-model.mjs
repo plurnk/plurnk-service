@@ -116,7 +116,7 @@ export const startClientJourneyModel = async () => {
                     /(?:^|\n)@[0-9A-Za-z]{5} +\d+:```BARE\n@[0-9A-Za-z]{5} +\d+:A self-contained prompt\./u,
                     /(?:^|\n)@[0-9A-Za-z]{5} +\d+:```node <!--/u,
                     /(?:^|\n) *\d+:.*\[Complete \.env\.defaults\]\(\.env\.defaults\)/u,
-                    /^### log:\/\/\/\S+\/READ \(skill:\/\/plurnk\/\.env\.defaults\) <1,16> · \d+$/mu,
+                    /^### log:\/\/\/\S+\/READ → skill:\/\/plurnk\/\.env\.defaults <1,16> · \d+$/mu,
                 ]) {
                     if (!witness.test(text)) throw new Error(`installed reference READ omitted ${witness}`);
                 }
