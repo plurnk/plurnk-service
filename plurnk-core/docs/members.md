@@ -27,7 +27,7 @@ Your `add` is admitted against the operator's ceiling
 | --- | --- |
 | `none` | nothing — every `add` from the model is refused `403 model-scope` |
 | `root` | paths inside the project root |
-| `namespace` (shipped default) | those plus canonical `../` paths outside the root |
+| `namespace` | those plus canonical `../` paths outside the root |
 
 The scope refuses an `add` you author from a turn; a client's `/members add`
 and the operator's `PLURNK_MEMBERS_<ALIAS>=<glob>` definitions are not bound
@@ -36,40 +36,38 @@ glob previews what `add` would resolve to.
 
 ## When a file you need is not a member
 
-Ask first: `members (discover)` with `{"query": "build/report.json"}`
-says `tracked`, `included by …`, `a creation record`, `excluded by …`,
-`ignored`, `untracked`, or `absent`.
+`members (discover)` with `{"query": "build/report.json"}` answers why a path
+is or is not visible: `tracked`, `included by …`, `a creation record`,
+`excluded by …`, `ignored`, `untracked`, or `absent`.
 
-- **Untracked and you are allowed to add** (`root` or `namespace`): add a
-  definition and it is a member from the next turn.
+- **Untracked, scope `root` or `namespace`**: a definition makes it a member
+  from the next turn.
 
   ````members (add) <!-- include the generated reports -->
   {"alias": "reports", "definition": {"glob": "build/*.json"}}
   ````
 
-- **Untracked and the scope is `none`** (an operator narrowed it): the refusal
-  names the recovery, and it is not a trick — make git track the file. Staging
-  is enough; no commit is needed, and membership refreshes at your next turn.
+- **Untracked, scope `none`** (an operator narrowed it): the refusal names the
+  recovery, which is git tracking. Staging is enough; no commit is needed, and
+  membership refreshes at the next turn. The scope is fixed for the turn, so a
+  refused `add` is refused again; a client's `/members add` or a raised scope
+  is the user's to give.
 
   ````sh <!-- git tracks it, so it becomes a member -->
   git add build/report.json
   ````
 
-  Or ask the user to add it (`/members add`) or to raise the scope. Do not
-  loop on `add`; the scope will not change mid-turn.
-
 - **Ignored by the repository**: no model definition can include it, and
-  `git add` refuses it too. Only a client or operator definition covers an
-  ignored path; say so and ask.
+  `git add` refuses it too; only a client or operator definition covers an
+  ignored path.
 
-- **Excluded by `!glob`**: an exclusion is deliberate; ask the user before
-  working around it.
+- **Excluded by `!glob`**: an exclusion outranks every inclusion, and a model
+  definition cannot lift it; only the user can.
 
 ## Files you create
 
 An `EDIT` to a path that does not exist creates it when the file-creation
-scope admits it (`PLURNK_SERVICE_FILE_CREATE_SCOPE`, shipped `root`: inside
-the project root only). The new file is a member immediately through its
+scope admits it (`PLURNK_SERVICE_FILE_CREATE_SCOPE`). The new file is a member immediately through its
 creation record — you never need `git add` for your own creations. Deleting
 it (`KILL`) retires the record.
 

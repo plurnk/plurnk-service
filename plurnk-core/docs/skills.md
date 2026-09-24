@@ -2,10 +2,8 @@
 
 An Agent Skill is a directory holding a `SKILL.md` (standard `name` and
 `description` frontmatter, then instructions) and optionally references,
-scripts, and assets beside it. Skills are how a project or a user hands you
-procedures and tools without pasting them into every conversation. Enabled
-skills appear in the turn-0 catalog as `skill://<name>/SKILL.md`; nothing is
-injected until you `READ` it.
+scripts, and assets beside it. Enabled skills appear in the turn-0 catalog as
+`skill://<name>/SKILL.md`; nothing is injected until it is READ.
 
 ## Where skills come from
 
@@ -16,22 +14,24 @@ injected until you `READ` it.
 | `service` | a tree the service itself provides | plurnk (for example the `plurnk` skill: its own configuration and model reference) |
 
 A `project` skill shadows a `global` one of the same name, which shadows a
-`service` one. Every installed skill is a service-origin definition, enabled
-by default; a disabled skill is invisible to you but still listed for the
-client.
+`service` one. Skills found at boot are service definitions, enabled by
+default and disable-only; an `add` is a workspace definition. A disabled skill
+is invisible to the model but still listed for the client.
 
-## Read before you install
+## Reading a skill
 
 The instructions are the skill: `READ (skill://<name>/SKILL.md)` for the
-procedure and `FIND (skill://<name>/**)` for its files. Run scripts with their
+procedure and `FIND (skill://<name>/**)` for its files. Scripts run with their
 registered executor, for example `node (skill://<name>/scripts/program.js)`,
-under the ordinary proposal policy. Skill resources are read-only; you do not
-`EDIT` an installed skill.
+under the ordinary loop policy. Skill resources are read-only; an installed
+skill is never `EDIT`ed.
 
-Reach for `discover` when the task names a capability no enabled skill
-provides: `{"query": "..."}` searches the standard registry and returns one
-candidate per hit with its exact `owner/repo` source; `{"source": "owner/repo"}`
-lists the skills one package contains. Discovery never installs anything.
+## discover
+
+`discover` searches the standard registry: `{"query": "..."}` returns one
+candidate per hit with its exact `owner/repo` source, and
+`{"source": "owner/repo"}` lists the skills one package contains. Discovery
+never installs anything.
 
 ## Installing
 
@@ -43,8 +43,8 @@ lists the skills one package contains. Discovery never installs anything.
 
 The alias must equal the skill's `name`; `source` is required unless the
 directory already exists; `scope: "project"` needs a project root and writes
-under `.agents/skills`. Installation is a host effect, so it proposes and runs
-only on acceptance. A skill that fails to install or has invalid frontmatter is
-listed `unavailable` with its exact Problem — one bad skill never disables the
-family. `remove` uninstalls the workspace-added skill; service skills can only
-be disabled.
+under `.agents/skills`. Installation is a host effect, admitted under the
+loop's policy. A skill that fails to install or has invalid frontmatter is
+listed `unavailable` with its exact Problem; one bad skill never disables the
+family. `remove` uninstalls the workspace-added skill; service skills are
+disable-only.

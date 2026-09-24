@@ -5,7 +5,7 @@ worker's overrides. `list` shows the effective values and their origins.
 
 ## Workspace defaults
 
-Use `"scope": "workspace"` with any verb to manage the shared layer. These values
+`"scope": "workspace"` on any verb manages the shared layer. These values
 reach every worker's commands and newly started MCP servers, without depending
 on which worker starts them:
 
@@ -44,13 +44,8 @@ environment, over your entries, and it is gone when the run ends:
 cargo test
 ````
 
-On `WORK` and `FORK` it is the child's starting environment: the child gets a
-copy of your entries first, then each name here becomes its own, so you hand
-down your registry and override what one child needs in the same line:
-
-````WORK (worker://builder) [{"env": {"CARGO_TARGET_DIR": "/tmp/builder"}}]
-Build the crate and report the warnings.
-````
+On `WORK` and `FORK` the same metadata is the child's starting environment: a
+copy of your entries first, then each name here becomes its own (`worker.md`).
 
 ## Names you cannot set
 
@@ -63,5 +58,5 @@ command, so `add` refuses them and tells you why.
 package declares, with the declaring package as its provenance and its own
 comment as the summary. It is not a permissions list — you may set any name —
 it tells you which names have a consumer, and it is how you learn the name of a
-value only the operator can supply. Refer to such a value by its name; you never
-need to see it.
+value only the operator can supply. Such a value is referenced by its name; the
+value itself never appears.
