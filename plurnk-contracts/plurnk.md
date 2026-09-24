@@ -11,7 +11,7 @@
 
 ## Core Plurnk OPs
 
-* NOTE: Reasoning scratchpad for recording model conclusions, decisions, and facts.
+* NOTE: Reasoning scratchpad for recording conclusions, decisions, and facts.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
