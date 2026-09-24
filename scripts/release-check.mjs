@@ -7,6 +7,7 @@ import {
     assertNpmPublisher,
     assertReleaseRepository,
 } from "./release-authority.mjs";
+import { assertReleaseHosting } from "./release-finalize.mjs";
 
 const run = promisify(execFile);
 const root = path.resolve(import.meta.dirname, "..");
@@ -45,6 +46,8 @@ const runVisible = (command, args, options = {}) => new Promise((accept, reject)
 await assertClean("before build");
 const serviceAuthority = await assertReleaseRepository(root, "plurnk-service");
 const npmAuthority = await assertNpmPublisher(root);
+await assertReleaseHosting(root, "plurnk-service");
+await assertReleaseHosting(clientRoot, "plurnk");
 console.log(`release authority: ${serviceAuthority.origin}#${serviceAuthority.head.slice(0, 12)}; npm ${npmAuthority.identity} at ${npmAuthority.registry}`);
 console.log(`release topology: client=${clientRoot}; externals=${externalRoot}; probe=child-owned ephemeral listener`);
 await runVisible(process.execPath, [clientRelease, "--check", clientVersion, version], { cwd: clientRoot });

@@ -57,6 +57,19 @@ const section = (title, date, lines) => {
     return out.join("\n");
 };
 
+export const releaseNotes = async (cwd, tag, repo) => {
+    const readGit = async (...args) => (await run("git", args, { cwd, maxBuffer: 64 * 1024 * 1024 })).stdout.trim();
+    const list = (await readGit("tag", "--merged", tag, "--list", "v*", "--sort=creatordate")).split("\n");
+    const index = list.indexOf(tag);
+    if (index < 0) throw new Error(`release tag ${tag} is missing`);
+    const range = index === 0 ? tag : `${list[index - 1]}..${tag}`;
+    const lines = (await readGit("log", "--format=%s", "--no-merges", range)).split("\n");
+    return section(tag.slice(1), null, lines).replace(
+        /(?<![\w/])#(\d+)\b/g,
+        (_, number) => `[#${number}](https://repo.possumtech.com/plurnk/${repo}/issues/${number})`,
+    );
+};
+
 const generate = async () => {
     const list = await tags();
     const parts = [HEADER];
@@ -70,20 +83,22 @@ const generate = async () => {
     return parts.join("\n");
 };
 
-const { values } = parseArgs({ options: { write: { type: "boolean", default: false }, check: { type: "boolean", default: false } } });
-if (values.write) {
-    await writeFile(FILE, await generate());
-    console.log("CHANGELOG.md regenerated");
-} else if (values.check) {
-    const expected = await generate();
-    const actual = await readFile(FILE, "utf8");
-    if (actual !== expected) {
-        process.stderr.write("CHANGELOG.md differs from the text generated from the release tags; run `npm run changelog -- --write` and commit it\n");
-        process.exit(1);
+if (import.meta.main) {
+    const { values } = parseArgs({ options: { write: { type: "boolean", default: false }, check: { type: "boolean", default: false } } });
+    if (values.write) {
+        await writeFile(FILE, await generate());
+        console.log("CHANGELOG.md regenerated");
+    } else if (values.check) {
+        const expected = await generate();
+        const actual = await readFile(FILE, "utf8");
+        if (actual !== expected) {
+            process.stderr.write("CHANGELOG.md differs from the text generated from the release tags; run `npm run changelog -- --write` and commit it\n");
+            process.exit(1);
+        }
+        console.log("changelog OK: matches the release tags");
+    } else {
+        const list = await tags();
+        const last = list.at(-1);
+        process.stdout.write(section(`Pending since ${last}`, null, await subjects(`${last}..HEAD`)));
     }
-    console.log("changelog OK: matches the release tags");
-} else {
-    const list = await tags();
-    const last = list.at(-1);
-    process.stdout.write(section(`Pending since ${last}`, null, await subjects(`${last}..HEAD`)));
 }

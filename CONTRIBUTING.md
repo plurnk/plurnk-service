@@ -96,6 +96,21 @@ npm run release:publish -- <client-version>
 before mutation and resumes torn runs by skipping served immutable packages.
 Preserve applicable live, demo, and canonical `plurnk-bench` evidence in the issue.
 
+The train finishes by signing and pushing both release tags to the forge and
+GitHub, then creating GitHub Releases from the tagged changelog. GitHub CLI
+(`gh`) must have write access to both repositories before publication starts.
+Regenerate and commit `CHANGELOG.md` after new tags: `npm run changelog -- --write`.
+
+To repair missing release records for versions already published and tagged,
+without republishing packages:
+
+```sh
+npm run release:finalize -- <platform-version> <client-version>
+```
+
+Existing signed tags and published release records are verified and preserved
+({§release-finalization}).
+
 ## Reviews and reports
 
 State the problem, tradeoffs, verification, and compatibility effect. Reports need

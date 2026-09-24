@@ -27,6 +27,9 @@ test("release lifecycle stamps, commits, then builds and gates before script-fre
     assert.ok(build < drill && drill < gates && gates < externalCheck && externalCheck < postGateClean);
     assert.match(check, /resolveExternalReposRoot\(process\.env\)/);
     assert.match(check, /probe=child-owned ephemeral listener/);
+    const hosting = check.indexOf('assertReleaseHosting(root, "plurnk-service")');
+    assert.ok(npmAuthority < hosting && hosting < clientPreflight);
+    assert.match(check, /assertReleaseHosting\(clientRoot, "plurnk"\)/);
 
     const publish = await readFile(new URL("./release-publish.mjs", import.meta.url), "utf8");
     assert.match(publish, /usage: release-publish\.mjs <client-version>/);
@@ -55,6 +58,9 @@ test("release lifecycle stamps, commits, then builds and gates before script-fre
     const clientPublish = publish.indexOf("[CLIENT_RELEASE, clientVersion, version]");
     const exactComposition = publish.indexOf("PLURNK_COMPOSITION_CLIENT: `${CLIENT_PKG}@${clientVersion}`");
     assert.ok(installedBoot < clientPublish && clientPublish < exactComposition);
+    const finalize = publish.indexOf("await finalizeReleaseTrain(");
+    assert.ok(exactComposition < finalize && finalize < publish.indexOf("published, consumer-verified, tagged"));
+    assert.equal(root.scripts["release:finalize"], "node scripts/release-finalize.mjs");
     assert.doesNotMatch(publish, /@latest/);
 
     const gateSweep = await readFile(new URL("./release-gates.mjs", import.meta.url), "utf8");

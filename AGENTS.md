@@ -58,9 +58,12 @@ Where things are, for an agent that has to act before it has read everything:
   it outruns a ten-minute shell cap, so watch the log, never the registry. It re-runs the
   drill, then `release-gates` (one bounded `npm audit` that warns and continues when the
   advisory endpoint is rate-limited, #649, and fails only on a real ≥moderate finding), then
-  publishes the service and the client. Afterwards, signed tags: `v<service>` here,
-  `v<client>` in the client checkout;
-  then relock the bench checkout with `npm update @plurnk/plurnk-service --no-audit --no-fund`.
+  publishes the service and the client, signs and mirrors their `v<version>` tags,
+  and creates the GitHub Release entries. GitHub CLI write access is preflighted.
+  `npm run release:finalize -- <service-version> <client-version>` repairs missing
+  records from existing signed tags without npm publication. Afterwards, regenerate
+  and commit the changelog, then relock the bench checkout with
+  `npm update @plurnk/plurnk-service --no-audit --no-fund`.
   Every install passes `--no-audit` (the project `.npmrc` sets `audit=false`): npm's
   advisory endpoint drops over-limit requests instead of answering 429, and retries and
   probes only feed the limit.

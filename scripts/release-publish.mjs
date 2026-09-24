@@ -17,6 +17,7 @@ import { projectTarball } from "./package-projection.mjs";
 import { resolveClientCheckout } from "./project-topology.mjs";
 import { awaitRegistryVersion } from "./registry-visibility.mjs";
 import { probeInstalledDaemon } from "./release-daemon-probe.mjs";
+import { finalizeReleaseTrain } from "./release-finalize.mjs";
 
 const run = promisify(execFile);
 const ROOT_PKG = "@plurnk/plurnk-service";
@@ -54,6 +55,7 @@ if (!order.every((p) => p.version === version)) throw new Error("lockstep violat
 
 await runVisible("node", ["scripts/release-check.mjs", clientVersion]);
 await assertClean("before publication");
+const serviceCommit = (await run("git", ["rev-parse", "HEAD"])).stdout.trim();
 
 const served = async (name) => {
     try { return (await run("npm", ["view", name, "version"])).stdout.trim(); }
@@ -127,6 +129,7 @@ try {
 // prepare and publish it after its exact contracts are registry-resolvable.
 console.log(`release-publish: client phase ${CLIENT_PKG}@${clientVersion}`);
 await runVisible("node", [CLIENT_RELEASE, clientVersion, version], { cwd: CLIENT_ROOT });
+const clientCommit = (await run("git", ["rev-parse", "HEAD"], { cwd: CLIENT_ROOT })).stdout.trim();
 
 // Verify the exact served artifacts rather than whichever client happened to
 // own the latest tag before this train.
@@ -140,4 +143,5 @@ await runVisible("node", [path.join(CLIENT_ROOT, "scripts", "test-composition.mj
     },
 });
 
-console.log(`release-publish: platform ${version}, managed externals, and client ${clientVersion} published and consumer-verified`);
+await finalizeReleaseTrain({ serviceRoot: process.cwd(), clientRoot: CLIENT_ROOT, platformVersion: version, clientVersion, serviceCommit, clientCommit });
+console.log(`release-publish: platform ${version}, managed externals, and client ${clientVersion} published, consumer-verified, tagged, and recorded on GitHub`);

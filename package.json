@@ -79,6 +79,7 @@
         "release:check": "node scripts/release-check.mjs",
         "release:order": "node scripts/release-order.mjs",
         "release:publish": "node scripts/release-publish.mjs",
+        "release:finalize": "node scripts/release-finalize.mjs",
         "release:externals": "node scripts/release-external-packages.mjs",
         "external:census": "node plurnk-meta/scripts/external-package-census.mjs",
         "config:list": "node --conditions=plurnk-dev plurnk-core/src/service.ts config defaults",
