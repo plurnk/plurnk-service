@@ -326,11 +326,17 @@ export default class Worker extends CoreSchemeAdapterBase {
         const workerId = row.id;
         const body = statement.body;
         const prompt = body === null ? "" : typeof body === "string" ? body : body.raw;
+        const captured = await MessageAttachments.capture(statement.metadata, core.resources!, "scheme:worker");
+        if ("failure" in captured) return captured.failure;
+        if (prompt.trim() === "" && captured.attachments.length === 0) {
+            return Results.failure(
+                "scheme:worker", "message-empty", 422,
+                "SEND has no message text or attachments.", {}, { retryable: false },
+            );
+        }
         // {§worker-delegation-inherits-policy} Only fresh loops inherit proposal
         // disposition; resumed loops retain their immutable policy.
         const freshLoopPolicy = await LoopPolicyReader.read(core.db, core.loopId);
-        const captured = await MessageAttachments.capture(statement.metadata, core.resources!, "scheme:worker");
-        if ("failure" in captured) return captured.failure;
         await core.injectWorker({
             workspaceId: core.workspaceId,
             workerId,

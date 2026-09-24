@@ -1,13 +1,49 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Mock } from "@plurnk/plurnk-providers";
+import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
+import type { SchemeResult } from "../../src/core/results.ts";
 import { holdChild } from "./_helpers.ts";
 import { makeMockResponse, waitForDb, withDaemon } from "./_rpc.ts";
 
 // Exercise reply delivery with a bounded coalescing window; sibling tests cover
 // quiescence, deadlines, and mixed reply/stream/child settlement.
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "100";
+
+test("{§worker-scheme-irc}: an empty directed SEND refuses before admission and the model can recover", async () => {
+    const provider = new Mock({ contextWindow: 100_000, responses: [
+        makeMockResponse([
+            PlurnkParser.frame("SEND (worker://receiver)", null),
+            PlurnkParser.frame("NOTE", "Keep the sibling operation."),
+        ].join("\n\n")),
+        makeMockResponse(PlurnkParser.frame("KILL", "No message was delivered to the receiver.")),
+    ] });
+    await withDaemon(provider, async (_db, daemon) => {
+        const { workspaceId } = await daemon.createWorkspace({ name: "empty-worker-message", projectRoot: null });
+        const sender = await daemon.createConversationWorker({ workspaceId, name: "sender" });
+        const receiver = await daemon.createConversationWorker({ workspaceId, name: "receiver" });
+        const accepted = await daemon.runLoop({ workspaceId, workerId: sender.workerId, prompt: "Check delivery." });
+        const loops = await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId: sender.workerId }),
+            (rows) => rows.some((row) => row.id === accepted.loopId && row.status === 200));
+        assert.equal(loops.find((row) => row.id === accepted.loopId)?.status, 200);
+        const rows = await daemon.readLog({ workspaceId, workerId: sender.workerId, loopId: accepted.loopId });
+        const refused = rows.find((row) => row.origin === "model" && row.op === "SEND");
+        assert.ok(refused);
+        assert.equal(refused.status_rx, 422);
+        const receipt = refused.rx as SchemeResult;
+        assert.equal(receipt.problem?.type, "https://problems.plurnk.xyz/scheme/worker/message-empty");
+        assert.equal(receipt.problem?.detail, "SEND has no message text or attachments.");
+        assert.ok(rows.some((row) => row.origin === "model" && row.op === "NOTE" && row.status_rx === 200));
+        assert.deepEqual(await daemon.listWorkerLoops({ workspaceId, workerId: receiver.workerId }), [], "no empty receiving loop is created");
+        assert.deepEqual(await daemon.readMessages({ workspaceId, workerId: receiver.workerId }), [], "no empty message is stored");
+        assert.equal(provider.received.length, 2, "only the sender ran and recovered");
+        assert.match(provider.received[1]!.map(chatMessageText).join("\n"), /SEND has no message text or attachments\./);
+        const history = await daemon.readMessages({ workspaceId, workerId: sender.workerId });
+        assert.deepEqual(history.filter(({ direction }) => direction === "outbound").map(({ body }) => body), [
+            "No message was delivered to the receiver.",
+        ]);
+    });
+});
 
 test("{§message-reply-delivery}: a client-authored answer wakes its assigned worker without making another request", async () => {
     const provider = new Mock({ contextWindow: 100_000, responses: [

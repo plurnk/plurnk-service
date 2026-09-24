@@ -725,6 +725,38 @@ test("{§worker-scheme-irc} SEND(worker://name):msg delivers to a sister; a miss
     } finally { await db.close(); }
 });
 
+test("{§worker-scheme-irc}: empty and whitespace-only messages never reach worker injection", async () => {
+    const db = await openMigrated();
+    try {
+        const { calls, injectWorker } = recordingInjectWorker();
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), injectWorker, weigh });
+        const workspaceId = await insertWorkspace(db, "empty-worker-send");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "go");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+        await insertWorker(db, workspaceId, null, "receiver");
+        let sequence = 0;
+        for (const body of [null, "", " \t\n"]) {
+            const result = await engine.dispatch({
+                statement: sendStmt(workerPath("receiver"), body),
+                workspaceId, workerId, loopId, turnId, sequence: ++sequence, origin: "model",
+            });
+            assert.equal(result.status, 422);
+            assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/worker/message-empty");
+            assert.equal(result.problem?.detail, "SEND has no message text or attachments.");
+        }
+        assert.equal(calls.length, 0);
+        const literal = " \tMessage with significant whitespace.\n ";
+        const delivered = await engine.dispatch({
+            statement: sendStmt(workerPath("receiver"), literal),
+            workspaceId, workerId, loopId, turnId, sequence: ++sequence, origin: "model",
+        });
+        assert.equal(delivered.status, 200);
+        assert.equal(calls.length, 1);
+        assert.equal(calls[0]!.prompt, literal, "validation preserves a nonempty message verbatim");
+    } finally { await db.close(); }
+});
+
 test("{§worker-delegation-inherits-policy}: a fresh IRC loop receives the sender's proposal disposition", async () => {
     const db = await openMigrated();
     try {

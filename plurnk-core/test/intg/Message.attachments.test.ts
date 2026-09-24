@@ -53,7 +53,7 @@ test("{§send-resource-attachments}: outbound A2A snapshots only selected resour
     }
 });
 
-test("{§send-resource-attachments}: worker SEND carries a snapshot as a normal readable resource", async () => {
+for (const body of ["Inspect this.", ""]) test(`{§send-resource-attachments}: ${body ? "text and attachment" : "attachment-only"} worker SEND carries a snapshot as a normal readable resource`, async () => {
     class Reader extends Mock {
         override async generate(...args: Parameters<Mock["generate"]>) {
             const response = await super.generate(...args);
@@ -72,7 +72,12 @@ test("{§send-resource-attachments}: worker SEND carries a snapshot as a normal 
         const { workspaceId } = await daemon.createWorkspace({ name: "worker-attachments", projectRoot: null });
         const sender = await daemon.createConversationWorker({ workspaceId, name: "sender" });
         const receiver = await daemon.createConversationWorker({ workspaceId, name: "receiver" });
-        const program = PlurnkParser.parseStatements('````EDIT (worker:///report.md)\noriginal peer report\n````\n````SEND (worker://receiver) [{"attachments":42}]\nDo not deliver invalid input.\n````\n````SEND (worker://receiver) [{"attachments":["worker:///report.md"]}]\nInspect this.\n````\n````EDIT (worker:///report.md) <1,-1>\nchanged\n````');
+        const program = PlurnkParser.parseStatements([
+            PlurnkParser.frame("EDIT (worker:///report.md)", "original peer report"),
+            PlurnkParser.frame('SEND (worker://receiver) [{"attachments":42}]', "Do not deliver invalid input."),
+            PlurnkParser.frame('SEND (worker://receiver) [{"attachments":["worker:///report.md"]}]', body),
+            PlurnkParser.frame("EDIT (worker:///report.md) <1,-1>", "changed"),
+        ].join("\n\n"));
         assert.ok(program.items.every((item) => item.kind === "statement"));
         const results = await daemon.dispatchClientAction({ workspaceId, workerId: sender.workerId,
             statements: program.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []) });
