@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { liveTest as test } from "../live-test.ts";
-import { liveLoop, liveWorkspace, seedEntry } from "../_live-harness.ts";
+import { liveLoop, liveWorkspace } from "../_live-harness.ts";
 
 test("{§bare-inference} live: delegate two isolated questions and consume their answers", async (t) => {
     const s = await liveWorkspace({ name: `live-bare-${crypto.randomUUID()}` });
     try {
-        await seedEntry(s.db, s.workspaceId, { pathname: "country-question.md", content: "What is the capital of France?" });
+        // {§bare-statement} — the taught form only: BARE carries its prompt in the fence body (#848).
         const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, {
-            prompt: "Use two separate BARE calls: give one worker:///country-question.md as its prompt resource, and ask the other for the capital of Germany using an inline prompt. Then report both answers.",
+            prompt: "Use two separate BARE calls, each with its own inline prompt: one asking for the capital of France, the other for the capital of Germany. Then report both answers.",
             maxTurns: 6,
         }, { signal: t.signal });
 
@@ -27,7 +27,7 @@ test("{§bare-inference} live: delegate two isolated questions and consume their
         const rows = (await Promise.all(turnIds.map((turnId) =>
             s.db.test_log_entries_by_turn.all<{ op: string | null; pathname: string | null }>({ turn_id: turnId }),
         ))).flat();
-        assert.ok(rows.some(({ op, pathname }) => op === "BARE" && pathname?.endsWith("country-question.md")), "a BARE actually used the prompt resource");
+        assert.equal(rows.filter(({ op }) => op === "BARE").length, 2, "two BARE operations were dispatched");
     } finally {
         await s.cleanup();
     }
