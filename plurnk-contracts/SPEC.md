@@ -425,7 +425,9 @@ So a model may show plurnk's own operations in an answer. Two exceptions keep pr
 CommonMark's own rule that a backtick opener's line carries no further backtick, so
 ```` ```READ (x)``` ```` is inline code and quotes nothing after it; and a bare fence directly under
 a line carrying a fence run, which is an orphaned closer and quotes nothing. An unknown tag at
-any width is a code block and draws nothing; an offset example draws nothing either
+any width is a code block and draws nothing, unless its line carries a target slot, `(…)`: that
+is an operation the model missed by its tag, and it draws one warning — `` `OP` is not an
+operation or a known executor here. `` An offset example draws nothing either
 ({§indented-fences}). Quotation outside an operation is
 response text under {§response-text}, not an executable program or a completion envelope.
 
@@ -1090,8 +1092,10 @@ so.** An outside-text line that opens at column zero with an operation's name an
 fence, so it did not run. `` The line is not response text ({§response-text}): it is neither filed as
 a NOTE nor echoed into the next packet, and the exact emission remains at `ops://` (operator,
 2026-09-23); the bare name alone
-opens the operation instead ({§naked-operation}), and quoted blocks, offset lines, names inside a
-sentence and executor tags draw nothing. The model that wrote it believes it ran: while the line was
+opens the operation instead ({§naked-operation}). A registered executor's name followed by an
+operand slot — `gitea (list_issues)`, `sh(build.sh)` — draws the same warning under the executor's
+own spelling; quoted blocks, offset lines and names inside a sentence draw nothing, since `sh`,
+`env` and `members` are ordinary words. The model that wrote it believes it ran: while the line was
 still filed as a NOTE ({§response-text-note}), an unfenced KILL read back as an answer already given,
 and the model repeated it until the cycle detector ended the loop (`demo-overflow-recovery-AC4Ul4`;
 the same shape defeated SEND recovery and a count of invalid characters; operator, 2026-09-22). The

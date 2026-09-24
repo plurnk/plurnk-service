@@ -293,11 +293,15 @@ export default class PlurnkParser {
         for (const note of lexer.takeQuotedTags()) {
             items.push({ kind: "error", error: new PlurnkParseError(note.line, note.column, "parser", `\`${note.tag}\` inside a code block was shown, not run.`, "warning") });
         }
+        // {§quotation} — an unknown tag with a target slot is an operation missed by its tag; say so once.
+        for (const note of lexer.takeMissedTags()) {
+            items.push({ kind: "error", error: new PlurnkParseError(note.line, note.column, "parser", `\`${note.tag}\` is not an operation or a known executor here.`, "warning") });
+        }
 
         if (tier === "model") {
             // {§unfenced-operation}: the line that wrote an operation without its fence is a broken
             // program, not response text — it draws its warning and never becomes narration.
-            const unfenced = PlurnkParser.#unfencedOperations(tokens, lexer.takeQuotedSpans(lexer.inputStream.size), unparsedTail?.from);
+            const unfenced = PlurnkParser.#unfencedOperations(tokens, lexer.takeQuotedSpans(lexer.inputStream.size), lexer.knownExecutors, unparsedTail?.from);
             items.push(...PlurnkParser.#responseText(tokens, new Set(unfenced.map(({ line }) => line)), unparsedTail?.from));
             items.push(...unfenced.map(({ item }) => item));
             const position = (item: ParseItem<S>): Position => item.kind === "statement" ? item.statement.position
@@ -339,17 +343,38 @@ export default class PlurnkParser {
     // {§unfenced-operation}: a prose line that opens with an operation's name and anything else
     // wrote the operation without its fence. It did not run, and the model that wrote it believes
     // it did. The bare name alone never reaches here: the lexer opened it ({§naked-operation}).
-    static #unfencedOperations(tokens: readonly Token[], quoted: ReadonlyArray<{ start: number; end: number }>, boundary?: Position): Array<{ line: number; item: Extract<ParseItem, { kind: "error" }> }> {
+    // {§unfenced-operation} — a native name opening a column-zero line, or a registered executor's name
+    // followed by an operand slot (`gitea (list_issues)`, `sh(build.sh)`); an executor's name inside a
+    // sentence is a word, since `sh`, `env` and `members` are English.
+    static #unfencedOperations(tokens: readonly Token[], quoted: ReadonlyArray<{ start: number; end: number }>, executors: ReadonlySet<string>, boundary?: Position): Array<{ line: number; item: Extract<ParseItem, { kind: "error" }> }> {
         const items: Array<{ line: number; item: Extract<ParseItem, { kind: "error" }> }> = [];
-        for (const token of tokens) {
+        const lower = new Set([...executors].map((name) => name.toLowerCase()));
+        for (const [index, token] of tokens.entries()) {
             if (boundary !== undefined && !PlurnkParser.#isBefore(token, boundary)) break;
             if (token.type !== plurnkLexer.TEXT || token.column !== 0) continue;
             if (quoted.some(({ start, end }) => token.start >= start && token.start < end)) continue;
-            const name = /^[A-Z]+(?=$|[(<[])/u.exec(token.text ?? "")?.[0];
-            if (name === undefined || !(PLURNK_OPS as readonly string[]).includes(name)) continue;
+            const native = /^[A-Z]+(?=$|[(<[])/u.exec(token.text ?? "")?.[0];
+            const name = native !== undefined && (PLURNK_OPS as readonly string[]).includes(native)
+                ? native
+                : PlurnkParser.#unfencedExecutor(tokens, index, lower);
+            if (name === undefined) continue;
             items.push({ line: token.line, item: { kind: "error", error: new PlurnkParseError(token.line, token.column, "parser", `\`${name}\` has no fence, so it did not run.`, "warning") } });
         }
         return items;
+    }
+
+    static #unfencedExecutor(tokens: readonly Token[], index: number, executors: ReadonlySet<string>): string | undefined {
+        const token = tokens[index]!;
+        const match = /^([A-Za-z0-9_.+-]+)(\(?)/u.exec(token.text ?? "");
+        if (match === null || !executors.has(match[1]!.toLowerCase())) return undefined;
+        if (match[2] === "(") return match[1];
+        for (let next = index + 1; next < tokens.length; next += 1) {
+            const candidate = tokens[next]!;
+            if (candidate.line !== token.line) return undefined;
+            if (candidate.type === plurnkLexer.WS) continue;
+            return candidate.type === plurnkLexer.TEXT && (candidate.text ?? "").startsWith("(") ? match[1] : undefined;
+        }
+        return undefined;
     }
 
     // Determine the public trust boundary before visiting recovered contexts. The parser may

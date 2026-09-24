@@ -4,7 +4,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection, seedEntryWithChannel } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection, seedEntryWithChannel, testExecutors } from "./_helpers.ts";
 const FENCE = "`".repeat(4);
 
 const memory = PlurnkParser.frame("NOTE", "Examples reviewed.");
@@ -288,5 +288,28 @@ test("{§quotation}: an offset example draws no parser advisory, and does not co
             "It says: Keep this note.",
             "the fenced answer concludes, stripped of its envelope",
         );
+    } finally { await db.close(); }
+});
+
+// {§unfenced-operation} {§empty-turn} — an executor called without its fence is a missed operation: the
+// receipt rides the next packet's notices, and the turn still strikes, so three in a row end the loop (#844).
+test("{§unfenced-operation} {§empty-turn}: unfenced executor calls draw their receipt each turn and still strike out", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `unfenced-exec-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "Build it.");
+        const notices: Array<{ kind: string; message?: string }> = [];
+        const provider = new Mock({ contextWindow: 100_000, responses: ["build", "test", "lint"].map((step) => (
+            { assistant: { content: `Running the ${step} step.\n\nsh (${step}.sh)`, reasoning: null, finishReason: "stop" as const } }
+        )) });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
+        engine.setExecutors(await testExecutors());
+        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 6, maxStrikes: 3, messages: [{ role: "user", content: "Build it." }] });
+        assert.equal(result.result.status, 500, "three empty turns cross the strike threshold");
+        assert.match(JSON.stringify(result.result), /performed no operation/u, "the terminal names the source");
+        assert.equal(notices.filter(({ kind, message }) => kind === "parse_advisory" && message === "`sh` has no fence, so it did not run.").length, 3, "each turn heard its receipt");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string }>({ turn_id: result.turnIds[1]! });
+        assert.deepEqual(rows.filter(({ origin, op }) => origin === "model" && op === "NOTE"), [], "an empty turn files no narration");
     } finally { await db.close(); }
 });

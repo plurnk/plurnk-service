@@ -85,6 +85,7 @@ private inlineBodies: Array<{ line: number; column: number; heading: string }> =
 // {§bare-option-object} - true once this heading carried a [...] block.
 private headingMetadata: boolean = false;
 private quotedTags: Array<{ line: number; column: number; tag: string }> = [];
+private missedTags: Array<{ line: number; column: number; tag: string }> = [];
 private quotedSpans: Array<{ start: number; end: number }> = [];
 private quoteLabeled = false;
 private quoteStart: number = -1;
@@ -106,6 +107,25 @@ private quote(): void {
     // No literal backtick in this block: the action scanner reads one as a string delimiter.
     this.quoteLabeled = /[A-Za-z]/.test(this.text.replace(/^[\x60~]+/, ""));
     this.open();
+    this.noteMissed();
+}
+
+// {§quotation} - an unknown backtick tag whose line carries a target slot is an operation the
+// model missed by its tag, not a code block: it is worth one word. Reasoning draws none.
+private noteMissed(): void {
+    if (this.reasoning || this.text.charCodeAt(0) !== 0x60) return;
+    const tag = this.text.replace(/^\x60+/, "");
+    if (tag === "") return;
+    let cursor = 1;
+    while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
+    if (this.inputStream.LA(cursor) !== 0x28) return;
+    this.missedTags.push({ line: (this as any).currentTokenStartLine, column: (this as any).currentTokenColumn, tag });
+}
+
+public takeMissedTags(): Array<{ line: number; column: number; tag: string }> {
+    const taken = this.missedTags;
+    this.missedTags = [];
+    return taken;
 }
 
 // {§quotation} - an operation inside an unlabeled code block is shown, never run: the model that
@@ -577,7 +597,7 @@ NAKED_OPEN : { this.atColumnZero() && !this.reasoning && this.nakedHeadingAhead(
 ORPHAN_CLOSER : { this.atLineStart() && this.previousLineIsFence() }? FENCE [ \t]* { this.orphanAtLineEnd() }? -> channel(HIDDEN) ;
 // {§quotation} - every other fence at a line start quotes to its closer or the end of the input.
 // A line-start fence whose line carries more backticks is inline code: it quotes nothing.
-INLINE_TAG : { this.atLineStart() && !this.fenceOpens() }? FENCE NAME -> type(TEXT), channel(HIDDEN) ;
+INLINE_TAG : { this.atLineStart() && !this.fenceOpens() }? FENCE NAME { this.noteMissed(); } -> type(TEXT), channel(HIDDEN) ;
 QUOTE : { this.atLineStart() && this.fenceOpens() }? (FENCE NAME? | '~~~' '~'* NAME?) { this.quote(); } -> type(TEXT), channel(HIDDEN), mode(QUOTATION) ;
 // {§interstitial-fence} - a fence naming nothing known, or nothing at all, is prose outside a block.
 WS : [ \t\r\n]+ -> channel(HIDDEN) ;
