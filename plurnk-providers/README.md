@@ -88,6 +88,13 @@ changing a startup default is not a command to retarget existing Workers.
 Clients expose explicit model, reasoning, and child-model controls; their
 available effort choices come from the selected route.
 
+Sampling uses endpoint defaults unless configured. `TEMPERATURE`, `TOP_P`,
+`TOP_K`, `PRESENCE_PENALTY`, `FREQUENCY_PENALTY`, and `SEED` use the same
+`PLURNK_PROVIDERS_<KNOB>_<alias>` form. Supported values depend on the endpoint;
+Models.dev does not supply a recommended sampling profile. See the
+[sampling contract](SPEC.md) ({§provider-sampling-passthrough}) and
+[environment panel](.env.defaults) for ranges and omission rules.
+
 ## Capacity and reasoning
 
 ```mermaid

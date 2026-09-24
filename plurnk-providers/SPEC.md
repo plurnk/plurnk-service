@@ -660,20 +660,29 @@ and the notice names the true per-call grant (`capacity.responseMax` on the
 response) — the tolerance's honest edge, never worse than the fixed allowance
 it forgives.
 
-§provider-sampling-passthrough **The service imposes no sampling opinion.** With
-no configured value, a request carries no `temperature` and no repetition
-control — the provider's or model's own defaults govern, as a normal agentic
-service behaves. `PLURNK_PROVIDERS_TEMPERATURE` and
-`PLURNK_PROVIDERS_REPEAT_PENALTY` parse empty as null and exist as per-alias
-measurement instruments; caller `sampling` always outranks a configured value,
-and router-owned-tuning providers suppress configured floors entirely. The
-justified exception the penalty knob exists for: grammar-constrained decoding
-can loop under the mask — greedy continuation of an exactly-repeatable sequence
-the grammar keeps legal (measured on the July local rail work, #9/#30; and
-unconstrained on firefast, where 4/86 bench turns ran straight to the token cap
-on pure repetition, run52) — and a per-alias `repeat_penalty` (llama.cpp
-backends) or `frequency_penalty` (cloud backends, #426) is the measured remedy
-for a model that exhibits it, never a service-wide floor.
+§provider-sampling-passthrough **Unconfigured sampling retains endpoint defaults.**
+The provider panel owns tuning; Models.dev capabilities are not recommended
+sampling values. Every knob accepts the ordinary alias override
+({§provider-configuration}). Both cataloged and local providers apply the same
+validation and precedence: configured values, then caller `sampling`, then
+transport-owned fields ({§provider-request-authority}).
+
+| `PLURNK_PROVIDERS_` suffix | Compatible wire / native SDK | Accepted configuration |
+| --- | --- | --- |
+| `TEMPERATURE` | `temperature` / `temperature` | Finite non-negative number; empty/unset omits. |
+| `TOP_P` | `top_p` / `topP` | Finite number in `[0,1]`; empty/unset omits. |
+| `TOP_K` | `top_k` / `topK` | Non-negative safe integer; empty/unset omits. Zero semantics are endpoint-owned. |
+| `PRESENCE_PENALTY` | `presence_penalty` / `presencePenalty` | Finite number in `[-2,2]`; empty/unset omits. |
+| `FREQUENCY_PENALTY` | `frequency_penalty` / `frequencyPenalty` | Required finite number in `[-2,2]`; the panel's zero selects no configured override. Negative values survive unchanged. |
+| `SEED` | `seed` / `seed` | Safe integer; empty/unset omits. No guarantee of reproducibility. |
+
+Configured zero is preserved except for the frequency knob's explicit
+no-override sentinel; a caller-supplied zero always overrides a configured value.
+Invalid configuration fails by knob name before inference. The SDK/endpoint
+owns narrower model restrictions and unsupported-setting diagnostics; Plurnk
+does not clamp values or invent model-specific sampling profiles.
+`REPEAT_PENALTY` and DRY remain explicit llama-server extensions, omitted when
+unconfigured. Their grammar protection remains at {§provider-grammar-transport}.
 
 §provider-connectivity The provider adapter owns one attempt scheduler around
 the complete generation exchange; SDK-internal retries are disabled.

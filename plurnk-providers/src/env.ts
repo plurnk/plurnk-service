@@ -27,19 +27,37 @@ export const parseOptionalInt = (raw: string | undefined, name: string, label: s
     return n;
 };
 
-export const parseRequiredFloat = (raw: string | undefined, name: string, label: string, min: number): number => {
+export const parseRequiredFloat = (raw: string | undefined, name: string, label: string, min: number, max?: number): number => {
     if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set`);
+    return parseOptionalFloat(raw, name, label, min, max)!;
+};
+
+export const parseOptionalFloat = (raw: string | undefined, name: string, label: string, min: number, max?: number): number | null => {
+    if (raw === undefined || raw.length === 0) return null;
     const n = Number(raw);
-    if (!Number.isFinite(n) || n < min) throw new Error(`${label} provider: ${name} must be a finite number >= ${min} (got "${raw}")`);
+    if (!Number.isFinite(n) || n < min || max !== undefined && n > max) {
+        const range = max === undefined ? `>= ${min}` : `in [${min}, ${max}]`;
+        throw new Error(`${label} provider: ${name} must be a finite number ${range} (got "${raw}")`);
+    }
     return n;
 };
 
-export const parseOptionalFloat = (raw: string | undefined, name: string, label: string, min: number): number | null => {
-    if (raw === undefined || raw.length === 0) return null;
-    const n = Number(raw);
-    if (!Number.isFinite(n) || n < min) throw new Error(`${label} provider: ${name} must be a finite number >= ${min} (got "${raw}")`);
+const parseOptionalSafeInt = (raw: string | undefined, name: string, label: string, min: number): number | undefined => {
+    const n = parseOptionalFloat(raw, name, label, min);
+    if (n === null) return undefined;
+    if (!Number.isSafeInteger(n)) throw new Error(`${label} provider: ${name} must be a safe integer (got "${raw}")`);
     return n;
 };
+
+// {§provider-sampling-passthrough} Both provider factories read the same tuning surface.
+export const samplingFromEnv = (env: NodeJS.ProcessEnv, label: string) => ({
+    temperature: parseOptionalFloat(env.PLURNK_PROVIDERS_TEMPERATURE, "PLURNK_PROVIDERS_TEMPERATURE", label, 0),
+    topP: parseOptionalFloat(env.PLURNK_PROVIDERS_TOP_P, "PLURNK_PROVIDERS_TOP_P", label, 0, 1) ?? undefined,
+    topK: parseOptionalSafeInt(env.PLURNK_PROVIDERS_TOP_K, "PLURNK_PROVIDERS_TOP_K", label, 0),
+    presencePenalty: parseOptionalFloat(env.PLURNK_PROVIDERS_PRESENCE_PENALTY, "PLURNK_PROVIDERS_PRESENCE_PENALTY", label, -2, 2) ?? undefined,
+    frequencyPenalty: parseRequiredFloat(env.PLURNK_PROVIDERS_FREQUENCY_PENALTY, "PLURNK_PROVIDERS_FREQUENCY_PENALTY", label, -2, 2),
+    seed: parseOptionalSafeInt(env.PLURNK_PROVIDERS_SEED, "PLURNK_PROVIDERS_SEED", label, Number.MIN_SAFE_INTEGER),
+});
 
 export const requireEnv = (raw: string | undefined, name: string, label: string): string => {
     if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set`);
@@ -306,6 +324,10 @@ export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT",
     "PLURNK_PROVIDERS_LLAMA_SERVER",
     "PLURNK_PROVIDERS_TEMPERATURE",
+    "PLURNK_PROVIDERS_TOP_P",
+    "PLURNK_PROVIDERS_TOP_K",
+    "PLURNK_PROVIDERS_PRESENCE_PENALTY",
+    "PLURNK_PROVIDERS_SEED",
     "PLURNK_PROVIDERS_REPEAT_PENALTY",
     "PLURNK_PROVIDERS_FREQUENCY_PENALTY",
     "PLURNK_PROVIDERS_SERVICE_TIER",

@@ -153,18 +153,15 @@ export type AiSdkProviderConfig = {
     // to the backend's mechanism via reasoningStyle; budget is only ever an
     // explicit magnitude, never a hidden activation flag.
     reasoning: Reasoning;
-    // Decode tuning: no in-code defaults; the canonical measured values (0.2 /
-    // 1.15) ship as the floor in .env.defaults (alias-scopable). `temperature` is the
-    // DEFAULT for EVERY request, spread UNDER caller sampling.
-    // `repeatPenalty` is the FLOOR the provider manages wherever a grammar rides
-    // (greedy-under-mask loops without it) — the VALUE is operator config;
-    // WHERE it applies stays mechanism.
+    // {§provider-sampling-passthrough} Configured sampling is below caller sampling.
+    // Absent optional values and null temperature retain endpoint defaults.
     temperature: number | null;
+    topP?: number;
+    topK?: number;
+    presencePenalty?: number;
+    seed?: number;
     repeatPenalty: number | null;
-    // Anti-degeneration guard on the cloud path (grammarStyle "none"), where the
-    // repeat_penalty multiplier isn't available - the OpenAI-standard frequency_penalty.
-    // Optional (default 0 = off) so an out-of-date plugin that omits it just runs unguarded
-    // rather than failing construction; the standard factory always supplies it.
+    // Zero selects no configured frequency override, as documented on the env panel.
     frequencyPenalty?: number;
     // Optional llama.cpp anti-repetition controls. DRY can suppress long
     // repeated sequences, but it can also corrupt exact repetition required by
@@ -271,9 +268,8 @@ export default class AiSdkProvider implements Provider {
     #compatibleAdaptiveReasoning: CompatibleReasoningEffort | "provider-default";
     #compatibleOffReasoning: "none" | undefined;
     #adaptiveReasoningProviderOptions: AiSdkProviderOptions | undefined;
-    #temperature: number | null;
+    readonly #samplingDefaults: Readonly<Record<string, number>>;
     #repeatPenalty: number | null;
-    #frequencyPenalty: number;
     #dryMultiplier: number | undefined;
     #dryBase: number | undefined;
     #dryAllowedLength: number | undefined;
@@ -360,9 +356,15 @@ export default class AiSdkProvider implements Provider {
         if (config.temperature === undefined || config.repeatPenalty === undefined) {
             throw new Error(`${config.source ?? "provider"}: AiSdkProviderConfig requires temperature + repeatPenalty declared (PLURNK_PROVIDERS_TEMPERATURE / _REPEAT_PENALTY; null = provider default)`);
         }
-        this.#temperature = config.temperature;
+        this.#samplingDefaults = Object.fromEntries(Object.entries({
+            temperature: config.temperature ?? undefined,
+            top_p: config.topP,
+            top_k: config.topK,
+            presence_penalty: config.presencePenalty,
+            frequency_penalty: config.frequencyPenalty === 0 ? undefined : config.frequencyPenalty,
+            seed: config.seed,
+        }).filter((entry): entry is [string, number] => entry[1] !== undefined));
         this.#repeatPenalty = config.repeatPenalty;
-        this.#frequencyPenalty = typeof config.frequencyPenalty === "number" ? config.frequencyPenalty : 0;
         this.#dryMultiplier = config.dryMultiplier;
         this.#dryBase = config.dryBase;
         this.#dryAllowedLength = config.dryAllowedLength;
@@ -468,7 +470,7 @@ export default class AiSdkProvider implements Provider {
                 return tokens;
             };
         }
-        this.#requestBody = new AiSdkRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, reasoning: this.#reasoning, reasoningToggle: this.#reasoningToggle, compatibleAdaptiveReasoning: this.#compatibleAdaptiveReasoning, compatibleOffReasoning: this.#compatibleOffReasoning, adaptiveReasoningProviderOptions: this.#adaptiveReasoningProviderOptions, repeatPenalty: this.#repeatPenalty, frequencyPenalty: this.#frequencyPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source, grammarStyle: this.#grammarStyle, cacheAffinity: this.#cacheAffinity, reasoningResponseProviderOptions: this.#reasoningResponseProviderOptions, supportsSlotPinning: this.#supportsSlotPinning, slotCount: this.#slotCount });
+        this.#requestBody = new AiSdkRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, reasoning: this.#reasoning, reasoningToggle: this.#reasoningToggle, compatibleAdaptiveReasoning: this.#compatibleAdaptiveReasoning, compatibleOffReasoning: this.#compatibleOffReasoning, adaptiveReasoningProviderOptions: this.#adaptiveReasoningProviderOptions, repeatPenalty: this.#repeatPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source, grammarStyle: this.#grammarStyle, cacheAffinity: this.#cacheAffinity, reasoningResponseProviderOptions: this.#reasoningResponseProviderOptions, supportsSlotPinning: this.#supportsSlotPinning, slotCount: this.#slotCount });
     }
 
     get contextWindow(): number | null { return this.#contextWindow; }
@@ -641,14 +643,14 @@ export default class AiSdkProvider implements Provider {
             capacity.reasoningBudget,
         );
 
-        // Assembly order = precedence: the family's sampling DEFAULTS
-        // (PLURNK_PROVIDERS_TEMPERATURE — universal, measured on grammar
-        // paths and the name promises every request) < the caller's `sampling`
-        // < the managed fields, which always win.
-        const body: Record<string, unknown> = {
-            ...(this.#temperature !== null ? { temperature: this.#temperature } : {}),
-            ...this.#requestBody.repetitionPenaltyBody(),
+        // Both transports project the same resolved sampling; managed fields still win.
+        const requestSampling = {
+            ...this.#samplingDefaults,
             ...this.#requestBody.samplingBody(sampling),
+        };
+        const body: Record<string, unknown> = {
+            ...this.#requestBody.repetitionPenaltyBody(),
+            ...requestSampling,
             ...(this.#serviceTier !== undefined ? { service_tier: this.#serviceTier } : {}),
             ...this.#requestBody.reasoningBody(preserveGrammarSentence, capacity.reasoningBudget),
             ...this.#requestBody.grammarBody(sendGrammar),
@@ -791,19 +793,17 @@ export default class AiSdkProvider implements Provider {
                         streaming: this.#streaming,
                         captureRawBody: this.#rawBody,
                         ...observers,
-                        temperature: typeof sampling?.temperature === "number" ? sampling.temperature : this.#temperature ?? undefined,
-                        topP: typeof sampling?.top_p === "number" ? sampling.top_p : undefined,
-                        topK: typeof sampling?.top_k === "number" ? sampling.top_k : undefined,
-                        presencePenalty: typeof sampling?.presence_penalty === "number" ? sampling.presence_penalty : undefined,
-                        frequencyPenalty: typeof sampling?.frequency_penalty === "number"
-                            ? sampling.frequency_penalty
-                            : this.#frequencyPenalty > 0 ? this.#frequencyPenalty : undefined,
-                        stopSequences: typeof sampling?.stop === "string"
-                            ? [sampling.stop]
-                            : Array.isArray(sampling?.stop) && sampling.stop.every((value) => typeof value === "string")
-                                ? sampling.stop
+                        temperature: typeof requestSampling.temperature === "number" ? requestSampling.temperature : undefined,
+                        topP: typeof requestSampling.top_p === "number" ? requestSampling.top_p : undefined,
+                        topK: typeof requestSampling.top_k === "number" ? requestSampling.top_k : undefined,
+                        presencePenalty: typeof requestSampling.presence_penalty === "number" ? requestSampling.presence_penalty : undefined,
+                        frequencyPenalty: typeof requestSampling.frequency_penalty === "number" ? requestSampling.frequency_penalty : undefined,
+                        stopSequences: typeof requestSampling.stop === "string"
+                            ? [requestSampling.stop]
+                            : Array.isArray(requestSampling.stop) && requestSampling.stop.every((value) => typeof value === "string")
+                                ? requestSampling.stop
                                 : undefined,
-                        seed: typeof sampling?.seed === "number" ? sampling.seed : undefined,
+                        seed: typeof requestSampling.seed === "number" ? requestSampling.seed : undefined,
                         maxOutputTokens: this.#requestBody.nativeMaxOutputTokens(capacity.outputBudget, nativeReasoningBudget),
                         reasoning: this.#reasoning.mode === "off"
                             ? "none"

@@ -70,7 +70,6 @@ export default class AiSdkRequestBody {
     readonly #compatibleOffReasoning: "none" | undefined;
     readonly #adaptiveReasoningProviderOptions: AiSdkProviderOptions | undefined;
     readonly #repeatPenalty: number | null;
-    readonly #frequencyPenalty: number;
     readonly #dryMultiplier: number | undefined;
     readonly #dryBase: number | undefined;
     readonly #dryAllowedLength: number | undefined;
@@ -85,7 +84,7 @@ export default class AiSdkRequestBody {
     #runSlots = new Map<string, number>();
     #nextSlot = 0;
 
-    constructor({ reasoningBudget, additiveReasoningProvider, reasoning, reasoningToggle, compatibleAdaptiveReasoning, compatibleOffReasoning, adaptiveReasoningProviderOptions, repeatPenalty, frequencyPenalty, dryMultiplier, dryBase, dryAllowedLength, repeatLastN, reasoningStyle, source, grammarStyle, cacheAffinity, reasoningResponseProviderOptions, supportsSlotPinning, slotCount }: {
+    constructor({ reasoningBudget, additiveReasoningProvider, reasoning, reasoningToggle, compatibleAdaptiveReasoning, compatibleOffReasoning, adaptiveReasoningProviderOptions, repeatPenalty, dryMultiplier, dryBase, dryAllowedLength, repeatLastN, reasoningStyle, source, grammarStyle, cacheAffinity, reasoningResponseProviderOptions, supportsSlotPinning, slotCount }: {
         reasoningBudget: number | null;
         additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
         reasoning: Reasoning;
@@ -94,7 +93,6 @@ export default class AiSdkRequestBody {
         compatibleOffReasoning: "none" | undefined;
         adaptiveReasoningProviderOptions: AiSdkProviderOptions | undefined;
         repeatPenalty: number | null;
-        frequencyPenalty: number;
         dryMultiplier: number | undefined;
         dryBase: number | undefined;
         dryAllowedLength: number | undefined;
@@ -115,7 +113,6 @@ export default class AiSdkRequestBody {
         this.#compatibleOffReasoning = compatibleOffReasoning;
         this.#adaptiveReasoningProviderOptions = adaptiveReasoningProviderOptions;
         this.#repeatPenalty = repeatPenalty;
-        this.#frequencyPenalty = frequencyPenalty;
         this.#dryMultiplier = dryMultiplier;
         this.#dryBase = dryBase;
         this.#dryAllowedLength = dryAllowedLength;
@@ -233,15 +230,7 @@ export default class AiSdkRequestBody {
     }
 
 
-    // Anti-degeneration default on every request, keyed to the backend's wire
-    // convention - NOT grammar-bound. GBNF is a local constraint, so a cloud
-    // alias runs the sampler bare: firefast (deepseek/fireworks) ran 4/86 bench turns
-    // straight to the token cap on pure looped repetition (run52). Ships next to
-    // temperature so caller `sampling` can tune it; the grammar path re-asserts it as a
-    // managed FLOOR in #grammarBody. llama.cpp takes the repeat_penalty
-    // MULTIPLIER; the plain cloud path ("none") can't, so it gets
-    // frequency_penalty - OpenAI-standard, accepted by every OpenAI-compat backend (verified
-    // live: together/deepinfra/fireworks; it is OpenAI's own param, so real OpenAI takes it too).
+    // Local sampler extensions stay separate from portable SDK call settings.
     repetitionPenaltyBody(): Record<string, unknown> {
         switch (this.#grammarStyle) {
             // repeat_penalty + optional DRY (repeated-sequence penalty) + a wider
@@ -256,7 +245,7 @@ export default class AiSdkRequestBody {
                     ...(this.#dryAllowedLength !== undefined ? { dry_allowed_length: this.#dryAllowedLength } : {}),
                 } : {}),
             };
-            case "none": return this.#frequencyPenalty > 0 ? { frequency_penalty: this.#frequencyPenalty } : {};
+            case "none": return {};
         }
     }
 
