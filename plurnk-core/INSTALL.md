@@ -62,8 +62,9 @@ the owning declaration specifies its meaning.
 | File creation and membership | Separate policies. Creating an out-of-root file, admitting a new file, and editing an existing member are distinct decisions. |
 | User-facing behavior | Operating policy; use configuration for runtime controls. |
 
-The [model chapter](skill://plurnk/references/models.md) covers alias tuning,
-reasoning and output budgets, local endpoints, caching, and connectivity.
+The `@plurnk/plurnk-providers` README covers alias tuning, reasoning and output
+budgets, local endpoints, caching, and connectivity; the
+[model chapter](skill://plurnk/references/models.md) is what a model is told.
 The defaults catalog groups the remaining settings by their owning subsystem:
 permissions, loop limits, residency, execution, context, indexing, MCP, A2A,
 hooks, HTTP, and content handling. Search the catalog for that subsystem instead
