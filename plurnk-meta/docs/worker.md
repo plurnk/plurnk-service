@@ -9,10 +9,10 @@ an entry rather than controlling that worker.
 
 | Address | Meaning | Model access |
 | --- | --- | --- |
-| `worker://reviewer` | Named worker | WORK/FORK create; SEND messages; READ collects; KILL terminates. |
-| `message://reviewer/ab3d5678` | Retained message | READ/FIND/COPY inspect; SEND replies. Neither EDIT nor KILL changes its source. |
-| `ops://reviewer/1` | What that loop said, or how it ended | READ/FIND/COPY inspect; source is immutable. |
-| `worker://reviewer/example.md` | Named scratch entry | Read and write from any worker in the workspace. |
+| `worker://alice` | Named worker | WORK/FORK create; SEND messages; READ collects; KILL terminates. |
+| `message://alice/ab3d5678` | Retained message | READ/FIND/COPY inspect; SEND replies. Neither EDIT nor KILL changes its source. |
+| `ops://alice/1` | What that loop said, or how it ended | READ/FIND/COPY inspect; source is immutable. |
+| `worker://alice/example.md` | Named scratch entry | Read and write from any worker in the workspace. |
 | `worker:///example.md` | Shared commons entry | Read and write. |
 
 The packet's `## Worker` block, below the log, names your worker, its parent
@@ -70,11 +70,11 @@ is empty when an already-delivered answer stands. While live work remains, that
 KILL joins it without cancelling it and delivers no final answer.
 
 Each child task's conclusion wakes its waiting parent and arrives once, as an
-`_plurnk` READ of `ops://reviewer/1` carrying what the child said: the
+`_plurnk` READ of `ops://alice/1` carrying what the child said: the
 execution outcome, not another message, and not delivered again as a reply. A
 failure retains its status and Problem. READ that address with a scope to
 inspect more of the exact result, even after the child starts another task.
-Bare `READ (worker://reviewer)` collects the current result instead, naming its
+Bare `READ (worker://alice)` collects the current result instead, naming its
 exact source in `resource`; while the child is running it returns `425`. A
 result does not imply that every task in that worker has finished.
 
@@ -107,10 +107,10 @@ BARE makes one isolated call to the child model, not a persistent worker. It
 receives no parent history or tools. Its prompt is a resource, an inline body,
 or both; resource text precedes an inline body with a blank line between.
 
-```BARE (worker://reviewer/draft.md)
+```BARE (worker://alice/draft.md)
 ```
-```BARE (worker://reviewer/draft.md)
-Assess the argument above; name its weakest step.
+```BARE (worker://alice/draft.md)
+A question about the resource above.
 ```
 
 The resource supplies its complete current READ text, not a preview. Neither
@@ -131,11 +131,11 @@ The worker name is required. Any worker in the workspace can READ these
 sources; `log:///` remains your own context. READ brings the selected source
 into your log, and KILL of that READ curates only its log projection, never the
 original evidence. The current turn's reasoning exists when its OPs execute, so
-`READ (reasoning://reviewer/1/3) <1,-1>` from `worker://reviewer` on loop 1,
+`READ (reasoning://alice/1/3) <1,-1>` from `worker://alice` on loop 1,
 turn 3 retains it; a turn that produced no reasoning reads empty, and a turn
 that has not happened returns a missing-source result. READ never requests
 inference. NOTE retains working memory without changing the loop state; only
 NOTE also executes from exposed reasoning, while quoted examples and other
 reasoned operations remain data. Notes are ordinary log items whose read-only
-sources stay searchable (`FIND (note://reviewer/**) /parser/`) and READable
+sources stay searchable (`FIND (note://alice/**) /parser/`) and READable
 after curation or a FORK.

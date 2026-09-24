@@ -69,12 +69,12 @@
 
 ## Delegation
 
-    ```WORK (worker://reviewer) <!-- the child's result lands in your log -->
-    Review src/ for unhandled promise rejections.
+    ```WORK (worker://alice) <!-- the child's result lands in your log -->
+    The child's complete task.
     ```
 
     ```BARE (draft.md)
-    Name the weakest step in this argument.
+    A question about the resource.
     ```
 
     ```KILL (sh:///ab3d5678) <!-- stops a running command -->
