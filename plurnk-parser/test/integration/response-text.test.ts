@@ -65,8 +65,8 @@ test("{§unfenced-operation}: a prose line that opens with an operation's name d
         [2, 0, "`READ` has no fence, so it did not run."],
         [3, 0, "`KILL` opened with no fence; the taught form is three backticks."],
     ], "{§naked-operation} the bare name alone opens; the operand line still refuses");
+    assert.deepEqual(warnings("Example:\n```\nKILL (worker:///notes.md)\n```"), [[3, 0, "`KILL` inside an unlabeled fence did not run; the tag is the operation."]], "{§quotation} a heading under a naked fence is the forgotten tag");
     for (const quiet of [
-        "Example:\n```\nKILL (worker:///notes.md)\n```",
         "Example:\n\t````KILL (notes.md)\n\t````\n    KILL (notes.md)",
         "To delete it you would issue KILL (notes.md) yourself.",
         "NOTE: remember the hash.",

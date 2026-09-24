@@ -419,8 +419,12 @@ nothing registered — opens a
 quotation that runs to its matching closer (same character, width at least the opener's) or to
 the end of the input. Everything inside is data: no operation runs there and native tool-call
 markup is not read ({§native-tool-calls}). An operation fenced inside an unlabeled code block
-draws one warning that it was shown, not run; a labeled block is an example by declaration, and
-nothing else inside draws an advisory.
+draws one warning that it was shown, not run. An unlabeled fence whose first line is an operation
+heading is the operation with its tag forgotten, and draws one warning — `` `READ` inside an
+unlabeled fence did not run; the tag is the operation. `` — a native name alone or with a slot, an
+executor's name with its operand (of 2,308 naked fences in 12,797 recorded emissions, 51 open that
+way and 2,238 hold code or quoted output, which is why the fence itself draws nothing). A labeled
+block is an example by declaration, and nothing else inside draws an advisory.
 So a model may show plurnk's own operations in an answer. Two exceptions keep programs whole:
 CommonMark's own rule that a backtick opener's line carries no further backtick, so
 ```` ```READ (x)``` ```` is inline code and quotes nothing after it; and a bare fence directly under

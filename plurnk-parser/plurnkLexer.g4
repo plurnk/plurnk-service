@@ -86,6 +86,7 @@ private inlineBodies: Array<{ line: number; column: number; heading: string }> =
 private headingMetadata: boolean = false;
 private quotedTags: Array<{ line: number; column: number; tag: string }> = [];
 private missedTags: Array<{ line: number; column: number; tag: string }> = [];
+private unlabeledHeadings: Array<{ line: number; column: number; tag: string }> = [];
 private quotedSpans: Array<{ start: number; end: number }> = [];
 private quoteLabeled = false;
 private quoteStart: number = -1;
@@ -108,6 +109,41 @@ private quote(): void {
     this.quoteLabeled = /[A-Za-z]/.test(this.text.replace(/^[\x60~]+/, ""));
     this.open();
     this.noteMissed();
+    this.noteUnlabeledHeading();
+}
+
+// {§quotation} - an unlabeled fence whose first line is an operation heading is the operation with
+// its tag forgotten: it runs nothing, and one receipt names the form. A native name qualifies
+// alone or with a slot; an executor's name needs its operand, since sh and env are words.
+private noteUnlabeledHeading(): void {
+    if (this.reasoning || this.quoteLabeled || this.text.charCodeAt(0) !== 0x60) return;
+    let cursor = 1;
+    while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
+    const after = this.offsetAfterEol(cursor);
+    if (after === null) return;
+    let name = "";
+    for (cursor = after; ; cursor++) {
+        const c = this.inputStream.LA(cursor);
+        if (c <= 0) break;
+        const ch = String.fromCharCode(c);
+        if (!/[A-Za-z0-9_.+-]/.test(ch)) break;
+        name += ch;
+    }
+    if (name === "") return;
+    const native = Object.hasOwn(plurnkLexer.OPERATIONS, name);
+    if (!native && !this.knownExecutor(name)) return;
+    while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
+    const next = this.inputStream.LA(cursor);
+    const slot = next === 0x28 || next === 0x3C || next === 0x5B;
+    const alone = next <= 0 || next === 0x0A || next === 0x0D;
+    if (!(native ? slot || alone : next === 0x28)) return;
+    this.unlabeledHeadings.push({ line: (this as any).currentTokenStartLine + 1, column: 0, tag: name });
+}
+
+public takeUnlabeledHeadings(): Array<{ line: number; column: number; tag: string }> {
+    const taken = this.unlabeledHeadings;
+    this.unlabeledHeadings = [];
+    return taken;
 }
 
 // {§quotation} - an unknown backtick tag whose line carries a target slot is an operation the
