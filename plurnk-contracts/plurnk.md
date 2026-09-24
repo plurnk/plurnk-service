@@ -20,7 +20,7 @@
 * KILL: End things — delete an entry, stop a process, retire log items, or end the loop.
 * WORK: Deploy a child worker (fresh log).
 * FORK: Deploy a forked worker (forked log).
-* BARE: Deploy an isolated inference over a resource, the fence body, or both (no log or tools).
+* BARE: Deploy an isolated inference on the fence body (no log or tools).
 * WAIT: Yield until the next wake: a child worker's result or a stream's end.
 * SEND: Message endpoints or workers.
 
@@ -70,8 +70,8 @@
     The child's complete task.
     ```
 
-    ```BARE (draft.md)
-    A question about the resource.
+    ```BARE
+    A self-contained prompt.
     ```
 
     ```KILL (sh:///ab3d5678) <!-- stops a running command -->

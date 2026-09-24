@@ -39,10 +39,7 @@ history and named scratch into the new name, then diverges. Embedded addresses
 are preserved verbatim. Both share the workspace. An omitted address allocates
 a short worker name, reported in the receipt; an explicit name cannot replace
 an existing worker, even after it finishes. Names match
-`[A-Za-z0-9][A-Za-z0-9_-]{0,62}` and are case-sensitive. A path outside the
-`worker://` scheme is the child's prompt resource, as for BARE:
-`WORK (specs/feature.md)` reads the file whole as the task, an inline body
-follows it after a blank line, and the child is auto-named. SEND to an existing
+`[A-Za-z0-9][A-Za-z0-9_-]{0,62}` and are case-sensitive. SEND to an existing
 worker gives it a follow-up task. `[{"env": {...}}]` on WORK or FORK is the
 child's starting environment (`env.md`).
 
@@ -104,20 +101,15 @@ ordinary message from `schedule://<alias>`.
 ## BARE inference
 
 BARE makes one isolated call to the child model, not a persistent worker. It
-receives no parent history or tools. Its prompt is a resource, an inline body,
-or both; resource text precedes an inline body with a blank line between.
+receives no parent history or tools. Its prompt is the fence body.
 
-```BARE (worker://alice/draft.md)
-```
-```BARE (worker://alice/draft.md)
-A question about the resource above.
+```BARE
+A self-contained prompt.
 ```
 
-The resource supplies its complete current READ text, not a preview. Neither
-prompt form is truncated to fit; provider capacity still applies. A failed
-source read returns its error without making an inference call. Consecutive
-BARE calls run concurrently and settle before the turn continues. Their
-answers are ordinary BARE receipts, visible in the next packet.
+The prompt is not truncated to fit; provider capacity still applies.
+Consecutive BARE calls run concurrently and settle before the turn continues.
+Their answers are ordinary BARE receipts, visible in the next packet.
 
 ## Turn sources
 
