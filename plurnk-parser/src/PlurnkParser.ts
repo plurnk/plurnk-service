@@ -51,8 +51,7 @@ export default class PlurnkParser {
         return `${fence}${header}\n${body === null ? "" : `${body}\n`}${fence}`;
     }
 
-    // {§log-wire-format} — one statement's heading as written, canonical slot order, no fence: what a
-    // log row echoes so the model reads its request back in the syntax it wrote it in.
+    // {§statement-rendering} — one statement's heading in canonical slot order, without a fence.
     static heading(statement: ClientStatement): string {
         const [first] = PlurnkParser.stringify([{ ...statement, body: null } as ClientStatement]).split("\n");
         return (first ?? "").replace(/^`+/u, "");

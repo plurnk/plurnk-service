@@ -2150,27 +2150,25 @@ type and projection facts under {§read-bytes}.
 The `## Log` section is a sequence of ordinary Markdown records separated by one blank line:
 
 ```text
-### log:///<loop>/<turn>/<item>/<leaf> · <logTokens>
-OP (operands) <marks> [metadata] <!-- aside -->
+### log:///<loop>/<turn>/<item>/<leaf> (operands) <marks> [metadata] pattern <!-- aside --> · <logTokens>
 {"oneLine":"strict JSON result facts"}
 <coordinate-prefixed body lines when visible>
 ```
 
 | Line | Content | Rule |
 |---|---|---|
-| H3 | The row's complete model-facing identity and canonical READ address, then ` · ` and its `logTokens` charge ({§packet-token-accounting}). | Always present; nothing else repeats the identity, the operation, or the charge. |
-| written | The request as the language writes it ({§heading-slot-order}): the operation or runtime, every operand in the packet's canonical spelling ({§log-address-metadata}), marks, metadata blocks, matcher, aside. No fence, no body. | Present for every operation and execution row; absent on `error` and `extension` rows. |
-| facts | One strict JSON object of result facts in stable alphabetical order. | Present only when a fact exists; it never re-encodes the written line. |
+| H3 | The row's complete model-facing identity and canonical READ address, its request modifiers in language slot order ({§heading-slot-order}), then ` · ` and its `logTokens` charge ({§packet-token-accounting}). | Always present. Modifiers retain canonical operands ({§log-address-metadata}), marks, metadata blocks, matcher, and aside when present; `error` and `extension` rows have no request modifiers. The operation appears only in the URI leaf, never as a standalone invocation. |
+| facts | One strict JSON object of result facts in stable alphabetical order. | Present only when a fact exists; it never re-encodes the heading. |
 | body | Coordinate-prefixed lines. | Present when the row is visible. |
 
-The written line is the model's own request, so a matcher such as `/\bhello\b/i` returns exactly as it was written, never JSON-quoted. Absent fields are not invented. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
+Request modifiers retain their language spelling, so a matcher such as `/\bhello\b/i` returns exactly as it was written, never JSON-quoted. Absent fields are not invented. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
 
 §log-address-metadata **Addresses name their relationship, not the row's producer.**
 
 | Spelling | Meaning | Where |
 |---|---|---|
-| `OP (path)` | The operation's addressed operand: read resource, mutation subject, message recipient, or executor operand. Explicit and automatic READs are written identically. Pathless operations are written bare. | Written line |
-| `COPY (from) <marks> (to) <marks>` | COPY/MOVE's two operand selections, each retaining its optional scope; neither replaces actor attribution. | Written line |
+| `(path)` | The operation's addressed operand: read resource, mutation subject, message recipient, or executor operand. Explicit and automatic READs share this spelling. Pathless operations have no operand. | H3 |
+| `(from) <marks> (to) <marks>` | COPY/MOVE's two operand selections, each retaining its optional scope; neither replaces actor attribution. | H3 |
 | `stream` | An executor invocation's separately created output address, never a READ's alternative spelling of its operand. | Facts |
 | `resource` | A distinct returned resource under {§operation-resource-receipt}. | Facts |
 
@@ -2239,7 +2237,7 @@ Field absence carries defaults: `origin` is omitted for the owning model, `sourc
   records the exact READ coordinates sent without controlling retention. Missing immutable bytes are an
   internal integrity failure, never silently dropped content. No ejection message or permanent teaching is
   added. These stable curation weights are not provider-token measurements ({§tokenomics-render-weight-budget}).
-- §packet-token-accounting Every row reports one `logTokens` charge on its H3 ({§log-wire-format}): its complete materialized H3, written request, facts, visible body, and selected native attachment. The completed record is measured to a fixed point, including the accounting field itself. No `tokensBody`, `tokensMetadata`, or `tokensActive` field is serialized. Hidden text is not charged; metadata-only rows still have a reclaimable charge. Source/FIND-item `tokens` measure source content, not the observation's context footprint. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page differs. All use stable curation weights, not provider tokens or dollars. Native component accounting follows {§packet-attachment-parts}; ordinary addressability and truthful errors follow {§log-wire-format}.
+- §packet-token-accounting Every row reports one `logTokens` charge on its H3 ({§log-wire-format}): its complete materialized H3, facts, visible body, and selected native attachment. The completed record is measured to a fixed point, including the accounting field itself. No `tokensBody`, `tokensMetadata`, or `tokensActive` field is serialized. Hidden text is not charged; metadata-only rows still have a reclaimable charge. Source/FIND-item `tokens` measure source content, not the observation's context footprint. A FIND's nonzero `itemsTokenTotal` weighs the complete matched set; a nonzero `returnedItemsTokenTotal` appears only when the returned page differs. All use stable curation weights, not provider tokens or dollars. Native component accounting follows {§packet-attachment-parts}; ordinary addressability and truthful errors follow {§log-wire-format}.
 
 ### §retrieval-packet-metadata READ/FIND packet metadata
 
@@ -2253,10 +2251,10 @@ The packet projects one actionable owner for each retrieval fact:
 | catalog/path FIND | `range` in resources | none | none |
 | broad matcher FIND | `range` in resources | per-resource match-location counts; a resource with exactly one match also carries that match's `locator`/`region` | nonzero complete `matchLocationCount` |
 | exact matcher FIND | `range` in match locations | each row's locator/region; a regex or glob row also carries `matched`, the matched text | none |
-| pattern READ ({§read-pattern}) | `range` over the physical lines | the selected lines with their ordinals and anchors | `matcher` and `matched`, the selected line count |
+| pattern READ ({§read-pattern}) | `range` over the physical lines | the selected lines with their ordinals and anchors | the heading's pattern and `matched`, the selected line count |
 
-Any row whose statement carried a heading pattern ({§matcher-option}) names it as
-`matcher`, and a pattern mutation ({§edit-pattern}, {§kill-pattern},
+Any row whose statement carried a heading pattern ({§matcher-option}) retains it
+in its H3, and a pattern mutation ({§edit-pattern}, {§kill-pattern},
 {§copy-move-pattern}) carries its `matched` count beside its receipt, so a
 digest can show what a pattern selected and how much it touched.
 
@@ -4810,7 +4808,7 @@ Retired terms stay retired: the lexicon guard rejects `thinking`, the unqualifie
 | inbound `SEND` from outside the workspace | budgeted head under {§message-projection} |
 | structured `EDIT` receipt or textual `COPY`/`MOVE` effects | complete receipt-owned join context |
 | every other nonempty body | head bounded independently by `PLURNK_SERVICE_PREVIEW_LINES` and `PLURNK_SERVICE_PREVIEW_CHARS` |
-| bodyless row | heading, written request, and any facts; no coordinate lines; `logTokens` includes any selected native part |
+| bodyless row | heading and any facts; no coordinate lines; `logTokens` includes any selected native part |
 
 §markerless-first-page **Every markerless retrieval takes the same implicit marker.** A marker's
 unit is whatever its projection counts, so `PLURNK_SERVICE_PREVIEW_LINES` is the first page of

@@ -168,7 +168,7 @@ interface RowIdentity {
     readonly path: string;
     readonly renderedLeaf: string;
     readonly target: string | null;
-    readonly written: string | null;
+    readonly modifiers: string | null;
 }
 interface RowResultFacts {
     readonly findItems: number | null;
@@ -773,8 +773,8 @@ export default class PacketWire {
         if (typeof e.status === "number" && (op === "SEND" || op === "KILL" || typeof op === "string" && TurnDisposition.isOp(op) || e.status !== 200)) meta.status = e.status;
         const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
         const target = PacketWire.#renderActionTarget(e.target);
-        // {§log-wire-format}: the request rides as written, never as JSON-quoted operands.
-        const written = PacketWire.#writtenHeading(op, tx, e.target);
+        // {§log-wire-format}: operands retain their language spelling on the receipt heading.
+        const modifiers = PacketWire.#requestModifiers(op, tx, e.target);
         if ((op === "COPY" || op === "MOVE") && typeof e.status === "number" && e.status < 400
             && (PacketWire.#renderSelection(tx?.source?.target, tx?.source?.lineMarker) === null
                 || PacketWire.#renderSelection(tx?.destination?.target, tx?.destination?.lineMarker) === null)) {
@@ -797,7 +797,7 @@ export default class PacketWire {
         if (isExecutionOp(op) && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { stream?: unknown }).stream === "string") {
             meta.stream = (e.attrs as { stream: string }).stream;
         }
-        return { meta, op, tx, coordinate, path, renderedLeaf, target, written };
+        return { meta, op, tx, coordinate, path, renderedLeaf, target, modifiers };
     }
 
     // The row's result facts from its rx: the terminal stream's exit, the Problem or detail, the
@@ -1085,11 +1085,10 @@ export default class PacketWire {
                 : "native content";
             meta.overflow = `${omitted} not shown; the log exceeded logTokensMax when this row was withheld`;
         }
-        // {§log-wire-format}: the address and its charge, the request as written, the facts, the body.
+        // {§log-wire-format}: one descriptive heading, the facts, the body.
         let logTokens = 0;
         const renderRow = (): string => {
-            const lines = [`### ${path} · ${logTokens}`];
-            if (identity.written !== null) lines.push(identity.written);
+            const lines = [`### ${path}${identity.modifiers === null ? "" : ` ${identity.modifiers}`} · ${logTokens}`];
             if (Object.keys(meta).length > 0) lines.push(PacketWire.#canonicalJson(meta));
             if (display === "open") lines.push(body);
             return lines.join("\n");
@@ -1185,9 +1184,8 @@ export default class PacketWire {
         return spelled.length === 0 ? null : spelled.split(sep).join("/");
     }
 
-    // {§log-wire-format}: the request as the model wrote it, in canonical slot order — never a JSON
-    // re-encoding, which doubles every escape a weak model reads back (#819).
-    static #writtenHeading(op: string | null, tx: StatementTx | null, rowTarget: ActionTarget | null | undefined): string | null {
+    // {§log-wire-format}: reuse canonical slot rendering without repeating the operation name.
+    static #requestModifiers(op: string | null, tx: StatementTx | null, rowTarget: ActionTarget | null | undefined): string | null {
         if (op === null || op === "error" || op === "extension") return null;
         const t = (tx !== null && typeof tx === "object" ? tx : {}) as StatementTx & { metadata?: unknown; matcher?: unknown };
         // Operands take the packet's canonical spelling ({§scheme-address-network}, percent-encoded
@@ -1208,7 +1206,9 @@ export default class PacketWire {
             ? { runtime: op, aside: t.aside ?? null, target, lineMarker: null, metadata: t.metadata ?? null, body: null }
             : { op, aside: t.aside ?? null, target, lineMarker: t.lineMarker ?? null, metadata: t.metadata ?? null,
                 matcher: t.matcher ?? null, source: selection(t.source), destination: selection(t.destination), body: null };
-        return PlurnkParser.heading(statement as never);
+        const heading = PlurnkParser.heading(statement as never);
+        const separator = heading.indexOf(" ");
+        return separator < 0 ? null : heading.slice(separator + 1);
     }
 
     static #renderActionTarget(target: ActionTarget | null | undefined): string | null {
