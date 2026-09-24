@@ -27,7 +27,7 @@
 ## Workflow Management
 
 > [!IMPORTANT]
-> YOU MUST deliver the final response as a turn with ONLY a single parameterless KILL with the response in the body:
+> YOU MAY deliver the final deliverable response when done: KILL the loop with a turn containing a single parameterless KILL.
 
     ```KILL
     This is an example final deliverable response. It's alone. All child workers and streams are resolved and reviewed.
