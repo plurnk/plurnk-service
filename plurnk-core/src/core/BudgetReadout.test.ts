@@ -123,13 +123,11 @@ test("BudgetReadout: malformed templates and measurements fail at their owner", 
     );
 });
 
-test("(#478) tokensResponseMax discloses the output allowance beside the ceiling", () => {
-    const drafted = BudgetReadout.draft(1000, 8192);
-    assert.match(drafted, /"logTokensMax":1000,"tokensResponseMax":8192/);
-    assert.doesNotMatch(BudgetReadout.draft(1000, null), /tokensResponseMax/);
-    assert.equal(BudgetReadout.draft(null, 8192), "");
-    const content = BudgetReadout.resolve(drafted, 1000, (candidate) => candidate.length);
-    assert.match(content, /"tokensResponseMax":8192/);
+test("{§output-allowance-notice} (#826) the readout carries curation state and no output allowance", () => {
+    const drafted = BudgetReadout.draft(1000);
+    assert.match(drafted, /"logTokensMax":1000\}$/);
+    assert.doesNotMatch(BudgetReadout.resolve(drafted, 1000, (candidate) => candidate.length), /tokensResponseMax/);
+    assert.equal(BudgetReadout.draft(null), "");
 });
 
 test("{§tokenomics-calibrated-readout} a converted ceiling changes pressure without changing cost units", () => {

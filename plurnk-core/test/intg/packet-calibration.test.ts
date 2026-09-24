@@ -78,7 +78,6 @@ const prepareLog = async ({ db, workspaceId, workerId, loopId, engine }: Fixture
 const budgetOf = (packet: RequestPacket): {
     logTokensTotal: number;
     logTokensMax: number;
-    tokensResponseMax: number;
     logTokensLargest?: Array<{ path: string; tokensBody: number; logTokens: number }>;
 } => JSON.parse(packetSection(packet, "budget").split("\n")[0]!);
 
@@ -98,7 +97,6 @@ test("{§packet-token-accounting} non-unit calibration preserves one ruler for R
     assert.equal(state.logTokensTotal, packet.weight, "the total retains the measured curation ruler");
     assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, { content }) => sum + contentWeight(content), 0));
     assert.equal(state.logTokensMax, Math.floor(provider.inputCapacity! / factor));
-    assert.equal(state.tokensResponseMax, provider.outputBudget! - provider.reasoningBudget!);
     assert.deepEqual(rows, logEntries(uncalibrated), "neither receipt nor FIND item costs are rewritten by calibration");
     const find = rows.find(({ logPath: path }) => path === "log:///1/1/3/FIND")!;
     assert.ok(Number(find.itemsTokenTotal) > 0, "the FIND witness has real resource accounting");

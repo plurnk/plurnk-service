@@ -271,14 +271,7 @@ export default class PacketBuilder {
             : projectionBudget === null
                 ? null
                 : Math.floor(projectionBudget * this.#promptProjectionFor(alias));
-        // {§output-allowance-notice}: the disclosed allowance is the program's
-        // guaranteed room — the configured output floor less the reasoning subset —
-        // never the wire grant: overflow is tolerated by the wire ({§provider-flexed-allowance},
-        // #482), never invited by the packet (operator, 2026-09-01).
-        const responseRoom = provider.outputBudget === null
-            ? null
-            : provider.outputBudget - (provider.reasoningBudget ?? 0);
-        const budgetReadout = BudgetReadout.draft(curationBudget, responseRoom);
+        const budgetReadout = BudgetReadout.draft(curationBudget);
         // The canonical default order, trust boundary, and cache-locality bias are
         // specified at {§packet-cache-monotone}. Budget placeholders resolve only
         // after trusted whole-list transforms establish the packet being measured.

@@ -13,15 +13,12 @@ const PRESSURE_MANDATE = "YOU MUST KILL superseded, stale, or irrelevant log ite
 const OVERFLOW_MANDATE = "YOU MUST ONLY KILL superseded, stale, or irrelevant log content in bulk.";
 
 export default class BudgetReadout {
-    static draft(ceiling: number | null, responseMax: number | null = null): string {
+    // {§output-allowance-notice} — the readout is curation state only; the output allowance is
+    // not disclosed, a ceiling cut names it (#826).
+    static draft(ceiling: number | null): string {
         if (ceiling === null) return "";
         BudgetReadout.#assertCeiling(ceiling);
-        // {§output-allowance-notice} (#478): the per-turn response allowance is a
-        // capacity fact like the ceiling — disclosed, never discovered by truncation.
-        // {§provider-flexed-allowance} (#482): the disclosed number stays the
-        // configured floor; wire-level overflow tolerance is never advertised.
-        const responseField = responseMax === null ? "" : `,"tokensResponseMax":${responseMax}`;
-        return `{"logTokensTotal":${TOKENS_ACTIVE_TOTAL_PLACEHOLDER},"logTokensMax":${ceiling}${responseField}}`;
+        return `{"logTokensTotal":${TOKENS_ACTIVE_TOTAL_PLACEHOLDER},"logTokensMax":${ceiling}}`;
     }
 
     // {§tokenomics-render-weight-budget} — the width only expands, so the final

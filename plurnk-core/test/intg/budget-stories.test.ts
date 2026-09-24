@@ -146,8 +146,8 @@ test("{§tokenomics-neutral-telemetry} the model-facing budget is one measured t
         await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
         const budget = packetSection((await packetOf(db, t2.turnId)).packet, "budget");
-        assert.deepEqual(Object.keys(JSON.parse(budget) as object), ["logTokensTotal", "logTokensMax", "tokensResponseMax"], "the active-total/maximum/response state stays, and only those three");
-        assert.equal(budget.split("\n").length, 1, "one JSON line — no ranking or mandate follows the three fields");
+        assert.deepEqual(Object.keys(JSON.parse(budget) as object), ["logTokensTotal", "logTokensMax"], "the active-total/maximum state stays, and only those two");
+        assert.equal(budget.split("\n").length, 1, "one JSON line — no ranking or mandate follows the two fields");
         assert.doesNotMatch(budget, /\{\{/, "no placeholder survives");
     } finally { await db.close(); }
 });
