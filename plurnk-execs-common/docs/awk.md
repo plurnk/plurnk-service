@@ -1,13 +1,10 @@
 # awk
 
-For continuing input, launch with `[{"stdin": "open"}]`, then SEND exact text to the
-returned execution address; `[{"eof": true}]` closes stdin. See the
-[live-input example](node.md#live-input), including newline framing.
-
 The body is the AWK program, passed as the one positional argument with an
-empty stdin: with no input file it only runs `BEGIN` blocks. To process data,
-name the file(s) in `[{"args": [...]}]`, or run a script target and feed it the body
-as stdin.
+empty stdin: with no input file it only runs `BEGIN` blocks. Input files are
+named in `[{"args": [...]}]`; a script target runs that file and receives the
+body as stdin. Working directory, environment, channels and exit status are the
+executor family's (`sh.md`); `exit 1` in the program closes with status 500.
 
 ````awk [{"args": ["data.csv"]}] <!-- the body is the program -->
 BEGIN { FS = "," }
@@ -20,11 +17,5 @@ alpha,1
 beta,2
 ````
 
-Output goes to `#stdout`, diagnostics to `#stderr`; `exit 1` in the program
-closes with status 500. `[{"cwd": "<directory>"}]` selects the working directory
-for relative file arguments. AWK is the right tool for column arithmetic and
-line reshaping over text; for JSON use `jq`, for anything else `node` or `sh`.
-
-`[{"env": {"NAME": "value"}}]` on the same fence line sets variables for this run
-alone, over the entries in your `env` registry; names are the shell's, and plurnk's own
-(`PLURNK_*`, provider credentials) are refused by name.
+Live input (`[{"stdin": "open"}]`, SEND, `[{"eof": true}]`) is as `node.md`
+shows.

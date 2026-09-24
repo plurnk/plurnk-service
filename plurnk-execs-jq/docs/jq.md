@@ -29,6 +29,11 @@ address.
 
 `jq` reads the ambient environment (`env`, `$ENV`) per its own contract — the consumer's scoped env is honored when provided.
 
+## Errors
+
+A failed program or spawn closes `results` as `errored` with status 500 and an
+RFC 9457 Problem carrying jq's own stderr.
+
 ## Live input
 
 ````jq [{"stdin": "open"}]
@@ -45,8 +50,3 @@ JSON, not another jq program; this example closes stdin after sending its value:
 Without `[{"eof": true}]`, include an actual trailing newline to delimit each JSON
 value. Open-input output is unbuffered. READ the same address for results;
 SEND acknowledges only input delivery. KILL remains execution cancellation.
-
-## Errors
-
-A failed program or spawn closes `results` as `errored` with status 500 and an
-RFC 9457 Problem carrying jq's own stderr.

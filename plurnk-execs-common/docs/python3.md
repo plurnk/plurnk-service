@@ -1,12 +1,9 @@
 # python3
 
-For continuing input, launch with `[{"stdin": "open"}]`, then SEND exact text to the
-returned execution address; `[{"eof": true}]` closes stdin. See the
-[live-input example](node.md#live-input), including newline framing.
-
 The body is Python code, run with `python3 -c`. A script target instead runs
-that file and receives the body as stdin. Script arguments and working directory
-are optional header metadata:
+that file and receives the body as stdin; `[{"args": [...]}]` passes literal
+arguments and `[{"cwd": "<directory>"}]` selects the working directory, as for
+every interpreter (`sh.md`).
 
 ````python3 <!-- the body is the program -->
 import json, sys
@@ -16,11 +13,6 @@ print(json.dumps({"python": list(sys.version_info[:2])}))
 ````python3 (tools/report.py) [{"args": ["--help"]}]
 ````
 
-Each argument is a literal string, without shell expansion. `[{"cwd": "<directory>"}]`
-selects the working directory; otherwise it remains the workspace root. The
-same options apply to local and `worker://` script targets. Native skill files
-retain their sibling imports and source-relative assets.
-
-`[{"env": {"NAME": "value"}}]` on the same fence line sets variables for this run
-alone, over the entries in your `env` registry; names are the shell's, and plurnk's own
-(`PLURNK_*`, provider credentials) are refused by name.
+Native skill files retain their sibling imports and source-relative assets.
+Live input (`[{"stdin": "open"}]`, SEND, `[{"eof": true}]`) is as `node.md`
+shows.
