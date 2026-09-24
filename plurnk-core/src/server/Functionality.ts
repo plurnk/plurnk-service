@@ -273,12 +273,15 @@ export default class Functionality {
         return body;
     }
 
-    documents(workspaceId: number): Array<{ pathname: string; content: string }> {
-        const out: Array<{ pathname: string; content: string }> = [];
-        for (const [key, family] of this.#families) {
-            if (!key.startsWith(`${workspaceId}:`) || family.prepared === null) continue;
-            for (const document of family.prepared.documents) {
-                out.push({ pathname: generatedPathname(document.pathname), content: document.content });
+    // Each document carries its family so the projection can follow the family's admission ({§schemes-directory}).
+    documents(workspaceId: number): Array<{ family: string; pathname: string; content: string }> {
+        const out: Array<{ family: string; pathname: string; content: string }> = [];
+        const prefix = `${workspaceId}:`;
+        for (const [key, entry] of this.#families) {
+            if (!key.startsWith(prefix) || entry.prepared === null) continue;
+            const family = key.slice(prefix.length);
+            for (const document of entry.prepared.documents) {
+                out.push({ family, pathname: generatedPathname(document.pathname), content: document.content });
             }
         }
         return out;

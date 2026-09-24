@@ -464,3 +464,29 @@ test("{§functionality-model-mutation} execution verbs are the same owner: read 
         await db.close();
     }
 });
+
+// {§schemes-directory} — a family the effective policy denies is a door the model is never shown:
+// no manager page, no generated document, and its verbs refuse at admission (#842).
+test("{§schemes-directory} {§capability-admission}: a denied family has no page, no generated document and no runnable verb", async () => {
+    const db = await openMigrated();
+    const log: string[] = [];
+    const workspaceId = await insertWorkspace(db, `fx-denied-${crypto.randomUUID()}`);
+    const client = await insertWorker(db, workspaceId, null, "client-1", "client");
+    const daemon = await boot(db, log);
+    const operate = (program: string) => daemon.dispatchAsClient({ workspaceId, workerId: client, statement: parseOne(program) });
+    try {
+        await daemon.invokeModuleAction("workspace.fx.add", { alias: "paper", definition: { kind: "doc" } }, workspaceContext(workspaceId));
+        const shown = await daemon.engine.referenceEntries(workspaceId);
+        assert.ok(shown.some(({ pathname }) => pathname === "/_plurnk/plurnk/fx.md"), "the family page is surveyed while the family is admitted");
+        assert.ok(shown.some(({ pathname }) => pathname === "/_plurnk/fx/paper.md"), "the family's generated document is surveyed while the family is admitted");
+        await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ capabilities: { deny: [{ operation: "fx" }] } }) });
+        const hidden = await daemon.engine.referenceEntries(workspaceId);
+        assert.equal(hidden.some(({ pathname }) => pathname === "/_plurnk/plurnk/fx.md"), false, "a denied family has no page");
+        assert.equal(hidden.some(({ pathname }) => pathname === "/_plurnk/fx/paper.md"), false, "a denied family projects no generated document");
+        assert.equal(hidden.some(({ pathname }) => pathname === "/_plurnk/plurnk/worker.md"), true, "other references are untouched");
+        assert.equal((await operate("```fx (list)```")).status, 403, "the family's verbs refuse at admission");
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});

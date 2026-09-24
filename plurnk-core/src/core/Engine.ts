@@ -374,7 +374,7 @@ export default class Engine {
 
     // {§functionality-documents} — the coordinator's per-Worker generated
     // documents join the Worker's reference entries.
-    setFunctionalityDocuments(documents: (workspaceId: number) => Array<{ pathname: string; content: string }>): void {
+    setFunctionalityDocuments(documents: (workspaceId: number) => Array<{ family: string; pathname: string; content: string }>): void {
         this.#packets.setFunctionalityDocuments(documents);
     }
 

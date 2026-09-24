@@ -4060,7 +4060,8 @@ publications before inspection or shutdown.
 
 §functionality-documents **Generated documents describe the shared snapshot.**
 Documents are projected through the existing worker generated subtree
-({§worker-generated-subtree}); the projection does not confer ownership.
+({§worker-generated-subtree}); the projection does not confer ownership, and it
+follows the family's admission ({§schemes-directory}): a denied family projects none.
 Enabled, active definitions are discoverable. Disabled or unavailable
 definitions add no hot-path teaching. Their exact state and Problem remain
 available through `list`.
@@ -5244,6 +5245,7 @@ section because they are language extensions rather than executable tools.
 |---|---|
 | Registered and model-visible scheme | Its reference is eligible when at least one supported resource capability is admitted by the effective policy ({§capability-admission}). Illustrative operations never determine admission. |
 | Runtime output scheme | Its runtime's reference owns discovery; no duplicate scheme reference. |
+| Family manager and its generated documents | Eligible while the family's manager runtime is admitted by the effective policy ({§capability-admission}), by name or by trait: a denied family has no page, no generated document and no runnable verb, so a masked family never stands in the survey empty (#842). |
 | Excluded scheme | `PLURNK_SERVICE_DOCS_EXCLUDE` omits its reference, not its functionality. |
 | Reference content | Required meta-owned content follows {§teaching-corpus}; other schemes may supply optional `manifest.documentation`. Absent optional content contributes nothing; a failed required source read surfaces its cause. |
 | Policy layers | Materialization, Turn0, and direct operations use the same current workspace policy and service ceiling. |

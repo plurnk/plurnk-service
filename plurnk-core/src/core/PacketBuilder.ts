@@ -138,7 +138,7 @@ export default class PacketBuilder {
     #capabilities: CapabilityResolver;
     // {§functionality-documents} — family-generated documents of a Worker's
     // published Functionality, reconciled with its other reference entries.
-    #functionalityDocuments: (workspaceId: number) => Array<{ pathname: string; content: string }> = () => [];
+    #functionalityDocuments: (workspaceId: number) => Array<{ family: string; pathname: string; content: string }> = () => [];
     // {§tokenomics-prompt-projection-share} — prompt projection is alias-scoped
     // through the same environment contract as provider configuration.
 
@@ -157,7 +157,7 @@ export default class PacketBuilder {
         this.#promptProjectionFor(bootAlias);
     }
 
-    setFunctionalityDocuments(documents: (workspaceId: number) => Array<{ pathname: string; content: string }>): void {
+    setFunctionalityDocuments(documents: (workspaceId: number) => Array<{ family: string; pathname: string; content: string }>): void {
         this.#functionalityDocuments = documents;
     }
 
@@ -446,7 +446,11 @@ export default class PacketBuilder {
                 }));
             }
         }
-        out.push(...this.#functionalityDocuments(workspaceId));
+        // {§schemes-directory} — a family's generated documents follow its manager runtime's admission:
+        // a denied family is a door the model is never shown.
+        out.push(...this.#functionalityDocuments(workspaceId)
+            .filter(({ family }) => this.#capabilities.allowsRuntimeAcross(family, null, workspaceId, policies))
+            .map(({ pathname, content }) => ({ pathname, content })));
         return out.toSorted((left, right) => left.pathname.localeCompare(right.pathname));
     }
 
