@@ -633,7 +633,7 @@ and never re-fetch a match.
   project file is exactly one of three things: **invisible**, **added**, or **tracked
   by git**. There is no fourth category. Membership — what the model can READ and
   FIND, what is materialized into the store, what a packet can ship to a provider — is
-  the allowlist `(tracked ∪ include) − exclude` and nothing else. No file is a member because
+  the allowlist `(tracked ∪ include ∪ created) − exclude` and nothing else. No file is a member because
   it exists on disk, because git does not ignore it, or because a model would find it
   convenient: ambient admission of untracked files is prohibited, so a workspace rooted
   in a home directory or a monorepo exposes exactly what was committed or added (the

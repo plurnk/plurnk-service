@@ -4,7 +4,7 @@ Membership is the only door to the project's files. A project file is exactly
 one of three things to this workspace: **tracked by git**, **added** by a
 definition, or **invisible**. Nothing is a member because it exists on disk or
 because git happens not to ignore it. What you can `READ`, `FIND`, and `EDIT`
-is `(tracked ∪ include) − exclude`, and the catalog at turn 0 shows exactly
+is `(tracked ∪ include ∪ created) − exclude`, and the catalog at turn 0 shows exactly
 that set.
 
 ## What makes a file visible
@@ -36,9 +36,16 @@ glob previews what `add` would resolve to.
 
 ## When a file you need is not a member
 
-`members (discover)` with `{"query": "build/report.json"}` answers why a path
-is or is not visible: `tracked`, `included by …`, `a creation record`,
-`excluded by …`, `ignored`, `untracked`, or `absent`.
+`members (discover)` with `{"query": "build/report.json"}` answers with one
+candidate: its `provenance.kind` is the verdict and its `summary` the reason.
+
+| kind | summary |
+| --- | --- |
+| `member` | `` member — tracked by git ``, `` member — included by `docs/**` `` or `` member — a creation record: plurnk wrote it `` |
+| `candidate` | `` not a member — untracked; add this definition to include it `` |
+| `excluded` | `` not a member — excluded by `!glob` `` |
+| `ignored` | `` not a member — the repository ignores it; a client or operator definition can include it, a model definition cannot `` |
+| `absent` | `` absent — no such file under the project root `` |
 
 - **Untracked, scope `root` or `namespace`**: a definition makes it a member
   from the next turn.
