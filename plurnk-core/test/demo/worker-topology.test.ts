@@ -60,7 +60,9 @@ test("topo probe: answer a multi-part task that invites fan-out", async (t) => {
         signal: t.signal,
         label: "fanout",
         prompt: "src/config.json has three settings: db, pool, and host. Have a separate worker look up each one, then give me all three values together.",
-        maxTurns: 12,
+        // {§turn-cap-counts-the-tree} — the ceiling counts every model call in the worker tree (#838): three children at two
+        // or three calls each plus the parent is ten to thirteen, and a rail retry is one more.
+        maxTurns: 20,
     });
     try {
         const expected = [/\bpostgres\b/i, /\b5\b/, /\bdb\.internal\b/];
