@@ -189,10 +189,10 @@ test("{§response-text-note}: storing interstitial text is a privilege of a work
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Do the thing.");
         const narration = "Let me look at the failing test first.";
-        // {§native-tool-calls} — DeepSeek's markup naming a plurnk operation is that operation; the
-        // Hermes shape names nothing plurnk reads, so its turn is empty as well as toxic.
+        // {§native-tool-calls} — native markup naming a plurnk operation is that operation, whatever the
+        // family; a call naming a tool plurnk does not have is read as nothing, so its turn is empty as well as toxic.
         const toxin = '<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name="READ">\n<｜｜DSML｜｜ parameter name="path" string="true">sh:///67f57ccd#stdout</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>';
-        const untranslated = '<tool_call>\n{"name": "READ", "arguments": {"path": "worker:///notes.md"}}\n</tool_call>';
+        const untranslated = '<tool_call>\n{"name": "read_file", "arguments": {"path": "worker:///notes.md"}}\n</tool_call>';
         const brokenOp = "Checking the source.\n\nREAD (worker:///notes.md)";
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: `${narration}\n\n\`\`\`\`NOTE\nplan\n\`\`\`\``, reasoning: null, finishReason: "stop" } },

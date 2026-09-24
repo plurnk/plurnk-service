@@ -465,15 +465,23 @@ reading, with no diagnostic and no teaching (#758):
 Tokens keep their source positions; only their order in the stream changes.
 
 §native-tool-calls An emission that yields no operation may be a model's native
-tool-call markup (DeepSeek's `<｜｜DSML｜｜ calls>` block) naming a plurnk operation or
-a known executor. Each `invoke` is read as that operation's canonical fence:
-`path`/`target` fill the target, `scope`/`range`/`lines` the scope, `pattern` a
-matcher option, `aside` the aside, and `body`/`content`/`command` or plain lines
-inside the invoke the body; plurnk slots written after the invoke name are kept.
-Each block keeps its line count, so statement positions still name the source
-line. An invoke with an unknown name or parameter leaves the whole emission as it
-was. An emission that already yields an operation is never rewritten. No
-diagnostic, notice or teaching mentions the reading (#760).
+tool-call markup naming a plurnk operation or a known executor, and every popular
+family is read the same way: DeepSeek's `<｜｜DSML｜｜ calls>` and Anthropic-style
+`<function_calls>` blocks of `invoke` elements with `parameter` children; the
+`<tool_call>` family as `<function=NAME>` with `<parameter=key>` children (Qwen,
+MiMo), as a JSON object with `name` and `arguments` (Hermes and kin), or as a name
+followed by `<arg_key>`/`<arg_value>` pairs (GLM); a bare `<function=NAME>` element
+(Llama); Mistral's `[TOOL_CALLS]` JSON array; Llama's `<|python_tag|>` JSON object; and
+Kimi's `<|tool_call_begin|>` sections. Each call is read as that operation's
+canonical fence: `path`/`target`/`file_path`/`file`/`resource`/`uri` fill the target,
+`scope`/`range`/`lines` the scope, `pattern`/`regex`/`query` a matcher option, `aside`
+the aside, and `body`/`content`/`command`/`text`/`input` or plain text inside the
+call the body; plurnk slots written after the name are kept, a trailing scope's own
+bracket may close the tag. A block keeps its line count where its lines allow, so
+statement positions name the source line; an inline block grows to its fences.
+A call with an unknown name or parameter leaves the whole emission as it was. An
+emission that already yields an operation is never rewritten. No diagnostic, notice
+or teaching mentions the reading (#760).
 
 §empty-section Both the compact bodyless form and an empty multiline block
 normalize optional bodies to null. Closing fences are conventional, never required
