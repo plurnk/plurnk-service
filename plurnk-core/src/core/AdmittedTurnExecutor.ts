@@ -103,9 +103,24 @@ export default class AdmittedTurnExecutor {
             throw new Error("an admitted operation batch must contain operations");
         }
         // {§empty-turn} — a model response with no operation is a turn all the same: its text and
-        // reasoning are kept, and the strike rail counts it once, silently.
+        // reasoning are kept, the strike rail counts it once, and its one error row is how the
+        // model hears the strike ({§operation-result-uniform-error-channel}).
+        const recordEngineProblem = async (kind: EngineProblemKind, sequence: number, extensions: Record<string, unknown>): Promise<void> => {
+            const problem = ENGINE_PROBLEMS[kind];
+            await this.#problems.record({
+                workerId,
+                loopId,
+                turnId,
+                sequence,
+                origin: "_plurnk",
+                source: "rail",
+                result: Results.failure("engine:rail", problem.code, problem.status, problem.detail, {}, extensions),
+            });
+        };
+        const emptyTurnExtensions = { stage: "dispatch-admission", recovery: "Emit at least one fenced operation.", retryable: true };
         if (statements.length === 0 && recoverableParseErrors.length === 0) {
             if (source !== null) await Turn.recordSource(this.#db, turnId, "ops", source, { modelCallId: sourceModelCallId });
+            await recordEngineProblem("no_operation", fromSequence, emptyTurnExtensions);
             await Turn.complete(this.#db, turnId, TURN_STATUS_IMPLICIT_CONTINUE);
             return { status: TURN_STATUS_IMPLICIT_CONTINUE, outcomes: [], fingerprint: StrikeRail.fingerprintEmptyTurn(source ?? ""), emptyTurn: true };
         }
@@ -303,31 +318,16 @@ export default class AdmittedTurnExecutor {
         }
         if (finalOp === undefined) await settleTurn();
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
+        if (emptyTurn) pendingEngineErrors.push("no_operation");
         for (const kind of pendingEngineErrors) {
-            const problem = ENGINE_PROBLEMS[kind];
-            const extensions = {
-                    operationLimit: maxCommands,
-                    omittedOperations: droppedCount,
-                    stage: "dispatch-admission",
-                    recovery: "Continue with no more than the configured operation limit.",
-                    retryable: false,
-                };
-            await this.#problems.record({
-                workerId,
-                loopId,
-                turnId,
-                sequence: rowSequence++,
-                origin: "_plurnk",
-                source: "rail",
-                result: Results.failure(
-                    "engine:rail",
-                    problem.code,
-                    problem.status,
-                    problem.detail,
-                    {},
-                    extensions,
-                ),
-            });
+            const extensions = kind === "no_operation" ? emptyTurnExtensions : {
+                operationLimit: maxCommands,
+                omittedOperations: droppedCount,
+                stage: "dispatch-admission",
+                recovery: "Continue with no more than the configured operation limit.",
+                retryable: false,
+            };
+            await recordEngineProblem(kind, rowSequence++, extensions);
         }
         const turnStatus = await this.#dispatcher.settleProgram({ workerId, loopId, turnId, origin }, wait, completionEligible);
         await Turn.complete(this.#db, turnId, turnStatus);

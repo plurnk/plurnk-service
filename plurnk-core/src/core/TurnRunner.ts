@@ -297,6 +297,7 @@ type PacketFacts = {
 // the packet, which the attempt loop re-attributes per call and capacity recovery rebuilds.
 type TurnRequest = PacketFacts & {
     readonly createdTurnIds: number[];
+    readonly workerName: string;
     readonly loopSeq: number;
     readonly systemCtx: PlurnkSchemeContext;
     nextActionIndex: number;
@@ -998,7 +999,7 @@ export default class TurnRunner {
         // {§context-output-admission} — output admission changes no operation
         // outcome, authored memory, or turn identity.
         if (await this.#packets.admitOutput(packet, turnId)) packet = await this.#buildPacket(args, facts);
-        return { ...facts, createdTurnIds: container.createdTurnIds, loopSeq: container.loopSequence, systemCtx, nextActionIndex, packet };
+        return { ...facts, createdTurnIds: container.createdTurnIds, workerName: container.workerName, loopSeq: container.loopSequence, systemCtx, nextActionIndex, packet };
     }
 
     // Pre-model writes. Each message the model has not seen yet becomes an inbound `SEND`
@@ -1702,12 +1703,43 @@ export default class TurnRunner {
             onDispatch,
             onSettled,
         });
+        if (executed.emptyTurn) await this.#readEmptyTurnReasoning(args, request, split.packetAssistant);
         return turnResult(request, executed.status, {
             outcomes: executed.outcomes,
             fingerprint: executed.fingerprint,
             emptyTurn: executed.emptyTurn,
             emissionAttempts: emission.emissionAttempts,
         });
+    }
+
+    // {§reasoning-empty-turn-read} — after a turn with no operation, one runtime turn READs that
+    // turn's reasoning back to the model. A trace or emission carrying a foreign tool-call grammar
+    // is not echoed ({§response-text-note}); a turn without reasoning has nothing to read.
+    async #readEmptyTurnReasoning(args: TurnArgs, request: TurnRequest, { content, reasoning }: PacketAssistant): Promise<void> {
+        const { provider, workspaceId, workerId, loopId, onDispatch, onSettled } = args;
+        if (!reasoning?.length || KnownToxins.match(content) !== null || KnownToxins.match(reasoning) !== null) return;
+        const statement = ReasoningView.emptyTurnRead(provider, request.workerName, request.loopSeq, request.seq);
+        if (statement === null) return;
+        const policies = (await CapabilityPolicies.layers(this.#db, workspaceId, loopId)).map((layer) => layer.policy);
+        if (!this.#capabilities.allowsAcross(statement, workspaceId, policies)) return;
+        const turn = await Turn.open(this.#db, { loopId, producer: "_plurnk", kind: "operation" });
+        request.createdTurnIds.push(turn.id);
+        const source = TurnOps.renderInternal([statement]);
+        const result = await this.executeAdmittedTurn({
+            statements: TurnOps.parseInternal(source),
+            source,
+            origin: "_plurnk",
+            workspaceId,
+            workerId,
+            loopId,
+            turnId: turn.id,
+            fromSequence: 1,
+            failOnOperationError: true,
+            signal: this.#loopSignal(loopId),
+            onDispatch,
+            onSettled,
+        });
+        if (result.status !== 200) throw new Error(`empty-turn reasoning read returned ${result.status}; expected 200`);
     }
 
     // Split the wire-level ProviderResponse into the two destinations:

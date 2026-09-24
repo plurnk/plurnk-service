@@ -62,6 +62,32 @@ test("{§reasoning-initial-read}: initialization reads its own source with the c
     }
 });
 
+test("{§reasoning-empty-turn-read}: an empty turn reads its own reasoning back under its own knob", () => {
+    const keys = ["PLURNK_REASONING_VIEW_LINES", "PLURNK_REASONING_EMPTY_TURN_LINES"];
+    const before = keys.map((key) => process.env[key]);
+    const provider = new Mock({ contextWindow: 100_000, responses: [] });
+    try {
+        process.env.PLURNK_REASONING_VIEW_LINES = "0";
+        for (const limit of [-1, 0, 1, 8, 32]) {
+            process.env.PLURNK_REASONING_EMPTY_TURN_LINES = String(limit);
+            const read = ReasoningView.emptyTurnRead(provider, "alice", 3, 8);
+            if (limit === 0) assert.equal(read, null);
+            else {
+                assert.equal(read?.target?.raw, "reasoning://alice/3/8");
+                assert.equal(read?.aside, "turn 8 emitted no OP");
+                assert.deepEqual(read?.lineMarker, { marks: [1, limit] }, "the initialization knob does not govern this read");
+            }
+        }
+        delete process.env.PLURNK_REASONING_EMPTY_TURN_LINES;
+        assert.throws(() => ReasoningView.emptyTurnRead(provider, "alice", 3, 8), /PLURNK_REASONING_EMPTY_TURN_LINES must be -1, 0, or a positive integer\./);
+    } finally {
+        keys.forEach((key, index) => {
+            if (before[index] === undefined) delete process.env[key];
+            else process.env[key] = before[index];
+        });
+    }
+});
+
 test("{§reasoning-notes}: the authored rationale demonstrates an executable NOTE", () => {
     const notes = PlurnkParser.parseReasoningNotes(ReasoningView.initialSource());
     assert.equal(notes.length, 1);

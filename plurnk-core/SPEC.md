@@ -1083,6 +1083,7 @@ These are the complete strike sources:
 |---------------------|------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------|
 | Hard result         | An admitted non-execution operation or bounded parse-error status is `>= 400`, except the soft set `404`, `409`, `416`, `425`, `501`. | The originating failure row.                                  |
 | Cycle               | The executed operations and their observed results repeat under {§engine-cycle-evidence}.                         | None; cycle detection itself is private engine accounting.    |
+| Empty turn          | An admitted turn with no authored response operation ({§empty-turn}).                                            | The turn's `422` error row, and its reasoning read back ({§reasoning-empty-turn-read}). |
 
 Execution results remain exact model-visible evidence but are always soft: an
 executor error is not a PLURNK contract violation. Cycle detection remains an
@@ -2084,7 +2085,7 @@ same transitions the dispatcher's atomic curation event makes, without the row.
 |---|---|
 | Evidence | Original provider reasoning remains verbatim in immutable model-call responses and admitted packets. Resource and log operations never rewrite it. Only an admitted response, or the final exhausted emission attempt, produces a model reasoning source; missing provider reasoning creates no substitute. A non-model producer may record its own authored rationale under {§turn-source-resources}. |
 | Resource | `reasoning://<worker>/<loop>/<turn>` is immutable text/plain source belonging to the named workspace worker's turn under {§turn-source-resources}. Every workspace actor may READ, FIND, search and COPY from it; none may EDIT, KILL, COPY into or MOVE it. |
-| Delivery | Initialization READs its own authored rationale under {§reasoning-initial-read}. Further observations require deliberate READs. The selected model reasoning source is stored before its OPs execute, so an ordinary READ of the current turn resolves immediately and is visible in subsequent packets. Every READ retains its authored scope and ordinary range metadata, without edit anchors. |
+| Delivery | Initialization READs its own authored rationale under {§reasoning-initial-read}, and an empty turn's reasoning is read back under {§reasoning-empty-turn-read}. Further observations require deliberate READs. The selected model reasoning source is stored before its OPs execute, so an ordinary READ of the current turn resolves immediately and is visible in subsequent packets. Every READ retains its authored scope and ordinary range metadata, without edit anchors. |
 | Curation | Scoped log KILL suppresses receipt lines; whole log KILL retires the receipt. Neither affects the source. Explicit log READs retain ordinary curation anchors. A mutable working copy requires ordinary COPY into an editable resource. |
 | Lifecycle | Restart retains sources and observations. FORK snapshots sources under the child's name at the same loop/turn coordinates and receipts with independent curation. No curation or lifecycle event automatically READs model reasoning. A turn the provider left without reasoning reads empty; absent workers and turns return the ordinary missing result ({§turn-source-resources}). |
 | Client | Standard live reasoning events and replay retain original provider reasoning; working resources and READ receipts never substitute for or replay that stream. |
@@ -2101,7 +2102,18 @@ manufacture a task inventory.
 `PLURNK_REASONING_VIEW_LINES` (default `-1`, alias-scoped) selects this one READ's
 scope: `0` omits it, `-1` reads the complete rationale, and a positive integer
 bounds it to the first N lines. Source retention, deliberate READs, and client
-streaming are independent. No later turn automatically requests reasoning.
+streaming are independent. The only other automatic reasoning READ follows an empty
+turn ({§reasoning-empty-turn-read}).
+
+§reasoning-empty-turn-read **An empty turn's reasoning is read back to the model.** After a
+turn admitted under {§empty-turn}, one runtime turn of the same loop
+(`{ producer="_plurnk", kind="operation" }`) dispatches
+`READ (reasoning://<worker>/<loop>/<turn>) <!-- turn N emitted no OP -->` over that turn's stored
+reasoning source; its receipt renders in the next packet like any other log row.
+`PLURNK_REASONING_EMPTY_TURN_LINES` (default `-1`, alias-scoped) selects the scope on the same
+scale as `PLURNK_REASONING_VIEW_LINES`. No read follows a turn without reasoning, and none follows
+a turn whose emission or reasoning carries a foreign tool-call grammar ({§response-text-note});
+the strike and its error row are unchanged.
 
 ### §log-kill-scope KILL on the log: whole items and scoped bodies
 
@@ -2714,9 +2726,11 @@ accounting and model-visible failure evidence remain separately owned by
   Count parsed response operations before outside-text and reasoning NOTEs join them;
   neither enters the count. When none exist and no boundary was lost, retain the turn and its raw
   sources and count one progress-contract strike, whether or not the turn carried text
-  ({§response-text-note}). The strike sends no notice of its own; the threshold terminal is
-  where it becomes visible, and it says why ({§engine-rails}). An empty turn uses its exact
-  text as the cycle fingerprint ({§engine-cycle-evidence});
+  ({§response-text-note}). The strike sends no notice of its own: the turn records one `_plurnk`
+  error row, `422` `The turn performed no operation.`, which rides the next packet's errors like
+  any failure ({§operation-result-uniform-error-channel}), and its reasoning is read back to the
+  model under {§reasoning-empty-turn-read}; the threshold terminal still says why ({§engine-rails}).
+  An empty turn uses its exact text as the cycle fingerprint ({§engine-cycle-evidence});
   different empty programs are not a repeated cycle merely because neither contained
   operations. Lost-boundary handling remains {§unparsed-tail-boundary}; no confirmation
   token or private retry is invented here.

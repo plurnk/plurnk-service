@@ -134,12 +134,13 @@ test("{§quotation}: a SEND with nested examples delivers its literal body", asy
 });
 
 // {§empty-turn} — an operation attempt that did not parse, or prose cut at the allowance, is not an
-// answer: it is admitted as an empty turn — kept, noticed, struck once — and the loop continues.
+// answer: it is admitted as an empty turn — kept, struck once, its strike an error row on the turn
+// and its reasoning read back ({§reasoning-empty-turn-read}) — and the loop continues.
 for (const [label, content, finishReason] of [
     ["an operation heading outside a fence", "Let me check.\n\nREAD (worker:///notes.md)", "stop"],
     ["prose cut at the output allowance", "The findings give me precise integration points. Now I'll", "length"],
 ] as const) {
-    test(`{§empty-turn}: ${label} is a silent empty turn with one strike, never an answer`, async () => {
+    test(`{§empty-turn}: ${label} is an empty turn with one strike, an error row and its reasoning read back, never an answer`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `empty-turn-${crypto.randomUUID()}`);
@@ -156,13 +157,23 @@ for (const [label, content, finishReason] of [
                 messages: [{ role: "user", content: "Do the thing." }],
             });
             assert.equal(result.result.status, 200);
-            assert.equal(result.turnIds.length, 3, "initialization, the empty turn, the answer: no private resample");
+            assert.equal(result.turnIds.length, 4, "initialization, the empty turn, its reasoning read back, the answer: no private resample");
             const emptyTurn = result.turnIds[1]!;
             const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: emptyTurn });
             assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "admitted on its only attempt");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
             assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "ops")?.content, content);
-            assert.deepEqual(notices.filter(({ kind }) => kind === "turn_no_operations"), [], "{§empty-turn} the strike is silent");
+            assert.deepEqual(notices.filter(({ kind }) => kind === "turn_no_operations"), [], "{§empty-turn} the strike sends no notice");
+            const strikes = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ turn_id: emptyTurn }))
+                .filter(({ origin, op }) => origin === "_plurnk" && op === "error");
+            assert.deepEqual(strikes.map(({ status_rx, rx }) => [status_rx, JSON.parse(rx).problem.detail]), [[422, "The turn performed no operation."]], "{§empty-turn} the strike is one error row on the turn");
+            const readBack = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; scheme: string | null; pathname: string | null; rx: string }>({ turn_id: result.turnIds[2]! }))
+                .filter(({ origin, op }) => origin === "_plurnk" && op === "READ");
+            assert.deepEqual(readBack.map(({ status_rx, scheme, pathname }) => [status_rx, scheme, pathname]), [[200, "reasoning", "/1/2"]], "{§reasoning-empty-turn-read} the runtime read the turn's reasoning back");
+            assert.match(readBack[0]!.rx, /thinking about it/u, "in the model's own words");
+            const answer = await db.test_get_turn.get<{ packet: string }>({ id: result.turnIds.at(-1)! });
+            const errors = JSON.parse(packetSection(JSON.parse(answer!.packet), "errors") || "[]") as Array<{ status: number }>;
+            assert.deepEqual(errors.map(({ status }) => status), [422], "the strike rides the next packet's errors");
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds.at(-1)! });
             assert.equal(JSON.parse(rows.find(({ op, origin }) => origin === "model" && op === "KILL")!.tx).body, "Done.", "the later KILL answered");
             const rail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: loopId });
@@ -178,27 +189,42 @@ test("{§response-text-note}: storing interstitial text is a privilege of a work
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Do the thing.");
         const narration = "Let me look at the failing test first.";
+        // {§native-tool-calls} — DeepSeek's markup naming a plurnk operation is that operation; the
+        // Hermes shape names nothing plurnk reads, so its turn is empty as well as toxic.
         const toxin = '<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name="READ">\n<｜｜DSML｜｜ parameter name="path" string="true">sh:///67f57ccd#stdout</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>';
+        const untranslated = '<tool_call>\n{"name": "READ", "arguments": {"path": "worker:///notes.md"}}\n</tool_call>';
         const brokenOp = "Checking the source.\n\nREAD (worker:///notes.md)";
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: `${narration}\n\n\`\`\`\`NOTE\nplan\n\`\`\`\``, reasoning: null, finishReason: "stop" } },
             { assistant: { content: narration, reasoning: null, finishReason: "stop" } },
             { assistant: { content: toxin, reasoning: null, finishReason: "stop" } },
+            { assistant: { content: untranslated, reasoning: "Read the note first.", finishReason: "stop" } },
             { assistant: { content: `${brokenOp}\n\n\`\`\`\`NOTE\nstill here\n\`\`\`\``, reasoning: null, finishReason: "stop" } },
             { assistant: { content: "````KILL\nDone.\n````", reasoning: null } },
         ] });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Do the thing." }] });
         assert.equal(result.result.status, 200);
-        const [, workingTurn, proseTurn, toxinTurn, brokenTurn] = result.turnIds;
-        const notesOf = async (turnId: number) => (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: turnId }))
+        assert.equal(result.turnIds.length, 7, "{§reasoning-empty-turn-read} no reasoning, or a toxic emission: nothing is read back, no runtime turn follows");
+        const [, workingTurn, proseTurn, toxinTurn, untranslatedTurn, brokenTurn] = result.turnIds;
+        const rowsOf = async (turnId: number) => await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: turnId });
+        const notesOf = async (turnId: number) => (await rowsOf(turnId))
             .filter(({ origin, op }) => origin === "model" && op === "NOTE").map(({ tx }) => JSON.parse(tx).body as string);
+        const strikesOf = async (turnId: number) => (await rowsOf(turnId))
+            .filter(({ origin, op }) => origin === "_plurnk" && op === "error").map(({ status_rx }) => status_rx);
+        assert.deepEqual(
+            [await strikesOf(workingTurn!), await strikesOf(proseTurn!), await strikesOf(toxinTurn!), await strikesOf(untranslatedTurn!), await strikesOf(brokenTurn!)],
+            [[], [422], [], [422], []],
+            "{§empty-turn} each empty turn carries its one error row, toxic or plain; the translated call ran, so its turn is not empty",
+        );
         assert.deepEqual(await notesOf(workingTurn!), [narration, "plan"], "narration beside a real operation is the model's NOTE, in source order");
         assert.deepEqual(await notesOf(proseTurn!), [], "an empty turn earns no NOTE, however plain its prose");
         assert.deepEqual(await notesOf(toxinTurn!), [], "a foreign tool-call grammar retains nothing");
+        assert.deepEqual(await notesOf(untranslatedTurn!), [], "nor does one plurnk cannot read");
         assert.deepEqual(await notesOf(brokenTurn!), ["Checking the source.", "still here"], "the unfenced heading is not response text, the narration around it is, and the fenced NOTE stays");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         assert.equal(sources.find((row) => row.turn_id === toxinTurn && row.kind === "ops")?.content, toxin, "the exact emission stays readable at ops://");
+        assert.equal(sources.find((row) => row.turn_id === untranslatedTurn && row.kind === "reasoning")?.content, "Read the note first.", "the reasoning is kept even when it is not read back");
         assert.equal(sources.find((row) => row.turn_id === proseTurn && row.kind === "ops")?.content, narration);
     } finally { await db.close(); }
 });
@@ -225,13 +251,23 @@ for (const finishReason of [undefined, "stop", "length"] as const) {
             });
             assert.equal(result.result.status, 200);
             assert.equal(provider.received.length, 3, "the empty turn does not infer completion; a recovery request follows");
+            assert.equal(result.turnIds.length, 5, "initialization, the working turn, the empty turn, its reasoning read back, the conclusion");
             const emptyTurn = result.turnIds[2]!;
             const turn = await db.test_get_turn.get<{ status: number; packet: string }>({ id: emptyTurn });
             assert.equal(turn?.status, 102);
             assert.equal(packetSection(JSON.parse(turn!.packet), "messages"), "[]", "the original message is already answered");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
             assert.equal(sources.find(({ turn_id, kind }) => turn_id === emptyTurn && kind === "reasoning")?.content, reasoning);
-            assert.equal(notices.filter(({ kind }) => kind === "turn_no_operations").length, 0, "{§empty-turn} the strike is silent");
+            assert.equal(notices.filter(({ kind }) => kind === "turn_no_operations").length, 0, "{§empty-turn} the strike sends no notice");
+            const readBack = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; tx: string; rx: string }>({ turn_id: result.turnIds[3]! }))
+                .filter(({ origin, op }) => origin === "_plurnk" && op === "READ");
+            assert.equal(readBack.length, 1, "{§reasoning-empty-turn-read} one runtime READ follows the empty turn");
+            assert.equal(readBack[0]!.status_rx, 200);
+            assert.match(readBack[0]!.tx, /turn 3 emitted no OP/u, "the aside names the turn");
+            assert.match(readBack[0]!.rx, /I still need to work out the next action\./u, "the model reads its own trace");
+            const conclusion = await db.test_get_turn.get<{ packet: string }>({ id: result.turnIds.at(-1)! });
+            const errors = JSON.parse(packetSection(JSON.parse(conclusion!.packet), "errors") || "[]") as Array<{ status: number; path: string }>;
+            assert.deepEqual(errors.map(({ status, path }) => [status, path]), [[422, "log:///1/3/1/error"]], "the strike rides the next packet's errors, on the empty turn's own address");
         } finally { await db.close(); }
     });
 }
@@ -308,6 +344,10 @@ test("{§unfenced-operation} {§empty-turn}: unfenced executor calls draw their 
         const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 6, maxStrikes: 3, messages: [{ role: "user", content: "Build it." }] });
         assert.equal(result.result.status, 500, "three empty turns cross the strike threshold");
         assert.match(JSON.stringify(result.result), /performed no operation/u, "the terminal names the source");
+        assert.equal(result.turnIds.length, 4, "initialization and three empty turns; with no reasoning there is nothing to read back");
+        const strikes = await Promise.all(result.turnIds.slice(1).map(async (turnId) => (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number }>({ turn_id: turnId }))
+            .filter(({ origin, op }) => origin === "_plurnk" && op === "error").map(({ status_rx }) => status_rx)));
+        assert.deepEqual(strikes, [[422], [422], [422]], "{§empty-turn} each strike is an error row the next packet carries");
         assert.equal(notices.filter(({ kind, message }) => kind === "parse_advisory" && message === "`sh` has no fence, so it did not run.").length, 3, "each turn heard its receipt");
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string }>({ turn_id: result.turnIds[1]! });
         assert.deepEqual(rows.filter(({ origin, op }) => origin === "model" && op === "NOTE"), [], "an empty turn files no narration");
