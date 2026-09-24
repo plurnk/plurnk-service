@@ -152,6 +152,7 @@
         "yaml": "^2.9.0"
     },
     "devDependencies": {
+        "@modelcontextprotocol/server": "2.0.0",
         "@opentelemetry/core": "^2.11.0",
         "@types/diff": "^7.0.2"
     },

@@ -9,6 +9,16 @@
             "reason": "2.3.2 tarball omits dist/index.d.ts, its declared types; TS7016 in the plurnk-parser build. Held at 2.3.1 until a release ships the declaration.",
             "issue": "https://repo.possumtech.com/plurnk/plurnk-service/issues/833",
             "lane": "parser"
+        },
+        "@modelcontextprotocol/client": {
+            "reason": "plurnk-mcp's protocol authority exact-pins the SDK release (MCP_CLIENT_VERSION, SPEC: the implementation exact-pins @modelcontextprotocol/client@2.0.0); a bump is a contract move made with the conformance referee, not a relock",
+            "issue": "https://repo.possumtech.com/plurnk/plurnk-service/issues/850",
+            "lane": "mcp"
+        },
+        "@modelcontextprotocol/server": {
+            "reason": "plurnk-mcp's protocol authority exact-pins the SDK release (MCP_CLIENT_VERSION, SPEC: the implementation exact-pins @modelcontextprotocol/client@2.0.0); a bump is a contract move made with the conformance referee, not a relock",
+            "issue": "https://repo.possumtech.com/plurnk/plurnk-service/issues/850",
+            "lane": "mcp"
         }
     },
     "ownerVeto": []
