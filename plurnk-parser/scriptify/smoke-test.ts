@@ -102,18 +102,17 @@ for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkPar
         || statements[1]?.op !== "NOTE") throw new Error("outside text changed the parsed program");
 }
 
-// A quoted example rides a numeric delimiter ({§numeric-delimiter}): the SEND's body holds the
-// literal heading without executing it, and the disposition still follows.
+// A quoted example rides a wider fence ({§balanced-fences}): the SEND's body holds the literal
+// heading without executing it, and the disposition still follows.
 const literalExample = PlurnkParser.frame("KILL (worker:///notes.md)", null);
-const outer = String.fromCharCode(96).repeat(5);
-const quoted = outer + "42SEND <!-- literal example -->\\n" + literalExample + "\\n" + outer + "42\\n" + program;
+const quoted = PlurnkParser.frame("SEND <!-- literal example -->", literalExample) + "\\n" + program;
 const quotedSend = PlurnkParser.parse(quoted);
-assertClean("delimited SEND", quotedSend);
+assertClean("wider SEND", quotedSend);
 const quotedStatements = statementsOf(quotedSend);
 if (quotedStatements.length !== 2 || quotedStatements[0]?.op !== "SEND"
     || quotedStatements[0]?.aside !== "literal example"
     || quotedStatements[0]?.body?.raw !== literalExample
-    || quotedStatements[1]?.op !== "NOTE") throw new Error("delimited SEND did not quote its literal example");
+    || quotedStatements[1]?.op !== "NOTE") throw new Error("the wider SEND did not quote its literal example");
 
 const balancedBody = "Literal example:\\n" + literalExample + "\\nThe answer continues here.";
 const balanced = PlurnkParser.parse(outer + "SEND\\n" + balancedBody + "\\n" + outer + "\\n" + program);
@@ -140,8 +139,8 @@ console.log("OK: the parser is consumable through one installed entrypoint.");
 
     process.stdout.write("[smoke] running the CLI against a turn...\n");
     const cli = join(installedRoot, "bin", "plurnk-parser.js");
-    // {§operation-fences} — canonical output stays four; the installed CLI smoke writes the taught form.
-    await writeFile(join(tempDir, "turn.plurnk"), "````WAIT\n````\n");
+    // {§operation-fences} — the installed CLI smoke writes the taught form.
+    await writeFile(join(tempDir, "turn.plurnk"), "```WAIT\n```\n");
     const { stdout: cliOut } = await run("node", [cli, "turn.plurnk"], { cwd: tempDir });
     const cliResult = JSON.parse(cliOut) as { items: Array<{ kind: string }> };
     if (cliResult.items.some(({ kind }) => kind === "error")) throw new Error(`CLI reported parse errors: ${cliOut}`);
@@ -164,7 +163,7 @@ export const parse = (input) => PlurnkParser.parse(input);
     const browserConsumer = await import(`${pathToFileURL(browserBundle).href}?${crypto.randomUUID()}`) as {
         parse(input: string): { items: Array<{ kind: string }> };
     };
-    const browserResult = browserConsumer.parse("````NOTE\nbrowser bundle initialized\n````");
+    const browserResult = browserConsumer.parse("```NOTE\nbrowser bundle initialized\n```");
     if (browserResult.items.some(({ kind }) => kind === "error")) {
         throw new Error(`browser bundle returned parse errors: ${JSON.stringify(browserResult.items)}`);
     }

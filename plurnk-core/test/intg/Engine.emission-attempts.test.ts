@@ -852,7 +852,7 @@ test("{§extra-path-slot}: a third COPY operand preserves siblings, source evide
             "unexpected `(` (`(path)` slot opener); expected operation fence header, operation-heading line ending, or closing fence");
         assert.equal(problem.siblingsRetained, true);
         assert.equal(problem.line, 6);
-        assert.equal(problem.column, 39);
+        assert.equal(problem.column, 38);
     } finally { await db.close(); }
 });
 

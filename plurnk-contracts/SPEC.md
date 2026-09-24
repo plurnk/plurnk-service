@@ -267,58 +267,52 @@ input
 `````
 
 §section-boundary Every statement is one backtick block. Its header occupies one
-physical line: a fence of at least three backticks ({§operation-fences}), an optional numeric delimiter
-({§numeric-delimiter}), then the name and its slots. A closer is shown by
+physical line: a fence of at least three backticks ({§operation-fences}), then the name
+and its slots. A closer is shown by
 convention and never demanded ({§fence-closer}, {§closer-fallback}). There are no
 operation suffixes or heading levels. Complete nested matches take precedence
 over local recovery ({§balanced-fences}).
 
-§fence-closer A block opened with N backticks and delimiter D (its digits, possibly
-none) closes at the first unclaimed line made of at least N backticks,
-exactly D, and nothing else but horizontal whitespace. Count follows CommonMark: a
-shorter fence inside the body is body; an equal or longer bare fence closes a bare
-block unless it closes a balanced nested block ({§balanced-fences}). The delimiter
-compares exactly: a bare fence never closes a delimited block,
-and a delimited fence never closes a bare one. The compact one-line form closes on
-its heading line after the modifiers under the same rule.
+§fence-closer A block opened with N backticks closes at the first unclaimed line made of
+at least N backticks and nothing else but horizontal whitespace, within three spaces of
+its line start ({§indented-fences}). Count follows CommonMark: a shorter fence inside the
+body is body; an equal or longer bare fence closes the block unless {§balanced-fences}
+claims it for a nested block. The compact one-line form closes on its heading line after
+the modifiers under the same rule.
 
 §balanced-fences A complete nested interpretation takes precedence over missing-closer
-recovery. Within an undelimited body, line-leading labeled fences open literal
-blocks; their matching closers close the innermost block first. The enclosing
-block and its nested blocks must all close, with matching widths and delimiters
-under {§fence-closer}. Equal opener/closer totals alone are insufficient. A complete
-inline block is already closed; a numerically delimited block is opaque until its
-own closer. Preserve every nested body byte, including apparent OPs and known
-executors, without dispatching them. If no complete enclosing interpretation exists,
-retain {§fence-heading-in-body} and {§closer-fallback}. These rules apply equally to
-model programs, stored programs, client operations, and reasoning quotations.
+recovery. Within a body, line-leading labeled fences open literal blocks. A bare fence
+closes the innermost open block of exactly its width, otherwise the outermost open block
+narrower than it; the narrower blocks it steps over are literal body, and a wider or
+differently fenced block inside stops it. So a wider outer fence holds any narrower body,
+finished or not, and equal widths nest when every inner block closes. The enclosing block
+and its nested blocks must all
+close under {§fence-closer}; equal opener/closer totals alone are insufficient, and a
+complete inline block is already closed. Preserve every nested body byte, including
+apparent OPs and known executors, without dispatching them. If no complete enclosing
+interpretation exists, retain {§fence-heading-in-body} and {§closer-fallback}. These
+rules apply equally to model programs, stored programs, client operations, and
+reasoning quotations.
 
-§numeric-delimiter Digits between the opening backticks and the name (an opener
-carrying `42EDIT (x)`) identify the block, and only a fence carrying `42` closes it.
-This explicitly protects bare fences and headings, including incomplete examples.
-The delimiter is syntax, never AST or persistence
-state; `PlurnkParser.frame` chooses one when the body it wraps holds a heading line
-of four or more backticks ({§statement-rendering}).
-
-§operation-fences **Accept three or more backticks; teach and render four.** A top-level,
-unindented fence of three or more backticks naming a native operation or registered executor
-opens that operation. A three-backtick opener ran, and one warning-severity receipt follows its
-statement — `` `KILL` ran with three backticks; the taught fence is four. `` — because three is
-the habit and four is the taught form: a four-backtick fence holds any body, including
-three-backtick code. Indentation and enclosing quotations remain inert ({§quotation}); shorter
-fences inside a body are never promoted to operations ({§fence-heading-in-body}). `plurnk.md`
-teaches exactly four; other accepted widths are not taught. Every producer of a statement — the
-parser, a client composing `/look`, a client's tab-completion — writes `PLURNK_FENCE` rather than
-its own literal (plurnk/plurnk#92).
+§operation-fences **Accept three or more backticks; teach and render three.** A line-start fence
+of three or more backticks naming a native operation or registered executor opens that
+operation ({§indented-fences}), and no width draws a receipt. Three is the taught form and the
+rendered form; a wider fence is the same statement, and it is how a body holding fence lines of
+its own is held: an opener wider than any of them ({§balanced-fences}). Enclosing quotations
+remain inert ({§quotation}), and a fence inside an intact block is never promoted to an
+operation ({§fence-heading-in-body}). `plurnk.md` teaches exactly three and shows the wider
+fence only as the nesting form. Every producer of a statement — the parser, a client composing
+`/look`, a client's tab-completion — writes `PLURNK_FENCE` rather than its own literal
+(plurnk/plurnk#92).
 
 §naked-operation **A native operation's name alone on a line opens it without a fence.** A
 column-zero line outside any block that is exactly an operation's name, with nothing but
-horizontal whitespace after it, opens that operation as if it were fenced with the taught four
+horizontal whitespace after it, opens that operation as if it were fenced with the taught three
 backticks: no target, no modifiers, and a body that runs to a line that is exactly the name
-again, to the next four-backtick heading, or to the end of the turn. Narrower fences inside are
-body, as inside any four-backtick block; the block expects no closer, so its body is never cut
+again, to the next heading ({§fence-heading-in-body}), or to the end of the turn. A fence inside
+naming nothing known is body; the block expects no closer, so its body is never cut
 back ({§closer-fallback}). It runs, and one warning-severity receipt follows its statement —
-`` `KILL` opened with no fence; the taught form is four backticks. `` One rule for every native
+`` `KILL` opened with no fence; the taught form is three backticks. `` One rule for every native
 operation: a naked `WAIT` parks, a naked `NOTE` takes its text, a naked `READ` meets the ordinary
 missing-target refusal. Only the bare name qualifies; a name with anything else on its line is
 the unfenced form and still refuses ({§unfenced-operation}), executors are runtimes rather than
@@ -327,54 +321,50 @@ operations, and reasoning is never read this way. Measured before it was accepte
 three loops lost to the refusal at the strike threshold.
 
 §fence-heading-in-body Outside a complete nested block ({§balanced-fences}), a fence
-line of three or more backticks, optional digits, and a name that is a native operation
-or a known executor is a heading. Inside an open block its width must also reach the block's
-opening width, capped at four: a three-backtick heading ends only a three-backtick block, and a
-four-backtick heading ends any block. A qualifying heading ends that block without closing it
-({§closer-fallback}) and opens the next statement. Fence lines of fewer than three
+line of three or more backticks and a name that is a native operation or a known executor
+is a heading. Inside an open block of any width it ends that block without closing it
+({§closer-fallback}) and opens the next statement: a wider fence holds the narrower headings
+inside it only while it closes ({§balanced-fences}). Fence lines of fewer than three
 backticks are never headings ({§operation-fences}). Known executors are `sh` plus what
-the host names in `ParseOptions.executors`. Consequences: a three-backtick executor line inside
-a four-backtick block is body, a closer glued to the next opener (eight backticks then `READ`)
-can never swallow an unbalanced turn, and a numeric delimiter preserves quoted headings even
-when their own fences are incomplete.
+the host names in `ParseOptions.executors`. Consequences: a closer glued to the next opener
+(six backticks then `READ`) can never swallow an unbalanced turn, and no unclosed block, however
+wide, swallows the operations after it.
 
 §closer-fallback A block that ends at a heading or at the end of the input has no
-closer of its own. Its body is cut back to its last bare fence line (any count,
-optional digits), which is the closer the author meant, and one terminating line
+closer of its own. Its body is cut back to its last bare fence line (any count, within
+three spaces of its line start), which is the closer the author meant, and one terminating line
 ending goes with it; when no bare fence line exists the body is the whole span less
 one terminating line ending. This carries no diagnostic: a missing closer is never
 an admission failure, and {§unparsed-tail-boundary} is not involved.
 
-`plurnk.md` teaches that operations *"begin and end with exactly four backticks, both
-immediately after a newline"*; this recovery is not taught. It sits at the quiet end of
+`plurnk.md` shows every operation closed; this recovery is not taught. It sits at the quiet end of
 the scale {§response-text-note} describes: the model opened the operation correctly
 and only failed to close it, so the harness reads what it plainly meant and says nothing.
 A departure that small earns no correction — telling a model its closer was missing costs
 a sentence in every future packet to fix something already fixed.
 
 §fence-boundary Balanced nesting is resolved before local recovery. Otherwise,
-fences are read by count and delimiter, except for the heading rule above:
+fences are read by count, except for the heading rule above:
 
 | Fence encountered inside a body | Meaning |
 |---|---|
 | Part of a complete nested block | Literal body, including its openers and closers |
+| Indented four spaces or more, or by a tab | Body ({§indented-fences}) |
 | Fewer backticks than the block's own | Body |
-| At least the block's backticks, bare, block undelimited | The block's closer |
-| At least the block's backticks carrying the block's delimiter | The block's closer |
-| At least the block's backticks with any other delimiter | Body |
-| At least the block's backticks, capped at four, naming a native operation or known executor | A heading: ends the block, opens the next statement |
+| At least the block's backticks, bare | The block's closer |
+| Three or more backticks naming a native operation or known executor | A heading: ends the block, opens the next statement |
 
-§indented-fences Leading horizontal whitespace before a CLOSER is not part of the fence: an
-indented closer, heading-that-ends-a-block, or closer fallback still closes, and a body keeps its
-own lines' indentation. An OPENER is different: an operation's backticks follow a newline
-directly (operator, 2026-09-18), so an indented fence opens a quotation, never an operation —
-CommonMark reads an indented block as code, and `plurnk.md` shows its own examples that way. This
-reverses the 2026-09-12 tolerance (then measured at five to ten percent of emissions on
-GLM-5.3-flash; 2.8% of that lane's emissions today). An offset fence is prose and draws no advisory:
-`plurnk.md` instructs the model to offset any example it does not intend to execute, so the form
-is correct by construction and there is no mistake to report (operator, 2026-09-21). The parser
-presumes nothing about why a fence is offset. Outside an operation, that quotation is
-response text under {§response-text}; inside a body, it stays literal body content.
+§indented-fences **CommonMark's indentation, everywhere.** A fence line may follow at most three
+spaces; four or more, or a tab, make it indented code. That one rule reads every fence purpose the
+same way: an opener within three spaces opens, a closer within three closes, a heading within
+three ends an unclosed block, and a body keeps its own lines' indentation. A fence indented
+further is literal wherever it stands — prose outside a block, body inside one — and draws no
+advisory: `plurnk.md` shows its own examples offset and tells the model to offset any example it
+does not intend to execute, so the form is correct by construction and there is no mistake to
+report (operator, 2026-09-21). The parser presumes nothing about why a fence is offset. This one
+rule replaces the column-zero opener (operator, 2026-09-18) and the lenient closer beside it
+(operator, 2026-09-23). Outside an operation, offset text is response text under
+{§response-text}; inside a body, it stays literal body content.
 
 §inline-chain A closer on a heading line, or on a body's closing line, may be
 followed on that same line by the next opener; the closer still closes, and the
@@ -386,7 +376,7 @@ text there is the heading's own and is read under {§transparent-inline-closer}.
 closing fence on a heading line followed by more of that heading — a `<scope>`, an
 `[option block]`, a `<!-- aside -->`, or a naked matcher — does not end the reading: the
 heading keeps taking its slots under {§trailing-slots} and {§naked-pattern}, exactly as though
-the closer were absent, so ````` ````READ (a.md)```` ````` `<1,2>` is the same operation as `READ (a.md) <1,2>`.
+the closer were absent, so ```` ```READ (a.md)``` ```` `<1,2>` is the same operation as `READ (a.md) <1,2>`.
 The closer is still a closer: the block ends with that physical line and never reaches down for
 the next operation, which is what a bare heading carrying a matcher would do. A closer followed
 by the next opener is {§inline-chain}, and by nothing is the ordinary {§fence-closer}. There is
@@ -413,7 +403,7 @@ identity; absent `node`, the shorthand grants no executable capability.
 line: prose, then heading after heading with no line ending anywhere. Two
 rules absorb it. The next opener on a heading's own line, after the heading's
 slots, ends that heading's block bodyless and opens ({§empty-section}), so
-`````EDIT (a.rs) <60,66> <!-- drop --> ````EDIT (b.rs) <31,38>` is two scoped
+````EDIT (a.rs) <60,66> <!-- drop --> ```EDIT (b.rs) <31,38>` is two scoped
 deletions. Literal inline bodies follow {§heading-inline-body}.
 
 §anchor-digits In a text scope, `@` followed by one to four digits cannot be a
@@ -425,24 +415,24 @@ line takes the rest of the line as the aside, with one warning-severity advisory
 A closed aside followed by more text is unchanged.
 
 §quotation **A fence that opens no operation quotes.** Outside a body, a line-start fence that
-is not an operation heading — unlabeled, tagged like a code block (`ts`, `json`), indented,
-or naming nothing registered — opens a
+is not an operation heading — unlabeled, tagged like a code block (`ts`, `json`), or naming
+nothing registered — opens a
 quotation that runs to its matching closer (same character, width at least the opener's) or to
 the end of the input. Everything inside is data: no operation runs there and native tool-call
 markup is not read ({§native-tool-calls}). An operation fenced inside an unlabeled code block
 draws one warning that it was shown, not run; a labeled block is an example by declaration, and
 nothing else inside draws an advisory.
-So a model may show plurnk's own operations in an answer. Three exceptions keep programs whole:
+So a model may show plurnk's own operations in an answer. Two exceptions keep programs whole:
 CommonMark's own rule that a backtick opener's line carries no further backtick, so
-```` ```READ (x)``` ```` is inline code and quotes nothing after it; a bare fence directly under a
-line carrying a fence run, which is an orphaned closer and quotes nothing; and a tag that is a
-missed operation — an unknown name at operation width — which still draws one warning; an
-offset example draws none. Quotation outside an operation is
+```` ```READ (x)``` ```` is inline code and quotes nothing after it; and a bare fence directly under
+a line carrying a fence run, which is an orphaned closer and quotes nothing. An unknown tag at
+any width is a code block and draws nothing; an offset example draws nothing either
+({§indented-fences}). Quotation outside an operation is
 response text under {§response-text}, not an executable program or a completion envelope.
 
 `plurnk.md` teaches exactly one way to make an example inert — *"tab offset any example OP
 you do not intend to execute"* — and the other quoting fences are
-not taught: a tilde fence, an unlabeled fence and an unknown three-backtick tag all quote
+not taught: a tilde fence, an unlabeled fence and an unknown tag all quote
 too. Each is a shape a model reaches for from ordinary Markdown rather than from this
 teaching, so honouring it protects an example the model already believed was safe
 ({§response-text-note} places the scale). The taught offset remains the one form a
@@ -489,10 +479,9 @@ normalize optional bodies to null. Closing fences are conventional, never requir
 runtime fences from the shared AST, with one blank line between operations.
 Every closing fence occupies its own line, including bodyless operations;
 inline fences remain accepted input, not generated examples.
-It chooses at least four backticks and more than any run within the body, and a
-numeric delimiter whenever the body holds a heading line of four or more backticks
-({§fence-heading-in-body}), preserving body bytes on reparse. Fence length and
-delimiter are syntax, not AST or persistence state. Core-authored programs use
+It chooses at least three backticks and more than any run within the body
+({§balanced-fences}), preserving body bytes on reparse. Fence length is syntax,
+not AST or persistence state. Core-authored programs use
 this serializer and the ordinary admission parser. Rendering preserves a matcher
 beside owner metadata, not only a matcher carried inside its `pattern` option.
 
@@ -1691,6 +1680,6 @@ runtime constructs this; the parser provides the fields):
     "column": 12,
     "source": "parser",
     "severity": "error",
-    "message": "READ block opened at line 1 but was not closed with 4 backticks"
+    "message": "READ block opened at line 1 but was not closed with 3 backticks"
 }
 ```

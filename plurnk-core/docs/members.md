@@ -43,9 +43,9 @@ is or is not visible: `tracked`, `included by …`, `a creation record`,
 - **Untracked, scope `root` or `namespace`**: a definition makes it a member
   from the next turn.
 
-  ````members (add) <!-- include the generated reports -->
+  ```members (add) <!-- include the generated reports -->
   {"alias": "reports", "definition": {"glob": "build/*.json"}}
-  ````
+  ```
 
 - **Untracked, scope `none`** (an operator narrowed it): the refusal names the
   recovery, which is git tracking. Staging is enough; no commit is needed, and
@@ -53,9 +53,9 @@ is or is not visible: `tracked`, `included by …`, `a creation record`,
   refused `add` is refused again; a client's `/members add` or a raised scope
   is the user's to give.
 
-  ````sh <!-- git tracks it, so it becomes a member -->
+  ```sh <!-- git tracks it, so it becomes a member -->
   git add build/report.json
-  ````
+  ```
 
 - **Ignored by the repository**: no model definition can include it, and
   `git add` refuses it too; only a client or operator definition covers an

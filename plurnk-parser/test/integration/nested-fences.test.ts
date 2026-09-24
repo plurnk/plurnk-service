@@ -15,7 +15,7 @@ for (const [name, parse] of [
     ["log", PlurnkParser.parseStatements],
     ["client", PlurnkParser.parseClient],
 ] as const) {
-    test(`{§numeric-delimiter}: ${name} keeps a report holding same-width blocks intact under a delimited SEND`, () => {
+    test(`{§statement-rendering}: ${name} keeps a report holding same-width blocks intact under a framed SEND`, () => {
         const body = [
             "The process reversed the supplied bytes.",
             '````node [{"stdin": "open"}]',
@@ -27,7 +27,7 @@ for (const [name, parse] of [
             "````",
             "Observed stdout: segnaro. No further input is needed.",
         ].join("\n");
-        const result = parse(`\`\`\`\`42SEND\n${body}\n\`\`\`\`42\n\n${task}`);
+        const result = parse(`${PlurnkParser.frame("SEND", body)}\n\n${task}`);
         assert.equal(result.unparsedTail, undefined);
         assert.deepEqual(errors(result), []);
         const ops = statements(result);
@@ -52,9 +52,9 @@ test("{§fence-closer}: a shorter inner fence is body and an equal or longer bar
     assert.equal(bodyText(statements(longer)[0]), "Code:");
 });
 
-test("{§numeric-delimiter}: nesting preserves exact bodies across widths, depths, newlines, and operation families", () => {
+test("{§balanced-fences}: nesting preserves exact bodies across widths, depths, newlines, and operation families", () => {
     for (const header of ["SEND", "EDIT (notes.md)", "sh", "BARE", "WORK", "FORK"]) {
-        for (const width of [4, 5, 8]) {
+        for (const width of [3, 4, 5, 8]) {
             for (const depth of [1, 2, 8]) {
                 for (const newline of ["\n", "\r\n"]) {
                     const fence = "`".repeat(width);
@@ -66,7 +66,7 @@ test("{§numeric-delimiter}: nesting preserves exact bodies across widths, depth
                         "  trailing content  ",
                         "",
                     ].join(newline);
-                    const result = PlurnkParser.parse(`${fence}7${header}${newline}${body}${newline}${fence}7\n${task}`);
+                    const result = PlurnkParser.parse(`${PlurnkParser.frame(header, body)}\n${task}`);
                     const context = `${header}, width=${width}, depth=${depth}, newline=${JSON.stringify(newline)}`;
                     assert.equal(result.unparsedTail, undefined, context);
                     assert.deepEqual(errors(result), [], context);
@@ -79,17 +79,22 @@ test("{§numeric-delimiter}: nesting preserves exact bodies across widths, depth
     }
 });
 
-test("{§numeric-delimiter}: a bare fence never closes a delimited block and a foreign delimiter never closes it either", () => {
-    const body = "````\n````9\nstill body";
-    const result = PlurnkParser.parse(`\`\`\`\`42EDIT (notes.md)\n${body}\n\`\`\`\`42\n${task}`);
-    assert.deepEqual(errors(result), []);
-    assert.equal(bodyText(statements(result)[0]), body);
-    const bare = PlurnkParser.parse("````EDIT (notes.md)\nbody\n````42\nmore\n````\n" + task);
-    assert.deepEqual(errors(bare), []);
-    assert.equal(bodyText(statements(bare)[0]), "body\n````42\nmore", "a delimited fence is body inside a bare block");
+test("{§balanced-fences}: a bare fence closes the innermost block of its width, else the outermost it reaches", () => {
+    const wider = PlurnkParser.parse("````EDIT (notes.md)\n```sh\necho literal\n````\n" + task);
+    assert.deepEqual(errors(wider), []);
+    assert.deepEqual(statements(wider).map(writtenOp), ["EDIT", "WAIT"]);
+    assert.equal(bodyText(statements(wider)[0]), "```sh\necho literal", "the wider closer closes the wider block; the unfinished example inside is body");
+    const equal = PlurnkParser.parse("```EDIT (notes.md)\n```sh\necho literal\n```\n```\n" + task);
+    assert.deepEqual(errors(equal), []);
+    assert.deepEqual(statements(equal).map(writtenOp), ["EDIT", "WAIT"]);
+    assert.equal(bodyText(statements(equal)[0]), "```sh\necho literal\n```", "equal widths nest when every inner block closes");
+    const taught = PlurnkParser.parse("````EDIT (edit-example.md) <!-- nesting -->\n```EDIT (create-example.md)\nnested content\n```\n````\n" + task);
+    assert.deepEqual(errors(taught), []);
+    assert.deepEqual(statements(taught).map(writtenOp), ["EDIT", "WAIT"]);
+    assert.equal(bodyText(statements(taught)[0]), "```EDIT (create-example.md)\nnested content\n```", "the hot path's nesting example");
 });
 
-test("{§fence-heading-in-body}: a four-backtick heading ends an undelimited block and opens the next statement", () => {
+test("{§fence-heading-in-body}: a heading ends an unclosed block and opens the next statement", () => {
     const source = "````READ (safe.md)````\n````EDIT (notes.md)\n````sh\nnot the edit\n````\n````NOTE\n````";
     const result = PlurnkParser.parseStatements(source);
     assert.equal(result.unparsedTail, undefined);
@@ -106,7 +111,7 @@ test("{§fence-heading-in-body}: a closer glued to the next opener never swallow
     assert.equal(bodyText(statements(result)[2]), "replacement");
 });
 
-test("{§fence-heading-in-body}: a three-backtick executor line inside a four-backtick block is body", () => {
+test("{§balanced-fences}: a complete three-backtick executor block inside a four-backtick block is body", () => {
     const body = "```sh\necho sample\n```";
     const result = PlurnkParser.parse(`\`\`\`\`EDIT (README.md)\n${body}\n\`\`\`\`\n${task}`);
     assert.deepEqual(errors(result), []);
@@ -155,13 +160,13 @@ test("{§statement-rendering}: a wider canonical wrapper preserves arbitrary unf
     }
 });
 
-test("{§statement-rendering}: frame adds a numeric delimiter exactly when the body holds a four-backtick heading", () => {
+test("{§statement-rendering}: frame chooses a fence wider than any run in the body, three at least", () => {
+    assert.equal(PlurnkParser.frame("READ (a.md)", null), "```READ (a.md)\n```");
     assert.equal(PlurnkParser.frame("EDIT (a.md)", "```sh\nx\n```"), "````EDIT (a.md)\n```sh\nx\n```\n````");
-    const framed = PlurnkParser.frame("EDIT (a.md)", "````READ (b.md)\n````");
-    assert.match(framed, /^`````42EDIT \(a\.md\)\n````READ \(b\.md\)\n````\n`````42$/u);
+    const framed = PlurnkParser.frame("EDIT (a.md)", "```READ (b.md)\n```");
     const reparsed = PlurnkParser.parseStatements(framed);
     assert.deepEqual(statements(reparsed).map(writtenOp), ["EDIT"]);
-    assert.equal(bodyText(statements(reparsed)[0]), "````READ (b.md)\n````");
+    assert.equal(bodyText(statements(reparsed)[0]), "```READ (b.md)\n```");
 });
 
 test("{§inline-chain}: a closer followed by the next opener on the same line closes and opens", () => {

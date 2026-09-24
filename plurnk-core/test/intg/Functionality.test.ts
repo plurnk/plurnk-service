@@ -128,7 +128,7 @@ test("{§functionality-document-body} an adapter's docs/<family>.md rides beneat
             await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId));
             const doc = (await daemon.engine.referenceEntries(workspaceId)).find(({ pathname }) => pathname === "/_plurnk/plurnk/fx.md");
             assert.ok(doc, "the family document is a reference entry");
-            assert.equal(doc.content.startsWith("# fx\n\n## Summary\n\n````fx ("), true, "the generated header owns the H1 and the summary");
+            assert.equal(doc.content.startsWith("# fx\n\n## Summary\n\n```fx ("), true, "the generated header owns the H1 and the summary");
             assert.ok(doc.content.includes("## Tools"), "the generated verb table is present");
             assert.ok(doc.content.endsWith("## Choosing a fixture\n\nAuthored fixture teaching."), `the authored body closes the document, its authoring title removed:\n${doc.content}`);
             assert.equal((doc.content.match(/^# /gmu) ?? []).length, 1, "exactly one H1");
@@ -437,7 +437,7 @@ test("{§functionality-model-mutation} execution verbs are the same owner: read 
         // An accepted settlement replaces the 202 with 200 ({§proposal-accept-applies});
         // the verb's own 201 and outcome ride in the results channel.
         assert.equal(added.status, 200, "the accepted add settled inside the turn");
-        assert.equal((await operate("````viaexec\nfixture\n````")).status, 200, "publication settled at the turn boundary, before the next operation");
+        assert.equal((await operate("```viaexec\nfixture\n```")).status, 200, "publication settled at the turn boundary, before the next operation");
         assert.deepEqual((await states()).map(({ alias, state }) => `${alias}:${state}`), ["svc:active", "viaexec:active"]);
 
         // An operation's failed preparation publishes enabled-but-unavailable with its Problem.
@@ -456,7 +456,7 @@ test("{§functionality-model-mutation} execution verbs are the same owner: read 
         assert.equal((await states()).some(({ alias }) => alias === "nope"), false);
 
         // An unregistered verb is refused by the family registry (body refusals are the manager's own unit contract).
-        assert.equal((await operate("````fx (destroy)````")).status, 404, "an unregistered verb is refused by the family registry with the verb list");
+        assert.equal((await operate("```fx (destroy)```")).status, 404, "an unregistered verb is refused by the family registry with the verb list");
 
     } finally {
         unsubscribe();

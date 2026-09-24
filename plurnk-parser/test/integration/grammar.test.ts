@@ -451,14 +451,14 @@ test("plurnk is an executor name, not a transparent document wrapper", () => {
     assert.equal(isExecution(result) ? result.runtime : null, "plurnk");
     assert.equal("body" in result ? result.body : null, body);
 });
-test("{§fence-heading-in-body}: a four-backtick WAIT inside an undelimited executor block is the turn's WAIT", () => {
+test("{§fence-heading-in-body}: a four-backtick WAIT inside an unclosed executor block is the turn's WAIT", () => {
     const result = PlurnkParser.parseStatements("`````plurnk\n" + section("WAIT", "", inventory("done")), { executors: EXECUTORS });
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [writtenOp(item.statement)] : []), ["plurnk", "WAIT"]);
     const exec = result.items.find((item) => item.kind === "statement");
     assert.equal(exec?.kind === "statement" && isExecution(exec.statement) ? exec.statement.body : "?", null, "the executor block ended at the heading with no body");
 });
-test("{§fence-closer}: a longer bare fence closes a shorter undelimited block and what follows is prose", () => {
+test("{§fence-closer}: a longer bare fence closes a shorter block and what follows is prose", () => {
     const result = PlurnkParser.parseStatements("````sh\n`````\necho hello", { executors: EXECUTORS });
     assert.equal(result.unparsedTail, undefined);
     assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [writtenOp(item.statement)] : []), ["sh"]);

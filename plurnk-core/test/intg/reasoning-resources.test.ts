@@ -137,8 +137,8 @@ for (const limit of [-1, 0, 1, 8]) test(`{§reasoning-initial-read}: configured 
             assert.equal(record.aside, "inspect this turn's reasoning");
             assert.equal(record.path, "reasoning://alice/1/1");
             assert.match(String(record.body), /^\s*1:This harness-generated turn/m);
-            if (limit === 1) assert.doesNotMatch(String(record.body), /````NOTE/);
-            else assert.match(String(record.body), /````NOTE/);
+            if (limit === 1) assert.doesNotMatch(String(record.body), /```NOTE/);
+            else assert.match(String(record.body), /```NOTE/);
             assert.doesNotMatch(String(record.body), /Finding 1:/, "the model's original reasoning is not automatically pushed into the log");
             assert.doesNotMatch(String(record.body), /^@[A-Za-z0-9]+\s+\d+:/m, "the materialized read-only projection has no hashes");
             assert.equal(JSON.parse(reads[0]!.rx).status, 200);
@@ -181,7 +181,7 @@ test("{§reasoning-history}: immutable sources support search, FORK, restart, an
         const shared = await engine.look({ ...context, workerId: unrelatedId, statement: statement(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\``) });
         assert.equal(shared.status, 200);
         assert.equal(shared.content, original, "an explicit source address identifies the same evidence for every workspace worker");
-        assert.equal((await engine.look({ ...context, statement: statement("````READ (reasoning://unrelated/1/2)````") })).status, 404,
+        assert.equal((await engine.look({ ...context, statement: statement("```READ (reasoning://unrelated/1/2)```") })).status, 404,
             "an address never substitutes another worker's history for a missing source");
         assert.equal((await clientDispatch(`\`\`\`\`EDIT (${target}) <1>
 Retained determination.
@@ -299,6 +299,6 @@ test("{§turn-source-resources}: an existing turn without provider reasoning rea
         const future = await look("````READ (reasoning://alice/1/9) <1,-1>````");
         assert.equal(future.status, 404, "a turn that has not happened is missing, not empty");
         assert.equal(future.problem?.type, "https://problems.plurnk.xyz/scheme/reasoning/entry-not-found");
-        assert.equal((await look("````READ (reasoning://alice/2/1) <1,-1>````")).status, 404, "so is a loop that does not exist");
+        assert.equal((await look("```READ (reasoning://alice/2/1) <1,-1>```")).status, 404, "so is a loop that does not exist");
     } finally { await db.close(); }
 });

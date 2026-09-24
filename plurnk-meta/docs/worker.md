@@ -107,11 +107,11 @@ BARE makes one isolated call to the child model, not a persistent worker. It
 receives no parent history or tools. Its prompt is a resource, an inline body,
 or both; resource text precedes an inline body with a blank line between.
 
-````BARE (worker://reviewer/draft.md)
-````
-````BARE (worker://reviewer/draft.md)
+```BARE (worker://reviewer/draft.md)
+```
+```BARE (worker://reviewer/draft.md)
 Assess the argument above; name its weakest step.
-````
+```
 
 The resource supplies its complete current READ text, not a preview. Neither
 prompt form is truncated to fit; provider capacity still applies. A failed

@@ -37,9 +37,9 @@ never installs anything.
 
 `add` installs a skill through the standard installer and enables it:
 
-````skills (add) <!-- from a discover candidate -->
+```skills (add) <!-- from a discover candidate -->
 {"alias": "sql-formatter", "definition": {"name": "sql-formatter", "scope": "project", "source": "example/skills"}}
-````
+```
 
 The alias must equal the skill's `name`; `source` is required unless the
 directory already exists; `scope: "project"` needs a project root and writes

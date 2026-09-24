@@ -26,10 +26,7 @@ for (const entrypoint of ["parse", "parseStatements", "parseClient"] as const) {
             const source = frame(tag, body) + "\n" + task("Inspect the result.");
             const parsed = PlurnkParser[entrypoint](source, { executors });
             const diagnostics = parsed.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
-            assert.deepEqual(diagnostics.map((error) => ({ severity: error.severity, message: error.message })), runtime === null ? [{
-                severity: "warning",
-                message: "`js` is not an operation or a known executor here.",
-            }] : []);
+            assert.deepEqual(diagnostics.map((error) => ({ severity: error.severity, message: error.message })), [], "an unknown tag is a code block, silently");
             assert.equal(parsed.unparsedTail, undefined);
             const statements = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
             assert.deepEqual(statements.map(writtenOp), runtime === null ? ["WAIT"] : [runtime, "WAIT"]);
@@ -103,7 +100,7 @@ test("{§whitespace-contract}: exact closing fences bound bodies before ignored 
     }
 });
 
-test("{§balanced-fences}: complete same-width examples remain body with or without an explicit delimiter", () => {
+test("{§balanced-fences}: complete same-width examples remain body", () => {
     for (const newline of ["\n", "\r\n"]) {
         const bare = PlurnkParser.parse("````SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n````\n".replaceAll("\n", newline) + task("Done."));
         assert.equal(bare.unparsedTail, undefined);
@@ -111,10 +108,6 @@ test("{§balanced-fences}: complete same-width examples remain body with or with
         assert.deepEqual(ops(bare).map(writtenOp), ["SEND", "WAIT"]);
         const bareSend = ops(bare)[0];
         assert.equal(bareSend.op === "SEND" ? bareSend.body?.raw : null, "Code:\n```ts\nconst value = 42;\n```\nVerified.".replaceAll("\n", newline), "the complete nesting preserves the example and the following prose");
-        const delimited = PlurnkParser.parse("````42SEND\nCode:\n```ts\nconst value = 42;\n```\nVerified.\n````42\n".replaceAll("\n", newline) + task("Done."));
-        assert.deepEqual(errors(delimited), []);
-        const delimitedSend = ops(delimited)[0];
-        assert.equal(delimitedSend.op === "SEND" ? delimitedSend.body?.raw : null, "Code:\n```ts\nconst value = 42;\n```\nVerified.".replaceAll("\n", newline));
     }
 });
 
@@ -176,12 +169,11 @@ test("statement lists retain source order without inventing turn boundaries", ()
     assert.deepEqual(ops(unfinished).map(writtenOp), ["KILL", "WAIT", "READ"]);
 });
 
-test("former terminal names are not reserved operations", () => {
+test("former terminal names are not reserved operations, and draw nothing", () => {
     for (const name of ["DONE", "FAIL"]) {
         const parsed = PlurnkParser.parse(frame(name, "Not an operation.") + "\n\n" + frame("SEND", "The answer."));
         assert.deepEqual(ops(parsed).map(writtenOp), ["SEND"]);
-        assert.deepEqual(errors(parsed).map(({ severity }) => severity), ["warning"]);
-        assert.match(errors(parsed)[0].message, /not an operation or a known executor/);
+        assert.deepEqual(errors(parsed), []);
     }
 });
 

@@ -43,26 +43,19 @@ export interface ParseOptions {
 export default class PlurnkParser {
     static readonly NO_VALID_OPERATION = "No valid Operation Syntax OPs detected.";
 
-    // {§statement-rendering} — canonical framing protects arbitrary, even unfinished,
-    // examples without depending on balanced nesting ({§numeric-delimiter}).
+    // {§statement-rendering} — canonical framing is wider than any backtick run in the body, so an
+    // arbitrary, even unfinished, example survives reparse as body ({§balanced-fences}).
     static frame(header: string, body: string | null): string {
         const longest = (body?.match(/`+/g) ?? []).reduce((maximum, ticks) => Math.max(maximum, ticks.length), 0);
-        const fence = "`".repeat(Math.max(4, longest + 1));
-        const nested = body !== null && /^`{4,}[0-9]*[A-Za-z]/mu.test(body);
-        let delimiter = "";
-        if (nested) {
-            let candidate = 42;
-            while (new RegExp(`^\`{3,}${candidate}(?![0-9])`, "mu").test(body)) candidate += 1;
-            delimiter = String(candidate);
-        }
-        return `${fence}${delimiter}${header}\n${body === null ? "" : `${body}\n`}${fence}${delimiter}`;
+        const fence = "`".repeat(Math.max(3, longest + 1));
+        return `${fence}${header}\n${body === null ? "" : `${body}\n`}${fence}`;
     }
 
     // {§log-wire-format} — one statement's heading as written, canonical slot order, no fence: what a
     // log row echoes so the model reads its request back in the syntax it wrote it in.
     static heading(statement: ClientStatement): string {
         const [first] = PlurnkParser.stringify([{ ...statement, body: null } as ClientStatement]).split("\n");
-        return (first ?? "").replace(/^`+[0-9]*/u, "");
+        return (first ?? "").replace(/^`+/u, "");
     }
 
     // {§statement-rendering} — framing is syntax, never persisted AST state.
@@ -281,16 +274,6 @@ export default class PlurnkParser {
             const at = items.findIndex((item) => item.kind === "statement" && (item.statement as { position?: { line: number } }).position?.line === note.line);
             if (at !== -1) items.splice(at + 1, 0, advisory);
         }
-        // {§operation-fences} — a three-backtick operation ran; the receipt names the taught width,
-        // right after its statement, so the habit is tolerated and the form is still learned.
-        for (const note of lexer.takeToleratedFences()) {
-            const advisory: ParseItem<S> = {
-                kind: "error",
-                error: new PlurnkParseError(note.line, note.column, "parser", `\`${note.tag}\` ran with three backticks; the taught fence is four.`, "warning"),
-            };
-            const at = items.findIndex((item) => item.kind === "statement" && (item.statement as { position?: { line: number } }).position?.line === note.line);
-            items.splice(at === -1 ? items.length : at + 1, 0, advisory);
-        }
 
         for (const err of errors) {
             if (!consumedErrors.has(err)
@@ -306,15 +289,9 @@ export default class PlurnkParser {
                     "The aside was not closed with `-->`; it was read to the end of the line.", "warning"),
             });
         }
-        // {§quotation} — an offset fence is prose, which is what plurnk.md tells the model to write
-        // for an example it does not want run. It draws nothing: there is no mistake to report.
-        // The rest are likely typos, so a misspelled executor is never a silent loss.
-        for (const note of lexer.takeUnknownTags()) {
-            if (note.reason === "indented") continue;
-            const message = note.reason === "quoted"
-                ? `\`${note.tag}\` inside a code block was shown, not run.`
-                : `\`${note.tag}\` is not an operation or a known executor here.`;
-            items.push({ kind: "error", error: new PlurnkParseError(note.line, note.column, "parser", message, "warning") });
+        // {§quotation} — an operation inside an unlabeled code block was shown, never run; say so once.
+        for (const note of lexer.takeQuotedTags()) {
+            items.push({ kind: "error", error: new PlurnkParseError(note.line, note.column, "parser", `\`${note.tag}\` inside a code block was shown, not run.`, "warning") });
         }
 
         if (tier === "model") {
@@ -385,7 +362,7 @@ export default class PlurnkParser {
         if (modeName !== "TARGET" && modeName !== "METADATA") return undefined;
         const openTag = lexer.getOpenTag();
         const from = { line: lexer.getOpenTagLine(), column: lexer.getOpenTagColumn() };
-        const heading = lexer.getOpenHeading().replace(/^`+[0-9]*/, "") || openTag;
+        const heading = lexer.getOpenHeading().replace(/^`+/, "") || openTag;
         const reason = modeName === "METADATA"
             ? `metadata modifier of \`${heading}\` opened at line ${from.line} but never closed - add \`]\``
             : modeName === "TARGET"

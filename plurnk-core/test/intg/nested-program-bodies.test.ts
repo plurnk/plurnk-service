@@ -7,7 +7,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
 
 for (const header of ["SEND", "EDIT (worker:///example.md)"]) {
-    test(`{§numeric-delimiter}: a delimited ${header} preserves quoted examples, original source, and the real task disposition`, async () => {
+    test(`{§statement-rendering}: a framed ${header} preserves quoted examples, original source, and the real task disposition`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `nested-${crypto.randomUUID()}`);
@@ -22,9 +22,9 @@ for (const header of ["SEND", "EDIT (worker:///example.md)"]) {
                 "Report ends here.",
             ].join("\n");
             const disposition = header === "SEND" ? "NOTE" : "WAIT";
-            // The body quotes four-backtick headings, so the block needs the numeric delimiter to hold them.
+            // The body quotes four-backtick headings, so the block is framed one wider to hold them.
             const source = `${PlurnkParser.frame(header, body)}\n\n${PlurnkParser.frame(disposition, "")}`;
-            assert.match(source, /^`````42/u, "frame chose the delimiter for the quoted headings");
+            assert.match(source, /^`````[A-Z]/u, "frame chose a fence wider than the quoted headings");
             const provider = new Mock({
                 contextWindow: 100_000,
                 responses: [{ assistant: { content: source, reasoning: null }, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } }],

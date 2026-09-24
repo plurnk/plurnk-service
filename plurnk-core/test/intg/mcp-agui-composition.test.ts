@@ -310,19 +310,19 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.ok(streamEvents.every((event) => !Object.hasOwn(event, "producerWorkerId")), "the wire carries one causal actor identity");
         assert.ok(streamEvents.every((event) => /^fixture:\/\/\/[a-f0-9]{8}$/u.test(event.target)));
         const firstPacket = packet(provider.requests, 0);
-        assert.ok(firstPacket.includes("````mcp (list|discover|add|enable|disable|remove) <!-- Manage MCP servers -->\\\\n````"),
+        assert.ok(firstPacket.includes("```mcp (list|discover|add|enable|disable|remove) <!-- Manage MCP servers -->\\\\n```"),
             "the initial survey teaches the manager's complete lifecycle");
         assert.doesNotMatch(firstPacket, /## Registered Tools/);
         assert.match(firstPacket, /Echo tools for transport testing\./);
         assert.doesNotMatch(firstPacket, /Pass the message field unchanged/, "full server instructions are not pushed into turn0");
         assert.match(firstPacket, /"path":"worker:\/\/\/_plurnk\/tools\/fixture\.md"/);
-        assert.match(firstPacket, /````fixture \(echo\)/);
-        assert.doesNotMatch(firstPacket, /````fixture \([^)]*fail/);
+        assert.match(firstPacket, /```fixture \(echo\)/);
+        assert.doesNotMatch(firstPacket, /```fixture \([^)]*fail/);
         assert.doesNotMatch(firstPacket, /"path":"worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json"/, "without PLURNK_MCP_EXPANDED, turn 0 surveys family documents only");
         const familyContract = packet(provider.requests, 1);
         assert.match(familyContract, /Pass the message field unchanged\./, "READ of the family document retrieves the full authored instructions");
-        assert.match(familyContract, /````fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json -->/);
-        assert.doesNotMatch(familyContract, /````fixture \(fail\)/);
+        assert.match(familyContract, /```fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json -->/);
+        assert.doesNotMatch(familyContract, /```fixture \(fail\)/);
         const echoContract = packet(provider.requests, 2);
         assert.match(echoContract, /"title": "fixture: echo"/);
         assert.match(echoContract, /"additionalProperties": false/, "the linked document preserves constraints omitted from the preview");
@@ -389,7 +389,7 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         assert.equal((resumed.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
         const failContract = packet(provider.requests, 7);
         assert.match(failContract, /Return a deterministic tool error\./);
-        assert.match(failContract, /````fixture \(fail\)/);
+        assert.match(failContract, /```fixture \(fail\)/);
         const recoveryPacket = packet(provider.requests, 8);
         assert.match(recoveryPacket, /tool-reported-error/);
         assert.match(recoveryPacket, /The MCP tool reported an error\./);
@@ -577,7 +577,7 @@ test(
             assert.match(kubernetesFamily, /worker:\/\/\/_plurnk\/tools\/kubernetes\/configuration_view\.md/);
             assert.doesNotMatch(kubernetesFamily, /pods_list/, "disabled remote tools stay out of the family contract");
             const kubernetesContract = packet(provider.requests, 2);
-            assert.match(kubernetesContract, /````kubernetes \(configuration_view\)/);
+            assert.match(kubernetesContract, /```kubernetes \(configuration_view\)/);
             assert.doesNotMatch(kubernetesContract, /pods_list/, "one exact document carries only its selected tool contract");
             assert.match(packet(provider.requests, 3), /current-context: specimen/);
 
@@ -590,7 +590,7 @@ test(
             }));
             assert.equal((gojiRun.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
             assert.match(packet(provider.requests, 5), /worker:\/\/\/_plurnk\/tools\/goji\/goji_explain_term\.md/);
-            assert.match(packet(provider.requests, 6), /````goji \(goji_explain_term\)/);
+            assert.match(packet(provider.requests, 6), /```goji \(goji_explain_term\)/);
             const remoteResults = packet(provider.requests, 7);
             assert.match(remoteResults, /Answer Engine Optimisation/);
             assert.match(remoteResults, /Melbourne-based full-service digital agency/);

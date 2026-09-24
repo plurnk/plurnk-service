@@ -18,7 +18,7 @@ test("{§naked-pattern}: `^` claims the regex dialect without slashes, and a tra
     assert.deepEqual(op.matcher, { dialect: "regex", raw: "^Decision:.*", pattern: "^Decision:.*", flags: "" });
     assert.equal(op.aside, "select decisions");
     assert.equal(op.metadata, null);
-    assert.equal(PlurnkParser.stringify([op]), "````READ (notes.md) ^Decision:.* <!-- select decisions -->\n````");
+    assert.equal(PlurnkParser.stringify([op]), "```READ (notes.md) ^Decision:.* <!-- select decisions -->\n```");
     const slash = one("````READ (notes.md) /Decision:.*/i <!-- the slash spelling keeps its flags -->\n````\n");
     assert.deepEqual(slash.diagnostics, []);
     assert.deepEqual(slash.op.matcher, { dialect: "regex", raw: "/Decision:.*/i", pattern: "Decision:.*", flags: "i" });
@@ -29,10 +29,10 @@ test("{§naked-pattern}: `^` claims the regex dialect without slashes, and a tra
 
 test("{§naked-pattern}: a sigil-less glob or literal on the heading line is the matcher on FIND, READ and KILL, silently", () => {
     for (const [source, raw] of [
-        ["````FIND (src/**/*.ts) TODO\n````\n", "TODO"],
-        ["````FIND (worker:///) *.test.ts <!-- the suites -->\n````\n", "*.test.ts"],
-        ["````READ (worker:///a.md) bats <!-- lines naming bats -->\n````\n", "bats"],
-        ["````KILL (log:///1/**) stale receipt\n````\n", "stale receipt"],
+        ["```FIND (src/**/*.ts) TODO\n```\n", "TODO"],
+        ["```FIND (worker:///) *.test.ts <!-- the suites -->\n```\n", "*.test.ts"],
+        ["```READ (worker:///a.md) bats <!-- lines naming bats -->\n```\n", "bats"],
+        ["```KILL (log:///1/**) stale receipt\n```\n", "stale receipt"],
     ] as const) {
         const { op, diagnostics: notes } = one(source);
         assert.deepEqual(notes, [], source);
@@ -48,7 +48,7 @@ test("{§naked-pattern}: on EDIT a heading-line sigil is the matcher and the lin
     assert.deepEqual(replace.diagnostics, []);
     assert.deepEqual(replace.op.matcher, { dialect: "regex", raw: "/foo/", pattern: "foo", flags: "" });
     assert.equal(replace.op.body, "bar\nbaz");
-    assert.equal(PlurnkParser.stringify([replace.op]), "````EDIT (worker:///a.txt) /foo/\nbar\nbaz\n````");
+    assert.equal(PlurnkParser.stringify([replace.op]), "```EDIT (worker:///a.txt) /foo/\nbar\nbaz\n```");
     const remove = one("````EDIT (books.xml) //book[price > 35.00] <!-- an empty body removes each match -->\n````\n");
     assert.deepEqual(remove.diagnostics, []);
     assert.deepEqual(remove.op.matcher, { dialect: "xpath", raw: "//book[price > 35.00]" });
@@ -81,18 +81,18 @@ test("{§matcher-option}: the option form is still read, and it is the rendered 
     assert.deepEqual(option.diagnostics, []);
     assert.deepEqual(option.op.matcher, { dialect: "glob", raw: "(a|b) or [c]" });
     assert.equal(option.op.metadata, null);
-    assert.equal(PlurnkParser.stringify([option.op]), '````READ (worker:///a.md) [{"pattern":"(a|b) or [c]"}]\n````', "a matcher opening with `(` cannot ride bare");
+    assert.equal(PlurnkParser.stringify([option.op]), '```READ (worker:///a.md) [{"pattern":"(a|b) or [c]"}]\n```', "a matcher opening with `(` cannot ride bare");
     const commented = one('````FIND (worker:///) [{"pattern":"see <!-- this -->"}]\n````\n');
-    assert.equal(PlurnkParser.stringify([commented.op]), '````FIND (worker:///) [{"pattern":"see <!-- this -->"}]\n````');
+    assert.equal(PlurnkParser.stringify([commented.op]), '```FIND (worker:///) [{"pattern":"see <!-- this -->"}]\n```');
     const reparsed = one(PlurnkParser.stringify([commented.op]) + "\n");
     assert.deepEqual(reparsed.op.matcher, commented.op.matcher);
     const kept = one('````FIND (worker:///) [{"pattern":"~stale","limit":3}]\n````\n');
     assert.deepEqual(kept.op.matcher, { dialect: "fts", raw: "~stale" });
     assert.deepEqual(kept.op.metadata, ['{"pattern":"~stale","limit":3}'], "a block with other keys stays with its owner verbatim");
-    assert.equal(PlurnkParser.stringify([kept.op]), '````FIND (worker:///) [{"pattern":"~stale","limit":3}]\n````');
+    assert.equal(PlurnkParser.stringify([kept.op]), '```FIND (worker:///) [{"pattern":"~stale","limit":3}]\n```');
     const transfer = one('````COPY (worker:///a.md) [{"pattern":"/x/"}] (worker:///b.md)\n````\n');
     assert.deepEqual(transfer.diagnostics, []);
-    assert.equal(PlurnkParser.stringify([transfer.op]), '````COPY (worker:///a.md) [{"pattern":"/x/"}] (worker:///b.md)\n````', "COPY/MOVE operands keep the option form");
+    assert.equal(PlurnkParser.stringify([transfer.op]), '```COPY (worker:///a.md) [{"pattern":"/x/"}] (worker:///b.md)\n```', "COPY/MOVE operands keep the option form");
 });
 
 for (const op of ["FIND", "READ", "EDIT", "KILL"]) {
@@ -122,7 +122,7 @@ test("{§trailing-slots}: canonicalizing trailing owner metadata retains the mat
     const parsed = one('````READ (notes.md) /todo/i [{"limit":3}] <1,-1> <!-- selected -->\n````');
     assert.equal(parsed.diagnostics.length, 2);
     const rendered = PlurnkParser.stringify([parsed.op]);
-    assert.equal(rendered, '````READ (notes.md) <1,-1> [{"limit":3}] /todo/i <!-- selected -->\n````');
+    assert.equal(rendered, '```READ (notes.md) <1,-1> [{"limit":3}] /todo/i <!-- selected -->\n```');
     const reparsed = one(rendered);
     assert.deepEqual(reparsed.diagnostics, []);
     assert.deepEqual(reparsed.op, parsed.op);
@@ -179,7 +179,7 @@ test("{§local-path-fragment}: a bare path's #channel is its fragment, and strin
     const { op, diagnostics: notes } = one("````READ (data/users.html#readable) <1,-1>\n````\n");
     assert.deepEqual(notes, []);
     assert.deepEqual(targetOf(op), { kind: "local", raw: "data/users.html", fragment: "readable" });
-    assert.equal(PlurnkParser.stringify([op]), "````READ (data/users.html#readable) <1,-1>\n````");
+    assert.equal(PlurnkParser.stringify([op]), "```READ (data/users.html#readable) <1,-1>\n```");
     assert.deepEqual(targetOf(one("````READ (data/users.html)\n````\n").op), { kind: "local", raw: "data/users.html" }, "no `#`, no field");
     assert.deepEqual(targetOf(one("````FIND (src/**#readable) /x/\n````\n").op), { kind: "local", raw: "src/**", fragment: "readable" });
 });

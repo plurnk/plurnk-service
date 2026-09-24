@@ -14,18 +14,18 @@ Its summary opens with the current time in the effective zone and previews
 the first occurrences; its definition carries the rule as it would be stored.
 Nothing is persisted.
 
-````schedule (discover) <!-- what time is it, and when would this fire -->
+```schedule (discover) <!-- what time is it, and when would this fire -->
 {"source": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20"}
-````
+```
 
 ## add
 
 `add` persists the rule for this workspace and arms it. It is a host effect,
 admitted under the loop's policy.
 
-````schedule (add)
+```schedule (add)
 {"alias": "daily", "definition": {"rule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20", "target": "worker://alice", "prompt": "Text delivered at each occurrence."}}
-````
+```
 
 - `rule`: bare `FREQ=…` parts, or a `DTSTART` line and an `RRULE` line. A
   workspace rule ends: it carries `COUNT` or `UNTIL`. Without a `DTSTART` the

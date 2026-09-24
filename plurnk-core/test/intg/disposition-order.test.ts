@@ -17,7 +17,7 @@ test("a KILL after SEND executes: curation and the reply persist before a later 
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const seed = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [response("````EDIT (worker:///note.md)\nEvidence.\n````\n````NOTE\nReview.\n````")] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [response("```EDIT (worker:///note.md)\nEvidence.\n```\n```NOTE\nReview.\n```")] }),
             workspaceId, workerId, loopId, messages: [],
         });
         const originalRows = await db.test_log_entries_by_turn.all<{ id: number; sequence: number; op: string; active: number }>({ turn_id: seed.turnId });
@@ -46,7 +46,7 @@ Answer.
         const curated = await db.test_log_entries_by_turn.all<{ id: number; active: number }>({ turn_id: seed.turnId });
         assert.equal(curated.find(({ id }) => id === plan.id)?.active, 0, "the KILL authored after SEND curated the earlier note");
         assert.equal((await engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [response("````KILL\n````")] }),
+            provider: new Mock({ contextWindow: 100_000, responses: [response("```KILL\n```")] }),
             workspaceId, workerId, loopId, messages: [],
         })).status, 200);
     } finally { await db.close(); }
@@ -59,7 +59,7 @@ test("SEND authored first: later operations run in authored order and completion
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const source = "````SEND\nInspect results.\n````\n````EDIT (worker:///note.md)\nCreated before READ.\n````\n````READ (worker:///note.md)````\n````FIND (worker:///*) [{\"pattern\":\"/[/\"}]````";
+        const source = "```SEND\nInspect results.\n```\n```EDIT (worker:///note.md)\nCreated before READ.\n```\n```READ (worker:///note.md)```\n```FIND (worker:///*) [{\"pattern\":\"/[/\"}]```";
         const result = await engine.runTurn({ provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }), workspaceId, workerId, loopId, messages: [] });
         assert.equal(result.status, 102);
         assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["EDIT", 201], ["READ", 200], [null, 400]],
@@ -80,7 +80,7 @@ test("{§unparsed-tail-boundary} a lost boundary refuses only what follows it: t
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [
-                response("````EDIT (worker:///before-loss.md)\nKept.\n````\n````WAIT\nContinue.\n````\n````READ (unfinished"),
+                response("```EDIT (worker:///before-loss.md)\nKept.\n```\n```WAIT\nContinue.\n```\n```READ (unfinished"),
             ] }), workspaceId, workerId, loopId, messages: [],
         });
         assert.equal(result.status, 102, "the failed row keeps the loop going; nothing was resampled");
@@ -99,11 +99,11 @@ test("{§unparsed-tail-boundary} a lost boundary refuses only what follows it: t
 });
 
 test("internal turn programs admit a disposition anywhere like model turns", () => {
-    const source = "````KILL (log:///1/1/*)\n````\n\n````WAIT\nContinue.\n````";
+    const source = "```KILL (log:///1/1/*)\n```\n\n```WAIT\nContinue.\n```";
     const statements = TurnOps.parseInternal(source);
     assert.deepEqual(statements.map(({ op }) => op), ["KILL", "WAIT"]);
     assert.equal(TurnOps.renderInternal(statements), source);
     // {§disposition-anywhere} — a program that authors an operation after its disposition is valid turnOps.
-    const first = TurnOps.parseInternal("````WAIT\nContinue.\n````\n````KILL (log:///1/1/*)````");
+    const first = TurnOps.parseInternal("```WAIT\nContinue.\n```\n```KILL (log:///1/1/*)```");
     assert.deepEqual(first.map(({ op }) => op), ["WAIT", "KILL"]);
 });

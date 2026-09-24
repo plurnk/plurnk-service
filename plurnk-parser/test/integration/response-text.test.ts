@@ -24,7 +24,7 @@ test("{§response-text}: whitespace, operation bodies and asides are not outside
 for (const quote of [
     "`````text\n````SEND\nExample only.\n````\n`````",
     "```\n````KILL (worker:///keep.md)\n````\n```",
-    "  ````READ (quoted.md)\n  ````",
+    "    ```READ (quoted.md)\n    ```",
     "~~~markdown\nExample.\n~~~",
 ]) {
     test(`{§response-text}: quotation stays one literal text span: ${JSON.stringify(quote)}`, () => {
@@ -63,7 +63,7 @@ test("{§unfenced-operation}: a prose line that opens with an operation's name d
     assert.deepEqual(warnings("KILL The recovery site is **CEDAR-HARBOR-27**."), [[1, 0, "`KILL` has no fence, so it did not run."]]);
     assert.deepEqual(warnings("Let me look.\nREAD (worker:///notes.md)\nKILL"), [
         [2, 0, "`READ` has no fence, so it did not run."],
-        [3, 0, "`KILL` opened with no fence; the taught form is four backticks."],
+        [3, 0, "`KILL` opened with no fence; the taught form is three backticks."],
     ], "{§naked-operation} the bare name alone opens; the operand line still refuses");
     for (const quiet of [
         "Example:\n```\nKILL (worker:///notes.md)\n```",

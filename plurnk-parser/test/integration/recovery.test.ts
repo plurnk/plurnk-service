@@ -64,7 +64,7 @@ test("{§scope-slot-tolerance} a scope inside a target is applied with one factu
     const errs = errors(r);
     assert.deepEqual(errs.map((e) => [e.line, e.severity]), [[1, "warning"], [1, "warning"], [3, "warning"]]);
     assert.equal(errs[0].message, "The scope was inside the target slot; it was applied as the operation scope.");
-    assert.equal(errs[0].column, 26);
+    assert.equal(errs[0].column, 25);
     const ops = statements(r);
     assert.deepEqual(ops.map(writtenOp), ["COPY", "READ", "WAIT"]);
     const copy = ops[0];
@@ -152,7 +152,7 @@ for (const header of [
             assert.equal(error.severity, "error");
             assert.equal(error.source, "parser");
             assert.equal(error.line, 1);
-            assert.equal(error.column, 4 + Array.from(header.slice(0, header.lastIndexOf("("))).length);
+            assert.equal(error.column, 3 + Array.from(header.slice(0, header.lastIndexOf("("))).length);
             assert.match(error.message, /^unexpected `\(` \(`\(path\)` slot opener\)/u);
             assert.doesNotMatch(error.message, /pattern|exactly one|OPEN_|LPAREN|RPAREN/u);
             assert.equal(r.unparsedTail, undefined);

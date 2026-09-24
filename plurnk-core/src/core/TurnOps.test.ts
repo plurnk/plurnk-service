@@ -4,10 +4,10 @@ import { UNKNOWN_POSITION, type EditStatement, type FindStatement, type Disposit
 import TurnOps from "./TurnOps.ts";
 
 test("{§op-execution-order} internal programs may omit a disposition without inventing one", () => {
-    const source = "````READ (worker:///notes.md)````";
+    const source = "```READ (worker:///notes.md)```";
     const parsed = TurnOps.parseInternal(source);
     assert.deepEqual(parsed.map(({ op }) => op), ["READ"]);
-    assert.equal(TurnOps.renderInternal(parsed), "````READ (worker:///notes.md)\n````");
+    assert.equal(TurnOps.renderInternal(parsed), "```READ (worker:///notes.md)\n```");
 });
 
 test("TurnOps: internal source round-trips through the public parser", () => {
@@ -24,12 +24,12 @@ test("TurnOps: internal source round-trips through the public parser", () => {
     ];
     const source = TurnOps.renderInternal(statements);
     assert.equal(source, [
-        "````FIND (*) <1,-1> [{\"trace\": \"one\", \"shape\": {\"nested\": true}}] <!-- workspace files -->",
-        "````",
+        "```FIND (*) <1,-1> [{\"trace\": \"one\", \"shape\": {\"nested\": true}}] <!-- workspace files -->",
+        "```",
         "",
-        "````WAIT",
+        "```WAIT",
         "Observe the results.",
-        "````",
+        "```",
     ].join("\n"));
     const parsed = TurnOps.parseInternal(source);
     assert.deepEqual(parsed.map(({ op }) => op), ["FIND", "WAIT"]);

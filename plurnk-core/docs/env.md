@@ -9,9 +9,9 @@ worker's overrides. `list` shows the effective values and their origins.
 reach every worker's commands and newly started MCP servers, without depending
 on which worker starts them:
 
-````env (add)
+```env (add)
 {"scope":"workspace","alias":"NODE_ENV","definition":{"value":"production"}}
-````
+```
 
 Omitting `scope` selects your worker. Its overrides do not configure shared MCPs.
 Workspace changes affect subsequent launches; running processes keep their
@@ -40,9 +40,9 @@ you — and its changes never reach yours. Workspace defaults remain shared, not
 The heading's `[metadata]` takes `env`. On a command fence it is that run's
 environment, over your entries, and it is gone when the run ends:
 
-````sh [{"env": {"RUST_LOG": "debug"}}]
+```sh [{"env": {"RUST_LOG": "debug"}}]
 cargo test
-````
+```
 
 On `WORK` and `FORK` the same metadata is the child's starting environment: a
 copy of your entries first, then each name here becomes its own (`worker.md`).

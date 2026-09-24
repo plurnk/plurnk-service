@@ -150,16 +150,16 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string; producer: string }>({ worker_id: workerId });
         const initializationSource = sources.find((row) => row.turn_id === turns[0]!.id && row.kind === "ops");
         assert.equal(initializationSource?.producer, "_plurnk");
-        assert.match(initializationSource!.content, /^````/);
+        assert.match(initializationSource!.content, /^```/);
         assert.doesNotMatch(initializationSource!.content, /^(`{4,})\w[^\n]*\1$/m, "initialization never teaches inline operation fences");
-        assert.match(initializationSource!.content, /^````READ \(ops:\/\/subject\/1\/1\)[^\n]*\n````$/m, "the initialization program demonstrates a bodyless READ with a separate closing line");
+        assert.match(initializationSource!.content, /^```READ \(ops:\/\/subject\/1\/1\)[^\n]*\n```$/m, "the initialization program demonstrates a bodyless READ with a separate closing line");
         assert.ok(initializationSource!.content.includes("ops://subject/1/1"));
         assert.ok(!initializationRows.some(({ op }) => op === null));
         assert.ok(initializationRows.some(({ op }) => op === "READ"), "initialization observes its actual program");
         assert.ok(initializationRows.some(({ op }) => op === "NOTE"), "source retention does not replace executed results");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
         const opsReceipt = logEntries(packet).find(({ path: target }) => target === "ops://subject/1/1");
-        assert.match(String(opsReceipt?.body), /\d+:````READ [^\n]+\n[ \t]*\d+:````\n/, "the model sees the same multiline examples through turn0's ordinary READ");
+        assert.match(String(opsReceipt?.body), /\d+:```READ [^\n]+\n[ \t]*\d+:```\n/, "the model sees the same multiline examples through turn0's ordinary READ");
 
         const inferenceRows = await rowsFor(turns[1]!.id);
         const inferenceSource = sources.find((row) => row.turn_id === turns[1]!.id && row.kind === "ops");

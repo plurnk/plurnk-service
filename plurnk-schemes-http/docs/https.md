@@ -68,16 +68,16 @@ Request headers share one `[{"Key": "value", ...}]` metadata block after the
 target and any scope; option objects in the array merge left to right, and
 metadata stays on one line.
 
-````READ (https://api.example.com/v1/me) [{"Accept": "application/json"}]
-````
+```READ (https://api.example.com/v1/me) [{"Accept": "application/json"}]
+```
 
-````EDIT (https://api.example.com/v1/thing/42) [{"Content-Type": "application/json"}]
+```EDIT (https://api.example.com/v1/thing/42) [{"Content-Type": "application/json"}]
 {"done":true}
-````
+```
 
-````SEND (https://api.example.com/v1/search) [{"Content-Type": "application/json"}]
+```SEND (https://api.example.com/v1/search) [{"Content-Type": "application/json"}]
 {"query":"plurnk"}
-````
+```
 
 A request with explicit metadata is ineligible for later cache reuse, and its
 HTML uses the local reader projection: request headers never reach the

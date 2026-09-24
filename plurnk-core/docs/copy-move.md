@@ -10,18 +10,18 @@ follows its own path. Neither operation takes a body.
 
 Copy source lines 2–3 into a new entry:
 
-````COPY (worker:///src.md) <2,3> (worker:///slice.md)
-````
+```COPY (worker:///src.md) <2,3> (worker:///slice.md)
+```
 
 Append source line 1 to that entry:
 
-````COPY (worker:///src.md) <1> (worker:///slice.md) <-1>
-````
+```COPY (worker:///src.md) <1> (worker:///slice.md) <-1>
+```
 
 Move the whole resulting channel to a new address:
 
-````MOVE (worker:///slice.md) (worker:///archive.md)
-````
+```MOVE (worker:///slice.md) (worker:///archive.md)
+```
 
 COPY leaves its source unchanged. MOVE removes the selected source region or
 channel after the destination succeeds; a failed destination leaves it intact.

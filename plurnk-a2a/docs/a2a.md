@@ -13,9 +13,9 @@ returns one inert candidate carrying the exact definition. `add` persists and
 enables it for this workspace; it is a host effect, admitted under the loop's
 policy.
 
-````a2a (add)
+```a2a (add)
 {"alias": "peer", "definition": {"name": "peer", "url": "https://agents.example.com/peer"}}
-````
+```
 
 Authentication is the definition's (headers or a token the operator
 configured), never a body's. An agent whose card is unreachable is listed
@@ -24,9 +24,9 @@ lifecycle; operator-configured agents (`PLURNK_A2A_*`) are disable-only.
 
 ## Working with an added agent
 
-````SEND (a2a://peer) <!-- start a task -->
+```SEND (a2a://peer) <!-- start a task -->
 The task, in prose.
-````
+```
 
 A task answers `102` with its `a2a://peer/tasks/<id>` resource and wakes the
 next turn when it concludes; a direct message answers `200` with an

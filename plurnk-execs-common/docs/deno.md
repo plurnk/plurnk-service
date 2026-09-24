@@ -6,13 +6,13 @@ target runs that file and receives the body as stdin; `[{"args": [...]}]` passes
 literal arguments, readable as `Deno.args`. Node is always present; deno only
 when the host has it.
 
-````deno <!-- the body is the program -->
+```deno <!-- the body is the program -->
 const versions: Record<string, string> = Deno.version;
 console.log(JSON.stringify(versions));
-````
+```
 
-````deno (scripts/check.ts) [{"args": ["--strict"]}]
-````
+```deno (scripts/check.ts) [{"args": ["--strict"]}]
+```
 
 `console.log` streams to `#stdout`, `console.error` to `#stderr`; an uncaught
 error or `Deno.exit(1)` closes with status 500. Live input

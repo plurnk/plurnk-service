@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PlurnkParser } from "../../src/index.ts";
 import { Validator } from "@plurnk/plurnk-contracts";
-import { isExecution } from "@plurnk/plurnk-contracts";
+import { isExecution, writtenOp } from "@plurnk/plurnk-contracts";
 
 // Registered tags are lowercase ({§executor-runtime-declaration}); the fence may spell them in any case.
 const EXECUTORS = ["sh", "bash", "node", "gitea", "constructor", "tostring", "valueof"];
@@ -48,7 +48,7 @@ test("fenced operations: native keywords take precedence over executor names", (
 
 test("fenced operations: inner programs and different-length fences remain exact literal body text", () => {
     const body = '## A heading\n```sh\necho hello\n```\n`````\n### EDIT_ (unchanged<1,2>)\n';
-    const [edit] = statements(`\`\`\`\`42EDIT (README.md) <1,-1>\n${body}\n\`\`\`\`42`);
+    const [edit] = statements(PlurnkParser.frame("EDIT (README.md) <1,-1>", body));
     assert.equal(edit.op, "EDIT");
     assert.equal(edit.body, body);
 });
@@ -62,7 +62,7 @@ test("fenced operations: shorter and longer runs stay literal for independently 
                 .flatMap((inner) => ["`".repeat(inner) + "sh", "echo literal", "`".repeat(inner)])
                 .concat(fence + "not-a-closer", "a same-width named example", fence)
                 .join(newline);
-            const [edit] = statements(`${fence}7EDIT (notes.md)${newline}${body}${newline}${fence}7\t `);
+            const [edit] = statements(`${fence}EDIT (notes.md)${newline}${body}${newline}${fence}\t `);
             assert.equal(edit.op, "EDIT");
             assert.equal(edit.body, body, `fence count ${count}`);
         }
@@ -136,12 +136,14 @@ test("{§scheme-metadata-modifier}: targetless SEND retains message metadata and
     assert.equal(send.aside, "report");
 });
 
-test("fenced operations: an unfinished block keeps a shorter inner executor block as body, never as a statement", () => {
-    const result = PlurnkParser.parse('````READ (safe.txt)````\n````EDIT (victim.txt)\n```sh\necho not-an-operation\n```');
-    assert.equal(result.unparsedTail, undefined);
-    assert.deepEqual(result.items.filter((item) => item.kind === "statement").map((item) => item.statement.op), ["READ", "EDIT"]);
-    const edit = result.items.find((item) => item.kind === "statement" && item.statement.op === "EDIT");
-    assert.equal(edit?.kind === "statement" && edit.statement.op === "EDIT" ? edit.statement.body : null, "```sh\necho not-an-operation");
+test("fenced operations: an unfinished block ends at an inner executor heading; a closed one keeps it as body", () => {
+    const unfinished = PlurnkParser.parse('````READ (safe.txt)````\n````EDIT (victim.txt)\n```sh\necho literal\n```');
+    assert.equal(unfinished.unparsedTail, undefined);
+    assert.deepEqual(unfinished.items.filter((item) => item.kind === "statement").map((item) => writtenOp(item.statement)), ["READ", "EDIT", "sh"]);
+    const closed = PlurnkParser.parse('````READ (safe.txt)````\n````EDIT (victim.txt)\n```sh\necho literal\n```\n````');
+    assert.deepEqual(closed.items.filter((item) => item.kind === "statement").map((item) => writtenOp(item.statement)), ["READ", "EDIT"]);
+    const edit = closed.items.find((item) => item.kind === "statement" && item.statement.op === "EDIT");
+    assert.equal(edit?.kind === "statement" && edit.statement.op === "EDIT" ? edit.statement.body : null, "```sh\necho literal\n```");
 });
 
 test("fenced operations: closed malformed blocks do not discard later valid operations", () => {

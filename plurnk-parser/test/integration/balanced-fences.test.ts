@@ -47,7 +47,7 @@ test("{§balanced-fences}: exact bodies survive nested widths, indentation, Unic
     for (const header of ["SEND", "EDIT (notes.md)", "sh", "NOTE", "BARE", "WORK", "FORK"]) {
         for (const width of [4, 5, 7]) {
             for (const newline of ["\n", "\r\n"]) {
-                for (const indent of ["", " \t  "]) {
+                for (const indent of ["", "   "]) {
                     const fence = "`".repeat(width);
                     const body = ["🦝 漢字", `${indent}${fence}text`, `${indent}${fence}sh`, "echo example", `${indent}${fence}`, `${indent}${fence}`, "trailing body", ""].join(newline);
                     const result = PlurnkParser.parse(`${fence}${header}${newline}${body}${newline}${indent}${fence}${newline}\n\`\`\`\`READ (after.md)\n\`\`\`\``);
@@ -61,11 +61,11 @@ test("{§balanced-fences}: exact bodies survive nested widths, indentation, Unic
     }
 });
 
-test("{§balanced-fences}: an explicit nested delimiter keeps unfinished examples opaque", () => {
-    const body = "````42text\n````sh\nunfinished literal\n````42\nAfter the example.";
-    const result = PlurnkParser.parse(`\`\`\`\`SEND\n${body}\n\`\`\`\``);
+test("{§balanced-fences}: a wider enclosing fence keeps unfinished examples literal", () => {
+    const body = "```text\n```sh\nunfinished literal\nAfter the example.";
+    const result = PlurnkParser.parse(PlurnkParser.frame("SEND", body) + "\n\n```READ (after.md)\n```");
     clean(result);
-    assert.deepEqual(statements(result).map(writtenOp), ["SEND"]);
+    assert.deepEqual(statements(result).map(writtenOp), ["SEND", "READ"]);
     assert.equal(bodyText(statements(result)[0]), body);
 });
 
@@ -83,7 +83,7 @@ test("{§balanced-fences}: reasoning quotations cannot promote nested NOTE examp
     assert.deepEqual(PlurnkParser.parseReasoningNotes(source).map(({ body }) => body), ["Actual memory."]);
 });
 
-test("{§balanced-fences}: equal totals with incompatible widths or delimiters do not establish nesting", () => {
+test("{§balanced-fences}: equal totals with incompatible widths or labels do not establish nesting", () => {
     for (const closer of ["```", "````9"]) {
         const result = PlurnkParser.parse(`\`\`\`\`SEND\nPrefix.\n\`\`\`\`sh\necho actual-command\n${closer}\n\`\`\`\``);
         clean(result);

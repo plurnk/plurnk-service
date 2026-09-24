@@ -201,7 +201,7 @@ test("runtime-owned entry work is an ordinary administrative turn in the address
                 assert.deepEqual(adminOps.slice(-1), ["NOTE"], "the maintenance program records its purpose without inventing a terminal operation");
                 assert.equal(adminRows.find(({ op }) => op === "EDIT")?.folded, "[]", "maintenance visibility is a render rule, not a fabricated self-curation effect");
                 const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: await RuntimeWorker.ensure(db, workspaceId) });
-                assert.ok(programs.some(({ turn_id, kind, content }) => turn_id === matEdit.turn_id && kind === "ops" && content.includes("````NOTE")),
+                assert.ok(programs.some(({ turn_id, kind, content }) => turn_id === matEdit.turn_id && kind === "ops" && content.includes("```NOTE")),
                     "maintenance retains its exact source independently of packet visibility");
 
                 const modelLoopLog = await db.test_log_entries_by_loop.all<{

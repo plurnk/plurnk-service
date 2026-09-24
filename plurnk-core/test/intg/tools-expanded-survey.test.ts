@@ -80,8 +80,8 @@ test("{§tools-resource-materialization} turn 0 surveys an expanded server's too
             assert.match(String(survey.logPath), /\/FIND$/, "the survey is a FIND, not a document READ");
             assert.equal(survey.aside, undefined, "the target and +tools classification already orient the survey");
             const log = packetSection(packet, "log");
-            assert.match(log, /"matched":"````fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json -->\\n\{\\"message\\": \\"\\"\}\\n````"/, "one row per tool: opening fence, aside, preview, schema link, closing fence");
-            assert.match(log, /"matched":"````fixture \(fail\) /, "every tool is a row");
+            assert.match(log, /"matched":"```fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json -->\\n\{\\"message\\": \\"\\"\}\\n```"/, "one row per tool: opening fence, aside, preview, schema link, closing fence");
+            assert.match(log, /"matched":"```fixture \(fail\) /, "every tool is a row");
             assert.doesNotMatch(log, /<!-- enabled tools: /, "no redundant survey aside is materialized");
             assert.doesNotMatch(log, /^READ \(worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json\)/m, "schema documents are not individual Turn0 discovery rows");
         } finally {
@@ -124,7 +124,7 @@ Read the input schema.
         assert.equal(definition.properties.authorization.oneOf.length, 5);
         assert.ok(Object.values(definition.properties).every((field: unknown) => typeof (field as { description?: unknown }).description === "string"));
         assert.deepEqual(definition, Validator.schemaByRef("https://schemas.plurnk.xyz/v0/McpServerDefinition.json"));
-        assert.match(doc.description, /````mcp \(add\)/m, "the family's existing valid example remains on-demand");
+        assert.match(doc.description, /```mcp \(add\)/m, "the family's existing valid example remains on-demand");
     } finally {
         ws.close();
         await daemon.stop();

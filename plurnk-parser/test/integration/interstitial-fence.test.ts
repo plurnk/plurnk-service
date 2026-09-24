@@ -30,8 +30,7 @@ for (const [name, parse] of [
 
     test(`{§interstitial-fence}: ${name} reads a code-block tag outside a block as prose and inside a body as body`, () => {
         const outside = parse("````ts\nconst x = 1;\n````\n" + task);
-        assert.deepEqual(errors(outside).map(({ severity, line }) => ({ severity, line })), [{ severity: "warning", line: 1 }], "one advisory says the tag opened nothing");
-        assert.match(errors(outside)[0].message, /`ts` is not an operation or a known executor here/u);
+        assert.deepEqual(errors(outside), [], "the tag opened nothing, silently");
         assert.deepEqual(statements(outside).map(({ op }) => op), ["WAIT"]);
         const body = "````ts\nconst x = 1;\n````";
         const inside = parse(PlurnkParser.frame("EDIT (notes.md)", body) + "\n" + task);
@@ -54,7 +53,7 @@ test("{§response-text}: an unfenced heading is not response text, and says it d
     const naked = PlurnkParser.parse("Prelude.\nWAIT\n" + task);
     assert.deepEqual(statements(naked).map(({ op }) => op), ["WAIT", "WAIT"]);
     assert.deepEqual(errors(naked).map(({ line, column, severity, message }) => [line, column, severity, message]),
-        [[2, 0, "warning", "`WAIT` opened with no fence; the taught form is four backticks."]]);
+        [[2, 0, "warning", "`WAIT` opened with no fence; the taught form is three backticks."]]);
     assert.deepEqual(naked.items.flatMap((item) => item.kind === "text" ? [item.content] : []), ["Prelude.\n"]);
 });
 

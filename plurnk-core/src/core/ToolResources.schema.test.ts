@@ -20,7 +20,7 @@ const schema = {
     then: { required: ["page"] },
     additionalProperties: false,
 };
-const description = "List issues.\n\n## Selection\n\nUse mode to select the issue states.\n````json\n{}\n````";
+const description = "List issues.\n\n## Selection\n\nUse mode to select the issue states.\n```json\n{}\n```";
 const render = (runtime = "gitea", inputSchema: JsonSchema = schema) => ToolResources.render({
     runtime, resourcesPath: "/tools", summary: { from: "tools" }, details: "",
     invocation: {
@@ -43,7 +43,7 @@ test("{§executor-input-schema-preview} catalogs only required top-level fields 
     const [family, detail] = render();
     assert.equal(family?.pathname, "/_plurnk/tools/gitea.md");
     assert.equal(detail?.pathname, "/_plurnk/tools/gitea/issue%2Fread.json");
-    assert.match(family!.content, /````gitea \(issue\/read\) <!-- List issues\. \(\+1 opt\) Schema: worker:\/\/\/_plurnk\/tools\/gitea\/issue%2Fread\.json -->\n\{"repo_id": 0, "filter": \{\}, "labels": \[\], "mode": "open", "selector": null\}\n````/);
+    assert.match(family!.content, /```gitea \(issue\/read\) <!-- List issues\. \(\+1 opt\) Schema: worker:\/\/\/_plurnk\/tools\/gitea\/issue%2Fread\.json -->\n\{"repo_id": 0, "filter": \{\}, "labels": \[\], "mode": "open", "selector": null\}\n```/);
     assert.doesNotMatch(family!.content, /page|oneOf|Selection|minItems/);
     const parsed = JSON.parse(detail!.content) as Record<string, unknown>;
     assert.equal(parsed.description, description, "complete multiline description is preserved");
@@ -81,14 +81,14 @@ test("{§tools-summary-invocation} a featured exact tool includes its required i
         runtime: "brave", summary, details: "", invocation: tool.invocation,
         registry: { tools: [tool, { ...tool, target: "news" }] },
     })[0]!.content.split("## Summary\n\n")[1]!.split("\n\n")[0];
-    const heading = "````brave (search) <!-- Search documents -->";
-    assert.equal(family(`${heading}\`\`\`\``), `${heading}\\n{"query": ""}\\n\`\`\`\``);
+    const heading = "```brave (search) <!-- Search documents -->";
+    assert.equal(family(`${heading}\`\`\``), `${heading}\\n{"query": ""}\\n\`\`\``);
     for (const authored of [
         "Search documents and news.",
-        "````brave (search|news)````",
-        "````brave (disabled)````",
-        "````other (search)````",
-        `${heading}\\n{"query":"example"}\\n\`\`\`\``,
+        "```brave (search|news)```",
+        "```brave (disabled)```",
+        "```other (search)```",
+        `${heading}\\n{"query":"example"}\\n\`\`\``,
     ]) assert.equal(family(authored), authored);
 });
 
@@ -157,7 +157,7 @@ test("{§executor-input-schema-preview} notes omitted optional properties as (+N
             },
         }] },
     })[0]!.content;
-    assert.match(withOptions, /````gitea \(search\) <!-- Search repos\. \(\+2 opt\) Schema: worker:\/\/\/_plurnk\/tools\/gitea\/search\.json -->\n\{"query": ""\}\n````/);
+    assert.match(withOptions, /```gitea \(search\) <!-- Search repos\. \(\+2 opt\) Schema: worker:\/\/\/_plurnk\/tools\/gitea\/search\.json -->\n\{"query": ""\}\n```/);
 
     const noOptions = ToolResources.render({
         runtime: "gitea", resourcesPath: "/tools", summary: { from: "tools" }, details: "",
@@ -174,6 +174,6 @@ test("{§executor-input-schema-preview} notes omitted optional properties as (+N
             },
         }] },
     })[0]!.content;
-    assert.match(noOptions, /````gitea \(search\) <!-- Search repos\. Schema: worker:\/\/\/_plurnk\/tools\/gitea\/search\.json -->\n\{"query": ""\}\n````/);
+    assert.match(noOptions, /```gitea \(search\) <!-- Search repos\. Schema: worker:\/\/\/_plurnk\/tools\/gitea\/search\.json -->\n\{"query": ""\}\n```/);
 });
 

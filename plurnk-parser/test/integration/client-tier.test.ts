@@ -44,10 +44,10 @@ test("client: LOOK accepts line anchors", () => {
 
 // BUFF left the language with #625: a retired client op is an ordinary fence name, which the
 // grammar reads as an executor tag, never as a client statement.
-test("client: BUFF is no longer a client op, and an unknown tag opens nothing ({§interstitial-fence})", () => {
+test("client: BUFF is no longer a client op, and an unknown tag opens nothing, silently ({§interstitial-fence})", () => {
     const result = PlurnkParser.parseClient("````BUFF (known://drafts/letter)````");
     assert.deepEqual(result.items.filter((item) => item.kind === "statement"), []);
-    assert.deepEqual(result.items.map((item) => item.kind === "error" ? [item.error.severity, item.error.line] : "statement"), [["warning", 1]]);
+    assert.deepEqual(result.items.map((item) => item.kind === "error" ? [item.error.severity, item.error.line] : "statement"), []);
 });
 
 test("client: LOOK has single-line matcher admission", () => {

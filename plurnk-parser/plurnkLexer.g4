@@ -18,10 +18,9 @@ private openHeadingLine: number = 0;
 private openHeadingColumn: number = 0;
 private fenceLength: number = 0;
 private fenceCharacter: number = 0x60;
-private fenceDelimiter: string = "";
 private openFenceStart: number = 0;
 private balancedEnds: Map<number, number | null> = new Map();
-private fenceLines: Array<{ start: number; width: number; delimiter: string; character: number; tail: string } | null> | null = null;
+private fenceLines: Array<{ start: number; width: number; character: number; tail: string } | null> | null = null;
 // {§reasoning-notes} — quotations are opaque; program-boundary recovery is not note extraction.
 public reasoning: boolean = false;
 private started: boolean = false;
@@ -31,14 +30,13 @@ private inlineChain: boolean = false;
 private inlineCloserSeen: boolean = false;
 private unclosedAsides: Array<{ line: number; column: number }> = [];
 
-// After a closer's text, does an opener (backticks, digits, a known name) follow on the same line?
+// After a closer's text, does an opener (backticks, a known name) follow on the same line?
 private openerFollows(): boolean {
     let cursor = 1;
     while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
     let ticks = 0;
     while (this.inputStream.LA(cursor) === 0x60) { ticks++; cursor++; }
     if (ticks < 3) return false;
-    while (this.inputStream.LA(cursor) >= 0x30 && this.inputStream.LA(cursor) <= 0x39) cursor++;
     let name = "";
     for (;;) {
         const c = this.inputStream.LA(cursor);
@@ -86,64 +84,37 @@ private inlineBody: boolean = false;
 private inlineBodies: Array<{ line: number; column: number; heading: string }> = [];
 // {§bare-option-object} - true once this heading carried a [...] block.
 private headingMetadata: boolean = false;
-private unknownTags: Array<{ line: number; column: number; tag: string; reason: "unknown" | "indented" | "quoted" }> = [];
-private toleratedFences: Array<{ line: number; column: number; tag: string }> = [];
+private quotedTags: Array<{ line: number; column: number; tag: string }> = [];
 private quotedSpans: Array<{ start: number; end: number }> = [];
 private quoteLabeled = false;
 private quoteStart: number = -1;
 
 // {§interstitial-fence} - only a native operation or a known executor opens a block.
 private knownHeading(): boolean {
-    const name = this.text.replace(/^\x60+[0-9]*/, "");
+    const name = this.text.replace(/^\x60+/, "");
     if (this.reasoning) return name === "NOTE";
     return Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutor(name);
 }
 
-// {§quotation} - a fence that opened no operation quotes. Its tag is worth a word only when it
-// names nothing registered at operation width; a known name off column zero is the taught
-// offset example. Ordinary code blocks draw nothing; reasoning quotes freely.
+// {§quotation} - a fence that opened no operation quotes. Its tag draws nothing: an unknown name
+// is a code block at any width, and a known one indented further than three spaces is the taught
+// offset ({§indented-fences}). Reasoning quotes freely.
 private quote(): void {
     this.quoteStart = this.tokenStartCharIndex;
     // A labeled code block (a plurnk or md tag) is an example by declaration; only an unlabeled
     // wrapper around an operation is the mis-fence that earns a receipt ({§quotation}).
     // No literal backtick in this block: the action scanner reads one as a string delimiter.
-    this.quoteLabeled = /[A-Za-z]/.test(this.text.replace(/^[\x60~]+[0-9]*/, ""));
+    this.quoteLabeled = /[A-Za-z]/.test(this.text.replace(/^[\x60~]+/, ""));
     this.open();
-    this.noteTag();
-}
-
-private noteTag(): void {
-    if (this.reasoning || this.text.charCodeAt(0) !== 0x60) return;
-    const tag = this.text.replace(/^\x60+[0-9]*/, "");
-    if (tag === "") return;
-    let width = 0;
-    while (this.text.charCodeAt(width) === 0x60) width++;
-    const known = Object.hasOwn(plurnkLexer.OPERATIONS, tag) || this.knownExecutor(tag);
-    if (width < 4 && !known) return;
-    const reason = known ? "indented" : "unknown";
-    this.unknownTags.push({ line: (this as any).currentTokenStartLine, column: (this as any).currentTokenColumn, tag, reason });
-}
-
-// {§operation-fences} - a three-backtick opener ran; the parser answers it with one receipt that
-// names the taught width. Reasoning is free-form and draws none.
-private noteTolerated(): void {
-    if (this.reasoning || this.fenceLength !== 3) return;
-    this.toleratedFences.push({ line: (this as any).currentTokenStartLine, column: (this as any).currentTokenColumn, tag: this.openOp });
-}
-
-public takeToleratedFences(): Array<{ line: number; column: number; tag: string }> {
-    const taken = this.toleratedFences;
-    this.toleratedFences = [];
-    return taken;
 }
 
 // {§quotation} - an operation inside an unlabeled code block is shown, never run: the model that
 // wrapped it is told so once. Labeled blocks draw nothing here.
 private noteQuoted(): void {
     if (this.reasoning || this.quoteLabeled) return;
-    const tag = this.text.replace(/^\x60+[0-9]*/, "");
+    const tag = this.text.replace(/^\x60+/, "");
     if (!(Object.hasOwn(plurnkLexer.OPERATIONS, tag) || this.knownExecutor(tag))) return;
-    this.unknownTags.push({ line: (this as any).currentTokenStartLine, column: (this as any).currentTokenColumn, tag, reason: "quoted" });
+    this.quotedTags.push({ line: (this as any).currentTokenStartLine, column: (this as any).currentTokenColumn, tag });
 }
 
 private endQuote(): void {
@@ -160,9 +131,9 @@ public takeQuotedSpans(length: number): Array<{ start: number; end: number }> {
     return taken;
 }
 
-public takeUnknownTags(): Array<{ line: number; column: number; tag: string; reason: "unknown" | "indented" | "quoted" }> {
-    const taken = this.unknownTags;
-    this.unknownTags = [];
+public takeQuotedTags(): Array<{ line: number; column: number; tag: string }> {
+    const taken = this.quotedTags;
+    this.quotedTags = [];
     return taken;
 }
 
@@ -188,12 +159,11 @@ private nakedHeadingAhead(): boolean {
     }
 }
 
-// The naked block opens as if fenced with the taught four backticks, undelimited.
+// The naked block opens as if fenced with the taught three backticks.
 private openNaked(): void {
     this.open(this.text);
-    this.fenceLength = 4;
+    this.fenceLength = 3;
     this.fenceCharacter = 0x60;
-    this.fenceDelimiter = "";
     this.naked = true;
 }
 
@@ -217,11 +187,7 @@ private open(implicitName?: string): void {
     this.fenceLength = 0;
     this.fenceCharacter = this.text.charCodeAt(0);
     while (this.text.charCodeAt(this.fenceLength) === this.fenceCharacter) this.fenceLength++;
-    // {§numeric-delimiter} - digits between the backticks and the name identify the block.
-    let digits = this.fenceLength;
-    while (this.text.charCodeAt(digits) >= 0x30 && this.text.charCodeAt(digits) <= 0x39) digits++;
-    this.fenceDelimiter = this.text.slice(this.fenceLength, digits);
-    const name = implicitName ?? this.text.slice(digits);
+    const name = implicitName ?? this.text.slice(this.fenceLength);
     const native = Object.hasOwn(plurnkLexer.OPERATIONS, name) ? plurnkLexer.OPERATIONS[name] : undefined;
     this.openOp = name;
     this.execFence = native === undefined;
@@ -273,19 +239,40 @@ private orphanAtLineEnd(): boolean {
     return c <= 0 || c === 0x0A || c === 0x0D;
 }
 
-// {§quotation} - an operation's backticks follow a newline directly, or begin the input.
+// {§naked-operation} - the name follows a newline directly, or begins the input.
 private atColumnZero(): boolean {
     const c = this.inputStream.LA(-1);
     return c <= 0 || c === 0x0A || c === 0x0D;
 }
 
-// {§indented-fences} - a fence line may carry leading horizontal whitespace; the line still
-// starts there for every fence purpose (CommonMark allows three spaces; this allows any).
+// {§indented-fences} - a fence line may follow at most three spaces (CommonMark); four or more,
+// or a tab, make it indented code: neither an opener, a closer nor a heading.
 private atLineStart(): boolean {
+    let spaces = 0;
     for (let back = 1; ; back++) {
         const c = this.inputStream.LA(-back);
-        if (c <= 0 || c === 0x0A || c === 0x0D) return true;
-        if (c !== 0x20 && c !== 0x09) return false;
+        if (c <= 0 || c === 0x0A || c === 0x0D) return spaces <= 3;
+        if (c !== 0x20) return false;
+        spaces++;
+    }
+}
+
+// {§indented-fences} - the offset of the fence run at or after this offset when its line indents it
+// by at most three spaces; null when four or more, or a tab, make the line indented code. Off the
+// line start (a closer on the heading line) indentation is not in question.
+private fenceIndent(offset: number): number | null {
+    let spaces = 0;
+    let tab = false;
+    for (let index = offset - 1; ; index--) {
+        const c = this.inputStream.LA(index >= 1 ? index : index - 1);
+        if (c <= 0 || c === 0x0A || c === 0x0D) break;
+        if (c !== 0x20 && c !== 0x09) return this.skipHorizontal(offset);
+        if (c === 0x09) tab = true; else spaces++;
+    }
+    for (;; offset++) {
+        const c = this.inputStream.LA(offset);
+        if (c !== 0x20 && c !== 0x09) return tab || spaces > 3 ? null : offset;
+        if (c === 0x09) tab = true; else spaces++;
     }
 }
 
@@ -302,33 +289,33 @@ private offsetAfterEol(offset: number): number | null {
 // {§balanced-fences} — retain complete nested blocks before trying local missing-closer
 // recovery. Cache descendants as well as the root so an unclosed prefix is scanned once.
 private balancedEnd(): number | null {
-    if (this.fenceDelimiter !== "") return null;
     if (this.balancedEnds.has(this.openFenceStart)) return this.balancedEnds.get(this.openFenceStart)!;
     if (this.fenceLines === null) {
         let start = 0;
         this.fenceLines = this.inputStream.toString().split("\n").map((line) => {
-            const match = /^([ \t]*)(\x60{3,}|~{3,})([0-9]*)(.*?)[ \t\r]*$/u.exec(line);
+            // {§indented-fences} - four spaces or a tab make the line indented code, not a fence.
+            const match = /^( {0,3})(\x60{3,}|~{3,})(.*?)[ \t\r]*$/u.exec(line);
             const fence = match === null ? null : {
                 start: start + match[1].length,
                 width: match[2].length,
                 character: match[2].charCodeAt(0),
-                delimiter: match[3],
-                tail: match[4],
+                tail: match[3],
             };
             // ANTLR indexes Unicode code points, not JavaScript UTF-16 units.
             start += [...line].length + 1;
             return fence;
         });
     }
-    const stack = [{ start: this.openFenceStart, width: this.fenceLength, delimiter: this.fenceDelimiter, character: this.fenceCharacter }];
+    // {§naked-operation} - a naked block has no closer, so nothing balances it; its nested blocks still do.
+    const stack = [{ start: this.openFenceStart, width: this.naked ? Infinity : this.fenceLength, character: this.fenceCharacter }];
     for (let index = this.openHeadingLine; index < this.fenceLines.length; index++) {
         const fence = this.fenceLines[index];
         if (fence === null) continue;
-        const top = stack[stack.length - 1];
         const continuation = this.continuedFence(fence);
-        if ((fence.tail === "" || continuation !== null) && fence.character === top.character && fence.width >= top.width && fence.delimiter === top.delimiter) {
-            stack.pop();
-            this.balancedEnds.set(top.start, fence.start);
+        const closes = fence.tail === "" || continuation !== null ? this.closedBy(stack, fence) : -1;
+        if (closes !== -1) {
+            const [closed] = stack.splice(closes);
+            this.balancedEnds.set(closed.start, fence.start);
             if (stack.length === 0) return fence.start;
             if (continuation !== null) {
                 const nested = this.nestedFence(continuation);
@@ -336,8 +323,7 @@ private balancedEnd(): number | null {
             }
             continue;
         }
-        // Numeric delimiters explicitly protect arbitrary (including unfinished) examples.
-        if (top.delimiter !== "" || fence.tail.trim() === "") continue;
+        if (fence.tail.trim() === "") continue;
         const nested = this.nestedFence(fence);
         if (nested !== null) stack.push(nested);
     }
@@ -345,19 +331,30 @@ private balancedEnd(): number | null {
     return null;
 }
 
-private continuedFence(fence: { start: number; width: number; delimiter: string; tail: string }): { start: number; width: number; delimiter: string; character: number; tail: string } | null {
-    const match = /^([ \t]*)(\x60{3,})([0-9]*)([A-Za-z0-9_.+-]+)(.*)$/u.exec(fence.tail);
-    if (match === null || !Object.hasOwn(plurnkLexer.OPERATIONS, match[4]) && !this.knownExecutor(match[4])) return null;
-    return { start: fence.start + fence.width + fence.delimiter.length + match[1].length, width: match[2].length, delimiter: match[3], character: 0x60, tail: match[4] + match[5] };
+// {§balanced-fences} - a bare fence closes the innermost open block of exactly its width, else the
+// outermost block narrower than it; the narrower blocks it steps over are body, and a wider or
+// differently fenced block inside blocks it.
+private closedBy(stack: ReadonlyArray<{ width: number; character: number }>, fence: { width: number; character: number }): number {
+    const exact = stack.findLastIndex((block) => block.character === fence.character && block.width === fence.width);
+    const index = exact !== -1 ? exact : stack.findIndex((block) => block.character === fence.character && block.width < fence.width);
+    if (index === -1) return -1;
+    const blocked = stack.slice(index + 1).some((block) => block.character !== fence.character || block.width > fence.width);
+    return blocked ? -1 : index;
 }
 
-private nestedFence(fence: { start: number; width: number; delimiter: string; character: number; tail: string }): { start: number; width: number; delimiter: string; character: number } | null {
+private continuedFence(fence: { start: number; width: number; tail: string }): { start: number; width: number; character: number; tail: string } | null {
+    const match = /^([ \t]*)(\x60{3,})([A-Za-z0-9_.+-]+)(.*)$/u.exec(fence.tail);
+    if (match === null || !Object.hasOwn(plurnkLexer.OPERATIONS, match[3]) && !this.knownExecutor(match[3])) return null;
+    return { start: fence.start + fence.width + match[1].length, width: match[2].length, character: 0x60, tail: match[3] + match[4] };
+}
+
+private nestedFence(fence: { start: number; width: number; character: number; tail: string }): { start: number; width: number; character: number } | null {
     if (!/[\x60~]{3}/u.test(fence.tail)) return fence;
     const name = /^[A-Za-z0-9_.+-]+/u.exec(fence.tail)?.[0];
     if (name === undefined) return fence;
     // Reuse the heading lexer: fences quoted in a target, metadata or aside are not closers.
     // Literal examples need only a lexical boundary; their slot diagnostics stay opaque.
-    const lexer = new plurnkLexer(antlr.CharStream.fromString(String.fromCharCode(fence.character).repeat(fence.width) + fence.delimiter + fence.tail + "\n"));
+    const lexer = new plurnkLexer(antlr.CharStream.fromString(String.fromCharCode(fence.character).repeat(fence.width) + fence.tail + "\n"));
     lexer.knownExecutors = new Set([...this.knownExecutors, name]);
     lexer.reasoning = fence.character !== 0x60;
     lexer.removeErrorListeners();
@@ -366,15 +363,16 @@ private nestedFence(fence: { start: number; width: number; delimiter: string; ch
         if (token.type === plurnkLexer.SECTION_END && token.text?.includes("\x60")) closed = true;
     }
     if (lexer.mode === plurnkLexer.DEFAULT_MODE && (closed || lexer.inlineCloserSeen)) return null;
-    return { start: fence.start + lexer.openFenceStart, width: lexer.fenceLength, delimiter: lexer.fenceDelimiter, character: lexer.fenceCharacter };
+    return { start: fence.start + lexer.openFenceStart, width: lexer.fenceLength, character: lexer.fenceCharacter };
 }
 
-// {§fence-closer} - a closer is a line of at least the opener's backticks carrying exactly the
-// opener's numeric delimiter (none when the opener had none). Count is CommonMark's rule; the
-// delimiter is what lets an equal-count block nest ({§numeric-delimiter}).
+// {§fence-closer} - a closer is a line of at least the opener's backticks and nothing else, within
+// three spaces of the line start ({§indented-fences}); {§balanced-fences} claims nested closers first.
 private closingAt(offset: number): boolean {
-    if (this.inputStream.LA(offset === 1 ? -1 : offset - 1) === this.fenceCharacter) return false;
-    offset = this.skipHorizontal(offset);
+    if (this.naked || this.inputStream.LA(offset === 1 ? -1 : offset - 1) === this.fenceCharacter) return false;
+    const fence = this.fenceIndent(offset);
+    if (fence === null) return false;
+    offset = fence;
     if ((this.mode === plurnkLexer.BODY || this.mode === plurnkLexer.QUOTATION) && !(this.inlineBody && offset === 1)) {
         const end = this.balancedEnd();
         if (end !== null && this.inputStream.index + offset - 1 !== end) return false;
@@ -382,12 +380,6 @@ private closingAt(offset: number): boolean {
     let cursor = offset;
     while (this.inputStream.LA(cursor) === this.fenceCharacter) cursor++;
     if (cursor - offset < this.fenceLength) return false;
-    let digits = "";
-    while (this.inputStream.LA(cursor) >= 0x30 && this.inputStream.LA(cursor) <= 0x39) {
-        digits += String.fromCharCode(this.inputStream.LA(cursor));
-        cursor++;
-    }
-    if (digits !== this.fenceDelimiter) return false;
     while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
     if (this.inputStream.LA(cursor) <= 0 || this.offsetAfterEol(cursor) !== null) return true;
     if (this.reasoning) return false;
@@ -399,7 +391,6 @@ private closingAt(offset: number): boolean {
     while (this.inputStream.LA(cursor + ticks) === 0x60) ticks++;
     if (ticks < 3) return false;
     let at = cursor + ticks;
-    while (this.inputStream.LA(at) >= 0x30 && this.inputStream.LA(at) <= 0x39) at++;
     let name = "";
     for (;;) {
         const c = this.inputStream.LA(at);
@@ -411,14 +402,14 @@ private closingAt(offset: number): boolean {
     return name !== "" && (Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutor(name));
 }
 
-// {§fence-heading-in-body} — a known heading recovers an unclosed block only after
-// {§balanced-fences} has ruled out complete nesting. Explicit delimiters remain opaque.
+// {§fence-heading-in-body} — a known heading of the taught width recovers an unclosed block only
+// after {§balanced-fences} has ruled out complete nesting: a wider block holds narrower headings
+// only while it closes, so no unclosed block swallows the operations after it.
 private headingAt(offset: number): boolean {
     if (this.reasoning) return false;
     let cursor = offset;
     while (this.inputStream.LA(cursor) === 0x60) cursor++;
-    if (cursor - offset < Math.max(3, Math.min(4, this.fenceLength))) return false;
-    while (this.inputStream.LA(cursor) >= 0x30 && this.inputStream.LA(cursor) <= 0x39) cursor++;
+    if (cursor - offset < 3) return false;
     let name = "";
     for (;;) {
         const c = this.inputStream.LA(cursor);
@@ -437,7 +428,8 @@ private headingAt(offset: number): boolean {
 
 private headingAfterEol(): boolean {
     const after = this.offsetAfterEol(1);
-    return after !== null && this.balancedEnd() === null && this.headingAt(this.skipHorizontal(after));
+    const at = after === null ? null : this.fenceIndent(after);
+    return at !== null && this.balancedEnd() === null && this.headingAt(at);
 }
 
 // `<!-- … -->` at this offset, then only horizontal whitespace to the end of the line or input.
@@ -458,7 +450,7 @@ private asideToLineEnd(at: number): boolean {
 
 private closingAfterEol(): boolean {
     const after = this.offsetAfterEol(1);
-    return after !== null && this.closingAt(this.skipHorizontal(after));
+    return after !== null && this.closingAt(after);
 }
 
 // {§transparent-inline-closer} — true when the run here closes the open block but more of the
@@ -471,12 +463,6 @@ private closerWithHeadingAhead(): boolean {
     while (this.inputStream.LA(cursor + ticks) === 0x60) ticks++;
     if (ticks < this.fenceLength) return false;
     let at = cursor + ticks;
-    let digits = "";
-    while (this.inputStream.LA(at) >= 0x30 && this.inputStream.LA(at) <= 0x39) {
-        digits += String.fromCharCode(this.inputStream.LA(at));
-        at++;
-    }
-    if (digits !== this.fenceDelimiter) return false;
     while (this.inputStream.LA(at) === 0x20 || this.inputStream.LA(at) === 0x09) at++;
     // End of line or input: the ordinary closer owns it.
     if (this.inputStream.LA(at) <= 0 || this.offsetAfterEol(at) !== null) return false;
@@ -484,13 +470,12 @@ private closerWithHeadingAhead(): boolean {
     return !this.openerFollowsAt(at);
 }
 
-// Does an opener (backticks, optional digits, a known name) begin at this offset?
+// Does an opener (backticks, a known name) begin at this offset?
 private openerFollowsAt(at: number): boolean {
     let ticks = 0;
     while (this.inputStream.LA(at + ticks) === 0x60) ticks++;
     if (ticks < 3) return false;
     let cursor = at + ticks;
-    while (this.inputStream.LA(cursor) >= 0x30 && this.inputStream.LA(cursor) <= 0x39) cursor++;
     let name = "";
     for (;;) {
         const c = this.inputStream.LA(cursor);
@@ -536,7 +521,7 @@ private bareOptionObjectOnLine(): boolean {
     }
     // a closing fence on the heading line is not part of the object
     const fence = rest.lastIndexOf("\x60\x60\x60");
-    if (fence !== -1 && rest.slice(fence).replace(/[\x600-9 \t]/gu, "") === "") rest = rest.slice(0, fence);
+    if (fence !== -1 && rest.slice(fence).replace(/[\x60 \t]/gu, "") === "") rest = rest.slice(0, fence);
     rest = rest.trim();
     let parsed: unknown;
     try { parsed = JSON.parse(rest); } catch { return false; }
@@ -563,7 +548,7 @@ public isTextCoordinateOp(): boolean {
 }
 }
 
-// {§operation-fences} - three or more backticks open an operation; four is the taught width.
+// {§operation-fences} - three or more backticks open an operation; three is the taught width.
 fragment FENCE : '```' '`'* ;
 fragment NAME : [A-Za-z0-9_.+-]+ ;
 fragment NUM : '-'? [0-9]+ ('.' [0-9]+)? ;
@@ -583,18 +568,17 @@ fragment EOL : '\r'? '\n' ;
 
 // {§fence-boundary} - only top-level fences can open statements. The first
 // block may terminate a provider preamble without an intervening newline.
-OPEN : { this.atColumnZero() || !this.reasoning && this.inlineChain }? FENCE [0-9]* NAME { this.knownHeading() }? { this.open(); this.noteTolerated(); } -> mode(SLOTS) ;
+OPEN : { this.atLineStart() || !this.reasoning && this.inlineChain }? FENCE NAME { this.knownHeading() }? { this.open(); } -> mode(SLOTS) ;
 // {§naked-operation} - the name alone on a column-zero line opens the operation without a fence.
 NAKED_OPEN : { this.atColumnZero() && !this.reasoning && this.nakedHeadingAhead() }? [A-Z]+ { this.openNaked(); } -> mode(SLOTS) ;
 // {§reasoning-notes} — an enclosing code fence is quotation, including unknown tags and tildes.
 // {§quotation} - a bare fence directly under a fence line is that block's orphaned closer: it
 // closes nothing and quotes nothing (a malformed heading's block ends at its own line).
-ORPHAN_CLOSER : { this.atLineStart() && this.previousLineIsFence() }? FENCE [0-9]* [ \t]* { this.orphanAtLineEnd() }? -> channel(HIDDEN) ;
+ORPHAN_CLOSER : { this.atLineStart() && this.previousLineIsFence() }? FENCE [ \t]* { this.orphanAtLineEnd() }? -> channel(HIDDEN) ;
 // {§quotation} - every other fence at a line start quotes to its closer or the end of the input.
-// A line-start fence whose line carries more backticks is inline code: it quotes nothing, but a
-// missed operation's tag is still worth the same word as a quotation's.
-INLINE_TAG : { this.atLineStart() && !this.fenceOpens() }? FENCE [0-9]* NAME { this.noteTag(); } -> type(TEXT), channel(HIDDEN) ;
-QUOTE : { this.atLineStart() && this.fenceOpens() }? (FENCE [0-9]* NAME? | '~~~' '~'* NAME?) { this.quote(); } -> type(TEXT), channel(HIDDEN), mode(QUOTATION) ;
+// A line-start fence whose line carries more backticks is inline code: it quotes nothing.
+INLINE_TAG : { this.atLineStart() && !this.fenceOpens() }? FENCE NAME -> type(TEXT), channel(HIDDEN) ;
+QUOTE : { this.atLineStart() && this.fenceOpens() }? (FENCE NAME? | '~~~' '~'* NAME?) { this.quote(); } -> type(TEXT), channel(HIDDEN), mode(QUOTATION) ;
 // {§interstitial-fence} - a fence naming nothing known, or nothing at all, is prose outside a block.
 WS : [ \t\r\n]+ -> channel(HIDDEN) ;
 // {§whitespace-contract} - outside text has no AST or execution semantics.
@@ -607,9 +591,9 @@ TEXT_TICK : '`' { this.inlineChain = false; } -> type(TEXT), channel(HIDDEN) ;
 // {§parser-architecture} - the modes below are that chapter's state diagram: DEFAULT, QUOTATION,
 // SLOTS, TARGET, METADATA and BODY, and each `mode(...)` action is one of its edges.
 mode QUOTATION;
-Q_END : { this.closingAfterEol() }? EOL [ \t]* ('```' '`'* | '~~~' '~'*) [0-9]* [ \t]* { this.endQuote(); } -> type(TEXT), channel(HIDDEN), mode(DEFAULT_MODE) ;
-Q_EMPTY_END : { this.atLineStart() && this.closingAt(1) }? [ \t]* ('```' '`'* | '~~~' '~'*) [0-9]* [ \t]* { this.endQuote(); } -> type(TEXT), channel(HIDDEN), mode(DEFAULT_MODE) ;
-Q_TAG : { this.atLineStart() }? FENCE [0-9]* NAME { this.noteQuoted(); } -> type(TEXT), channel(HIDDEN) ;
+Q_END : { this.closingAfterEol() }? EOL [ \t]* ('```' '`'* | '~~~' '~'*) [ \t]* { this.endQuote(); } -> type(TEXT), channel(HIDDEN), mode(DEFAULT_MODE) ;
+Q_EMPTY_END : { this.atLineStart() && this.closingAt(1) }? [ \t]* ('```' '`'* | '~~~' '~'*) [ \t]* { this.endQuote(); } -> type(TEXT), channel(HIDDEN), mode(DEFAULT_MODE) ;
+Q_TAG : { this.atLineStart() }? FENCE NAME { this.noteQuoted(); } -> type(TEXT), channel(HIDDEN) ;
 Q_RUN : ~[\r\n`~]+ -> type(TEXT), channel(HIDDEN) ;
 Q_CHAR : . -> type(TEXT), channel(HIDDEN) ;
 
@@ -634,14 +618,14 @@ SLOTS_ASIDE_OPEN : { this.slotReady && !this.asideClosesOnLine() }? '<!--' ~[\r\
 // {§transparent-inline-closer} — a closing fence with more heading on its line reads as if it
 // were not written: the slots after it still belong to this operation (operator, 2026-09-13:
 // "If there's no risk of ambiguity, then we add tolerance").
-SLOTS_INLINE_CLOSER : { this.slotReady && this.closerWithHeadingAhead() }? FENCE [0-9]* [ \t]* { this.inlineCloserSeen = true; } -> skip ;
-SLOTS_END : { this.closingAt(1) }? FENCE [0-9]* [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
+SLOTS_INLINE_CLOSER : { this.slotReady && this.closerWithHeadingAhead() }? FENCE [ \t]* { this.inlineCloserSeen = true; } -> skip ;
+SLOTS_END : { this.closingAt(1) }? FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_INLINE_BODY : { this.slotReady && this.inlineBodyAhead() }? ~[ \t\r\n[(<`] { this.noteInlineBody(); } -> type(BODY_TEXT), mode(BODY) ;
 // {§heading-slot-order} — a single backtick before a matcher sigil quotes that matcher, never a fence (#758).
 SLOTS_TICK_TEXT : { this.slotReady && this.inlineBodyAhead() && [0x2F, 0x24, 0x7E, 0x26, 0x5E].includes(this.inputStream.LA(2)) }? '`' { this.noteInlineBody(); } -> type(BODY_TEXT), mode(BODY) ;
 // {§transparent-inline-closer} — the block already met its closer, so its line ending ends it.
 SLOTS_CLOSED_EOL : { this.inlineCloserSeen }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
-SLOTS_NEXT_HEADING : { this.fenceDelimiter === "" && this.headingAfterEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
+SLOTS_NEXT_HEADING : { this.headingAfterEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_BODY_OPEN : EOL -> type(BODY_OPEN), mode(BODY) ;
 
 mode TARGET;
@@ -673,14 +657,14 @@ METADATA_END : ']' { this.slotReady = true; this.metadataReady = true; this.head
 mode BODY;
 // {§fence-closer} the block's own closer; {§fence-heading-in-body} a heading ends it instead, and
 // the EOL becomes a synthetic SECTION_END whose text carries no backtick ({§closer-fallback}).
-B_END : { this.closingAfterEol() }? EOL [ \t]* FENCE [0-9]* [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
-B_EMPTY_END : { (this.atLineStart() || this.inlineBody) && this.closingAt(1) }? [ \t]* FENCE [0-9]* [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
+B_END : { this.closingAfterEol() }? EOL [ \t]* FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
+B_EMPTY_END : { (this.atLineStart() || this.inlineBody) && this.closingAt(1) }? [ \t]* FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 // {§transparent-inline-closer} — the heading already carried its closer, so the matcher or inline
 // body after it ends with that line and the block never reaches for the next operation.
 B_CLOSED_EOL : { this.inlineCloserSeen }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 // {§naked-operation} - a naked block also closes at its own name alone on a line.
 B_NAKED_END : { this.naked && this.nakedCloserAfterEol() }? EOL [ \t]* [A-Z]+ [ \t]* -> type(SECTION_END), mode(DEFAULT_MODE) ;
-B_NEXT_HEADING : { this.fenceDelimiter === "" && this.headingAfterEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
+B_NEXT_HEADING : { this.headingAfterEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_RUN : ~[\r\n`]+ -> type(BODY_TEXT) ;
 B_TICK : '`' -> type(BODY_TEXT) ;
 B_CRLF : '\r\n' { this.inlineBody = false; } -> type(BODY_TEXT) ;

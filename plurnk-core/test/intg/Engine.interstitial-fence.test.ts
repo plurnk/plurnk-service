@@ -15,9 +15,9 @@ const engineRun = async (db: Awaited<ReturnType<typeof openMigrated>>, workspace
         workspaceId, workerId, loopId, maxTurns: 3, maxStrikes: 3, messages: [{ role: "user", content: prompt }],
     });
 
-// {§quotation} — an unlabeled fence quotes: an operation inside it is shown, never run. A delimited
-// SEND quotes the same way ({§numeric-delimiter}).
-test("{§quotation}: an operation inside an unlabeled fence never runs, and a delimited SEND quotes one", async () => {
+// {§quotation} — an unlabeled fence quotes: an operation inside it is shown, never run. A wider
+// SEND holds the same example as body ({§balanced-fences}).
+test("{§quotation}: an operation inside an unlabeled fence never runs, and a wider SEND quotes one", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `interstitial-${crypto.randomUUID()}`);
@@ -27,9 +27,9 @@ test("{§quotation}: an operation inside an unlabeled fence never runs, and a de
         await seedEntryWithChannel(db, { workspaceId, pathname: "/quoted.md", content: "Keep this one too." });
         const source = [
             "An unlabeled fence quotes the operation inside it:",
-            "```\n````KILL (worker:///notes.md)````\n```",
-            "A delimited SEND quotes one too:",
-            "````42SEND\n````KILL (worker:///quoted.md)````\n````42",
+            "```\n```KILL (worker:///notes.md)```\n```",
+            "A wider SEND quotes one too:",
+            "````SEND\n```KILL (worker:///quoted.md)```\n````",
             memory,
         ].join("\n\n");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -48,9 +48,9 @@ test("{§quotation}: an operation inside an unlabeled fence never runs, and a de
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: turnId });
         const model = rows.filter(({ origin, op }) => origin === "model" && op !== null);
         assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [["NOTE", 200], ["SEND", 200], ["NOTE", 200]]);
-        assert.match(JSON.parse(model[0]!.tx).body, /^An unlabeled fence quotes[\s\S]*````KILL \(worker:\/\/\/notes\.md\)````/u,
+        assert.match(JSON.parse(model[0]!.tx).body, /^An unlabeled fence quotes[\s\S]*```KILL \(worker:\/\/\/notes\.md\)```/u,
             "the prose and its quoted KILL are kept literally as the model's NOTE");
-        assert.equal(JSON.parse(model[1]!.tx).body.raw, "````KILL (worker:///quoted.md)````", "the quoted heading stayed body under the delimiter");
+        assert.equal(JSON.parse(model[1]!.tx).body.raw, "```KILL (worker:///quoted.md)```", "the quoted heading stayed body under the wider fence");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "ops")?.content, source, "/ops stays exact");
         const note = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "worker", name: "body" });
@@ -122,7 +122,7 @@ test("{§quotation}: a SEND with nested examples delivers its literal body", asy
         const workspaceId = await insertWorkspace(db, `nested-reply-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "How do I read a file?");
-        const answer = "An operation opens with four backticks:\n\n```text\n````READ (notes.md)\n````\n```";
+        const answer = "An operation opens with three backticks:\n\n```text\n```READ (notes.md)\n```\n```";
         const result = await engineRun(db, workspaceId, workerId, loopId,
             PlurnkParser.frame("SEND", answer) + "\n\n" + PlurnkParser.frame("KILL", null), "How do I read a file?");
         assert.equal(result.result.status, 200);

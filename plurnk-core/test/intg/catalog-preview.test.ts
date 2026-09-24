@@ -14,7 +14,7 @@ import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
 import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
 type LogRow = { op: string | null; pathname: string; scheme: string | null; hostname: string | null; sequence: number; turn_id: number; signal: string | null; status_rx: number; tx: string; rx: string; attrs: string; folded: string; origin: string };
-const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("````KILL\ndone\n````", 50)] });
+const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```KILL\ndone\n```", 50)] });
 
 test("PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs only project files (none when off)", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
@@ -144,7 +144,7 @@ test("turn-0 once-per-worker foists fire on the worker's first loop only, not ev
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // preview ON
     try {
-        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````KILL\ndone\n````", 50), makeMockResponse("````KILL\ndone\n````", 50)] });
+        const twoLoops = new Mock({ contextWindow: 8192, responses: [makeMockResponse("```KILL\ndone\n```", 50), makeMockResponse("```KILL\ndone\n```", 50)] });
         await withDaemon(twoLoops, async (db, _daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -201,9 +201,9 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const reasoning = JSON.parse(initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "reasoning")!.rx) as { content: string };
                 assert.ok(reasoning.content.includes(note.body), "the ordinary NOTE is extracted from the preserved reasoning source");
                 const program = JSON.parse(initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "ops")!.rx) as { content: string };
-                assert.match(program.content, /\n````READ \(ops:\/\/[^/\s]+\/1\/1\)/, "initialization demonstrates its source address through an ordinary READ");
+                assert.match(program.content, /\n```READ \(ops:\/\/[^/\s]+\/1\/1\)/, "initialization demonstrates its source address through an ordinary READ");
                 assert.deepEqual(
-                    program.content.split("\n\n").map((block) => /^````([A-Z]+)/.exec(block)?.[1]),
+                    program.content.split("\n\n").map((block) => /^```([A-Z]+)/.exec(block)?.[1]),
                     initializationRows.slice(1).map(({ op }) => op),
                     "{§statement-rendering}: every initialization operation is separated by a blank line",
                 );
@@ -278,13 +278,13 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const shell = toolItems.flat().find(({ path }) => path === "worker:///_plurnk/plurnk/sh.md");
                 assert.equal(
                     shell?.aside,
-                    "````sh <!-- Run POSIX shell commands and scripts. -->\\ngit status --short\\n````",
+                    "```sh <!-- Run POSIX shell commands and scripts. -->\\ngit status --short\\n```",
                     "Turn 0 teaches a compact executable witness with its authored aside, as plain text rather than a code span",
                 );
                 const python = toolItems.flat().find(({ path }) => path === "worker:///_plurnk/plurnk/python3.md");
                 assert.equal(
                     python?.aside,
-                    "````python3 <!-- Run Python 3 code or scripts. -->\\nprint(42)\\n````",
+                    "```python3 <!-- Run Python 3 code or scripts. -->\\nprint(42)\\n```",
                     "the interpreter aside teaches an executable inline program without requiring a document READ",
                 );
                 for (const removed of ["git", "isogit"]) {
@@ -315,7 +315,7 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 assert.equal(turnOps?.folded, "[]", "the exact initialization program is born visible");
                 assert.match(
                     (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content,
-                    /^````NOTE\n[^\n]+\n````\n\n````FIND[^\n]*\n[\s\S]*\n````READ \(ops:\/\/[^/\s]+\/1\/1\)[^\n]*\n````$/,
+                    /^```NOTE\n[^\n]+\n```\n\n```FIND[^\n]*\n[\s\S]*\n```READ \(ops:\/\/[^/\s]+\/1\/1\)[^\n]*\n```$/,
                     "the exact initialization source surrounds the same eight executed surveys",
                 );
             } finally { ws.close(); }

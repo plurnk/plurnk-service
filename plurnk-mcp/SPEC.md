@@ -265,7 +265,7 @@ remain in the linked input-contract documents. With tools, the runtime declares
 complete effective menu in the family Summary and survey row
 ({§scheme-catalog-aside}). Without authored purpose the menu stands alone. The tool
 doc's Summary section IS the invocation form
-````` ````server (tool) <!-- one-liner --> `````, so the discovery row teaches the
+```` ```server (tool) <!-- one-liner --> ````, so the discovery row teaches the
 call ({§tools-resource-materialization}). Summary companions expand `${NAME}`
 references like every other companion.
 

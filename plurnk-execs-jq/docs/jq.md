@@ -2,17 +2,17 @@
 
 The system `jq` as a runtime: the **body is the jq program**, the **`(target)` is the data source**.
 
-````jq
+```jq
 [1,2,3] | add
-````
+```
 
-````jq (data.json)
+```jq (data.json)
 .users[].name
-````
+```
 
-````jq (sqlite:///ab3d5678#results)
+```jq (sqlite:///ab3d5678#results)
 .[] | .name
-````
+```
 
 The first form has no input and uses `-n`. The second filters a file. The third
 filters the result stream at the emitted SQLite address.
@@ -36,16 +36,16 @@ RFC 9457 Problem carrying jq's own stderr.
 
 ## Live input
 
-````jq [{"stdin": "open"}]
+```jq [{"stdin": "open"}]
 .value * 2
-````
+```
 
 Use the returned stream address, here `jq:///c4e56789`. A SEND body is input
 JSON, not another jq program; this example closes stdin after sending its value:
 
-````SEND (jq:///c4e56789) [{"eof": true}]
+```SEND (jq:///c4e56789) [{"eof": true}]
 {"value":21}
-````
+```
 
 Without `[{"eof": true}]`, include an actual trailing newline to delimit each JSON
 value. Open-input output is unbuffered. READ the same address for results;

@@ -6,11 +6,11 @@ import { PlurnkParser } from "../../src/index.ts";
 const statements = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 const warnings = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
 const bodyOf = (statement: ClientStatement | undefined) => statement !== undefined && "body" in statement ? typeof statement.body === "string" ? statement.body : statement.body?.raw ?? null : null;
-const RECEIPT = (op: string) => `\`${op}\` opened with no fence; the taught form is four backticks.`;
+const RECEIPT = (op: string) => `\`${op}\` opened with no fence; the taught form is three backticks.`;
 
 for (const [tier, parse] of [["model", PlurnkParser.parse], ["stored", PlurnkParser.parseStatements], ["client", PlurnkParser.parseClient]] as const) {
     test(`{§naked-operation}: ${tier} opens a name alone on a line as the operation, its body whole to the end of the turn`, () => {
-        const answer = "The answer is **42**.\n\n```sh\necho hi\n```\n\nDone.";
+        const answer = "The answer is **42**.\n\n```python\nprint(42)\n```\n\nDone.";
         const result = parse(`KILL\n${answer}\n`);
         assert.equal(result.unparsedTail, undefined);
         assert.deepEqual(statements(result).map((s) => s.op), ["KILL"]);
@@ -19,11 +19,11 @@ for (const [tier, parse] of [["model", PlurnkParser.parse], ["stored", PlurnkPar
     });
 }
 
-test("{§naked-operation}: the name alone again closes the block; a four-backtick heading ends it; the end of the turn ends it", () => {
+test("{§naked-operation}: the name alone again closes the block; a heading ends it; the end of the turn ends it", () => {
     const closed = PlurnkParser.parse("KILL\nThe answer.\nKILL\n");
     assert.deepEqual(statements(closed).map((s) => [s.op, bodyOf(s)]), [["KILL", "The answer."]]);
     assert.deepEqual(warnings(closed), [RECEIPT("KILL")], "the closing name draws nothing of its own");
-    const headed = PlurnkParser.parse("KILL\nThe answer.\n````READ (x.md)\n````");
+    const headed = PlurnkParser.parse("KILL\nThe answer.\n```READ (x.md)\n```");
     assert.deepEqual(statements(headed).map((s) => [s.op, bodyOf(s)]), [["KILL", "The answer."], ["READ", null]]);
     const last = PlurnkParser.parse("Text first.\nKILL");
     assert.deepEqual(statements(last).map((s) => [s.op, bodyOf(s)]), [["KILL", null]], "a bare name as the last line concludes with no body");

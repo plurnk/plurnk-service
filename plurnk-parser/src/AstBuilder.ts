@@ -265,7 +265,7 @@ export default class AstBuilder {
         // {§naked-operation} — the name alone opened it; the receipt names the taught form, once.
         const opener = ctx.start?.text ?? "";
         if (opener.length > 0 && !opener.startsWith("`")) {
-            AstBuilder.#advisories.push(new PlurnkParseError(ctx.start!.line, ctx.start!.column, "parser", `\`${opener}\` opened with no fence; the taught form is four backticks.`, "warning"));
+            AstBuilder.#advisories.push(new PlurnkParseError(ctx.start!.line, ctx.start!.column, "parser", `\`${opener}\` opened with no fence; the taught form is three backticks.`, "warning"));
         }
         return statement;
     }
@@ -733,8 +733,9 @@ export default class AstBuilder {
     }
 
     // {§closer-fallback} — without a real closer (the block ended at the next heading or at the end
-    // of the input) the body is cut back to its last bare fence line, which is the closer the model
-    // meant, and one terminating line ending goes with it. A synthetic SECTION_END carries no backtick.
+    // of the input) the body is cut back to its last bare fence line within three spaces of the line
+    // start ({§indented-fences}), which is the closer the model meant, and one terminating line
+    // ending goes with it. A synthetic SECTION_END carries no backtick.
     static #bodyTextOf(ctx: ParserRuleContext): string | null {
         const text = AstBuilder.#findFirst(ctx, BodyContext)?.getText() ?? null;
         if (text === null) return null;
@@ -747,7 +748,7 @@ export default class AstBuilder {
         }
         const lines = text.split("\n");
         for (let index = lines.length - 1; index >= 0; index -= 1) {
-            if (/^[ \t]*`{3,}[0-9]*[ \t]*\r?$/u.test(lines[index] ?? "")) {
+            if (/^ {0,3}`{3,}[ \t]*\r?$/u.test(lines[index] ?? "")) {
                 const kept = lines.slice(0, index).join("\n");
                 return kept === "" ? null : kept;
             }

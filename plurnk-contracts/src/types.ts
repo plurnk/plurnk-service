@@ -25,7 +25,7 @@ export const PLURNK_OPS = [
 ] as const;
 
 // {§operation-fences} — canonical teaching/rendering width; ingestion also accepts three.
-export const PLURNK_FENCE = "````";
+export const PLURNK_FENCE = "```";
 
 export type PlurnkOp = (typeof PLURNK_OPS)[number];
 

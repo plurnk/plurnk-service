@@ -24,9 +24,9 @@ const setup = async (responses: MockResponse[]) => {
     };
 };
 
-// {§operation-fences} — a three-backtick fence opens the operation it names: it runs through
-// ordinary dispatch and completion, and the model is told the taught width once per operation.
-test("{§operation-fences}: three-backtick EDIT, SEND and KILL use ordinary dispatch and completion, and are told the taught width", async () => {
+// {§operation-fences} — the taught three-backtick fence opens the operation it names: it runs
+// through ordinary dispatch and completion, and draws no receipt.
+test("{§operation-fences}: three-backtick EDIT, SEND and KILL use ordinary dispatch and completion without a receipt", async () => {
     const f = await setup([
         { assistant: { content: "```EDIT (worker:///kept.md)\nRetained.\n```", reasoning: null } },
         { assistant: { content: "```SEND\nProgress delivered.\n```", reasoning: null } },
@@ -39,7 +39,7 @@ test("{§operation-fences}: three-backtick EDIT, SEND and KILL use ordinary disp
             assert.equal(turn.emptyTurn, false, "accepted fences never become empty-turn recovery");
             const rows = await f.db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turn.turnId });
             assert.equal(rows.some(({ status_rx }) => status_rx >= 400), false);
-            assert.ok(f.notices.some(({ message }) => message === `\`${op}\` ran with three backticks; the taught fence is four.`), `the receipt names ${op}`);
+            assert.equal(f.notices.some(({ message }) => message?.includes("backticks") === true), false, `${op} drew no receipt about its fence`);
         }
         const channel = await f.db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/kept.md", name: "body" });
         assert.equal(channel?.content, "Retained.");
@@ -48,14 +48,14 @@ test("{§operation-fences}: three-backtick EDIT, SEND and KILL use ordinary disp
 });
 
 test("{§naked-operation}: a bare KILL line concludes with everything beneath it as the delivered answer", async () => {
-    const answer = "The answer is **42**.\n\n```sh\necho hi\n```\n\nDone.";
+    const answer = "The answer is **42**.\n\n```diff\n-old\n+new\n```\n\nDone.";
     const f = await setup([{ assistant: { content: `KILL\n${answer}\n`, reasoning: null } }]);
     try {
         const turn = await f.turn();
         assert.equal(turn.status, 200, "the loop concluded");
         assert.equal(turn.emptyTurn, false);
         assert.deepEqual(await f.replies(), [answer], "the whole body, code block included, is the deliverable");
-        assert.ok(f.notices.some(({ message }) => message === "`KILL` opened with no fence; the taught form is four backticks."), "the receipt names the taught form");
+        assert.ok(f.notices.some(({ message }) => message === "`KILL` opened with no fence; the taught form is three backticks."), "the receipt names the taught form");
     } finally { await f.db.close(); }
 });
 
@@ -64,7 +64,7 @@ for (const shape of ["nested", "indented"] as const) {
         const example = "```KILL (worker:///kept.md)\n```";
         const answer = `Example only:\n${example}\nDo not execute it.`;
         const source = shape === "nested" ? "```KILL\n" + answer + "\n```"
-            : example.split("\n").map((line) => ` ${line}`).join("\n") + "\n\n```KILL\nDone.\n```";
+            : example.split("\n").map((line) => `\t${line}`).join("\n") + "\n\n```KILL\nDone.\n```";
         const f = await setup([
             { assistant: { content: "```EDIT (worker:///kept.md)\nRetained.\n```", reasoning: null } },
             { assistant: { content: source, reasoning: null } },

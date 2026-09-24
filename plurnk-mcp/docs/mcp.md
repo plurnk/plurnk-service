@@ -4,9 +4,9 @@ An MCP server publishes tools, and an enabled server is a runtime here under
 its own name. A tool runs the way `sh` or `node` runs: a fenced call names the
 server and the tool, and its body is the tool's JSON arguments.
 
-````files (list_directory) <!-- server (tool) -->
+```files (list_directory) <!-- server (tool) -->
 {"path": "/absolute/project/path"}
-````
+```
 
 One fenced call runs one tool, and the result is that call's output.
 `worker:///_plurnk/tools/<server>.md` lists a server's invocations and their
@@ -23,16 +23,16 @@ connected once, its tool list is read, and one inert candidate comes back
 carrying the exact definition to add. Discovery never persists or enables a
 server definition.
 
-````mcp (discover) <!-- inspect before adding -->
+```mcp (discover) <!-- inspect before adding -->
 {"source": "npx -y @modelcontextprotocol/server-filesystem /absolute/project/path"}
-````
+```
 
 `add` persists the definition for this workspace, connects, and enables it
 atomically. It is a host effect, admitted under the loop's policy.
 
-````mcp (add)
+```mcp (add)
 {"alias": "files", "definition": {"name": "files", "transport": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/project/path"]}}
-````
+```
 
 A `stdio` definition carries `command` and optional `args`, `cwd`; an `http`
 definition carries `url` and optional `headers`. `tools` narrows the enabled

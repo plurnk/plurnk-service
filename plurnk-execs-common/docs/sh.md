@@ -2,10 +2,10 @@
 
 The `sh` fence runs the body via `sh -c`, character-perfect including whitespace.
 
-````sh <!-- the body is the script itself -->
+```sh <!-- the body is the script itself -->
 printf 'hello\n' > hello.txt
 wc -l hello.txt
-````
+```
 
 A script target runs that script: `sh (greet.sh)` runs it with an empty stdin;
 a nonempty body becomes its stdin. The interpreter reads the script directly,
@@ -44,8 +44,8 @@ growth, and READ can inspect any range. On completion, the harness adds one
 status. READ the observation's `path` for more; the `log:///…/READ` item holds
 only its recorded page:
 
-````READ (sh:///ab3d5678#stdout) <17,40>
-````
+```READ (sh:///ab3d5678#stdout) <17,40>
+```
 
 A nonzero exit closes with status 500; stdout and stderr are separate channels,
 and a diagnostic may be on either. The `log:///…/sh` receipt's own body is the
@@ -57,13 +57,13 @@ says why it was refused.
 
 How long a command may run is one metadata field; absent, it ends with the loop.
 
-````sh [{"lifetime": "30m"}]
+```sh [{"lifetime": "30m"}]
 npm run e2e
-````
+```
 
-````sh [{"lifetime": "detached"}]
+```sh [{"lifetime": "detached"}]
 npm run dev
-````
+```
 
 A duration (`30s`, `30m`, `2h`) kills the command at that deadline. `detached`
 outlives the loop: it runs until it exits or is KILLed. `turn` keeps the command

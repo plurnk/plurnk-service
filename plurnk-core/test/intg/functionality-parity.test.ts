@@ -133,7 +133,7 @@ const skillsFamily = async (): Promise<Family> => {
     return {
         family: "skills",
         documentOf: doc,
-        teaching: /## Read before you install/u,
+        teaching: /## Installing/u,
         service: { alias: "grep", definition: { name: "grep", scope: "project" }, probe: probe("grep") },
         addable: { alias: "extra", definition: { name: "extra", scope: "project", source: sourceA }, probe: probe("extra") },
         conflicting: { alias: "extra", definition: { name: "extra", scope: "global", source: sourceB }, probe: probe("extra") },

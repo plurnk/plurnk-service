@@ -32,7 +32,7 @@ for (const limit of [-1, 0]) test(`{§worker-initialization-entry}: program and 
             assert.ok(initial);
             assert.equal(initial.origin, "_plurnk");
             assert.match(String(initial.body), /^\s*1:This harness-generated turn surveys/m);
-            assert.match(String(initial.body), /````NOTE/);
+            assert.match(String(initial.body), /```NOTE/);
             assert.match(String(initial.body), /NOTE is the only operation that is also parsed and persisted from within reasoning\./);
             assert.doesNotMatch(String(initial.body), /Unrequested model reasoning/);
             assert.equal(reads.length, 1);
