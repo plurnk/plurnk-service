@@ -2,8 +2,8 @@
 
 The **universal subprocess executor** for
 [plurnk-service](https://github.com/plurnk/plurnk-service)'s `exec` scheme. One
-package covers the shell, Node.js, Python 3, and whichever supported host
-interpreters are present. Node is guaranteed; the rest are detected.
+package offers the shell, Node.js, and Python 3 by default, with other supported
+host interpreters available as opt-ins. Node is guaranteed; the rest are detected.
 
 A `@plurnk/plurnk-execs-*` sibling built on the [plurnk-execs](https://github.com/plurnk/plurnk-service/tree/main/plurnk-execs) framework.
 
@@ -25,7 +25,7 @@ detects every other interpreter, so one executor adapts to the host.
 | `bc` 🧮                          | bc                | stdin (for example, `6 * 7`)             |
 | `awk` 🪄                         | awk               | program arg, empty stdin (`BEGIN { … }`) |
 
-Each runtime's catalog Summary includes a short executable inline body, with
+Each enabled runtime's catalog Summary includes a short executable inline body, with
 literal `\n` separators keeping the invocation on one discovery line.
 
 ### A script — the `(target)` slot
@@ -61,6 +61,13 @@ the same next-turn stream path ({§executor-effect}). Inline programs have no
 separate input channel; script targets receive stdin from the body.
 
 ## Configuration
+
+The shipped [`.env.defaults`](./.env.defaults) disables `perl`, `ruby`, `lua`,
+`deno`, `bun`, `tcl`, `bc`, and `awk`. To expose one, set its switch to `1`
+in the ordinary environment cascade and restart the service; commented opt-ins
+are in [`.env.example`](./.env.example). For example, `PLURNK_EXECS_PERL=1`
+enables the Perl executor when Perl is installed. These switches do not prevent
+calling an interpreter through `sh`.
 
 Per-tag kill-switches (`PLURNK_EXECS_<TAG>=0`) and the
 `PLURNK_EXECS_ONLY` allowlist are honored by framework discovery, uniformly
