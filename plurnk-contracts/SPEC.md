@@ -435,9 +435,9 @@ operation or a known executor here. `` An offset example draws nothing either
 ({§indented-fences}). Quotation outside an operation is
 response text under {§response-text}, not an executable program or a completion envelope.
 
-`plurnk.md` teaches no inert form; it shows its own examples offset and leaves the quoting
-fences untaught: an offset fence, a tilde fence, an unlabeled fence and an unknown tag all
-quote. Each is a shape a model reaches for from ordinary Markdown rather than from this
+`plurnk.md` names the tab offset as the form for an example, in the aside of its nesting
+example, and shows its own examples offset; the other quoting fences are untaught: a tilde
+fence, an unlabeled fence and an unknown tag all quote. Each is a shape a model reaches for from ordinary Markdown rather than from this
 teaching, so honouring it protects an example the model already believed was safe
 ({§response-text-note} places the scale). The offset is the one form that survives every
 fence style.

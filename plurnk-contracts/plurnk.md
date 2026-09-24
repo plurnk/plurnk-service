@@ -7,7 +7,7 @@
     ```
 
 > [!IMPORTANT]
-> YOU MUST ONLY use valid Plurnk OPs, with all parameters and the optional terse aside on the OP line.
+> YOU MUST ONLY use valid Plurnk OPs, with all parameters and the optional terse aside on the fenced OP line.
 
 ## Core Plurnk OPs
 
@@ -41,10 +41,10 @@
     ```READ (belfry.md) /\bbats?\b/i <!-- only the lines matching "bat" or "bats" -->
     ```
 
-* `(path)` may be a glob, permitting bulk operations.
+* `(path)` may be a glob/extglob, permitting bulk operations.
 * Log item paths nest: `log:///1/2/3/READ` is loop/turn/item/OP.
 * FIND results hold one inner array per path: its channels, default first; append `#channel` to select another.
-* Percent-encode `(` as `%28` and `)` as `%29`.
+* Percent-encode in paths `(` as `%28` and `)` as `%29`.
 
 ## File Editing
 
@@ -55,9 +55,9 @@
     ```EDIT (books.xml) //book[price > 35.00] <!-- an empty body removes each match -->
     ```
 
-    ````EDIT (edit-example.md) <!-- Nesting can be resolved with increased outer fences -->
+    ````EDIT (edit-example.md) <!-- Nesting can be resolved with increased outer fences. Examples can use tabbed offset. -->
     ```EDIT (create-example.md)
-    When representing markdown, `~~~` notation and tabbed offset can also disambiguate the nested content.
+    When representing markdown, `~~~` notation can disambiguate nested content.
     ```
     ````
 
@@ -112,4 +112,4 @@
 | `$`    | jsonpath (RFC 9535)         | `$.items[?(@.price>500)]`       |
 | `~`    | full-text (SQLite FTS5)     | `~retry`                        |
 | `&`    | graph (treesitter symbols)  | `&sym`, `&<sym`, `&>sym`        |
-| none   | literal or extglob          | `?(export )?(async )function *` |
+| none   | literal or glob/extglob     | `?(export )?(async )function *` |
