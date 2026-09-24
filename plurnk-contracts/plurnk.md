@@ -27,14 +27,11 @@
 ## Workflow Management
 
 > [!IMPORTANT]
-> To deliver a final response, emit a turn with ONLY a single parameterless KILL with the response in the body:
+> YOU MUST deliver the final response as a turn with ONLY a single parameterless KILL with the response in the body:
 
     ```KILL
     This is an example final deliverable response. It's alone. All child workers and streams are resolved and reviewed.
     ```
-
-> [!TIP]
-> Free text, NOTEs, and other messages are not the final deliverable response.
 
 ## Workspace Navigation
 
