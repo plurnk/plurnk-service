@@ -31,6 +31,11 @@ interface Thread {
     resolvingInterrupts: boolean;
     // {§agui-gate-deferral} — the stopped-world held while the bound Worker's reasoning lifecycle is open.
     deferredDelivery: HitlDelivery | null;
+    // {§agui-delegation-observation} — descendants' rows and streams, when the Run asked for them.
+    descendants: boolean;
+    tree: ReadonlyMap<number, Descendant> | null;
+    introduced: Set<number>;
+    unrelated: Set<number>;
     // {§agui-status-children} — the last alive-children count this thread published; null until the first refresh.
     children: number | null;
 }
@@ -40,6 +45,15 @@ export type NotificationScope = "conversation" | "operation" | "result";
 interface WorkerBinding {
     readonly workerId: number;
     readonly loopId: number;
+}
+
+// {§agui-delegation-observation} — a descendant as the daemon's topology names it, depth counted
+// from the bound Worker.
+export interface Descendant {
+    readonly workerId: number;
+    readonly name: string;
+    readonly parentWorkerId: number;
+    readonly depth: number;
 }
 
 interface InterruptContinuation {
@@ -103,6 +117,10 @@ export default class Portal {
     #routeNotification(workspaceId: number, method: string, params: unknown): void {
         for (const thread of this.#threads.get(workspaceId) ?? []) {
             if (Portal.#touchesChildren(thread, method, params)) void this.#refreshChildren(workspaceId, thread);
+            if (thread.descendants && Portal.#observedActor(thread, method, params) !== null) {
+                this.#observeDescendant(workspaceId, thread, method, params);
+                continue;
+            }
             if (!Portal.#ownsNotification(thread, method, params)) continue;
             if (method === "loop/terminated") {
                 const loopId = (params as { loopId?: unknown }).loopId;
@@ -154,6 +172,53 @@ export default class Portal {
         if (children === thread.children || !(this.#threads.get(workspaceId)?.has(thread) ?? false)) return;
         thread.children = children;
         thread.emit([{ type: EventType.STATE_DELTA, delta: [{ op: "replace", path: "/plurnk/status/children", value: children }] }]);
+    }
+
+    // {§agui-delegation-observation} — the actor of a row or stream event that is neither the bound
+    // Worker nor a known stranger; null for everything else, so terminals, packets, reasoning and
+    // notices stay the bound Worker's alone.
+    static #observedActor(thread: Thread, method: string, params: unknown): number | null {
+        if (method !== "log/entry" && method !== "stream/event" && method !== "stream/concluded") return null;
+        const payload = params as { workerId?: unknown; entry?: { worker_id?: unknown } };
+        const actor = method === "log/entry" ? payload.entry?.worker_id : payload.workerId;
+        if (typeof actor !== "number" || actor === thread.workerId || thread.unrelated.has(actor)) return null;
+        return actor;
+    }
+
+    // Descendants' events ride the workspace's delivery chain: ordered among themselves, introduced
+    // once each from the daemon's topology, and never touching this Run's step, streams or terminal.
+    #observeDescendant(workspaceId: number, thread: Thread, method: string, params: unknown): void {
+        const actor = Portal.#observedActor(thread, method, params);
+        if (actor === null) return;
+        this.#enqueueDelivery(workspaceId, async () => {
+            if (!(this.#threads.get(workspaceId)?.has(thread) ?? false)) return;
+            let node = thread.tree?.get(actor);
+            if (node === undefined) {
+                thread.tree = await this.#descendantTree(workspaceId, thread.workerId);
+                node = thread.tree.get(actor);
+            }
+            if (node === undefined) {
+                thread.unrelated.add(actor);
+                return;
+            }
+            if (!thread.introduced.has(actor)) {
+                thread.introduced.add(actor);
+                thread.emit([{ type: EventType.CUSTOM, name: "plurnk.descendant", value: node }]);
+            }
+            const out = thread.router.route(method, params);
+            if (out.length > 0) thread.emit(out);
+        });
+    }
+
+    async #descendantTree(workspaceId: number, rootId: number): Promise<ReadonlyMap<number, Descendant>> {
+        const byId = Portal.#workerMap(await this.#seam.listWorkers(workspaceId));
+        const tree = new Map<number, Descendant>();
+        for (const candidate of byId.values()) {
+            if (candidate.id === rootId || candidate.parentWorkerId === null) continue;
+            const depth = Portal.#ancestors(candidate.id, byId).indexOf(rootId) + 1;
+            if (depth > 0) tree.set(candidate.id, { workerId: candidate.id, name: candidate.name, parentWorkerId: candidate.parentWorkerId, depth });
+        }
+        return tree;
     }
 
     // The stream address a notification opens for the Run that owns it: a started or queued execution
@@ -381,7 +446,7 @@ export default class Portal {
     // binds the render (null → the router lazily
     // adopts the first model-origin row's worker — a fresh workspace's model worker is born
     // at the drain).
-    openThread(args: { workspaceId: number; workerId: number; threadId: string; notificationScope: NotificationScope; emit: (events: AguiEvent[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[] }): unknown {
+    openThread(args: { workspaceId: number; workerId: number; threadId: string; notificationScope: NotificationScope; emit: (events: AguiEvent[]) => void; modelWorkerId?: number | null; inputRunId?: string; resume?: ResumeEntry[]; descendants?: boolean }): unknown {
         const candidates = args.resume
             ?.map(({ interruptId }) => this.#continuations.get(interruptId)) ?? [];
         const restored = candidates.find((candidate) => candidate !== undefined
@@ -408,6 +473,10 @@ export default class Portal {
             pendingTerminations: [],
             resolvingInterrupts: args.resume !== undefined,
             deferredDelivery: null,
+            descendants: args.descendants === true,
+            tree: null,
+            introduced: new Set(),
+            unrelated: new Set(),
             children: null,
         };
         let set = this.#threads.get(args.workspaceId);

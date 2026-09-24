@@ -176,11 +176,14 @@ export default class RunHandler {
             : action.kind === "op.exec" || action.kind === "op.parse"
                 ? "operation"
                 : "result";
+        // {§agui-delegation-observation} — a conversation Run may ask for its descendants' rows.
+        const descendants = action === null && forwarded?.descendants === true;
         const boundRun = this.#portal().openThread({
             workspaceId,
             workerId: lifecycleWorkerId,
             threadId: input.threadId,
             notificationScope,
+            descendants,
             emit,
             modelWorkerId: workerId,
             inputRunId: input.runId,

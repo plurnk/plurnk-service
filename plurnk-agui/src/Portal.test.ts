@@ -17,7 +17,7 @@ import { EventType, type AguiEvent } from "./types.ts";
 import type { Interrupt } from "@ag-ui/core";
 import type { ClientInteractionResolution } from "@plurnk/plurnk-contracts";
 import { loopUsage } from "../test/accounting-fixture.ts";
-import { termination } from "../test/notification-fixture.ts";
+import { streamEvent, termination } from "../test/notification-fixture.ts";
 
 const LOOP_POLICY = Object.freeze({ proposals: "review", attended: true } as const);
 
@@ -966,5 +966,48 @@ test("{§agui-broadcast-fan} a detached execution (<-1>) is nobody's obligation:
     m.fire(3, "log/entry", startedExec({ detached: true }));
     portal.finishThread(thread, [{ type: EventType.CUSTOM, name: "plurnk.action.result", value: { kind: "op.exec", ok: true, result: { status: 200, outcome: "started" } } }]);
     assert.equal(seen.at(-1)?.type, "RUN_FINISHED", "the Run settles at once; the detached spawn outlives it");
+    portal.stop();
+});
+
+test("{§agui-delegation-observation}: a Run that asks for its delegation receives descendants' rows and streams as foreign rows, introduced once each, never a stranger's", async () => {
+    const m = mockSeam([], [], {
+        workers: [worker(10), worker(20, 10), worker(30, 20), worker(40)],
+        loops: new Map([[10, [loop(10, 77)]]]),
+    });
+    const seen: AguiEvent[] = [];
+    const quiet: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "tui", notificationScope: "conversation", descendants: true, emit: (events) => seen.push(...events) });
+    portal.openThread({ workspaceId: 3, workerId: 10, modelWorkerId: 10, threadId: "plain", notificationScope: "conversation", emit: (events) => quiet.push(...events) });
+    await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "delegate" });
+
+    const row = (id: number, workerId: number) => ({ entry: { id, worker_id: workerId, loop_id: 80 + workerId, origin: "model", op: "READ", status_rx: 200, rx: {}, coordinate: `1.1.${id}`, tx: { body: "" }, turn_id: 1 } });
+    m.fire(3, "log/entry", row(2, 20));
+    m.fire(3, "log/entry", row(3, 30));
+    m.fire(3, "log/entry", row(4, 40));
+    m.fire(3, "log/entry", row(5, 20));
+    m.fire(3, "stream/event", streamEvent({ entryId: 5, workerId: 20, target: "sh:///c1", scheme: "sh", contentLength: 5 }));
+    m.fire(3, "loop/terminated", termination({ workerId: 20, loopId: 100, result: { status: 500 }, hitMaxTurns: false, turnIds: [1], usage: loopUsage({ curationBudget: 1000 }) }));
+    await nextTask();
+    await nextTask();
+    const customs = seen.filter((event) => event.type === "CUSTOM").map((event) => {
+        const e = event as { name: string; value: { workerId?: number; depth?: number; parentWorkerId?: number; name?: string; worker_id?: number; id?: number } };
+        if (e.name === "plurnk.descendant") return `descendant:${e.value.workerId}:${e.value.depth}:${e.value.parentWorkerId}:${e.value.name}`;
+        if (e.name === "plurnk.row") return `row:${e.value.worker_id}:${e.value.id}`;
+        if (e.name === "plurnk.stream") return `stream:${e.value.workerId}`;
+        return e.name;
+    }).filter((label) => !label.startsWith("plurnk."));
+    assert.deepEqual(customs, [
+        "descendant:20:1:10:worker-20", "row:20:2",
+        "descendant:30:2:20:worker-30", "row:30:3",
+        "row:20:5", "stream:20",
+    ], "each descendant is introduced once with its generation, in order; the stranger never arrives");
+    assert.ok(!seen.some((event) => event.type === "RUN_FINISHED"), "a descendant's terminal never settles this Run");
+    assert.ok(!seen.some((event) => event.type === "TOOL_CALL_START"), "a descendant's row never enters the core vocabulary");
+    assert.equal(quiet.filter((event) => event.type === "CUSTOM").length, 0, "without the request, a Run observes its bound Worker alone");
+
+    m.fire(3, "loop/terminated", termination({ workerId: 10, loopId: 77, result: { status: 200 }, hitMaxTurns: false, turnIds: [1], usage: loopUsage({ curationBudget: 1000 }) }));
+    assert.ok(seen.some((event) => event.type === "RUN_FINISHED"), "the bound Loop's terminal settles the Run; a descendant's open stream never defers it");
     portal.stop();
 });

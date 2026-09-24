@@ -2968,3 +2968,27 @@ test("{§agui-thread-binding}: a thread name never binds a client or runtime act
         assert.deepEqual(runWorkers, [], "no loop ran on a client or runtime actor");
     } finally { await mod.close(); }
 });
+
+test("{§agui-delegation-observation}: forwardedProps.plurnk.descendants fans a child's rows into the conversation's SSE, introduced once", async () => {
+    const { seam, emit } = mockSeam();
+    const started = Promise.withResolvers<void>();
+    seam.listWorkers = async () => [workerRow(77, "chat"), workerRow(78, "child", "model", 77)];
+    seam.runLoop = async () => { started.resolve(); return { status: 100, action: "enqueued_new_loop" as const, loopId: 9 }; };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const port = mod.address().port;
+        const run = openStream(port, { threadId: "chat", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "chat", descendants: true } } });
+        await waitForFixture(started.promise, () => "the Run did not bind through runLoop");
+        emit(3, "log/entry", { entry: { id: 2, worker_id: 78, loop_id: 12, origin: "model", op: "READ", status_rx: 200, rx: {}, coordinate: "1.1.1", tx: { body: "" }, turn_id: 1 } });
+        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise((resolve) => setImmediate(resolve));
+        emit(3, "loop/terminated", termination({ workerId: 77, loopId: 9, usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }) }));
+        const events = await run;
+        const customs = events.filter((event) => event.type === "CUSTOM").map((event) => (event as { name: string }).name);
+        const intro = customs.indexOf("plurnk.descendant");
+        const row = customs.indexOf("plurnk.row");
+        assert.ok(intro >= 0 && row > intro, `the child is introduced before its row: ${customs.join(",")}`);
+        const value = (events.find((event) => (event as { name?: string }).name === "plurnk.descendant") as { value: { workerId: number; name: string; depth: number } }).value;
+        assert.deepEqual([value.workerId, value.name, value.depth], [78, "child", 1]);
+    } finally { await mod.close(); }
+});

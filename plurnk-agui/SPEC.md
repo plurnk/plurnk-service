@@ -142,8 +142,9 @@ hops to. The module computes it from `ApplicationPort.listWorkers({ parentWorker
 snapshot and whole-gauge replacement, and republishes `STATE_DELTA /plurnk/status/children` only
 when the count changes: after another worker's `loop/terminated` or `loop/packet`, or after the
 bound Worker's own `WORK`, `FORK`, or `KILL` row lands. Clients render the number as their child
-indicator and never poll the directory to keep it honest (topology is navigation, not a dashboard:
-the client hops to a child rather than watching it).
+indicator and never poll the directory to keep it honest. Topology is navigation: the client
+hops to a child to speak to it; watching a child's rows is the delegation observation a Run
+asks for ({§agui-delegation-observation}).
 
 §agui-numbers-passthrough **Gauge numbers pass through verbatim.** The module
 never recomputes the daemon's gauge or promotes accounting into application
@@ -513,8 +514,23 @@ An AG-UI Run observes its bound Worker, not the workspace's raw event stream. A
 `log/entry` reaches that Run only when `entry.worker_id` names the bound Worker;
 once its Loop is known, `entry.loop_id` must name that Loop. Cross-worker activity
 appears only after Core materializes it into the recipient Worker's log through
-lineage or commons attention ({§actor-boundary}). AG-UI does not synthesize a
-second topology by rebroadcasting sibling rows.
+lineage or commons attention ({§actor-boundary}), or under the delegation
+observation the Run asked for ({§agui-delegation-observation}). AG-UI does not
+synthesize a second topology by rebroadcasting sibling rows.
+
+§agui-delegation-observation **A conversation Run may observe its delegation.** A
+conversation Run whose `forwardedProps.plurnk.descendants` is `true` also receives the
+rows (`log/entry`) and stream events (`stream/event`, `stream/concluded`) of every Worker
+beneath its bound Worker in Core's authoritative topology, as foreign rows only: `CUSTOM
+plurnk.row` and `plurnk.ambient`, `plurnk.stream` and its activity snapshot, never the core
+vocabulary, a step, reasoning, or this Run's terminal. The first event of each descendant is
+preceded once by `CUSTOM plurnk.descendant` `{workerId, name, parentWorkerId, depth}`, depth
+counted from the bound Worker, so a client renders identity and generation without a second
+directory read. Descendants' events are ordered among themselves on the workspace's delivery
+chain; the bound Worker's own events keep their own order. A descendant's terminal reaches the
+Run as its parent's collect row, never as a terminal; a descendant's open stream never defers
+this Run's settlement; a sibling or unrelated Worker's events never arrive. Without the
+request, the Run observes its bound Worker alone.
 
 ## §agui-broadcast-fan Event fan and AG-UI Run settlement
 
@@ -543,7 +559,7 @@ this Run.
 
 | AG-UI Run | Core notifications admitted | Settlement owner |
 | ---------- | --------------------------- | ---------------- |
-| Message or interrupt-resume | Bound Worker; exact Loop once known. Workspace derivation progress may carry no Worker. | Exact Loop terminal or interrupt. |
+| Message or interrupt-resume | Bound Worker; exact Loop once known. Workspace derivation progress may carry no Worker. Under {§agui-delegation-observation}, descendants' rows and streams as foreign rows. | Exact Loop terminal or interrupt. |
 | `op.exec` / `op.parse` | Client-operation Worker's log and stream events. A proposal resume retains this scope. | This action result, deferred through its owned streams. |
 | Every other action | None; the Run carries only its direct state snapshot and action result. | This action result. |
 
