@@ -50,11 +50,6 @@ non-default port, path, and ordered query. A fragment does not change socket
 identity; `messages` is the only current channel. An unavailable channel returns
 `404 channel-not-found`, listing available channels without replacing the socket.
 
-| Current transport boundary | Behavior                                                                |
-| -------------------------- | ----------------------------------------------------------------------- |
-| Inbound payload            | String event data only; no coercion or binary projection                |
-| Inbound order              | Native event order; one durable write completes before the next begins  |
-| Binary inbound payload     | Keep the text prefix, prune the suffix, settle `415`, and close with private-use code `4003` |
-| Persistence failure        | Keep the successful prefix; prune queued and later frames; settle `500` |
-| Reconnection               | None; READ again after terminal cleanup                                 |
-| Handshake metadata         | `[metadata]` is unsupported                                              |
+The transport carries text frames only, in native order, one durable write at a
+time; a binary inbound frame settles `415` and closes the socket; there is no
+reconnection (READ again after terminal cleanup) and no handshake metadata.

@@ -1,13 +1,12 @@
 # https://
 
-Plain `http://` is also accepted for the endpoint that requires it — a local
-service, an interior tool. Prefer `https://` everywhere else.
+Plain `http://` is accepted as well, for an endpoint that requires it.
 
 ## Summary
 
 Read and modify web resources through addressable HTTP(S) entries.
 
-Use a web URL as an addressable entry. Every exact READ acquires or refreshes a
+A web URL is an addressable entry. Every exact READ acquires or refreshes a
 complete representation when needed, then core selects the channel and applies
 the requested text/byte scope. An HTML page's `body` is the server source; its
 readable Markdown (a materializer's or the local reader's) is `#readable`, and
@@ -18,17 +17,17 @@ every READ names the page's other channels with their tokens.
 | `READ (https://…) <scope?>`              | GET if needed | Acquire/reuse the complete response, then return the selected scoped text |
 | `FIND (https://…) [{"pattern": …}]` | GET if needed | Return matching text regions for a scoped READ                           |
 | `SEND (https://…)` with body             | POST          | Submit the body and stream the response                                  |
-| `EDIT (https://…)` with body             | PUT           | Replace the whole remote resource; do not use a line scope               |
+| `EDIT (https://…)` with body             | PUT           | Replace the whole remote resource; a line scope does not apply           |
 | `KILL (https://…)`                       | none          | Cancel a live acquisition of the address, or forget its stored response  |
 | `KILL (https://…) [{"remote": true}]`              | DELETE        | Delete the remote resource and stream the response                       |
 
 A path-pattern FIND searches only web entries already materialized in the
 workspace; a pattern cannot discover the remote web. For matched content, READ
 the returned `#channel` using the `region` as
-`<startLine,startColumn,endLine,endColumn>`. Structural matches may include the
-enclosing property; a locator without a region does not supply text coordinates.
+`<startLine,startColumn,endLine,endColumn>`. Caller cancellation of an exact
+acquisition returns `499 cancelled`.
 
-Caller cancellation of an exact acquisition returns `499 cancelled`.
+## Channels
 
 | Response                             | `body`                                              | Other channel                                  |
 | ------------------------------------ | --------------------------------------------------- | ---------------------------------------------- |
@@ -40,79 +39,39 @@ Caller cancellation of an exact acquisition returns `499 cancelled`.
 | Binary with a readable projection    | Original bytes, shown as hex                        | Facts/text in `#readable`; evidence in `#header` |
 | Binary without a readable projection | Original bytes, shown as hex                        | Evidence in `#header`; no invented facts        |
 
-Generic public HTML uses the selected materializer as its `#readable` producer. A recoverable
-timeout, transport error, `429`, `5xx`, or per-URL extraction failure uses the
-local HTML reader and records terminal `#readable` status `203`. Authentication,
-provider rejection, and malformed provider responses are hard failures and do
-not silently switch producers. Any authored request metadata makes HTML use the
-local reader directly. Origin Markdown always wins without the materializer.
+`#header` holds origin and acquisition evidence, including a materializer's
+route, status and timing. `body`, `#header` and `#readable` carry independent
+outcomes: `#readable` or `#header` can remain readable after a source failure,
+and a direct non-success origin response is still materialized, its
+origin-backed channels carrying the exact `http-response-status` Problem. A
+READ of the source names `#readable` and its tokens. `422
+no-readable-projection` on `#readable` means the local route produced no
+readable text; `413 projection-input-limit` is input above the configured byte
+ceiling; `404 channel-not-found` lists the available channels and does not
+mean the URL is missing. A binary response keeps its original bytes in `body`;
+READ shows their hex and, on a supporting model, attaches the native media;
+`#bytes` selects the hex view explicitly. A SEND signal is never the remote
+HTTP status; a failed mutation's response evidence is in `#header`, and a
+retry re-executes the mutation.
 
-Projection presence is structural: a returned projection is accepted even
-when its content is empty. `422 no-readable-projection` on `#readable` means the
-local route produced no readable text. An internal projection exception returns
-non-retryable `500 projection-failed`.
+For SSE, READ returns `102` while events continue; origin close settles the
+subscription at `200`, and later cancellation or transfer failure settles it
+at `499` or `502` without rewriting the initial READ. Re-reading an exact URL
+reuses a complete GET while the operator TTL and the origin's own lifetime
+allow; request metadata, a `Vary` response, a partial `206`, or a POST, PUT or
+DELETE response is never reused as a later GET. Scope never suppresses
+acquisition or refresh.
 
-A binary response retains its original bytes in `body`; READ shows their hex
-and, on a supporting model, attaches the complete native media. `#readable`
-holds facts/text when a reader exists and attaches the same native source.
-`#bytes` explicitly selects the hex view; scope never clips native media.
-Unknown formats remain byte-readable. Input above the configured byte ceiling
-returns `413 projection-input-limit`. Failed mutation responses retain lifecycle
-evidence in `#header`; do not retry a mutation solely to retrieve its body.
-
-`#header` contains origin and package acquisition evidence. A materializer attempt
-adds its route, status, timing, any reported request ID and credits, and bounded
-failure evidence. `body`, `header`, and `readable` carry independent durable
-producer outcomes; the selected channel determines success. Thus `#readable` or
-`#header` can remain readable after a source failure, while a materializer's
-Markdown can succeed without fabricating unavailable server HTML. A READ of the
-source names `#readable` and its tokens, so the curated page is one fragment away. A SEND signal is never the
-remote HTTP status. A direct non-success origin response is still materialized:
-origin-backed channels carry its exact durable `http-response-status` Problem,
-while independently produced materializer content and acquisition headers retain
-their own outcomes.
-
-For SSE, the response and persisted `#header` establish acquisition. READ then
-returns `102` while events continue. Origin close settles the subscription at
-`200`; later cancellation or transfer failure settles it at `499` or `502`
-without rewriting the initial READ.
-
-Re-reading an exact URL can reuse only a complete GET acquired without
-explicit request metadata whose response had no `Vary` field. Plurnk keeps one
-representation per URL, so any request metadata or `Vary` response bypasses both
-the freshness shortcut and old validators instead of creating a variant store.
-Reuse also requires a cacheable status or explicit origin permission; partial
-`206` responses are retained but never reused as a complete GET.
-Workspace reuse follows shared-cache rules. Eligible content is served directly
-only while both the operator TTL and origin lifetime remain live: `s-maxage`
-overrides `max-age`, which overrides `Expires`. `no-cache` requires origin
-validation; `private` and `no-store` evidence remains available but supplies
-neither content nor validators to a later request. Only singular, syntactically valid stored
-validators are sent. A 304 restores a non-page representation only when its
-ETag or Last-Modified value identifies the nominated representation. A strong
-response ETag requires the same stored strong tag; a weak response ETag may
-match either strength. Otherwise, one unconditional GET reacquires the content;
-another 304 fails without serving the stored body. Responses to POST, PUT, and
-DELETE are not reused as later GET representations. A projected GET is reused
-only while the installed reader has the same projection identity. Page bodies
-likewise require the same origin-Markdown, local, materializer-id, or
-local-fallback route. Once stale, a page composite is fully reacquired without
-old validators; an origin 304 cannot certify provider or auxiliary material.
-
-Scope never suppresses acquisition or refresh. The HTTP producer cannot see the
-fragment or text coordinates; after preparation, the fragment (or `body` by
-default) selects a durable channel and core applies the range. Cold and warm
-forms therefore have identical selection and scope semantics.
-An unavailable channel returns `404 channel-not-found` with the available
-channels; it does not mean that the containing URL is missing.
+## Request headers
 
 Request headers share one `[{"Key": "value", ...}]` metadata block after the
-target and any scope:
+target and any scope; option objects in the array merge left to right, and
+metadata stays on one line.
 
-````READ (https://api.example.com/v1/me) [{"Authorization": "Bearer TOKEN", "Accept": "application/json"}]
+````READ (https://api.example.com/v1/me) [{"Accept": "application/json"}]
 ````
 
-````EDIT (https://api.example.com/v1/thing/42) [{"Authorization": "Bearer TOKEN", "Content-Type": "application/json"}]
+````EDIT (https://api.example.com/v1/thing/42) [{"Content-Type": "application/json"}]
 {"done":true}
 ````
 
@@ -120,20 +79,16 @@ target and any scope:
 {"query":"plurnk"}
 ````
 
-Metadata stays on one line; option objects in the array merge left to right.
-An exact FIND forwards these headers when it must acquire the URL, but the
-result remains intentionally ineligible for later cache reuse. Request headers
-are never forwarded to the materializer, so HTML requests carrying any explicit
-metadata use the local HTML-reader projection. Executor-supplied HTML also
-stays local; only generic web acquisition grants materializer authority.
+A request with explicit metadata is ineligible for later cache reuse, and its
+HTML uses the local reader projection: request headers never reach the
+materializer. GET acquisition of a GitHub `…/blob/…` URL uses its
+`raw.githubusercontent.com` source; the addressed URL remains entry identity,
+and POST, PUT and DELETE never use that rewrite.
 
-GET acquisition of a GitHub `…/blob/…` URL uses its
-`raw.githubusercontent.com` source. The addressed GitHub URL remains entry
-identity. POST, PUT, and DELETE never use that rewrite.
+A `KILL` of an https:// address never reaches the remote unless it carries
+`[{"remote": true}]`: while an acquisition is in flight it cancels that
+acquisition, otherwise it forgets the stored response so the next READ must
+acquire it again. With `[{"remote": true}]`, the other options in that block
+are the DELETE request's headers.
 
-A `KILL` of an https:// address never reaches the remote unless it carries the `[{"remote": true}]`
-block: while an acquisition is in flight it cancels that acquisition, otherwise it forgets
-the stored response so the next READ must acquire it again. With `[{"remote": true}]`, the other
-options in that same block are the DELETE request's headers.
-
-For a persistent bidirectional connection, use `wss://`.
+For a persistent bidirectional connection, `wss://` (`wss.md`).

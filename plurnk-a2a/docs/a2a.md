@@ -2,43 +2,35 @@
 
 An A2A agent is another agent reachable over HTTP that advertises an Agent
 Card. Once added, it is addressed as `a2a://<alias>` and worked like a worker
-you cannot see inside: `SEND` it a task, wait for its result, `READ` what it
-returned. It is not a tool with a schema; it is a peer that takes instructions
-in prose.
-
-## When to reach for an agent
-
-- The user names an agent, or the turn-0 catalog lists an enabled one whose
-  card describes the job at hand. `READ (a2a://<alias>)` shows its card and
-  skills before you commit work to it.
-- Delegation you could do yourself with a worker (`WORK`) stays a worker:
-  an agent is for capability that lives elsewhere.
+whose inside is not visible: `SEND` it a task, wait for its result, `READ`
+what it returned. It is not a tool with a schema; it is a peer that takes
+instructions in prose. `READ (a2a://<alias>)` shows its card and skills.
 
 ## discover, then add
 
 `discover` takes `{"source": "<agent base URL>"}`, fetches the Agent Card, and
 returns one inert candidate carrying the exact definition. `add` persists and
-enables it for this workspace (a host effect, run on acceptance):
+enables it for this workspace; it is a host effect, admitted under the loop's
+policy.
 
 ````a2a (add)
-{"alias": "planner", "definition": {"name": "planner", "url": "https://agents.example.com/planner"}}
+{"alias": "peer", "definition": {"name": "peer", "url": "https://agents.example.com/peer"}}
 ````
 
-Authentication is the definition's business (headers or a token the operator
-configured), never something you type into a body. An agent whose card is
-unreachable is listed `unavailable` with its exact Problem. `disable` and
-`remove` follow the family lifecycle; operator-configured agents
-(`PLURNK_A2A_*`) can only be disabled.
+Authentication is the definition's (headers or a token the operator
+configured), never a body's. An agent whose card is unreachable is listed
+`unavailable` with its exact Problem. `disable` and `remove` follow the family
+lifecycle; operator-configured agents (`PLURNK_A2A_*`) are disable-only.
 
 ## Working with an added agent
 
-````SEND (a2a://planner) <!-- start a task -->
-Compare the two proposals in docs/ and return a recommendation with evidence.
+````SEND (a2a://peer) <!-- start a task -->
+The task, in prose.
 ````
 
-A task answers `102` with its `a2a://planner/tasks/<id>` resource and wakes
-your next turn when it concludes; a direct message answers `200` with an
-`a2a://planner/messages/<id>` resource. `READ` the task for its status,
+A task answers `102` with its `a2a://peer/tasks/<id>` resource and wakes the
+next turn when it concludes; a direct message answers `200` with an
+`a2a://peer/messages/<id>` resource. `READ` the task for its status,
 artifacts, and any input it requests; `SEND` to the task resource to continue
 it; `KILL` it to cancel, which also asks the remote agent to stop.
 
@@ -48,14 +40,8 @@ in `#json`. Its Artifacts and binary Parts are retained as linked resources;
 
 ## Attachments
 
-````SEND (a2a://planner) [{"attachments":["report.pdf","data/results.json"]}]
-Review these results.
-````
-
-Select exact resource paths or channels. SEND captures their current bytes;
-creating or reading a file alone never sends it. A missing source fails the
-SEND before delivery. To answer an incoming A2A request with files, omit the
-target and use the same attachment option. The caller receives standard
-Artifacts. Incoming files arrive as ordinary resource links; READ them normally.
-Incoming response-format preferences appear beside the message when supplied.
-Attachment media types remain those of the selected resources.
+SEND's `[{"attachments": [...]}]` option (`worker.md`) applies: exact resource
+paths or channels, captured at SEND time, delivered to the agent as standard
+Artifacts; a reply to an incoming A2A request omits the target and uses the
+same option. Incoming files arrive as ordinary resource links; incoming
+response-format preferences appear beside the message when supplied.
