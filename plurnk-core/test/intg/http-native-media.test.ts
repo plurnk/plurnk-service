@@ -55,7 +55,7 @@ for (const enabled of [true, false]) {
         await run(provider);
         const parts = provider.received.map((messages) => messages.flatMap((message) => Array.isArray(message.content) ? message.content.filter((part) => part.type === "file") : []));
         assert.deepEqual(parts.map((files) => files.length), enabled ? [0, 1, 2, 3, 3] : [0, 0, 0, 0, 0],
-            provider.received.at(-1)!.map(chatMessageText).join("\n").split("\n").filter((line) => line.includes('"overflow"') || line.startsWith("READ (http://")).join("\n"));
+            provider.received.at(-1)!.map(chatMessageText).join("\n").split("\n").filter((line) => line.includes('"overflow"') || /^### log:\/\/\/\S+\/READ \(http:\/\//.test(line)).join("\n"));
         for (const part of parts.flat()) {
             assert.equal(part.mediaType, sample.mimetype);
             assert.ok(Buffer.from(part.data).equals(sample.bytes), "HTTP native input preserves the exact source bytes");
