@@ -18,6 +18,11 @@ sources into a consuming package would create a second teaching owner.
 | `docs/worker.md`                | Required   | Deep reference prose for the reserved worker scheme | Pull-doc materialization {§schemes-directory}           |
 | `skills/plurnk/SKILL.md`         | Required   | Standard Plurnk skill entry and chapter directory | Service-provided skill {§plurnk-skill} |
 
+Every teaching source, and every package's `docs/*.md`, is written to
+`TEACHING.md`, the style rule for model-facing prose: mechanism over advice,
+one owner per claim, knobs by name, shapes over purposes, one home per
+mechanism, no contract tags on a page.
+
 Required is a package-membership statement, not unconditional packet
 projection. Each source is read only at its consuming boundary; absence or an
 unrelated read failure fails that boundary with the original cause. An empty
