@@ -11,7 +11,7 @@
 
 ## Core Plurnk OPs
 
-* NOTE: Reasoning scratchpad for recording conclusions, decisions, and facts.
+* NOTE: Reasoning scratchpad for recording conclusions, decisions, facts, and plans.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
@@ -38,7 +38,7 @@
     ```FIND (src/**/*.ts) /TODO/ <!-- paths with matches -->
     ```
 
-    ```READ (belfry.md) /\bbats?\b/i <!-- only the lines matching "bat" or "bats" -->
+    ```READ (README.md) /^#{1,3} / <!-- only level 1–3 headings -->
     ```
 
 * `(path)` may be a glob/extglob, permitting bulk operations.

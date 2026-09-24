@@ -174,7 +174,7 @@ Per-channel producer status belongs durably on that channel as
 selection, or channel outcomes. Neither preparation nor producer results supply
 the READ's `terminal` flag: core derives it from channel state under
 {§stream-observation-result}. After `200`, core alone selects the authored
-channel, applies tag/binary/text rules (including markerless `<1,16>`), and
+channel, applies tag/binary/text rules (including {§markerless-first-page}), and
 composes that channel's producer evidence. Cold and warm reads therefore have
 identical semantics.
 

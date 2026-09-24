@@ -506,7 +506,7 @@ beside owner metadata, not only a matcher carried inside its `pattern` option.
 | `<scope>` | Operation-specific numeric or anchored coordinates |
 | `<!-- … -->` | Optional final, single-line aside |
 | Body | Literal content between framing newlines |
-| Closing fence | The opening backtick count and delimiter, on its own line |
+| Closing fence | The opening backtick count, on its own line |
 
 §slot-order Producers put target, scope, metadata, then aside, separated
 by one ASCII space. Target and scope form one resource selection; COPY/MOVE
@@ -610,12 +610,12 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 
 | OP   | `(path)`                                     | `<scope>`                       | `body`                         |
 |------|----------------------------------------------|---------------------------------|--------------------------------|
-| FIND | required target or glob                      | optional result range           | optional matcher               |
+| FIND | required target or glob                      | optional result range           | empty                          |
 | READ | required target                              | optional text region            | empty                          |
 | EDIT | required file or entry                       | required for an existing target | literal text                   |
 | COPY | required source and destination              | optional region after each path | empty                          |
 | MOVE | required source and destination              | optional region after each path | empty                          |
-| execution | the fence name is the runtime; optional program/tool path ({§exec-executor-slot}) | optional timeout, poll     | optional program input        |
+| execution | the fence name is the runtime; optional program/tool path ({§exec-executor-slot}) | none ({§exec-lifetime}) | optional program input |
 | BARE | optional prompt resource                     | none                            | prompt; optional with a path   |
 | WORK | optional fresh `worker://name`, or a prompt resource ({§worker-spawn-prompt-resource}) | none | prompt; optional with a resource |
 | FORK | optional context-inheriting `worker://name`, or a prompt resource | none            | prompt; optional with a resource |
@@ -751,8 +751,8 @@ Without a `#` the field is absent, so an older `LocalPath` literal stays valid.
 §read-exact-target READ targets one exact resource (a local path or scheme
 URL, with optional `#channel` fragment or `[metadata]`) and has no body. A
 `<scope>` on READ selects
-a text region from that exact target. Without a scope, READ defaults to
-`<1,16>`; `<1,-1>` explicitly selects all text. Decimal scope components are
+a text region from that exact target. Without a scope, READ takes the configured
+first page ({§markerless-first-page}); `<1,-1>` explicitly selects all text. Decimal scope components are
 invalid on READ.
 
 Mutation semantics:
@@ -790,7 +790,8 @@ Mutation semantics:
 unit. An exact target with a matcher pages flat match locations; a glob or
 folder target, and every matcher-less FIND, pages resources. Resolving a glob to
 one resource does not make it exact. The same `<N>`, inclusive `<N,M>`,
-markerless `<1,16>`, and explicit-all `<1,-1>` forms apply to either unit.
+configured markerless first page ({§markerless-first-page}), and explicit-all
+`<1,-1>` forms apply to either unit.
 
 §copy-move-observation COPY and MOVE log projections preserve both admitted operand selections,
 including their independent scopes, whether the result changed state, was a
@@ -808,7 +809,8 @@ retrieval never returns inline within the emitting turn.
 ## §path-syntax 5. Target and path grammar
 
 The target slot contains either a local path or a scheme URL. Exact addresses
-and path globs share the slot; content matchers belong in the body.
+and path globs share the slot; content matchers follow the heading forms in
+{§matcher-option}.
 
 | Form                    | Typed admission                                                     | Runtime meaning                                      |
 |-------------------------|---------------------------------------------------------------------|------------------------------------------------------|
@@ -935,13 +937,13 @@ The operation column names the canonical AST operation after
 
 | Operation             | Canonical components                   | Meaning                                                                    |
 |-----------------------|----------------------------------------|----------------------------------------------------------------------------|
-| FIND                  | optional threshold, then 0–2 positions | Inclusive resource or exact-target location positions ({§find-result-unit}; defaults to `<1,16>`) |
+| FIND                  | 0–2 positions                          | Inclusive resource or exact-target location positions ({§find-result-unit}; markerless first page under {§markerless-first-page}) |
 | READ / client LOOK    | 0/1/2/4 text coordinates               | Text projection from one exact selected file, entry, or log item           |
 | EDIT                  | 0/1/2/4 text coordinates               | Text replacement, deletion, prepend, or append                             |
 | COPY/MOVE source      | 0/1/2/4 text coordinates               | Region copied or moved from the selected source                            |
 | COPY/MOVE destination | 0/1/2/4 text coordinates after target  | Region replaced or insertion point at the destination                      |
 | KILL                  | 0/1/2 text coordinates                 | Whole target when absent; one physical line or inclusive range when present ({§kill-scope}) |
-| execution             | `timeout[,poll]`                       | Spawn lifetime bound and poll cadence in minutes                           |
+| execution             | None                                   | Lifetime uses metadata; observation cadence belongs to the daemon ({§exec-lifetime}) |
 | WAIT                  | None                                   | Scope is ignored ({§send-wait-scope}) |
 | Directed SEND         | Owner-defined numeric scope           | Carried to the addressed owner; worker actors refuse it ({§send-directed-scope}) |
 
@@ -1618,7 +1620,7 @@ diagnostics are:
 - §invalid-scope-diagnostic **Malformed scope content.** After a properly spaced
   scope opener, report the offending scope (at most 64 code points, ending at
   `>` or the heading's line end) and its operation's constraint: FIND result
-  positions, execution minutes, text coordinates, or no scope. Do not append advice for
+  positions, text coordinates, or no scope. Do not append advice for
   other operations or infer why the producer supplied the value. Spacing and
   boundary-loss diagnostics retain their own contracts.
 - §misplaced-aside-advisory **Aside in the body.** A READ or FIND whose

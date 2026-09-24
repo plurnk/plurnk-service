@@ -2002,7 +2002,7 @@ READ is the one fan-out core performs ({§read-fan-out}).
   Each such row carries `attrs.fanout` (`target`, the authored glob; `matched`, the
   survey's matching path count; `index`; `count`), so a client presents the authored
   statement once and folds the paths beneath it without inferring the group.
-  Without a scope each path renders its ordinary `<1,16>` preview; with a pattern
+  Without a scope each path uses {§markerless-first-page}; with a pattern
   only the matching lines, `grep -n` style. The authored statement contributes
   `rowsWritten`, the receipt count, to its turn's sequence. No path is one 204
   receipt on the authored glob (`matched: 0` when a pattern selected nothing); a
@@ -2541,7 +2541,7 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
 - §find-glob-filter-on-content The heading's `pattern` option ({§matcher-option})
   matches the selected channel's content or derivation; path globs select
   resources through `(target)` ({§path-glob}).
-- §find-fulltext-selection Every matcher operates only over the candidate set selected by `(target)`; indexed matchers do not bypass that selection. `~query` passes the native FTS5 expression to SQLite and ranks matching candidates by ascending BM25, with resource identity breaking ties. Native BM25 uses the shared index's term statistics; candidate visibility, owner, channel and target filters determine which resources can be returned. The ordinary FIND pager selects resources for broad targets or match locations for exact targets: markerless search defaults to `<1,16>`, `<N>` selects position N and `<N,M>` selects an inclusive range. Fractions are invalid result coordinates, not similarity thresholds. Results expose addressable matched text regions; neither cosine scores nor percentage similarity is invented. Native query-syntax failures return 400 with SQLite's diagnostic; database and implementation failures propagate.
+- §find-fulltext-selection Every matcher operates only over the candidate set selected by `(target)`; indexed matchers do not bypass that selection. `~query` passes the native FTS5 expression to SQLite and ranks matching candidates by ascending BM25, with resource identity breaking ties. Native BM25 uses the shared index's term statistics; candidate visibility, owner, channel and target filters determine which resources can be returned. The ordinary FIND pager selects resources for broad targets or match locations for exact targets: markerless search uses {§markerless-first-page}, `<N>` selects position N and `<N,M>` selects an inclusive range. Fractions are invalid result coordinates, not similarity thresholds. Results expose addressable matched text regions; neither cosine scores nor percentage similarity is invented. Native query-syntax failures return 400 with SQLite's diagnostic; database and implementation failures propagate.
 - §find-scoped-isolation Workspace + scheme scoped — no cross-workspace/cross-scheme leakage.
 - §find-result-projection **The authored target shape determines the result unit; result cardinality never changes it** ({§find-result-unit}). Returns `FindResult { status, content, mimetype, results, range, matchingPathCount, matchLocationCount, itemsWeightTotal, returnedItemsWeightTotal }`:
 
@@ -2809,7 +2809,7 @@ control capabilities, not exceptions granting write access to stdout/resources.
 
 ### §exec Executions
 
-AST: `{ runtime (the fence name in its registered lowercase spelling; there is no operation keyword), target (optional runtime-specific target), body: string | null (runtime-specific input), lineMarker (timeout/poll) }`.
+AST: `{ runtime (the fence name in its registered lowercase spelling; there is no operation keyword), target (optional runtime-specific target), body: string | null (runtime-specific input), lineMarker }`. Execution refuses a non-null scope under {§exec-lifetime}.
 
 §exec-target-routing Engine routes unconditionally to the `exec` scheme,
 resolves the runtime first, selects its static {§executor-invocation} or exact
@@ -2884,7 +2884,7 @@ target at its run boundary.
 §exec-source-temporary **Resource execution preserves source identity.** After
 acceptance, Core reparses the complete authored address and resolves one exact `<1,-1>` READ through
 {§universal-read-composition}; internal source consumption never borrows the
-model-facing 16-line preview. For the default channel, a source owner supplying
+model-facing preview ({§body-projection}). For the default channel, a source owner supplying
 a native file through {§scheme-source-bytes} supplies the executor target:
 its filename, extension, sibling imports, and source-relative assets remain
 intact. This neither bypasses admission nor changes the executor's working
@@ -2939,11 +2939,6 @@ protocol discovery while building a packet and has no alternate tool
 catalogue.
 
 Per-tool programs such as `go`, `cargo`, `make`, and `npm` do not earn executor tags merely because they are executables; they are complete shell commands in a `sh` executable fence. Registered tags exist only for tools that own a distinct body, target, or output contract. {§exec-registry-resolves}
-
-**Timeout and poll — `<T,P>` on the `<L>` slot (grammar 0.74.20).** An execution
-repurposes the line-marker slot as `<timeout, poll>` in **minutes** — agentic
-latencies make a sub-minute horizon a trap — converted at the parse boundary to the
-catalog's internal `stream.seconds`. WAIT takes no timing; future wakes belong to the schedule family.
 
 §exec-lifetime **How long a spawn may live is the fence's metadata, one field.**
 `[{"lifetime": …}]` takes a duration (`30s`, `30m`, `2h`), or one of three words;
