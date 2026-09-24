@@ -238,8 +238,12 @@ export default class LineAnchors {
         const resolved = [...marker.marks];
         for (const index of anchorIndexes) {
             const { anchor, offset } = LineAnchors.#markParts(marker.marks[index] as string)!;
+            // {§edit-anchor-continuity} — a binding this program retains is the resolution: the line the
+            // published anchor named, wherever its own splices moved it. Current-state matching serves only
+            // an anchor the program never bound, so a twin neighbourhood the program itself created cannot
+            // make a carried anchor ambiguous.
             const carried = retained?.get(anchor);
-            const found = carried?.length === 0 ? [] : [...new Set([...(matches.get(anchor) ?? []), ...(carried ?? [])])].sort((a, b) => a - b);
+            const found = carried !== undefined ? [...carried] : (matches.get(anchor) ?? []);
             if (found.length === 0) {
                 return { ok: false, failure: { kind: "missing", anchor } };
             }

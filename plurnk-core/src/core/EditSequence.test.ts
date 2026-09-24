@@ -54,6 +54,18 @@ test("{§edit-anchor-continuity}: replaced lines stay invalid while adjacent tar
     assert.deepEqual(resolve(hashes[2]!), { ok: true, marker: { marks: [4] } });
 });
 
+test("{§edit-anchor-continuity}: a twin neighbourhood the program itself creates does not detach a carried binding", () => {
+    const sequence = new EditSequence();
+    const hashes = LineAnchors.tokens(identity, original);
+    // Replacing the last line with itself plus a copy of lines 1–5 gives line 3 an identical neighbourhood at line 9.
+    const updated = apply(sequence, original, { marks: [6] }, "six\none\ntwo\nthree\nfour\nfive");
+    const snapshot = sequence.observe(identity, updated);
+    const current = LineAnchors.tokens(identity, updated);
+    assert.deepEqual(current.flatMap((anchor, index) => anchor === hashes[2] ? [index + 1] : []), [3, 9], "the current state carries the anchor twice");
+    assert.deepEqual(LineAnchors.resolve(current, { marks: [hashes[2]!] }, snapshot.anchors), { ok: true, marker: { marks: [3] } }, "the binding names the line the packet published");
+    assert.deepEqual(LineAnchors.resolve(current, { marks: [hashes[2]!] }), { ok: false, failure: { kind: "ambiguous", anchor: hashes[2], matches: [3, 9] } }, "without a program, the current state is all there is");
+});
+
 test("{§edit-anchor-continuity}: external drift and another program cannot reuse retained bindings", () => {
     const sequence = new EditSequence();
     const hash = LineAnchors.tokens(identity, original)[2]!;
