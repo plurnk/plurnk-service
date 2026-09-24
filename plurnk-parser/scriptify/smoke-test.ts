@@ -115,7 +115,7 @@ if (quotedStatements.length !== 2 || quotedStatements[0]?.op !== "SEND"
     || quotedStatements[1]?.op !== "NOTE") throw new Error("the wider SEND did not quote its literal example");
 
 const balancedBody = "Literal example:\\n" + literalExample + "\\nThe answer continues here.";
-const balanced = PlurnkParser.parse(outer + "SEND\\n" + balancedBody + "\\n" + outer + "\\n" + program);
+const balanced = PlurnkParser.parse(PlurnkParser.frame("SEND", balancedBody) + "\\n" + program);
 assertClean("balanced SEND", balanced);
 const balancedStatements = statementsOf(balanced);
 if (balancedStatements.length !== 2 || balancedStatements[0]?.op !== "SEND"
