@@ -359,9 +359,8 @@ spaces; four or more, or a tab, make it indented code. That one rule reads every
 same way: an opener within three spaces opens, a closer within three closes, a heading within
 three ends an unclosed block, and a body keeps its own lines' indentation. A fence indented
 further is literal wherever it stands — prose outside a block, body inside one — and draws no
-advisory: `plurnk.md` shows its own examples offset and tells the model to offset any example it
-does not intend to execute, so the form is correct by construction and there is no mistake to
-report (operator, 2026-09-21). The parser presumes nothing about why a fence is offset. This one
+advisory: `plurnk.md` shows its own examples offset, so an offset fence is the page's own form
+and there is no mistake to report (operator, 2026-09-21). The parser presumes nothing about why a fence is offset. This one
 rule replaces the column-zero opener (operator, 2026-09-18) and the lenient closer beside it
 (operator, 2026-09-23). Outside an operation, offset text is response text under
 {§response-text}; inside a body, it stays literal body content.
@@ -430,13 +429,12 @@ any width is a code block and draws nothing; an offset example draws nothing eit
 ({§indented-fences}). Quotation outside an operation is
 response text under {§response-text}, not an executable program or a completion envelope.
 
-`plurnk.md` teaches exactly one way to make an example inert — *"tab offset any example OP
-you do not intend to execute"* — and the other quoting fences are
-not taught: a tilde fence, an unlabeled fence and an unknown tag all quote
-too. Each is a shape a model reaches for from ordinary Markdown rather than from this
+`plurnk.md` teaches no inert form; it shows its own examples offset and leaves the quoting
+fences untaught: an offset fence, a tilde fence, an unlabeled fence and an unknown tag all
+quote. Each is a shape a model reaches for from ordinary Markdown rather than from this
 teaching, so honouring it protects an example the model already believed was safe
-({§response-text-note} places the scale). The taught offset remains the one form a
-model should rely on, because it is the only one that survives every fence style.
+({§response-text-note} places the scale). The offset is the one form that survives every
+fence style.
 
 §interstitial-fence Superseded by {§quotation}: an unlabeled fence no longer opens nothing, it
 quotes. (It in turn replaced the retired unlabeled-fence SEND of the fences chapter, whose
