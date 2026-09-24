@@ -56,13 +56,16 @@ export const finalizeRelease = async ({ root, repo, packageFile, version, commit
     }
     await git("verify-tag", tag);
     const tagObject = await git("rev-parse", `refs/tags/${tag}`);
+    const missingTags = [];
     for (const remote of ["origin", "github"]) {
         const remoteObject = (await git("ls-remote", remote, `refs/tags/${tag}`)).split(/\s/)[0];
         if (remoteObject && remoteObject !== tagObject) throw new Error(`${repo}: conflicting ${remote} tag ${tag}`);
+        if (!remoteObject) missingTags.push(remote);
     }
-    await git("push", "origin", `refs/tags/${tag}`);
-    // The canonical push owns verification; GitHub is the existing no-CI mirror.
-    await git("push", "--no-verify", "github", `refs/tags/${tag}`);
+    for (const remote of missingTags) {
+        // The canonical push owns verification; GitHub is the existing no-CI mirror.
+        await git("push", ...(remote === "github" ? ["--no-verify"] : []), remote, `refs/tags/${tag}`);
+    }
 
     const releases = JSON.parse(await run("gh", [
         "api", "--paginate", "--slurp", `repos/plurnk/${repo}/releases?per_page=100`,

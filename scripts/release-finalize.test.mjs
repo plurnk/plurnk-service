@@ -10,7 +10,7 @@ import { releaseNotes } from "./changelog.mjs";
 
 // {§release-finalization}: command-boundary witnesses; no registry or remote writes.
 const COMMIT = "a".repeat(40);
-const fixture = ({ tag = false, release = false, registry = "1.2.3", remoteTag, permission = true } = {}) => {
+const fixture = ({ tag = false, release = false, registry = "1.2.3", remoteTag, remoteTags = { origin: remoteTag, github: remoteTag }, permission = true } = {}) => {
     const calls = [];
     const manifest = { name: "@plurnk/plurnk-service", version: "1.2.3" };
     const run = async (command, args) => {
@@ -30,10 +30,14 @@ const fixture = ({ tag = false, release = false, registry = "1.2.3", remoteTag, 
             if (line === "tag --list v1.2.3") return tag ? "v1.2.3" : "";
             if (args[0] === "ls-remote") {
                 if (args.includes("refs/heads/main")) return `${COMMIT}\trefs/heads/main`;
-                return remoteTag ? `${remoteTag}\trefs/tags/v1.2.3` : "";
+                return remoteTags[args[1]] ? `${remoteTags[args[1]]}\trefs/tags/v1.2.3` : "";
             }
             if (args[0] === "tag" && args[1] === "-s") { tag = true; return ""; }
-            if (args[0] === "verify-commit" || args[0] === "verify-tag" || args[0] === "merge-base" || args.includes("push")) return "";
+            if (args[0] === "push") {
+                remoteTags[args.includes("origin") ? "origin" : "github"] = "b".repeat(40);
+                return "";
+            }
+            if (args[0] === "verify-commit" || args[0] === "verify-tag" || args[0] === "merge-base") return "";
         }
         assert.fail(`unexpected command: ${command} ${line}`);
     };
@@ -72,9 +76,28 @@ test("repair requires an existing signed tag, not today's HEAD", async () => {
 });
 
 test("repeating finalization keeps tags and existing release records unchanged", async () => {
-    const { run, options, calls } = fixture({ tag: true, release: true });
+    const { run, options, calls } = fixture();
     await finalizeRelease(options, run);
-    assert.ok(!calls.some((c) => c.includes("create") || c.includes("edit") || c.includes("-s")));
+    calls.length = 0;
+    await finalizeRelease(options, run);
+    assert.ok(!calls.some((c) => c.includes("push") || c.includes("create") || c.includes("edit") || c.includes("-s")));
+});
+
+test("repair pushes only missing tags, retaining verification on both remotes", async () => {
+    for (const missing of ["origin", "github", undefined]) {
+        const remoteTags = { origin: "b".repeat(40), github: "b".repeat(40) };
+        if (missing !== undefined) delete remoteTags[missing];
+        const { run, options, calls } = fixture({ tag: true, remoteTags });
+        await finalizeRelease({ ...options, commit: undefined }, run);
+        const pushes = calls.filter((c) => c.includes("push"));
+        assert.deepEqual(pushes, missing === undefined ? [] : [
+            missing === "origin"
+                ? ["git", "push", "origin", "refs/tags/v1.2.3"]
+                : ["git", "push", "--no-verify", "github", "refs/tags/v1.2.3"],
+        ]);
+        assert.ok(calls.some((c) => c[1] === "verify-tag"));
+        assert.ok(calls.some((c) => c[0] === "gh" && c[2] === "create"));
+    }
 });
 
 test("an unserved version cannot create a tag or a Release", async () => {
