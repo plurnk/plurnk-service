@@ -78,6 +78,8 @@ test("{§agui-official-client-conformance} the official client accepts a real da
         assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["KILL"], "the authored completion carries the answer without a synthetic operation");
         assert.equal(fixture.requests.length, 1, "one actual inference request completes the run");
         assert.equal(fixture.requests[0].journey, "cli");
+        assert.equal(fixture.requests[0].body.reasoning.max_tokens, provider.reasoningBudget,
+            "the test-tier reasoning allowance reaches the configured fixture protocol");
 
         const rejected = new HttpAgent({ url: `http://${host}:${port}/`, threadId: "official-rejected" });
         rejected.messages = [{ id: "rejected", role: "user", content: "Exercise the rejected provider request." }];
