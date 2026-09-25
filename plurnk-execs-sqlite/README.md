@@ -48,6 +48,8 @@ Problems in the terminal operation result.
 
 ## Configuration
 
+Disabled by default. Set `PLURNK_EXECS_SQLITE=1` in the environment cascade to enable it.
+
 The framework's `PLURNK_EXECS_ERROR_DETAIL_LIMIT` bounds SQLite diagnostics and
 rejected SQL tails included in Problem facts.
 

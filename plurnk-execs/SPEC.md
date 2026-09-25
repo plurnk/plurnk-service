@@ -574,11 +574,11 @@ tags are offered in a particular workspace ({§bundled-set}).
 Optional executor packages are not part of this installed set merely because
 they exist in the workspace.
 
-The `common` package's `.env.defaults` disables its secondary interpreters:
-`perl`, `ruby`, `lua`, `deno`, `bun`, `tcl`, `bc`, and `awk`. Its default admitted
-tags are `sh`, `node`, and `python3`, subject to availability. An operator can
-enable any secondary interpreter through {§executor-installation}; disabled
-tags contribute no discovery teaching or executor scheme ({§executor-policy}).
+The package-owned `.env.defaults` disable `perl`, `ruby`, `lua`, `deno`, `bun`,
+`tcl`, `bc`, `awk`, `jq`, and `sqlite`. The default admitted tags are `sh`,
+`node`, and `python3`, subject to availability. An operator can enable any
+optional executor through {§executor-installation}; disabled tags contribute
+no discovery teaching or executor scheme ({§executor-policy}).
 
 ## §executor-subprocess Subprocess contract
 

@@ -20,6 +20,8 @@ import { BaseExecutor, type Effect, type ExecArgs } from "@plurnk/plurnk-execs";
 import { localPath } from "./_dsl.ts";
 import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
+process.env.PLURNK_EXECS_SQLITE = "1";
+
 const execStmt = (runtime: string | null, target: string | null, body: string): ExecStatement => ({
     metadata: null,
     // The default shell is explicit: a fixture with no runtime is an `sh` execution (plurnk-service #659).

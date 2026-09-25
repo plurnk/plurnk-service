@@ -2150,25 +2150,25 @@ type and projection facts under {§read-bytes}.
 The `## Log` section is a sequence of ordinary Markdown records separated by one blank line:
 
 ```text
-### log:///<loop>/<turn>/<item>/<leaf> → path <marks> [metadata] pattern <!-- aside --> · <logTokens>
-{"oneLine":"strict JSON result facts"}
+### log:///<loop>/<turn>/<item>/<leaf> → path pattern · <logTokens>
+{"oneLine":"strict JSON facts"}
 <coordinate-prefixed body lines when visible>
 ```
 
 | Line | Content | Rule |
 |---|---|---|
-| H3 | The row's complete model-facing identity and canonical READ address, its request modifiers in language slot order ({§heading-slot-order}), then ` · ` and its `logTokens` charge ({§packet-token-accounting}). | Always present. Canonical operands follow arrows ({§log-address-metadata}), not invocation parentheses. Marks, metadata blocks, matcher, and aside remain when present; `error` and `extension` rows have no request modifiers. The operation appears only in the URI leaf, never as a standalone invocation. |
-| facts | One strict JSON object of result facts in stable alphabetical order. | Present only when a fact exists; it never re-encodes the heading. |
+| H3 | Only the row's complete READ address, addressed resource(s), selection pattern(s), and ` · ` followed by its `logTokens` charge ({§packet-token-accounting}). | Always present. Canonical operands follow arrows ({§log-address-metadata}); each pattern follows its operand. No invocation parentheses, scope, aside or metadata block. The operation appears only in the URI leaf. |
+| facts | One strict JSON object in stable alphabetical order. | Present only when a fact exists. Asides, scopes, opaque invocation metadata and result facts belong here, not on the H3. |
 | body | Coordinate-prefixed lines. | Present when the row is visible. |
 
-Except for the operand arrows, request modifiers retain their language spelling, so a matcher such as `/\bhello\b/i` returns exactly as it was written, never JSON-quoted. Absent fields are not invented. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
+Patterns retain their literal spelling; a pattern containing a line break is JSON-quoted to keep the H3 on one physical line. Receipts are descriptive records, not reconstructed operation headings. Absent fields are not invented. Every physical body line retains its canonical numeric `N:` or anchored `@hash N:` coordinate, so source text cannot create a record boundary. The section contains records only, with no leading prose or enclosing fence.
 
 §log-address-metadata **Addresses name their relationship, not the row's producer.**
 
 | Spelling | Meaning | Where |
 |---|---|---|
 | `→ path` | The operation's addressed operand: read resource, mutation subject, message recipient, or executor operand. Explicit and automatic READs share this spelling. Pathless operations have no operand. | H3 |
-| `→ from <marks> → to <marks>` | COPY/MOVE's two operand selections, each retaining its optional scope; neither replaces actor attribution. | H3 |
+| `→ from pattern → to` | COPY/MOVE's ordered operands and any operand pattern; neither replaces actor attribution. Scopes remain paired by `scope.from` and `scope.to` in JSON. | H3 |
 | `stream` | An executor invocation's separately created output address, never a READ's alternative spelling of its operand. | Facts |
 | `resource` | A distinct returned resource under {§operation-resource-receipt}. | Facts |
 
@@ -2185,6 +2185,7 @@ Coordinate-prefixed lines are the text currently in context; a metadata-only row
 
 | Field | Coordinate owner | Representation |
 |---|---|---|
+| `scope` | The submitted operation | `<marks>` when present; COPY/MOVE use `{from,to}` with only the authored scopes. Omitted when a READ/FIND's result or Problem already supplies its range. |
 | `range` | The resource addressed by a successful READ/FIND | `<first,last> of N lines/resources/match locations/bytes`; singleton scopes use `<first>`. A complete dense selection reduces to `N units`; an empty selection from a nonempty extent is `none of N units`. |
 | `range` for exact text | The addressed text resource | `<startLine,startColumn,endLine,endColumn>`; no invented available extent. |
 | `preview` | The retained receipt body | Only when displayed incompletely: selected scope(s) `of N lines`, or exact selected region `of` complete region for an in-line cut. Replaces the body's otherwise redundant `lines` count. |
@@ -2202,7 +2203,7 @@ numbers and its receipt's body-relative curation coordinates remain distinct
 ({§log-kill-scope}). Byte ranges describe the hex selection, not native-media
 cropping ({§packet-attachment-parts}).
 
-Successful retrieval metadata omits requested coordinates; durable results and
+Retrieval results omit redundant requested coordinates; durable results and
 submitted programs retain them. Failed selections keep requested coordinates
 and available extent in their owning Problem. Projection never parses its
 display strings to recover typed facts. A hidden body has no `preview`; a
@@ -2211,6 +2212,8 @@ navigable extent. None of these spellings changes acquisition, delivery,
 curation, admission, or immutable evidence.
 
 Field absence carries defaults: `origin` is omitted for the owning model, `source` for the owning worker, and `status` for a routine 200. Dispositions always carry their lifecycle status, SEND its delivery status, KILL keeps an explicit 200, and every non-200 stays explicit. A present authored aside appears as `aside`. Every row's accounting follows {§packet-token-accounting}.
+
+Authored `metadata` retains its opaque ordered block strings under {§scheme-metadata-modifier}; COPY/MOVE pair them as `{from,to}`. Packet rendering does not interpret scheme options or discard malformed input from a failed operation.
 
 - §operation-resource-receipt A result's nonempty `resource` address remains visible in receipt metadata when distinct from its `path` and `stream`. It identifies returned material without replacing the addressed operand or injecting that material into context; ordinary READ acquires it.
 - §packet-attachment-parts A successful READ of an attachable resource carries projection facts with its
@@ -3672,6 +3675,12 @@ instead of a user's boot, and a dead knob cannot ship.
 | Benchlets | Their snapshotted policy, workspace restrictions, and task-specific exceptions; direct env wins over the profile. |
 | Operator env/shell | Model alias declarations and explicit selection overrides, provider capability such as GBNF, endpoints, credentials, tuning, and deliberate ceiling overrides. |
 | `test/setup.ts` | Mock-only alias, envelope, resource, storage, and isolation fixtures; unit/integration never consume the real-model profile. |
+
+The profile clears `PLURNK_SERVICE_POLICY`, disabling the implicit XDG
+`AGENTS.md` policy under {§policy-sections}. Mock tests do the same in their
+bootstrap. Live/demo and benchmarks may select a harness-owned policy explicitly;
+none implicitly inherit the daily-driving policy. This does not disable project
+`AGENTS.md` guidance or modify the operator's file.
 
 The profile does not repeat `NODE_OPTIONS`: runner selection belongs to the invoking command, and a process-global Node option would leak into the daemon and its children. Hard ceilings such as max turns, max commands, and Git denial remain operator-owned; harnesses bound paid experiments through their per-call contract and never widen a configured ceiling here.
 

@@ -25,7 +25,7 @@ import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 // Exercise optional implementations too; executor-defaults.test.ts covers their
 // shipped admission and model-facing survey. {§executor-default-inventory}
-for (const tag of ["AWK", "BC", "PERL"]) process.env[`PLURNK_EXECS_${tag}`] = "1";
+for (const tag of ["AWK", "BC", "PERL", "JQ", "SQLITE"]) process.env[`PLURNK_EXECS_${tag}`] = "1";
 
 // The host sets FORCE_COLOR; ANSI control bytes are the subject of this sanitizer.
 // oxlint-disable-next-line eslint/no-control-regex

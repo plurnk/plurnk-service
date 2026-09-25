@@ -25,7 +25,6 @@ const fixture = {
     PLURNK_PROVIDERS_REASONING_BUDGET: "256",
     // Test isolation, tier-wide: no operator doc-foist, no operator system policy, a bounded turn
     // ceiling so a wandering green loop still ends legibly, a scratch DB.
-    PLURNK_SERVICE_MD_POLICY: "",
     PLURNK_SERVICE_POLICY: "",
     // Parallel test processes each receive a small parser-concurrency budget.
     PLURNK_SERVICE_DERIVE_CONCURRENCY: "1",

@@ -315,7 +315,7 @@ test("{§log-kill-scope} a text-only route preserves ordinary scoped trimming of
     ]);
     const content = requests[2]!.find(({ role }) => role === "user")!.content;
     assert.equal(typeof content, "string");
-    assert.match(String(content), /### log:\/\/\/1\/2\/2\/READ → logo\.png#bytes <1,16> · \d+\n/);
+    assert.match(String(content), /### log:\/\/\/1\/2\/2\/READ → logo\.png#bytes · \d+\n/);
     assert.doesNotMatch(String(content), /\n\s*1:89\n/u);
     assert.match(String(content), /\n\s*2:50\n/u);
 });

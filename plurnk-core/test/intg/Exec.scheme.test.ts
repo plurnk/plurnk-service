@@ -21,6 +21,8 @@ import { join } from "node:path";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
+process.env.PLURNK_EXECS_JQ = "1";
+
 // {§exec-executor-slot} — a null runtime is the bare shell; the target is the program; `cwd` rides `[{"cwd": "…"}]`.
 const execStmt = (runtime: string | null, target: string | null, body: string, cwd: string | null = null): ExecStatement => ({
     metadata: cwd === null ? null : [JSON.stringify({ cwd })],

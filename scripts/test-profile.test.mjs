@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
@@ -14,7 +14,7 @@ const expectedProfile = {
     PLURNK_SERVICE_FILES_ITEMS: "-1",
     PLURNK_SERVICE_GIT_AUTO: "1",
     PLURNK_SERVICE_UNATTENDED_PROPOSALS: "accept",
-    PLURNK_SERVICE_MD_POLICY: "",
+    PLURNK_SERVICE_POLICY: "",
     PLURNK_SERVICE_PACKET_INJECT: "",
     PLURNK_MCP_ENABLED: "[]",
     PLURNK_MCP_EXPANDED: "[]",
@@ -34,6 +34,46 @@ const parseProfile = (source) => Object.fromEntries(source
 
 test("the committed real-model profile contains only universal gate invariants", () => {
     assert.deepEqual(parseProfile(readFileSync(profilePath, "utf8")), expectedProfile);
+});
+
+test("test entrypoints exclude personal XDG policy while daily driving and explicit benchmark policy remain intact", async (t) => {
+    const directory = mkdtempSync(resolve(tmpdir(), "plurnk-policy-profile-"));
+    t.after(() => rmSync(directory, { recursive: true, force: true }));
+    const config = resolve(directory, "plurnk");
+    mkdirSync(config);
+    const personalPolicy = "# Personal policy\nDOGFOOD_ONLY_SENTINEL";
+    const personalPath = resolve(config, "AGENTS.md");
+    writeFileSync(personalPath, personalPolicy);
+    const fixturePolicy = "# Benchmark policy\nFIXTURE_ONLY_SENTINEL";
+    const fixturePath = resolve(directory, "fixture.md");
+    writeFileSync(fixturePath, fixturePolicy);
+    const baseEnv = { ...process.env, XDG_CONFIG_HOME: directory };
+    delete baseEnv.PLURNK_SERVICE_POLICY;
+    const { demoInvocation } = await import("../plurnk-core/scripts/demo.mjs");
+    const live = await liveInvocation();
+    const demo = await demoInvocation();
+    const policyLoader = new URL("../plurnk-core/src/core/packet-inject.ts", import.meta.url).href;
+    const gatePolicy = readFileSync(resolve(root, "plurnk-meta", "POLICY.md"), "utf8").trim() || null;
+    const profileArgs = candidateDaemonArgs(root).slice(0, 1);
+    const cases = [
+        { name: "daily driving", args: [], expected: personalPolicy },
+        { name: "unit/integration", args: ["--import=./test/setup.ts"], expected: null },
+        ...[["live", live], ["demo", demo]].map(([name, invocation]) => ({
+            name, args: invocation.args.filter((arg) => arg.startsWith("--env-file")),
+            env: invocation.env, expected: gatePolicy,
+        })),
+        { name: "candidate/benchmark", args: profileArgs, expected: null },
+        { name: "explicit benchmark policy", args: profileArgs, env: { PLURNK_SERVICE_POLICY: fixturePath }, expected: fixturePolicy },
+    ];
+    for (const scenario of cases) {
+        const result = spawnSync(process.execPath, [
+            "--conditions=plurnk-dev", ...scenario.args, "--input-type=module", "--eval",
+            `const { readSystemPolicy } = await import(${JSON.stringify(policyLoader)}); process.stdout.write(JSON.stringify(await readSystemPolicy()));`,
+        ], { cwd: resolve(root, "plurnk-core"), encoding: "utf8", env: { ...baseEnv, ...scenario.env } });
+        assert.equal(result.status, 0, `${scenario.name}: ${result.stderr}`);
+        assert.equal(JSON.parse(result.stdout), scenario.expected, scenario.name);
+    }
+    assert.equal(readFileSync(personalPath, "utf8"), personalPolicy, "the operator's policy is never rewritten");
 });
 
 test("the gate leaves operator schedules disabled unless explicitly selected in the shell", () => {

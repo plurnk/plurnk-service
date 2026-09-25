@@ -7,14 +7,17 @@ import { PLURNK_OPS } from "@plurnk/plurnk-contracts";
 
 const teaching = readFileSync(new URL("./plurnk.md", import.meta.resolve("@plurnk/plurnk-contracts/package.json")), "utf8");
 
-test("concrete KILL examples in plurnk.md parse as one clean operation", () => {
-    const unindented = teaching.replace(/^ {4}/gm, "");
-    const examples = [...unindented.matchAll(/^(?:[*|].*?)?((`{3,})KILL\b[^\n]*?(?:\2[ \t]*$|\n[\s\S]*?^\2[ \t]*$))/gm)].map((match) => match[1]!);
-    assert.ok(examples.length > 0, "the reference demonstrates curation operations");
-    for (const source of examples) {
+test("concrete core-operation examples in plurnk.md parse verbatim as one clean operation", () => {
+    const examples = [...teaching.matchAll(/^([ \t]*(`{3,})([A-Z]+)\b[^\n]*\n[\s\S]*?^[ \t]*\2[ \t]*$)/gm)]
+        .filter((match) => PLURNK_OPS.some((op) => op === match[3]));
+    assert.ok(examples.length > 0, "the reference demonstrates concrete operations");
+    for (const example of examples) {
+        const source = example[1]!;
         const parsed = PlurnkParser.parseStatements(source);
         assert.equal(parsed.items.length, 1, source);
-        assert.equal(parsed.items[0]?.kind, "statement", source);
+        const item = parsed.items[0]!;
+        assert.equal(item.kind, "statement", source);
+        if (item.kind === "statement") assert.equal(item.statement.op, example[3], source);
         assert.equal(parsed.unparsedTail, undefined, source);
     }
 });

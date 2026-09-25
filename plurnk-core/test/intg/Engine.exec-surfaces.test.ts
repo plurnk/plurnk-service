@@ -15,6 +15,8 @@ import { logEntries, packetSection } from "./_helpers.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
+process.env.PLURNK_EXECS_SQLITE = "1";
+
 test("{§log-coordinate-hierarchy}: executor receipts keep one identity through packets, errors, retrieval, search, and curation", async () => {
     const runtime = "search-api2";
     const path = `log:///1/2/2/${runtime}`;

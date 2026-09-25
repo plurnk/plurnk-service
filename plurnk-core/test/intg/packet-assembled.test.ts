@@ -7,9 +7,10 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parseEnv } from "node:util";
 import { Lexer } from "marked";
 import Engine from "../../src/core/Engine.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
@@ -342,7 +343,8 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
         const copies = logEntries(packet).filter(({ logPath: path }) => String(path).endsWith("/COPY") && !String(path).startsWith("log:///1/1/"));
 
         assert.equal(copies.length, 2);
-        assert.equal(copies[0]?.from, "worker:///src.md<2,3>");
+        assert.equal(copies[0]?.from, "worker:///src.md");
+        assert.deepEqual(copies[0]?.scope, { from: "<2,3>" });
         assert.equal(copies[0]?.to, "worker:///slice.md");
         assert.equal(copies[0]?.status, 201);
         assert.ok(Array.isArray(copies[0]?.effects));
@@ -354,7 +356,8 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
         assert.equal(effect?.change, "-0 +2");
         assert.equal(effect?.effect, "<1,1,1,1> -> <1,2>");
         assert.ok(copies[0] !== undefined && "body" in copies[0], "the landed materialization is open (body present, #338)");
-        assert.equal(copies[1]?.from, "worker:///src.md<2,3>");
+        assert.equal(copies[1]?.from, "worker:///src.md");
+        assert.deepEqual(copies[1]?.scope, { from: "<2,3>" });
         assert.equal(copies[1]?.to, "worker:///slice.md");
         assert.equal(copies[1]?.status, 304);
         assert.equal(copies[1]?.effects, undefined);
@@ -436,7 +439,7 @@ test("assembled packet: the skills foist surfaces the Worker's materialized skil
 
         // The materialized doc reaches the model through its private FIND, not
         // an inline packet link ({§schemes-directory}).
-        assert.match(log, /^### log:\/\/\/\S+\/FIND → worker:\/\/\/_plurnk\/plurnk\/\*\.md <1,-1> · \d+$/m, "the foist scopes discovery to the Worker's skills tree");
+        assert.match(log, /^### log:\/\/\/\S+\/FIND → worker:\/\/\/_plurnk\/plurnk\/\*\.md · \d+$/m, "the foist scopes discovery to the Worker's skills tree");
         assert.match(log, /worker:\/\/\/_plurnk\/plurnk\/worker\.md/, "the materialized skill surfaces in the foist's rendered result");
         assert.match(log, /"aside":"Manage shared worker entries\."/, "the catalog projects the document's Summary without opening its body");
     } finally {
@@ -468,6 +471,40 @@ test("assembled packet: the bodyless Worker reference catalog succeeds when no r
         await db.close();
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;
     }
+});
+
+test("{§operator-config-real-model-profile}: the provider packet excludes personal XDG policy", async (t) => {
+    const priorPolicy = process.env.PLURNK_SERVICE_POLICY;
+    const priorConfig = process.env.XDG_CONFIG_HOME;
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-gate-policy-"));
+    t.after(async () => {
+        if (priorPolicy === undefined) delete process.env.PLURNK_SERVICE_POLICY; else process.env.PLURNK_SERVICE_POLICY = priorPolicy;
+        if (priorConfig === undefined) delete process.env.XDG_CONFIG_HOME; else process.env.XDG_CONFIG_HOME = priorConfig;
+        await rm(dir, { recursive: true, force: true });
+    });
+    await mkdir(join(dir, "plurnk"));
+    const personal = "# Personal rules\nDOGFOOD_ONLY_SENTINEL";
+    const path = join(dir, "plurnk", "AGENTS.md");
+    await writeFile(path, personal);
+    process.env.XDG_CONFIG_HOME = dir;
+    delete process.env.PLURNK_SERVICE_POLICY;
+    const profile = parseEnv(await readFile(new URL("../../.env.test", import.meta.url), "utf8"));
+    if (profile.PLURNK_SERVICE_POLICY !== undefined) process.env.PLURNK_SERVICE_POLICY = profile.PLURNK_SERVICE_POLICY;
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const workspaceId = await insertWorkspace(db, `pkt-gate-policy-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1, "go");
+    const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+    const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [concludeStmt()] } }] });
+    const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "fixture language" }, { role: "user", content: "go" }] });
+    const packet = await getPacket(db, result.turnId);
+    assert.ok(provider.received.length > 0, "the real packet reaches the provider");
+    const system = provider.received.flat().filter(({ role }) => role === "system").map(({ content }) => content).join("\n");
+    assert.match(system, /fixture language/);
+    assert.doesNotMatch(system, /DOGFOOD_ONLY_SENTINEL/);
+    assert.equal(packet.sections.find(({ name }) => name === "system-policy")?.content, "", "the policy slot contributes no content");
+    assert.equal(await readFile(path, "utf8"), personal, "daily-driving policy remains untouched");
 });
 
 test("assembled packet: PLURNK_SERVICE_POLICY renders the single privileged system-slot policy section", async () => {

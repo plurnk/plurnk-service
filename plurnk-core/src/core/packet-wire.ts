@@ -1,4 +1,3 @@
-import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // Packet → wire markdown projection. Single source of truth for how the
 // Packet's ordered list of sections renders to ChatMessage.content
@@ -47,14 +46,9 @@ interface StatementTx {
     aside?: unknown;
     target?: ActionTarget | null;
     lineMarker?: unknown;
-    source?: {
-        target?: ActionTarget | null;
-        lineMarker?: unknown;
-    };
-    destination?: {
-        target?: ActionTarget | null;
-        lineMarker?: unknown;
-    };
+    metadata?: readonly string[] | null;
+    source?: StatementTx;
+    destination?: StatementTx;
     matcher?: { raw?: unknown } | null;
     body?: string | null;
 }
@@ -168,7 +162,7 @@ interface RowIdentity {
     readonly path: string;
     readonly renderedLeaf: string;
     readonly target: string | null;
-    readonly modifiers: string | null;
+    readonly description: string | null;
 }
 interface RowResultFacts {
     readonly findItems: number | null;
@@ -772,14 +766,35 @@ export default class PacketWire {
         // ({§log-kill-meta-operation}).
         if (typeof e.status === "number" && (op === "SEND" || op === "KILL" || typeof op === "string" && TurnDisposition.isOp(op) || e.status !== 200)) meta.status = e.status;
         const tx = (typeof e.tx === "string" ? PacketWire.#safeParse(e.tx) : e.tx) as StatementTx | null;
-        const target = PacketWire.#renderActionTarget(e.target);
-        // {§log-wire-format}: receipt operands are links, not invocation slots.
-        const modifiers = PacketWire.#requestModifiers(op, tx, e.target);
-        if ((op === "COPY" || op === "MOVE") && typeof e.status === "number" && e.status < 400
-            && (PacketWire.#renderSelection(tx?.source?.target, tx?.source?.lineMarker) === null
-                || PacketWire.#renderSelection(tx?.destination?.target, tx?.destination?.lineMarker) === null)) {
+        if (typeof tx?.aside === "string") meta.aside = tx.aside;
+        const target = PacketWire.#operandPath(e.target ?? tx?.target);
+        const pair = op === "COPY" || op === "MOVE";
+        const selections = pair
+            ? [tx?.source, tx?.destination]
+            : [{ ...tx, target: e.target ?? tx?.target }];
+        const paths = selections.map((selection) => PacketWire.#operandPath(selection?.target));
+        if (pair && typeof e.status === "number" && e.status < 400 && paths.some((path) => path === null)) {
             throw new Error(`A successful ${op} log row must retain both operand selections.`);
         }
+        for (const field of ["scope", "metadata"] as const) {
+            const values = selections.map((selection) => field === "scope"
+                ? PacketWire.#requestScope(selection?.lineMarker)
+                : selection?.metadata?.length ? selection.metadata : null);
+            if (pair) {
+                const paired = Object.fromEntries(values.flatMap((value, index) => value === null ? [] : [[index === 0 ? "from" : "to", value]]));
+                if (Object.keys(paired).length > 0) meta[field] = paired;
+            } else if (values[0] !== null) meta[field] = values[0];
+        }
+        // {§log-wire-format}: describe resources and patterns directly; never serialize an OP.
+        const parts = selections.flatMap((selection, index) => {
+            const pattern = selection?.matcher?.raw;
+            return [
+                ...(paths[index] === null ? [] : [`→ ${paths[index]}`]),
+                ...(typeof pattern !== "string" || pattern.length === 0 ? []
+                    : [/[\r\n]/u.test(pattern) ? JSON.stringify(pattern) : pattern]),
+            ];
+        });
+        const description = op === "error" || op === "extension" || parts.length === 0 ? null : parts.join(" ");
         // {§worker-auto-name} The created identity is an outcome, not an authored target.
         if ((op === "WORK" || op === "FORK") && e.attrs !== null && typeof e.attrs === "object"
             && typeof (e.attrs as { worker?: unknown }).worker === "string") {
@@ -797,7 +812,7 @@ export default class PacketWire {
         if (isExecutionOp(op) && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { stream?: unknown }).stream === "string") {
             meta.stream = (e.attrs as { stream: string }).stream;
         }
-        return { meta, op, tx, coordinate, path, renderedLeaf, target, modifiers };
+        return { meta, op, tx, coordinate, path, renderedLeaf, target, description };
     }
 
     // The row's result facts from its rx: the terminal stream's exit, the Problem or detail, the
@@ -886,8 +901,10 @@ export default class PacketWire {
                 && Object.hasOwn(meta.problem, "range");
             if (problemOwnsRange) {
                 Validator.assertRangeExtent((meta.problem as { range: RangeExtent }).range);
+                delete meta.scope;
             }
             if (range !== null && !problemOwnsRange) {
+                delete meta.scope;
                 const sparse = fullBody.lineOrdinals !== undefined
                     && range.returned !== undefined
                     && fullBody.lineOrdinals.length !== range.returned[1] - range.returned[0] + 1;
@@ -895,6 +912,7 @@ export default class PacketWire {
                     ? range
                     : ScopeFormat.range(range, sparse);
             } else if (range === null && !problemOwnsRange && op === "READ" && rx !== null && typeof rx === "object" && rx.region !== undefined) {
+                delete meta.scope;
                 meta.range = ScopeFormat.region(Validator.assertTextRegion(rx.region as TextRegion));
             }
             // These are underlying selected-content weights, distinct from
@@ -1088,7 +1106,7 @@ export default class PacketWire {
         // {§log-wire-format}: one descriptive heading, the facts, the body.
         let logTokens = 0;
         const renderRow = (): string => {
-            const lines = [`### ${path}${identity.modifiers === null ? "" : ` ${identity.modifiers}`} · ${logTokens}`];
+            const lines = [`### ${path}${identity.description === null ? "" : ` ${identity.description}`} · ${logTokens}`];
             if (Object.keys(meta).length > 0) lines.push(PacketWire.#canonicalJson(meta));
             if (display === "open") lines.push(body);
             return lines.join("\n");
@@ -1184,47 +1202,11 @@ export default class PacketWire {
         return spelled.length === 0 ? null : spelled.split(sep).join("/");
     }
 
-    // {§log-wire-format}: canonical modifiers, with arrows instead of invocation parentheses.
-    static #requestModifiers(op: string | null, tx: StatementTx | null, rowTarget: ActionTarget | null | undefined): string | null {
-        if (op === null || op === "error" || op === "extension") return null;
-        const t = (tx !== null && typeof tx === "object" ? tx : {}) as StatementTx & { metadata?: unknown; matcher?: unknown };
-        // Operands take the packet's canonical spelling ({§scheme-address-network}, percent-encoded
-        // identity), never the statement's authored raw: the row's resolved target first, the
-        // statement's own target only when the row kept none.
-        const spelled = (target: ActionTarget | null | undefined): { kind: string; raw: string } | null => {
-            if (target === null || target === undefined) return null;
-            const local = target.kind === "local" || (target.scheme === null || target.scheme === undefined) && typeof (target as { raw?: unknown }).raw === "string";
-            const raw = local
-                ? renderTarget({ scheme: null, pathname: (target as { raw?: string }).raw ?? target.pathname ?? "", fragment: target.fragment ?? null })
-                : PacketWire.#renderActionTarget(target);
-            return raw === null ? null : { kind: local ? "local" : "url", raw };
-        };
-        const target = spelled(rowTarget ?? t.target);
-        const selection = (s: { target?: ActionTarget | null; lineMarker?: unknown } | undefined) =>
-            s === undefined ? undefined : { target: spelled(s.target), lineMarker: s.lineMarker ?? null, metadata: null, matcher: null };
-        const statement = isExecutionOp(op)
-            ? { runtime: op, aside: t.aside ?? null, target, lineMarker: null, metadata: t.metadata ?? null, body: null }
-            : { op, aside: t.aside ?? null, target, lineMarker: t.lineMarker ?? null, metadata: t.metadata ?? null,
-                matcher: t.matcher ?? null, source: selection(t.source), destination: selection(t.destination), body: null };
-        const heading = PlurnkParser.heading(statement as never);
-        const separator = heading.indexOf(" ");
-        if (separator < 0) return null;
-        const modifiers = heading.slice(separator + 1);
-        const operands = op === "COPY" || op === "MOVE" ? [selection(t.source), selection(t.destination)] : [{ target, lineMarker: null }];
-        let offset = 0;
-        const links: string[] = [];
-        for (const operand of operands) {
-            if (operand?.target === null || operand?.target === undefined) continue;
-            const path = operand.target.raw;
-            const slot = `(${path})`;
-            if (!modifiers.startsWith(slot, offset)) throw new TypeError("Receipt operand differs from its canonical heading.");
-            offset += slot.length;
-            const scope = operand.lineMarker === null ? "" : ` <${(operand.lineMarker as TextLineMarker).marks.join(",")}>`;
-            offset += scope.length;
-            links.push(`→ ${path}${scope}`);
-            if (modifiers[offset] === " ") offset += 1;
-        }
-        return [...links, modifiers.slice(offset)].filter((part) => part.length > 0).join(" ");
+    static #operandPath(target: ActionTarget | null | undefined): string | null {
+        if (target === null || target === undefined) return null;
+        return target.kind === "local" || target.scheme == null && typeof target.raw === "string"
+            ? renderTarget({ scheme: null, pathname: typeof target.raw === "string" ? target.raw : target.pathname, fragment: target.fragment })
+            : PacketWire.#renderActionTarget(target);
     }
 
     static #renderActionTarget(target: ActionTarget | null | undefined): string | null {
@@ -1239,23 +1221,14 @@ export default class PacketWire {
         });
     }
 
-    static #renderSelection(
-        target: ActionTarget | null | undefined,
-        marker: unknown,
-    ): string | null {
-        if (target === null || target === undefined) return null;
-        const address = target.kind === "local" && typeof target.raw === "string"
-            ? renderTarget({ scheme: null, pathname: target.raw })
-            : target.scheme === "file"
-                ? renderTarget({ scheme: null, pathname: target.pathname ?? "" })
-                : PacketWire.#renderActionTarget(target);
-        if (address === null || address.length === 0) return null;
-        if (marker === null || marker === undefined) return address;
-        const validation = Validator.validateTextLineMarker(marker);
-        if (!validation.valid) {
-            throw new TypeError("A COPY/MOVE operand contains an invalid text line marker.");
+    static #requestScope(marker: unknown): string | null {
+        if (marker === null || marker === undefined) return null;
+        const marks = (marker as { marks?: unknown }).marks;
+        if (!Array.isArray(marks) || marks.some((mark) => typeof mark !== "string" && typeof mark !== "number")) {
+            throw new TypeError("An operation scope must retain its authored marks.");
         }
-        return `${address}<${(marker as TextLineMarker).marks.join(",")}>`;
+        // Failed selections still describe what was attempted; the operation owns validity.
+        return ScopeFormat.marker(marker as TextLineMarker);
     }
 
     // {§packet-git-status}: the count line, then one bounded line per non-empty class. Untracked paths are

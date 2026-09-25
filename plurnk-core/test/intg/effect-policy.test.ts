@@ -12,6 +12,8 @@ import Exec from "../../src/schemes/Exec.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
 import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
+process.env.PLURNK_EXECS_JQ = "1";
+
 const execStmt = (runtime: string, body: string): ExecStatement => ({
     metadata: null,
     runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: null, lineMarker: null, body, position: { line: 1, column: 1 },

@@ -23,6 +23,7 @@ line ({§executor-output-address}).
 
 ## Effect & availability
 
+- Disabled by default. Set `PLURNK_EXECS_JQ=1` in the environment cascade to enable it.
 - **`effect`** — inline/`-n` is `pure`; a target data source is `read`. Both
   bypass the human proposal gate, then stream on the same next-turn path as
   every execution ({§executor-effect}).

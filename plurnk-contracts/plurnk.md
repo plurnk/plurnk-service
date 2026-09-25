@@ -2,9 +2,9 @@
 
 ## Plurnk OP Syntax
 
-    ```OP (path)? <scope|range>? [metadata]? pattern? <!-- aside -->?
-    body?
-    ```
+```OP (path)? <scope|range>? [metadata]? pattern? <!-- aside -->?
+body?
+```
 
 > [!IMPORTANT]
 > YOU MUST ONLY use valid Plurnk OPs, with all parameters and the optional terse aside on the fenced OP line.
@@ -29,17 +29,17 @@
 > [!IMPORTANT]
 > YOU MAY deliver the final deliverable response when done: KILL the loop with a turn containing a single parameterless KILL.
 
-    ```KILL
-    This is an example final deliverable response. It's alone. All child workers and streams are resolved and reviewed.
-    ```
+```KILL
+This is an example final deliverable response. It's alone. All child workers and streams are resolved and reviewed.
+```
 
 ## Workspace Navigation
 
-    ```FIND (src/**/*.ts) /TODO/ <!-- paths with matches -->
-    ```
+```FIND (src/**/*.ts) /TODO/ <!-- paths with matches -->
+```
 
-    ```READ (README.md) /^#{1,3} / <!-- only level 1–3 headings -->
-    ```
+```READ (README.md) /^#{1,3} / <!-- only level 1–3 headings -->
+```
 
 * `(path)` may be a glob/extglob, permitting bulk operations.
 * Log item paths nest: `log:///1/2/3/READ` is loop/turn/item/OP.
@@ -48,34 +48,34 @@
 
 ## File Editing
 
-    ```EDIT (example.md) <@abcde>
-    literal replacement text
-    ```
+```EDIT (example.md) <@abcde>
+literal replacement text
+```
 
-    ```EDIT (books.xml) //book[price > 35.00] <!-- an empty body removes each match -->
-    ```
+```EDIT (books.xml) //book[price > 35.00] <!-- an empty body removes each match -->
+```
 
-    ````EDIT (edit-example.md) <!-- Nesting can be resolved with increased outer fences. Examples can use tabbed offset. -->
-    ```EDIT (create-example.md)
-    When representing markdown, `~~~` notation can disambiguate nested content.
-    ```
-    ````
+````EDIT (edit-example.md) <!-- Nesting can be resolved with increased outer fences. Examples can use tabbed offset. -->
+```EDIT (create-example.md)
+When representing markdown, `~~~` notation can disambiguate nested content.
+```
+````
 
 > [!TIP]
 > The EDIT body is literal text. YOU SHOULD address lines by `<@hash>` or `<@start,@end>`; stale targets are rejected.
 
 ## Delegation
 
-    ```WORK (worker://alice) <!-- the child's result lands in your log -->
-    The child's complete task.
-    ```
+```WORK (worker://alice) <!-- the child's result lands in your log -->
+The child's complete task.
+```
 
-    ```BARE
-    A self-contained prompt.
-    ```
+```BARE
+A self-contained prompt.
+```
 
-    ```KILL (sh:///ab3d5678) <!-- stops a running command -->
-    ```
+```KILL (sh:///ab3d5678) <!-- stops a running command -->
+```
 
 > [!TIP]
 > `SEND (worker://name)` messages a live worker.
@@ -85,8 +85,8 @@
 > [!CAUTION]
 > logTokensTotal must not exceed logTokensMax. Successful log KILL receipts are not shown.
 
-    ```KILL (log:///1/[1-7]/*/{NOTE,READ}) <17, -1> <!-- trims matching log items, recovering context -->
-    ```
+```KILL (log:///1/[1-7]/*/{NOTE,READ}) <17, -1> <!-- trims matching log items, recovering context -->
+```
 
 ## `<scope|range>`
 

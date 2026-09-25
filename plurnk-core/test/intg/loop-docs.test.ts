@@ -14,6 +14,9 @@ import { concludeStmt, } from "./_dsl.ts";
 import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, testExecutors, fixtureExecutors } from "./_helpers.ts";
 import { isExecution } from "@plurnk/plurnk-contracts";
 
+process.env.PLURNK_EXECS_JQ = "1";
+process.env.PLURNK_EXECS_SQLITE = "1";
+
 class FixtureEngine extends Engine {
     documents: Array<{ pathname: string; content: string }> = [];
 
