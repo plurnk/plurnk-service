@@ -7,6 +7,7 @@ import { mkdtemp, writeFile, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
+import LineAnchors from "../../src/content/line-anchors.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
 
@@ -20,6 +21,7 @@ const cases: readonly {
     name: string;
     source: string;
     current: string;
+    hashCollision?: boolean;
     scopes: (anchors: string[]) => string[][];
     unresolved: (anchors: string[]) => UnresolvedAnchor[];
 }[] = [
@@ -38,9 +40,10 @@ const cases: readonly {
         unresolved: (anchors) => [{ anchor: anchors[4]!, kind: "missing" }],
     },
     {
-        name: "an ambiguous anchor names its current matching lines",
+        name: "a residual short-hash collision names its current matching lines",
         source: REPEATED,
         current: REPEATED,
+        hashCollision: true,
         scopes: (anchors) => [[anchors[5]!]],
         unresolved: (anchors) => [{ anchor: anchors[5]!, kind: "ambiguous", lines: [6, 10] }],
     },
@@ -48,6 +51,7 @@ const cases: readonly {
         name: "independent failures name their own range endpoints and anchors",
         source: REPEATED,
         current: REPEATED.replace("tail", "TAIL"),
+        hashCollision: true,
         scopes: (anchors) => [["@451ok", anchors[5]!], [anchors[12]!]],
         unresolved: (anchors) => [
             { anchor: "@451ok", kind: "missing" },
@@ -57,7 +61,16 @@ const cases: readonly {
     },
 ];
 
-for (const fixture of cases) test(`{§edit-batch-receipt} ${fixture.name}`, async () => {
+for (const fixture of cases) test(`{§edit-batch-receipt} ${fixture.name}`, async (t) => {
+    if (fixture.hashCollision) {
+        // {§line-anchor-disambiguation}: ordinary repetitions now resolve;
+        // force a residual truncated-hash collision at the derivation boundary.
+        const tokens = LineAnchors.tokens.bind(LineAnchors);
+        t.mock.method(LineAnchors, "tokens", (identity: string, content: string) => {
+            const anchors = tokens(identity, content);
+            return identity === "doc.md" ? anchors.with(9, anchors[5]!) : anchors;
+        });
+    }
     const root = await mkdtemp(join(tmpdir(), "plurnk-batch-"));
     try {
         const env = hermeticGitEnv();
@@ -97,6 +110,7 @@ editing
                     .find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
                 const anchors = JSON.parse(readRow?.rx ?? "{}").lineAnchors as string[] | undefined;
                 assert.ok(Array.isArray(anchors) && anchors.length >= 6, `the READ published its anchors; got ${JSON.stringify(anchors)}`);
+                if (fixture.hashCollision) assert.equal(anchors[5], anchors[9], "the fixture injected an actual derivation collision");
                 assert.equal(anchors.includes("@451ok"), false, "the unknown anchor was never published");
                 await writeFile(join(root, "doc.md"), fixture.current);
                 const unresolved = fixture.unresolved(anchors);

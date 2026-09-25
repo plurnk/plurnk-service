@@ -127,16 +127,123 @@ test("LineAnchors: a mutation precondition checks only its anchored neighborhood
     assert.equal(LineAnchors.satisfies(precondition, content.replace("line-8", "outside-change")), true);
 });
 
-test("LineAnchors: identical neighborhoods share one anchor and resolve as ambiguous, never as a silent twin (#428 v2)", () => {
+test("{§line-anchor-disambiguation}: identical short neighborhoods receive independently resolvable contextual handles", () => {
     const block = "function f() {\n    return null;\n}\n\n";
     const content = `${block}${block}${block}tail`;
     const anchors = LineAnchors.tokens(identity, content);
     // Line 6 (`    return null;` of the second block) has the same five-line neighborhood as line 10.
-    assert.equal(anchors[5], anchors[9]);
+    assert.notEqual(anchors[5], anchors[9]);
     assert.notEqual(anchors[1], anchors[5], "the first block's neighborhood starts at the file head, so it differs");
-    assert.deepEqual(LineAnchors.resolve(anchors, { marks: [anchors[5]!] }), {
-        ok: false,
-        failure: { kind: "ambiguous", anchor: anchors[5], matches: [6, 10] },
+    for (const line of [2, 6, 10]) {
+        assert.deepEqual(LineAnchors.resolve(anchors, { marks: [anchors[line - 1]!] }), {
+            ok: true, marker: { marks: [line] },
+        });
+    }
+});
+
+const repeatedFixture = () => {
+    const block = (name: string) => [`begin-${name}`, ...Array<string>(12).fill("same"), "target", ...Array<string>(12).fill("same"), `end-${name}`];
+    const padding = (name: string) => Array.from({ length: 20 }, (_, i) => `${name}-${i}`);
+    const lines = [...padding("head"), ...block("a"), ...padding("middle"), ...block("b"), ...padding("tail")];
+    const targets = lines.flatMap((line, index) => line === "target" ? [index] : []);
+    return { lines, targets, content: lines.join("\n") };
+};
+
+test("{§line-anchor-disambiguation}: deep repeated regions remain distinct and follow unrelated shifts across turns", () => {
+    const { content, targets } = repeatedFixture();
+    const anchors = LineAnchors.tokens(identity, content);
+    assert.notEqual(anchors[targets[0]!], anchors[targets[1]!]);
+    const shifted = LineAnchors.tokens(identity, `unrelated\nprefix\n${content}\nsuffix`);
+    for (const index of targets) {
+        assert.equal(shifted[index + 2], anchors[index], "an expanded anchor follows the unchanged context");
+        assert.deepEqual(LineAnchors.resolve(shifted, { marks: [anchors[index]!] }), { ok: true, marker: { marks: [index + 3] } });
+    }
+    const unique = 5;
+    assert.equal(anchors[unique], LineAnchors.tokens(identity, content.replace("begin-b", "different-b"))[unique], "disambiguation elsewhere does not re-key a unique handle");
+});
+
+test("{§line-anchor-disambiguation}: context outside the minimum window participates in mutation preconditions", () => {
+    const { content, targets, lines } = repeatedFixture();
+    const index = targets[0]!;
+    const anchor = LineAnchors.token(identity, index + 1, content);
+    const precondition = { identity, checks: [{ anchor, line: index + 1 }] };
+    assert.equal(LineAnchors.satisfies(precondition, content), true);
+    const changed = lines.with(index - 5, "changed distinguishing context").join("\n");
+    assert.equal(LineAnchors.satisfies(precondition, changed), false);
+    assert.deepEqual(LineAnchors.resolve(LineAnchors.tokens(identity, changed), { marks: [anchor] }), {
+        ok: false, failure: { kind: "missing", anchor },
+    });
+    assert.equal(LineAnchors.satisfies(precondition, lines.with(0, "unrelated").join("\n")), true);
+});
+
+test("{§line-anchor-disambiguation}: a removed twin does not redirect either old contextual handle to the survivor", () => {
+    const { content, lines, targets } = repeatedFixture();
+    const anchors = LineAnchors.tokens(identity, content);
+    const remaining = lines.filter((_, index) => index < 20 || index >= 47).join("\n");
+    const current = LineAnchors.tokens(identity, remaining);
+    for (const index of targets) assert.deepEqual(LineAnchors.resolve(current, { marks: [anchors[index]!] }), {
+        ok: false, failure: { kind: "missing", anchor: anchors[index] },
+    });
+    assert.deepEqual(LineAnchors.resolve(current, { marks: [current[targets[1]! - 27]!] }), {
+        ok: true, marker: { marks: [targets[1]! - 26] },
+    });
+});
+
+test("{§line-anchor-disambiguation}: projection and line separators do not change expanded anchors", () => {
+    const { content, lines, targets } = repeatedFixture();
+    const anchors = LineAnchors.tokens(identity, content);
+    for (const separator of ["\n", "\r\n", "\r"]) {
+        const source = lines.join(separator) + separator;
+        assert.deepEqual(LineAnchors.tokens(identity, source), anchors);
+        for (const index of targets) {
+            assert.deepEqual(LineAnchors.project(identity, source, lines[index]!, index + 1), [anchors[index]]);
+        }
+    }
+    assert.deepEqual(LineAnchors.tokens(identity, ""), []);
+});
+
+test("{§line-anchor-disambiguation}: zero minimum context still distinguishes repeated lines at file boundaries", () => {
+    const prior = process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES;
+    try {
+        process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES = "0";
+        for (const count of [1, 2, 3, 7, 16, 33]) {
+            const anchors = LineAnchors.tokens(identity, Array<string>(count).fill("same").join("\n"));
+            assert.equal(new Set(anchors).size, count, `${count} identical lines remain individually addressable`);
+            for (const [index, anchor] of anchors.entries()) {
+                assert.deepEqual(LineAnchors.resolve(anchors, { marks: [anchor] }), { ok: true, marker: { marks: [index + 1] } });
+            }
+        }
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES;
+        else process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES = prior;
+    }
+});
+
+test("{§line-anchor-disambiguation}: arbitrary configured minima distinguish identical lines, including a radius larger than the resource", () => {
+    const prior = process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES;
+    try {
+        for (const radius of [1, 2, 3, 5, 16, 64]) {
+            process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES = String(radius);
+            const content = "same\n".repeat(33);
+            const anchors = LineAnchors.tokens(identity, content);
+            assert.equal(new Set(anchors).size, 33, `minimum radius ${radius}`);
+            assert.deepEqual(LineAnchors.tokens(identity, content), anchors, "derivation does not retain mutable identity state");
+        }
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES;
+        else process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES = prior;
+    }
+});
+
+test("{§line-anchor-disambiguation}: a large repetitive resource resolves without unbounded context expansion", () => {
+    const anchors = LineAnchors.tokens(identity, "same\n".repeat(4096));
+    assert.equal(anchors.length, 4096);
+    assert.equal(new Set(anchors).size, 4096);
+});
+
+test("{§line-anchors}: residual short-hash ambiguity is refused rather than choosing a line", () => {
+    assert.deepEqual(LineAnchors.resolve(["@abcde", "@other", "@abcde"], { marks: ["@abcde"] }), {
+        ok: false, failure: { kind: "ambiguous", anchor: "@abcde", matches: [1, 3] },
     });
 });
 

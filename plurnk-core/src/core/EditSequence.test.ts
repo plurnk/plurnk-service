@@ -61,9 +61,9 @@ test("{§edit-anchor-continuity}: a twin neighbourhood the program itself create
     const updated = apply(sequence, original, { marks: [6] }, "six\none\ntwo\nthree\nfour\nfive");
     const snapshot = sequence.observe(identity, updated);
     const current = LineAnchors.tokens(identity, updated);
-    assert.deepEqual(current.flatMap((anchor, index) => anchor === hashes[2] ? [index + 1] : []), [3, 9], "the current state carries the anchor twice");
+    assert.notEqual(current[2], current[8], "the new twins have distinct contextual anchors");
     assert.deepEqual(LineAnchors.resolve(current, { marks: [hashes[2]!] }, snapshot.anchors), { ok: true, marker: { marks: [3] } }, "the binding names the line the packet published");
-    assert.deepEqual(LineAnchors.resolve(current, { marks: [hashes[2]!] }), { ok: false, failure: { kind: "ambiguous", anchor: hashes[2], matches: [3, 9] } }, "without a program, the current state is all there is");
+    assert.deepEqual(LineAnchors.resolve(current, { marks: [hashes[2]!] }), { ok: false, failure: { kind: "missing", anchor: hashes[2] } }, "a different program cannot use the former ambiguous short window");
 });
 
 test("{§edit-anchor-continuity}: external drift and another program cannot reuse retained bindings", () => {

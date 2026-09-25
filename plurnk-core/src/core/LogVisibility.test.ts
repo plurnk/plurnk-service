@@ -68,3 +68,16 @@ test("LogVisibility rejects character regions but treats absent lines as no-ops"
         },
     );
 });
+
+test("{§line-anchor-disambiguation}: log curation uses published contextual anchors even when their context is outside the retained READ slice", () => {
+    const block = (label: string) => `${label}\nbefore-2\nbefore-1\ntarget\nafter-1\nafter-2\nend-${label}`;
+    const source = `${block("a")}\n${block("b")}`;
+    const anchors = LineAnchors.tokens("worker:///source.md", source);
+    assert.notEqual(anchors[3], anchors[10]);
+    assert.deepEqual(LogVisibility.resolveScope({ marks: [anchors[3]!] }, "log:///1/2/3/READ", "target", [anchors[3]!]), {
+        ok: true, range: [1, 1],
+    });
+    assert.deepEqual(LogVisibility.resolveScope({ marks: [anchors[10]!] }, "log:///1/2/3/READ", "target", [anchors[3]!]), {
+        ok: true, range: null,
+    });
+});

@@ -1856,18 +1856,42 @@ coordinates and derives its internal anchors from canonical content and identity
 not from whether a model-facing READ publishes them. Explicit log anchors remain
 available for curation without granting source EDIT.
 
-For canonical model-facing
-resource identity `R`, configured non-negative neighbor count `C`, ordered
-content array `W` containing that line and up to `C` complete lines on either
-side (all excluding separators), and the line's offset `O` within `W`
-(`min(L-1, C)` for one-based ordinal `L`), core hashes the JSON tuple
-`["plurnk-line-anchor-v2",R,C,O,W]` with SHA-256, interprets the digest as a
-big-endian integer modulo `62^5`, and encodes five fixed-width characters with
-alphabet `0-9A-Za-z`. The ordinal itself is not hashed (#428): a line keeps its
-anchor wherever it moves while its content and neighborhood are unchanged, so
-edits above a line — the model's own earlier edits included — never stale the
-anchors below them; identical neighborhoods share one anchor and resolve as
-ambiguous with the matching lines, never as a silent landing on a twin. The universal READ projector derives
+For canonical resource identity `R`, minimum neighbor count `C` from
+`PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES`, one-based line `L`, and ordered
+window `W` containing the line and up to `C` neighbors on either side (without
+separators), the initial fingerprint is SHA-256 of the JSON tuple
+`["plurnk-line-anchor-v2",R,C,min(L-1,C),W]`. Its big-endian integer modulo
+`62^5`, encoded with alphabet `0-9A-Za-z`, supplies the five-character handle.
+Absolute ordinals and occurrence numbers are not identity.
+
+§line-anchor-disambiguation Repeated handles expand their content context on
+the complete canonical resource, before any READ scope or preview:
+
+| Condition | Derivation / outcome |
+| --- | --- |
+| Handle is unique | Keep it; expansion elsewhere does not re-key it. |
+| Handle repeats | Double the context radius (`0` first becomes `1`), re-fingerprint the repeated lines, and recheck all resulting handles. |
+| Expanded context | Hash the ordered left block, addressed line, and right block with `R`, `C`, and the expanded radius. Compose doubled side blocks from their two previous SHA-256 fingerprints; missing blocks are `null`. No absolute position, mutable registry, or fuzzy relocation. |
+| Shift outside distinguishing context | Handle remains valid when that context and its uniqueness remain unchanged. |
+| Context or required disambiguation changes | The old handle may become stale; do not redirect it by ordinal or occurrence. |
+| Full-resource radius reached | Stop expansion. A residual short-hash collision remains ambiguous and is refused, never resolved by picking a match. |
+
+Side-block leaves cover up to `max(C,1)` neighboring lines and hash their
+ordered line arrays; expanded handles hash
+`["plurnk-line-anchor-context-v1",R,C,radius,left,line,right]`, where `line`
+hashes the addressed line's text. Side-block parents hash the ordered pair of
+child fingerprints. Context expansion takes logarithmically many rounds and
+linear auxiliary storage, not increasingly large substring copies per line.
+Larger distinguishing contexts deliberately carry larger stale-check regions.
+Anchors are content preconditions, not persistent physical-line identities: an
+exact copy of the distinguishing context cannot be told from a move after the
+original context disappears. Multiple current matches are never guessed.
+Within one program {§edit-anchor-continuity} retains proven bindings through
+its own splices, including changes to contextual disambiguation. This does not
+grant bindings to another program or bypass concurrent-write checks. Applied
+EDIT receipts publish current anchors under {§edit-receipt-anchored-context}.
+
+The universal READ projector derives
 anchors from the complete canonical selected channel before applying the
 authored text slice; its durable result retains the canonical derivation
 identity and anchors aligned with returned lines. Packet rendering right-aligns
@@ -3634,7 +3658,7 @@ Each knob's value lives on its panel and nowhere else (`plurnk-service config de
 | `PLURNK_SERVICE_PREVIEW_LINES` | First page of every markerless retrieval, in the projection's own units, and the head bound of an automatic preview ({§markerless-first-page}, {§body-projection}). |
 | `PLURNK_SERVICE_PREVIEW_CHARS` | Independent Unicode code-point bound on the same previews, with CRLF treated as one indivisible separator ({§body-projection}). |
 | `PLURNK_SERVICE_PROMPT_PROJECTION` | Aggregate curation-weight share of the provider-derived input capacity available to the automatic projection of arrivals from outside the workspace ({§message-projection}); alias-scoped overrides are supported. |
-| `PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES` | Complete neighboring lines hashed on each side of a model-facing line anchor ({§line-anchors}). |
+| `PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES` | Minimum neighboring lines hashed on each side; repeated handles expand their context ({§line-anchor-disambiguation}). |
 | `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES` | Surrounding and landed lines shown at each EDIT result boundary ({§edit-result-receipt-projection}). |
 | `PLURNK_SERVICE_MIN_CYCLES` | Min repetitions before cycle detection fires ({§engine-rails}). |
 | `PLURNK_SERVICE_MAX_CYCLE_PERIOD` | Max period length cycle detection examines ({§engine-rails}). |

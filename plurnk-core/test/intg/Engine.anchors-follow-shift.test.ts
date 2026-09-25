@@ -1,6 +1,4 @@
-// #428 phase 2 — anchors key on content and neighborhood, not on the ordinal. The batch's
-// commonest EDIT failure (run11 t33, run13 t16): the model's own earlier edit above a line
-// shifted it, and every anchor below went stale. Now the anchors follow the lines.
+// {§line-anchors} {§line-anchor-disambiguation} {§edit-anchor-continuity}
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -14,15 +12,20 @@ import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } fro
 
 const execFileP = promisify(execFile);
 const V1 = "one\ntwo\nthree\nfour\nfive\nsix\n";
+const prefix = Array.from({ length: 10 }, (_, index) => `prefix-${index}\n`).join("");
+const suffix = Array.from({ length: 10 }, (_, index) => `suffix-${index}\n`).join("");
 
-test("{§line-anchors} anchors rendered before an insertion above still resolve after it; the edits land on the moved lines", async () => {
+for (const fixture of [
+    { name: "unique", source: V1, first: 3, expected: "one\ntwo\nTHREE-FOUR\nFIVE\nsix\n" },
+    { name: "repeated", source: `${prefix}${V1}${V1}${suffix}`, first: 13, expected: `${prefix}one\ntwo\nTHREE-FOUR\nFIVE\nsix\n${V1}${suffix}` },
+]) test(`{§line-anchors}: ${fixture.name} file anchors survive a shift between loops and successive same-program edits`, async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-shift-"));
     try {
         const env = hermeticGitEnv();
         await execFileP("git", ["init", "-q"], { cwd: root, env });
         await execFileP("git", ["config", "user.email", "fixture@plurnk.invalid"], { cwd: root, env });
         await execFileP("git", ["config", "user.name", "t"], { cwd: root, env });
-        await writeFile(join(root, "doc.md"), V1);
+        await writeFile(join(root, "doc.md"), fixture.source);
         await execFileP("git", ["add", "doc.md"], { cwd: root, env });
         await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env });
 
@@ -52,16 +55,14 @@ editing
                 const readRow = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ worker_id: first.modelWorkerId! }))
                     .find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
                 const anchors = JSON.parse(readRow?.rx ?? "{}").lineAnchors as string[] | undefined;
-                assert.ok(Array.isArray(anchors) && anchors.length === 6, `the READ published one anchor per line; got ${JSON.stringify(anchors)}`);
-                // Two lines land above the document between the READ and the EDIT. Lines 1–2 sat
-                // against the head, so their neighborhoods change; lines 3–6 carry the same
-                // neighborhood two ordinals lower and their anchors follow them.
-                await writeFile(join(root, "doc.md"), `zero-a\nzero-b\n${V1}`);
+                assert.ok(Array.isArray(anchors) && anchors.length === fixture.source.split("\n").length - 1, `the READ published one anchor per line; got ${JSON.stringify(anchors)}`);
+                if (fixture.name === "repeated") assert.notEqual(anchors[fixture.first - 1], anchors[fixture.first + 5], "the two copies have distinct handles");
+                await writeFile(join(root, "doc.md"), `zero-a\nzero-b\n${fixture.source}`);
                 pending.batch = [
-                    `\`\`\`\`EDIT (file:///doc.md) <${anchors[2]},${anchors[3]}>
+                    `\`\`\`\`EDIT (file:///doc.md) <${anchors[fixture.first - 1]},${anchors[fixture.first]}>
 THREE-FOUR
 \`\`\`\``,
-                    `\`\`\`\`EDIT (file:///doc.md) <${anchors[4]}>
+                    `\`\`\`\`EDIT (file:///doc.md) <${anchors[fixture.first + 1]}>
 FIVE
 \`\`\`\``,
                 ].join("\n\n");
@@ -70,7 +71,7 @@ FIVE
                 const edits = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ worker_id: second.modelWorkerId! }))
                     .filter(({ op }) => op === "EDIT");
                 assert.deepEqual(edits.map(({ status_rx }) => status_rx), [200, 200], `both anchored edits applied; got ${edits.map(({ rx }) => rx).join(" | ")}`);
-                assert.equal(await readFile(join(root, "doc.md"), "utf8"), "zero-a\nzero-b\none\ntwo\nTHREE-FOUR\nFIVE\nsix\n", "the edits landed on the moved lines");
+                assert.equal(await readFile(join(root, "doc.md"), "utf8"), `zero-a\nzero-b\n${fixture.expected}`, "the edits landed on the selected moved lines, leaving any twin intact");
             } finally { ws.close(); }
         });
     } finally {

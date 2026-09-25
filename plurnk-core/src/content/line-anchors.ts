@@ -27,13 +27,7 @@ export interface LineAnchorPrecondition {
 // A rendered anchor is a short, copyable validation handle, never resource
 // identity by itself. The universal READ projector supplies snapshot anchors;
 // current resolution fails closed on zero or multiple matches.
-// {§line-anchors} v2 (#428): the ordinal is not hashed. A line keeps its anchor
-// wherever it moves while its content and neighborhood are unchanged, so the
-// model's own earlier edits above a line never stale the anchors below it;
-// identical neighborhoods share one anchor and resolve as ambiguous, never as
-// a silent landing on a twin. The line's offset within its window (`min(L-1, C)`)
-// is hashed so that lines inside the first C lines - whose windows are the same
-// head-truncated slice - stay distinct; past the head the offset is constant.
+// {§line-anchors}: content and context, not the absolute ordinal, identify a line.
 export default class LineAnchors {
     static readonly invalidCoordinateDetail = "A line anchor occupies a column slot in <SL,SC,EL,EC>; columns must be numeric.";
     static readonly invalidCoordinateRecovery = "Use <@start,@end> for an inclusive whole-line anchor range.";
@@ -103,16 +97,11 @@ export default class LineAnchors {
         return value;
     }
 
-    static #encode(
-        identity: string,
-        contextLines: number,
-        offset: number,
-        context: readonly string[],
-    ): string {
-        if (identity.length === 0) throw new TypeError("A line anchor requires a non-empty resource identity.");
-        const digest = createHash("sha256")
-            .update(JSON.stringify(["plurnk-line-anchor-v2", identity, contextLines, offset, context]))
-            .digest("hex");
+    static #digest(value: string | readonly unknown[]): string {
+        return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+    }
+
+    static #encode(digest: string): string {
         let value = BigInt(`0x${digest}`) % LineAnchors.#MODULUS;
         let encoded = "";
         for (let index = 0; index < LineAnchors.#LENGTH; index += 1) {
@@ -123,13 +112,52 @@ export default class LineAnchors {
     }
 
     static tokens(identity: string, content: string): readonly string[] {
+        if (identity.length === 0) throw new TypeError("A line anchor requires a non-empty resource identity.");
         const contextLines = LineAnchors.#contextLines();
         const lines = TextCoordinates.logicalLines(content);
         const bodies = lines.map((line) => content.slice(line.start, line.contentEnd));
-        return bodies.map((_, index) => {
+        const anchors = bodies.map((_, index) => {
             const start = Math.max(0, index - contextLines);
-            return LineAnchors.#encode(identity, contextLines, index - start, bodies.slice(start, index + contextLines + 1));
+            return LineAnchors.#encode(LineAnchors.#digest([
+                "plurnk-line-anchor-v2", identity, contextLines, index - start,
+                bodies.slice(start, index + contextLines + 1),
+            ]));
         });
+        return LineAnchors.#disambiguate(identity, contextLines, bodies, anchors);
+    }
+
+    static #repeated(anchors: readonly string[]): readonly number[] {
+        const counts = new Map<string, number>();
+        for (const anchor of anchors) counts.set(anchor, (counts.get(anchor) ?? 0) + 1);
+        return anchors.flatMap((anchor, index) => counts.get(anchor)! > 1 ? [index] : []);
+    }
+
+    // {§line-anchor-disambiguation}: doubling fixed-size fingerprints keeps even
+    // an all-identical file O(N log N) after the configured minimum windows.
+    static #disambiguate(identity: string, contextLines: number, bodies: readonly string[], anchors: string[]): readonly string[] {
+        let repeated = LineAnchors.#repeated(anchors);
+        if (repeated.length === 0 || contextLines >= bodies.length - 1) return anchors;
+
+        const leafRadius = Math.max(contextLines, 1);
+        const center = bodies.map((body) => LineAnchors.#digest(body));
+        let left = bodies.map((_, index) => LineAnchors.#digest(bodies.slice(Math.max(0, index - leafRadius), index)));
+        let right = bodies.map((_, index) => LineAnchors.#digest(bodies.slice(index + 1, index + leafRadius + 1)));
+        let radius = contextLines;
+        while (repeated.length > 0 && radius < bodies.length - 1) {
+            if (radius > 0) {
+                left = left.map((fingerprint, index) => LineAnchors.#digest([left[index - radius] ?? null, fingerprint]));
+                right = right.map((fingerprint, index) => LineAnchors.#digest([fingerprint, right[index + radius] ?? null]));
+            }
+            radius = radius === 0 ? 1 : radius * 2;
+            for (const index of repeated) {
+                anchors[index] = LineAnchors.#encode(LineAnchors.#digest([
+                    "plurnk-line-anchor-context-v1", identity, contextLines, radius,
+                    left[index], center[index], right[index],
+                ]));
+            }
+            repeated = LineAnchors.#repeated(anchors);
+        }
+        return anchors;
     }
 
     static token(identity: string, lineNumber: number, content: string): string {
