@@ -3512,6 +3512,10 @@ loading; their runtime dependency graphs contain no leaf consumers. A required
 default leaf missing from a service install is a broken install. A direct
 framework consumer may intentionally omit leaves and receives that framework's
 documented unavailable-capability behavior.
+Packed executor coverage distinguishes installation from enablement: verify
+the package floor, explicit opt-in, and composed allowlist/disable behavior
+through discovery and registration outside the development dependency graph
+({§executor-default-inventory}, {§executor-policy}).
 Every non-optional grammar in the mimetype framework's registry is a required
 service runtime dependency, and an optional one ({§mimetype-optional-grammars})
 must not be. Installation coverage loads each default grammar and verifies

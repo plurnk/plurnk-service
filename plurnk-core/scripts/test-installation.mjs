@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
+import { Policy } from "@plurnk/plurnk-execs";
 import { installSandbox, uninstallSandbox, sandbox } from "./install-sandbox.mjs";
 import { installedGrammars } from "./installed-grammars.mjs";
 
@@ -35,9 +36,8 @@ const installedManifest = (packageName) => JSON.parse(readFileSync(
 // path in a fresh Node process. Running outside the monorepo prevents a
 // workspace-hoisted optional package from satisfying the assertion.
 const packedExecInventory = (env = {}) => {
-    const childEnv = { ...process.env };
-    delete childEnv.PLURNK_EXECS_ONLY;
-    Object.assign(childEnv, { PLURNK_SERVICE_GIT_ALLOWED: "1" }, env);
+    const childEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !Policy.isKey(key)));
+    Object.assign(childEnv, sandboxHostEnv, { PLURNK_SERVICE_GIT_ALLOWED: "1" }, env);
     const program = `
         import { resolve } from "node:path";
         import { pathToFileURL } from "node:url";
@@ -53,6 +53,8 @@ const packedExecInventory = (env = {}) => {
         const executors = await ExecutorRegistry.build({ cwd: process.cwd() });
         process.stdout.write(JSON.stringify({
             owners: Object.fromEntries([...discovery.registry].map(([tag, info]) => [tag, info.packageName])),
+            disabled: discovery.disabled,
+            registered: [...discovery.registry.keys()].filter((tag) => executors.entry(tag) !== undefined),
             advertised: executors.availableRuntimes(),
         }));
     `;
@@ -766,18 +768,42 @@ try {
 }
 
 process.stdout.write("-- executor inventory --\n");
+// {§executor-default-inventory} {§executor-policy}: installed is not enabled.
+const defaultTags = ["sh", "node", "python3"];
+const declaredRuntimes = defaultExecPackages.flatMap((packageName) =>
+    (installedManifest(packageName).plurnk?.runtimes ?? []).map(({ name }) => [name, packageName]));
 const packedExecs = packedExecInventory();
-for (const packageName of defaultExecPackages) {
-    const manifest = installedManifest(packageName);
-    for (const runtime of manifest.plurnk?.runtimes ?? []) {
+ok(
+    isDeepStrictEqual(Object.keys(packedExecs.owners).toSorted(), defaultTags.toSorted())
+        && isDeepStrictEqual(packedExecs.registered.toSorted(), defaultTags.toSorted()),
+    "the packed default registers only sh, node and python3",
+);
+const optIn = Object.fromEntries(declaredRuntimes.map(([tag]) => [`PLURNK_EXECS_${tag.toUpperCase()}`, "1"]));
+const enabledExecs = packedExecInventory(optIn);
+for (const [tag, packageName] of declaredRuntimes) {
+    if (!defaultTags.includes(tag)) {
         ok(
-            packedExecs.owners[runtime.name] === packageName,
-            `runtime ${runtime.name} is discovered from the service-owned ${packageName} leaf`,
+            packedExecs.disabled.includes(tag)
+                && !(tag in packedExecs.owners)
+                && !packedExecs.registered.includes(tag)
+                && !packedExecs.advertised.includes(tag),
+            `optional runtime ${tag} is disabled and unadvertised by the packed floor`,
         );
     }
+    ok(
+        enabledExecs.owners[tag] === packageName && enabledExecs.registered.includes(tag),
+        `runtime ${tag} explicitly enables and loads from the service-owned ${packageName} leaf`,
+    );
 }
-ok(!("git" in packedExecs.owners) && !("isogit" in packedExecs.owners),
+ok(!("git" in enabledExecs.owners) && !("isogit" in enabledExecs.owners),
     "the installed executor inventory contains no bespoke Git dialect");
+const restrictedExecs = packedExecInventory({ ...optIn, PLURNK_EXECS_ONLY: "node,sqlite", PLURNK_EXECS_SQLITE: "0" });
+ok(
+    isDeepStrictEqual(Object.keys(restrictedExecs.owners), ["node"])
+        && isDeepStrictEqual(restrictedExecs.registered, ["node"])
+        && isDeepStrictEqual(restrictedExecs.advertised, ["node"]),
+    "the packed allowlist and per-tag disable compose after explicit opt-in",
+);
 
 uninstallSandbox();
 process.stdout.write(failures === 0 ? "\n== PASS ==\n" : `\n== FAIL (${failures}) ==\n`);
