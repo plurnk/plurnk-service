@@ -290,9 +290,10 @@ export default class DigestRender {
     static wireLine(assistantRaw: unknown): string | null {
         const wire = typeof assistantRaw === "object" && assistantRaw !== null ? (assistantRaw as { wire?: unknown }).wire : undefined;
         if (typeof wire !== "object" || wire === null) return null;
-        const { chunks, emptyChunks, fields, channels, toolCalls } = wire as {
+        const { chunks, emptyChunks, fields, channels, toolCalls, unmappedChunks } = wire as {
             chunks?: number; emptyChunks?: number; fields?: Record<string, number>; channels?: Record<string, string>;
             toolCalls?: ReadonlyArray<{ name?: string; arguments: string }>;
+            unmappedChunks?: readonly unknown[];
         };
         const parts = [
             `${chunks ?? 0} chunks`,
@@ -300,6 +301,7 @@ export default class DigestRender {
             ...Object.entries(fields ?? {}).map(([field, count]) => `${field}×${count}`),
             ...(toolCalls ?? []).map((call) => `tool call ${call.name ?? "?"}(${DigestRender.#summarize(call.arguments, 60)})`),
             ...Object.entries(channels ?? {}).map(([channel, text]) => `${channel}: ${DigestRender.#summarize(text, 60)}`),
+            (unmappedChunks?.length ?? 0) > 0 ? `${unmappedChunks!.length} unmapped frames retained` : null,
         ].filter((part) => part !== null);
         return `  ↳ wire: ${parts.join(", ")}`;
     }

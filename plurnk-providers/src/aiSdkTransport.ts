@@ -212,6 +212,7 @@ export type WireEmission = {
     // Tool calls merged by index, arguments concatenated as streamed.
     readonly toolCalls: ReadonlyArray<{ index: number; id?: string; type?: string; name?: string; arguments: string }>;
     readonly finishReasons: readonly string[];
+    readonly unmappedChunks?: readonly unknown[];
 };
 
 export type AiSdkTransportResponse = {
@@ -687,11 +688,15 @@ export const wireEmissionOf = (values: readonly unknown[]): WireEmission => {
     const channels: Record<string, string> = {};
     const toolCalls = new Map<number, { index: number; id?: string; type?: string; name?: string; arguments: string }>();
     const finishReasons = new Set<string>();
+    const unmappedChunks: unknown[] = [];
     for (const value of values) {
         const record = recordOf(value);
-        if (record === null) continue;
         chunks += 1;
-        const choices = Array.isArray(record.choices) ? record.choices : [];
+        if (record === null || !Array.isArray(record.choices)) {
+            unmappedChunks.push(value);
+            continue;
+        }
+        const choices = record.choices;
         let carried = false;
         for (const item of choices) {
             const choice = recordOf(item);
@@ -732,6 +737,7 @@ export const wireEmissionOf = (values: readonly unknown[]): WireEmission => {
         channels,
         toolCalls: [...toolCalls.values()].sort((a, b) => a.index - b.index),
         finishReasons: [...finishReasons],
+        ...(unmappedChunks.length === 0 ? {} : { unmappedChunks }),
     };
 };
 

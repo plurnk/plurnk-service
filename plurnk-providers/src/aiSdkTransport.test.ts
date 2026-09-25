@@ -92,6 +92,7 @@ test("{§provider-sdk-boundary} native cache accounting uses the SDK's total rat
                 input: 0.15, output: 0.5, cacheRead: 0.03, cacheWrite: 0.2,
             }), "0.000126");
             assert.deepEqual(result.chargeEvidence.usage, streaming ? { output_tokens: 100 } : rawUsage);
+            assert.deepEqual(result.wire.unmappedChunks, streaming ? chunks : [message], "native envelopes are retained without a second vendor parser");
         });
     }
 });

@@ -16,6 +16,8 @@ test("{§provider-wire-emission} the digest reads a blank emission from the wire
     });
     assert.equal(line, "  ↳ wire: 8 chunks, 4 carried nothing, reasoning_content×1, tool_calls×2, refusal×1, tool call READ({\"path\": \"django/views/debug.py\"}), refusal: no");
     assert.equal(DigestRender.wireLine({ content: "" }), null, "a record without a wire says nothing about it");
+    assert.equal(DigestRender.wireLine({ wire: { chunks: 1, unmappedChunks: [{ type: "message", content: [] }] } }),
+        "  ↳ wire: 1 chunks, 1 unmapped frames retained", "unmapped native envelopes are not reported as empty");
 });
 
 test("{§exec-env-scoped} the digest names a spawn's environment with each value's provenance", () => {

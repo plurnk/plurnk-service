@@ -810,7 +810,11 @@ by index with their arguments as streamed, the finish reasons seen, and the verb
 of every string field the record does not already hold. Nothing is opt-in and nothing is
 reinterpreted: a blank emission reads as thirteen chunks that carried nothing, or as a
 tool-call section the model emitted into a channel the protocol does not read, instead of
-being guessed at from token counts. Covered by `aiSdkTransport.test.ts`.
+being guessed at from token counts. Frames outside the recognized OpenAI-compatible
+envelope remain verbatim in `wire.unmappedChunks`; the recorder never discards an
+unrecognized/native payload or invents another provider parser. This required
+evidence is independent of the optional complete `rawBody` dataset capture.
+Covered by `aiSdkTransport.test.ts` and core's `Digest.wire-evidence.test.ts`.
 
 §provider-usage-refusal **The provider's bookkeeping is not the exchange.** Usage
 normalization is exact; a refusal never fails or retries the response. The same
