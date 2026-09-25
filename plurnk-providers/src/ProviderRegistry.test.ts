@@ -292,7 +292,7 @@ test("{§deepseek-reasoning-request} #157: direct DeepSeek composes catalog fact
         inputTokens: 10,
         outputTokens: 2,
         totalTokens: 12,
-        inputTokenDetails: { noCacheTokens: 2, cacheReadTokens: 8 },
+        inputTokenDetails: { noCacheTokens: 2, cacheReadTokens: 8, cacheWriteTokens: 0 },
     });
     const expected = calculateCostUsdDecimal(response.accounting[0]!.usage!, catalogRatesOf("deepseek", "deepseek-v4-flash"));
     assert.match(String(expected), /^0\.0*[1-9]/, "the catalog prices this usage");

@@ -655,7 +655,7 @@ test("generate maps a streamed response into ProviderResponse", async () => {
         inputTokens: 3,
         outputTokens: 2,
         totalTokens: 5,
-        inputTokenDetails: { cacheReadTokens: 1 },
+        inputTokenDetails: { noCacheTokens: 2, cacheReadTokens: 1, cacheWriteTokens: 0 },
     });
     assert.equal(assistant.reasoning, null); // none emitted
     assert.notEqual(assistantRaw, undefined);

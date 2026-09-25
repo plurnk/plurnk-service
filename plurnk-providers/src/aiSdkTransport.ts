@@ -68,6 +68,7 @@ const usageOf = (
     prompt_tokens: usage.inputTokens,
     completion_tokens: usage.outputTokens,
     total_tokens: usage.totalTokens,
+    prompt_cache_miss_tokens: usage.inputTokenDetails.noCacheTokens,
     prompt_tokens_details: {
         cached_tokens: usage.inputTokenDetails.cacheReadTokens,
         cache_write_tokens: usage.inputTokenDetails.cacheWriteTokens,
@@ -79,17 +80,22 @@ const usageOf = (
 
 const wireUsageOf = (
     values: readonly unknown[],
+    sdkUsage: LanguageModelUsage | undefined,
 ): ProviderUsage | undefined => {
     for (let index = values.length - 1; index >= 0; index -= 1) {
         const usage = recordOf(values[index])?.usage;
-        if (usage !== null && typeof usage === "object") {
-            return normalizeUsage(usage as RawUsage);
+        const raw = recordOf(usage);
+        if (raw !== null && ("prompt_tokens" in raw || "completion_tokens" in raw || "total_tokens" in raw)) {
+            return normalizeUsage(raw as RawUsage, sdkUsage === undefined ? undefined : {
+                inputTokens: sdkUsage.inputTokens,
+                inputTokenDetails: sdkUsage.inputTokenDetails,
+            });
         }
     }
     return undefined;
 };
 
-// {§provider-usage-refusal} — the provider's bookkeeping is not the exchange. When the reported
+// {§provider-usage-refusal} — the provider's bookkeeping is not the exchange.
 // invalid details do not erase valid aggregates; contradictory aggregates remain unknown.
 // The original counters ride beside the refusal, never clamped or replaced.
 export type UsageRefusal = { readonly reason: string; readonly usage: unknown };
@@ -99,7 +105,7 @@ const settledUsage = (
     sdkUsage: LanguageModelUsage | undefined,
 ): { usage?: ProviderUsage; usageRefusal?: UsageRefusal } => {
     try {
-        const usage = wireUsageOf(values) ?? (sdkUsage === undefined ? undefined : usageOf(sdkUsage));
+        const usage = wireUsageOf(values, sdkUsage) ?? (sdkUsage === undefined ? undefined : usageOf(sdkUsage));
         return usage === undefined ? {} : { usage };
     } catch (cause) {
         if (!(cause instanceof TypeError)) throw cause;

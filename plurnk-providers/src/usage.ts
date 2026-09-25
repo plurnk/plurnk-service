@@ -81,8 +81,8 @@ export const validateProviderUsage = (usage: ProviderUsage): ProviderUsage => {
             throw new TypeError("provider usage.inputTokenDetails must contain a known quantity");
         }
         const known = values.filter((value): value is number => value !== undefined);
-        if (input !== undefined && known.some((value) => value > input)) {
-            throw new TypeError("provider input-token detail must not exceed inputTokens");
+        if (input !== undefined && known.reduce((sum, value) => sum + value, 0) > input) {
+            throw new TypeError("provider input-token details must not exceed inputTokens");
         }
         if (input !== undefined && values.every((value) => value !== undefined)
             && known.reduce((sum, value) => sum + value, 0) !== input) {
@@ -110,7 +110,10 @@ export const validateProviderUsage = (usage: ProviderUsage): ProviderUsage => {
     return usage;
 };
 
-export const normalizeUsage = (raw: RawUsage | null | undefined): ProviderUsage | undefined => {
+export const normalizeUsage = (
+    raw: RawUsage | null | undefined,
+    sdkInput?: Pick<ProviderUsage, "inputTokens" | "inputTokenDetails">,
+): ProviderUsage | undefined => {
     if (raw === null || raw === undefined) return undefined;
 
     const detailErrors: TypeError[] = [];
@@ -176,6 +179,7 @@ export const normalizeUsage = (raw: RawUsage | null | undefined): ProviderUsage 
         ?? (inputTokens !== undefined && outputTokens !== undefined
             ? inputTokens + outputTokens
             : undefined);
+    const inputDetailErrors = detailErrors.length;
     const cacheReadTokens = detailTokens(
         raw.input_tokens_details?.cache_read_tokens
             ?? raw.input_tokens_details?.cached_tokens
@@ -193,15 +197,23 @@ export const normalizeUsage = (raw: RawUsage | null | undefined): ProviderUsage 
         "provider usage cache-write tokens",
     );
     const explicitNoCacheTokens = detailTokens(
-        raw.prompt_cache_miss_tokens,
+        raw.prompt_cache_miss_tokens ?? (
+            detailErrors.length === inputDetailErrors
+            && inputTokens !== undefined && inputTokens === sdkInput?.inputTokens
+            && cacheReadTokens !== undefined && cacheReadTokens === sdkInput?.inputTokenDetails?.cacheReadTokens
+            && cacheWriteTokens === undefined
+                ? sdkInput?.inputTokenDetails?.noCacheTokens
+                : undefined
+        ),
         "provider usage non-cache tokens",
     );
-    const noCacheTokens = explicitNoCacheTokens
-        ?? (inputTokens !== undefined && cacheReadTokens !== undefined && cacheWriteTokens !== undefined
-            ? inputTokens - cacheReadTokens - cacheWriteTokens
-            : undefined);
-
-    const inputTokenDetails = nonEmptyDetails({ noCacheTokens, cacheReadTokens, cacheWriteTokens });
+    const inputParts = { noCacheTokens: explicitNoCacheTokens, cacheReadTokens, cacheWriteTokens };
+    const missing = Object.entries(inputParts).filter(([, value]) => value === undefined);
+    if (detailErrors.length === inputDetailErrors && inputTokens !== undefined && missing.length === 1) {
+        const known = Object.values(inputParts).reduce<number>((sum, value) => sum + (value ?? 0), 0);
+        inputParts[missing[0]![0] as keyof typeof inputParts] = inputTokens - known;
+    }
+    const inputTokenDetails = nonEmptyDetails(inputParts);
     const outputTokenDetails = nonEmptyDetails({ textTokens, reasoningTokens: normalizedReasoning });
     const usage: ProviderUsage = {
         ...(inputTokens === undefined ? {} : { inputTokens }),

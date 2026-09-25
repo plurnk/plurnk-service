@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { APICallError } from "ai";
+import { createAnthropic } from "@ai-sdk/anthropic";
 import { ProviderTimeoutError } from "./errors.ts";
+import { calculateCostUsdDecimal } from "./usage.ts";
 import {
+    executeAiSdkModel,
     executeOpenAICompatible,
     normalizeRetryAttemptError,
     transportFailureOutputObserved,
@@ -19,6 +22,79 @@ const request = {
     streaming: false,
     captureRawBody: false,
 };
+
+test("{§provider-usage} implicit caching retains the SDK input partition without inventing missing counters", async (t) => {
+    for (const streaming of [false, true]) {
+        for (const cached of [undefined, 0, 400]) {
+            await t.test(`${streaming ? "stream" : "buffered"}, cached=${cached}`, async () => {
+                const usage = {
+                    prompt_tokens: 1000, completion_tokens: 100, total_tokens: 1100,
+                    ...(cached === undefined ? {} : { prompt_tokens_details: { cached_tokens: cached } }),
+                    completion_tokens_details: { reasoning_tokens: 40 },
+                };
+                const body = {
+                    id: "cache-reply", model: "test-model",
+                    choices: [{ index: 0, [streaming ? "delta" : "message"]: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
+                    usage,
+                };
+                const result = await executeOpenAICompatible({
+                    ...request, streaming,
+                    fetch: async () => new Response(
+                        streaming ? `data: ${JSON.stringify(body)}\n\ndata: [DONE]\n\n` : JSON.stringify(body),
+                        { headers: { "content-type": streaming ? "text/event-stream" : "application/json" } },
+                    ),
+                });
+                assert.deepEqual(result.usage?.inputTokenDetails, cached === undefined ? undefined : {
+                    noCacheTokens: 1000 - cached, cacheReadTokens: cached, cacheWriteTokens: 0,
+                });
+                assert.equal(result.usageRefusal, undefined);
+                assert.equal(calculateCostUsdDecimal(result.usage!, {
+                    input: 0.15, output: 0.5, cacheRead: 0.03, cacheWrite: 0,
+                }), cached === undefined ? null : cached === 0 ? "0.0002" : "0.000152");
+                assert.deepEqual(result.chargeEvidence.usage, usage, "the original counters remain unmodified");
+            });
+        }
+    }
+});
+
+test("{§provider-sdk-boundary} native cache accounting uses the SDK's total rather than a raw uncached-input counter", async (t) => {
+    const rawUsage = { input_tokens: 100, output_tokens: 100, cache_creation_input_tokens: 200, cache_read_input_tokens: 700 };
+    const message = {
+        id: "native-cache-reply", type: "message", role: "assistant", model: "claude-sonnet-4-5",
+        content: [{ type: "text", text: "ok" }], stop_reason: "end_turn", stop_sequence: null,
+        usage: rawUsage,
+    };
+    for (const streaming of [false, true]) {
+        await t.test(streaming ? "stream" : "buffered", async () => {
+            const chunks = [
+                { type: "message_start", message: { ...message, content: [], usage: { ...rawUsage, output_tokens: 0 } } },
+                { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+                { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "ok" } },
+                { type: "content_block_stop", index: 0 },
+                { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 100 } },
+                { type: "message_stop" },
+            ];
+            const anthropic = createAnthropic({
+                apiKey: "test-key",
+                fetch: async () => new Response(streaming
+                    ? chunks.map((chunk) => `event: ${chunk.type}\ndata: ${JSON.stringify(chunk)}\n\n`).join("")
+                    : JSON.stringify(message), { headers: { "content-type": streaming ? "text/event-stream" : "application/json" } }),
+            });
+            const result = await executeAiSdkModel({
+                ...request, streaming, languageModel: anthropic("claude-sonnet-4-5"),
+            });
+            assert.deepEqual(result.usage, {
+                inputTokens: 1000, outputTokens: 100, totalTokens: 1100,
+                inputTokenDetails: { noCacheTokens: 100, cacheReadTokens: 700, cacheWriteTokens: 200 },
+            });
+            assert.equal(result.usageRefusal, undefined);
+            assert.equal(calculateCostUsdDecimal(result.usage!, {
+                input: 0.15, output: 0.5, cacheRead: 0.03, cacheWrite: 0.2,
+            }), "0.000126");
+            assert.deepEqual(result.chargeEvidence.usage, streaming ? { output_tokens: 100 } : rawUsage);
+        });
+    }
+});
 
 test("{§provider-usage-refusal} failure evidence retains valid MiMo totals and cache counters", () => {
     const usage = {

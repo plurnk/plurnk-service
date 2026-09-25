@@ -74,7 +74,42 @@ test("#157: normalizeUsage maps DeepSeek cache hit and miss counts", () => {
         inputTokens: 50,
         outputTokens: 10,
         totalTokens: 60,
-        inputTokenDetails: { noCacheTokens: 20, cacheReadTokens: 30 },
+        inputTokenDetails: { noCacheTokens: 20, cacheReadTokens: 30, cacheWriteTokens: 0 },
+    });
+});
+
+test("{§provider-usage} input partitions derive exactly one missing category, not an unknown split", () => {
+    assert.deepEqual(normalizeUsage({
+        prompt_tokens: 100, prompt_cache_miss_tokens: 20,
+        prompt_tokens_details: { cache_write_tokens: 30 },
+    })?.inputTokenDetails, { noCacheTokens: 20, cacheReadTokens: 50, cacheWriteTokens: 30 });
+    assert.deepEqual(normalizeUsage({
+        prompt_tokens: 100, prompt_cache_miss_tokens: 20,
+    })?.inputTokenDetails, { noCacheTokens: 20 });
+    assert.deepEqual(normalizeUsage({
+        prompt_tokens: 100, prompt_tokens_details: { cached_tokens: 30 },
+    }, { inputTokens: 100, inputTokenDetails: { noCacheTokens: 100, cacheReadTokens: 0 } })?.inputTokenDetails,
+    { cacheReadTokens: 30 }, "SDK defaults cannot contradict a reported cache counter");
+});
+
+test("{§provider-usage-refusal} partition derivation never replaces an invalid counter", () => {
+    assert.throws(() => normalizeUsage({
+        prompt_tokens: 100, prompt_cache_miss_tokens: -1,
+        prompt_tokens_details: { cached_tokens: 30, cache_write_tokens: 20 },
+    }), (error: unknown) => {
+        assert.ok(error instanceof UsageDetailError);
+        assert.deepEqual(error.usage, {
+            inputTokens: 100, inputTokenDetails: { cacheReadTokens: 30, cacheWriteTokens: 20 },
+        });
+        return true;
+    });
+    assert.throws(() => normalizeUsage({
+        prompt_tokens: 100, prompt_cache_miss_tokens: 80,
+        prompt_tokens_details: { cached_tokens: 30 },
+    }), (error: unknown) => {
+        assert.ok(error instanceof UsageDetailError);
+        assert.deepEqual(error.usage, { inputTokens: 100 });
+        return true;
     });
 });
 

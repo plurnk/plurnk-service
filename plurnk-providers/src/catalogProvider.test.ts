@@ -848,6 +848,35 @@ test("{§provider-monetary-evidence} Models.dev is the only fallback rate table"
     });
 });
 
+test("#856: catalog implicit-cache pricing composes SDK usage without an operator rate override", async () => {
+    mock.method(globalThis, "fetch", async () => new Response([
+        `data: ${JSON.stringify({
+            id: "response", model: "glm-5.3-flash",
+            choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
+            usage: {
+                prompt_tokens: 1000, completion_tokens: 100, total_tokens: 1100,
+                prompt_tokens_details: { cached_tokens: 400 },
+            },
+        })}`,
+        "data: [DONE]",
+    ].join("\n\n"), { headers: { "content-type": "text/event-stream" } }));
+    const info = lookupProvider("zai")!;
+    const provider = catalogProviderFromEnv("zai", {
+        ...env, ...Object.fromEntries(info.env.map((name) => [name, "test-key"])),
+        PLURNK_PROVIDERS_REASONING: "adaptive",
+    }, "glm-5.3-flash");
+    assert.ok(provider);
+    const response = await provider.generate({ workerId: "implicit-cache", messages: [] });
+    const usage = response.accounting[0]?.usage;
+    assert.deepEqual(usage?.inputTokenDetails, { noCacheTokens: 600, cacheReadTokens: 400, cacheWriteTokens: 0 });
+    assert.equal(response.accounting.length, 1);
+    const amount = calculateCostUsdDecimal(usage!, catalogRatesOf("zai", "glm-5.3-flash"));
+    assert.notEqual(amount, null, "the catalog rate is applicable without inventing a cache-write count");
+    assert.deepEqual(response.accounting[0]?.cost, {
+        kind: "estimated", amount: { amount, currency: "USD" }, source: "Models.dev catalog rates",
+    });
+});
+
 test("{§operator-cost-override} declared rates overlay the catalog and the source names the override", async () => {
     mock.method(globalThis, "fetch", async () => new Response([
         `data: ${JSON.stringify({
@@ -897,4 +926,3 @@ test("(#458) declared efforts union into the supported set under the models.dev-
     // (#474) "max" joined the portable vocabulary; "off" still requires a declared "none".
     assert.deepEqual(provider?.supportedReasoningPolicies, ["adaptive", "low", "high", "max"]);
 });
-

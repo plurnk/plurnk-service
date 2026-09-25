@@ -248,6 +248,13 @@ the SDK. PLURNK supplies cancellation and deadline signals and owns the sole
 cross-attempt scheduler so every physical request remains observable and
 accountable.
 
+| Usage input | Normalization |
+| --- | --- |
+| Native protocol | Preserve the SDK's inclusive totals and category counts; raw protocol counters are evidence, not interchangeable totals. |
+| OpenAI-compatible wire | Retain extended counters and exact total identities the SDK may omit. |
+| Compatible SDK input partition | Retain its uncached count when total input and an explicitly reported cache-read count agree with the wire; never promote SDK defaults over absent or contradictory wire counts. |
+| Input total plus two partition counts | Derive the remaining count exactly; otherwise preserve absence. |
+
 PLURNK maps its generic settings to AI SDK call settings:
 
 - `temperature`, `top_p`, `top_k`;
