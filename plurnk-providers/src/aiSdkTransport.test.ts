@@ -6,6 +6,7 @@ import {
     executeOpenAICompatible,
     normalizeRetryAttemptError,
     transportFailureOutputObserved,
+    transportFailureEvidence,
 } from "./aiSdkTransport.ts";
 
 const request = {
@@ -18,6 +19,26 @@ const request = {
     streaming: false,
     captureRawBody: false,
 };
+
+test("{§provider-usage-refusal} failure evidence retains valid MiMo totals and cache counters", () => {
+    const usage = {
+        prompt_tokens: 38673, completion_tokens: 16384, total_tokens: 55057,
+        completion_tokens_details: { reasoning_tokens: 16385 },
+        prompt_tokens_details: { cached_tokens: 14528 },
+    };
+    const error = new APICallError({
+        message: "upstream error", url: request.url, requestBodyValues: {},
+        statusCode: 500, responseBody: JSON.stringify({ usage }),
+    });
+    const evidence = transportFailureEvidence(error);
+    assert.deepEqual(evidence.usage, {
+        inputTokens: 38673, outputTokens: 16384, totalTokens: 55057,
+        inputTokenDetails: { cacheReadTokens: 14528 },
+    });
+    assert.deepEqual(evidence.usageRefusal?.usage, usage);
+    assert.equal(evidence.usageRefusal?.reason, "provider usage.outputTokenDetails.textTokens must be a non-negative safe integer");
+    assert.equal(evidence.status, 500);
+});
 
 test("{§provider-sdk-boundary} the transport performs exactly one physical request", async () => {
     let calls = 0;
@@ -432,7 +453,7 @@ test("inconsistent usage counters refuse normalization without failing the respo
             }), { headers: { "content-type": "application/json" } }),
         });
         assert.equal(result.content, "answer", "the model's answer survives the provider's bookkeeping");
-        assert.equal(result.usage, undefined, "no counter is invented, clamped, or zeroed");
+        assert.deepEqual(result.usage, { inputTokens: 1, outputTokens: 5, totalTokens: 6 }, "valid totals survive; the contradictory breakdown is not clamped");
         assert.deepEqual(result.usageRefusal, {
             reason: "provider usage.outputTokenDetails.textTokens must be a non-negative safe integer",
             usage,
@@ -456,7 +477,7 @@ test("inconsistent usage counters refuse normalization without failing the respo
             }), { headers: { "content-type": "text/event-stream" } }),
         });
         assert.equal(result.content, "answer");
-        assert.equal(result.usage, undefined);
+        assert.deepEqual(result.usage, { inputTokens: 1, outputTokens: 5, totalTokens: 6 });
         assert.equal(result.usageRefusal?.reason, "provider usage.outputTokenDetails.textTokens must be a non-negative safe integer");
         assert.deepEqual(result.usageRefusal?.usage, usage);
     });
@@ -473,4 +494,3 @@ test("inconsistent usage counters refuse normalization without failing the respo
         assert.equal(result.usageRefusal, undefined);
     });
 });
-

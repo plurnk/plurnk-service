@@ -2780,8 +2780,8 @@ test("a manual-reasoning model rejects an envelope below its provider minimum be
 });
 
 // {§provider-usage-refusal} (#580) — through the provider: the response is delivered, its
-// accounting is an honest unknown, and the refused counters are durable evidence, not a 503.
-test("a response whose usage counters contradict each other is delivered with unknown cost, never retried as a network failure", async () => {
+// accounting retains independent valid totals, and refused details remain durable evidence.
+test("a response with an invalid reasoning detail retains totals and their catalog estimate, never retried as a network failure", async () => {
     const usage = { prompt_tokens: 1, completion_tokens: 5, total_tokens: 6, completion_tokens_details: { reasoning_tokens: 7 } };
     installFetchJson({
         id: "response-1", object: "chat.completion", created: 1, model: "served-model",
@@ -2799,8 +2799,8 @@ test("a response whose usage counters contradict each other is delivered with un
     assert.equal(response.assistant.content, "the answer");
     assert.equal(response.accounting.length, 1);
     assert.equal(response.accounting[0]?.outcome, "response");
-    assert.equal(response.accounting[0]?.usage, undefined, "no counters are reported as known");
-    assert.deepEqual(response.accounting[0]?.cost, { kind: "unknown", reason: "the provider response reported no normalized usage" });
+    assert.deepEqual(response.accounting[0]?.usage, { inputTokens: 1, outputTokens: 5, totalTokens: 6 });
+    assert.deepEqual(response.accounting[0]?.cost, { kind: "estimated", amount: { amount: "1", currency: "USD" }, source: "test estimator" });
     const raw = response.assistantRaw as { usageRefusal?: { reason: string; usage: unknown } };
     assert.deepEqual(raw.usageRefusal, { reason: "provider usage.outputTokenDetails.textTokens must be a non-negative safe integer", usage }, "the durable response carries the refused counters");
 });

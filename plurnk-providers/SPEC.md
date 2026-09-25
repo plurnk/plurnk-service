@@ -806,16 +806,19 @@ tool-call section the model emitted into a channel the protocol does not read, i
 being guessed at from token counts. Covered by `aiSdkTransport.test.ts`.
 
 §provider-usage-refusal **The provider's bookkeeping is not the exchange.** Usage
-normalization is exact and refuses counters that contradict each other (a
-reasoning detail larger than its output aggregate, a total that disagrees with
-its parts). A refusal is not a request failure: the response is delivered, its
-accounting row carries no `usage` and a cost of kind `unknown` with the reason
-(never an invented, clamped, or zero counter), and the transport record keeps
-`usageRefusal` — the normalizer's reason beside the counters exactly as the
-wire reported them — so the digest can read what the provider said. The same
-holds for the usage inside failure evidence. Before this rule a contradictory
-counter turned a complete response into a retryable `network_failure` and lost
-the response (#580). Covered by `aiSdkTransport.test.ts` and
+normalization is exact; a refusal never fails or retries the response. The same
+rules apply to usage inside failure evidence:
+
+| Contradiction | Normalized evidence |
+| --- | --- |
+| Invalid aggregate or total inconsistent with its parts | No `usage`. |
+| Invalid optional counter | Omit that counter; retain independently valid quantities. |
+| Cache or reasoning breakdown inconsistent with its aggregate | Omit that breakdown; retain valid aggregates and the other breakdown. |
+
+Every refusal retains `usageRefusal`: the reason and the original wire counters.
+No value is clamped, zeroed, or estimated. Cost uses authoritative charges when
+available; catalog estimation requires all quantities its rates need, otherwise
+cost is `unknown`. Covered by `usage.test.ts`, `aiSdkTransport.test.ts`, and
 `AiSdkProvider.test.ts`.
 
 §provider-open-reasoning **Plurnk reads the model's own reasoning.** The service is

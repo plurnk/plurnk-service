@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { calculateCostUsdDecimal, normalizeUsage } from "./usage.ts";
+import { calculateCostUsdDecimal, normalizeUsage, UsageDetailError } from "./usage.ts";
 
 test("normalizeUsage recovers additive hidden reasoning from an exact total", () => {
     const usage = normalizeUsage({
@@ -96,6 +96,22 @@ test("normalizeUsage preserves unknown usage as absence", () => {
     assert.equal(normalizeUsage(undefined), undefined);
 });
 
+test("{§provider-usage-refusal} rejected details preserve independently valid totals and cache counts", () => {
+    const raw = {
+        prompt_tokens: 38673, completion_tokens: 16384, total_tokens: 55057,
+        completion_tokens_details: { reasoning_tokens: 16385 },
+        prompt_tokens_details: { cached_tokens: 14528 },
+    };
+    assert.throws(() => normalizeUsage(raw), (error: unknown) => {
+        assert.ok(error instanceof TypeError);
+        assert.deepEqual((error as TypeError & { usage?: unknown }).usage, {
+            inputTokens: 38673, outputTokens: 16384, totalTokens: 55057,
+            inputTokenDetails: { cacheReadTokens: 14528 },
+        });
+        return true;
+    });
+});
+
 test("normalizeUsage never apportions tokens from reasoning or content length", () => {
     assert.deepEqual(normalizeUsage({
         prompt_tokens: 100,
@@ -106,6 +122,29 @@ test("normalizeUsage never apportions tokens from reasoning or content length", 
         outputTokens: 1000,
         totalTokens: 1100,
     });
+});
+
+test("{§provider-usage-refusal} invalid optional counts never erase the other valid breakdown", () => {
+    for (const cached of [-1, 11]) {
+        assert.throws(() => normalizeUsage({
+            prompt_tokens: 10, completion_tokens: 5, total_tokens: 15,
+            prompt_tokens_details: { cached_tokens: cached },
+            completion_tokens_details: { reasoning_tokens: 2 },
+        }), (error: unknown) => {
+            assert.ok(error instanceof UsageDetailError);
+            assert.deepEqual(error.usage, {
+                inputTokens: 10, outputTokens: 5, totalTokens: 15,
+                outputTokenDetails: { textTokens: 3, reasoningTokens: 2 },
+            });
+            return true;
+        });
+    }
+    assert.throws(() => normalizeUsage({ prompt_tokens: 10, completion_tokens: 5, total_tokens: 14 }),
+        (error: unknown) => error instanceof TypeError && !(error instanceof UsageDetailError)
+            && error.message === "provider usage total is inconsistent with input and output tokens");
+    assert.throws(() => normalizeUsage({ reasoning_tokens: -1 }),
+        (error: unknown) => error instanceof TypeError && !(error instanceof UsageDetailError)
+            && error.message === "provider usage reasoning tokens must be a non-negative safe integer");
 });
 
 test("calculateCostUsdDecimal bills all output, including reasoning, at the output rate", () => {

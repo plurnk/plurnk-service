@@ -3,7 +3,7 @@ import { createOpenAICompatible, type ProviderErrorStructure } from "@ai-sdk/ope
 import { APICallError, generateText, streamText, type CallWarning, type JSONValue, type LanguageModel, type LanguageModelUsage, type ModelMessage } from "ai";
 import { z } from "zod";
 import type { ChatMessage, ProviderAttemptFinishReason, ProviderChargeEvidence, ProviderReasoningObserver, ProviderUsage, TokenLogprob } from "./types.ts";
-import { normalizeUsage, type RawUsage } from "./usage.ts";
+import { normalizeUsage, UsageDetailError, type RawUsage } from "./usage.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { ProviderTimeoutError, providerTimeoutOf } from "./errors.ts";
 
@@ -90,9 +90,8 @@ const wireUsageOf = (
 };
 
 // {§provider-usage-refusal} — the provider's bookkeeping is not the exchange. When the reported
-// counters cannot be normalized (a reasoning detail exceeding its output aggregate, a total that
-// contradicts its parts), the response stands, usage is unknown (never invented, clamped, or zero),
-// and the counters as reported ride beside the refusal so forensics can see what the wire said.
+// invalid details do not erase valid aggregates; contradictory aggregates remain unknown.
+// The original counters ride beside the refusal, never clamped or replaced.
 export type UsageRefusal = { readonly reason: string; readonly usage: unknown };
 
 const settledUsage = (
@@ -104,7 +103,10 @@ const settledUsage = (
         return usage === undefined ? {} : { usage };
     } catch (cause) {
         if (!(cause instanceof TypeError)) throw cause;
-        return { usageRefusal: { reason: cause.message, usage: wireUsageEvidenceOf(values) ?? sdkUsage } };
+        return {
+            ...(cause instanceof UsageDetailError ? { usage: cause.usage } : {}),
+            usageRefusal: { reason: cause.message, usage: wireUsageEvidenceOf(values) ?? sdkUsage },
+        };
     }
 };
 

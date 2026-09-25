@@ -44,6 +44,17 @@ const nonEmptyDetails = <T extends Record<string, number | undefined>>(details: 
     return entries.length === 0 ? undefined : Object.fromEntries(entries) as T;
 };
 
+// {§provider-usage-refusal}: strict normalization still refuses invalid details,
+// but the transport can retain the independently validated quantities.
+export class UsageDetailError extends TypeError {
+    readonly usage: ProviderUsage;
+
+    constructor(usage: ProviderUsage, errors: readonly TypeError[]) {
+        super(errors.map((error) => error.message).join("; "), { cause: new AggregateError(errors) });
+        this.usage = usage;
+    }
+}
+
 export const validateProviderUsage = (usage: ProviderUsage): ProviderUsage => {
     const input = knownTokens(usage.inputTokens, "provider usage.inputTokens");
     const output = knownTokens(usage.outputTokens, "provider usage.outputTokens");
@@ -102,6 +113,17 @@ export const validateProviderUsage = (usage: ProviderUsage): ProviderUsage => {
 export const normalizeUsage = (raw: RawUsage | null | undefined): ProviderUsage | undefined => {
     if (raw === null || raw === undefined) return undefined;
 
+    const detailErrors: TypeError[] = [];
+    const detailTokens = (value: unknown, name: string): number | undefined => {
+        try {
+            return knownTokens(value, name);
+        } catch (cause) {
+            if (!(cause instanceof TypeError)) throw cause;
+            detailErrors.push(cause);
+            return undefined;
+        }
+    };
+
     const inputTokens = knownTokens(
         raw.input_tokens ?? raw.prompt_tokens,
         "provider usage input tokens",
@@ -111,7 +133,7 @@ export const normalizeUsage = (raw: RawUsage | null | undefined): ProviderUsage 
         "provider usage output tokens",
     );
     const reportedTotal = knownTokens(raw.total_tokens, "provider usage total tokens");
-    const reasoningTokens = knownTokens(
+    const reasoningTokens = detailTokens(
         raw.output_tokens_details?.reasoning_tokens
             ?? raw.completion_tokens_details?.reasoning_tokens
             ?? raw.reasoning_tokens,
@@ -154,7 +176,7 @@ export const normalizeUsage = (raw: RawUsage | null | undefined): ProviderUsage 
         ?? (inputTokens !== undefined && outputTokens !== undefined
             ? inputTokens + outputTokens
             : undefined);
-    const cacheReadTokens = knownTokens(
+    const cacheReadTokens = detailTokens(
         raw.input_tokens_details?.cache_read_tokens
             ?? raw.input_tokens_details?.cached_tokens
             ?? raw.prompt_tokens_details?.cache_read_tokens
@@ -164,13 +186,13 @@ export const normalizeUsage = (raw: RawUsage | null | undefined): ProviderUsage 
             ?? raw.cached_tokens,
         "provider usage cache-read tokens",
     );
-    const cacheWriteTokens = knownTokens(
+    const cacheWriteTokens = detailTokens(
         raw.input_tokens_details?.cache_write_tokens
             ?? raw.prompt_tokens_details?.cache_write_tokens
             ?? raw.cache_creation_input_tokens,
         "provider usage cache-write tokens",
     );
-    const explicitNoCacheTokens = knownTokens(
+    const explicitNoCacheTokens = detailTokens(
         raw.prompt_cache_miss_tokens,
         "provider usage non-cache tokens",
     );
@@ -185,11 +207,23 @@ export const normalizeUsage = (raw: RawUsage | null | undefined): ProviderUsage 
         ...(inputTokens === undefined ? {} : { inputTokens }),
         ...(outputTokens === undefined ? {} : { outputTokens }),
         ...(totalTokens === undefined ? {} : { totalTokens }),
-        ...(inputTokenDetails === undefined ? {} : { inputTokenDetails }),
-        ...(outputTokenDetails === undefined ? {} : { outputTokenDetails }),
     };
-    if (Object.keys(usage).length === 0) return undefined;
-    return validateProviderUsage(usage);
+    if (Object.keys(usage).length > 0) validateProviderUsage(usage);
+    for (const [key, value] of Object.entries({ inputTokenDetails, outputTokenDetails })) {
+        if (value === undefined) continue;
+        try {
+            validateProviderUsage({ ...usage, [key]: value });
+            Object.assign(usage, { [key]: value });
+        } catch (cause) {
+            if (!(cause instanceof TypeError)) throw cause;
+            detailErrors.push(cause);
+        }
+    }
+    if (detailErrors.length > 0) {
+        if (Object.keys(usage).length === 0) throw detailErrors[0];
+        throw new UsageDetailError(usage, detailErrors);
+    }
+    return Object.keys(usage).length === 0 ? undefined : usage;
 };
 
 // Models.dev rates are USD per million tokens. Optional cache rates inherit the
