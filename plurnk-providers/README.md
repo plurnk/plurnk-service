@@ -22,6 +22,8 @@ Model facts do not share one fallback chain. Context windows, output envelopes,
 reasoning activation, and estimated prices resolve independently
 ({§model-fact-resolution}). PLURNK does not fetch live per-token prices, and the
 local estimate is not an authoritative relay-settled charge.
+Router accounting includes separately billed BYOK inference, not merely the
+router fee; incomplete billing evidence remains unknown ({§provider-monetary-evidence}).
 
 ## Runtime-neutral contracts
 

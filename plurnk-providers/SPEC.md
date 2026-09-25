@@ -125,6 +125,23 @@ produces an ordinary estimated amount of USD `0`. Rate calculation is internal
 to the provider request; Core, digest, ping, and clients never call a parallel
 pricing method.
 
+Router accounting uses the complete cost to the caller, not just the router's
+fee. OpenRouter's response `usage` is authoritative; its SDK metadata projection
+omits the BYOK discriminator. Apply the same rule to successful and failed
+requests, independently of raw-body capture:
+
+| OpenRouter evidence | Monetary result |
+| --- | --- |
+| `is_byok: false` and `cost` | `charged`: `cost`; upstream inference is already included. |
+| `is_byok: true`, `cost`, and `cost_details.upstream_inference_cost` | `charged`: exact decimal sum of router fee and upstream charge. |
+| A monetary field without a BYOK discriminator, or BYOK missing either component | `unknown`; neither zero nor catalog pricing completes the reported charge. |
+| No reported charge and no BYOK indication | Ordinary Models.dev fallback above. |
+
+Explicit zero components are valid. Malformed monetary values are contract
+violations, never coerced. Raw routing and billing evidence remain available
+under {§provider-evidence}; Core and clients consume the existing single cost.
+See [OpenRouter usage accounting](https://openrouter.ai/docs/cookbook/administration/usage-accounting).
+
 ### Generation
 
 §provider-cache-identity `generate` requires a non-empty, stable, opaque
@@ -477,9 +494,9 @@ forcing a vendor-owned resource prefix into PLURNK aliases. Ambiguous suffixes
 fail to resolve.
 
 The catalog package identifies the protocol family, not a mandatory client
-implementation. OpenRouter and DeepInfra carry exact charges their AI SDK
-projection omits, so each supplies a cost normalizer that reads the documented
-response rather than the projection.
+implementation. OpenRouter charges and DeepInfra estimates use cost normalizers
+over documented response fields, retaining their distinct monetary character
+under {§provider-monetary-evidence}.
 
 §provider-fact-authority Provider declarations configure facts, not
 credentials, and Models.dev is authoritative for cataloged providers: package

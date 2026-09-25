@@ -5,6 +5,7 @@ import type {
     ProviderUsage,
 } from "./types.ts";
 import {
+    addDecimals,
     sumProviderCostsUsd,
     validateProviderCost,
 } from "./cost.ts";
@@ -31,15 +32,44 @@ const decimalFromNumber = (value: number, subject: string): string => {
     return `${digits.slice(0, point)}.${digits.slice(point)}`;
 };
 
-const openRouterCost: ProviderCostNormalizer = ({ providerMetadata }) => {
-    const usage = recordOf(recordOf(recordOf(providerMetadata)?.openrouter)?.usage);
-    if (usage === null || !("cost" in usage)) return undefined;
-    const cost = usage.cost;
+const openRouterCost: ProviderCostNormalizer = ({ usage }) => {
+    // {§provider-monetary-evidence} The SDK metadata omits is_byok; wire usage
+    // distinguishes a router fee from a charge that already includes inference.
+    const wire = recordOf(usage);
+    if (wire === null) return undefined;
+    const cost = wire.cost;
+    const byok = wire.is_byok;
+    if (byok !== true && cost == null && wire.cost_details == null) return undefined;
+    if (byok == null) {
+        return { kind: "unknown", reason: "OpenRouter usage.is_byok is missing; total request cost is unknown" };
+    }
+    if (typeof byok !== "boolean") throw new TypeError("OpenRouter usage.is_byok must be boolean");
+    if (cost == null) {
+        return { kind: "unknown", reason: `OpenRouter${byok ? " BYOK" : ""} usage.cost is missing` };
+    }
     if (typeof cost !== "number") throw new TypeError("OpenRouter usage.cost must be numeric");
+    const routerCost = decimalFromNumber(cost, "OpenRouter usage.cost");
+    if (!byok) {
+        return {
+            kind: "charged",
+            amount: { amount: routerCost, currency: "USD" },
+            source: "OpenRouter response usage.cost",
+        };
+    }
+    const upstream = recordOf(wire.cost_details)?.upstream_inference_cost;
+    if (upstream == null) {
+        return { kind: "unknown", reason: "OpenRouter BYOK usage.cost_details.upstream_inference_cost is missing" };
+    }
+    if (typeof upstream !== "number") {
+        throw new TypeError("OpenRouter usage.cost_details.upstream_inference_cost must be numeric");
+    }
     return {
         kind: "charged",
-        amount: { amount: decimalFromNumber(cost, "OpenRouter usage.cost"), currency: "USD" },
-        source: "OpenRouter response usage.cost",
+        amount: {
+            amount: addDecimals([routerCost, decimalFromNumber(upstream, "OpenRouter usage.cost_details.upstream_inference_cost")]),
+            currency: "USD",
+        },
+        source: "OpenRouter response usage.cost + usage.cost_details.upstream_inference_cost (BYOK)",
     };
 };
 

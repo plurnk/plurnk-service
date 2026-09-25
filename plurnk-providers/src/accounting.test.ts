@@ -16,13 +16,86 @@ const evidence = ({ providerMetadata, usage, charge }: {
     response: { id: "response-1" },
 });
 
-test("OpenRouter response cost normalizes without rate reconstruction", () => {
+test("{§provider-monetary-evidence} OpenRouter response cost normalizes without rate reconstruction", () => {
     const normalize = providerCostNormalizer("@openrouter/ai-sdk-provider");
     assert.notEqual(normalize, undefined);
-    assert.deepEqual(normalize!(evidence({ providerMetadata: { openrouter: { usage: { cost: 3.2e-7 } } } })), {
+    assert.deepEqual(normalize!(evidence({ usage: { is_byok: false, cost: 3.2e-7 } })), {
         kind: "charged",
         amount: { amount: "0.00000032", currency: "USD" },
         source: "OpenRouter response usage.cost",
+    });
+});
+
+test("{§provider-monetary-evidence} router-paid inference is not counted twice", () => {
+    const normalize = providerCostNormalizer("@openrouter/ai-sdk-provider")!;
+    assert.deepEqual(normalize(evidence({ usage: {
+        is_byok: false,
+        cost: 0.0000274,
+        cost_details: { upstream_inference_cost: 0.0000274 },
+    } })), {
+        kind: "charged",
+        amount: { amount: "0.0000274", currency: "USD" },
+        source: "OpenRouter response usage.cost",
+    });
+});
+
+test("{§provider-monetary-evidence} BYOK sums the router fee and upstream inference once", () => {
+    const normalize = providerCostNormalizer("@openrouter/ai-sdk-provider")!;
+    for (const [fee, upstream, expected] of [
+        [0, 0.00000745, "0.00000745"],
+        [0.00000032, 0.00000745, "0.00000777"],
+        [0.1, 0.2, "0.3"],
+        [0, 0, "0"],
+    ] as const) {
+        assert.deepEqual(normalize(evidence({ usage: {
+            is_byok: true,
+            cost: fee,
+            cost_details: { upstream_inference_cost: upstream },
+        } })), {
+            kind: "charged",
+            amount: { amount: expected, currency: "USD" },
+            source: "OpenRouter response usage.cost + usage.cost_details.upstream_inference_cost (BYOK)",
+        });
+    }
+});
+
+test("{§provider-monetary-evidence} incomplete router charges remain unknown, never zero or a catalog guess", () => {
+    const normalize = providerCostNormalizer("@openrouter/ai-sdk-provider")!;
+    for (const [usage, reason] of [
+        [{ cost: 0 }, "OpenRouter usage.is_byok is missing; total request cost is unknown"],
+        [{ cost: 0, is_byok: null }, "OpenRouter usage.is_byok is missing; total request cost is unknown"],
+        [{ is_byok: true }, "OpenRouter BYOK usage.cost is missing"],
+        [{ is_byok: true, cost: null }, "OpenRouter BYOK usage.cost is missing"],
+        [{ is_byok: false, cost_details: { upstream_inference_cost: 0.1 } }, "OpenRouter usage.cost is missing"],
+        [{ is_byok: true, cost: 0 }, "OpenRouter BYOK usage.cost_details.upstream_inference_cost is missing"],
+        [{ is_byok: true, cost: 0, cost_details: { upstream_inference_cost: null } }, "OpenRouter BYOK usage.cost_details.upstream_inference_cost is missing"],
+    ] as const) {
+        assert.deepEqual(normalize(evidence({ usage })), { kind: "unknown", reason });
+    }
+    assert.equal(normalize(evidence({ usage: {} })), undefined);
+    assert.equal(normalize(evidence({ usage: { is_byok: false } })), undefined);
+});
+
+test("{§provider-monetary-evidence} router monetary fields are validated without coercion", () => {
+    const normalize = providerCostNormalizer("@openrouter/ai-sdk-provider")!;
+    for (const cost of ["0", -1, NaN, Infinity]) {
+        assert.throws(() => normalize(evidence({ usage: { is_byok: false, cost } })), {
+            name: "TypeError",
+            message: typeof cost === "number"
+                ? "OpenRouter usage.cost must be a finite non-negative number"
+                : "OpenRouter usage.cost must be numeric",
+        });
+        assert.throws(() => normalize(evidence({ usage: {
+            is_byok: true, cost: 0, cost_details: { upstream_inference_cost: cost },
+        } })), {
+            name: "TypeError",
+            message: typeof cost === "number"
+                ? "OpenRouter usage.cost_details.upstream_inference_cost must be a finite non-negative number"
+                : "OpenRouter usage.cost_details.upstream_inference_cost must be numeric",
+        });
+    }
+    assert.throws(() => normalize(evidence({ usage: { is_byok: "false", cost: 0 } })), {
+        name: "TypeError", message: "OpenRouter usage.is_byok must be boolean",
     });
 });
 

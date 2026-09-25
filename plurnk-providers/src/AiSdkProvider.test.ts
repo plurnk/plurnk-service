@@ -713,12 +713,13 @@ test("{§provider-sdk-warning} native SDK warnings survive as source-attributed 
     }]);
 });
 
-test("native SDK accounting metadata becomes a normalized charge in buffered and streamed responses", async (t) => {
+test("native SDK accounting evidence becomes a normalized charge in buffered and streamed responses", async (t) => {
     const usage = {
         inputTokens: { total: 2, noCache: 2, cacheRead: 0, cacheWrite: 0 },
         outputTokens: { total: 1, text: 1, reasoning: 0 },
     };
     const providerMetadata = { openrouter: { usage: { cost: 0.00154935 } } };
+    const wireUsage = { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3, is_byok: false, cost: 0.00154935 };
     const charge = {
         kind: "charged",
         amount: { amount: "0.00154935", currency: "USD" },
@@ -734,7 +735,7 @@ test("native SDK accounting metadata becomes a normalized charge in buffered and
             finishReason: { unified: "stop", raw: "completed" },
             usage,
             providerMetadata,
-            response: { id: "response-buffered", modelId: "router-test" },
+            response: { id: "response-buffered", modelId: "router-test", body: { usage: wireUsage } },
             warnings: [],
         }),
         doStream: async () => ({
@@ -745,6 +746,7 @@ test("native SDK accounting metadata becomes a normalized charge in buffered and
                     controller.enqueue({ type: "text-start", id: "text-1" });
                     controller.enqueue({ type: "text-delta", id: "text-1", delta: "ok" });
                     controller.enqueue({ type: "text-end", id: "text-1" });
+                    controller.enqueue({ type: "raw", rawValue: { usage: wireUsage } });
                     controller.enqueue({
                         type: "finish",
                         finishReason: { unified: "stop", raw: "completed" },
