@@ -1,6 +1,7 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import { configuredProviderInfo, createSdkModel, providerReadiness } from "./sdkModels.ts";
+import { withProviderDefaults } from "./defaults.ts";
 
 test("{§provider-fact-authority} one env declaration holds one credential name", () => {
     assert.deepEqual(configuredProviderInfo("acme-cloud", {
@@ -165,10 +166,10 @@ test("createSdkModel attaches DeepInfra's documented response-cost normalizer", 
 });
 
 test("{§provider-fact-authority} catalog credential names are law without any package or operator alias", () => {
-    const sdk = createSdkModel("cloudflare-workers-ai", "@cf/google/gemma-4-26b-a4b-it", {
+    const sdk = createSdkModel("cloudflare-workers-ai", "@cf/google/gemma-4-26b-a4b-it", withProviderDefaults({
         CLOUDFLARE_ACCOUNT_ID: "account",
         CLOUDFLARE_API_KEY: "key",
-    });
+    }));
     assert.equal(sdk?.languageModel, undefined);
     assert.deepEqual(sdk?.compatible, {
         url: "https://api.cloudflare.com/client/v4/accounts/account/ai/v1/chat/completions",
@@ -207,23 +208,25 @@ test("{§provider-fact-authority} ordered credential fallbacks are rejected at c
     );
 });
 
-test("catalog routes own their documented cache-affinity request projection", () => {
+test("{§provider-cache-affinity} the environment panel supplies each documented cache-affinity projection", () => {
     assert.deepEqual(
-        createSdkModel("openai", "gpt-4.1-mini", { OPENAI_API_KEY: "key" })?.cacheAffinity,
+        createSdkModel("openai", "gpt-4.1-mini", withProviderDefaults({ OPENAI_API_KEY: "key" }))?.cacheAffinity,
         { target: "provider-option", provider: "openai", name: "promptCacheKey" },
     );
     assert.deepEqual(
-        createSdkModel("deepinfra", "zai-org/GLM-5.2", { DEEPINFRA_API_KEY: "key" })?.cacheAffinity,
+        createSdkModel("deepinfra", "zai-org/GLM-5.2", withProviderDefaults({ DEEPINFRA_API_KEY: "key" }))?.cacheAffinity,
         { target: "provider-option", provider: "deepinfra", name: "prompt_cache_key" },
     );
     assert.deepEqual(
-        createSdkModel("openrouter", "openai/gpt-5", { OPENROUTER_API_KEY: "key" })?.cacheAffinity,
+        createSdkModel("openrouter", "openai/gpt-5", withProviderDefaults({ OPENROUTER_API_KEY: "key" }))?.cacheAffinity,
         { target: "header", name: "x-session-id" },
     );
     assert.deepEqual(
-        createSdkModel("fireworks-ai", "accounts/fireworks/models/test", { FIREWORKS_API_KEY: "key" })?.cacheAffinity,
+        createSdkModel("fireworks-ai", "accounts/fireworks/models/test", withProviderDefaults({ FIREWORKS_API_KEY: "key" }))?.cacheAffinity,
         { target: "header", name: "x-session-affinity" },
     );
+    assert.equal(createSdkModel("openai", "gpt-4.1-mini", { OPENAI_API_KEY: "key" })?.cacheAffinity, undefined,
+        "the SDK binding does not reconstruct a missing declaration from provider identity");
 });
 
 test("explicit stable-system cache breakpoints exist only on supported Claude routes", () => {

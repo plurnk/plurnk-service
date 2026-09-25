@@ -23,6 +23,8 @@ import type { LanguageModel } from "ai";
 import { providerCostNormalizer } from "./accounting.ts";
 import type { AiSdkProviderOptions, CacheAffinity } from "./AiSdkProvider.ts";
 import type { ProviderCostNormalizer } from "./types.ts";
+import { providerEnvPrefix as envPrefix } from "./provider-env.ts";
+import { cacheAffinityDeclarationFromEnv } from "./env.ts";
 
 export type SdkModel = {
     readonly languageModel?: LanguageModel;
@@ -72,9 +74,6 @@ const openRouterHeaders = (
         ...(title === undefined || title === "" ? {} : { "X-OpenRouter-Title": title }),
     };
 };
-
-const envPrefix = (provider: string): string =>
-    provider.replaceAll(/[^a-zA-Z0-9]/g, "_").toUpperCase();
 
 // {§provider-fact-authority} — one credential declaration holds exactly one
 // name. An ordered fallback list would paper over an operator/catalog naming
@@ -312,15 +311,23 @@ export const createSdkModel = (
     const resolved = resolveSdkProvider(provider, env, baseUrlOverride);
     if (resolved === null) return null;
     const { catalog, url } = resolved;
+    const cacheAffinity = cacheAffinityDeclarationFromEnv(env, provider);
+    return { ...modelFromSdk(provider, model, env, catalog, url), cacheAffinity };
+};
+
+const modelFromSdk = (
+    provider: string,
+    model: string,
+    env: NodeJS.ProcessEnv,
+    catalog: ProviderInfo,
+    url: string | undefined,
+): SdkModel => {
     const normalizeCost = providerCostNormalizer(catalog.npm);
 
     switch (catalog.npm) {
         case "@ai-sdk/openai":
             return {
                 languageModel: createOpenAI({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).chat(model),
-                ...(catalog.id === "openai"
-                    ? { cacheAffinity: { target: "provider-option" as const, provider: "openai", name: "promptCacheKey" } }
-                    : {}),
                 catalog,
             };
         case "@ai-sdk/groq":
@@ -347,9 +354,6 @@ export const createSdkModel = (
             return {
                 languageModel: createDeepInfra({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).languageModel(model),
                 ...(normalizeCost === undefined ? {} : { normalizeCost }),
-                ...(catalog.id === "deepinfra"
-                    ? { cacheAffinity: { target: "provider-option" as const, provider: "deepinfra", name: "prompt_cache_key" } }
-                    : {}),
                 catalog,
             };
         case "@ai-sdk/google":
@@ -391,9 +395,6 @@ export const createSdkModel = (
                     baseURL: url,
                     headers: openRouterHeaders(provider, env, catalog),
                 }).languageModel(model),
-                ...(catalog.id === "openrouter"
-                    ? { cacheAffinity: { target: "header" as const, name: "x-session-id" } }
-                    : {}),
                 ...(catalog.id === "openrouter" && model.replace(/^~/, "").startsWith("anthropic/")
                     ? { systemCacheProviderOptions: { openrouter: { cacheControl } } }
                     : {}),
@@ -411,11 +412,6 @@ export const createSdkModel = (
                         ? {}
                         : { Authorization: `Bearer ${key}` },
                 },
-                ...(catalog.id === "cloudflare-workers-ai"
-                    ? { cacheAffinity: { target: "header" as const, name: "x-session-affinity" } }
-                    : catalog.id === "fireworks-ai"
-                        ? { cacheAffinity: { target: "header" as const, name: "x-session-affinity" } }
-                        : {}),
                 catalog,
             };
         default:

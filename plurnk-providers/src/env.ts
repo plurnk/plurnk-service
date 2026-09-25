@@ -3,6 +3,8 @@
 
 import { REASONING_POLICIES, Validator, type ReasoningPolicy } from "@plurnk/plurnk-contracts";
 import RequestFields from "./RequestFields.ts";
+import type { CacheAffinity } from "./AiSdkProvider.ts";
+import { providerSetting } from "./provider-env.ts";
 
 export const parseRequiredInt = (raw: string | undefined, name: string, label: string): number => {
     if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set`);
@@ -75,6 +77,45 @@ const shedRenamed = (env: NodeJS.ProcessEnv, oldName: string, newName: string, l
 };
 
 export type CacheWritePolicy = "off" | "stable-system";
+
+const cacheAffinitySchema = {
+    oneOf: [
+        {
+            type: "object", additionalProperties: false, required: ["target", "name"],
+            properties: {
+                target: { enum: ["header", "body"] },
+                name: { type: "string", minLength: 1 },
+            },
+        },
+        {
+            type: "object", additionalProperties: false, required: ["target", "name", "provider"],
+            properties: {
+                target: { const: "provider-option" },
+                name: { type: "string", minLength: 1 },
+                provider: { type: "string", pattern: "^[A-Za-z][A-Za-z0-9_-]*$" },
+            },
+        },
+    ],
+};
+
+export const cacheAffinityDeclarationFromEnv = (env: NodeJS.ProcessEnv, provider: string): CacheAffinity | undefined => {
+    const [key, raw] = providerSetting(provider, env, "CACHE_AFFINITY_FIELD");
+    if (raw === undefined || raw === "") return undefined;
+    let value: unknown;
+    try { value = JSON.parse(raw); } catch (cause) { throw new TypeError(`${key} must be a cache-affinity declaration or null`, { cause }); }
+    if (value === null) return undefined;
+    const field = Validator.assertJsonSchemaInstance(key, cacheAffinitySchema, value) as CacheAffinity;
+    if (field.target === "header") {
+        try { new Headers({ [field.name]: "worker" }); }
+        catch (cause) { throw new TypeError(`${key} must name a valid HTTP header`, { cause }); }
+        if (["authorization", "proxy-authorization", "cookie", "host", "content-type", "content-length", "accept", "transfer-encoding", "connection"].includes(field.name.toLowerCase())) {
+            throw new TypeError(`${key} cannot replace an HTTP transport or authentication header`);
+        }
+    } else if (RequestFields.isManaged(field.name) || field.target === "provider-option" && RequestFields.isManaged(field.provider)) {
+        throw new TypeError(`${key} cannot address a transport-owned field`);
+    }
+    return field;
+};
 
 export const cacheAffinityFromEnv = (env: NodeJS.ProcessEnv, label: string): boolean => {
     const name = "PLURNK_PROVIDERS_CACHE_AFFINITY";
@@ -334,6 +375,7 @@ export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_SERVICE_TIER",
     "PLURNK_PROVIDERS_CACHE_WRITE_POLICY",
     "PLURNK_PROVIDERS_CACHE_AFFINITY",
+    "PLURNK_PROVIDERS_CACHE_AFFINITY_FIELD",
     "PLURNK_PROVIDERS_REPEAT_LAST_N",
     "PLURNK_PROVIDERS_DRY_MULTIPLIER",
     "PLURNK_PROVIDERS_DRY_BASE",

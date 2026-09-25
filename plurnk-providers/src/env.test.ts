@@ -4,6 +4,7 @@ import {
     scopeEnvToAlias,
     costOverrideFromEnv,
     cacheAffinityFromEnv,
+    cacheAffinityDeclarationFromEnv,
     cacheWritePolicyFromEnv,
     generationEnvelopeFromEnv,
     parseRequiredInt,
@@ -92,6 +93,26 @@ test("cache policy keeps cost-neutral affinity separate from paid cache writes",
         () => cacheWritePolicyFromEnv({ PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "everything" }, "anthropic"),
         /PLURNK_PROVIDERS_CACHE_WRITE_POLICY must be "off" or "stable-system"/,
     );
+});
+
+test("{§provider-cache-affinity} declarations follow alias precedence and refuse invalid placement", () => {
+    const env = {
+        PLURNK_PROVIDERS_PROVIDER_EXAMPLE_CACHE_AFFINITY_FIELD: '{"target":"header","name":"x-session"}',
+        PLURNK_PROVIDERS_CACHE_AFFINITY_FIELD: '{"target":"body","name":"session"}',
+        PLURNK_PROVIDERS_CACHE_AFFINITY_FIELD_sample: '{"target":"provider-option","provider":"example","name":"session"}',
+        PLURNK_PROVIDERS_CACHE_AFFINITY_FIELD_disabled: "null",
+    };
+    assert.deepEqual(cacheAffinityDeclarationFromEnv(env, "example"), { target: "body", name: "session" });
+    assert.deepEqual(cacheAffinityDeclarationFromEnv(scopeEnvToAlias(env, "sample"), "example"), {
+        target: "provider-option", provider: "example", name: "session",
+    });
+    assert.equal(cacheAffinityDeclarationFromEnv(scopeEnvToAlias(env, "disabled"), "example"), undefined);
+    for (const raw of ["[]", "{", '{"target":"header"}', '{"target":"body","name":"max_tokens"}',
+        '{"target":"provider-option","name":"session"}', '{"target":"body","name":"__proto__"}',
+        '{"target":"header","name":"x-session","extra":true}', '{"target":"header","name":"invalid name"}',
+        '{"target":"header","name":"Authorization"}', '{"target":"header","name":"content-type"}']) {
+        assert.throws(() => cacheAffinityDeclarationFromEnv({ PLURNK_PROVIDERS_CACHE_AFFINITY_FIELD: raw }, "example"), /CACHE_AFFINITY_FIELD/);
+    }
 });
 
 test("the generic prompt-cache-key knob is retired rather than retained as a compatibility path", () => {

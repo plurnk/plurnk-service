@@ -379,6 +379,12 @@ export default class AiSdkProvider implements Provider {
         this.#source = config.source ?? "provider";
         this.#grammarStyle = config.grammarStyle ?? "none";
         this.#cacheAffinity = config.cacheAffinity;
+        if (this.#cacheAffinity !== undefined && this.#cacheAffinity.target !== "header"
+            && this.#requestFields?.managedKeys.has(this.#cacheAffinity.name)
+            && (this.#cacheAffinity.target === "body"
+                || this.#cacheAffinity.target === "provider-option" && this.#cacheAffinity.provider === this.#requestFields.namespace)) {
+            throw new TypeError("cache affinity overlaps declared request controls");
+        }
         this.#systemCacheProviderOptions = config.systemCacheProviderOptions;
         this.#reasoningResponseProviderOptions = config.reasoningResponseProviderOptions;
         if (this.#languageModel === undefined && this.#cacheAffinity?.target === "provider-option") {

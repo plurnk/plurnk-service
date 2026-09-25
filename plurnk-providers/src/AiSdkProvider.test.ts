@@ -60,6 +60,10 @@ test("{§provider-wire-declaration} native SDK requests reproject controls for s
             fetchTimeoutMs: 5000, retryAttempts: 0, temperature: null,
             repeatPenalty: null, outputBudget: 4096, streaming,
         };
+        assert.throws(() => testProvider({
+            ...base, reasoning: { mode: "off", budget: null },
+            cacheAffinity: { target: "provider-option", provider: "openrouter", name: "reasoning" },
+        }), /cache affinity overlaps declared request controls/);
         const budgeted = testProvider({ ...base, reasoningBudget: 2048, reasoning: { mode: "adaptive", budget: 2048 } });
         for (const maxOutputTokens of [4096, 1500]) {
             const result = await budgeted.generate({ workerId: "request-fields", messages: [{ role: "user", content: "hello" }], maxOutputTokens });

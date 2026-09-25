@@ -1,6 +1,7 @@
 import { REASONING_POLICIES, type ReasoningPolicy } from "@plurnk/plurnk-contracts";
 import type { ModelReasoningOption } from "@plurnk/plurnk-models";
 import { UnsupportedReasoningPolicyError } from "./types.ts";
+import { providerEnvPrefix, providerSetting } from "./provider-env.ts";
 
 type ObjectValue = Record<string, unknown>;
 type Facts = { readonly reasoning: boolean; readonly reasoningOptions?: readonly ModelReasoningOption[] };
@@ -55,19 +56,13 @@ const merge = (left: ObjectValue, right: ObjectValue): ObjectValue => {
 // {§provider-wire-declaration} Only the declared coordinates vary. The catalog owns
 // capabilities; this projection never consults a provider or model spelling.
 export default class RequestFields {
+    static isManaged(name: string): boolean { return managed.has(name) || unsafe.has(name); }
+
     static readonly knobs = Object.freeze([
         "OUTPUT_PATH", "REASONING_EFFORT_PATH", "REASONING_BUDGET_PATH", "REASONING_EFFORTS",
         "REASONING_CONTROLS", "REASONING_ON_BODY", "REASONING_OFF_BODY", "REASONING_ADAPTIVE_BODY", "REASONING_TOGGLE_BODY",
         "OPTIONS_NAMESPACE", "REASONING_TRANSPORT_EFFORTS",
     ].map((suffix) => `PLURNK_PROVIDERS_${suffix}`));
-
-    static #read(name: string, env: NodeJS.ProcessEnv, suffix: string): [string, string | undefined] {
-        const prefix = name.replaceAll(/[^a-zA-Z0-9]/g, "_").toUpperCase();
-        const routeKey = `PLURNK_PROVIDERS_${suffix}`;
-        const providerKey = `PLURNK_PROVIDERS_PROVIDER_${prefix}_${suffix}`;
-        const key = env[routeKey] === undefined ? providerKey : routeKey;
-        return [key, env[key]];
-    }
 
     static rejectRetired(env: NodeJS.ProcessEnv, keys: readonly string[]): void {
         const key = keys.find((key) => env[key] !== undefined && env[key] !== "");
@@ -75,19 +70,19 @@ export default class RequestFields {
     }
 
     static #assertCurrent(name: string, env: NodeJS.ProcessEnv): void {
-        const prefix = name.replaceAll(/[^a-zA-Z0-9]/g, "_").toUpperCase();
+        const prefix = providerEnvPrefix(name);
         RequestFields.rejectRetired(env, ["PLURNK_PROVIDERS_REASONING_STYLE", `PLURNK_PROVIDERS_PROVIDER_${prefix}_REASONING_STYLE`]);
     }
 
     static namespace(name: string, env: NodeJS.ProcessEnv): string | undefined {
-        const [key, value] = RequestFields.#read(name, env, "OPTIONS_NAMESPACE");
+        const [key, value] = providerSetting(name, env, "OPTIONS_NAMESPACE");
         if (value === undefined || value === "") return undefined;
         if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/u.test(value) || unsafe.has(value)) throw new TypeError(`${key} must name one SDK provider-options namespace`);
         return value;
     }
 
     static #effortValues(name: string, env: NodeJS.ProcessEnv, suffix: string): readonly Effort[] | undefined {
-        const [key, raw] = RequestFields.#read(name, env, suffix);
+        const [key, raw] = providerSetting(name, env, suffix);
         if (raw === undefined) return undefined;
         const values = raw.split(",").map((value) => value.trim()).filter(Boolean);
         const invalid = values.find((value) => value !== "none" && !efforts.includes(value as typeof efforts[number]));
@@ -101,12 +96,10 @@ export default class RequestFields {
 
     static assertNative(name: string, env: NodeJS.ProcessEnv): void {
         RequestFields.#assertCurrent(name, env);
-        const prefix = name.replaceAll(/[^a-zA-Z0-9]/g, "_").toUpperCase();
         for (const key of RequestFields.knobs) {
             if (key === "PLURNK_PROVIDERS_REASONING_EFFORTS") continue;
-            const providerKey = key.replace("PLURNK_PROVIDERS_", `PLURNK_PROVIDERS_PROVIDER_${prefix}_`);
-            const configured = env[key] === undefined ? providerKey : key;
-            if (env[configured] !== undefined && env[configured] !== "") {
+            const [configured, value] = providerSetting(name, env, key.slice("PLURNK_PROVIDERS_".length));
+            if (value !== undefined && value !== "") {
                 throw new TypeError(`${name} provider: ${configured} configures compatible request fields, not this native SDK`);
             }
         }
@@ -131,7 +124,7 @@ export default class RequestFields {
         RequestFields.#assertCurrent(name, env);
         this.#name = name;
         this.#facts = facts;
-        const read = (suffix: string) => RequestFields.#read(name, env, suffix);
+        const read = (suffix: string) => providerSetting(name, env, suffix);
         this.namespace = RequestFields.namespace(name, env);
         if (this.namespace !== undefined && read("OUTPUT_PATH")[1]) throw new TypeError(`${name} provider: OUTPUT_PATH belongs to the compatible transport; native SDKs own their output field`);
         const readPath = (suffix: string, output = false) => {

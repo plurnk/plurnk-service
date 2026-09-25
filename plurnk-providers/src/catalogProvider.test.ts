@@ -62,8 +62,10 @@ test.afterEach(() => {
 
 test("{§provider-wire-declaration} configured fields survive the actual compatible SDK request", async () => {
     const bodies: Record<string, unknown>[] = [];
+    const headers: Headers[] = [];
     mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
         bodies.push(JSON.parse(String(init?.body)));
+        headers.push(new Headers(init?.headers));
         return new Response(`data: ${JSON.stringify({
             id: "wire-test", model: "served", choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
         })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
@@ -79,6 +81,7 @@ test("{§provider-wire-declaration} configured fields survive the actual compati
         PLURNK_PROVIDERS_PROVIDER_UNLISTED_REASONING_EFFORTS: "low,medium,xhigh",
         PLURNK_PROVIDERS_PROVIDER_UNLISTED_REASONING_ON_BODY: '{"enable_thinking":true}',
         PLURNK_PROVIDERS_PROVIDER_UNLISTED_REASONING_OFF_BODY: '{"enable_thinking":false}',
+        PLURNK_PROVIDERS_PROVIDER_UNLISTED_CACHE_AFFINITY_FIELD: '{"target":"header","name":"x-conversation"}',
         PLURNK_PROVIDERS_CONTEXT_WINDOW: "65536",
         PLURNK_PROVIDERS_OUTPUT_BUDGET: "32768",
         PLURNK_PROVIDERS_REASONING: "adaptive",
@@ -92,6 +95,7 @@ test("{§provider-wire-declaration} configured fields survive the actual compati
     assert.equal(bodies[0]?.max_completion_tokens, 32768);
     assert.equal(bodies[0]?.max_tokens, undefined);
     assert.equal(bodies[0]?.reasoning_effort, undefined);
+    assert.equal(headers[0]?.get("x-conversation"), "wire-test");
     assert.equal(bodies[0]?.enable_thinking, true);
     assert.equal(bodies[1]?.max_completion_tokens, 4096);
     assert.equal(bodies[1]?.thinking_budget, 4095);

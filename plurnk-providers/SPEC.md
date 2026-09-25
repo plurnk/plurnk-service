@@ -344,6 +344,12 @@ provider's documented header, body field, or native SDK option. The common
 transport neither guesses from protocol resemblance nor sends a generic cache
 field to an unknown provider. The operator may disable affinity globally or per
 alias; automatic provider caching without an affinity control remains untouched.
+The environment's `CACHE_AFFINITY_FIELD` declares that placement as
+`{"target":"header"|"body","name":"…"}` or
+`{"target":"provider-option","provider":"…","name":"…"}`. It follows
+the provider/route/alias precedence of {§provider-wire-declaration}; `null`
+clears the declaration. Placement is independent of the enable switch, cannot
+replace transport-owned fields, and does not imply support from a provider's name.
 
 §provider-cache-write-policy **Cache-write policy is separate from affinity.**
 `PLURNK_PROVIDERS_CACHE_WRITE_POLICY` is `off` or `stable-system`. The latter
