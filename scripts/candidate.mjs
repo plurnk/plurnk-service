@@ -63,8 +63,7 @@ const finalize = () => {
     finalizing = (async () => {
         await Promise.all([stop(client), stop(daemon)]);
         run(process.execPath, [
-            "--conditions=plurnk-dev",
-            resolve(root, "plurnk-core", "bin", "digest.ts"),
+            resolve(root, "scripts", "candidate-digest.mjs"),
             dbPath,
             resolve(stateDir, "digest"),
         ], root);

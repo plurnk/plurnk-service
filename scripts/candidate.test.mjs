@@ -7,7 +7,7 @@ import test from "node:test";
 
 const root = resolve(import.meta.dirname, "..");
 
-test("candidate SIGTERM stops its client and daemon, writes the digest, and preserves the signal status", { timeout: 30_000 }, async (t) => {
+test("candidate SIGTERM stops its client and daemon, exports from the frozen build, and preserves the signal status", { timeout: 30_000 }, async (t) => {
     const fixture = mkdtempSync(resolve(tmpdir(), "plurnk-candidate-signal-"));
     const clientRoot = resolve(fixture, "client");
     const candidateDir = resolve(fixture, "candidate");
@@ -17,9 +17,19 @@ test("candidate SIGTERM stops its client and daemon, writes the digest, and pres
         "setInterval(() => {}, 1_000);",
         "",
     ].join("\n"));
+    const sourceGuard = resolve(fixture, "source-unavailable.mjs");
+    writeFileSync(sourceGuard, [
+        'import { registerHooks } from "node:module";',
+        "registerHooks({ load(url, context, nextLoad) {",
+        '    if (url.endsWith(".ts")) throw new Error("Candidate imported unbuilt source: " + url);',
+        "    return nextLoad(url, context);",
+        "} });",
+        "",
+    ].join("\n"));
 
     const env = {
         ...process.env,
+        NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import=${sourceGuard}`,
         XDG_CONFIG_HOME: resolve(fixture, ".config"),
         OPENAI_API_KEY: "candidate-fixture",
         OPENAI_BASE_URL: "https://api.openai.com/v1",

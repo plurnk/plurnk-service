@@ -128,7 +128,7 @@ launcher never guesses one from the service's parent directory. It builds both
 projects, creates an isolated database, reports their provenance, and preserves
 a digest in the shared `../benchmarks` tree unless `PLURNK_BENCHMARKS` selects
 another path. Repeated experiment harnesses may build both checkouts once, then
-set `PLURNK_CANDIDATE_SKIP_BUILD=1` for the frozen build.
+set `PLURNK_CANDIDATE_SKIP_BUILD=1` for the frozen build, including digest export.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for hooks, test tiers, and maintenance.
 
