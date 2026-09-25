@@ -52,6 +52,6 @@
         "prepack": "npm run build"
     },
     "devDependencies": {
-        "@opencode-ai/models": "^0.0.84"
+        "@opencode-ai/models": "^0.0.85"
     }
 }
