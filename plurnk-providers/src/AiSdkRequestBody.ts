@@ -3,7 +3,7 @@ import type { ReasoningPolicy } from "./types.ts";
 import type { JSONValue } from "ai";
 import { type Reasoning } from "./env.ts";
 import { fixedEffort } from "./reasoning-effort.ts";
-import type { ReasoningStyle, CompatibleReasoningEffort, GrammarStyle, CacheAffinity, AiSdkProviderOptions } from "./AiSdkProvider.ts";
+import type { ReasoningStyle, GrammarStyle, CacheAffinity, AiSdkProviderOptions } from "./AiSdkProvider.ts";
 
 const isJsonObject = (value: JSONValue | undefined): value is Record<string, JSONValue> =>
     typeof value === "object" && value !== null && !Array.isArray(value);
@@ -65,9 +65,6 @@ export default class AiSdkRequestBody {
     readonly #reasoningBudget: number | null;
     readonly #additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
     readonly #reasoning: Reasoning;
-    readonly #reasoningToggle: boolean;
-    readonly #compatibleAdaptiveReasoning: CompatibleReasoningEffort | "provider-default";
-    readonly #compatibleOffReasoning: "none" | undefined;
     readonly #adaptiveReasoningProviderOptions: AiSdkProviderOptions | undefined;
     readonly #repeatPenalty: number | null;
     readonly #dryMultiplier: number | undefined;
@@ -84,13 +81,10 @@ export default class AiSdkRequestBody {
     #runSlots = new Map<string, number>();
     #nextSlot = 0;
 
-    constructor({ reasoningBudget, additiveReasoningProvider, reasoning, reasoningToggle, compatibleAdaptiveReasoning, compatibleOffReasoning, adaptiveReasoningProviderOptions, repeatPenalty, dryMultiplier, dryBase, dryAllowedLength, repeatLastN, reasoningStyle, source, grammarStyle, cacheAffinity, reasoningResponseProviderOptions, supportsSlotPinning, slotCount }: {
+    constructor({ reasoningBudget, additiveReasoningProvider, reasoning, adaptiveReasoningProviderOptions, repeatPenalty, dryMultiplier, dryBase, dryAllowedLength, repeatLastN, reasoningStyle, source, grammarStyle, cacheAffinity, reasoningResponseProviderOptions, supportsSlotPinning, slotCount }: {
         reasoningBudget: number | null;
         additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
         reasoning: Reasoning;
-        reasoningToggle: boolean;
-        compatibleAdaptiveReasoning: CompatibleReasoningEffort | "provider-default";
-        compatibleOffReasoning: "none" | undefined;
         adaptiveReasoningProviderOptions: AiSdkProviderOptions | undefined;
         repeatPenalty: number | null;
         dryMultiplier: number | undefined;
@@ -108,9 +102,6 @@ export default class AiSdkRequestBody {
         this.#reasoningBudget = reasoningBudget;
         this.#additiveReasoningProvider = additiveReasoningProvider;
         this.#reasoning = reasoning;
-        this.#reasoningToggle = reasoningToggle;
-        this.#compatibleAdaptiveReasoning = compatibleAdaptiveReasoning;
-        this.#compatibleOffReasoning = compatibleOffReasoning;
         this.#adaptiveReasoningProviderOptions = adaptiveReasoningProviderOptions;
         this.#repeatPenalty = repeatPenalty;
         this.#dryMultiplier = dryMultiplier;
@@ -151,62 +142,6 @@ export default class AiSdkRequestBody {
                 };
             }
             case "think": return on ? { think: true } : {};
-            case "include_reasoning": return on ? { include_reasoning: true } : {};
-            case "effort": return mode === "off"
-                ? this.#compatibleOffReasoning === undefined
-                    ? {}
-                    : { reasoning_effort: this.#compatibleOffReasoning }
-                : mode === "adaptive"
-                    ? this.#compatibleAdaptiveReasoning === "provider-default"
-                        ? {}
-                        : { reasoning_effort: this.#compatibleAdaptiveReasoning }
-                    : { reasoning_effort: fixedEffort(mode) };
-            // Graded reasoning is mandatory when the route advertises an effort
-            // value. Cataloged routes supply the exact strongest legal value;
-            // construction rejects an unsupported off or fixed policy.
-            case "effort_required": {
-                if (mode === "off") {
-                    if (this.#compatibleOffReasoning === undefined) {
-                        throw new TypeError(`${this.#source}: required reasoning effort has no off projection`);
-                    }
-                    return { reasoning_effort: this.#compatibleOffReasoning };
-                }
-                if (mode === "adaptive") {
-                    return this.#compatibleAdaptiveReasoning === "provider-default"
-                        ? {}
-                        : { reasoning_effort: this.#compatibleAdaptiveReasoning };
-                }
-                return { reasoning_effort: fixedEffort(mode) };
-            }
-            // Fireworks enum: OFF is sent EXPLICITLY ("none") — omission leaves a
-            // reason-by-default model (DeepSeek V4: default 'high') reasoning.
-            // ADAPTIVE omits the field UNLESS the catalog declares a toggle control:
-            // toggle routes (nemotron-lightning) default reasoning OFF, so adaptive
-            // sends the documented Fireworks Boolean enable (#457). The literal
-            // "adaptive" is MiniMax-M3-only — Fireworks 400s it for every other
-            // model (wire-verified; the 1.0.2 adaptive default refused to boot on
-            // it). V4 gotcha: integer efforts 400.
-            case "effort_explicit": return mode === "off"
-                ? { reasoning_effort: "none" }
-                : mode === "adaptive"
-                    ? this.#reasoningToggle ? { reasoning_effort: true } : {}
-                    : { reasoning_effort: fixedEffort(mode) };
-            // {§deepseek-reasoning-request}
-            case "thinking_effort": return mode === "off"
-                ? { thinking: { type: "disabled" } }
-                : mode === "adaptive" ? { thinking: { type: "enabled" } } : {
-                    thinking: { type: "enabled" },
-                    reasoning_effort: fixedEffort(mode),
-                };
-            // Anthropic-compatible native dynamic or manual budget mode.
-            case "anthropic": return mode === "off"
-                ? { thinking: { type: "disabled" } }
-                : mode === "adaptive" ? { thinking: { type: "adaptive" } } : {
-                    thinking: {
-                        type: "enabled",
-                        budget_tokens: budget!,
-                    },
-                };
             case "none": return {};
         }
     }
@@ -256,10 +191,10 @@ export default class AiSdkRequestBody {
     // win, and reserved transport/protocol keys are stripped so the passthrough
     // can't smuggle a grammar, a stream toggle, or a backend slot
     // ({§provider-request-authority}).
-    samplingBody(sampling: Record<string, unknown> | undefined): Record<string, unknown> {
+    samplingBody(sampling: Record<string, unknown> | undefined, managedKeys?: ReadonlySet<string>): Record<string, unknown> {
         if (sampling === undefined) return {};
         const out: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(sampling)) if (!RESERVED_BODY_KEYS.has(k)) out[k] = v;
+        for (const [k, v] of Object.entries(sampling)) if (!RESERVED_BODY_KEYS.has(k) && !managedKeys?.has(k)) out[k] = v;
         return out;
     }
 
@@ -284,6 +219,7 @@ export default class AiSdkRequestBody {
     requestProviderOptions(
         workerId: string,
         nativeReasoningBudget: number | null,
+        declaredOptions?: AiSdkProviderOptions,
     ): AiSdkProviderOptions | undefined {
         const responseOptions = this.#reasoning.mode === "off"
             ? undefined
@@ -300,7 +236,7 @@ export default class AiSdkRequestBody {
                     : undefined
             : undefined;
         const options: AiSdkProviderOptions = {};
-        for (const part of [responseOptions, adaptiveOptions, nativeReasoning]) {
+        for (const part of declaredOptions === undefined ? [responseOptions, adaptiveOptions, nativeReasoning] : [declaredOptions]) {
             for (const [provider, values] of Object.entries(part ?? {})) {
                 options[provider] = mergeJsonObjects(options[provider] ?? {}, values);
             }

@@ -83,13 +83,17 @@ test("{§model-catalog}: discovery exposes the provider's exact reasoning polici
         for (const { provider, model, env, expected } of [
             {
                 provider: "deepseek", model: "deepseek-v4-flash",
-                env: { PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_STYLE: "thinking_effort" },
+                env: {
+                    PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_EFFORT_PATH: "/reasoning_effort",
+                    PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_OFF_BODY: '{"thinking":{"type":"disabled"}}',
+                },
                 expected: ["off", "adaptive", "low", "high", "max"],
             },
             {
                 provider: "deepseek", model: "deepseek-v4-flash",
                 env: {
-                    PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_STYLE: "thinking_effort",
+                    PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_EFFORT_PATH: "/reasoning_effort",
+                    PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_OFF_BODY: '{"thinking":{"type":"disabled"}}',
                     PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_EFFORTS: "medium,medium",
                 },
                 expected: ["off", "adaptive", "low", "medium", "high", "max"],

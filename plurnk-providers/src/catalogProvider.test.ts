@@ -37,7 +37,7 @@ import type { LanguageModel } from "ai";
 import { resetEmittedWarnings } from "./warnings.ts";
 import { UnsupportedReasoningPolicyError } from "./types.ts";
 
-const env = {
+const env = withProviderDefaults({
     OPENAI_API_KEY: "test-key",
     OPENAI_BASE_URL: "https://api.openai.com/v1",
     PLURNK_PROVIDERS_FETCH_TIMEOUT: "1000",
@@ -53,11 +53,59 @@ const env = {
     PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT: "512",
     PLURNK_PROVIDERS_CACHE_AFFINITY: "1",
     PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "stable-system",
-};
+});
 
 test.afterEach(() => {
     mock.restoreAll();
     resetEmittedWarnings();
+});
+
+test("{§provider-wire-declaration} configured fields survive the actual compatible SDK request", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return new Response(`data: ${JSON.stringify({
+            id: "wire-test", model: "served", choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
+        })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
+    });
+    const declaration = {
+        ...env,
+        PLURNK_PROVIDERS_PROVIDER_UNLISTED_NPM: "@ai-sdk/openai-compatible",
+        PLURNK_PROVIDERS_PROVIDER_UNLISTED_BASE_URL: "https://unlisted.invalid/v1",
+        PLURNK_PROVIDERS_PROVIDER_UNLISTED_OUTPUT_PATH: "/max_completion_tokens",
+        PLURNK_PROVIDERS_PROVIDER_UNLISTED_REASONING_EFFORT_PATH: "/reasoning_effort",
+        PLURNK_PROVIDERS_PROVIDER_UNLISTED_REASONING_BUDGET_PATH: "/thinking_budget",
+        PLURNK_PROVIDERS_PROVIDER_UNLISTED_REASONING_CONTROLS: "exclusive",
+        PLURNK_PROVIDERS_PROVIDER_UNLISTED_REASONING_EFFORTS: "low,medium,xhigh",
+        PLURNK_PROVIDERS_PROVIDER_UNLISTED_REASONING_ON_BODY: '{"enable_thinking":true}',
+        PLURNK_PROVIDERS_PROVIDER_UNLISTED_REASONING_OFF_BODY: '{"enable_thinking":false}',
+        PLURNK_PROVIDERS_CONTEXT_WINDOW: "65536",
+        PLURNK_PROVIDERS_OUTPUT_BUDGET: "32768",
+        PLURNK_PROVIDERS_REASONING: "adaptive",
+        PLURNK_PROVIDERS_REASONING_BUDGET: "8192",
+    };
+    const provider = catalogProviderFromEnv("unlisted", declaration, "unknown");
+    assert.ok(provider);
+    await provider.generate({ workerId: "wire-test", messages: [{ role: "user", content: "hello" }] });
+    await provider.generate({ workerId: "wire-test", messages: [], maxOutputTokens: 4096 });
+    assert.equal(bodies[0]?.thinking_budget, 8192);
+    assert.equal(bodies[0]?.max_completion_tokens, 32768);
+    assert.equal(bodies[0]?.max_tokens, undefined);
+    assert.equal(bodies[0]?.reasoning_effort, undefined);
+    assert.equal(bodies[0]?.enable_thinking, true);
+    assert.equal(bodies[1]?.max_completion_tokens, 4096);
+    assert.equal(bodies[1]?.thinking_budget, 4095);
+    assert.throws(() => catalogProviderFromEnv("unlisted", {
+        ...declaration, PLURNK_PROVIDERS_REASONING: "medium",
+    }, "unknown"), /reasoning effort and budget are exclusive/);
+    assert.equal(bodies.length, 2, "the conflicting controls cause no inference request");
+    const off = catalogProviderFromEnv("unlisted", { ...declaration, PLURNK_PROVIDERS_REASONING: "off" }, "unknown");
+    await off?.generate({ workerId: "wire-test", messages: [], sampling: { thinking_budget: 100000, enable_thinking: true } });
+    assert.equal(bodies[2]?.thinking_budget, undefined, "caller sampling cannot smuggle a configured budget field while reasoning is off");
+    assert.equal(bodies[2]?.enable_thinking, false);
+    assert.throws(() => catalogProviderFromEnv("openai", {
+        ...env, PLURNK_PROVIDERS_OUTPUT_PATH: "/max_completion_tokens",
+    }, "gpt-4.1-mini"), /OUTPUT_PATH configures compatible request fields, not this native SDK/);
 });
 
 test("catalog provider resolves model physics and Models.dev USD rates", () => {
@@ -98,7 +146,6 @@ test("provider adapters advertise only reasoning policies they can preserve", ()
         ...env,
         DEEPSEEK_API_KEY: "test-key",
         PLURNK_PROVIDERS_REASONING: "adaptive",
-        PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_STYLE: "thinking_effort",
     }, "deepseek-v4-flash");
     assert.deepEqual(deepseek?.supportedReasoningPolicies, ["off", "adaptive", "low", "high", "max"]);
 
@@ -107,7 +154,6 @@ test("provider adapters advertise only reasoning policies they can preserve", ()
             ...env,
             DEEPSEEK_API_KEY: "test-key",
             PLURNK_PROVIDERS_REASONING: "medium",
-            PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_STYLE: "thinking_effort",
         }, "deepseek-v4-flash"),
         /reasoning policy 'medium' is unsupported; supported policies: off, adaptive, low, high/,
     );
@@ -140,7 +186,6 @@ test("{§provider-reasoning-policy}: catalog discovery and construction agree on
         CLOUDFLARE_ACCOUNT_ID: "test-account",
         CLOUDFLARE_API_KEY: "test-key",
         PLURNK_PROVIDERS_REASONING: "adaptive",
-        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_STYLE: "effort_required",
     });
     for (const [name, model] of [
         ["openai", "gpt-4.1-mini"],
@@ -178,6 +223,7 @@ test("{§provider-reasoning-policy}: discovery never offers a fixed effort the i
         PLURNK_PROVIDERS_REASONING: "adaptive",
         PLURNK_PROVIDERS_PROVIDER_OPENAI_REASONING_EFFORTS: "medium,xhigh",
         PLURNK_PROVIDERS_PROVIDER_OPENROUTER_REASONING_EFFORTS: "medium,xhigh",
+        PLURNK_PROVIDERS_PROVIDER_OPENROUTER_REASONING_TRANSPORT_EFFORTS: "none,low,medium,high",
     });
     for (const [name, expected] of [
         ["openai", ["off", "adaptive", "low", "medium", "high", "xhigh"]],
@@ -214,7 +260,6 @@ test("Models.dev controls Cloudflare's exact effort vocabulary", async () => {
         ...env,
         CLOUDFLARE_ACCOUNT_ID: "account",
         CLOUDFLARE_API_KEY: "token",
-        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_STYLE: "effort_required",
     };
     const low = catalogProviderFromEnv("cloudflare-workers-ai", {
         ...cloudflareEnv,
@@ -276,7 +321,6 @@ test("an operator-declared effort vocabulary extends Models.dev's for a provider
         ...env,
         CLOUDFLARE_ACCOUNT_ID: "account",
         CLOUDFLARE_API_KEY: "token",
-        PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_STYLE: "effort_required",
         PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_REASONING_EFFORTS: "low, medium,high",
     };
     // Models.dev lists this route as reasoning with no effort vocabulary; the declaration supplies one.
@@ -772,8 +816,20 @@ test("native provider routes project their documented cache controls through the
             messages: [{ role: "user", content: "budgeted" }],
         });
         assert.deepEqual(call?.body.reasoning, { max_tokens: 2048 });
+        await adaptive?.generate({
+            workerId: "openrouter-budget",
+            messages: [{ role: "user", content: "tighter" }],
+            maxOutputTokens: 1500,
+        });
+        assert.equal(call?.body.max_tokens, 1500);
+        assert.deepEqual(call?.body.reasoning, { max_tokens: 1499 }, "the actual request keeps reasoning inside a tightened total envelope");
+        assert.throws(() => catalogProviderFromEnv("openrouter", {
+            ...budgetEnv,
+            PLURNK_PROVIDERS_REASONING: "low",
+        }, "anthropic/claude-sonnet-4.6"), /reasoning effort and budget are exclusive/);
         const fixed = catalogProviderFromEnv("openrouter", {
             ...budgetEnv,
+            PLURNK_PROVIDERS_REASONING_BUDGET: "",
             PLURNK_PROVIDERS_REASONING: "low",
         }, "anthropic/claude-sonnet-4.6", `http://127.0.0.1:${address.port}/api/v1`);
         await fixed?.generate({
@@ -823,7 +879,6 @@ test("{§provider-monetary-evidence} Models.dev is the only fallback rate table"
         ...env,
         DEEPSEEK_API_KEY: "test-key",
         PLURNK_PROVIDERS_REASONING: "adaptive",
-        PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_STYLE: "thinking_effort",
     }, "deepseek-v4-flash");
     assert.notEqual(cataloged, null);
     const catalogedResponse = await cataloged!.generate({ workerId: "cataloged", messages: [] });
@@ -901,7 +956,6 @@ test("{§operator-cost-override} declared rates overlay the catalog and the sour
         ...env,
         DEEPSEEK_API_KEY: "test-key",
         PLURNK_PROVIDERS_REASONING: "adaptive",
-        PLURNK_PROVIDERS_PROVIDER_DEEPSEEK_REASONING_STYLE: "thinking_effort",
         PLURNK_PROVIDERS_COST: "input=0.22,output=0.66,cacheRead=0.007",
     }, "deepseek-v4-flash");
     const response = await overridden!.generate({ workerId: "overridden", messages: [] });
@@ -920,7 +974,6 @@ test("(#458) declared efforts union into the supported set under the models.dev-
         ...env,
         FIREWORKS_API_KEY: "test-key",
         PLURNK_PROVIDERS_REASONING: "adaptive",
-        PLURNK_PROVIDERS_PROVIDER_FIREWORKS_AI_REASONING_STYLE: "effort_explicit",
         PLURNK_PROVIDERS_PROVIDER_FIREWORKS_AI_REASONING_EFFORTS: "low,high,max",
     }, "accounts/fireworks/models/glm-5p3-flash");
     // (#474) "max" joined the portable vocabulary; "off" still requires a declared "none".

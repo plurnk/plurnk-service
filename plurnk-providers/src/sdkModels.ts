@@ -7,9 +7,8 @@ import { createGroq } from "@ai-sdk/groq";
 import { createMistral } from "@ai-sdk/mistral";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createTogetherAI } from "@ai-sdk/togetherai";
-import { createOpenRouter, type OpenRouterChatSettings } from "@openrouter/ai-sdk-provider";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
-    resolveModel,
     isProviderCredentialName,
     lookupProvider,
     providerCatalogSnapshot,
@@ -19,7 +18,6 @@ import {
     Validator,
     type ModelReadiness,
     type ModelReadinessCause,
-    type ReasoningPolicy,
 } from "@plurnk/plurnk-contracts";
 import type { LanguageModel } from "ai";
 import { providerCostNormalizer } from "./accounting.ts";
@@ -291,34 +289,6 @@ const requireApiKey = (
     return key;
 };
 
-// {§provider-reasoning-policy} — the OpenRouter SDK builds its request from the model
-// settings alone (neither the generic `reasoning` call setting nor provider options reach
-// its body), so a fixed policy and `off` are represented there. `adaptive` on a
-// reasoning-capable route declares the toggle on (`enabled` — #457: unconfigured
-// toggle routes ran reasoning-off and strike-spiralled; `off` stays the explicit
-// opt-out), and a resolved reasoning budget names the wire's `max_tokens` form —
-// the only dial a budget_tokens-only route understands; a fixed policy keeps the
-// `effort` form. `enabled` alone is documented OpenRouter wire; the SDK's settings
-// type under-models it (requires effort | max_tokens), hence the call-site cast.
-const openRouterReasoningSettings = (
-    reasoning: ReasoningPolicy | undefined,
-    reasoningBudget: number | null,
-    reasoningCapable: boolean,
-): { reasoning?: { effort: "none" | "low" | "medium" | "high" } | { max_tokens: number } | { enabled: true } } => {
-    if (reasoning === undefined) return {};
-    if (reasoning === "adaptive") {
-        if (reasoningBudget !== null) return { reasoning: { max_tokens: reasoningBudget } };
-        return reasoningCapable ? { reasoning: { enabled: true } } : {};
-    }
-    // OpenRouter documents effort none/low/medium/high; xhigh/max reach this
-    // seam only if a catalog row declares them — refuse with the gap named
-    // rather than ship an unverified wire value (#474 widens on evidence).
-    if (reasoning === "xhigh" || reasoning === "max") {
-        throw new TypeError(`openrouter reasoning effort '${reasoning}' is not a documented wire value`);
-    }
-    return { reasoning: { effort: reasoning === "off" ? "none" : reasoning } };
-};
-
 const resolveSdkProvider = (
     provider: string,
     env: NodeJS.ProcessEnv,
@@ -338,8 +308,6 @@ export const createSdkModel = (
     model: string,
     env: NodeJS.ProcessEnv,
     baseUrlOverride?: string,
-    reasoning?: ReasoningPolicy,
-    reasoningBudget: number | null = null,
 ): SdkModel | null => {
     const resolved = resolveSdkProvider(provider, env, baseUrlOverride);
     if (resolved === null) return null;
@@ -422,11 +390,7 @@ export const createSdkModel = (
                     apiKey: requireApiKey(provider, env, catalog),
                     baseURL: url,
                     headers: openRouterHeaders(provider, env, catalog),
-                }).languageModel(model, openRouterReasoningSettings(
-                    reasoning,
-                    reasoningBudget,
-                    resolveModel(provider, model)?.info.reasoning === true,
-                ) as OpenRouterChatSettings),
+                }).languageModel(model),
                 ...(catalog.id === "openrouter"
                     ? { cacheAffinity: { target: "header" as const, name: "x-session-id" } }
                     : {}),

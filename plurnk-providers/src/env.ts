@@ -2,6 +2,7 @@
 // local to the selected provider.
 
 import { REASONING_POLICIES, Validator, type ReasoningPolicy } from "@plurnk/plurnk-contracts";
+import RequestFields from "./RequestFields.ts";
 
 export const parseRequiredInt = (raw: string | undefined, name: string, label: string): number => {
     if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set`);
@@ -312,7 +313,7 @@ export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_COST",
     "PLURNK_PROVIDERS_OUTPUT_BUDGET",
     "PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE",
-    "PLURNK_PROVIDERS_REASONING_STYLE",
+    ...RequestFields.knobs,
     "PLURNK_PROVIDERS_REASONING_BUDGET",
     "PLURNK_PROVIDERS_REASONING",
     "PLURNK_PROVIDERS_CONTEXT_WINDOW",
@@ -383,6 +384,11 @@ export const costOverrideFromEnv = (env: NodeJS.ProcessEnv, label: string): Cost
 
 export const scopeEnvToAlias = (env: NodeJS.ProcessEnv, alias: string, knobs: readonly string[] = PROVIDERS_KNOBS): NodeJS.ProcessEnv => {
     const folded = alias.toLowerCase();
+    if (knobs === PROVIDERS_KNOBS) {
+        RequestFields.rejectRetired(env, Object.keys(env).filter((key) =>
+            key.startsWith("PLURNK_PROVIDERS_REASONING_STYLE_")
+            && key.slice("PLURNK_PROVIDERS_REASONING_STYLE_".length).toLowerCase() === folded));
+    }
     const out: NodeJS.ProcessEnv = { ...env };
     for (const knob of knobs) {
         for (const [key, value] of Object.entries(env)) {

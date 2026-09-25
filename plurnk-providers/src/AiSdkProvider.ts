@@ -28,6 +28,7 @@ import { assessRequestCapacity, effectiveInputCapacity, effectiveOutputBudget, e
 import { nativeFixedEffort } from "./reasoning-effort.ts";
 import AiSdkRequestBody from "./AiSdkRequestBody.ts";
 import LeadingReasoning from "./LeadingReasoning.ts";
+import type RequestFields from "./RequestFields.ts";
 
 export type ProviderFetch = typeof globalThis.fetch;
 
@@ -52,12 +53,10 @@ const raceAgainstDeadline = async <T>(work: PromiseLike<T>, signal: AbortSignal)
     }
 };
 
-// Backend wire spellings for the resolved reasoning intent. The switch beside each
-// mapping retains any backend-specific omission/explicit-disable constraint.
-export type ReasoningStyle = "none" | "think" | "include_reasoning" | "effort" | "effort_explicit" | "effort_required" | "thinking_effort" | "template" | "anthropic";
+// Local protocol toggles; catalog transports use request-field declarations.
+export type ReasoningStyle = "none" | "think" | "template";
 
 export type NativeReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
-export type CompatibleReasoningEffort = NativeReasoningEffort | "max";
 
 // GBNF transport is a local llama-server capability. "none" means no
 // service-managed constrained sampling; endpoint-owned settings are not inferred.
@@ -93,13 +92,6 @@ export type AiSdkProviderConfig = {
     // admissible values; provider-default is reserved for a documented native
     // dynamic option/default or a route with no caller-selectable effort.
     adaptiveReasoning?: NativeReasoningEffort | "provider-default";
-    // The catalog declares a toggle reasoning control on this route (#457).
-    reasoningToggle?: boolean;
-    // OpenAI-compatible effort transports accept route-native values beyond
-    // the AI SDK's generic vocabulary. These are still catalog facts, not
-    // provider-name branches.
-    compatibleAdaptiveReasoning?: CompatibleReasoningEffort | "provider-default";
-    compatibleOffReasoning?: "none";
     adaptiveReasoningProviderOptions?: AiSdkProviderOptions;
     // Native Anthropic and Bedrock SDKs interpret generic maxOutputTokens as
     // visible output and add an explicit provider reasoning budget. This marker lets the
@@ -107,6 +99,7 @@ export type AiSdkProviderConfig = {
     // one total output budget.
     additiveReasoningProvider?: "anthropic" | "bedrock";
     reasoningStyle?: ReasoningStyle;          // default "none"
+    requestFields?: RequestFields;
     reasoningResponseStyle?: ReasoningResponseStyle; // {§provider-tagged-reasoning}; default "verbatim"
     countPromptTokens?: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
     estimateCost?: (usage: ProviderUsage | undefined) => ProviderCost;
@@ -264,9 +257,6 @@ export default class AiSdkProvider implements Provider {
     #reasoning: Reasoning;
     #supportedReasoningPolicies: readonly ReasoningPolicy[];
     #adaptiveReasoning: NativeReasoningEffort | "provider-default";
-    #reasoningToggle: boolean;
-    #compatibleAdaptiveReasoning: CompatibleReasoningEffort | "provider-default";
-    #compatibleOffReasoning: "none" | undefined;
     #adaptiveReasoningProviderOptions: AiSdkProviderOptions | undefined;
     readonly #samplingDefaults: Readonly<Record<string, number>>;
     #repeatPenalty: number | null;
@@ -275,6 +265,7 @@ export default class AiSdkProvider implements Provider {
     #dryAllowedLength: number | undefined;
     #repeatLastN: number | undefined;
     #reasoningStyle: ReasoningStyle;
+    readonly #requestFields: RequestFields | undefined;
     #reasoningResponseStyle: ReasoningResponseStyle;
     #countPromptTokens: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
     #promptTokensUrl: string | undefined;
@@ -339,9 +330,6 @@ export default class AiSdkProvider implements Provider {
             ...new Set(config.supportedReasoningPolicies ?? REASONING_POLICIES),
         ]);
         this.#adaptiveReasoning = config.adaptiveReasoning ?? "high";
-        this.#reasoningToggle = config.reasoningToggle ?? false;
-        this.#compatibleAdaptiveReasoning = config.compatibleAdaptiveReasoning ?? "high";
-        this.#compatibleOffReasoning = config.compatibleOffReasoning;
         this.#adaptiveReasoningProviderOptions = config.adaptiveReasoningProviderOptions;
         if (!this.#supportedReasoningPolicies.includes(this.#reasoning.mode)) {
             throw new UnsupportedReasoningPolicyError(
@@ -372,6 +360,10 @@ export default class AiSdkProvider implements Provider {
         this.#retryAttempts = config.retryAttempts;
         this.#errorDetailLimit = config.errorDetailLimit;
         this.#reasoningStyle = config.reasoningStyle ?? "none";
+        this.#requestFields = config.requestFields;
+        if (this.#requestFields !== undefined && (this.#requestFields.namespace !== undefined) !== (config.languageModel !== undefined)) {
+            throw new TypeError("Request fields must use an SDK namespace for a native languageModel, and the body for a compatible URL");
+        }
         this.#reasoningResponseStyle = config.reasoningResponseStyle ?? "verbatim";
         if (config.countPromptTokens !== undefined && config.promptTokensUrl !== undefined) {
             throw new Error(`${config.source ?? "provider"}: configure countPromptTokens or promptTokensUrl, not both`);
@@ -441,13 +433,7 @@ export default class AiSdkProvider implements Provider {
         if (this.#reasoning.budget !== this.#reasoningBudget) {
             throw new Error(`${this.#source}: reasoning intent and generation envelope disagree on reasoningBudget`);
         }
-        if (this.#reasoningStyle === "anthropic"
-            && this.#reasoning.mode !== "off"
-            && this.#reasoning.mode !== "adaptive"
-            && this.#reasoning.budget === null
-            && this.#reasoningBudget === null) {
-            throw new Error(`${this.#source}: explicit Anthropic reasoning requires PLURNK_PROVIDERS_REASONING_BUDGET`);
-        }
+        this.#requestFields?.body(this.#reasoning.mode, this.#outputBudget, this.#reasoningBudget);
         if (this.#requiresOutputBudget === true && this.#outputBudget === null) {
             throw new Error(`${this.#source}: this backend requires a resolved PLURNK_PROVIDERS_OUTPUT_BUDGET`);
         }
@@ -470,7 +456,7 @@ export default class AiSdkProvider implements Provider {
                 return tokens;
             };
         }
-        this.#requestBody = new AiSdkRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, reasoning: this.#reasoning, reasoningToggle: this.#reasoningToggle, compatibleAdaptiveReasoning: this.#compatibleAdaptiveReasoning, compatibleOffReasoning: this.#compatibleOffReasoning, adaptiveReasoningProviderOptions: this.#adaptiveReasoningProviderOptions, repeatPenalty: this.#repeatPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source, grammarStyle: this.#grammarStyle, cacheAffinity: this.#cacheAffinity, reasoningResponseProviderOptions: this.#reasoningResponseProviderOptions, supportsSlotPinning: this.#supportsSlotPinning, slotCount: this.#slotCount });
+        this.#requestBody = new AiSdkRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, reasoning: this.#reasoning, adaptiveReasoningProviderOptions: this.#adaptiveReasoningProviderOptions, repeatPenalty: this.#repeatPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source, grammarStyle: this.#grammarStyle, cacheAffinity: this.#cacheAffinity, reasoningResponseProviderOptions: this.#reasoningResponseProviderOptions, supportsSlotPinning: this.#supportsSlotPinning, slotCount: this.#slotCount });
     }
 
     get contextWindow(): number | null { return this.#contextWindow; }
@@ -646,15 +632,19 @@ export default class AiSdkProvider implements Provider {
         // Both transports project the same resolved sampling; managed fields still win.
         const requestSampling = {
             ...this.#samplingDefaults,
-            ...this.#requestBody.samplingBody(sampling),
+            ...this.#requestBody.samplingBody(sampling, this.#requestFields?.managedKeys),
         };
         const body: Record<string, unknown> = {
             ...this.#requestBody.repetitionPenaltyBody(),
             ...requestSampling,
             ...(this.#serviceTier !== undefined ? { service_tier: this.#serviceTier } : {}),
-            ...this.#requestBody.reasoningBody(preserveGrammarSentence, capacity.reasoningBudget),
+            ...(this.#requestFields === undefined || this.#requestFields.namespace !== undefined
+                ? {
+                    ...this.#requestBody.reasoningBody(preserveGrammarSentence, capacity.reasoningBudget),
+                    ...(effectiveMaxOutputTokens === undefined ? {} : { max_tokens: effectiveMaxOutputTokens }),
+                }
+                : this.#requestFields.body(this.#reasoning.mode, effectiveMaxOutputTokens ?? null, capacity.reasoningBudget)),
             ...this.#requestBody.grammarBody(sendGrammar),
-            ...(effectiveMaxOutputTokens !== undefined ? { max_tokens: effectiveMaxOutputTokens } : {}),
             // Request per-token logprobs only when enabled (managed field —
             // reserved from caller sampling; the env flag is the single control).
             ...(this.#topLogprobs !== null ? { logprobs: true, top_logprobs: this.#topLogprobs } : {}),
@@ -783,7 +773,10 @@ export default class AiSdkProvider implements Provider {
                     : await executeAiSdkModel({
                         languageModel: this.#languageModel,
                         headers: requestHeaders,
-                        providerOptions: this.#requestBody.requestProviderOptions(workerId, nativeReasoningBudget),
+                        providerOptions: this.#requestBody.requestProviderOptions(workerId, nativeReasoningBudget,
+                            this.#requestFields?.namespace === undefined ? undefined : {
+                                [this.#requestFields.namespace]: this.#requestFields.body(this.#reasoning.mode, null, capacity.reasoningBudget) as AiSdkProviderOptions[string],
+                            }),
                         systemProviderOptions: this.#systemCacheProviderOptions,
                         messages,
                         signal: operationSignal,
@@ -805,7 +798,9 @@ export default class AiSdkProvider implements Provider {
                                 : undefined,
                         seed: typeof requestSampling.seed === "number" ? requestSampling.seed : undefined,
                         maxOutputTokens: this.#requestBody.nativeMaxOutputTokens(capacity.outputBudget, nativeReasoningBudget),
-                        reasoning: this.#reasoning.mode === "off"
+                        reasoning: this.#requestFields?.namespace !== undefined
+                            ? "provider-default"
+                            : this.#reasoning.mode === "off"
                             ? "none"
                             : this.#reasoning.mode === "adaptive"
                                 ? this.#adaptiveReasoning

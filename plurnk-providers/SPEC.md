@@ -289,16 +289,15 @@ provider default holds. A fixed policy retains its exact name and is rejected be
 provider I/O when either the route or transport cannot represent it. Every
 provider exposes that exact intersection. A numeric reasoning budget constrains
 the generation envelope independently and never selects or changes policy. On
-the OpenRouter transport a resolved budget under `adaptive` reaches the wire as
-the `reasoning.max_tokens` form — the only dial a budget_tokens-only route
-understands; a fixed policy keeps the `effort` form, and `off` suppresses the
-budget.
+routes whose controls are exclusive, fixed effort plus a numeric budget is
+rejected before I/O. Under `adaptive`, an explicit budget selects the numeric
+control; `off` suppresses it.
 
 `catalogReasoningPolicies` projects that same admission calculation from catalog
 facts and provider-wide environment declarations without constructing a model,
 requiring credentials, or performing provider I/O.
 Admission respects the installed projection: native SDK fixed efforts exclude
-`max`; the OpenRouter model-settings projection also excludes `xhigh`.
+`max`; declared transport vocabularies constrain per-call option projections.
 
 Models.dev's route-specific `reasoning_options` is the capability authority for
 what the daemon offers on its own; the daemon never adds vendor behaviour absent
@@ -355,24 +354,9 @@ Unsupported routes receive no invented option. The default five-minute
 provider lifetime is used; a longer, differently priced lifetime is not an
 implicit transport choice.
 
-§deepseek-reasoning-request The direct DeepSeek catalog path maps the common
-reasoning intent to its OpenAI-compatible controls:
-
-| PLURNK posture | `thinking`            | `reasoning_effort`   |
-| --------------- | --------------------- | -------------------- |
-| `off`           | `{ type: disabled }`  | omitted              |
-| `adaptive`      | `{ type: enabled }`   | omitted              |
-| `high`          | `{ type: enabled }`   | `high`                |
-
-The direct API does not distinguish portable `low` or `medium` intent and
-therefore advertises only `off`, `adaptive`, and `high`.
-
-§provider-reasoning-style A reasoning style names the wire a compatible route's
-reasoning controls take. `PLURNK_PROVIDERS_PROVIDER_<PREFIX>_REASONING_STYLE`
-declares it for every route of a provider; `PLURNK_PROVIDERS_REASONING_STYLE`,
-alias-scopable like every bare knob, declares it for one route and wins. One
-provider can serve models whose controls differ, so a route states its own style. The daemon never infers a
-style from a model name.
+§deepseek-reasoning-request Direct DeepSeek uses the panel's request-field
+declarations under {§provider-wire-declaration}. Models.dev supplies each
+model's effort vocabulary; it is not a second fixed list in this adapter.
 
 The compatible transport is deliberately retained for:
 
@@ -382,6 +366,41 @@ The compatible transport is deliberately retained for:
 
 It carries PLURNK-only fields and raw wire evidence without reimplementing the
 SDK's ordinary transport.
+
+### §provider-wire-declaration Request-field declarations
+
+Models.dev owns model capabilities, effort vocabulary, and numeric budget bounds.
+For endpoints whose field names it does not describe, the provider's
+environment panel supplies a bounded projection, independent of provider identity:
+
+| Declaration suffix | Meaning |
+| --- | --- |
+| `OPTIONS_NAMESPACE` | Native SDK's per-call `providerOptions` namespace. Without one, declared fields target the compatible request body. |
+| `OUTPUT_PATH` | RFC 6901 object-member pointer for the **inclusive** output ceiling; absent uses the compatible SDK's `max_tokens` field. |
+| `REASONING_EFFORT_PATH` / `REASONING_BUDGET_PATH` | Pointers for exact effort or numeric reasoning subset. No pointer means no such control. |
+| `REASONING_EFFORTS` | Additional declared effort values, unioned with Models.dev. |
+| `REASONING_TRANSPORT_EFFORTS` | Optional transport vocabulary, intersected with catalog/declaration efforts. It adds no model capability. |
+| `REASONING_CONTROLS` | Required when both pointers exist: `exclusive` refuses fixed effort plus budget; `combined` sends both. |
+| `REASONING_ON_BODY` | Static reasoning activation fields, merged with the selected control. |
+| `REASONING_OFF_BODY` | Explicit disable fields; otherwise a declared `none` effort can disable. |
+| `REASONING_ADAPTIVE_BODY` | Explicit adaptive fields; `{}` retains the enabled endpoint's default. Absent selects the strongest representable catalog/declaration effort. |
+| `REASONING_TOGGLE_BODY` | Adaptive activation in place of `ADAPTIVE_BODY` when Models.dev declares a toggle control. |
+
+The existing provider declaration prefix is
+`PLURNK_PROVIDERS_PROVIDER_<NAME>_`; `PLURNK_PROVIDERS_<suffix>` overrides
+it for the route and accepts the ordinary alias suffix. These are data, not
+executable transformations. Static bodies cannot replace transport, sampling,
+or managed numeric controls; pointers cannot overlap. Configuration fails at
+construction before inference when a requested policy or numeric control is
+unrepresentable. A tighter per-call envelope reprojects the same declaration.
+Discovery and generation share the resolved policy set. A cataloged
+non-reasoning model receives no reasoning fields.
+Native SDKs retain their own output field; `OUTPUT_PATH` is incompatible with an
+options namespace. Request-local options are projected after the effective
+envelope is known, never frozen into SDK model construction. Streaming and
+non-streaming calls use the same projection.
+Retired `REASONING_STYLE` selectors fail at the selected provider/alias boundary;
+they neither select a preset nor silently coexist with these declarations.
 
 ## §4 Operator configuration
 

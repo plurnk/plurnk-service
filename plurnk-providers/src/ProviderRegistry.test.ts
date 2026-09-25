@@ -443,7 +443,6 @@ test("two Fireworks aliases independently select default and priority service ti
         FIREWORKS_BASE_URL: "https://api.fireworks.ai/inference/v1",
         FIREWORKS_API_KEY: "fw",
         PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192",
-        PLURNK_PROVIDERS_PROVIDER_FIREWORKS_AI_REASONING_STYLE: "effort_explicit",
         PLURNK_PROVIDERS_TOP_LOGPROBS: "2",
         PLURNK_PROVIDERS_SERVICE_TIER_fast: "priority",
         PLURNK_PROVIDERS_SERVICE_TIER_standard: "default",

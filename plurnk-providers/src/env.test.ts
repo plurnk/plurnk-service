@@ -113,7 +113,7 @@ test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases i
         PLURNK_PROVIDERS_REASONING_turboderp: "high",
         PLURNK_PROVIDERS_REASONING_BUDGET_TURBODERP: "4096", // case-folds like PLURNK_MODEL_ keys
         PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE_TURBODERP: "think-tags",
-        PLURNK_PROVIDERS_REASONING_STYLE_turboderp: "thinking_config",
+        PLURNK_PROVIDERS_REASONING_EFFORT_PATH_turboderp: "/thinking_config/thinking_level",
         PLURNK_PROVIDERS_CONTEXT_WINDOW_turboderp: "8000",
         PLURNK_PROVIDERS_OUTPUT_BUDGET_turboderp: "4096",
         PLURNK_PROVIDERS_CONTEXT_WINDOW_other: "1",
@@ -122,11 +122,11 @@ test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases i
     assert.equal(scoped.PLURNK_PROVIDERS_REASONING, "high");
     assert.equal(scoped.PLURNK_PROVIDERS_REASONING_BUDGET, "4096");
     assert.equal(scoped.PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE, "think-tags");
-    assert.equal(scoped.PLURNK_PROVIDERS_REASONING_STYLE, "thinking_config");
+    assert.equal(scoped.PLURNK_PROVIDERS_REASONING_EFFORT_PATH, "/thinking_config/thinking_level");
     assert.equal(scoped.PLURNK_PROVIDERS_CONTEXT_WINDOW, "8000");
     assert.equal(scoped.PLURNK_PROVIDERS_OUTPUT_BUDGET, "4096");
     assert.equal(scopeEnvToAlias(env, "plain").PLURNK_PROVIDERS_REASONING, "off"); // fallback intact
-    assert.equal(scopeEnvToAlias(env, "plain").PLURNK_PROVIDERS_REASONING_STYLE, undefined, "another alias's style never leaks");
+    assert.equal(scopeEnvToAlias(env, "plain").PLURNK_PROVIDERS_REASONING_EFFORT_PATH, undefined, "another alias's projection never leaks");
 });
 
 test("scopeEnvToAlias: aliases with underscores resolve; a bare knob is never mistaken for a suffix", async () => {

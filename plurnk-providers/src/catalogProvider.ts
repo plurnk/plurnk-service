@@ -22,10 +22,8 @@ import {
 } from "./env.ts";
 import AiSdkProvider, {
     type AiSdkProviderConfig,
-    type CompatibleReasoningEffort,
     type GrammarStyle,
     type NativeReasoningEffort,
-    type ReasoningStyle,
 } from "./AiSdkProvider.ts";
 import { configuredProviderInfo, createSdkModel } from "./sdkModels.ts";
 import { providerSource } from "./notices.ts";
@@ -34,74 +32,23 @@ import { INPUT_MODALITIES } from "./types.ts";
 import { REASONING_POLICIES, type ReasoningPolicy } from "@plurnk/plurnk-contracts";
 import { estimateProviderCost } from "./cost.ts";
 import { emitWarningOnce } from "./warnings.ts";
+import RequestFields from "./RequestFields.ts";
 import type { LanguageModel } from "ai";
 import type { AiSdkProviderOptions, CacheAffinity } from "./AiSdkProvider.ts";
 import type { PluginAttribution, PluginAttributionContext } from "@plurnk/plurnk-meta";
-
-// {§provider-reasoning-style} — the provider-wide declaration, unless the bare knob (alias-scopable:
-// PLURNK_PROVIDERS_REASONING_STYLE_<alias>) names the wire for one route; one provider can serve
-// models whose reasoning controls differ (Cloudflare's gateway hosts `@cf/…` and Gemini alike).
-const reasoningStyleFromEnv = (
-    env: NodeJS.ProcessEnv,
-    name: string,
-): ReasoningStyle | undefined => {
-    const prefix = name.replaceAll(/[^a-zA-Z0-9]/g, "_").toUpperCase();
-    const routeKey = "PLURNK_PROVIDERS_REASONING_STYLE";
-    const providerKey = `PLURNK_PROVIDERS_PROVIDER_${prefix}_REASONING_STYLE`;
-    const key = env[routeKey] !== undefined && env[routeKey].length > 0 ? routeKey : providerKey;
-    const value = env[key];
-    if (value === undefined || value.length === 0) return undefined;
-    const styles: readonly ReasoningStyle[] = [
-        "none", "think", "include_reasoning", "effort",
-        "effort_explicit", "effort_required", "thinking_effort", "template", "anthropic",
-    ];
-    if (!styles.includes(value as ReasoningStyle)) {
-        throw new Error(`${name} provider: ${key} has invalid value "${value}"`);
-    }
-    return value as ReasoningStyle;
-};
 
 // {§provider-input-modalities} — the catalog's input modalities, kept to the vocabulary the wire
 // can carry; an unknown model declares none.
 export const inputModalitiesOf = (input: readonly string[] | undefined): ReadonlySet<InputModality> =>
     new Set((input ?? []).filter((modality): modality is InputModality => (INPUT_MODALITIES as readonly string[]).includes(modality)));
 
-// {§provider-reasoning-policy} — the operator's affirmative declaration of efforts a provider's
-// reasoning routes accept beyond Models.dev; the daemon adds none on its own (#439).
-const DECLARABLE_EFFORTS: ReadonlySet<ModelReasoningEffort> = new Set([
-    "none", "minimal", "low", "medium", "high", "xhigh", "max",
-]);
-const declaredEffortsFromEnv = (
-    env: NodeJS.ProcessEnv,
-    name: string,
-): readonly ModelReasoningEffort[] => {
-    const prefix = name.replaceAll(/[^a-zA-Z0-9]/g, "_").toUpperCase();
-    const key = `PLURNK_PROVIDERS_PROVIDER_${prefix}_REASONING_EFFORTS`;
-    const value = env[key];
-    if (value === undefined || value.trim().length === 0) return [];
-    const efforts = value.split(",").map((part) => part.trim()).filter((part) => part.length > 0);
-    const invalid = efforts.find((effort) => !DECLARABLE_EFFORTS.has(effort as ModelReasoningEffort));
-    if (invalid !== undefined) {
-        throw new Error(`${name} provider: ${key} has invalid value "${invalid}"; declarable efforts: ${[...DECLARABLE_EFFORTS].join(", ")}`);
-    }
-    return [...new Set(efforts as ModelReasoningEffort[])];
-};
 const activationPolicies = Object.freeze(["off", "adaptive"] as const);
-const deepSeekPolicies = Object.freeze(["off", "adaptive", "high"] as const);
-const reasoningWithoutOff = Object.freeze(["adaptive", "low", "medium", "high"] as const);
 
 const reasoningEffortOrder = Object.freeze([
     "minimal", "low", "medium", "high", "xhigh", "max",
 ] as const);
 const nativeReasoningEfforts = new Set<NativeReasoningEffort>([
     "minimal", "low", "medium", "high", "xhigh",
-]);
-const compatibleReasoningEfforts = new Set<CompatibleReasoningEffort>(reasoningEffortOrder);
-const compatibleEffortStyles = new Set<ReasoningStyle>([
-    "effort", "effort_explicit", "effort_required", "thinking_effort",
-]);
-const compatibleToggleStyles = new Set<ReasoningStyle>([
-    "think", "include_reasoning", "effort_explicit", "thinking_effort", "template", "anthropic",
 ]);
 
 const catalogEfforts = (
@@ -116,7 +63,7 @@ const catalogEfforts = (
     ]),
 ];
 
-const strongestCatalogEffort = <T extends NativeReasoningEffort | CompatibleReasoningEffort>(
+const strongestCatalogEffort = <T extends NativeReasoningEffort>(
     info: ModelInfo,
     supported: ReadonlySet<T>,
     declared: readonly ModelReasoningEffort[] = [],
@@ -130,82 +77,41 @@ const catalogSupportsToggle = (info: ModelInfo): boolean =>
 
 const catalogSupportedReasoningPolicies = ({
     info,
-    native,
-    style,
     declared,
 }: {
     info: ModelInfo;
-    native: boolean;
-    style: ReasoningStyle;
     declared: readonly ModelReasoningEffort[];
 }): readonly ReasoningPolicy[] => {
     if (!info.reasoning) return activationPolicies;
     const efforts = new Set(catalogEfforts(info, declared));
-    const effortTransport = native || compatibleEffortStyles.has(style);
-    const off = native
-        ? efforts.has("none") || catalogSupportsToggle(info)
-        : (efforts.has("none") && compatibleEffortStyles.has(style))
-            || (catalogSupportsToggle(info) && compatibleToggleStyles.has(style));
+    const off = efforts.has("none") || catalogSupportsToggle(info);
     return REASONING_POLICIES.filter((policy) => policy === "adaptive"
         || policy === "off" && off
         || (policy === "low" || policy === "medium" || policy === "high"
                 || policy === "xhigh" || policy === "max")
-            && effortTransport
             && efforts.has(policy));
 };
 
 const anthropicSupportsAdaptiveThinking = (model: string): boolean =>
     /claude-(?:opus-(?:4-[678]|5)|sonnet-(?:4-6|5)|fable-5)/.test(model);
 
-const supportedReasoningPolicies = ({
-    info,
-    native,
-    style,
-    declared,
-}: {
-    info?: ModelInfo;
-    native: boolean;
-    style: ReasoningStyle;
-    declared: readonly ModelReasoningEffort[];
-}): readonly ReasoningPolicy[] => {
-    // The template style is the operator's declaration that the rail's own chat
-    // template governs reasoning: a fixed effort rides in verbatim, native SDK or
-    // not, and a word the template does not know fails loudly on the first request.
-    if (style === "template") return REASONING_POLICIES;
-    if (info !== undefined && info.reasoning !== true) return activationPolicies;
-    // The declared wire's whole vocabulary: a route that reasons unconditionally still
-    // admits only the levels the catalog advertises for it.
-    if (info?.reasoningOptions !== undefined) {
-        return catalogSupportedReasoningPolicies({ info, native, style, declared });
-    }
-    if (native) return activationPolicies;
-    if (style === "effort" || style === "effort_explicit") return REASONING_POLICIES;
-    if (style === "effort_required") return reasoningWithoutOff;
-    if (style === "thinking_effort") return deepSeekPolicies;
-    return activationPolicies;
-};
-
 const reasoningCapabilities = (
     name: string,
     env: NodeJS.ProcessEnv,
     info: ModelInfo | undefined,
     native: boolean,
-    sdkPackage?: string,
 ) => {
-    const declaredEfforts = declaredEffortsFromEnv(env, name);
-    const declaredStyle = info?.reasoning === false ? "none" : reasoningStyleFromEnv(env, name) ?? "none";
-    const style = info?.reasoningOptions !== undefined
-        && (declaredStyle === "effort" || declaredStyle === "effort_required")
-        && catalogEfforts(info, declaredEfforts).length === 0
-        ? "none"
-        : declaredStyle;
-    const [first, ...rest] = supportedReasoningPolicies({ info, native, style, declared: declaredEfforts })
-        .filter((policy) => (!native || policy !== "max")
-            && (sdkPackage !== "@openrouter/ai-sdk-provider" || policy !== "xhigh"));
+    const declaredEfforts = RequestFields.declaredEfforts(name, env);
+    if (!native || RequestFields.namespace(name, env) !== undefined) {
+        const requestFields = new RequestFields(name, env, info);
+        return { declaredEfforts, policies: requestFields.policies, requestFields };
+    }
+    RequestFields.assertNative(name, env);
+    const supported = info === undefined ? activationPolicies : catalogSupportedReasoningPolicies({ info, declared: declaredEfforts });
+    const [first, ...rest] = supported.filter((policy) => policy !== "max");
     if (first === undefined) throw new TypeError(`${name} provider: no portable reasoning policy is representable`);
     return {
         declaredEfforts,
-        style,
         policies: [first, ...rest] satisfies [ReasoningPolicy, ...ReasoningPolicy[]],
     };
 };
@@ -217,7 +123,7 @@ export const catalogReasoningPolicies = (
     info: ModelInfo,
     env: NodeJS.ProcessEnv,
 ): readonly [ReasoningPolicy, ...ReasoningPolicy[]] => reasoningCapabilities(
-    provider.id, env, info, provider.npm !== "@ai-sdk/openai-compatible", provider.npm,
+    provider.id, env, info, provider.npm !== "@ai-sdk/openai-compatible",
 ).policies;
 
 const adaptiveReasoningProjection = ({
@@ -320,8 +226,8 @@ export const providerFromSdkModel = ({
     );
     const reasoning = reasoningFromEnv(env, name, envelope.reasoningBudget);
     const reasoningCapable = info?.reasoning === true;
-    const { declaredEfforts, style: reasoningStyle, policies } = reasoningCapabilities(
-        name, env, info, languageModel !== undefined, sdkPackage,
+    const { declaredEfforts, policies, requestFields } = reasoningCapabilities(
+        name, env, info, languageModel !== undefined,
     );
     const adaptiveReasoning = adaptiveReasoningProjection({
         sdkPackage,
@@ -330,14 +236,6 @@ export const providerFromSdkModel = ({
         info,
         declared: declaredEfforts,
     });
-    const compatibleAdaptiveReasoning = languageModel !== undefined || info?.reasoningOptions === undefined
-        ? undefined
-        : strongestCatalogEffort(info, compatibleReasoningEfforts, declaredEfforts) ?? "provider-default";
-    const compatibleOffReasoning = languageModel !== undefined
-        || info === undefined
-        || !catalogEfforts(info, declaredEfforts).includes("none")
-        ? undefined
-        : "none" as const;
 
     const catalogCost = info?.cost;
     const catalogRates = catalogCost === undefined ? null : {
@@ -387,12 +285,8 @@ export const providerFromSdkModel = ({
         maxOutputTokens,
         outputBudget: envelope.outputBudget,
         reasoningBudget: reasoning.budget,
-        // #457 — a catalog-declared toggle control makes `adaptive` an explicit enable.
-        reasoningToggle: info?.reasoningOptions?.some((option) => option.type === "toggle") === true,
         supportedReasoningPolicies: policies,
         ...adaptiveReasoning,
-        ...(compatibleAdaptiveReasoning === undefined ? {} : { compatibleAdaptiveReasoning }),
-        ...(compatibleOffReasoning === undefined ? {} : { compatibleOffReasoning }),
         ...(additiveReasoningProvider === undefined || !reasoningCapable
             ? {}
             : { additiveReasoningProvider }),
@@ -406,7 +300,7 @@ export const providerFromSdkModel = ({
         repeatPenalty: parseOptionalFloat(env.PLURNK_PROVIDERS_REPEAT_PENALTY, "PLURNK_PROVIDERS_REPEAT_PENALTY", name, 0),
         retryAttempts: parseRequiredInt(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "PLURNK_PROVIDERS_RETRY_ATTEMPTS", name),
         errorDetailLimit: parseRequiredInt(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT", name),
-        reasoningStyle,
+        ...(requestFields === undefined ? {} : { requestFields }),
         ...(affinityEnabled && cacheAffinity !== undefined ? { cacheAffinity } : {}),
         ...(cacheWritePolicy === "stable-system" && systemCacheProviderOptions !== undefined
             ? { systemCacheProviderOptions }
@@ -445,15 +339,7 @@ export const catalogProviderFromEnv = (
             `${name} provider: context window unresolved for "${wireModel}" — set PLURNK_PROVIDERS_CONTEXT_WINDOW or update the Models.dev snapshot`,
         );
     }
-    const maxOutputTokens = info?.maxOutputTokens === undefined
-        ? null
-        : Math.min(info.maxOutputTokens, contextWindow);
-    const reasoning = reasoningFromEnv(
-        env,
-        name,
-        generationEnvelopeFromEnv(env, name, contextWindow, maxOutputTokens).reasoningBudget,
-    );
-    const sdk = createSdkModel(name, wireModel, env, baseUrlOverride, reasoning.mode, reasoning.budget);
+    const sdk = createSdkModel(name, wireModel, env, baseUrlOverride);
     if (sdk === null) return null;
 
     return providerFromSdkModel({
