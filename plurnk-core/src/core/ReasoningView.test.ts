@@ -45,7 +45,7 @@ test("{§reasoning-initial-read}: initialization reads its own source with the c
     const before = process.env.PLURNK_REASONING_VIEW_LINES;
     const provider = new Mock({ contextWindow: 100_000, responses: [] });
     try {
-        for (const limit of [-1, 0, 1, 8, 32]) {
+        for (const limit of [-1, 0, 1, 8, 32, 100]) {
             process.env.PLURNK_REASONING_VIEW_LINES = String(limit);
             const read = ReasoningView.initialRead(provider, "alice", 3, 8);
             if (limit === 0) assert.equal(read, null);
@@ -68,7 +68,7 @@ test("{§reasoning-empty-turn-read}: an empty turn reads its own reasoning back 
     const provider = new Mock({ contextWindow: 100_000, responses: [] });
     try {
         process.env.PLURNK_REASONING_VIEW_LINES = "0";
-        for (const limit of [-1, 0, 1, 8, 32]) {
+        for (const limit of [-1, 0, 1, 8, 32, 100]) {
             process.env.PLURNK_REASONING_EMPTY_TURN_LINES = String(limit);
             const read = ReasoningView.emptyTurnRead(provider, "alice", 3, 8);
             if (limit === 0) assert.equal(read, null);

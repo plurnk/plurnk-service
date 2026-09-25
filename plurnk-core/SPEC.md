@@ -2099,7 +2099,7 @@ The program begins with its own NOTE and READs its reasoning and persisted ops,
 demonstrating both NOTE placements and their ordinary results. The initial message arrives separately as an
 inbound SEND ({§message-arrival}). Neither initialization nor later turns
 manufacture a task inventory.
-`PLURNK_REASONING_VIEW_LINES` (default `-1`, alias-scoped) selects this one READ's
+`PLURNK_REASONING_VIEW_LINES` (alias-scoped, default in `.env.defaults`) selects this one READ's
 scope: `0` omits it, `-1` reads the complete rationale, and a positive integer
 bounds it to the first N lines. Source retention, deliberate READs, and client
 streaming are independent. The only other automatic reasoning READ follows an empty
@@ -2110,7 +2110,7 @@ turn admitted under {§empty-turn}, one runtime turn of the same loop
 (`{ producer="_plurnk", kind="operation" }`) dispatches
 `READ (reasoning://<worker>/<loop>/<turn>) <!-- turn N emitted no OP -->` over that turn's stored
 reasoning source; its receipt renders in the next packet like any other log row.
-`PLURNK_REASONING_EMPTY_TURN_LINES` (default `-1`, alias-scoped) selects the scope on the same
+`PLURNK_REASONING_EMPTY_TURN_LINES` (alias-scoped, default in `.env.defaults`) selects the scope on the same
 scale as `PLURNK_REASONING_VIEW_LINES`. No read follows a turn without reasoning, and none follows
 a turn whose emission or reasoning carries a foreign tool-call grammar ({§response-text-note});
 the strike and its error row are unchanged.

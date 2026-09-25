@@ -147,8 +147,9 @@ for (const [label, content, finishReason] of [
             const workerId = await insertWorker(db, workspaceId);
             const loopId = await insertLoop(db, workerId, 1, "Do the thing.");
             const notices: Array<{ kind: string }> = [];
+            const reasoning = Array.from({ length: 120 }, (_, index) => `thinking about it ${index + 1}`).join("\n");
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content, reasoning: "thinking about it", finishReason } },
+                { assistant: { content, reasoning, finishReason } },
                 { assistant: { content: "````KILL\nDone.\n````", reasoning: null } },
             ] });
             const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string }) });
@@ -163,6 +164,7 @@ for (const [label, content, finishReason] of [
             assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "admitted on its only attempt");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
             assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "ops")?.content, content);
+            assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "reasoning")?.content, reasoning, "readback does not trim the source");
             assert.deepEqual(notices.filter(({ kind }) => kind === "turn_no_operations"), [], "{§empty-turn} the strike sends no notice");
             const strikes = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ turn_id: emptyTurn }))
                 .filter(({ origin, op }) => origin === "_plurnk" && op === "error");
@@ -170,7 +172,7 @@ for (const [label, content, finishReason] of [
             const readBack = (await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; scheme: string | null; pathname: string | null; rx: string }>({ turn_id: result.turnIds[2]! }))
                 .filter(({ origin, op }) => origin === "_plurnk" && op === "READ");
             assert.deepEqual(readBack.map(({ status_rx, scheme, pathname }) => [status_rx, scheme, pathname]), [[200, "reasoning", "/1/2"]], "{§reasoning-empty-turn-read} the runtime read the turn's reasoning back");
-            assert.match(readBack[0]!.rx, /thinking about it/u, "in the model's own words");
+            assert.equal(JSON.parse(readBack[0]!.rx).content, reasoning.split("\n").slice(0, 100).join("\n"), "shipped recovery reads the first 100 lines in the model's own words");
             const answer = await db.test_get_turn.get<{ packet: string }>({ id: result.turnIds.at(-1)! });
             const errors = JSON.parse(packetSection(JSON.parse(answer!.packet), "errors") || "[]") as Array<{ status: number }>;
             assert.deepEqual(errors.map(({ status }) => status), [422], "the strike rides the next packet's errors");
