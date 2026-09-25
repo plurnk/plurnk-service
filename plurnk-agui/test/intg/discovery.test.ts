@@ -6,7 +6,7 @@ import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import { Validator } from "@plurnk/plurnk-contracts";
 import { openTestDatabase, SERVICE } from "./_helpers.ts";
 
-test("discover composes installed scheme and MIME display metadata through the real daemon seam", async () => {
+async function assertInstalledDiscovery(sqliteEnabled: boolean): Promise<void> {
     await import(join(SERVICE, "test/setup.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
     const { default: McpModule } = await import(join(SERVICE, "../plurnk-mcp/src/Module.ts"));
@@ -56,7 +56,8 @@ test("discover composes installed scheme and MIME display metadata through the r
         );
         assert.deepEqual(
             display.find((capability) => capability.kind === "scheme" && capability.scheme === "sqlite"),
-            { kind: "scheme", scheme: "sqlite", display: { glyph: "🗃" } },
+            sqliteEnabled ? { kind: "scheme", scheme: "sqlite", display: { glyph: "🗃" } } : undefined,
+            "SQLite display metadata follows executor admission",
         );
         assert.deepEqual(
             display.find((capability) => capability.kind === "mimetype" && capability.mimetype === "text/html"),
@@ -135,4 +136,18 @@ test("discover composes installed scheme and MIME display metadata through the r
         await daemon.stop();
         await db.close();
     }
-});
+}
+
+for (const sqliteEnabled of [false, true]) {
+    test(`discover composes installed scheme and MIME display metadata with SQLite ${sqliteEnabled ? "explicitly enabled" : "disabled by default"}`, async (t) => {
+        if (sqliteEnabled) {
+            const previous = process.env.PLURNK_EXECS_SQLITE;
+            process.env.PLURNK_EXECS_SQLITE = "1";
+            t.after(() => {
+                if (previous === undefined) delete process.env.PLURNK_EXECS_SQLITE;
+                else process.env.PLURNK_EXECS_SQLITE = previous;
+            });
+        }
+        await assertInstalledDiscovery(sqliteEnabled);
+    });
+}
