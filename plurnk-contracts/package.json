@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-contracts",
-    "version": "1.21.0",
+    "version": "1.21.1",
     "description": "Canonical PLURNK language contract, schemas, generated types, and runtime-neutral wire contracts",
     "keywords": [
         "plurnk",
