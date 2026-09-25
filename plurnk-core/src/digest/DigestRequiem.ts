@@ -26,13 +26,14 @@ import {
 } from "@plurnk/plurnk-providers";
 
 import DigestRender from "./DigestRender.ts";
+import DigestEvidence from "./DigestEvidence.ts";
 import { digestPaths } from "./digest-paths.ts";
 import { readDigestDb } from "./digest-db.ts";
 import type {
     SyncPrep,
     WorkerRow,
     LoopRow,
-    StoredTurnRow,
+    TurnRow,
     TurnAttemptRow,
     DigestOptions,
     RequiemCallRecord,
@@ -104,62 +105,65 @@ export default class DigestRequiem {
             throw new Error("PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS must be at least PLURNK_SERVICE_REQUIEM_MAX_TOKENS");
         }
 
-        const { workers, loops, turnAttempts, turns } = readDigestDb(dbPath, (db) => ({
-            workers: (db.digest_workers as SyncPrep<WorkerRow>).all(),
-            loops: (db.digest_loops as SyncPrep<LoopRow>).all(),
-            turnAttempts: (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all(),
-            turns: (db.digest_turns as SyncPrep<StoredTurnRow>).all(),
-        }));
-        const loopById = new Map(loops.map((l) => [l.id, l]));
-        const attemptsByTurn = new Map<number, TurnAttemptRow[]>();
-        for (const attempt of turnAttempts) {
-            const attempts = attemptsByTurn.get(attempt.turn_id) ?? [];
-            attempts.push(attempt);
-            attemptsByTurn.set(attempt.turn_id, attempts);
-        }
+        const { workers, byWorker } = readDigestDb(dbPath, (db) => {
+            const workers = (db.digest_workers as SyncPrep<WorkerRow>).all();
+            const loops = (db.digest_loops as SyncPrep<LoopRow>).all();
+            const turnAttempts = (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all();
+            const turns = (db.digest_turns as SyncPrep<TurnRow>).all();
+            const evidence = new DigestEvidence(db);
+            const loopById = new Map(loops.map((l) => [l.id, l]));
+            const attemptsByTurn = new Map<number, TurnAttemptRow[]>();
+            for (const attempt of turnAttempts) {
+                const attempts = attemptsByTurn.get(attempt.turn_id) ?? [];
+                attempts.push(attempt);
+                attemptsByTurn.set(attempt.turn_id, attempts);
+            }
 
-        // Each worker's inference turns that carry a model request, ordered; the
-        // last is the worker's final context. A worker without inference evidence
-        // is silent.
-        const byWorker = new Map<number, Array<{
-            loopSeq: number;
-            turnSeq: number;
-            sections: Parameters<typeof PacketWire.renderSlot>[0];
-            assistant: string;
-            providerAttempts: Array<{
-                sequence: number;
-                state: TurnAttemptRow["state"];
-                accepted: boolean | null;
-                response: unknown;
-                failure: unknown;
-                parseErrors: unknown;
-                attributions: unknown;
-            }>;
-        }>>();
-        for (const t of turns) {
-            const loop = loopById.get(t.loop_id);
-            if (loop === undefined) continue;
-            const packet = StoredPacket.parse(t.packet, `requiem turn ${t.id}`);
-            if (packet === null) continue;
-            const arr = byWorker.get(loop.worker_id) ?? [];
-            arr.push({
-                loopSeq: loop.sequence,
-                turnSeq: t.sequence,
-                sections: packet.sections,
-                assistant: StoredPacket.isAdmitted(packet) ? packet.assistant.content : "",
-                providerAttempts: (attemptsByTurn.get(t.id) ?? [])
-                    .map((attempt) => ({
-                        sequence: attempt.sequence,
-                        state: attempt.state,
-                        accepted: attempt.accepted === null ? null : attempt.accepted === 1,
-                        response: requiemResponseEvidence(DigestRender.parseJson(attempt.response, {})),
-                        failure: DigestRender.parseJson(attempt.failure),
-                        parseErrors: DigestRender.parseJson(attempt.parse_errors, []),
-                        attributions: DigestRender.parseJson(attempt.attributions, []),
-                    })),
-            });
-            byWorker.set(loop.worker_id, arr);
-        }
+            // Each worker's inference turns that carry a model request, ordered; the
+            // last is the worker's final context. A worker without inference evidence
+            // is silent.
+            const byWorker = new Map<number, Array<{
+                loopSeq: number;
+                turnSeq: number;
+                sections: Parameters<typeof PacketWire.renderSlot>[0];
+                assistant: string;
+                providerAttempts: Array<{
+                    sequence: number;
+                    state: TurnAttemptRow["state"];
+                    accepted: boolean | null;
+                    response: unknown;
+                    failure: unknown;
+                    parseErrors: unknown;
+                    attributions: unknown;
+                }>;
+            }>>();
+            for (const t of turns) {
+                const loop = loopById.get(t.loop_id);
+                if (loop === undefined) continue;
+                const { packet, packetFailure } = evidence.packet(t);
+                if (packetFailure !== null) throw new Error(packetFailure.error.message, { cause: packetFailure.error });
+                if (packet === null) continue;
+                const arr = byWorker.get(loop.worker_id) ?? [];
+                arr.push({
+                    loopSeq: loop.sequence,
+                    turnSeq: t.sequence,
+                    sections: packet.sections,
+                    assistant: StoredPacket.isAdmitted(packet) ? packet.assistant.content : "",
+                    providerAttempts: (attemptsByTurn.get(t.id) ?? [])
+                        .map((attempt) => ({
+                            sequence: attempt.sequence,
+                            state: attempt.state,
+                            accepted: attempt.accepted === null ? null : attempt.accepted === 1,
+                            response: requiemResponseEvidence(DigestRender.parseJson(evidence.response(attempt.model_call_id), {})),
+                            failure: DigestRender.parseJson(attempt.failure),
+                            parseErrors: DigestRender.parseJson(attempt.parse_errors, []),
+                            attributions: DigestRender.parseJson(attempt.attributions, []),
+                        })),
+                });
+                byWorker.set(loop.worker_id, arr);
+            }
+            return { workers, byWorker };
+        });
 
         const out: string[] = [
             "# plurnk-service requiem",

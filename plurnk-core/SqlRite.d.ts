@@ -137,6 +137,8 @@ export class SqlRiteSync {
 	digest_workers: SqlRiteSyncPreparedStatements;
 	digest_loops: SqlRiteSyncPreparedStatements;
 	digest_turns: SqlRiteSyncPreparedStatements;
+	digest_turn_packet: SqlRiteSyncPreparedStatements;
+	digest_model_response: SqlRiteSyncPreparedStatements;
 	digest_turn_attempts: SqlRiteSyncPreparedStatements;
 	digest_inference_calls: SqlRiteSyncPreparedStatements;
 	digest_model_calls: SqlRiteSyncPreparedStatements;
@@ -423,6 +425,8 @@ export default class SqlRite {
 	digest_workers: SqlRitePreparedStatements;
 	digest_loops: SqlRitePreparedStatements;
 	digest_turns: SqlRitePreparedStatements;
+	digest_turn_packet: SqlRitePreparedStatements;
+	digest_model_response: SqlRitePreparedStatements;
 	digest_turn_attempts: SqlRitePreparedStatements;
 	digest_inference_calls: SqlRitePreparedStatements;
 	digest_model_calls: SqlRitePreparedStatements;

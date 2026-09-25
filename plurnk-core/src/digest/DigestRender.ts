@@ -1,5 +1,5 @@
 // Digest renderers ({§digest-programmatic-surface}): the markdown, JSON, reasoning, and packet
-// artifacts of one DigestModel. Pure projection of the model — no DB, no I/O except packetFiles.
+// artifacts of one DigestModel, reading heavy evidence on demand through DigestEvidence.
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import PacketWire from "../core/packet-wire.ts";
@@ -25,6 +25,10 @@ import type {
     DigestModel,
 } from "./digest-rows.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
+
+function* projectRows<T, R>(rows: Iterable<T>, project: (row: T) => R): Generator<R> {
+    for (const row of rows) yield project(row);
+}
 
 export default class DigestRender {
     static #summarize(text: unknown, n = 80): string {
@@ -222,7 +226,7 @@ export default class DigestRender {
     }
 
     static #renderTurnLine(turn: TurnRow, m: DigestModel): string {
-        const packet = turn.packet;
+        const { packet, packetFailure } = m.evidence.packet(turn);
         const assistant = packet !== null && StoredPacket.isAdmitted(packet) ? packet.assistant : null;
         const content = assistant?.content ?? "";
         const reasoning = assistant?.reasoning ?? null;
@@ -254,7 +258,7 @@ export default class DigestRender {
         const attemptBadge = attemptConditions.length === 0
             ? ""
             : `  ⚠ ${attemptConditions.join(" ")}/${attempts.length}`;
-        const packetBadge = turn.packetFailure === null ? "" : "  ⚠ packet=invalid";
+        const packetBadge = packetFailure === null ? "" : "  ⚠ packet=invalid";
         const stem = DigestRender.packetStems(m).get(turn.id);
         const modelTurn = DigestRender.#modelTurnOrdinal(turn, m);
         const provenance = [modelTurn === null ? null : `model turn ${modelTurn}`, stem].filter((part) => part !== null).join(" · ");
@@ -262,8 +266,8 @@ export default class DigestRender {
         const head = turn.kind === "inference"
             ? `${lifecycle} finish=${finishReason}${rails} model=${model} ${tokens}${cost}${errBadge}${attemptBadge}${packetBadge}`
             : `${lifecycle}${errBadge}${packetBadge}`;
-        const summary = turn.packetFailure !== null
-            ? `  ↳ provider packet: invalid stored evidence (${turn.packetFailure.error.message})`
+        const summary = packetFailure !== null
+            ? `  ↳ provider packet: invalid stored evidence (${packetFailure.error.message})`
             : packet === null
             ? null
             : content.length > 0
@@ -360,7 +364,7 @@ export default class DigestRender {
         const pendingCalls = m.inferenceCalls.filter((call) => call.state === "pending").length;
         const bareCalls = m.modelCalls.filter((call) => call.kind === "bare").length;
         const pendingRequests = m.providerRequests.filter((request) => request.state === "pending").length;
-        const packetFailures = m.turns.filter((turn) => turn.packetFailure !== null).length;
+        const packetFailures = m.turns.filter((turn) => m.evidence.packet(turn).packetFailure !== null).length;
         lines.push(`Workspaces: ${m.workspaces.length}  Workers: ${m.workers.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Inference calls: ${m.inferenceCalls.length} (${bareCalls} BARE, ${erroredCalls} errored, ${pendingCalls} open)  Emission attempts: ${m.turnAttempts.length} (${rejectedAttempts} rejected)  Provider requests: ${m.providerRequests.length} (${pendingRequests} open)  Log entries: ${m.logEntries.length}`);
         if (packetFailures > 0) lines.push(`Stored packet failures: ${packetFailures}`);
         lines.push(`Search: channels=${m.search.channel_entries} attached=${m.search.derivation_complete} (indexed=${m.search.indexed} excluded=${m.search.excluded} unsearchable=${m.search.unsearchable} failed=${m.search.failed}) unattached=${m.search.unfinished} artifacts=${m.search.derivation_artifacts_complete} complete/${m.search.derivation_artifacts_building} building`);
@@ -439,17 +443,18 @@ export default class DigestRender {
             }
             const attempts = m.attemptsByTurn.get(t.id) ?? [];
             if (attempts.length === 0) {
-                const reasoning = t.packet !== null && StoredPacket.isAdmitted(t.packet)
-                    ? t.packet.assistant.reasoning
+                const { packet, packetFailure } = m.evidence.packet(t);
+                const reasoning = packet !== null && StoredPacket.isAdmitted(packet)
+                    ? packet.assistant.reasoning
                     : null;
                 lines.push("");
-                if (t.packetFailure !== null) lines.push("(stored provider packet is invalid; see its packet artifacts)");
+                if (packetFailure !== null) lines.push("(stored provider packet is invalid; see its packet artifacts)");
                 else if (typeof reasoning === "string" && reasoning.length > 0) lines.push(reasoning);
                 else lines.push("(no admitted provider reasoning)");
                 continue;
             }
             for (const attempt of attempts) {
-                const response = DigestRender.parseJson(attempt.response, {}) as {
+                const response = DigestRender.parseJson(m.evidence.response(attempt.model_call_id), {}) as {
                     assistant?: { reasoning?: unknown };
                 };
                 const parseErrors = DigestRender.parseJson(attempt.parse_errors, []) as Array<{ message?: unknown }>;
@@ -499,7 +504,7 @@ export default class DigestRender {
         if (cached !== undefined) return cached;
         const stems = new Map<number, string>();
         m.turns
-            .filter((turn) => turn.packet !== null || turn.packetFailure !== null || turn.program !== null)
+            .filter((turn) => turn.has_packet === 1 || turn.program !== null)
             .toSorted((a, b) => a.id - b.id)
             .forEach((turn, ordinal) => stems.set(turn.id, `packet${String(ordinal).padStart(3, "0")}`));
         DigestRender.#stemCache.set(m, stems);
@@ -519,18 +524,18 @@ export default class DigestRender {
         const written: string[] = [];
         m.turns
             .map((turn) => ({ turn, source: turn.program }))
-            .filter(({ turn, source }) => turn.packet !== null || turn.packetFailure !== null || source !== null)
+            .filter(({ turn, source }) => turn.has_packet === 1 || source !== null)
             .toSorted((a, b) => a.turn.id - b.turn.id)
             .forEach(({ turn, source }, ordinal) => {
             const padded = String(ordinal).padStart(3, "0");
             const files: Array<[string, string]> = [];
-            const packet = turn.packet;
-            if (turn.packetFailure !== null) {
+            const { packet, packetFailure } = m.evidence.packet(turn);
+            if (packetFailure !== null) {
                 files.push(
-                    [`packet${padded}.packet.raw.txt`, turn.packetFailure.raw],
+                    [`packet${padded}.packet.raw.txt`, packetFailure.raw],
                     [`packet${padded}.packet.invalid.json`, JSON.stringify({
                         turnId: turn.id,
-                        error: turn.packetFailure.error,
+                        error: packetFailure.error,
                     }, null, 2)],
                 );
             }
@@ -573,7 +578,7 @@ export default class DigestRender {
                     written.push(file);
                     continue;
                 }
-                const response = DigestRender.parseJson(attempt.response, {}) as {
+                const response = DigestRender.parseJson(m.evidence.response(attempt.model_call_id), {}) as {
                     assistant?: { content?: unknown };
                 };
                 const prefix = `packet${padded}.attempt${attemptPadded}.rejected`;
@@ -595,8 +600,8 @@ export default class DigestRender {
         return written;
     }
 
-    static json(m: DigestModel): string {
-        return JSON.stringify({
+    static *json(m: DigestModel): Generator<string> {
+        const fields = {
             dbPath: m.dbPath,
             storage: m.storage,
             search: m.search,
@@ -620,20 +625,23 @@ export default class DigestRender {
                 result: DigestRender.#terminalResult(l),
                 accounting: DigestRender.#accounting(m.requestsByLoop.get(l.id) ?? []),
             })),
-            turns: m.turns.map((t) => ({
-                id: t.id, loop_id: t.loop_id, sequence: t.sequence,
-                producer: t.producer, kind: t.kind,
-                program: t.program,
-                status: t.status, completed_at: t.completed_at,
-                accounting: DigestRender.#accounting(m.requestsByTurn.get(t.id) ?? []),
-                finish_reason: t.finish_reason, model: t.model,
-                attributions: t.packet?.attributions ?? [],
-                attachments: t.packet === null ? null : t.packet.attachments ?? [],
-                packet_failure: t.packetFailure,
-                // Preserve the opaque provider and engine metadata for aggregate
-                // tooling. {§meta-passthrough}, {§operator-grammar}
-                meta: DigestRender.parseJson(t.meta ?? "null", null),
-            })),
+            turns: projectRows(m.turns, (t) => {
+                const { packet, packetFailure } = m.evidence.packet(t);
+                return {
+                    id: t.id, loop_id: t.loop_id, sequence: t.sequence,
+                    producer: t.producer, kind: t.kind,
+                    program: t.program,
+                    status: t.status, completed_at: t.completed_at,
+                    accounting: DigestRender.#accounting(m.requestsByTurn.get(t.id) ?? []),
+                    finish_reason: t.finish_reason, model: t.model,
+                    attributions: packet?.attributions ?? [],
+                    attachments: packet === null ? null : packet.attachments ?? [],
+                    packet_failure: packetFailure,
+                    // Preserve the opaque provider and engine metadata for aggregate
+                    // tooling. {§meta-passthrough}, {§operator-grammar}
+                    meta: DigestRender.parseJson(t.meta ?? "null", null),
+                };
+            }),
             inference_calls: m.inferenceCalls.map((call) => ({
                 id: call.id,
                 workspace_id: call.workspace_id,
@@ -647,13 +655,13 @@ export default class DigestRender {
                 timestamp: call.timestamp,
                 completed_at: call.completed_at,
             })),
-            model_calls: m.modelCalls.map((call) => ({
+            model_calls: projectRows(m.modelCalls, (call) => ({
                 id: call.id,
                 turn_id: call.turn_id,
                 sequence: call.sequence,
                 kind: call.kind,
                 state: call.state,
-                response: DigestRender.parseJson(call.response),
+                response: DigestRender.parseJson(m.evidence.response(call.id)),
                 failure: DigestRender.parseJson(call.failure),
                 attributions: DigestRender.parseJson(call.attributions, []),
                 accounting: DigestRender.#accounting(m.requestsByInferenceCall.get(call.id) ?? []),
@@ -668,13 +676,13 @@ export default class DigestRender {
                 parse_errors: DigestRender.parseJson(call.parse_errors, []),
                 log_entry_id: call.log_entry_id,
             })),
-            turn_attempts: m.turnAttempts.map((attempt) => ({
+            turn_attempts: projectRows(m.turnAttempts, (attempt) => ({
                 id: attempt.id,
                 turn_id: attempt.turn_id,
                 sequence: attempt.sequence,
                 state: attempt.state,
                 accepted: attempt.accepted === null ? null : attempt.accepted === 1,
-                response: DigestRender.parseJson(attempt.response),
+                response: DigestRender.parseJson(m.evidence.response(attempt.model_call_id)),
                 failure: DigestRender.parseJson(attempt.failure),
                 parse_errors: DigestRender.parseJson(attempt.parse_errors, []),
                 attributions: DigestRender.parseJson(attempt.attributions, []),
@@ -722,6 +730,24 @@ export default class DigestRender {
                 folded_before: DigestRender.parseJson(folded_before, []),
                 folded_after: DigestRender.parseJson(folded_after, []),
             })),
-        }, null, 2);
+        };
+        yield "{";
+        let fieldSeparator = "";
+        for (const [name, value] of Object.entries(fields)) {
+            yield `${fieldSeparator}\n  ${JSON.stringify(name)}: `;
+            if (typeof value === "object" && value !== null && Symbol.iterator in value) {
+                yield "[";
+                let itemSeparator = "";
+                for (const row of value as Iterable<unknown>) {
+                    yield `${itemSeparator}\n${JSON.stringify(row, null, 2).replace(/^/gm, "    ")}`;
+                    itemSeparator = ",";
+                }
+                yield itemSeparator === "" ? "]" : "\n  ]";
+            } else {
+                yield JSON.stringify(value, null, 2);
+            }
+            fieldSeparator = ",";
+        }
+        yield "\n}\n";
     }
 }

@@ -12,7 +12,7 @@ export const missingDigestDirs = (benchmarks: string): string[] => {
     return readdirSync(benchmarks, { withFileTypes: true })
         .filter((entry) => entry.isDirectory())
         .map((entry) => join(benchmarks, entry.name))
-        .filter((dir) => existsSync(join(dir, "plurnk.db")) && !existsSync(join(dir, "digest")))
+        .filter((dir) => existsSync(join(dir, "plurnk.db")) && !existsSync(join(dir, "digest", "digest.json")))
         .toSorted();
 };
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // eslint-disable-next-line no-restricted-imports -- inject a native query failure; all persistence still uses package-owned SqlRite statements.
@@ -8,7 +8,24 @@ import { StatementSync } from "node:sqlite";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
 import { Mock } from "@plurnk/plurnk-providers";
 import Digest from "@plurnk/plurnk-service/digest";
+import DigestRender from "../../src/digest/DigestRender.ts";
 import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+
+test("{§digest-programmatic-surface}: artifact failure closes the reader and cannot publish a complete digest", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-digest-interrupted-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const dbPath = join(root, "plurnk.db");
+    const db = await openMigrated(dbPath);
+    await db.close();
+    const close = t.mock.method(SqlRiteSync.prototype, "close");
+    const failure = new Error("packet artifact write failed");
+    t.mock.method(DigestRender, "packetFiles", () => { throw failure; });
+    const digestDir = join(root, "digest");
+    assert.throws(() => Digest.run({ dbPath, digestDir }), (cause) => cause === failure);
+    assert.equal(close.mock.callCount(), 1);
+    await assert.rejects(access(join(digestDir, "digest.json")), { code: "ENOENT" });
+    await access(join(digestDir, "digest.json.partial"));
+});
 
 for (const surface of ["run", "requiem"] as const) {
     for (const failed of [false, true]) {

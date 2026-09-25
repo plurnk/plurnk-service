@@ -15,24 +15,28 @@ SELECT * FROM workers ORDER BY id;
 SELECT * FROM loops ORDER BY worker_id, sequence;
 
 -- PREP: digest_turns
--- {§packet-items}: turn_packets assembles each packet's sections back into its bag; the bag as
--- stored rides beside it, the exact text a malformed-packet artifact preserves.
-SELECT tp.id, tp.loop_id, tp.sequence, tp.producer, tp.kind, tp.status, tp.completed_at, tp.packet,
-       t.packet AS packet_bag,
-       tp.finish_reason, tp.model, tp.meta, tp.timestamp,
-       (SELECT content FROM turn_sources WHERE turn_id = tp.id AND kind = 'ops') AS program
-FROM turn_packets tp JOIN turns t ON t.id = tp.id ORDER BY tp.loop_id, tp.sequence;
+SELECT t.id, t.loop_id, t.sequence, t.producer, t.kind, t.status, t.completed_at,
+       t.packet IS NOT NULL AS has_packet, t.finish_reason, t.model, t.meta, t.timestamp,
+       (SELECT content FROM turn_sources WHERE turn_id = t.id AND kind = 'ops') AS program
+FROM turns t ORDER BY t.loop_id, t.sequence;
+
+-- PREP: digest_turn_packet
+-- {§packet-items}: only the requested packet is assembled; retain its exact bag on validation failure.
+SELECT tp.packet, t.packet AS packet_bag
+FROM turn_packets tp JOIN turns t ON t.id = tp.id WHERE tp.id = $turn_id;
+
+-- PREP: digest_model_response
+SELECT response FROM model_call_responses WHERE id = $model_call_id;
 
 -- PREP: digest_turn_attempts
 SELECT a.id, mc.id AS model_call_id, ic.turn_id, ic.sequence, ic.kind,
-       ic.state, a.accepted, r.response, mc.failure,
+       ic.state, a.accepted, mc.failure,
        a.parse_errors, ic.attributions,
        mc.finish_reason, COALESCE(mc.response_model, ic.request_model) AS model,
        ic.request_model, mc.response_model, ic.timestamp, ic.completed_at
 FROM turn_attempts a
 JOIN model_calls mc ON mc.id = a.model_call_id
 JOIN inference_calls ic ON ic.id = mc.id
-LEFT JOIN model_call_responses r ON r.id = mc.id
 ORDER BY ic.turn_id, ic.sequence;
 
 -- PREP: digest_inference_calls
@@ -43,14 +47,13 @@ ORDER BY workspace_id, timestamp, id;
 
 -- PREP: digest_model_calls
 SELECT mc.id, ic.workspace_id, ic.turn_id, ic.sequence, ic.kind, ic.state,
-       r.response, mc.failure, mc.capacity, ic.attributions,
+       mc.failure, mc.capacity, ic.attributions,
        mc.finish_reason, COALESCE(mc.response_model, ic.request_model) AS model,
        ic.request_model, mc.response_model, ic.timestamp, ic.completed_at,
        a.id AS turn_attempt_id, a.accepted, a.parse_errors,
        le.id AS log_entry_id
 FROM model_calls mc
 JOIN inference_calls ic ON ic.id = mc.id
-LEFT JOIN model_call_responses r ON r.id = mc.id
 LEFT JOIN turn_attempts a ON a.model_call_id = mc.id
 LEFT JOIN log_entries le ON le.model_call_id = mc.id
 ORDER BY ic.workspace_id, ic.timestamp, ic.id;

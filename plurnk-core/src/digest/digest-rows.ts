@@ -3,6 +3,7 @@
 import type { SqlRiteSyncPreparedStatements } from "@possumtech/sqlrite";
 import type { ChatMessage, ProviderAccounting, ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import type { DurablePacket } from "../core/StoredPacket.ts";
+import type DigestEvidence from "./DigestEvidence.ts";
 
 // sqlrite types dynamic PREP accessors as `any` ([method: string]); bind each
 // block accessor to its shipped generic statement shape at the use site.
@@ -35,17 +36,16 @@ export interface TurnRow {
     id: number; loop_id: number; sequence: number;
     producer: "model" | "client" | "_plurnk" | "plugin";
     kind: "inference" | "initialization" | "operation" | "maintenance";
-    status: number; timestamp: string; completed_at: string | null; packet: DurablePacket | null;
-    packetFailure: PacketFailure | null;
+    status: number; timestamp: string; completed_at: string | null; has_packet: 0 | 1;
     finish_reason: string | null; model: string | null;
     meta: string | null;  // {§meta-passthrough}, {§operator-grammar}
     program: string | null;
 }
-export type StoredTurnRow = Omit<TurnRow, "packet" | "packetFailure"> & { packet: string | null; packet_bag: string | null };
+export interface PacketEvidence { packet: DurablePacket | null; packetFailure: PacketFailure | null }
 export interface TurnAttemptRow {
     id: number; model_call_id: number; turn_id: number; sequence: number; kind: "emission";
     state: "pending" | "response" | "error"; accepted: number | null;
-    response: string | null; failure: string | null; parse_errors: string; attributions: string;
+    failure: string | null; parse_errors: string; attributions: string;
     finish_reason: string | null; model: string; timestamp: string; completed_at: string | null;
     request_model: string; response_model: string | null;
 }
@@ -68,7 +68,6 @@ export interface ModelCallRow {
     sequence: number;
     kind: "emission" | "bare";
     state: "pending" | "response" | "error";
-    response: string | null;
     failure: string | null;
     capacity: string | null;
     attributions: string;
@@ -161,6 +160,7 @@ export interface DerivationStateRow {
 export interface StorageRow { bytes: number; free_bytes: number; auto_vacuum: number }
 export interface StorageTableRow { name: string; bytes: number }
 export interface DigestModel {
+    evidence: DigestEvidence;
     dbPath: string;
     storage: StorageRow & { tables: StorageTableRow[] };
     digestDir: string;

@@ -32,13 +32,14 @@
 // SQL lives in the co-located digest.sql; opened the sqlrite way (SqlRiteSync,
 // the sync CLI/script facade). Each PREP block is read through its own accessor.
 
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { observedSync } from "../observe/spans.ts";
-import StoredPacket, { type DurablePacket } from "../core/StoredPacket.ts";
+import type SqlRiteSync from "@possumtech/sqlrite/sync";
 import HostPaths from "../core/HostPaths.ts";
 import DigestRender from "./DigestRender.ts";
 import DigestRequiem from "./DigestRequiem.ts";
+import DigestEvidence from "./DigestEvidence.ts";
 import { digestPaths } from "./digest-paths.ts";
 import { readDigestDb } from "./digest-db.ts";
 import type {
@@ -46,10 +47,7 @@ import type {
     WorkspaceRow,
     WorkerRow,
     LoopRow,
-    ErrorEvidence,
-    PacketFailure,
     TurnRow,
-    StoredTurnRow,
     TurnAttemptRow,
     InferenceCallRow,
     ModelCallRow,
@@ -69,40 +67,6 @@ import type {
     StorageTableRow,
 } from "./digest-rows.ts";
 
-const describeNonError = (value: unknown): string => {
-    if (typeof value === "string") return value;
-    try {
-        return JSON.stringify(value) ?? String(value);
-    } catch {
-        return String(value);
-    }
-};
-const errorEvidence = (value: unknown, seen = new Set<unknown>()): ErrorEvidence => {
-    if (seen.has(value)) return { name: "Error", message: "Circular error cause" };
-    if (typeof value === "object" && value !== null) seen.add(value);
-    if (!(value instanceof Error)) {
-        return {
-            name: "NonError",
-            message: describeNonError(value),
-        };
-    }
-    const evidence: ErrorEvidence = { name: value.name, message: value.message };
-    if (value.cause !== undefined) evidence.cause = errorEvidence(value.cause, seen);
-    return evidence;
-};
-// {§packet-items} — `assembled` is the packet with its sections read back through turn_packets;
-// `bag` is the text turns.packet stores, preserved exactly when the packet does not parse.
-const readStoredPacket = (assembled: string | null, bag: string | null, subject: string): {
-    packet: DurablePacket | null;
-    packetFailure: PacketFailure | null;
-} => {
-    if (assembled === null) return { packet: null, packetFailure: null };
-    try {
-        return { packet: StoredPacket.parse(assembled, subject), packetFailure: null };
-    } catch (cause) {
-        return { packet: null, packetFailure: { raw: bag ?? assembled, error: errorEvidence(cause) } };
-    }
-};
 export default class Digest {
     // Default DB path mirrors the host path contract and an explicit service override.
     static defaultDbPath(): string {
@@ -128,15 +92,18 @@ export default class Digest {
         // {§digest-programmatic-surface}: digest.sql is packaged beside this module
         // (src/digest → dist/digest via copy-sql), including in an installed package.
         const { dbPath, digestDir } = digestPaths(opts);
+        readDigestDb(dbPath, (db) => Digest.#write(db, dbPath, digestDir, opts));
+    }
 
+    static #write(db: SqlRiteSync, dbPath: string, digestDir: string, opts: DigestOptions): void {
         // Opens without readOnly so WAL-mode DBs (the daemon's normal operating
         // mode) inspect cleanly; this tool only reads. The DB is quiescent at
         // digest time, so each PREP reads on its own — no cross-query snapshot.
-        const rows = readDigestDb(dbPath, (db) => ({
+        const rows = {
             workspaces: (db.digest_workspaces as SyncPrep<WorkspaceRow>).all(),
             workers: (db.digest_workers as SyncPrep<WorkerRow>).all(),
             loops: (db.digest_loops as SyncPrep<LoopRow>).all(),
-            turns: (db.digest_turns as SyncPrep<StoredTurnRow>).all(),
+            turns: (db.digest_turns as SyncPrep<TurnRow>).all(),
             inferenceCalls: (db.digest_inference_calls as SyncPrep<InferenceCallRow>).all(),
             modelCalls: (db.digest_model_calls as SyncPrep<ModelCallRow>).all(),
             turnAttempts: (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all(),
@@ -152,19 +119,14 @@ export default class Digest {
             dispositions: (db.digest_channel_dispositions as SyncPrep<DispositionRow>).all(),
             storage: (db.digest_storage as SyncPrep<StorageRow>).get(),
             storageTables: (db.digest_storage_tables as SyncPrep<StorageTableRow>).all(),
-        }));
+        };
         let { workspaces, workers, inferenceCalls, modelCalls, turnAttempts, providerRequests,
             logEntries, curationEffects, workerRollupRows, opMixRows } = rows;
         const { environmentRows, searchState, derivationState, dispositionCounts, dispositions, storageTables } = rows;
         let loops = rows.loops.map((loop): LoopRow => ({ ...loop, claimed_at: loop.claimed_at ?? null }));
         if (rows.storage === undefined) throw new Error("digest: the database reported no storage facts");
         const storage = { ...rows.storage, tables: storageTables };
-        let turns = rows.turns
-            .map((turn): TurnRow => {
-                const { packet_bag, ...stored } = turn;
-                const packetEvidence = readStoredPacket(stored.packet, packet_bag, `digest turn ${turn.id}`);
-                return { ...stored, ...packetEvidence };
-            });
+        let turns = rows.turns;
         if (searchState === undefined || derivationState === undefined) throw new Error("digest: search aggregate returned no row");
         const dispositionCount = (value: string): number => dispositionCounts.find(({ disposition }) => disposition === value)?.n ?? 0;
         const search = {
@@ -252,6 +214,7 @@ export default class Digest {
         for (const o of opMixRows) { const arr = opMixByWorker.get(o.worker_id) ?? []; arr.push(o); opMixByWorker.set(o.worker_id, arr); }
 
         const m: DigestModel = {
+            evidence: new DigestEvidence(db),
             dbPath, storage, digestDir, workspaces, workers, loops, turns, inferenceCalls, modelCalls, turnAttempts, providerRequests, logEntries, curationEffects,
             workersByWorkspace, loopsByWorker, turnsByLoop, attemptsByTurn,
             requestsByInferenceCall, requestsByAttempt, requestsByTurn, requestsByLoop, requestsByWorker, requestsByWorkspace,
@@ -260,10 +223,17 @@ export default class Digest {
         };
 
         writeFileSync(join(digestDir, "digest.md"), DigestRender.waterfall(m));
-        writeFileSync(join(digestDir, "digest.json"), DigestRender.json(m));
+        const pending = join(digestDir, "digest.json.partial");
+        const descriptor = openSync(pending, "w");
+        try {
+            for (const chunk of DigestRender.json(m)) writeFileSync(descriptor, chunk);
+        } finally {
+            closeSync(descriptor);
+        }
         writeFileSync(join(digestDir, "reasoning.md"), DigestRender.reasoning(m));
         const packetFiles = DigestRender.packetFiles(m);
         const packetIds = [...new Set(packetFiles.map((f) => f.slice(0, f.indexOf("."))))];
+        renameSync(pending, join(digestDir, "digest.json"));
 
         console.log(`digest: wrote ${digestDir}/{digest.md,digest.json,reasoning.md} + ${packetFiles.length} packet artifact files (${packetIds.join(", ") || "none"})`);
         console.log(`  source: ${dbPath}`);
