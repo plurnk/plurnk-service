@@ -132,6 +132,20 @@ test("File.read: nested path inside workspace works", async () => {
     });
 });
 
+test("{§mimetype-parser-coordinates}: READ preserves an indented Python reference specimen", async () => {
+    await withWorkspaceRoot(async (root, ctx) => {
+        const content = "                    kwargs[key] = converter.to_python(value)";
+        await writeFile(join(root, "reference.py"), content);
+        await EntryCrud.writeEntry({ authority: "", pathname: "reference.py" }, {
+            channels: { body: { content, mimetype: "text/x-python" } },
+        }, ctx, "file");
+        const result = await readFileScheme(parseRead("````READ (reference.py) <1,-1>\n````"), ctx);
+        assert.equal(result.status, 200);
+        assert.equal(result.content, content);
+        assert.equal(result.mimetype, "text/markdown");
+    });
+});
+
 test("File.read: missing file → 404", async () => {
     await withWorkspaceRoot(async (_root, ctx) => {
         const result = await readFileScheme(readStmt(urlPath("file", "/missing.txt")), ctx);

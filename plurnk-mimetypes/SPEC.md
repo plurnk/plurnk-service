@@ -591,6 +591,9 @@ flowchart LR
 | `web-tree-sitter` string input           | JavaScript `startIndex` and exclusive `endIndex` offsets. | Map the UTF-16 offsets against the exact source; never publish native point columns.         |
 | Point-only synthetic Tree-sitter capture | Zero-based row and JavaScript column offsets.             | Resolve against the exact source; retain absolute indices whenever source nodes expose them. |
 
+Reference collectors receive the original parser input. A tree root's text may
+exclude leading whitespace and must not replace that source when mapping spans.
+
 Framework registry mappings return `TreeSitterSymbolProjection[]`: semantic
 fields plus `TreeSitterSpan`, never public coordinate arithmetic. The registry
 handler materializes those projections before they reach any channel. The

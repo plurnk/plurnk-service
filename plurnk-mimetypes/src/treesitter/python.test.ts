@@ -15,6 +15,23 @@ function makeHandler(): TreeSitterLanguageHandler {
 }
 
 describe("text/x-python via tree-sitter registry", () => {
+    for (const prefix of ["                    ", "\n\n    ", "# café 🌍\r\n    "]) {
+        it(`{§mimetype-parser-coordinates} preserves the source origin of indented references (${JSON.stringify(prefix)})`, async () => {
+            const h = makeHandler();
+            try {
+                const source = `${prefix}kwargs[key] = converter.to_python(value)`;
+                const refs = await h.references(source);
+                const call = refs.find((ref) => ref.name === "to_python");
+                const lines = source.split(/\r\n|\n/);
+                const column = [...lines.at(-1)!.slice(0, lines.at(-1)!.indexOf("to_python"))].length + 1;
+                assert.deepEqual(call, {
+                    name: "to_python", kind: "call", line: lines.length, column,
+                    endLine: lines.length, endColumn: column + "to_python".length, container: "kwargs",
+                });
+            } finally { await h.dispose(); }
+        });
+    }
+
     it("extracts top-level functions with params", async () => {
         const h = makeHandler();
         const syms = await h.extractRaw("def add(a, b):\n    return a + b\n");

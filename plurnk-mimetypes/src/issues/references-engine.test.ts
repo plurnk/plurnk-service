@@ -38,6 +38,7 @@ describe("{§mimetype-references} — C1: container is the innermost def's FULL 
             fakeQuery([{ name: "ref.call", node: fakeNode("tokenize", 5, 9) }]),
             fakeTree,
             SYMBOLS,
+            fakeTree.rootNode.text,
         );
         assert.equal(refs[0].container, "Parser.parse", "full qualified path, not just Parser");
     });
@@ -47,6 +48,7 @@ describe("{§mimetype-references} — C1: container is the innermost def's FULL 
             fakeQuery([{ name: "ref.type", node: fakeNode("Shape", 15, 5) }]),
             fakeTree,
             SYMBOLS,
+            fakeTree.rootNode.text,
         );
         assert.equal(refs[0].container, "Parser");
     });
@@ -56,6 +58,7 @@ describe("{§mimetype-references} — C1: container is the innermost def's FULL 
             fakeQuery([{ name: "ref.call", node: fakeNode("main", 30, 1) }]),
             fakeTree,
             SYMBOLS,
+            fakeTree.rootNode.text,
         );
         assert.equal("container" in refs[0], false);
     });
@@ -71,6 +74,7 @@ describe("{§mimetype-references} — C2: engine hygiene", () => {
             ]),
             fakeTree,
             SYMBOLS,
+            fakeTree.rootNode.text,
         );
         assert.equal(refs.length, 1);
         assert.equal(refs[0].name, "z");
@@ -85,6 +89,7 @@ describe("{§mimetype-references} — C2: engine hygiene", () => {
             ]),
             fakeTree,
             SYMBOLS,
+            fakeTree.rootNode.text,
         );
         assert.deepEqual(refs.map((r) => [r.name, r.line]), [["a", 4], ["b", 9]]);
     });
@@ -94,6 +99,7 @@ describe("{§mimetype-references} — C2: engine hygiene", () => {
             fakeQuery([{ name: "ref.import", node: fakeNode("Helper", 1, 10) }]),
             fakeTree,
             SYMBOLS,
+            fakeTree.rootNode.text,
         );
         assert.deepEqual(refs[0], {
             name: "Helper",
@@ -122,6 +128,7 @@ describe("{§mimetype-references} — C2: engine hygiene", () => {
                 fakeQuery([{ name: "ref.use", node }]),
                 tree,
                 [],
+                tree.rootNode.text,
             ),
             ParserCoordinateError,
         );

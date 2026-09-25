@@ -79,7 +79,7 @@ export default abstract class TreeSitterExtractor extends BaseHandler {
         const tree = parser.parse(content);
         if (!tree) return [];
         try {
-            return collectReferences(query, tree, extractDefs(tree.rootNode, content));
+            return collectReferences(query, tree, extractDefs(tree.rootNode, content), content);
         } finally {
             tree.delete?.();
         }

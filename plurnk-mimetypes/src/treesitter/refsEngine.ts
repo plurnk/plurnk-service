@@ -47,8 +47,9 @@ export function collectReferences(
     query: RefsQuery,
     tree: TreeSitterTree,
     symbols: readonly MimeSymbol[],
+    source: string,
 ): MimeRef[] {
-    const coordinates = new ParserCoordinates(tree.rootNode.text);
+    const coordinates = new ParserCoordinates(source);
     const defs = containerIndex(symbols);
     const seen = new Set<string>();
     const out: MimeRef[] = [];
