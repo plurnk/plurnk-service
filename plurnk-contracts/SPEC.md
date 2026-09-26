@@ -390,14 +390,24 @@ nesting and closing. A block opened by a bare fence must hold a line, except a q
 top level: two stray fences in a row there are an empty quotation, shown and harmless, rather
 than two repairs that a reading could avoid only by hiding an operation.
 
-§pairing-objective **Objective.** Readings compare lexicographically:
+§pairing-objective **Objective.** A complete reading, one that needs no repair, wins over every
+repaired reading: a complete nested interpretation takes precedence. Each class has its own order.
 
-| Rank | Counted | Why |
-|---|---|---|
-| 1 | Repairs: a supplied closer, a fence read as a stray, a narrower closer accepted, a body under an operation that takes none (FIND, READ, COPY, MOVE, targeted KILL), a body not well-formed in the media type its runtime declares ({§executor-invocation}) | The least-errors distance |
-| 2 | Operation headings that will not run, read as text or held as a literal example; labeled fences in a body read as text | Every operation the author wrote should run, and every code block the author declared should stand, where a reading allows it |
-| 3 | Supplied closers | Among equally few repairs, a block the author opened should end at a fence the author wrote |
-| 4 | Other fences read as text | The least departure from the fences as written |
+| Counted | Complete readings | Repaired readings | Why |
+|---|---|---|---|
+| Hidden operations: a heading that will not run, written at its block's width or wider | 1, together with the next row | 1 | Every operation the author wrote should run |
+| Repairs: a supplied closer, a fence read as a stray, a narrower closer accepted, a body under an operation that takes none (FIND, READ, COPY, MOVE, targeted KILL), a body not well-formed in the media type its runtime declares ({§executor-invocation}) | none by definition | 2 | The least-errors distance |
+| Literal by declaration: a heading narrower than its block, or no wider than the labeled block or example holding it, or inside a quotation or a KILL; a labeled fence in a body read as text | 1, together with the row above | 3 | Every code block the author declared should stand |
+| Supplied closers | 2 | 4 | A block the author opened should end at a fence the author wrote |
+| Other fences read as text | 3 | 5 | The least departure from the fences as written |
+
+Complete readings compare exactly as a single least-errors order would. Once every reading of an
+emission needs a repair, its shape is already broken, and saving a repair is not worth an operation
+the author wrote: across the corpus, readings that traded operations for repairs held a WORK in a
+BARE behind two stray fences, wrote 11,485 characters of operation text into a file as an EDIT
+body, and ended a turn's KILL inside a WAIT. A summary keeps, for every place a block could end, the
+best complete reading under each order and the best repaired reading, so the search stays exact:
+a repaired total may take either class for any of its parts.
 
 Equal cost goes to the earlier alternative: nesting before closing in an operation body,
 closing before nesting in a quotation, and a supplied closer before a literal example at a
@@ -415,9 +425,10 @@ and never runs a command the report only shows.
 
 | Witness | Result |
 |---|---|
-| Every input up to six lines over eleven line shapes, against a forward exhaustive search over explicit stacks under the same moves | 1,948,716 inputs, 0 differences in cost, block ends, strays, quotations or repairs |
+| Every input up to six lines over eleven line shapes, against a forward exhaustive search over explicit stacks under the same moves and class orders | 1,948,716 inputs, 0 differences in chosen cost; the same harness reports 37 differences at four lines when a summary keeps one entry per end regardless of class |
 | The generated matrix: six operations × widths 3–5 × twelve body shapes × four tails | 864 of 864 (`fence-matrix.test.ts`) |
-| 10,486 recorded emissions | All parse; 0.85 ms mean, 235 ms at most (3,501 fence lines). The work is polynomial in fence lines, cubic at worst, so no step bound is needed |
+| 10,486 recorded emissions | All parse; 0.9 ms mean, 267 ms at most (3,501 fence lines). The work is polynomial in fence lines, cubic at worst, so no step bound is needed |
+| The same, against the single-order objective | 10,466 identical; 19 read more operations, where headings follow unclosed blocks or a closer is glued to the next opener; 1 echoed transcript reads a different operation; none reads fewer |
 | The same, against origin/main 461fa136f | 10,257 identical. Of 229 changed: 112 bodies kept whole, 51 with only outside text or diagnostics moved, 30 with a closer glued to the next opener (neither reading splits the run), 16 quoted under {§quotation} with its warning, 19 read with more, fewer or other operations on degenerate fences, 1 degenerate EDIT whose body was two stray fences now empty |
 
 §indented-fences **CommonMark's indentation, everywhere.** A fence line may follow at most three

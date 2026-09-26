@@ -67,7 +67,8 @@ export default class FencePairing {
         const solved = new Search(lines, input.split("\n"), options.wellFormed).solve();
         if (solved === null) throw new Error("fence pairing found no reading");
         const { result } = solved;
-        const [, hidden, , demotions] = solved.cost;
+        const [run, , declared, , demotions] = solved.cost;
+        const hidden = run + declared;
         const ends = new Map<number, BlockEnd>();
         for (const [line, end] of result.ends) {
             ends.set(lineStarts[line]!, end.kind === "end" ? end
@@ -172,19 +173,31 @@ export default class FencePairing {
 type End = { kind: "closer"; line: number } | { kind: "before"; line: number } | { kind: "end" };
 type Result = { ends: Map<number, End>; surplus: number[]; quotations: number[]; splits: number[]; repairs: number[] };
 
-// The objective, compared lexicographically ({§pairing-objective}): repairs (supplied closers, surplus fences,
-// undersized closers accepted); then operation headings read as text (operations the author wrote that will
-// not run); then supplied closers — among as few repairs, every block the author opened should end at a fence
-// the author wrote; then other fence lines read as text. Equal cost goes to the reading whose first differing
-// choice comes earlier in the preference order, which is how a repair lands at the earliest viable position.
-type Cost = readonly [repairs: number, hidden: number, supplied: number, demoted: number];
-const ZERO: Cost = [0, 0, 0, 0];
-const add = (a: Cost, b: Cost): Cost => [a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3]];
-const less = (a: Cost, b: Cost): boolean => a[0] !== b[0] ? a[0] < b[0] : a[1] !== b[1] ? a[1] < b[1] : a[2] !== b[2] ? a[2] < b[2] : a[3] < b[3];
-const REPAIR: Cost = [1, 0, 0, 0];
-const SUPPLY: Cost = [1, 0, 1, 0];
-const HIDE: Cost = [0, 1, 0, 0];
-const DEMOTE: Cost = [0, 0, 0, 1];
+// The objective ({§pairing-objective}): a complete reading, one with no repair, wins over any repaired one —
+// a complete nested interpretation takes precedence. Within a class readings compare lexicographically: operation
+// headings written at their block's width that will not run; repairs (supplied closers, surplus fences, undersized
+// closers accepted); headings literal by declaration (narrower than their block, in a labeled block, a quotation
+// or a KILL); supplied closers; other fence lines read as text. Equal cost goes to the reading whose first
+// differing choice comes earlier in the preference order, which is how a repair lands at the earliest viable
+// position.
+type Cost = readonly [hidden: number, repairs: number, declared: number, supplied: number, demoted: number];
+const ZERO: Cost = [0, 0, 0, 0, 0];
+const add = (a: Cost, b: Cost): Cost => [a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3], a[4] + b[4]];
+// Repaired readings: [hidden, repairs, declared, supplied, demoted], in that order.
+const less = (a: Cost, b: Cost): boolean => {
+    for (let k = 0; k < a.length; k++) if (a[k] !== b[k]) return a[k]! < b[k]!;
+    return false;
+};
+// Complete readings: every operation or code block not read as written counts alike, then supplied closers,
+// then demotions.
+const lessComplete = (a: Cost, b: Cost): boolean => a[0] + a[2] !== b[0] + b[2] ? a[0] + a[2] < b[0] + b[2]
+    : a[3] !== b[3] ? a[3] < b[3] : a[4] < b[4];
+const HIDE: Cost = [1, 0, 0, 0, 0];
+const REPAIR: Cost = [0, 1, 0, 0, 0];
+const SUPPLY: Cost = [0, 1, 0, 1, 0];
+const DECLARED: Cost = [0, 0, 1, 0, 0];
+const DEMOTE: Cost = [0, 0, 0, 0, 1];
+const repaired = (cost: Cost): boolean => cost[1] > 0;
 
 // An open block as its contents see it. `top`: it is the outermost block; `quoted`: it is or lies inside a
 // quotation. Nothing else about the enclosing stack changes how its contents read.
@@ -258,9 +271,12 @@ class Search {
     solve(): { result: Result; cost: Cost } | null {
         const root = this.#summary(0, null, FRESH);
         if (root.length === 0) return null;
+        const complete = root.filter((entry) => !repaired(entry.cost));
+        const chosen = complete.length === 0 ? root.reduce((a, b) => less(b.cost, a.cost) ? b : a)
+            : complete.reduce((a, b) => lessComplete(b.cost, a.cost) ? b : a);
         const result: Result = { ends: new Map(), surplus: [], quotations: [], splits: [], repairs: [] };
-        this.#replay(root[0]!, null, -1, result);
-        return { result, cost: root[0]!.cost };
+        this.#replay(chosen, null, -1, result);
+        return { result, cost: chosen.cost };
     }
 
     // Records what one entry's reading does, following it to the end of its block.
@@ -340,10 +356,18 @@ class Search {
     #compose(frame: Frame): Summary {
         const { context } = frame;
         const known = (position: number, at: Context | null, flags: Flags): Summary => this.#memo.get(this.#key(position, at, flags))!;
-        const best = new Map<number, Entry>();
+        // For every place the block could end ({§pairing-objective}): the best complete reading by the complete
+        // order, which composes only from complete parts; and the best complete and best repaired readings by the
+        // repaired order, from which any repaired reading composes.
+        const best = new Map<string, Entry>();
+        const keep = (slot: string, entry: Entry, better: (a: Cost, b: Cost) => boolean): void => {
+            const held = best.get(slot);
+            if (held === undefined || better(entry.cost, held.cost)) best.set(slot, entry);
+        };
         const offer = (entry: Entry): void => {
-            const held = best.get(entry.end);
-            if (held === undefined || less(entry.cost, held.cost)) best.set(entry.end, entry);
+            if (repaired(entry.cost)) { keep(`${entry.end}|r`, entry, less); return; }
+            keep(`${entry.end}|c`, entry, lessComplete);
+            keep(`${entry.end}|k`, entry, less);
         };
         frame.moves!.forEach((move, m) => {
             if (move.kind === "end") { offer({ end: move.end, cost: move.cost, key: [m], move, via: [] }); return; }
@@ -356,7 +380,7 @@ class Search {
                 known(child.end, context, move.flags).forEach((rest, b) =>
                     offer({ end: rest.end, cost: add(add(move.cost, child.cost), rest.cost), key: [m, a, b], move, via: [a, b] })));
         });
-        return [...best.values()].toSorted((x, y) => {
+        return [...new Set(best.values())].toSorted((x, y) => {
             for (let k = 0; k < Math.min(x.key.length, y.key.length); k++) if (x.key[k] !== y.key[k]) return x.key[k]! - y.key[k]!;
             return x.key.length - y.key.length;
         });
@@ -455,31 +479,35 @@ class Search {
         // is a literal example, or text, and never ends it.
         if (context.terminal) {
             yield example(ZERO, { ...flags, empty: false, written: true });
-            yield { kind: "stay", cost: HIDE, effects: [], next, flags: { ...flags, empty: false, written: true } };
+            yield { kind: "stay", cost: DECLARED, effects: [], next, flags: { ...flags, empty: false, written: true } };
             return;
         }
         // {§quotation}: inside a quotation an operation is shown, never run — text, or a complete literal
         // example ({§balanced-fences}). Text first on a tie (CommonMark); the objective decides otherwise.
         if (context.quoted) {
-            yield { kind: "stay", cost: HIDE, effects: [], next, flags: { ...flags, empty: false, written: true } };
+            yield { kind: "stay", cost: DECLARED, effects: [], next, flags: { ...flags, empty: false, written: true } };
             yield example(ZERO, flags);
             return;
         }
         // {§fence-heading-in-body}: in an operation's body a heading is a literal example only while the blocks
         // holding it end at real closers; otherwise it starts the next statement and the interrupted block takes a
         // supplied closer — a repair, placed as early as it applies. A naked block expects no closer: free.
-        const interrupt = (cost: Cost): Move => ({ kind: "end", cost, effects: cost[0] > 0 ? [{ kind: "repair", line: i }] : [], end: at(i, true), record: { kind: "before", line: i } });
+        const interrupt = (cost: Cost): Move => ({ kind: "end", cost, effects: cost[1] > 0 ? [{ kind: "repair", line: i }] : [], end: at(i, true), record: { kind: "before", line: i } });
         // {§naked-operation}: a naked body runs to the next heading; it expects no closer, so ending there is free.
         if (context.kind === "naked") {
             if (!flags.holds) yield interrupt(ZERO);
-            yield example(HIDE, holding);
+            yield example(DECLARED, holding);
             return;
         }
         // A literal example, or a heading narrower than its enclosing block read as content there (CommonMark),
         // names an operation that will not run: either costs a hidden operation.
         if (!flags.holds) yield interrupt(SUPPLY);
-        yield example(HIDE, holding);
-        if (context.character === "`" && width < context.width) yield { kind: "stay", cost: HIDE, effects: [], next, flags: holding };
+        // A heading narrower than its block, or no wider than the labeled block or example holding it, is literal by
+        // declaration; a wider one cannot be part of that block's content.
+        const narrower = context.character === "`" && width < context.width;
+        const declared = narrower || context.kind === "nested" && !context.bareOpened && width <= context.width;
+        yield example(declared ? DECLARED : HIDE, holding);
+        if (narrower) yield { kind: "stay", cost: DECLARED, effects: [], next, flags: holding };
     }
 
     *#bare(i: number, line: Extract<Line, { kind: "bare" }>, context: Context | null, flags: Flags): Generator<Move> {
@@ -535,7 +563,7 @@ class Search {
         const push: Move = { kind: "child", cost: ZERO, effects: [], child: { kind: "nested", character: line.character, width: line.width, bareOpened: false, name: "", top: false, quoted: context.quoted, terminal: context.terminal }, line: i, flags: { ...flags, empty: false, written: true } };
         // Outside a quotation a labeled fence is a code block the author declared; reading it as text ranks with a
         // hidden operation, so no reading ends a body early by discarding one.
-        const text: Move = { kind: "stay", cost: context.quoted ? DEMOTE : HIDE, effects: [], next, flags: { ...flags, empty: false, written: true } };
+        const text: Move = { kind: "stay", cost: context.quoted ? DEMOTE : DECLARED, effects: [], next, flags: { ...flags, empty: false, written: true } };
         // A labeled fence opens a literal nested block, or is text — a demotion (inside a quotation, text first
         // on a tie, as CommonMark reads it).
         if (context.quoted) { yield text; yield push; return; }

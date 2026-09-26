@@ -134,3 +134,18 @@ test("{§pairing-algorithm}: two stray fences after closed operations are an emp
     assert.deepEqual(statements(result).map(writtenOp), ["BARE", "WORK"]);
     assert.deepEqual(statements(result).map(bodyText), ["Quote the exact hint string.", "Answer from memory."]);
 });
+
+test("{§pairing-objective}: once every reading needs a repair, operations written without closers all run", () => {
+    const emission = [
+        "```NOTE", "Fix the import, then verify.",
+        "```EDIT (a.py) <1>", "from b import c",
+        "```sh", "python -m pytest -q",
+        "```WAIT",
+        "```KILL", "Fixed.", "", "```python", "from b import c", "```", "",
+        "Verified.",
+        "```",
+    ].join("\n");
+    const result = PlurnkParser.parse(emission, { executors: ["sh"] });
+    assert.deepEqual(statements(result).map(writtenOp), ["NOTE", "EDIT", "sh", "WAIT", "KILL"]);
+    assert.equal(bodyText(statements(result).at(-1)!), "Fixed.\n\n```python\nfrom b import c\n```\n\nVerified.");
+});
