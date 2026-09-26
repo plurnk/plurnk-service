@@ -45,7 +45,7 @@ test("{§provider-fact-authority} package defaults never ship ordered credential
 
 test("{§openrouter-app-attribution} the shipped floor identifies the public Plurnk application", () => {
     const values = new Map(declarations.map(({ key, value }) => [key, value]));
-    assert.equal(values.get("OPENROUTER_HTTP_REFERER"), "https://github.com/plurnk/plurnk-service");
-    assert.equal(values.get("OPENROUTER_APP_TITLE"), "Plurnk");
-    assert.equal(values.has("OPENROUTER_X_TITLE"), false);
+    assert.equal(values.get("PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_URL"), "https://github.com/plurnk/plurnk-service");
+    assert.equal(values.get("PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_NAME"), "Plurnk");
+    assert.equal([...values.keys()].some((key) => key.startsWith("OPENROUTER_")), false);
 });

@@ -670,14 +670,14 @@ Generic AI SDK calls accept only settings represented by the SDK's portable
 surface. Compatible endpoints may carry additional sampling keys after reserved
 keys are removed.
 
-§openrouter-app-attribution **The cataloged OpenRouter route identifies the
-calling application through OpenRouter's current app-attribution headers.**
-`HTTP-Referer` is the absolute HTTP(S) application URL and
-`X-OpenRouter-Title` is its optional display title. The shipped floor identifies
-the public Plurnk repository and may be replaced by operator configuration; an
-explicitly empty `OPENROUTER_HTTP_REFERER` suppresses both headers. Attribution
-applies only to the cataloged `openrouter` route and never leaks to another
-provider merely because it uses the same SDK package.
+§openrouter-app-attribution **A route on the OpenRouter SDK identifies the calling
+application only as its provider declares.** `APP_URL`, an absolute HTTP(S) URL, and
+the optional `APP_NAME` are provider declarations (`PLURNK_PROVIDERS_PROVIDER_<NAME>_`,
+overridable per route or alias); the SDK sends them as `HTTP-Referer` and
+`X-OpenRouter-Title`. The shipped floor declares them for `openrouter` only, so
+another provider on the same SDK package sends none; an empty `APP_URL` suppresses
+both. The retired `OPENROUTER_HTTP_REFERER`, `OPENROUTER_APP_TITLE` and
+`OPENROUTER_X_TITLE` fail construction.
 
 ## §9 Failures, retries, and cancellation
 

@@ -796,8 +796,8 @@ test("native provider routes project their documented cache controls through the
         const provider = catalogProviderFromEnv("openrouter", {
             ...env,
             OPENROUTER_API_KEY: "test-key",
-            OPENROUTER_HTTP_REFERER: "https://github.com/plurnk/plurnk-service",
-            OPENROUTER_APP_TITLE: "Plurnk",
+            PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_URL: "https://github.com/plurnk/plurnk-service",
+            PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_NAME: "Plurnk",
         }, "anthropic/claude-sonnet-4.6", `http://127.0.0.1:${address.port}/api/v1`);
         await provider?.generate({
             workerId: "openrouter-worker",
@@ -853,8 +853,8 @@ test("native provider routes project their documented cache controls through the
         const budgetEnv = {
             ...env,
             OPENROUTER_API_KEY: "test-key",
-            OPENROUTER_HTTP_REFERER: "https://github.com/plurnk/plurnk-service",
-            OPENROUTER_APP_TITLE: "Plurnk",
+            PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_URL: "https://github.com/plurnk/plurnk-service",
+            PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_NAME: "Plurnk",
             PLURNK_PROVIDERS_REASONING_BUDGET: "2048",
         };
         const adaptive = catalogProviderFromEnv("openrouter", {
@@ -1086,4 +1086,24 @@ test("{§provider-wire-declaration} a native route refusing its catalog's max na
         PLURNK_PROVIDERS_PROVIDER_DEEPINFRA_REASONING_EFFORT_PATH: "",
         PLURNK_PROVIDERS_PROVIDER_DEEPINFRA_REASONING_OFF_BODY: "",
     }), route), { message: /The catalog documents 'max' for this route, but the native SDK's portable reasoning setting cannot express it; declare the SDK's own effort option: PLURNK_PROVIDERS_PROVIDER_DEEPINFRA_OPTIONS_NAMESPACE and PLURNK_PROVIDERS_PROVIDER_DEEPINFRA_REASONING_EFFORT_PATH\.$/ });
+});
+
+test("{§openrouter-app-attribution} attribution is the provider's declaration: openrouter sends it, another OpenRouter-SDK provider does not", async (t) => {
+    const seen = new Map<string, Headers>();
+    mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
+        seen.set(new URL(url).host, new Headers(init.headers));
+        const chunk = { id: "x", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }], usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 } };
+        return new Response(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
+    });
+    t.after(() => mock.restoreAll());
+    for (const name of ["openrouter", "standardcompute"]) {
+        const model = Object.keys(catalogSnapshot()[name] ?? {})[0]!;
+        const env = withProviderDefaults({ [lookupProvider(name)!.env[0]!]: "test-key" });
+        await catalogProviderFromEnv(name, env, model)!.generate({ workerId: "w", messages: [{ role: "user", content: "hi" }] });
+    }
+    const [openrouter, other] = [...seen.values()];
+    assert.equal(openrouter?.get("http-referer"), "https://github.com/plurnk/plurnk-service");
+    assert.equal(openrouter?.get("x-openrouter-title"), "Plurnk");
+    assert.equal(other?.get("http-referer"), null);
+    assert.equal(other?.get("x-openrouter-title"), null);
 });

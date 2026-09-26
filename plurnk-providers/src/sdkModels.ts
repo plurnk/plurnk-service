@@ -8,6 +8,7 @@ import { createMistral } from "@ai-sdk/mistral";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createTogetherAI } from "@ai-sdk/togetherai";
 import { createXai } from "@ai-sdk/xai";
+import { providerSetting } from "./provider-env.ts";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
     isProviderCredentialName,
@@ -50,31 +51,28 @@ const supportedSdkPackages = new Set(
     Object.values(providerCatalogSnapshot()).map(({ npm }) => npm),
 );
 
-const openRouterHeaders = (
-    provider: string,
-    env: NodeJS.ProcessEnv,
-    catalog: ProviderInfo,
-): Readonly<Record<string, string>> => {
-    if (catalog.id !== "openrouter") return {};
-    if (env.OPENROUTER_X_TITLE !== undefined) {
-        throw new Error(`${provider} provider: OPENROUTER_X_TITLE was renamed to OPENROUTER_APP_TITLE.`);
+// {§openrouter-app-attribution}: an OpenRouter-SDK route's application attribution is its provider's declaration,
+// handed to the SDK, which owns the headers.
+const RETIRED_ATTRIBUTION = ["OPENROUTER_HTTP_REFERER", "OPENROUTER_APP_TITLE", "OPENROUTER_X_TITLE"] as const;
+const openRouterAttribution = (provider: string, env: NodeJS.ProcessEnv): { appUrl?: string; appName?: string } => {
+    const retired = RETIRED_ATTRIBUTION.find((key) => env[key] !== undefined);
+    if (retired !== undefined) {
+        throw new Error(`${provider} provider: ${retired} is retired; declare PLURNK_PROVIDERS_PROVIDER_<NAME>_APP_URL and _APP_NAME.`);
     }
-    const referer = env.OPENROUTER_HTTP_REFERER?.trim();
-    if (referer === undefined || referer === "") return {};
+    const [urlKey, rawUrl] = providerSetting(provider, env, "APP_URL");
+    const url = rawUrl?.trim();
+    if (url === undefined || url === "") return {};
     let parsed: URL;
     try {
-        parsed = new URL(referer);
+        parsed = new URL(url);
     } catch (cause) {
-        throw new Error(`${provider} provider: OPENROUTER_HTTP_REFERER must be an absolute HTTP(S) URL.`, { cause });
+        throw new Error(`${provider} provider: ${urlKey} must be an absolute HTTP(S) URL.`, { cause });
     }
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-        throw new Error(`${provider} provider: OPENROUTER_HTTP_REFERER must be an absolute HTTP(S) URL.`);
+        throw new Error(`${provider} provider: ${urlKey} must be an absolute HTTP(S) URL.`);
     }
-    const title = env.OPENROUTER_APP_TITLE?.trim();
-    return {
-        "HTTP-Referer": parsed.href,
-        ...(title === undefined || title === "" ? {} : { "X-OpenRouter-Title": title }),
-    };
+    const name = providerSetting(provider, env, "APP_NAME")[1]?.trim();
+    return { appUrl: parsed.href, ...(name === undefined || name === "" ? {} : { appName: name }) };
 };
 
 // {§provider-fact-authority} — one credential declaration holds exactly one
@@ -400,7 +398,7 @@ const modelFromSdk = (
                 languageModel: createOpenRouter({
                     apiKey: requireApiKey(provider, env, catalog),
                     baseURL: url,
-                    headers: openRouterHeaders(provider, env, catalog),
+                    ...openRouterAttribution(provider, env),
                 }).languageModel(model),
                 ...(catalog.id === "openrouter" && model.replace(/^~/, "").startsWith("anthropic/")
                     ? { systemCacheProviderOptions: { openrouter: { cacheControl } } }
