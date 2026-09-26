@@ -23,17 +23,17 @@ input/output rate pair.
 ```ts
 import { lookup } from "@plurnk/plurnk-models";
 
-const info = lookup("openrouter", "anthropic/claude-sonnet-4");
+const info = lookup("openrouter", "deepseek/deepseek-v4.1-flash");
 // → {
-//     contextWindow: 1_000_000,
-//     maxOutputTokens: 64_000,
+//     contextWindow: 1_048_576,
+//     maxOutputTokens: 393_216,
 //     reasoning: true,
 //     cost: {
-//       inputPer1M: 3,
-//       outputPer1M: 15,
-//       cacheReadPer1M: 0.3,
-//       cacheWritePer1M: 3.75,
+//       inputPer1M: 0.15,
+//       outputPer1M: 0.6,
+//       cacheReadPer1M: 0.003,
 //     },
+//     …
 //   }
 // miss → null
 ```

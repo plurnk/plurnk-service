@@ -1348,7 +1348,7 @@ adds no grammar state at all.
 
 ```dotenv
 PLURNK_MODEL_gemma=openai/macher.gguf
-PLURNK_MODEL_opus=openrouter/anthropic/claude-opus-latest
+PLURNK_MODEL_flash=openrouter/deepseek/deepseek-v4.1-flash
 PLURNK_MODEL=gemma
 ```
 

@@ -125,7 +125,7 @@ test("{§provider-sampling-passthrough}: numeric boundaries remain values, not a
     }
 });
 
-test("{§provider-sampling-passthrough}: native Google SDK maps supported controls and surfaces unsupported penalties", async () => {
+test("{§provider-sampling-passthrough}: native Google SDK maps every sampling control the current model takes", async () => {
     let config: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
         config = (JSON.parse(String(init?.body)) as { generationConfig: Record<string, unknown> }).generationConfig;
@@ -136,7 +136,7 @@ test("{§provider-sampling-passthrough}: native Google SDK maps supported contro
     });
     const provider = await loadActiveProvider({
         ...baseEnv,
-        PLURNK_MODEL_sample_box: "google/gemini-2.5-flash",
+        PLURNK_MODEL_sample_box: "google/gemini-flash-latest",
         GEMINI_API_KEY: "test-key",
         PLURNK_PROVIDERS_TEMPERATURE_sample_box: "0.6",
         PLURNK_PROVIDERS_TOP_P_sample_box: "0.9",
@@ -150,12 +150,9 @@ test("{§provider-sampling-passthrough}: native Google SDK maps supported contro
     assert.ok(config);
     const { temperature, topP, topK, presencePenalty, frequencyPenalty, seed } = config;
     assert.deepEqual({ temperature, topP, topK, presencePenalty, frequencyPenalty, seed }, {
-        temperature: 0.6, topP: 0.9, topK: 40, presencePenalty: undefined, frequencyPenalty: undefined, seed: 42,
+        temperature: 0.6, topP: 0.9, topK: 40, presencePenalty: 0.5, frequencyPenalty: -0.5, seed: 42,
     });
-    assert.deepEqual(result.notices?.filter(({ kind }) => kind === "provider_warning").map(({ message }) => message).sort(), [
-        "unsupported frequencyPenalty",
-        "unsupported presencePenalty",
-    ]);
+    assert.deepEqual(result.notices?.filter(({ kind }) => kind === "provider_warning") ?? [], []);
 });
 
 for (const [knob, values] of [

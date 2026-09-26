@@ -2,6 +2,7 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import { configuredProviderInfo, createSdkModel, providerReadiness } from "./sdkModels.ts";
 import { withProviderDefaults } from "./defaults.ts";
+import { OPERATOR_MODEL_OPTIONS } from "./operator-model-options.fixture.ts";
 
 test("{§provider-fact-authority} one env declaration holds one credential name", () => {
     assert.deepEqual(configuredProviderInfo("acme-cloud", {
@@ -141,7 +142,7 @@ test("{§openrouter-app-attribution} attribution rejects malformed URLs and the 
 
 test("the Google SDK adapter owns its readable-reasoning response projection", () => {
     assert.deepEqual(
-        createSdkModel("google", "gemini-3.7-flash", { GEMINI_API_KEY: "test-key" })?.reasoningResponseProviderOptions,
+        createSdkModel("google", "gemini-flash-latest", { GEMINI_API_KEY: "test-key" })?.reasoningResponseProviderOptions,
         { google: { thinkingConfig: { includeThoughts: true } } },
     );
     assert.equal(
@@ -229,17 +230,17 @@ test("{§provider-cache-affinity} the environment panel supplies each documented
         "the SDK binding does not reconstruct a missing declaration from provider identity");
 });
 
-test("{§provider-model-options} explicit stable-system cache breakpoints exist only where a provider declares them", () => {
+test("{§provider-model-options} explicit stable-system cache breakpoints exist only where a provider declares them, and none ship for closed families", () => {
     const cacheControl = { type: "ephemeral" };
-    const system = (provider: string, model: string, env: NodeJS.ProcessEnv) => createSdkModel(provider, model, withProviderDefaults(env))?.systemCacheProviderOptions;
+    const system = (provider: string, model: string, env: NodeJS.ProcessEnv) => createSdkModel(provider, model, withProviderDefaults({ ...OPERATOR_MODEL_OPTIONS, ...env }))?.systemCacheProviderOptions;
     assert.deepEqual(system("anthropic", "claude-sonnet-4-6", { ANTHROPIC_API_KEY: "key" }), { anthropic: { cacheControl } });
     assert.deepEqual(system("openrouter", "anthropic/claude-sonnet-4.6", { OPENROUTER_API_KEY: "key" }), { openrouter: { cacheControl } });
     assert.deepEqual(system("openrouter", "~anthropic/claude-sonnet-latest", { OPENROUTER_API_KEY: "key" }), { openrouter: { cacheControl } });
     assert.equal(system("openrouter", "openai/gpt-5", { OPENROUTER_API_KEY: "key" }), undefined);
     assert.equal(system("deepseek", "deepseek-v4-flash", { DEEPSEEK_API_KEY: "key" }), undefined);
     assert.equal(system("minimax", "MiniMax-M2.5", { MINIMAX_API_KEY: "key" }), undefined, "another provider on the Anthropic SDK declares none");
-    assert.equal(createSdkModel("anthropic", "claude-sonnet-4-6", { ANTHROPIC_API_KEY: "key" })?.systemCacheProviderOptions, undefined,
-        "the SDK binding does not reconstruct a missing declaration from provider identity");
+    assert.equal(createSdkModel("anthropic", "claude-sonnet-4-6", withProviderDefaults({ ANTHROPIC_API_KEY: "key" }))?.systemCacheProviderOptions, undefined,
+        "the shipped defaults declare nothing for a closed model family, and identity reconstructs nothing");
 });
 
 test("an operator-declared compatible provider receives no guessed cache extension", () => {

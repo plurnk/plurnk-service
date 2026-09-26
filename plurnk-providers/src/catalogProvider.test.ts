@@ -37,8 +37,10 @@ import { withProviderDefaults } from "./defaults.ts";
 import type { LanguageModel } from "ai";
 import { resetEmittedWarnings } from "./warnings.ts";
 import { UnsupportedReasoningPolicyError } from "./types.ts";
+import { OPERATOR_MODEL_OPTIONS } from "./operator-model-options.fixture.ts";
 
 const env = withProviderDefaults({
+    ...OPERATOR_MODEL_OPTIONS,
     OPENAI_API_KEY: "test-key",
     OPENAI_BASE_URL: "https://api.openai.com/v1",
     PLURNK_PROVIDERS_FETCH_TIMEOUT: "1000",
@@ -176,7 +178,7 @@ test("provider adapters advertise only reasoning policies they can preserve", ()
         ...env,
         GEMINI_API_KEY: "test-key",
         PLURNK_PROVIDERS_REASONING: "adaptive",
-    }, "gemini-3.7-flash");
+    }, "gemini-flash-latest");
     assert.deepEqual(gemini?.supportedReasoningPolicies, ["adaptive", "low", "medium", "high"], "Gemini 3's mandatory minimum is not advertised as off");
 });
 
@@ -195,7 +197,7 @@ test("{§provider-reasoning-policy}: catalog discovery and construction agree on
     });
     for (const [name, model] of [
         ["openai", "gpt-4.1-mini"],
-        ["google", "gemini-3.7-flash"],
+        ["google", "gemini-flash-latest"],
         ["mistral", "mistral-small-latest"],
         ["deepseek", "deepseek-v4-flash"],
         ["cloudflare-workers-ai", "@cf/qwen/qwen3.8-27b"],
@@ -600,7 +602,7 @@ test("Google adaptive reasoning requests and preserves readable thought summarie
         ...env,
         GEMINI_API_KEY: "test-key",
         PLURNK_PROVIDERS_REASONING: "adaptive",
-    }, "gemini-3.7-flash");
+    }, "gemini-flash-latest");
     const result = await provider?.generate({
         workerId: "worker",
         messages: [{ role: "user", content: "hello" }],
@@ -609,7 +611,7 @@ test("Google adaptive reasoning requests and preserves readable thought summarie
     assert.deepEqual(bodies[0]?.generationConfig?.thinkingConfig, {
         includeThoughts: true,
         thinkingLevel: "high",
-    }, "Gemini 3 adaptive selects its documented high/dynamic posture and readable summary");
+    }, "Gemini adaptive selects its documented high posture and readable summary");
     assert.equal(result?.assistant.reasoning, "consider");
     assert.equal(result?.assistant.content, "done");
     assert.equal(result?.accounting[0]?.usage?.outputTokenDetails?.reasoningTokens, 1);
@@ -619,24 +621,10 @@ test("Google adaptive reasoning requests and preserves readable thought summarie
             ...env,
             GEMINI_API_KEY: "test-key",
             PLURNK_PROVIDERS_REASONING: "off",
-        }, "gemini-3.7-flash"),
+        }, "gemini-flash-latest"),
         /reasoning policy 'off' is unsupported/,
-        "Gemini 3's mandatory minimum thinking is not mislabeled as off",
+        "Gemini's mandatory minimum reasoning is not mislabeled as off",
     );
-
-    const dynamic25 = catalogProviderFromEnv("google", {
-        ...env,
-        GEMINI_API_KEY: "test-key",
-        PLURNK_PROVIDERS_REASONING: "adaptive",
-    }, "gemini-2.5-flash");
-    await dynamic25?.generate({
-        workerId: "worker",
-        messages: [{ role: "user", content: "hello" }],
-    });
-    assert.deepEqual(bodies[1]?.generationConfig?.thinkingConfig, {
-        includeThoughts: true,
-        thinkingBudget: -1,
-    }, "Gemini 2.5 adaptive uses the provider's native dynamic budget sentinel");
 });
 
 test("native Anthropic adaptive policy uses adaptive thinking rather than a fixed high effort", async () => {

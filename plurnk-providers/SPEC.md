@@ -362,10 +362,8 @@ do not export their tables, so a provider declares them as data: `ADAPTIVE_OPTIO
 with a glob matching the route's model id (`path.matchesGlob`) supplies its per-call provider options;
 without a match none apply. They follow the provider/route/alias precedence of
 {§provider-wire-declaration}, an empty value declares none, and a malformed value fails construction.
-The shipped declarations cover adaptive reasoning on Claude families (`anthropic`, `freemodel`,
-`amazon-bedrock`), Gemini 2.5's dynamic reasoning (`google`), and system cache writes on `anthropic`
-and on OpenRouter's `anthropic/*` routes; they decide exactly as the identity checks they replaced for
-all 6,936 cataloged models.
+None ships: Plurnk's shipped defaults serve open models only, and an operator who routes a closed model
+family declares its options in their own configuration.
 
 §provider-cache-write-policy **Cache-write policy is separate from affinity.**
 `PLURNK_PROVIDERS_CACHE_WRITE_POLICY` is `off` or `stable-system`. The latter

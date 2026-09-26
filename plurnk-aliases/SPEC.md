@@ -11,7 +11,7 @@ single parsing authority.
 
 - **`PLURNK_MODEL_<alias>=<provider>/<model>`** declares an alias. The provider
   segment is the **first** `/`-delimited field; the model id is everything after
-  that first `/` (it MAY contain further `/`, e.g. `openrouter/anthropic/claude-…`).
+  that first `/` (it MAY contain further `/`, e.g. `openrouter/deepseek/deepseek-v4.1-flash`).
 - **`PLURNK_MODEL=<selector>`** selects either a declared alias or an exact
   `<provider>/<model>` route at boot.
 - §alias-child-selector-reserved **`PLURNK_MODEL_CHILD=<selector>` is reserved as

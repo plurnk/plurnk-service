@@ -47,16 +47,16 @@ discovery and environment-file defaults.
 Select a catalog route directly:
 
 ```dotenv
-PLURNK_MODEL=google/gemini-3-flash
-GEMINI_API_KEY=...
+PLURNK_MODEL=deepseek/deepseek-v4-flash
+DEEPSEEK_API_KEY=...
 ```
 
 Declare an alias when the route needs a reusable name or scoped tuning:
 
 ```dotenv
-PLURNK_MODEL_fast=openai/gpt-5-mini
+PLURNK_MODEL_fast=deepinfra/zai-org/GLM-5.3-Flash
 PLURNK_MODEL=fast
-OPENAI_API_KEY=...
+DEEPINFRA_API_KEY=...
 ```
 
 Cataloged providers need no endpoint declaration. To add an
