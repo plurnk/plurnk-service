@@ -1095,3 +1095,26 @@ test("{§openrouter-app-attribution} attribution is the provider's declaration: 
     assert.equal(other?.get("http-referer"), null);
     assert.equal(other?.get("x-openrouter-title"), null);
 });
+
+test("{§provider-wire-declaration} alibaba: DashScope's inclusive cap, effort, budget and switch reach the wire from the shipped declaration", async (t) => {
+    const route = Object.keys(catalogSnapshot().alibaba ?? {}).find((model) => catalogEffortsOf("alibaba", model).length > 0
+        && resolveModel("alibaba", model)?.info.reasoningOptions?.some((option) => option.type === "budget_tokens"));
+    assert.ok(route !== undefined, "the alibaba catalog documents no effort-and-budget route to witness");
+    const effort = [...EFFORT_ORDER].reverse().find((value) => catalogEffortsOf("alibaba", route).includes(value))!;
+    const bodies: Record<string, unknown>[] = [];
+    mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+        bodies.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+        return new Response(JSON.stringify({ error: "captured" }), { status: 400 });
+    });
+    t.after(() => mock.restoreAll());
+    for (const reasoning of [{ PLURNK_PROVIDERS_REASONING: effort }, { PLURNK_PROVIDERS_REASONING: "adaptive", PLURNK_PROVIDERS_REASONING_BUDGET: "2048" }, { PLURNK_PROVIDERS_REASONING: "off" }]) {
+        await catalogProviderFromEnv("alibaba", withProviderDefaults({ DASHSCOPE_API_KEY: "test-key", ...reasoning }), route)!
+            .generate({ workerId: "w", messages: [{ role: "user", content: "hi" }], maxOutputTokens: 4096 }).catch(() => {});
+    }
+    const pick = (body: Record<string, unknown>) => ({ max_completion_tokens: body.max_completion_tokens, max_tokens: body.max_tokens, reasoning_effort: body.reasoning_effort, thinking_budget: body.thinking_budget, enable_thinking: body.enable_thinking });
+    assert.deepEqual(bodies.map(pick), [
+        { max_completion_tokens: 4096, max_tokens: undefined, reasoning_effort: effort, thinking_budget: undefined, enable_thinking: true },
+        { max_completion_tokens: 4096, max_tokens: undefined, reasoning_effort: undefined, thinking_budget: 2048, enable_thinking: true },
+        { max_completion_tokens: 4096, max_tokens: undefined, reasoning_effort: undefined, thinking_budget: undefined, enable_thinking: false },
+    ]);
+});

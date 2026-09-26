@@ -289,3 +289,8 @@ Changes spanning packages should preserve ownership: update the schema or
 contract at its owning package, then update consumers. Do not introduce
 compatibility aliases, dual paths, or transitional behavior unless compatibility
 is itself an agreed requirement.
+
+**A rename is total.** When a concept's name changes, it changes everywhere that names the concept, in
+one landing: types, schema, methods, Problems, knobs, wire actions, spec tags, tests, fixtures and docs.
+Retired names fail hard and name their successor. A surface-only rename, a new flag over old internals,
+is a defect, not a first step.
