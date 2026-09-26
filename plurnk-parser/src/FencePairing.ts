@@ -395,7 +395,7 @@ class Search {
     }
 
     #closable(context: Context, flags: Flags, character: FenceCharacter, width: number): boolean {
-        return context.kind !== "naked" && context.character === character && width >= context.width && !(context.bareOpened && flags.empty);
+        return context.kind !== "naked" && context.character === character && width >= context.width && !(context.bareOpened && flags.empty && !(context.kind === "quotation" && context.top));
     }
 
     // The alternatives at one position, in preference order.

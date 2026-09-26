@@ -121,3 +121,16 @@ test("{§balanced-fences}: inline chains can close a nested example or continue 
         assert.equal(ops[1].target?.raw, "actual.md");
     }
 });
+
+test("{§pairing-algorithm}: two stray fences after closed operations are an empty quotation, not a reason to hide an operation", () => {
+    const emission = [
+        "````BARE", "Quote the exact hint string.", "````",
+        "",
+        "````WORK (worker://fresh)", "Answer from memory.", "````",
+        "````",
+        "````",
+    ].join("\n");
+    const result = PlurnkParser.parse(emission);
+    assert.deepEqual(statements(result).map(writtenOp), ["BARE", "WORK"]);
+    assert.deepEqual(statements(result).map(bodyText), ["Quote the exact hint string.", "Answer from memory."]);
+});

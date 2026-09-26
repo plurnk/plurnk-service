@@ -386,7 +386,9 @@ stack. Candidates are taken in preference order and replace one another only by 
 strictly less, so each entry is the reading a preference-ordered exhaustive search returns.
 Inside a quotation or a nested block the first valid closer closes, CommonMark's rule, applied
 as a disambiguation filter (Klint and Visser, 1994); an operation body keeps the choice between
-nesting and closing.
+nesting and closing. A block opened by a bare fence must hold a line, except a quotation at the
+top level: two stray fences in a row there are an empty quotation, shown and harmless, rather
+than two repairs that a reading could avoid only by hiding an operation.
 
 §pairing-objective **Objective.** Readings compare lexicographically:
 
@@ -416,7 +418,7 @@ and never runs a command the report only shows.
 | Every input up to six lines over eleven line shapes, against a forward exhaustive search over explicit stacks under the same moves | 1,948,716 inputs, 0 differences in cost, block ends, strays, quotations or repairs |
 | The generated matrix: six operations × widths 3–5 × twelve body shapes × four tails | 864 of 864 (`fence-matrix.test.ts`) |
 | 10,486 recorded emissions | All parse; 0.85 ms mean, 235 ms at most (3,501 fence lines). The work is polynomial in fence lines, cubic at worst, so no step bound is needed |
-| The same, against origin/main 461fa136f | 10,257 identical. Of 229 changed: 112 bodies kept whole, 51 with only outside text or diagnostics moved, 30 with a closer glued to the next opener (neither reading splits the run), 16 quoted under {§quotation} with its warning, 20 read with more, fewer or other operations on degenerate fences |
+| The same, against origin/main 461fa136f | 10,257 identical. Of 229 changed: 112 bodies kept whole, 51 with only outside text or diagnostics moved, 30 with a closer glued to the next opener (neither reading splits the run), 16 quoted under {§quotation} with its warning, 19 read with more, fewer or other operations on degenerate fences, 1 degenerate EDIT whose body was two stray fences now empty |
 
 §indented-fences **CommonMark's indentation, everywhere.** A fence line may follow at most three
 spaces; four or more, or a tab, make it indented code. That one rule reads every fence purpose the
