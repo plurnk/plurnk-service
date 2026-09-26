@@ -2724,21 +2724,15 @@ accounting and model-visible failure evidence remain separately owned by
   remains unanswered and keeps the loop running. No implicit successful exit exists.
 - §response-text-note **Text outside the operations is the model's NOTE, never delivered.** Each
   span {§response-text} supplies becomes an ordinary NOTE in source order, unmarked, so the
-  model's own log files its self-narration where it belongs. It is not an authored operation:
-  {§empty-turn} still strikes a turn that holds only text, and the exact emission is retained.
-  Delivered as a SEND, the text read as an answer and confirmed that speaking outside operations
-  works; reported as a count of invalid characters, it sent a model to repair its prose into
-  live operations (`demo-show-dont-run-qdN9u2` executed the KILL it meant to show). A NOTE
-  neither delivers nor concludes (operator, 2026-09-22). Storing interstitial text is a
-  privilege, not a right (operator, 2026-09-23): a span is retained only on a turn that
-  executed at least one operation, and only when it is narration. An empty turn retains no
-  NOTE, and on any turn a span that carries a known foreign tool-call grammar, a leaked
-  template token, or an operation attempt outside its fence retains none either. The exact
-  emission stays at `ops://`, and the packet never echoes the grammar that broke a turn for
-  the next turn to imitate. The registers are mechanism (`KnownToxins`). This is the far end of the teaching
-  scale: text outside every operation breaks the first rule of `plurnk.md` — *"YOU MUST ONLY
-  use valid Plurnk OPs"* — and takes the largest reinterpretation, while a
-  departure as small as a missing closer is read as meant ({§closer-fallback}).
+  model's log retains its text even on a prose-only turn. It is not an authored operation:
+  {§empty-turn} still strikes a turn that holds only text, with unchanged reasoning recovery
+  ({§reasoning-empty-turn-read}), reply accounting and completion rules. A NOTE neither
+  delivers nor concludes. Spans carrying known foreign tool-call grammar or leaked template
+  tokens are excluded by `KnownToxins`; unfenced operation lines are excluded by
+  {§unfenced-operation}. Exact emissions remain at `ops://` regardless of retention.
+  This is recovery, not an alternate authoring format: the `plurnk.md` requirement to use
+  only valid Plurnk OPs remains. Prose does not quote executable fences; {§response-text}
+  alone owns which bytes are operations, quotations or outside text.
 - §loop-answer **A loop's address is what it said.** READ `ops://<worker>/<loop>` resolves to
   the latest reply the loop gave to the message that started it: the body of a SEND
   or accepted final KILL that answered that message. A running loop without one is 425; a loop that

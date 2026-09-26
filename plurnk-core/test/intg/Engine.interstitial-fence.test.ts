@@ -184,13 +184,14 @@ for (const [label, content, finishReason] of [
     });
 }
 
-test("{§response-text-note}: storing interstitial text is a privilege of a working turn, and only narration earns it", async () => {
+test("{§response-text-note}: prose-only turns retain model NOTEs without suppressing recovery or retaining foreign markup", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `interstitial-privilege-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Do the thing.");
         const narration = "Let me look at the failing test first.";
+        const prose = "The investigation is still in progress.";
         // {§native-tool-calls} — native markup naming a plurnk operation is that operation, whatever the
         // family; a call naming a tool plurnk does not have is read as nothing, so its turn is empty as well as toxic.
         const toxin = '<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name="READ">\n<｜｜DSML｜｜ parameter name="path" string="true">sh:///67f57ccd#stdout</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>';
@@ -198,7 +199,7 @@ test("{§response-text-note}: storing interstitial text is a privilege of a work
         const brokenOp = "Checking the source.\n\nREAD (worker:///notes.md)";
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: `${narration}\n\n\`\`\`\`NOTE\nplan\n\`\`\`\``, reasoning: null, finishReason: "stop" } },
-            { assistant: { content: narration, reasoning: null, finishReason: "stop" } },
+            { assistant: { content: prose, reasoning: null, finishReason: "stop" } },
             { assistant: { content: toxin, reasoning: null, finishReason: "stop" } },
             { assistant: { content: untranslated, reasoning: "Read the note first.", finishReason: "stop" } },
             { assistant: { content: `${brokenOp}\n\n\`\`\`\`NOTE\nstill here\n\`\`\`\``, reasoning: null, finishReason: "stop" } },
@@ -220,14 +221,18 @@ test("{§response-text-note}: storing interstitial text is a privilege of a work
             "{§empty-turn} each empty turn carries its one error row, toxic or plain; the translated call ran, so its turn is not empty",
         );
         assert.deepEqual(await notesOf(workingTurn!), [narration, "plan"], "narration beside a real operation is the model's NOTE, in source order");
-        assert.deepEqual(await notesOf(proseTurn!), [], "an empty turn earns no NOTE, however plain its prose");
+        assert.deepEqual(await notesOf(proseTurn!), [prose], "prose is retained even without an authored operation");
+        assert.equal((await rowsOf(proseTurn!)).some(({ op }) => op === "SEND"), false, "retention is not message delivery");
+        const following = await db.test_get_turn.get<{ packet: string }>({ id: toxinTurn! });
+        assert.match(packetSection(JSON.parse(following!.packet), "log"), /The investigation is still in progress\./u, "the next packet contains the retained prose");
+        assert.notEqual(packetSection(JSON.parse(following!.packet), "messages"), "[]", "the original message still needs a reply");
         assert.deepEqual(await notesOf(toxinTurn!), [], "a foreign tool-call grammar retains nothing");
         assert.deepEqual(await notesOf(untranslatedTurn!), [], "nor does one plurnk cannot read");
         assert.deepEqual(await notesOf(brokenTurn!), ["Checking the source.", "still here"], "the unfenced heading is not response text, the narration around it is, and the fenced NOTE stays");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         assert.equal(sources.find((row) => row.turn_id === toxinTurn && row.kind === "ops")?.content, toxin, "the exact emission stays readable at ops://");
         assert.equal(sources.find((row) => row.turn_id === untranslatedTurn && row.kind === "reasoning")?.content, "Read the note first.", "the reasoning is kept even when it is not read back");
-        assert.equal(sources.find((row) => row.turn_id === proseTurn && row.kind === "ops")?.content, narration);
+        assert.equal(sources.find((row) => row.turn_id === proseTurn && row.kind === "ops")?.content, prose);
     } finally { await db.close(); }
 });
 
@@ -314,13 +319,13 @@ test("{§quotation}: an offset example draws no parser advisory, and does not co
         assert.equal(provider.received.length, 2, "the offset example is not an answer: the model gets another turn");
         // #799: the parser presumes nothing about why a fence is offset. The turn is an empty turn
         // rather than a conclusion — proven by the second provider call above. The strike is silent
-        // ({§empty-turn}); the text stays at ops:// and is not filed as a NOTE ({§response-text-note}).
+        // ({§empty-turn}); the quotation remains literal in its NOTE ({§response-text-note}).
         assert.deepEqual(notices.filter(({ kind }) => kind === "turn_no_operations"), [], "silent");
         assert.deepEqual(notices.filter(({ kind, message }) => kind !== "turn_no_operations" && /must start its line|read as prose/u.test(message ?? "")), [], "an offset example still draws no parser advisory");
         const all = await Promise.all(result.turnIds.map((id) => db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: id })));
         assert.equal(all.flat().filter(({ origin, op }) => origin === "model" && op === "READ").length, 0, "the offset example never ran");
         assert.deepEqual(all.at(-2)!.filter(({ origin, op }) => origin === "model" && op === "NOTE").map(({ tx }) => JSON.parse(tx).body),
-            [], "an empty turn keeps no NOTE: storing interstitial text is a privilege of a working turn ({§response-text-note}); the emission stays at ops://");
+            ["I'll read it now.\n\n    " + FENCE + "READ (worker:///notes.md)\n    " + FENCE], "the offset example is retained literally, never executed");
         assert.equal(
             JSON.parse(all.at(-1)!.find(({ origin, op }) => origin === "model" && op === "KILL")!.tx).body,
             "It says: Keep this note.",
@@ -351,7 +356,8 @@ test("{§unfenced-operation} {§empty-turn}: unfenced executor calls draw their 
             .filter(({ origin, op }) => origin === "_plurnk" && op === "error").map(({ status_rx }) => status_rx)));
         assert.deepEqual(strikes, [[422], [422], [422]], "{§empty-turn} each strike is an error row the next packet carries");
         assert.equal(notices.filter(({ kind, message }) => kind === "parse_advisory" && message === "`sh` has no fence, so it did not run.").length, 3, "each turn heard its receipt");
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string }>({ turn_id: result.turnIds[1]! });
-        assert.deepEqual(rows.filter(({ origin, op }) => origin === "model" && op === "NOTE"), [], "an empty turn files no narration");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds[1]! });
+        assert.deepEqual(rows.filter(({ origin, op }) => origin === "model" && op === "NOTE").map(({ tx }) => JSON.parse(tx).body),
+            ["Running the build step."], "only the narration is retained, not the unfenced invocation");
     } finally { await db.close(); }
 });

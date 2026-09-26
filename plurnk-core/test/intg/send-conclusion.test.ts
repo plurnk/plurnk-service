@@ -178,7 +178,7 @@ for (const response of ["200", "````markdown\nFour.\n````", "````md\nFour.\n````
             const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: token.turnId });
             assert.equal(rows.some(({ op, origin }) => op === "SEND" && origin === "model"), false, "outside text is never delivered");
             assert.deepEqual(rows.filter(({ op, origin }) => op === "NOTE" && origin === "model").map(({ tx }) => JSON.parse(tx).body),
-                [], "an empty turn keeps no NOTE; the token stays at ops:// ({§response-text-note})");
+                [response], "retained text is a NOTE, not confirmation of completion ({§response-text-note})");
             assert.equal((await turn()).status, 200);
             const result = await answer();
             assert.ok("content" in result);
@@ -218,11 +218,12 @@ test("{§empty-turn}: operations beside stray text reset the no-operation strike
 });
 
 for (const [label, response, reasoning, kept] of [
-    ["prose", "Four.", null, []],
+    ["prose", "Four.", null, ["Four."]],
+    ["prose with reasoning", "Four.", "I should verify the arithmetic.", ["Four."]],
     ["empty response", "", null, []],
     ["reasoning NOTE only", "", PlurnkParser.frame("NOTE", "Still calculating."), ["Still calculating."]],
 ] as const) {
-    test(`{§empty-turn}: ${label} earns a silent no-operation strike; what it wrote stays at ops://, and only a reasoning NOTE is filed`, async () => {
+    test(`{§empty-turn}: ${label} retains its eligible NOTEs without avoiding a no-operation strike or changing recovery`, async () => {
         const { db, engine, provider, ids, notices } = await setup([said(response, reasoning)]);
         try {
             const result = await engine.runLoop({ ...ids, provider, maxTurns: 3, maxStrikes: 1, messages: [] });
@@ -240,7 +241,7 @@ for (const [label, response, reasoning, kept] of [
             assert.equal(rows.some(({ op, source }) => op === "error" && source === "grammar"), false);
             assert.deepEqual(rows.filter(({ op, origin }) => op === "error" && origin === "_plurnk").map(({ status_rx }) => status_rx), [422], "the strike is one error row on the turn");
             assert.deepEqual(rows.filter(({ op, origin }) => op === "NOTE" && origin === "model").map(({ tx }) => JSON.parse(tx).body), [...kept],
-                "neither counts as authored; prose keeps no NOTE on an empty turn, a reasoning NOTE is still filed, and ops:// keeps the emission");
+                "retained prose and reasoning NOTEs do not count as authored response operations");
         } finally { await db.close(); }
     });
 }

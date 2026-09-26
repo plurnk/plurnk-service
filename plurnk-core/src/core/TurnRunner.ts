@@ -1775,20 +1775,17 @@ export default class TurnRunner {
                 span.setAttribute("statements", result.items.filter((item) => item.kind === "statement").length);
                 return result;
             });
-            // {§response-text-note}: storing interstitial text is a privilege of a turn that executed
-            // at least one operation, and only narration earns it; the count is known before the
-            // spans are filed, so the items are read once for the count and once in source order.
-            const statementCount = parsed.items.filter((item) => item.kind === "statement").length;
+            // {§response-text-note}: retain prose in source order without counting it as authored.
             for (const item of parsed.items) {
                 if (item.kind === "statement") {
                     ops.push(item.statement);
                     contentStatementCount += 1;
                 }
                 // Text outside an OP is the model's NOTE, never delivered and never counted as
-                // authored. A toxin or a broken program retains nothing: the emission stays at ops://,
-                // and nothing echoes the grammar that broke this turn into the next packet.
+                // authored. Operation boundaries stay the parser's responsibility; foreign markup
+                // remains only at ops:// instead of being echoed into the log.
                 else if (item.kind === "text") {
-                    if (!KnownToxins.retains(item.content, statementCount)) continue;
+                    if (!KnownToxins.retains(item.content)) continue;
                     ops.push({
                         op: "NOTE", aside: null, target: null, metadata: null, lineMarker: null,
                         body: item.content.trim(), position: UNKNOWN_POSITION,

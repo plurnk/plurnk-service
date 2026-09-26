@@ -44,7 +44,7 @@ test("{§balanced-fences}: a complete nested reply reaches the client without ex
     });
 });
 
-test("{§empty-turn}: operations on the line after a bare fence make an empty turn; nothing runs and nothing is echoed", async () => {
+test("{§empty-turn}: operations on the line after a bare fence remain quoted NOTE text, never executed or delivered", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeRawMockResponse(MISFENCED, 10),
         makeMockResponse("````KILL\nthe answer\n````", 10),
@@ -56,11 +56,12 @@ test("{§empty-turn}: operations on the line after a bare fence make an empty tu
             const { finalStatus, loopId, result, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "research plurnk", policy: { proposals: "accept" } });
             assert.equal(finalStatus, 200, "the corrected second turn concludes");
             await flush();
-            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; turn_id: number }>({ loop_id: loopId });
+            const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; turn_id: number; tx: string }>({ loop_id: loopId });
             const model = rows.filter((r) => r.origin === "model");
-            assert.deepEqual(model.map(({ op }) => op), ["KILL"], "the text is neither delivered nor filed: an empty turn keeps no NOTE; the corrected turn replies");
+            assert.deepEqual(model.map(({ op }) => op), ["NOTE", "KILL"], "the quoted text is retained; only the corrected turn replies");
+            assert.equal(JSON.parse(model[0]!.tx).body, MISFENCED, "the quotation is retained verbatim, not repaired into executable syntax");
             assert.doesNotMatch(JSON.stringify(mock.received[1]), /No valid Operation Syntax OPs detected\./, "the strike itself is silent");
-            assert.doesNotMatch(JSON.stringify(mock.received[1]), /printf plurnk/, "the next packet does not echo the misfenced program back ({§response-text-note}, operator 2026-09-23)");
+            assert.match(JSON.stringify(mock.received[1]), /printf plurnk/, "the next packet contains the quoted NOTE");
             assert.ok(!model.some((r) => isExecutionOp(r.op) || r.op === "READ"), "nothing ran: prose is never promoted into an operation");
             const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: modelWorkerId! });
             const empty = sources.find((row) => row.kind === "ops" && row.content === MISFENCED);

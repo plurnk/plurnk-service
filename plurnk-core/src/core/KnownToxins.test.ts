@@ -11,8 +11,7 @@ test("{§response-text-note} the toxin register names foreign tool-call grammars
     assert.equal(KnownToxins.match("I'll verify my implementation against a broader test run."), null);
 });
 
-test("{§response-text-note} retention is a privilege: narration on a working turn keeps its NOTE, nothing else does", () => {
-    assert.equal(KnownToxins.retains("I'll verify my implementation against a broader test run.", 2), true, "narration beside real operations");
-    assert.equal(KnownToxins.retains("I'll verify my implementation against a broader test run.", 0), false, "an empty turn earns nothing");
-    assert.equal(KnownToxins.retains('<tool_call>{"name":"read"}</tool_call>', 3), false, "a toxin keeps nothing even beside real operations");
+test("{§response-text-note} prose is retained, but foreign tool-call markup is not", () => {
+    assert.equal(KnownToxins.retains("I'll verify my implementation against a broader test run."), true);
+    assert.equal(KnownToxins.retains('<tool_call>{"name":"read"}</tool_call>'), false);
 });
