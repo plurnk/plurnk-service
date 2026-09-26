@@ -28,7 +28,7 @@ test("{§notifications-reasoning-event}: provider SSE reaches standard AG-UI bef
         const provider = new AiSdkProvider({
             model: "m", url: "https://example.test/v1/chat/completions", contextWindow: 100_000,
             fetchTimeoutMs: 5000, operationTimeoutMs: 5000, firstContentTimeoutMs: 0,
-            temperature: 0.2, repeatPenalty: null, retryAttempts: 0, reasoning: { mode: "adaptive", budget: null }, reasoningResponseStyle: "think-tags",
+            temperature: 0.2, repeatPenalty: null, retryAttempts: 0, effort: { mode: "adaptive", budget: null }, reasoningResponseStyle: "think-tags",
             fetch: async () => new Response(new ReadableStream<Uint8Array>({ start(stream) {
                 controller = stream;
                 send("<think>Visible now.");
@@ -81,7 +81,7 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
             model: "m", url: "https://example.test/v1/chat/completions", contextWindow: 100_000,
             fetchTimeoutMs: 5000, operationTimeoutMs: 5000, firstContentTimeoutMs: 0,
             temperature: 0.2, repeatPenalty: null, retryAttempts: 0,
-            reasoning: { mode: "adaptive", budget: null }, rawBody: true,
+            effort: { mode: "adaptive", budget: null }, rawBody: true,
             reasoningResponseStyle: style === "think-tags" ? "think-tags" : "verbatim",
             supportsSlotPinning: true, slotCount: 2,
             fetch: async (_url, init) => {

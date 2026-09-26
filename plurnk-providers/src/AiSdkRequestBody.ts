@@ -1,7 +1,7 @@
 // The provider-specific request body and headers one generate call sends: reasoning, grammar, sampling, repetition, slots, metadata. Split out of AiSdkProvider; every knob it reads is injected.
-import type { ReasoningPolicy } from "./types.ts";
+import type { Effort } from "./types.ts";
 import type { JSONValue } from "ai";
-import { type Reasoning } from "./env.ts";
+import { type EffortSetting } from "./env.ts";
 import { fixedEffort } from "./reasoning-effort.ts";
 import type { ReasoningStyle, GrammarStyle, CacheAffinity, AiSdkProviderOptions } from "./AiSdkProvider.ts";
 
@@ -35,7 +35,7 @@ const MANUAL_REASONING_FRACTIONS = Object.freeze({
     high: 0.6,
     xhigh: 0.75,
     max: 0.85,
-} satisfies Record<Exclude<ReasoningPolicy, "off">, number>);
+} satisfies Record<Exclude<Effort, "off">, number>);
 
 const MANUAL_REASONING_MINIMUM = 1024;
 
@@ -64,8 +64,8 @@ const RESERVED_BODY_KEYS: ReadonlySet<string> = new Set([
 export default class AiSdkRequestBody {
     readonly #reasoningBudget: number | null;
     readonly #additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
-    readonly #reasoning: Reasoning;
-    readonly #adaptiveReasoningProviderOptions: AiSdkProviderOptions | undefined;
+    readonly #effort: EffortSetting;
+    readonly #adaptiveEffortProviderOptions: AiSdkProviderOptions | undefined;
     readonly #repeatPenalty: number | null;
     readonly #dryMultiplier: number | undefined;
     readonly #dryBase: number | undefined;
@@ -81,11 +81,11 @@ export default class AiSdkRequestBody {
     #runSlots = new Map<string, number>();
     #nextSlot = 0;
 
-    constructor({ reasoningBudget, additiveReasoningProvider, reasoning, adaptiveReasoningProviderOptions, repeatPenalty, dryMultiplier, dryBase, dryAllowedLength, repeatLastN, reasoningStyle, source, grammarStyle, cacheAffinity, reasoningResponseProviderOptions, supportsSlotPinning, slotCount }: {
+    constructor({ reasoningBudget, additiveReasoningProvider, effort, adaptiveEffortProviderOptions, repeatPenalty, dryMultiplier, dryBase, dryAllowedLength, repeatLastN, reasoningStyle, source, grammarStyle, cacheAffinity, reasoningResponseProviderOptions, supportsSlotPinning, slotCount }: {
         reasoningBudget: number | null;
         additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
-        reasoning: Reasoning;
-        adaptiveReasoningProviderOptions: AiSdkProviderOptions | undefined;
+        effort: EffortSetting;
+        adaptiveEffortProviderOptions: AiSdkProviderOptions | undefined;
         repeatPenalty: number | null;
         dryMultiplier: number | undefined;
         dryBase: number | undefined;
@@ -101,8 +101,8 @@ export default class AiSdkRequestBody {
     }) {
         this.#reasoningBudget = reasoningBudget;
         this.#additiveReasoningProvider = additiveReasoningProvider;
-        this.#reasoning = reasoning;
-        this.#adaptiveReasoningProviderOptions = adaptiveReasoningProviderOptions;
+        this.#effort = effort;
+        this.#adaptiveEffortProviderOptions = adaptiveEffortProviderOptions;
         this.#repeatPenalty = repeatPenalty;
         this.#dryMultiplier = dryMultiplier;
         this.#dryBase = dryBase;
@@ -124,7 +124,7 @@ export default class AiSdkRequestBody {
         preserveGrammarSentence = false,
         reasoningBudget = this.#reasoningBudget,
     ): Record<string, unknown> {
-        const { mode } = this.#reasoning;
+        const { mode } = this.#effort;
         const budget = reasoningBudget;
         const on = mode !== "off";
         switch (this.#reasoningStyle) {
@@ -221,12 +221,12 @@ export default class AiSdkRequestBody {
         nativeReasoningBudget: number | null,
         declaredOptions?: AiSdkProviderOptions,
     ): AiSdkProviderOptions | undefined {
-        const responseOptions = this.#reasoning.mode === "off"
+        const responseOptions = this.#effort.mode === "off"
             ? undefined
             : this.#reasoningResponseProviderOptions;
-        const adaptiveOptions = this.#reasoning.mode === "adaptive"
+        const adaptiveOptions = this.#effort.mode === "adaptive"
             && nativeReasoningBudget === null
-            ? this.#adaptiveReasoningProviderOptions
+            ? this.#adaptiveEffortProviderOptions
             : undefined;
         const nativeReasoning = nativeReasoningBudget !== null
             ? this.#additiveReasoningProvider === "anthropic"
@@ -253,9 +253,9 @@ export default class AiSdkRequestBody {
         outputBudget: number | null,
         configuredReasoningBudget: number | null,
     ): number | null {
-        if (this.#additiveReasoningProvider === undefined || this.#reasoning.mode === "off") return null;
+        if (this.#additiveReasoningProvider === undefined || this.#effort.mode === "off") return null;
         if (configuredReasoningBudget !== null) return configuredReasoningBudget;
-        if (this.#adaptiveReasoningProviderOptions !== undefined) return null;
+        if (this.#adaptiveEffortProviderOptions !== undefined) return null;
         if (outputBudget === null) {
             throw new TypeError(
                 `${this.#source}: manual provider reasoning requires a resolved total output budget`,
@@ -266,7 +266,7 @@ export default class AiSdkRequestBody {
                 `${this.#source}: total output budget must exceed the provider's ${MANUAL_REASONING_MINIMUM}-token minimum reasoning allowance`,
             );
         }
-        const fraction = MANUAL_REASONING_FRACTIONS[this.#reasoning.mode];
+        const fraction = MANUAL_REASONING_FRACTIONS[this.#effort.mode];
         return Math.min(
             outputBudget - 1,
             Math.max(MANUAL_REASONING_MINIMUM, Math.round(outputBudget * fraction)),

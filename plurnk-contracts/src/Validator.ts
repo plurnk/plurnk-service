@@ -32,7 +32,7 @@ import mcpConfigurationOverlaySchema from "../schema/McpConfigurationOverlay.jso
 import clientInteractionRequestSchema from "../schema/ClientInteractionRequest.json" with { type: "json" };
 import clientInteractionProjectionSchema from "../schema/ClientInteractionProjection.json" with { type: "json" };
 import clientInteractionResolutionSchema from "../schema/ClientInteractionResolution.json" with { type: "json" };
-import reasoningPolicySchema from "../schema/ReasoningPolicy.json" with { type: "json" };
+import effortSchema from "../schema/Effort.json" with { type: "json" };
 import modelCatalogPageSchema from "../schema/ModelCatalogPage.json" with { type: "json" };
 import modelCatalogQuerySchema from "../schema/ModelCatalogQuery.json" with { type: "json" };
 import functionalityCandidateSchema from "../schema/FunctionalityCandidate.json" with { type: "json" };
@@ -50,7 +50,7 @@ import providerAccountingSchema from "../schema/ProviderAccounting.json" with { 
 import providerRequestAccountingSchema from "../schema/ProviderRequestAccounting.json" with { type: "json" };
 import providerUsageSchema from "../schema/ProviderUsage.json" with { type: "json" };
 import providerCostSchema from "../schema/ProviderCost.json" with { type: "json" };
-import type { A2AAgentDefinition as A2aAgentDefinition, AguiClientConformance, AguiConformanceKit, AguiDiscovery, CapabilityDescriptor, CapabilityPolicy, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, LoopPolicy, LoopPolicyRequest, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, ReasoningPolicy, SkillDefinition, TextRegion } from "./types.generated.ts";
+import type { A2AAgentDefinition as A2aAgentDefinition, AguiClientConformance, AguiConformanceKit, AguiDiscovery, CapabilityDescriptor, CapabilityPolicy, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, LoopPolicy, LoopPolicyRequest, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion } from "./types.generated.ts";
 import type { JsonSchema } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
@@ -75,7 +75,7 @@ export class InvalidMcpConfigurationOverlayError extends TypeError {}
 export class InvalidClientInteractionRequestError extends TypeError {}
 export class InvalidClientInteractionProjectionError extends TypeError {}
 export class InvalidClientInteractionResolutionError extends TypeError {}
-export class InvalidReasoningPolicyError extends TypeError {}
+export class InvalidEffortError extends TypeError {}
 export class InvalidModelCatalogPageError extends TypeError {}
 export class InvalidModelCatalogQueryError extends TypeError {}
 export class InvalidFunctionalityListResultError extends TypeError {}
@@ -177,8 +177,8 @@ export default class Validator {
         clientInteractionResolutionSchema as unknown as Schema,
         "2020-12",
     );
-    static #reasoningPolicy = new CfValidator(
-        reasoningPolicySchema as unknown as Schema,
+    static #effort = new CfValidator(
+        effortSchema as unknown as Schema,
         "2020-12",
     );
     static #providerRequestAccounting = Validator.#withRefs(
@@ -191,7 +191,7 @@ export default class Validator {
     );
     static #modelCatalogPage = Validator.#withRefs(
         modelCatalogPageSchema,
-        [modelReadinessSchema, reasoningPolicySchema],
+        [modelReadinessSchema, effortSchema],
     );
     static #functionalityListResult = Validator.#withRefs(
         functionalityListResultSchema,
@@ -211,7 +211,7 @@ export default class Validator {
     );
     static #modelRoute = Validator.#withRefs(
         modelRouteSchema,
-        [reasoningPolicySchema],
+        [effortSchema],
     );
     static #aguiDiscovery = Validator.#withRefs(
         aguiDiscoverySchema,
@@ -267,7 +267,7 @@ export default class Validator {
         providerUsageSchema,
         providerCostSchema,
         rangeExtentSchema,
-        reasoningPolicySchema,
+        effortSchema,
     ];
 
     // The exact schema behind a `$ref` a Functionality family declares as its definition
@@ -421,8 +421,8 @@ export default class Validator {
         return Validator.#validate(Validator.#clientInteractionResolution, value);
     }
 
-    static validateReasoningPolicy(value: unknown): ValidationResult {
-        return Validator.#validate(Validator.#reasoningPolicy, value);
+    static validateEffort(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#effort, value);
     }
 
     static validateProviderRequestAccounting(value: unknown): ValidationResult {
@@ -712,14 +712,14 @@ export default class Validator {
         return value;
     }
 
-    static assertReasoningPolicy(value: unknown): ReasoningPolicy {
-        const result = Validator.validateReasoningPolicy(value);
+    static assertEffort(value: unknown): Effort {
+        const result = Validator.validateEffort(value);
         if (!result.valid) {
-            throw new InvalidReasoningPolicyError(
-                `invalid ReasoningPolicy: ${JSON.stringify(result.errors)}`,
+            throw new InvalidEffortError(
+                `invalid Effort: ${JSON.stringify(result.errors)}`,
             );
         }
-        return value as ReasoningPolicy;
+        return value as Effort;
     }
 
     static assertModelCatalogPage(value: unknown): ModelCatalogPage {

@@ -1087,8 +1087,8 @@ test("the client-interface seam — runLoop drives a loop end to end on the daem
             for (const [surface, call] of [
                 ["worker.model.get", () => daemon.readWorkerModel({ workspaceId: created.id, workerId: kernelWorker.id })],
                 ["worker.model.set", () => daemon.setWorkerModel({ workspaceId: created.id, workerId: clientWorker.id, selector: "mock/mocktest" })],
-                ["worker.reasoning.get", () => daemon.readWorkerReasoning({ workspaceId: created.id, workerId: clientWorker.id })],
-                ["worker.reasoning.set", () => daemon.setWorkerReasoning({ workspaceId: created.id, workerId: kernelWorker.id, policy: "low" })],
+                ["worker.effort.get", () => daemon.readWorkerEffort({ workspaceId: created.id, workerId: clientWorker.id })],
+                ["worker.effort.set", () => daemon.setWorkerEffort({ workspaceId: created.id, workerId: kernelWorker.id, effort: "low" })],
                 ["worker.child.set", () => daemon.setWorkerSpawnModel({ workspaceId: created.id, workerId: clientWorker.id, selector: null })],
             ] as const) {
                 const refused = await rejectedProblem(call);

@@ -369,8 +369,8 @@ successfully transported management Run; it does not turn the Run into
 | `worker.model.get`       | Workspace | none                                                 | `ApplicationPort.readWorkerModel` on the thread's conversation worker; returns `{ model, spawnModel }` as resolved specs or `null`. |
 | `worker.model.set`       | Workspace | `selector`                                           | `ApplicationPort.setWorkerModel` on the thread's conversation worker; persists the resolved selection and returns it.        |
 | `worker.child.set`       | Workspace | `selector`                                           | `ApplicationPort.setWorkerSpawnModel` on the thread's conversation worker; persists the override (`null` means inherit) and returns it. |
-| `worker.reasoning.get`   | Workspace | none                                                 | `ApplicationPort.readWorkerReasoning` on the thread's conversation worker; returns its durable policy and the policies supported by both its model and optional spawn model. |
-| `worker.reasoning.set`   | Workspace | `policy`                                             | `ApplicationPort.setWorkerReasoning` on the thread's conversation worker; validates and persists the policy between loops. |
+| `worker.effort.get`   | Workspace | none                                                 | `ApplicationPort.readWorkerEffort` on the thread's conversation worker; returns its durable policy and the policies supported by both its model and optional spawn model. |
+| `worker.effort.set`   | Workspace | `policy`                                             | `ApplicationPort.setWorkerEffort` on the thread's conversation worker; validates and persists the policy between loops. |
 | `workspace.capabilities.get` | Workspace | none                                                | `ApplicationPort.readWorkspaceCapabilities` on the bound workspace, without creating a conversation worker; returns the complete resolver-owned projection {§capability-policy-projection}. |
 | `workspace.capabilities.set` | Workspace | `policy`                                            | `ApplicationPort.setWorkspaceCapabilities` replaces the workspace policy and returns the complete resolver-owned projection {§capability-policy-projection}. |
 | Registered module action | Owner-declared | owner-defined | `ApplicationPort.invokeModuleAction`; AG-UI enforces the owner's input/output schemas and passes a worldless, bound-workspace, or bound-conversation-Worker context outside supplied params. The owner retains semantic validation and the effect. |
@@ -385,10 +385,10 @@ actions accept one alias-or-exact-route selector, resolve and persist before ret
 problem when the selector is unresolvable or the daemon is deliberately
 modelless.
 
-§agui-worker-reasoning-actions **Reasoning policy has its own worker action.**
-`worker.reasoning.get` returns the durable policy and the supported-policy
-intersection of the selected model and optional spawn model. `worker.reasoning.set` accepts one policy from
-{§reasoning-policy-wire}; core owns its durable {§worker-reasoning-policy}
+§agui-worker-effort-actions **Effort has its own worker action.**
+`worker.effort.get` returns the durable policy and the supported-policy
+intersection of the selected model and optional spawn model. `worker.effort.set` accepts one policy from
+{§effort-wire}; core owns its durable {§worker-effort}
 validation and refuses mutation while a
 loop is active or parked.
 

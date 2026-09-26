@@ -13,7 +13,7 @@ export type ModelCost = {
     readonly cacheWritePer1M?: number;
 };
 
-export type ModelReasoningEffort =
+export type ModelEffort =
     | null
     | "none"
     | "minimal"
@@ -26,7 +26,7 @@ export type ModelReasoningEffort =
 
 export type ModelReasoningOption =
     | { readonly type: "toggle" }
-    | { readonly type: "effort"; readonly values: readonly ModelReasoningEffort[] }
+    | { readonly type: "effort"; readonly values: readonly ModelEffort[] }
     | { readonly type: "budget_tokens"; readonly min?: number; readonly max?: number };
 
 type ModelInfoBase = {

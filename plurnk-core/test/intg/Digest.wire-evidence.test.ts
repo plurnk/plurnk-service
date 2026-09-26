@@ -18,7 +18,7 @@ test("{§provider-wire-emission}: blank emissions retain their wire channels thr
         model: "wire-evidence", url: "https://example.test/v1/chat/completions",
         fetchTimeoutMs: 1000, operationTimeoutMs: 3000, firstContentTimeoutMs: 1000,
         contextWindow: 100000, outputBudget: 1000,
-        reasoning: { mode: "off", budget: null }, temperature: null, repeatPenalty: null, retryAttempts: 0,
+        effort: { mode: "off", budget: null }, temperature: null, repeatPenalty: null, retryAttempts: 0,
         rawBody: false,
         fetch: async () => {
             requests += 1;

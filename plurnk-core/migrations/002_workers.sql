@@ -36,12 +36,12 @@ CREATE TABLE IF NOT EXISTS workers (
     -- persistent spawn override; NULL means "use my model."
     model_route_id       INTEGER          REFERENCES model_routes(id),
     spawn_model_route_id INTEGER          REFERENCES model_routes(id),
-    -- {§worker-reasoning-policy}: nullable only while the worker has no model;
-    -- once selected, model and reasoning policy form one durable generation policy.
-    reasoning_policy TEXT CHECK (reasoning_policy IS NULL OR length(reasoning_policy) > 0),
-    -- {§worker-reasoning-source}: whether reasoning_policy was chosen (worker.reasoning.set)
+    -- {§worker-effort}: nullable only while the worker has no model;
+    -- once selected, model and effort form one durable generation policy.
+    effort TEXT CHECK (effort IS NULL OR length(effort) > 0),
+    -- {§worker-effort-source}: whether effort was chosen (worker.effort.set)
     -- or seeded from the alias configuration; a default never masquerades as a choice.
-    reasoning_source TEXT NOT NULL DEFAULT 'default' CHECK (reasoning_source IN ('default', 'explicit')),
+    effort_source TEXT NOT NULL DEFAULT 'default' CHECK (effort_source IN ('default', 'explicit')),
     -- workers fork via parent_worker_id; workspaces carry no parent — {§machine-processes-no-fork-workspace}
     parent_worker_id INTEGER          CHECK (parent_worker_id IS NULL OR parent_worker_id != id),
     origin          TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', '_plurnk')),
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS workers (
     fork_event_boundary INTEGER       CHECK (fork_event_boundary IS NULL OR fork_event_boundary >= 0),
     CHECK (fork_event_boundary IS NULL OR parent_worker_id IS NOT NULL),
     CHECK (default_conversation = 0 OR (origin = 'model' AND parent_worker_id IS NULL)),
-    CHECK ((model_route_id IS NULL) = (reasoning_policy IS NULL)),
+    CHECK ((model_route_id IS NULL) = (effort IS NULL)),
     FOREIGN KEY (workspace_id)    REFERENCES workspaces(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_worker_id) REFERENCES workers(id)     ON DELETE CASCADE
 ) STRICT;

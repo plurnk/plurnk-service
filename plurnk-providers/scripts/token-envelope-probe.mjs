@@ -10,7 +10,7 @@ import {
     parseAliasesFromEnv,
     ProviderError,
 } from "../src/index.ts";
-import { REASONING_POLICIES } from "@plurnk/plurnk-contracts";
+import { EFFORTS } from "@plurnk/plurnk-contracts";
 import { resolveModel } from "@plurnk/plurnk-models";
 import {
     redactText,
@@ -65,7 +65,7 @@ const probeEnvironment = (env, alias, reasoning) => ({
     [`PLURNK_PROVIDERS_RAWBODY_${alias}`]: "0",
     [`PLURNK_PROVIDERS_RETRY_ATTEMPTS_${alias}`]: "0",
     [`PLURNK_PROVIDERS_TOP_LOGPROBS_${alias}`]: "off",
-    ...(reasoning === undefined ? {} : { [`PLURNK_PROVIDERS_REASONING_${alias}`]: reasoning }),
+    ...(reasoning === undefined ? {} : { [`PLURNK_PROVIDERS_EFFORT_${alias}`]: reasoning }),
 });
 
 const failureEvidence = (cause, sensitiveValues) => ({
@@ -199,8 +199,8 @@ const main = async () => {
     if (values["dry-run"] && values["measure-only"]) {
         throw new Error("--dry-run and --measure-only are mutually exclusive");
     }
-    if (values.reasoning !== undefined && !REASONING_POLICIES.includes(values.reasoning)) {
-        throw new Error(`--reasoning must be one of ${REASONING_POLICIES.join(", ")}`);
+    if (values.reasoning !== undefined && !EFFORTS.includes(values.reasoning)) {
+        throw new Error(`--effort must be one of ${EFFORTS.join(", ")}`);
     }
     const timeoutMs = positiveInteger(values["timeout-ms"], "--timeout-ms");
     const prompt = buildProbePrompt(values["prompt-chars"], values.fill);

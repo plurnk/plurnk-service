@@ -91,7 +91,7 @@ const provider = (url: string, route: string, overrides: NodeJS.ProcessEnv = {})
     PLURNK_MODEL_limited: route,
     PLURNK_BASEURL_limited: url,
     OPENAI_API_KEY: "test-key",
-    PLURNK_PROVIDERS_REASONING: "off",
+    PLURNK_PROVIDERS_EFFORT: "off",
     PLURNK_PROVIDERS_OPERATION_TIMEOUT: "5000",
     PLURNK_PROVIDERS_FETCH_TIMEOUT: "2000",
     PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT: "2000",

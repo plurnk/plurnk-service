@@ -3,7 +3,7 @@
 // persistence; no path re-resolves a historical selection through a possibly
 // changed alias declaration.
 
-import type { ModelRoute, ReasoningPolicy } from "@plurnk/plurnk-contracts";
+import type { ModelRoute, Effort } from "@plurnk/plurnk-contracts";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
 import { resolveModel } from "@plurnk/plurnk-models";
 import type { Db } from "../core/Db.ts";
@@ -42,20 +42,20 @@ export const specForRoute = async (db: Db, routeId: number | null): Promise<Prov
 };
 
 // The provider endpoint is durable construction state, not client model identity.
-// {§worker-reasoning-policy} — effort is identity-grade: the worker's durable policy
+// {§worker-effort} — effort is identity-grade: the worker's durable policy
 // rides the route; a model without a reasoning dimension (catalog reasoning: false)
 // carries none.
-// {§worker-reasoning-source} — the source rides beside the policy so a client never renders a
+// {§worker-effort-source} — the source rides beside the policy so a client never renders a
 // seeded default as a chosen level.
 export const projectModelRoute = (
     spec: ProviderSpec,
-    reasoningPolicy: ReasoningPolicy | null = null,
-    reasoningSource: "default" | "explicit" = "default",
+    effort: Effort | null = null,
+    effortSource: "default" | "explicit" = "default",
 ): ModelRoute => ({
     ...(spec.alias === undefined ? {} : { alias: spec.alias }),
     provider: spec.provider,
     model: spec.model,
-    ...(reasoningPolicy === null || resolveModel(spec.provider, spec.model)?.info.reasoning === false
+    ...(effort === null || resolveModel(spec.provider, spec.model)?.info.reasoning === false
         ? {}
-        : { reasoningPolicy, reasoningSource }),
+        : { effort, effortSource }),
 });

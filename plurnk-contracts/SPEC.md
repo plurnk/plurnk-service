@@ -11,7 +11,7 @@ runtime-neutral wire envelopes; `@plurnk/plurnk-parser` implements the language 
 | ------------------------------------------------------------------------------- | --------------------------------------------------- |
 | AST, validators, Problems, results, Notices, text regions and extents          | `@plurnk/plurnk-contracts`                          |
 | Capability and loop policies                                                    | `CapabilityPolicy`, `LoopPolicy`, `LoopPolicyRequest`, `PROPOSAL_POLICIES` |
-| Durable reasoning intent                                                        | `ReasoningPolicy`, `REASONING_POLICIES`             |
+| Durable effort                                                                  | `Effort`, `EFFORTS`             |
 | Model route and catalog discovery                                               | `ModelRoute`, `ModelCatalogQuery`, `ModelCatalogPage`, `ModelReadiness` |
 | Stopped-world client contract                                                   | `ProposalDisposition`, `ProposalProjection`         |
 | Client-owned interaction contract                                               | `ClientInteractionRequest`, `ClientInteractionProjection`, `ClientInteractionResolution` |
@@ -177,7 +177,7 @@ Contracts hold no default for the rest: the daemon's panel supplies it
 vocabulary of `proposals`. Capability admission precedes effect
 classification and proposal settlement.
 
-§reasoning-policy-wire `ReasoningPolicy` is exactly `off | adaptive | low |
+§effort-wire `Effort` is exactly `off | adaptive | low |
 medium | high`. The schema owns this shared wire vocabulary. Providers own the
 supported subset and native projection for a selected route; core owns the
 durable worker value.
@@ -190,8 +190,8 @@ physical limits, capabilities, and local `ModelReadiness`. A readiness cause
 contains alternative environment-variable sets—every name within a set is
 required and any set may satisfy the cause. It carries names only, never values,
 and asserts neither credential validity nor endpoint reachability.
-`capabilities.reasoningPolicies` lists the route's admitted members of
-{§reasoning-policy-wire}, including supported activation policies; clients do
+`capabilities.efforts` lists the route's admitted members of
+{§effort-wire}, including supported activation policies; clients do
 not infer fixed efforts from the `reasoning` capability bit. It is not a
 worker's model/spawn intersection or an alias-specific tuning projection.
 
@@ -1284,7 +1284,7 @@ among them: the parser is `@plurnk/plurnk-parser`'s ({§parser-consumers}).
 The remaining values are small pure helpers over those contracts (`isExecution`, `writtenOp`,
 `lifecycleOfLoopStatus`, `selectWorkerLoop`, `renderJsonResult`, `formatJsonDocument`,
 `aguiConformanceReport`) and the closed name patterns and vocabularies (`RUNTIME_TAG`,
-`SKILL_NAME`, `REASONING_POLICIES`).
+`SKILL_NAME`, `EFFORTS`).
 
 §parser-construction-boundary Parser construction components are internal rather
 than alternate consumer entry points:

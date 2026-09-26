@@ -166,7 +166,7 @@ export const startClientJourneyModel = async () => {
             PLURNK_PROVIDERS_PROVIDER_JOURNEY_FIXTURE_REASONING_BUDGET_PATH: "/reasoning/max_tokens",
             PLURNK_PROVIDERS_CONTEXT_WINDOW_journey: "32768",
             PLURNK_PROVIDERS_OUTPUT_BUDGET_journey: "4096",
-            PLURNK_PROVIDERS_REASONING_journey: "adaptive",
+            PLURNK_PROVIDERS_EFFORT_journey: "adaptive",
             PLURNK_PROVIDERS_RETRY_ATTEMPTS_journey: "0",
             PLURNK_PROVIDERS_FETCH_TIMEOUT_journey: "5000",
             PLURNK_PROVIDERS_OPERATION_TIMEOUT_journey: "15000",

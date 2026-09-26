@@ -16,7 +16,7 @@ import type {
     OperationResult,
     PlurnkStatement,
     ProposalProjection,
-    ReasoningPolicy,
+    Effort,
 } from "./types.ts";
 
 export type ProposalDecision = "accept" | "reject" | "cancel";
@@ -275,29 +275,31 @@ export interface ApplicationPort extends HttpHost {
         readonly workspaceId: number;
         readonly workerId: number;
         readonly selector: string;
+        /** An effort chosen with the model; the daemon validates and persists the pair as one. */
+        readonly effort?: unknown;
     }): Promise<ModelRoute>;
     setWorkerSpawnModel(args: {
         readonly workspaceId: number;
         readonly workerId: number;
         readonly selector: string | null;
     }): Promise<ModelRoute | null>;
-    readWorkerReasoning(args: {
+    readWorkerEffort(args: {
         readonly workspaceId: number;
         readonly workerId: number;
     }): Promise<{
-        readonly policy: ReasoningPolicy | null;
-        // {§worker-reasoning-source} — `explicit` only after worker.reasoning.set.
+        readonly effort: Effort | null;
+        // {§worker-effort-source} — `explicit` only after worker.effort.set.
         readonly source: "default" | "explicit";
-        readonly supportedPolicies: readonly ReasoningPolicy[];
+        readonly supportedEfforts: readonly Effort[];
     }>;
-    setWorkerReasoning(args: {
+    setWorkerEffort(args: {
         readonly workspaceId: number;
         readonly workerId: number;
-        readonly policy: unknown;
+        readonly effort: unknown;
     }): Promise<{
-        readonly policy: ReasoningPolicy;
+        readonly effort: Effort;
         readonly source: "explicit";
-        readonly supportedPolicies: readonly ReasoningPolicy[];
+        readonly supportedEfforts: readonly Effort[];
     }>;
     readWorkspaceCapabilities(args: {
         readonly workspaceId: number;

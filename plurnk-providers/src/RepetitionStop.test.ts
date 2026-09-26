@@ -25,7 +25,7 @@ test("{§repetition-stop} a streamed line repeated to the limit stops the call w
         repeatedLineLimit: 4,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
+        effort: { mode: "off", budget: null },
         retryAttempts: 0,
         source: "provider:repeat-witness",
     });

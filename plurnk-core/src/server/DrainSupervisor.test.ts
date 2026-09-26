@@ -177,7 +177,7 @@ test("{§worker-lifecycle-durable-disposition}: stopping during wait selection p
 const delivery = {
     workspaceId: 1, workerId: 2, sourceLoopId: 10, prompt: "message",
     providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
-    reasoningPolicy: "adaptive", systemPrompt: "system",
+    effort: "adaptive", systemPrompt: "system",
 } as const;
 
 test("{§worker-lifecycle-durable-disposition}: stopping during prompt delivery preserves admission without waking", async () => {

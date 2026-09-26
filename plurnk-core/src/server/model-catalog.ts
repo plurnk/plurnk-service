@@ -10,7 +10,7 @@ import {
     providerCatalogSnapshot,
     providerNameFromCatalogId,
 } from "@plurnk/plurnk-models";
-import { catalogReasoningPolicies, providerReadiness } from "@plurnk/plurnk-providers";
+import { catalogEfforts, providerReadiness } from "@plurnk/plurnk-providers";
 import Knob from "../core/Knob.ts";
 
 const compareText = (left: string, right: string): number => left < right ? -1 : left > right ? 1 : 0;
@@ -74,7 +74,7 @@ export const listModelCatalog = (
                 capabilities: {
                     attachment: info.attachment,
                     reasoning: info.reasoning,
-                    reasoningPolicies: [...catalogReasoningPolicies(providerInfo, info, env)],
+                    efforts: [...catalogEfforts(providerInfo, info, env)],
                     toolCall: info.toolCall,
                     ...(info.structuredOutput === undefined ? {} : { structuredOutput: info.structuredOutput }),
                     ...(info.temperature === undefined ? {} : { temperature: info.temperature }),

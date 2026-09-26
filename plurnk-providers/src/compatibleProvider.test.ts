@@ -10,7 +10,7 @@ const env = {
     PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT: "1000",
     PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT: "0",
     PLURNK_PROVIDERS_REPEATED_LINE_LIMIT: "0",
-    PLURNK_PROVIDERS_REASONING: "off",
+    PLURNK_PROVIDERS_EFFORT: "off",
     PLURNK_PROVIDERS_TEMPERATURE: "0.2",
     PLURNK_PROVIDERS_REPEAT_PENALTY: "1.15",
     PLURNK_PROVIDERS_FREQUENCY_PENALTY: "0",
@@ -92,9 +92,9 @@ test("(#483) a detected llama-server rail admits the operator's stated effort", 
         if (url.endsWith("/props")) return new Response(JSON.stringify({ total_slots: 1 }));
         throw new Error(`unexpected request ${url}`);
     });
-    const provider = await compatibleProviderFromEnv({ ...env, PLURNK_PROVIDERS_REASONING: "medium" }, "local");
-    assert.ok(provider.supportedReasoningPolicies.includes("medium"), "the template governs: medium is admitted on a llama-server rail");
-    assert.ok(provider.supportedReasoningPolicies.includes("low") && provider.supportedReasoningPolicies.includes("high"), "the whole policy vocabulary rides; the template refuses unknown words itself");
+    const provider = await compatibleProviderFromEnv({ ...env, PLURNK_PROVIDERS_EFFORT: "medium" }, "local");
+    assert.ok(provider.supportedEfforts.includes("medium"), "the template governs: medium is admitted on a llama-server rail");
+    assert.ok(provider.supportedEfforts.includes("low") && provider.supportedEfforts.includes("high"), "the whole policy vocabulary rides; the template refuses unknown words itself");
 });
 
 test("detected llama-server measures the complete chat request through input_tokens", async () => {

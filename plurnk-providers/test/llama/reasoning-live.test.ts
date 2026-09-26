@@ -33,7 +33,7 @@ const provider = (): AiSdkProvider => new AiSdkProvider({
     temperature: 0,
     repeatPenalty: 1.15,
     retryAttempts: 0,
-    reasoning: { mode: "adaptive", budget: reasoningAllowance },
+    effort: { mode: "adaptive", budget: reasoningAllowance },
     reasoningStyle: "template",
     grammarStyle: "llamacpp",
 });

@@ -1,0 +1,15 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/Effort.json",
+    "title": "Effort",
+    "description": "The portable durable reasoning effort shared by provider, runtime, and client boundaries.",
+    "enum": [
+        "off",
+        "adaptive",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+    ]
+}

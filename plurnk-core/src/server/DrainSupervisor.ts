@@ -1,6 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
-import type { MessageEvidence, ReasoningPolicy } from "@plurnk/plurnk-contracts";
+import type { MessageEvidence, Effort } from "@plurnk/plurnk-contracts";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import { routeForSpec } from "./model-route.ts";
 import type { WakeWorkerPayload } from "../core/ChannelWrite.ts";
@@ -43,7 +43,7 @@ export type DrainInjectionArgs = {
     // Absent for an independent exterior arrival, required for operation-caused delivery.
     sourceLoopId?: number;
     providerSpec: ProviderSpec;
-    reasoningPolicy: ReasoningPolicy;
+    effort: Effort;
     // False = the client omitted a selector; a continuation must keep the loop's
     // durable provider rather than compare against a re-resolved boot default.
     // Absent/true = an explicit selection, so the compatibility check applies.
@@ -79,7 +79,7 @@ type CompletionWakeGate = {
 
 type InjectionCompatibility = Pick<
     DrainInjectionArgs,
-    "workerId" | "providerSpec" | "providerSpecExplicit" | "reasoningPolicy" | "childProviderSpec" | "turnCeiling" | "policy"
+    "workerId" | "providerSpec" | "providerSpecExplicit" | "effort" | "childProviderSpec" | "turnCeiling" | "policy"
 > & { loopId: number };
 
 type RunLoop = (args: {
@@ -253,7 +253,7 @@ export default class DrainSupervisor {
                     loopId: active.id,
                     providerSpec: args.providerSpec,
                     providerSpecExplicit: args.providerSpecExplicit,
-                    reasoningPolicy: args.reasoningPolicy,
+                    effort: args.effort,
                     ...(args.childProviderSpec === undefined ? {} : { childProviderSpec: args.childProviderSpec }),
                     ...(args.turnCeiling === undefined ? {} : { turnCeiling: args.turnCeiling }),
                     ...(args.policy === undefined ? {} : { policy: args.policy }),
@@ -273,7 +273,7 @@ export default class DrainSupervisor {
                 prompt,
                 ...(args.source === undefined ? {} : { source: args.source }),
                 providerSpec: args.providerSpec,
-                reasoningPolicy: args.reasoningPolicy,
+                effort: args.effort,
                 childProviderSpec: args.childProviderSpec ?? null,
                 maxTurns: args.turnCeiling?.effective,
                 policy: args.policy ?? args.freshLoopPolicy,
@@ -294,7 +294,7 @@ export default class DrainSupervisor {
         messageAddress?: string;
         evidence?: MessageEvidence;
         providerSpec: ProviderSpec;
-        reasoningPolicy: ReasoningPolicy;
+        effort: Effort;
         childProviderSpec: ProviderSpec | null;
         maxTurns?: number;
         policy?: LoopPolicyRequest;
@@ -310,7 +310,7 @@ export default class DrainSupervisor {
             prompt_source: args.source ?? null,
             model_route_id: modelRouteId,
             spawn_model_route_id: spawnRouteId,
-            reasoning_policy: args.reasoningPolicy,
+            effort: args.effort,
             max_turns: args.maxTurns ?? Knob.integer("PLURNK_SERVICE_MAX_TURNS", -1),
             // {§loop-policy-composition} — the one place a fresh loop's policy is made whole.
             policy: JSON.stringify(LoopPolicies.compose(args.policy ?? {})),

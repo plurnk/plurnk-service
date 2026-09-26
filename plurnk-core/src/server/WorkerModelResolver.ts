@@ -2,13 +2,13 @@
 import type { Db } from "../core/Db.ts";
 import type { Provider, ProviderSpec } from "@plurnk/plurnk-providers";
 import { routeForSpec, specForRoute } from "./model-route.ts";
-import { type ReasoningPolicy } from "@plurnk/plurnk-contracts";
-import { parseAliasesFromEnv, resolveActiveRoute, UnsupportedReasoningPolicyError } from "@plurnk/plurnk-providers";
+import { type Effort } from "@plurnk/plurnk-contracts";
+import { parseAliasesFromEnv, resolveActiveRoute, UnsupportedEffortError } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import { resolveLoopRoute } from "./loop-model.ts";
 import { OperationFailureError } from "../core/results.ts";
 import { daemonFailure, modelRouteLabel } from "./daemon-results.ts";
-import type { ReasoningSource, WorkerGenerationPolicyRow } from "./Daemon.ts";
+import type { EffortSource, WorkerGenerationPolicyRow } from "./Daemon.ts";
 
 export default class WorkerModelResolver {
     readonly #db: Db;
@@ -22,33 +22,33 @@ export default class WorkerModelResolver {
         this.#provider = provider;
     }
 
-    async persistGenerationPolicy(workerId: number, policy: WorkerGenerationPolicyRow): Promise<readonly ReasoningPolicy[]> {
+    async persistGenerationPolicy(workerId: number, policy: WorkerGenerationPolicyRow): Promise<readonly Effort[]> {
         const params = { id: workerId, ...policy };
-        // {§worker-reasoning-source} — the source is provenance, not generation policy: it takes no
+        // {§worker-effort-source} — the source is provenance, not generation policy: it takes no
         // part in the mid-loop change check, so the selectable probe sees only the policy columns.
-        const { reasoning_source: _source, ...generation } = params;
+        const { effort_source: _source, ...generation } = params;
         if (await this.#db.worker_generation_policy_selectable.get(generation) === undefined) {
             return this.#refuseGenerationChange(workerId, policy);
         }
-        const supportedPolicies = await this.supportedPolicies(policy);
+        const supportedEfforts = await this.supportedEfforts(policy);
         if (await this.#db.worker_generation_policy_update.get(params) === undefined) {
             return this.#refuseGenerationChange(workerId, policy);
         }
-        return supportedPolicies;
+        return supportedEfforts;
     }
 
-    async supportedPolicies(policy: WorkerGenerationPolicyRow): Promise<readonly ReasoningPolicy[]> {
-        let supportedPolicies: readonly ReasoningPolicy[] | undefined;
+    async supportedEfforts(policy: WorkerGenerationPolicyRow): Promise<readonly Effort[]> {
+        let supportedEfforts: readonly Effort[] | undefined;
         for (const routeId of [policy.model_route_id, policy.spawn_model_route_id]) {
             if (routeId === null) continue;
             const spec = await specForRoute(this.#db, routeId);
             if (spec === null) throw new Error(`model route ${routeId} is missing`);
-            const provider = await this.providerForPolicy(spec, policy.reasoning_policy ?? undefined);
-            supportedPolicies = supportedPolicies === undefined
-                ? provider.supportedReasoningPolicies
-                : supportedPolicies.filter((candidate) => provider.supportedReasoningPolicies.includes(candidate));
+            const provider = await this.providerForPolicy(spec, policy.effort ?? undefined);
+            supportedEfforts = supportedEfforts === undefined
+                ? provider.supportedEfforts
+                : supportedEfforts.filter((candidate) => provider.supportedEfforts.includes(candidate));
         }
-        return supportedPolicies ?? [];
+        return supportedEfforts ?? [];
     }
 
     async #refuseGenerationChange(workerId: number, requested: WorkerGenerationPolicyRow): Promise<never> {
@@ -77,45 +77,47 @@ export default class WorkerModelResolver {
     async resolveWorkerModel(
         workerId: number,
         selector: string | undefined,
-    ): Promise<{ providerSpec: ProviderSpec; reasoningPolicy: ReasoningPolicy; reasoningSource: ReasoningSource } | null> {
+        chosen?: Effort,
+    ): Promise<{ providerSpec: ProviderSpec; effort: Effort; effortSource: EffortSource } | null> {
         const worker = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
         if (worker === undefined) throw new Error(`worker ${workerId}: model route row missing`);
         if (selector !== undefined) {
             const spec = this.#resolveLoopProvider(selector);
             if (spec === null) return null;
-            // {§worker-reasoning-source} — a chosen policy follows the worker across models; a
-            // seeded one re-derives from the new alias, so a default never outlives its alias.
-            const explicit = worker.reasoning_source === "explicit" && worker.reasoning_policy !== null;
-            const reasoningPolicy = explicit
-                ? worker.reasoning_policy!
-                : ProviderInstantiate.configuredReasoningPolicy(spec);
-            const reasoningSource: ReasoningSource = explicit ? "explicit" : "default";
+            // {§worker-effort-source} — a chosen effort follows the worker across models; a seeded one
+            // re-derives from the new alias, so a default never outlives its alias. An effort chosen with the
+            // model replaces the carried one, and the pair is validated as one.
+            const explicit = chosen !== undefined || worker.effort_source === "explicit" && worker.effort !== null;
+            const effort = chosen ?? (explicit
+                ? worker.effort!
+                : ProviderInstantiate.configuredEffort(spec));
+            const effortSource: EffortSource = explicit ? "explicit" : "default";
             await this.persistGenerationPolicy(workerId, {
                 model_route_id: await routeForSpec(this.#db, spec),
                 spawn_model_route_id: worker.spawn_model_route_id,
-                reasoning_policy: reasoningPolicy,
-                reasoning_source: reasoningSource });
-            return { providerSpec: spec, reasoningPolicy, reasoningSource };
+                effort,
+                effort_source: effortSource });
+            return { providerSpec: spec, effort, effortSource };
         }
         if (worker.model_route_id !== null) {
-            if (worker.reasoning_policy === null) {
-                throw new Error(`worker ${workerId}: durable model has no reasoning policy`);
+            if (worker.effort === null) {
+                throw new Error(`worker ${workerId}: durable model has no effort`);
             }
             const spec = await specForRoute(this.#db, worker.model_route_id);
             if (spec === null) throw new Error(`worker ${workerId}: model route is missing`);
-            await this.providerForPolicy(spec, worker.reasoning_policy);
-            return { providerSpec: spec, reasoningPolicy: worker.reasoning_policy, reasoningSource: worker.reasoning_source };
+            await this.providerForPolicy(spec, worker.effort);
+            return { providerSpec: spec, effort: worker.effort, effortSource: worker.effort_source };
         }
         if (this.#provider === null) return null;
         const spec = resolveActiveRoute();
         if (spec !== null) {
-            const reasoningPolicy = ProviderInstantiate.configuredReasoningPolicy(spec);
+            const effort = ProviderInstantiate.configuredEffort(spec);
             await this.persistGenerationPolicy(workerId, {
                 model_route_id: await routeForSpec(this.#db, spec),
                 spawn_model_route_id: worker.spawn_model_route_id,
-                reasoning_policy: reasoningPolicy,
-                reasoning_source: "default" });
-            return { providerSpec: spec, reasoningPolicy, reasoningSource: "default" };
+                effort,
+                effort_source: "default" });
+            return { providerSpec: spec, effort, effortSource: "default" };
         }
         return null;
     }
@@ -135,15 +137,15 @@ export default class WorkerModelResolver {
             await this.persistGenerationPolicy(workerId, {
                 model_route_id: worker.model_route_id,
                 spawn_model_route_id: spec === null ? null : await routeForSpec(this.#db, spec),
-                reasoning_policy: worker.reasoning_policy,
-                reasoning_source: worker.reasoning_source });
+                effort: worker.effort,
+                effort_source: worker.effort_source });
             return spec;
         }
         if (worker.spawn_model_route_id !== null) {
             const spec = await specForRoute(this.#db, worker.spawn_model_route_id);
             if (spec === null) throw new Error(`worker ${workerId}: spawn model route is missing`);
-            if (worker.reasoning_policy !== null) {
-                await this.providerForPolicy(spec, worker.reasoning_policy);
+            if (worker.effort !== null) {
+                await this.providerForPolicy(spec, worker.effort);
             }
             return spec;
         }
@@ -154,44 +156,44 @@ export default class WorkerModelResolver {
             await this.persistGenerationPolicy(workerId, {
                 model_route_id: worker.model_route_id,
                 spawn_model_route_id: await routeForSpec(this.#db, spec),
-                reasoning_policy: worker.reasoning_policy,
-                reasoning_source: worker.reasoning_source });
+                effort: worker.effort,
+                effort_source: worker.effort_source });
         }
         return spec;
     }
 
 
     // Resolve eagerly so runLoop fails before enqueue when the selected route
-    // and durable reasoning policy cannot compose. The drain later retrieves
+    // and durable effort cannot compose. The drain later retrieves
     // this cached handle from the loop's immutable snapshot.
     async providerForPolicy(
         spec: ProviderSpec,
-        reasoningPolicy?: ReasoningPolicy,
+        effort?: Effort,
     ): Promise<Provider> {
         try {
             const provider = await ProviderInstantiate.instantiateProvider(
                 spec,
                 process.env,
-                reasoningPolicy,
+                effort,
             );
             ProviderInstantiate.validateGrammarConfiguration(provider, process.env);
             return provider;
         } catch (cause) {
             if (cause instanceof OperationFailureError) throw cause;
-            if (cause instanceof UnsupportedReasoningPolicyError) {
+            if (cause instanceof UnsupportedEffortError) {
                 throw daemonFailure(
                     "daemon:provider",
-                    "reasoning-policy-unsupported",
+                    "effort-unsupported",
                     409,
-                    `${modelRouteLabel(spec)} does not support reasoning policy '${cause.policy}'.`,
+                    `${modelRouteLabel(spec)} does not support effort '${cause.policy}'.`,
                     {
                         ...(spec.alias === undefined ? {} : { alias: spec.alias }),
                         provider: spec.provider,
                         model: spec.model,
-                        reasoningPolicy: cause.policy,
-                        supportedReasoningPolicies: cause.supported,
+                        effort: cause.policy,
+                        supportedEfforts: cause.supported,
                         stage: "provider-selection",
-                        recovery: "Select one of the provider's supported reasoning policies.",
+                        recovery: "Select one of the provider's supported efforts.",
                         retryable: false },
                 );
             }

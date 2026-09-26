@@ -13,7 +13,7 @@ import InferenceAdmission from "./InferenceAdmission.ts";
 
 const wireConfig = (env: NodeJS.ProcessEnv) => {
     const requestFields = new RequestFields("test", withProviderDefaults(env));
-    return { requestFields, supportedReasoningPolicies: requestFields.policies };
+    return { requestFields, supportedEfforts: requestFields.efforts };
 };
 
 type TestProviderConfig = Omit<AiSdkProviderConfig, "operationTimeoutMs" | "firstContentTimeoutMs">
@@ -59,15 +59,15 @@ test("{§provider-wire-declaration} native SDK requests reproject controls for s
         });
         const base = {
             model: "unlisted", languageModel: sdk.languageModel("unlisted"),
-            requestFields: fields, supportedReasoningPolicies: fields.policies,
+            requestFields: fields, supportedEfforts: fields.efforts,
             fetchTimeoutMs: 5000, retryAttempts: 0, temperature: null,
             repeatPenalty: null, outputBudget: 4096, streaming,
         };
         assert.throws(() => testProvider({
-            ...base, reasoning: { mode: "off", budget: null },
+            ...base, effort: { mode: "off", budget: null },
             cacheAffinity: { target: "provider-option", provider: "openrouter", name: "reasoning" },
         }), /cache affinity overlaps declared request controls/);
-        const budgeted = testProvider({ ...base, reasoningBudget: 2048, reasoning: { mode: "adaptive", budget: 2048 } });
+        const budgeted = testProvider({ ...base, reasoningBudget: 2048, effort: { mode: "adaptive", budget: 2048 } });
         for (const maxOutputTokens of [4096, 1500]) {
             const result = await budgeted.generate({ workerId: "request-fields", messages: [{ role: "user", content: "hello" }], maxOutputTokens });
             assert.equal(result.assistant.content, "ok");
@@ -75,7 +75,7 @@ test("{§provider-wire-declaration} native SDK requests reproject controls for s
             assert.deepEqual(bodies.at(-1)?.reasoning, { max_tokens: Math.min(2048, maxOutputTokens - 1) });
         }
         for (const mode of ["off", "low", "xhigh", "max"] as const) {
-            const fixed = testProvider({ ...base, reasoning: { mode, budget: null } });
+            const fixed = testProvider({ ...base, effort: { mode, budget: null } });
             const result = await fixed.generate({ workerId: "request-fields", messages: [{ role: "user", content: "hello" }] });
             assert.equal(result.assistant.content, "ok");
             assert.deepEqual(bodies.at(-1)?.reasoning, { effort: mode === "off" ? "none" : mode });
@@ -183,7 +183,7 @@ const injectedBase = {
     temperature: 0.2,
     repeatPenalty: 1.15,
     retryAttempts: 0,
-    reasoning: { mode: "off" as const, budget: null },
+    effort: { mode: "off" as const, budget: null },
 };
 
 test("per-instance fetch owns streaming and buffered requests", async () => {
@@ -433,7 +433,7 @@ test.afterEach(() => { mock.restoreAll(); resetEmittedWarnings(); });
 
 test("a 524 Cloudflare edge timeout fails fast - not retried despite retryAttempts", async () => {
     const calls = installFetchScript([{ status: 524, retryAfter: 120 }]);
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 3 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 3 });
     await assert.rejects(
         p.generate({ workerId: "r", messages: [] }),
         (error: ProviderError) => error.kind === "network_failure"
@@ -448,7 +448,7 @@ test("a 524 Cloudflare edge timeout fails fast - not retried despite retryAttemp
 test("a 422 grammar_invalid is a failed exchange, not transport replay policy", async () => {
     const body = JSON.stringify({ error: { message: "non-conforming emission rejected: ...", type: "grammar_invalid" } });
     const calls = installFetchScript([{ status: 422, body }]);
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 2 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 2 });
     await assert.rejects(
         p.generate({ workerId: "r", messages: [] }),
         (e: unknown) => e instanceof ProviderError && e.kind === "grammar_invalid",
@@ -463,7 +463,7 @@ test("an SSE error frame is a failed exchange, not an empty completion", async (
         status: 422,
         error: { message: "non-conforming emission rejected", type: "grammar_invalid" },
     }]);
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     await assert.rejects(
         p.generate({ workerId: "r", messages: [] }),
         (e: unknown) => e instanceof ProviderError && e.kind === "grammar_invalid",
@@ -582,27 +582,27 @@ test("malformed monetary evidence closes the physical request before surfacing t
 
 test("a trailing eos_token (--special EOG leak) is stripped from content", async () => {
     installFetchJson({ model: "m", choices: [{ message: { content: "the answer<eos>" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 3, total_tokens: 4 } });
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, eosText: "<eos>" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, eosText: "<eos>" });
     const res = await p.generate({ workerId: "r", messages: [] });
     assert.equal(res.assistant.content, "the answer"); // trailing <eos> gone; packet + verdict see clean bytes
 });
 
 test("without a probed eos_token the content passes through untouched", async () => {
     installFetchJson({ model: "m", choices: [{ message: { content: "keeps <eos> literally" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 3, total_tokens: 4 } });
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
     const res = await p.generate({ workerId: "r", messages: [] });
     assert.equal(res.assistant.content, "keeps <eos> literally"); // no eosText (a cloud backend) -> no strip
 });
 
 test("only the trailing eos_token is stripped; a quoted one mid-body survives", async () => {
     installFetchJson({ model: "m", choices: [{ message: { content: "quotes <eos> in the body<eos>" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 5, total_tokens: 6 } });
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, eosText: "<eos>" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, eosText: "<eos>" });
     const res = await p.generate({ workerId: "r", messages: [] });
     assert.equal(res.assistant.content, "quotes <eos> in the body"); // only the tail goes
 });
 
 test("{§provider-prompt-measurement} identity getters and default prompt estimate", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     assert.equal(p.model, "m");
     assert.equal(p.contextWindow, null); // default
     assert.deepEqual(
@@ -621,7 +621,7 @@ test("injected prompt measurement preserves provenance and request cost estimati
     const seen: string[] = [];
     installFetchJson(jsonChoice);
     const p = testProvider({
-        model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0,
+        model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0,
         countPromptTokens: (messages) => {
             seen.push(...messages.map((message) => chatMessageText(message)));
             return { kind: "upper_bound", tokens: 7, source: "test:proven-bound" };
@@ -658,7 +658,7 @@ test("{§provider-capacity-failure} an exact request overflow rejects before obs
         fetchTimeoutMs: 1000,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
+        effort: { mode: "off", budget: null },
         retryAttempts: 0,
     });
     await assert.rejects(
@@ -699,7 +699,7 @@ test("an estimate above the known envelope defers to the provider", async () => 
         fetchTimeoutMs: 1000,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
+        effort: { mode: "off", budget: null },
         retryAttempts: 0,
     });
     const response = await p.generate({ workerId: "capacity", messages: [] });
@@ -709,7 +709,7 @@ test("an estimate above the known envelope defers to the provider", async () => 
 });
 
 test("generate maps a streamed response into ProviderResponse", async () => {
-    const p = testProvider({ model: "req-model", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "req-model", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([
         { model: "wire-model", choices: [{ delta: { content: "hel" } }] },
         { choices: [{ delta: { content: "lo" }, finish_reason: "stop" }] },
@@ -729,14 +729,14 @@ test("generate maps a streamed response into ProviderResponse", async () => {
     assert.notEqual(assistantRaw, undefined);
 });
 
-test("an unsupported fixed reasoning policy fails before provider I/O", () => {
+test("an unsupported fixed effort fails before provider I/O", () => {
     assert.throws(
         () => testProvider({
             ...injectedBase,
-            reasoning: { mode: "medium", budget: null },
-            supportedReasoningPolicies: ["off", "adaptive", "high"],
+            effort: { mode: "medium", budget: null },
+            supportedEfforts: ["off", "adaptive", "high"],
         }),
-        /reasoning policy 'medium' is unsupported; supported policies: off, adaptive, high/,
+        /effort 'medium' is unsupported; supported efforts: off, adaptive, high/,
     );
 });
 
@@ -833,7 +833,7 @@ test("native SDK accounting evidence becomes a normalized charge in buffered and
         fetchTimeoutMs: 5_000,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "off" as const, budget: null },
+        effort: { mode: "off" as const, budget: null },
         retryAttempts: 0,
         normalizeCost: providerCostNormalizer("@openrouter/ai-sdk-provider"),
     };
@@ -907,7 +907,7 @@ test("native SDK providers share the first-content surface-at-once contract (#47
         firstContentTimeoutMs: 10,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
+        effort: { mode: "off", budget: null },
         retryAttempts: 1,
         source: "provider:test-native",
     });
@@ -997,7 +997,7 @@ test("generate surfaces and normalizes an out-of-set finish_reason", async () =>
             ...(typeof options === "object" && options.code !== undefined ? { code: options.code } : {}),
         });
     });
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "function_call" }] }]);
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
     assert.equal(assistant.finishReason, null);
@@ -1089,28 +1089,28 @@ test("#161: a buffered resource interruption preserves the successful wire respo
 test("generate translates a backend cap synonym to canonical length", async () => {
     // gemini shouts MAX_TOKENS, anthropic says max_tokens -- both must reach core as
     // "length" so its truncation check (=== "length") is a cross-backend invariant.
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "MAX_TOKENS" }] }]);
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
     assert.equal(assistant.finishReason, "length");
 });
 
 test("generate translates end_turn to canonical stop", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "end_turn" }] }]);
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
     assert.equal(assistant.finishReason, "stop");
 });
 
 test("generate translates xAI completed to canonical stop", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "completed" }] }]);
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
     assert.equal(assistant.finishReason, "stop");
 });
 
 test("generate aggregates reasoning deltas under multiple field names", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { reasoning_content: "be", thinking: "cause" } }] }]);
     const { assistant } = await p.generate({ workerId: "r", messages: [] });
     assert.equal(assistant.reasoning, "because");
@@ -1132,7 +1132,7 @@ for (const style of ["think-tags", "template-think", "template-channel"] as cons
         send(`${opening.slice(3)}Thinking 🧠${closing.slice(0, 3)}`);
     } }), { headers: { "Content-Type": "text/event-stream" } });
     const provider = testProvider({ ...injectedBase, fetch, rawBody: true, ...(template
-        ? { reasoningStyle: "template" as const, grammarStyle: "llamacpp" as const, reasoning: { mode: "adaptive" as const, budget: null } }
+        ? { reasoningStyle: "template" as const, grammarStyle: "llamacpp" as const, effort: { mode: "adaptive" as const, budget: null } }
         : { reasoningResponseStyle: "think-tags" as const }) });
     const result = provider.generate({ workerId: "paced", messages: [], ...(template ? { grammar: 'root ::= "x"' } : {}), observeReasoning(delta) {
         observed.push(delta);
@@ -1310,7 +1310,7 @@ test("{§provider-tagged-reasoning} grammar evidence retains the exact pre-proje
     const config = {
         ...injectedBase,
         contextWindow: 640,
-        reasoning: { mode: "adaptive" as const, budget: null },
+        effort: { mode: "adaptive" as const, budget: null },
         reasoningResponseStyle: "think-tags" as const,
         reasoningStyle: "think" as const,
         grammarStyle: "llamacpp" as const,
@@ -1333,13 +1333,13 @@ test("{§provider-tagged-reasoning} grammar evidence retains the exact pre-proje
 });
 
 test("reasoningStyle 'think' follows activation (magnitude is irrelevant to the boolean wire control)", async () => {
-    const on = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "think" });
+    const on = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "think" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await on.generate({ workerId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).think, true);
 
     mock.restoreAll();
-    const off = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "think" });
+    const off = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "think" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await off.generate({ workerId: "r", messages: [] });
     assert.equal("think" in JSON.parse(calls[0].init.body as string), false);
@@ -1347,7 +1347,7 @@ test("reasoningStyle 'think' follows activation (magnitude is irrelevant to the 
 
 test("{§provider-wire-declaration} preserves each declared fixed effort", async () => {
     for (const mode of ["low", "medium", "high"] as const) {
-        const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode, budget: null }, retryAttempts: 0, ...wireConfig({ PLURNK_PROVIDERS_REASONING_EFFORT_PATH: "/reasoning_effort", PLURNK_PROVIDERS_REASONING_EFFORTS: "low,medium,high" }) });
+        const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode, budget: null }, retryAttempts: 0, ...wireConfig({ PLURNK_PROVIDERS_REASONING_EFFORT_PATH: "/reasoning_effort", PLURNK_PROVIDERS_REASONING_EFFORTS: "low,medium,high" }) });
         const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
         await p.generate({ workerId: "r", messages: [] });
         assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, mode);
@@ -1356,8 +1356,8 @@ test("{§provider-wire-declaration} preserves each declared fixed effort", async
 });
 
 test("{§provider-wire-declaration} explicit off and adaptive omission remain distinct", async () => {
-    for (const [reasoning, expected] of [[{ mode: "off", budget: null }, "none"], [{ mode: "adaptive", budget: null }, null], [{ mode: "low", budget: null }, "low"], [{ mode: "high", budget: null }, "high"]] as const) {
-        const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning, retryAttempts: 0, ...wireConfig({
+    for (const [effort, expected] of [[{ mode: "off", budget: null }, "none"], [{ mode: "adaptive", budget: null }, null], [{ mode: "low", budget: null }, "low"], [{ mode: "high", budget: null }, "high"]] as const) {
+        const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort, retryAttempts: 0, ...wireConfig({
             PLURNK_PROVIDERS_REASONING_EFFORT_PATH: "/reasoning_effort",
             PLURNK_PROVIDERS_REASONING_EFFORTS: "low,high",
             PLURNK_PROVIDERS_REASONING_OFF_BODY: '{"reasoning_effort":"none"}',
@@ -1366,14 +1366,14 @@ test("{§provider-wire-declaration} explicit off and adaptive omission remain di
         const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
         await p.generate({ workerId: "r", messages: [] });
         const body = JSON.parse(calls[0].init.body as string);
-        if (expected === null) assert.equal("reasoning_effort" in body, false, `mode ${reasoning.mode}: field must be omitted`);
-        else assert.equal(body.reasoning_effort, expected, `mode ${reasoning.mode}`);
+        if (expected === null) assert.equal("reasoning_effort" in body, false, `mode ${effort.mode}: field must be omitted`);
+        else assert.equal(body.reasoning_effort, expected, `mode ${effort.mode}`);
         mock.restoreAll();
     }
 });
 
 test("{§provider-wire-declaration} graded fallback precedes a catalog toggle without changing explicit policies", async () => {
-    for (const [reasoning, efforts, expected] of [
+    for (const [effort, efforts, expected] of [
         [{ mode: "adaptive", budget: null }, ["low"], true],
         [{ mode: "adaptive", budget: null }, ["low", "high", "max"], "high"],
         [{ mode: "off", budget: null }, ["low", "high", "max"], "none"],
@@ -1382,10 +1382,10 @@ test("{§provider-wire-declaration} graded fallback precedes a catalog toggle wi
         const requestFields = new RequestFields("fireworks-ai", withProviderDefaults({}), {
             reasoning: true, reasoningOptions: [{ type: "toggle" }, { type: "effort", values: [...efforts] }],
         });
-        const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning, retryAttempts: 0, requestFields, supportedReasoningPolicies: requestFields.policies });
+        const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort, retryAttempts: 0, requestFields, supportedEfforts: requestFields.efforts });
         const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
         await p.generate({ workerId: "r", messages: [] });
-        assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, expected, `mode ${reasoning.mode}`);
+        assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, expected, `mode ${effort.mode}`);
         mock.restoreAll();
     }
 });
@@ -1396,7 +1396,7 @@ test("{§deepseek-reasoning-request} the panel maps DeepSeek activation and exac
         [{ mode: "adaptive", budget: null }, { thinking: { type: "enabled" }, reasoning_effort: "high" }],
         [{ mode: "high", budget: null }, { thinking: { type: "enabled" }, reasoning_effort: "high" }],
     ] as const;
-    for (const [reasoning, expected] of cases) {
+    for (const [effort, expected] of cases) {
         const requestFields = new RequestFields("deepseek", withProviderDefaults({}), {
             reasoning: true, reasoningOptions: [{ type: "toggle" }, { type: "effort", values: ["high"] }],
         });
@@ -1406,10 +1406,10 @@ test("{§deepseek-reasoning-request} the panel maps DeepSeek activation and exac
             fetchTimeoutMs: 5000,
             temperature: 0.2,
             repeatPenalty: 1.15,
-            reasoning,
+            effort,
             retryAttempts: 0,
             requestFields,
-            supportedReasoningPolicies: requestFields.policies,
+            supportedEfforts: requestFields.efforts,
         });
         const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
         await p.generate({
@@ -1427,7 +1427,7 @@ test("{§deepseek-reasoning-request} the panel maps DeepSeek activation and exac
 });
 
 test("the family temperature default rides every request; caller sampling overrides it", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).temperature, 0.2);
@@ -1444,7 +1444,7 @@ test("the family temperature default rides every request; caller sampling overri
 });
 
 test("DRY + repeat_last_n ride the llamacpp path when set; unset leaves the box default; never on cloud", async () => {
-    const base = { model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off" as const, budget: null }, retryAttempts: 0 };
+    const base = { model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off" as const, budget: null }, retryAttempts: 0 };
     // set + llamacpp -> the loop-breakers ride the wire
     const p = testProvider({ ...base, grammarStyle: "llamacpp", dryMultiplier: 0.8, dryBase: 1.75, dryAllowedLength: 2, repeatLastN: 512 });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
@@ -1476,7 +1476,7 @@ test("DRY + repeat_last_n ride the llamacpp path when set; unset leaves the box 
 
 test("(#480) unset sampling passes through: no temperature or repetition field on the wire, grammar included", async () => {
     // Cloud shape: nothing configured, nothing sent — the provider default governs.
-    const cloud = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: null, repeatPenalty: null, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const cloud = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await cloud.generate({ workerId: "r", messages: [] });
     let body = JSON.parse(calls[0].init.body as string);
@@ -1485,7 +1485,7 @@ test("(#480) unset sampling passes through: no temperature or repetition field o
     assert.equal("frequency_penalty" in body, false);
     mock.restoreAll();
     // llamacpp grammar path: the grammar rides alone; the box's own defaults decode.
-    const llama = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: null, repeatPenalty: null, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
+    const llama = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await llama.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
     body = JSON.parse(calls[0].init.body as string);
@@ -1496,7 +1496,7 @@ test("(#480) unset sampling passes through: no temperature or repetition field o
 });
 
 test("llamacpp grammar path: temperature default + the managed repeat-penalty floor", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
     const body = JSON.parse(calls[0].init.body as string);
@@ -1506,13 +1506,13 @@ test("llamacpp grammar path: temperature default + the managed repeat-penalty fl
 
 test("the repeat penalty rides every request rail-off, keyed per backend", async () => {
     // llama.cpp with NO grammar carries its key too (unconstrained local is guarded)
-    const llama = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
+    const llama = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await llama.generate({ workerId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).repeat_penalty, 1.15);
     mock.restoreAll();
     // A `none`-style cloud backend with a frequency penalty gets frequency_penalty.
-    const cloud = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, frequencyPenalty: 0.4, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const cloud = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, frequencyPenalty: 0.4, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await cloud.generate({ workerId: "r", messages: [] });
     const cloudBody = JSON.parse(calls[0].init.body as string);
@@ -1521,14 +1521,14 @@ test("the repeat penalty rides every request rail-off, keyed per backend", async
     assert.equal("repeat_penalty" in cloudBody, false);
     mock.restoreAll();
     // frequencyPenalty unset (default 0) opts out cleanly - sends nothing (an out-of-date plugin runs unguarded, never breaks)
-    const bare = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const bare = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await bare.generate({ workerId: "r", messages: [] });
     assert.equal("frequency_penalty" in JSON.parse(calls[0].init.body as string), false);
 });
 
 test("sampling passthrough forwards caller params; managed + reserved keys win", async () => {
-    const p = testProvider({ model: "managed-model", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "managed-model", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({
         workerId: "r",
@@ -1551,7 +1551,7 @@ test("sampling passthrough forwards caller params; managed + reserved keys win",
 });
 
 test("sampling passthrough guards contract invariants: n/tools/caps stripped, platform knobs pass", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({
         workerId: "r",
@@ -1576,7 +1576,7 @@ test("sampling passthrough guards contract invariants: n/tools/caps stripped, pl
 });
 
 test("template reasoning returns the exact pre-projection grammar sentence ({§provider-grammar-evidence})", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const grammarInput = "<|channel>thought\ncon🙂sider<channel|>x";
     const calls = installFetch([{ choices: [{ delta: { content: grammarInput } }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: `root ::= ${JSON.stringify(grammarInput)}` });
@@ -1596,7 +1596,7 @@ test("template reasoning returns the exact pre-projection grammar sentence ({§p
 });
 
 test("template reasoning projects a leading think envelope without losing grammar evidence", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const input = "<think>\ncon🙂sider</think>x";
     const calls = installFetch([{ choices: [{ delta: { content: input } }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: `root ::= ${JSON.stringify(input)}` });
@@ -1612,7 +1612,7 @@ test("template reasoning projects a leading think envelope without losing gramma
 });
 
 test("a verbatim template response remains exact evidence when it has no channel envelope", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
     const body = JSON.parse(calls[0].init.body as string);
@@ -1621,7 +1621,7 @@ test("a verbatim template response remains exact evidence when it has no channel
 });
 
 test("a template grammar preserves exact evidence when reasoning is disabled", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
     const body = JSON.parse(calls[0].init.body as string);
@@ -1631,14 +1631,14 @@ test("a template grammar preserves exact evidence when reasoning is disabled", a
 });
 
 test("an unexpectedly projected template response cannot claim pre-projection evidence", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     installFetch([{ choices: [{ delta: { reasoning_content: "reason", content: "x" } }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
     assert.equal(res.grammarEvidence, undefined);
 });
 
 test("template reasoning preserves an empty grammar-required channel as exact evidence", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const input = "<|channel>thought\n<channel|>x";
     const calls = installFetch([{ choices: [{ delta: { content: input } }] }]);
     const res = await p.generate({ workerId: "r", messages: [], grammar: `root ::= ${JSON.stringify(input)}` });
@@ -1669,7 +1669,7 @@ test("channel-escape detector: billed completion tokens vastly beyond visible ch
         }
         return new Response(sseStream(chunks), { status: 200 });
     };
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetch, tokenizeUrl: "http://x/tokenize", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetch, tokenizeUrl: "http://x/tokenize", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
     const escape = res.notices?.find((e) => e.message.includes("escaped the grammar"));
     assert.ok(escape, "escape notice attached");
@@ -1678,7 +1678,7 @@ test("channel-escape detector: billed completion tokens vastly beyond visible ch
 });
 
 test("channel-escape state is absent without a transported grammar", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     installFetch([
         { choices: [{ delta: { content: "x" }, finish_reason: "length" }] },
         { usage: { prompt_tokens: 10, completion_tokens: 5000, total_tokens: 5010 } },
@@ -1689,7 +1689,7 @@ test("channel-escape state is absent without a transported grammar", async () =>
 });
 
 test("reasoningStyle 'template' sends llama-server activation, parser, and response-wide allowance", async () => {
-    const on = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template" });
+    const on = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await on.generate({ workerId: "r", messages: [] });
     let body = JSON.parse(calls[0].init.body as string);
@@ -1698,7 +1698,7 @@ test("reasoningStyle 'template' sends llama-server activation, parser, and respo
     assert.equal(body.thinking_budget_tokens, 64);
 
     mock.restoreAll();
-    const off = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "template" });
+    const off = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "template" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await off.generate({ workerId: "r", messages: [] });
     body = JSON.parse(calls[0].init.body as string);
@@ -1709,14 +1709,14 @@ test("reasoningStyle 'template' sends llama-server activation, parser, and respo
 
 test("reasoningStyle 'template' carries the explicit reasoning subset and rejects an additive envelope", async () => {
     const base = { model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryAttempts: 0, reasoningStyle: "template" as const };
-    const p = testProvider({ ...base, reasoningBudget: 32, reasoning: { mode: "high", budget: 32 } });
+    const p = testProvider({ ...base, reasoningBudget: 32, effort: { mode: "high", budget: 32 } });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], sampling: { thinking_budget_tokens: 999, reasoning_format: "none" } });
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal(body.thinking_budget_tokens, 32);
     assert.equal(body.reasoning_format, "auto");
     assert.throws(
-        () => testProvider({ ...base, reasoningBudget: 224, reasoning: { mode: "high", budget: 224 } }),
+        () => testProvider({ ...base, reasoningBudget: 224, effort: { mode: "high", budget: 224 } }),
         /reasoningBudget must be smaller than the total outputBudget/,
     );
 });
@@ -1731,7 +1731,7 @@ test("reasoningStyle 'template' forwards a fixed effort as the template's own va
         fetchTimeoutMs: 5000,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "high", budget: 64 },
+        effort: { mode: "high", budget: 64 },
         retryAttempts: 0,
         reasoningStyle: "template",
     });
@@ -1743,20 +1743,20 @@ test("reasoningStyle 'template' forwards a fixed effort as the template's own va
 });
 
 test("{§provider-wire-declaration} off sends the declared disabling fields", async () => {
-    const effort = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, ...wireConfig({ PLURNK_PROVIDERS_REASONING_EFFORT_PATH: "/reasoning_effort", PLURNK_PROVIDERS_REASONING_EFFORTS: "none" }) });
+    const effort = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, ...wireConfig({ PLURNK_PROVIDERS_REASONING_EFFORT_PATH: "/reasoning_effort", PLURNK_PROVIDERS_REASONING_EFFORTS: "none" }) });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await effort.generate({ workerId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "none");
 
     mock.restoreAll();
-    const relay = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, ...wireConfig({ PLURNK_PROVIDERS_REASONING_OFF_BODY: '{"include_reasoning":false}' }) });
+    const relay = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, ...wireConfig({ PLURNK_PROVIDERS_REASONING_OFF_BODY: '{"include_reasoning":false}' }) });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await relay.generate({ workerId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).include_reasoning, false);
 });
 
 test("{§provider-wire-declaration} sets the declared relay passthrough toggle", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, retryAttempts: 0, ...wireConfig({ PLURNK_PROVIDERS_REASONING_ON_BODY: '{"include_reasoning":true}' }) });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: null }, retryAttempts: 0, ...wireConfig({ PLURNK_PROVIDERS_REASONING_ON_BODY: '{"include_reasoning":true}' }) });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).include_reasoning, true);
@@ -1765,7 +1765,7 @@ test("{§provider-wire-declaration} sets the declared relay passthrough toggle",
 // — grammar-constrained sampling —
 
 test("grammar transport 'llamacpp': top-level grammar + the repeat-penalty floor", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
     const body = JSON.parse(calls[0].init.body as string);
@@ -1775,7 +1775,7 @@ test("grammar transport 'llamacpp': top-level grammar + the repeat-penalty floor
 });
 
 test("grammar transport 'none' (default): the grammar is never sent — no silent unconstrained", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], grammar: "root ::= statement" });
     const body = JSON.parse(calls[0].init.body as string);
@@ -1785,7 +1785,7 @@ test("grammar transport 'none' (default): the grammar is never sent — no silen
 
 // — exact pre-projection grammar evidence ({§provider-grammar-evidence}) —
 
-const grammarProvider = () => testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", source: "provider:test" });
+const grammarProvider = () => testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp", source: "provider:test" });
 const streamingContent = (content: string) => installFetch([{ choices: [{ delta: { content }, finish_reason: "stop" }] }]);
 
 test("an unsplit grammar response carries the exact observed sentence", async () => {
@@ -1819,7 +1819,7 @@ test("empty unsplit content remains exact grammar evidence", async () => {
 });
 
 test("grammarStyle 'none' produces no grammar observation", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 }); // grammarStyle defaults to "none"
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 }); // grammarStyle defaults to "none"
     streamingContent("anything goes");
     const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
     assert.equal(res.assistant.content, "anything goes");
@@ -1842,7 +1842,7 @@ test("an operator grammar reaches the request body verbatim under llama style an
     const styles = ["none", "llamacpp"] as const;
     for (const grammarStyle of styles) {
         const calls = installFetchJson({ ...jsonChoice, choices: [{ message: { role: "assistant", content: "ok" }, finish_reason: "stop" }] });
-        const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, grammarStyle });
+        const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, grammarStyle });
         const res = await p.generate({ workerId: "r", messages: [], grammar });
         const body = JSON.parse(String(calls[0]!.init.body)) as { grammar?: unknown };
         if (grammarStyle === "llamacpp") {
@@ -1858,7 +1858,7 @@ test("an operator grammar reaches the request body verbatim under llama style an
 // — meta bag: verbatim provider metadata —
 
 test("meta: passes backend fields through without reinterpreting monetary values", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
     const balance = { amount: "0.0000042", currency: "XMR" };
     installFetchJson({ ...jsonChoice, balance, system_fingerprint: "fp_abc" });
     const res = await p.generate({ workerId: "r", messages: [] });
@@ -1867,7 +1867,7 @@ test("meta: passes backend fields through without reinterpreting monetary values
 });
 
 test("grammar transport: no grammar passed sends no grammar field, but the penalty rides", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [] });
     const body = JSON.parse(calls[0].init.body as string);
@@ -1876,7 +1876,7 @@ test("grammar transport: no grammar passed sends no grammar field, but the penal
 });
 
 test("maxOutputTokens tightens the total output budget; absent leaves an unconfigured provider uncapped", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "r", messages: [], maxOutputTokens: 2048 });
     assert.equal(JSON.parse(calls[0].init.body as string).max_tokens, 2048);
@@ -1894,7 +1894,7 @@ test("{§provider-output-budget-conformance} reported output beyond the total bu
         fetchTimeoutMs: 5000,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "adaptive", budget: null },
+        effort: { mode: "adaptive", budget: null },
         retryAttempts: 2,
     });
     const calls = installFetch([
@@ -1934,7 +1934,7 @@ test("{§provider-output-budget-conformance} reported output beyond the total bu
 });
 
 test("slot affinity is internal: sticky per workerId, distinct workers spread across slots", async () => {
-    const pinning = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, supportsSlotPinning: true, slotCount: 2 });
+    const pinning = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, supportsSlotPinning: true, slotCount: 2 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await pinning.generate({ workerId: "run-A", messages: [] });
     await pinning.generate({ workerId: "run-B", messages: [] });
@@ -1945,20 +1945,20 @@ test("slot affinity is internal: sticky per workerId, distinct workers spread ac
 });
 
 test("slot affinity: no pinning backend or unknown slotCount → no id_slot ever", async () => {
-    const cloud = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 }); // default: no pinning
+    const cloud = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 }); // default: no pinning
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await cloud.generate({ workerId: "run-A", messages: [] });
     assert.equal("id_slot" in JSON.parse(calls[0].init.body as string), false);
 
     mock.restoreAll();
-    const noCount = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, supportsSlotPinning: true }); // slotCount null
+    const noCount = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, supportsSlotPinning: true }); // slotCount null
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await noCount.generate({ workerId: "run-A", messages: [] });
     assert.equal("id_slot" in JSON.parse(calls[0].init.body as string), false);
 });
 
 test("slot affinity: a worker past the LRU window (slotCount*8) loses its pin; recent workers stay sticky", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, supportsSlotPinning: true, slotCount: 2 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, supportsSlotPinning: true, slotCount: 2 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     const slotOf = (i: number) => JSON.parse(calls[i].init.body as string).id_slot;
     for (let i = 0; i < 16; i++) await p.generate({ workerId: `r${i}`, messages: [] }); // fills the 16-entry window {r0..r15}
@@ -1972,7 +1972,7 @@ test("slot affinity: a worker past the LRU window (slotCount*8) loses its pin; r
 
 test("streaming:false: a non-ok response rejects as a classified ProviderError (covers the non-streamed transport)", async () => {
     const { ProviderError } = await import("./errors.ts");
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, source: "provider:test" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, source: "provider:test" });
     mock.method(globalThis, "fetch", async () => new Response("boom", { status: 500 }));
     await assert.rejects(() => p.generate({ workerId: "r", messages: [] }), (err: unknown) => {
         assert.ok(err instanceof ProviderError, `expected ProviderError, got ${String(err)}`);
@@ -1983,14 +1983,14 @@ test("streaming:false: a non-ok response rejects as a classified ProviderError (
 });
 
 test("{§provider-cache-identity} generate fail-hards on a missing or empty workerId", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await assert.rejects(() => p.generate({ workerId: "", messages: [] }), /workerId is required/);
     await assert.rejects(() => (p.generate as (a: object) => Promise<unknown>)({ messages: [] }), /workerId is required/);
 });
 
 test("messages pass through verbatim — the provider injects no turn (turn structure belongs to the grammar, never provider prefill)", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "out" } }] }]);
     const input = [{ role: "user" as const, content: "hi" }];
     const res = await p.generate({ workerId: "r", messages: input });
@@ -2005,7 +2005,7 @@ test("{§provider-input-modalities} compatible transports serialize image files 
         fetchTimeoutMs: 5000,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
+        effort: { mode: "off", budget: null },
         retryAttempts: 0,
     });
     const calls = installFetch([{ choices: [{ delta: { content: "seen" } }] }]);
@@ -2034,7 +2034,7 @@ for (const [mediaType, format] of [["audio/wav", "wav"], ["audio/mpeg", "mp3"]])
     test(`{§provider-input-modalities} ${mediaType} reaches the compatible wire as native input_audio`, async () => {
         const provider = testProvider({
             model: "audio-model", url: "https://example.test/v1/chat/completions", fetchTimeoutMs: 5000,
-            temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0,
+            temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0,
         });
         const calls = installFetch([{ choices: [{ delta: { content: "heard" } }] }]);
         const bytes = new Uint8Array([82, 73, 70, 70]);
@@ -2054,7 +2054,7 @@ test("{§provider-input-modalities} Google serializes native audio through its o
     const calls = installFetchJson({ candidates: [{ content: { role: "model", parts: [{ text: "heard" }] }, finishReason: "STOP" }] });
     const provider = testProvider({
         model: "audio-fixture", languageModel: google("audio-fixture"), fetchTimeoutMs: 5000,
-        temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0,
+        temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0,
         streaming: false,
     });
     const bytes = new Uint8Array([82, 73, 70, 70]);
@@ -2069,7 +2069,7 @@ test("{§provider-input-modalities} Google serializes native audio through its o
 test("{§provider-input-modalities} an unsupported audio codec fails visibly instead of dropping its part", async () => {
     const provider = testProvider({
         model: "audio-model", url: "https://example.test/v1/chat/completions", fetchTimeoutMs: 5000,
-        temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0,
+        temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0,
     });
     const calls = installFetch([]);
     await assert.rejects(provider.generate({ workerId: "audio", messages: [{ role: "user", content: [
@@ -2084,7 +2084,7 @@ test("{§provider-input-modalities} an unsupported audio codec fails visibly ins
 
 test("generate wraps an HTTP failure as a ProviderError carrying Problem Details", async () => {
     const { ProviderError } = await import("./errors.ts");
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, source: "provider:test" });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, source: "provider:test" });
     mock.method(globalThis, "fetch", async () => new Response("rate limited", { status: 429 }));
     await assert.rejects(() => p.generate({ workerId: "r", messages: [] }), (err: unknown) => {
         assert.ok(err instanceof ProviderError, `expected ProviderError, got ${String(err)}`);
@@ -2098,7 +2098,7 @@ test("generate wraps an HTTP failure as a ProviderError carrying Problem Details
 });
 
 test("generate rejects on a pre-aborted external signal", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     const signal = AbortSignal.abort(new Error("nope"));
     await assert.rejects(() => p.generate({ workerId: "r", messages: [], signal }));
@@ -2106,7 +2106,7 @@ test("generate rejects on a pre-aborted external signal", async () => {
 
 test("configured headers and url are sent verbatim", async () => {
     const p = testProvider({
-        model: "m", url: "http://host/custom/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0,
+        model: "m", url: "http://host/custom/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0,
         headers: { Authorization: "Bearer secret", "X-Title": "plurnk" },
     });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
@@ -2119,7 +2119,7 @@ test("configured headers and url are sent verbatim", async () => {
 
 // — transient-failure retry —
 
-const retryCfg = { model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null } as const };
+const retryCfg = { model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null } as const };
 
 const stalledStreamResponse = (): Response => new Response(new ReadableStream({
     start(controller) {
@@ -2158,7 +2158,7 @@ test("streamed-body silence surfaces on the first failure; the budget is not con
         streamIdleTimeoutMs: 10,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
+        effort: { mode: "off", budget: null },
         retryAttempts: 1,
         source: "provider:test",
     });
@@ -2193,7 +2193,7 @@ test("an Undici stream termination surfaces on the first failure (#479)", async 
         streamIdleTimeoutMs: 0,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
+        effort: { mode: "off", budget: null },
         retryAttempts: 1,
         source: "provider:test",
     });
@@ -2220,7 +2220,7 @@ test("streamed-body silence does not replay when retries are disabled", async ()
         streamIdleTimeoutMs: 10,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
+        effort: { mode: "off", budget: null },
         retryAttempts: 0,
         source: "provider:test",
     });
@@ -2251,7 +2251,7 @@ test("an attempt timeout surfaces on the first failure and settles its physical 
         streamIdleTimeoutMs: 0,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
+        effort: { mode: "off", budget: null },
         retryAttempts: 1,
         source: "provider:test",
         operationTimeoutMs: 5_000,
@@ -2288,7 +2288,7 @@ test("first-content silence surfaces independently of the stream-idle deadline (
         streamIdleTimeoutMs: 0,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
+        effort: { mode: "off", budget: null },
         retryAttempts: 1,
         source: "provider:test",
         operationTimeoutMs: 5_000,
@@ -2321,7 +2321,7 @@ test("operation-deadline exhaustion is a distinct non-retryable failure", async 
         streamIdleTimeoutMs: 0,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
+        effort: { mode: "off", budget: null },
         retryAttempts: 3,
         source: "provider:test",
         ...connectivity,
@@ -2364,7 +2364,7 @@ test("the total generation deadline spans stalled-stream retry scheduling", asyn
         streamIdleTimeoutMs: 10,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
+        effort: { mode: "off", budget: null },
         retryAttempts: 3,
         source: "provider:test",
     });
@@ -2395,7 +2395,7 @@ test("a zero stream-idle timeout permits a slow inter-chunk pause", async () => 
         streamIdleTimeoutMs: 0,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
+        effort: { mode: "off", budget: null },
         retryAttempts: 0,
     });
     const result = await p.generate({ workerId: "r", messages: [] });
@@ -2459,27 +2459,27 @@ test("{§provider-wire-declaration} maps nested budgets and adaptive/disabled bo
         PLURNK_PROVIDERS_REASONING_ADAPTIVE_BODY: '{"thinking":{"type":"adaptive"}}',
     });
     // N>0 → enabled with budget_tokens
-    const capped = testProvider({ model: "m", url: "http://x/v1/chat/completions", outputBudget: 8192, reasoningBudget: 4096, fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: 4096 }, ...configuration });
+    const capped = testProvider({ model: "m", url: "http://x/v1/chat/completions", outputBudget: 8192, reasoningBudget: 4096, fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: 4096 }, ...configuration });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await capped.generate({ workerId: "r", messages: [] });
     assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "enabled", budget_tokens: 4096 });
 
     mock.restoreAll();
-    const unbudgeted = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 8192, outputBudget: 4096, reasoningBudget: 2048, fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: 2048 }, ...configuration });
+    const unbudgeted = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 8192, outputBudget: 4096, reasoningBudget: 2048, fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: 2048 }, ...configuration });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await unbudgeted.generate({ workerId: "r", messages: [] });
     assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "enabled", budget_tokens: 2048 });
 
     mock.restoreAll();
     // 0 → explicit disabled
-    const off = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, ...configuration });
+    const off = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, ...configuration });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await off.generate({ workerId: "r", messages: [] });
     assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "disabled" });
 
     mock.restoreAll();
     // Adaptive is explicit, so the provider—not omission—owns the posture.
-    const adaptive = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "adaptive", budget: null }, ...configuration });
+    const adaptive = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: null }, ...configuration });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await adaptive.generate({ workerId: "r", messages: [] });
     assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "adaptive" });
@@ -2497,7 +2497,7 @@ test("streaming:false posts without stream and parses the single JSON response",
             usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 },
         }), { status: 200, headers: { "Content-Type": "application/json" } });
     });
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
     const res = await p.generate({ workerId: "r", messages: [] });
     const sent = JSON.parse(calls[0].body);
     assert.equal("stream" in sent, false);                 // no streaming flag
@@ -2509,7 +2509,7 @@ test("streaming:false posts without stream and parses the single JSON response",
 });
 
 // ── Data capture ({§provider-evidence}): logprobs + verbatim rawBody, opt-in, off by default ──
-const captureBase = { model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null } as const, retryAttempts: 0 };
+const captureBase = { model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null } as const, retryAttempts: 0 };
 
 test("logprobs OFF by default: no wire request, no assistant.logprobs, no rawBody", async () => {
     const calls = installFetch([{ model: "m", choices: [{ delta: { content: "hi" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }]);
@@ -2565,7 +2565,7 @@ test("caller sampling cannot forge logprobs (reserved keys): the env flag is the
 // -- {§provider-generation-envelope} --
 
 test("the adapter exposes independent model limits and the resolved generation envelope", () => {
-    const base = { model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null } as const, retryAttempts: 0 };
+    const base = { model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null } as const, retryAttempts: 0 };
     const bounded = testProvider({
         ...base,
         contextWindow: 49_152,
@@ -2591,7 +2591,7 @@ test("a compatible route's declared body affinity is managed by workerId", async
         fetchTimeoutMs: 5000,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
+        effort: { mode: "off", budget: null },
         retryAttempts: 0,
         cacheAffinity: { target: "body", name: "prompt_cache_key" },
     });
@@ -2601,7 +2601,7 @@ test("a compatible route's declared body affinity is managed by workerId", async
 });
 
 test("an undeclared compatible route receives no guessed cache field", async () => {
-    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0 });
+    const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({ workerId: "worker-abc", messages: [] });
     assert.equal("prompt_cache_key" in JSON.parse(calls[0].init.body as string), false);
@@ -2615,7 +2615,7 @@ test("a compatible route's declared header affinity composes with static headers
         fetchTimeoutMs: 5000,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
+        effort: { mode: "off", budget: null },
         retryAttempts: 0,
         cacheAffinity: { target: "header", name: "x-grok-conv-id" },
     });
@@ -2655,15 +2655,15 @@ test("native request projections compose reasoning visibility, affinity, and sys
         fetchTimeoutMs: 5000,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "adaptive", budget: null },
+        effort: { mode: "adaptive", budget: null },
         retryAttempts: 0,
         streaming: false,
         cacheAffinity: { target: "provider-option", provider: "openai", name: "promptCacheKey" },
         reasoningResponseProviderOptions: {
             google: { thinkingConfig: { includeThoughts: true } },
         },
-        adaptiveReasoning: "provider-default",
-        adaptiveReasoningProviderOptions: {
+        adaptiveEffort: "provider-default",
+        adaptiveEffortProviderOptions: {
             google: { thinkingConfig: { thinkingBudget: -1 } },
         },
         systemCacheProviderOptions: {
@@ -2722,7 +2722,7 @@ test("{§provider-input-modalities} image media reaches the AI SDK as its curren
         fetchTimeoutMs: 5000,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "off", budget: null },
+        effort: { mode: "off", budget: null },
         retryAttempts: 0,
         streaming: false,
     });
@@ -2774,7 +2774,7 @@ test("native AI SDK reasoning turns on without an operator token budget", async 
         fetchTimeoutMs: 5000,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "high", budget: null },
+        effort: { mode: "high", budget: null },
         retryAttempts: 0,
         streaming: false,
     });
@@ -2819,7 +2819,7 @@ test("native additive-reasoning adapters preserve one total output budget", asyn
             fetchTimeoutMs: 5000,
             temperature: 0.2,
             repeatPenalty: 1.15,
-            reasoning: { mode: "high", budget: 2048 },
+            effort: { mode: "high", budget: 2048 },
             retryAttempts: 0,
             streaming: false,
         });
@@ -2861,12 +2861,12 @@ test("native additive-reasoning adapters derive a bounded manual allowance when 
             languageModel,
             additiveReasoningProvider: provider,
             outputBudget: 1500,
-            adaptiveReasoning: "high",
+            adaptiveEffort: "high",
             reasoningBudget: null,
             fetchTimeoutMs: 5000,
             temperature: 0.2,
             repeatPenalty: 1.15,
-            reasoning: { mode: "adaptive", budget: null },
+            effort: { mode: "adaptive", budget: null },
             retryAttempts: 0,
             streaming: false,
         });
@@ -2899,7 +2899,7 @@ test("a manual-reasoning model rejects an envelope below its provider minimum be
         fetchTimeoutMs: 5000,
         temperature: 0.2,
         repeatPenalty: 1.15,
-        reasoning: { mode: "adaptive", budget: null },
+        effort: { mode: "adaptive", budget: null },
         retryAttempts: 0,
         streaming: false,
     });
@@ -2921,7 +2921,7 @@ test("a response with an invalid reasoning detail retains totals and their catal
         usage,
     });
     const p = testProvider({
-        model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: null, repeatPenalty: null, reasoning: { mode: "off", budget: null }, retryAttempts: 0,
+        model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0,
         streaming: false,
         estimateCost: (known) => known === undefined
             ? { kind: "unknown", reason: "the provider response reported no normalized usage" }
@@ -2962,7 +2962,7 @@ test("{§provider-connectivity} a stream still producing content outlives the at
             streamIdleTimeoutMs: 1_000,
             temperature: 0.2,
             repeatPenalty: 1.15,
-            reasoning: { mode: "off", budget: null },
+            effort: { mode: "off", budget: null },
             retryAttempts: 1,
             source: "provider:test",
             operationTimeoutMs: 5_000,

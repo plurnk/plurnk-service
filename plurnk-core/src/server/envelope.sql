@@ -77,23 +77,23 @@ WHERE id = $workspace_id
 RETURNING id;
 
 -- PREP: worker_generation_policy_read
--- {§worker-model-selection}/{§worker-reasoning-policy} — one durable generation policy.
-SELECT model_route_id, spawn_model_route_id, reasoning_policy, reasoning_source FROM workers WHERE id = $id;
+-- {§worker-model-selection}/{§worker-effort} — one durable generation policy.
+SELECT model_route_id, spawn_model_route_id, effort, effort_source FROM workers WHERE id = $id;
 
 -- PREP: worker_generation_policy_update
 -- {§worker-model-selection}: test liveness in the policy write, not before it.
 UPDATE workers
 SET model_route_id = $model_route_id,
     spawn_model_route_id = $spawn_model_route_id,
-    reasoning_policy = $reasoning_policy,
-    reasoning_source = $reasoning_source,
+    effort = $effort,
+    effort_source = $effort_source,
     version = version + 1
 WHERE id = $id
   AND (
       model_route_id IS NULL
       OR (model_route_id IS $model_route_id
        AND spawn_model_route_id IS $spawn_model_route_id
-       AND reasoning_policy IS $reasoning_policy)
+       AND effort IS $effort)
       OR NOT EXISTS (
           SELECT 1 FROM loops
           WHERE worker_id = workers.id AND status IN (100, 102, 202)
@@ -109,7 +109,7 @@ WHERE id = $id
       model_route_id IS NULL
       OR (model_route_id IS $model_route_id
        AND spawn_model_route_id IS $spawn_model_route_id
-       AND reasoning_policy IS $reasoning_policy)
+       AND effort IS $effort)
       OR NOT EXISTS (
           SELECT 1 FROM loops
           WHERE worker_id = workers.id AND status IN (100, 102, 202)

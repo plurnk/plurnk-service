@@ -13,7 +13,7 @@ import type {
     ProviderCost,
     ProviderRequestAccounting,
     ProviderRequestObserver,
-    ReasoningPolicy,
+    Effort,
 } from "@plurnk/plurnk-contracts";
 
 export type {
@@ -24,14 +24,14 @@ export type {
     ProviderRequestObserver,
     ProviderRequestSettlement,
     ProviderUsage,
-    ReasoningPolicy,
+    Effort,
 } from "@plurnk/plurnk-contracts";
 
-export class UnsupportedReasoningPolicyError extends Error {
-    readonly policy: ReasoningPolicy;
-    readonly supported: readonly ReasoningPolicy[];
+export class UnsupportedEffortError extends Error {
+    readonly policy: Effort;
+    readonly supported: readonly Effort[];
 
-    constructor(source: string, policy: ReasoningPolicy, supported: readonly ReasoningPolicy[], remedy?: string) {
+    constructor(source: string, policy: Effort, supported: readonly Effort[], remedy?: string) {
         // A graded-effort refusal names the operator's declaration lever (#472):
         // the catalog is authoritative per model, and where a provider's API
         // accepts more than its catalog entry lists, the remedy is the
@@ -40,8 +40,8 @@ export class UnsupportedReasoningPolicyError extends Error {
         const lever = remedy !== undefined ? ` ${remedy}` : policy === "off" || policy === "adaptive"
             ? ""
             : ` If the provider's API documents this effort beyond its catalog entry, declare it: PLURNK_PROVIDERS_PROVIDER_${(providerName ?? "<NAME>").replaceAll(/[^a-zA-Z0-9<>]/g, "_").toUpperCase()}_REASONING_EFFORTS=${policy} (comma-separated).`;
-        super(`${source}: reasoning policy '${policy}' is unsupported; supported policies: ${supported.join(", ")}.${lever}`);
-        this.name = "UnsupportedReasoningPolicyError";
+        super(`${source}: effort '${policy}' is unsupported; supported efforts: ${supported.join(", ")}.${lever}`);
+        this.name = "UnsupportedEffortError";
         this.policy = policy;
         this.supported = supported;
     }
@@ -273,7 +273,7 @@ export interface Provider {
     readonly outputBudget: number | null;
     readonly reasoningBudget: number | null;
     // Exact durable policies this adapter can represent without coercion.
-    readonly supportedReasoningPolicies: readonly ReasoningPolicy[];
+    readonly supportedEfforts: readonly Effort[];
     // {§provider-input-modalities} — the native non-text parts the route's model accepts.
     readonly inputModalities: ReadonlySet<InputModality>;
     readonly inputCapacity: number | null;

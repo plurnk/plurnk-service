@@ -75,7 +75,7 @@ test("{§model-catalog}: no configured provider means the default page is honest
     assert.deepEqual(listModelCatalog({}, {}), { items: [], offset: 0, total: 0 });
 });
 
-test("{§model-catalog}: discovery exposes the provider's exact reasoning policies without credentials or I/O", () => {
+test("{§model-catalog}: discovery exposes the provider's exact efforts without credentials or I/O", () => {
     const fetch = mock.method(globalThis, "fetch", () => {
         throw new Error("model discovery must not contact a provider");
     });
@@ -112,7 +112,7 @@ test("{§model-catalog}: discovery exposes the provider's exact reasoning polici
             const entry = page.items.find(({ selector }) => selector === `${provider}/${model}`);
             assert.ok(entry, `${provider}/${model} is discoverable without credentials`);
             assert.deepEqual(
-                Reflect.get(entry.capabilities, "reasoningPolicies"), expected, entry.selector,
+                Reflect.get(entry.capabilities, "efforts"), expected, entry.selector,
             );
             assert.equal(entry.readiness.ready, false);
         }

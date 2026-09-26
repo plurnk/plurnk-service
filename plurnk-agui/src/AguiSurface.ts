@@ -43,7 +43,7 @@ const POSITIVE = integer(1);
 const NONNEGATIVE = integer(0);
 const OPERATION_RESULT = ref("OperationResult");
 const MODEL_ROUTE = ref("ModelRoute");
-const REASONING_POLICY = ref("ReasoningPolicy");
+const EFFORT = ref("Effort");
 const PROVIDER_ACCOUNTING = { $ref: "https://schemas.plurnk.xyz/ProviderAccounting.json" };
 
 const workspace = object({
@@ -63,12 +63,12 @@ const worker = object({
     lifecycle: { enum: ["idle", "queued", "running", "parked", "completed", "failed"] },
 }, ["id", "name", "created_at", "origin", "parentWorkerId", "kind", "lifecycle"]);
 const capabilityProjection = ref("CapabilityProjection");
-// {§worker-reasoning-source} — `source` says whether the policy was chosen or seeded.
-const reasoningResult = object({
-    policy: nullable(REASONING_POLICY),
+// {§worker-effort-source} — `source` says whether the effort was chosen or seeded.
+const effortResult = object({
+    effort: nullable(EFFORT),
     source: { enum: ["default", "explicit"] },
-    supportedPolicies: array(REASONING_POLICY),
-}, ["policy", "source", "supportedPolicies"]);
+    supportedEfforts: array(EFFORT),
+}, ["effort", "source", "supportedEfforts"]);
 const action = (
     scope: AguiActionScope,
     inputSchema: JsonSchema,
@@ -143,14 +143,14 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
         model: nullable(MODEL_ROUTE),
         spawnModel: nullable(MODEL_ROUTE),
     }, ["model", "spawnModel"])),
-    "worker.model.set": action("workspace", object({ selector: NONEMPTY }, ["selector"]), MODEL_ROUTE),
+    "worker.model.set": action("workspace", object({ selector: NONEMPTY, effort: EFFORT }, ["selector"]), MODEL_ROUTE),
     "worker.child.set": action("workspace", object({ selector: nullable(NONEMPTY) }, ["selector"]), nullable(MODEL_ROUTE)),
-    "worker.reasoning.get": action("workspace", EMPTY, reasoningResult),
-    "worker.reasoning.set": action("workspace", object({ policy: REASONING_POLICY }, ["policy"]), {
-        ...reasoningResult,
+    "worker.effort.get": action("workspace", EMPTY, effortResult),
+    "worker.effort.set": action("workspace", object({ effort: EFFORT }, ["effort"]), {
+        ...effortResult,
         properties: {
-            ...(reasoningResult.properties as Readonly<Record<string, JsonSchema>>),
-            policy: REASONING_POLICY,
+            ...(effortResult.properties as Readonly<Record<string, JsonSchema>>),
+            policy: EFFORT,
         },
     }),
     "workspace.capabilities.get": action("workspace", EMPTY, capabilityProjection),

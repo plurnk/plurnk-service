@@ -261,8 +261,8 @@ PLURNK maps its generic settings to AI SDK call settings:
 - presence and frequency penalties;
 - stop sequences and seed;
 - output-token ceiling;
-- the supported reasoning policies and optional numeric control under
-  {§provider-reasoning-policy}.
+- the supported efforts and optional numeric control under
+  {§provider-effort}.
 
 Provider-specific options are permitted only where they preserve a documented
 PLURNK product contract the generic SDK surface cannot express.
@@ -277,13 +277,13 @@ catalog figure. Without catalog rates the override must declare `input` and
 response cost still outranks any estimate. Unknown keys, repeats, and negative
 or non-numeric rates refuse at construction.
 
-§provider-reasoning-policy The portable vocabulary comes from
-{§reasoning-policy-wire}. `adaptive` uses the first applicable projection:
+§provider-effort The portable vocabulary comes from
+{§effort-wire}. `adaptive` uses the first applicable projection:
 
 | Condition | Projection |
 | --- | --- |
 | Explicit adaptive declaration: `REASONING_ADAPTIVE_BODY`, or a native model family's `ADAPTIVE_OPTIONS` ({§provider-model-options}) | Preserve that mechanism; an explicit `{}` retains the enabled endpoint's default. |
-| The configured `PLURNK_PROVIDERS_REASONING_FALLBACK` is supported by both model and transport | Send that exact effort. The shipped fallback is `high`, not the strongest available level. |
+| The configured `PLURNK_PROVIDERS_EFFORT_FALLBACK` is supported by both model and transport | Send that exact effort. The shipped fallback is `high`, not the strongest available level. |
 | No supported fallback, including an empty fallback setting | Retain reasoning activation and the provider's default effort; never invent a level or escalate to another one. |
 
 Activation is distinct from effort: declared enable fields accompany active
@@ -297,7 +297,7 @@ routes whose controls are exclusive, fixed effort plus a numeric budget is
 rejected before I/O. Under `adaptive`, an explicit budget selects the numeric
 control; `off` suppresses it.
 
-`catalogReasoningPolicies` projects that same admission calculation from catalog
+`catalogEfforts` projects that same admission calculation from catalog
 facts and provider-wide environment declarations over the installed defaults,
 without constructing a model, requiring credentials, or performing provider I/O.
 Admission respects the installed projection: native SDK fixed efforts exclude
@@ -318,7 +318,7 @@ explicit compatible adapter owns the wire projection:
 | --- | --- | --- |
 | `reasoning: false` | No reasoning request | `off` |
 | `reasoning_options: []` | Provider default | None |
-| `effort.values` | Native dynamic mechanism, otherwise the supported configured fallback or provider default | Transportable fixed members of {§reasoning-policy-wire}; `off` only when `none` is transportable |
+| `effort.values` | Native dynamic mechanism, otherwise the supported configured fallback or provider default | Transportable fixed members of {§effort-wire}; `off` only when `none` is transportable |
 | `toggle` | Native or explicitly declared activation, otherwise provider default | `off` only when that transport owns the toggle wire |
 | `budget_tokens` | Does not select policy | None; an adapter may use its bounds when projecting the independent budget |
 | No catalog entry | Explicit adapter declaration | Only the declaration's exact subset |
@@ -508,7 +508,7 @@ Provider and model facts resolve independently:
 | Maximum input | Catalog `limit.input`; no generic live probe. | None. | Catalog value or `null`; never reconstructed from context and output. |
 | Maximum output | Catalog `limit.output`; no generic live probe. | None. | Minimum of catalog value and effective context, or `null`. |
 | Total output budget | None. | `PLURNK_PROVIDERS_OUTPUT_BUDGET`. | Curation reservation: percentage of effective context or absolute count, capped by known context/output limits; a call may only tighten it. The response grant may expand under {§provider-flexed-allowance}. |
-| Reasoning policy | Catalog `reasoning_options` intersected with the installed adapter; explicit adapter declaration for uncataloged routes. | `PLURNK_PROVIDERS_REASONING`, initially; durable worker selection thereafter. | A supported member of {§reasoning-policy-wire}, projected under {§provider-reasoning-policy}. The shipped selection is `adaptive`. |
+| Effort | Catalog `reasoning_options` intersected with the installed adapter; explicit adapter declaration for uncataloged routes. | `PLURNK_PROVIDERS_EFFORT`, initially; durable worker selection thereafter. | A supported member of {§effort-wire}, projected under {§provider-effort}. The shipped selection is `adaptive`. |
 | Reasoning budget | None. | Optional `PLURNK_PROVIDERS_REASONING_BUDGET`. | Percentage of effective context or absolute count; valid only as a strict subset of total output and effective unless reasoning is `off`. |
 | Cost override | None. | Optional `PLURNK_PROVIDERS_COST`. | {§operator-cost-override} — comma-separated `key=value` per-1M-token USD rates over `input, output, reasoning, cacheRead, cacheWrite`; merges over the Models.dev catalog block (the catalog is the starting point), alias-scoped like every knob. Without catalog rates the override must declare `input` and `output`. The cost estimate's `source` names the override; a provider-reported response cost still outranks any estimate. |
 | Reasoning capability | Catalog `reasoning` and route-specific `reasoning_options`. | Adapter wire style only where the catalog cannot name the native field. | Catalog controls determine admissible policy; the adapter determines its wire projection. |

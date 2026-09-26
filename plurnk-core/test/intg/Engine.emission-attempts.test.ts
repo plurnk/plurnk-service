@@ -176,7 +176,7 @@ test("{§provider-connectivity}: one model call durably settles a transient requ
             streamIdleTimeoutMs: 1_000,
             temperature: 0.2,
             repeatPenalty: 1.15,
-            reasoning: { mode: "off", budget: null },
+            effort: { mode: "off", budget: null },
             retryAttempts: 1,
             source: "provider:connectivity-witness",
         });
@@ -415,7 +415,7 @@ test("{§repetition-stop}: a response stopped at a repeated line is a rejected e
                 : stream(chunk("\n````KILL\nrecovered\n````", "stop") + usage + "data: [DONE]\n\n"),
             fetchTimeoutMs: 1_000, operationTimeoutMs: 5_000, firstContentTimeoutMs: 1_000, streamIdleTimeoutMs: 1_000,
             repeatedLineLimit: 4,
-            temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0,
+            temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0,
             source: "provider:repeat-witness",
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "do the task" }] });

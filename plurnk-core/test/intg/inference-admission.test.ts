@@ -56,7 +56,7 @@ for (const delegated of ["WORK", "BARE"] as const) {
             const declaration = {
                 [`PLURNK_MODEL_${spec.alias}`]: `openai/${model}`,
                 [`PLURNK_BASEURL_${spec.alias}`]: baseUrl,
-                [`PLURNK_PROVIDERS_REASONING_${spec.alias}`]: "off",
+                [`PLURNK_PROVIDERS_EFFORT_${spec.alias}`]: "off",
                 [`PLURNK_PROVIDERS_MAX_CONCURRENCY_${spec.alias}`]: "1",
             };
             Object.assign(process.env, declaration);
@@ -64,7 +64,7 @@ for (const delegated of ["WORK", "BARE"] as const) {
             const provider = await instantiateProvider("openai", {
                 ...process.env,
                 OPENAI_API_KEY: "fixture-key",
-                PLURNK_PROVIDERS_REASONING: "off",
+                PLURNK_PROVIDERS_EFFORT: "off",
                 PLURNK_PROVIDERS_MAX_CONCURRENCY: "1",
             }, model, undefined, undefined, baseUrl);
             ProviderInstantiate.registerInstance(provider, spec);

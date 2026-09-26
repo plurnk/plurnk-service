@@ -27,7 +27,7 @@ Clients use AG-UI management actions and AG-UI Run streams exposed by
 a second client transport.
 
 `models.list` locally lists catalog routes, configuration readiness, and each
-route's accepted `capabilities.reasoningPolicies`. `worker.reasoning.get`
+route's accepted `capabilities.efforts`. `worker.effort.get`
 reports the choices shared by a worker's selected model and spawn override.
 
 ## Start

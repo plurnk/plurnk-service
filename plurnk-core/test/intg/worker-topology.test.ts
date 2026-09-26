@@ -90,7 +90,7 @@ test("{§worker-lifecycle-child-wake}: one completed child task wakes its parent
                     workspaceId, workerId: childId,
                     source: `worker://${parentWorker.name}`,
                     providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
-                    reasoningPolicy: "adaptive" as const, systemPrompt: "test system",
+                    effort: "adaptive" as const, systemPrompt: "test system",
                 };
                 const childTasks = await Promise.all([
                     daemon.inject({ ...common, prompt: "First child task." }),

@@ -24,7 +24,7 @@ import QuestionTool, { questionRuntimeDecl } from "../schemes/QuestionTool.ts";
 export type NotifyTarget = "all" | { workspaceId: number };
 import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult, type TurnCeilingSelection } from "./DrainSupervisor.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
-import { Validator, type ClientDisplayCapabilities, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationPort, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type ReasoningPolicy } from "@plurnk/plurnk-contracts";
+import { Validator, type ClientDisplayCapabilities, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationPort, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort } from "@plurnk/plurnk-contracts";
 import type { HttpRouteHandler, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import HttpListener from "./HttpListener.ts";
@@ -82,18 +82,18 @@ const clientActionFailure = (error: unknown): SchemeResult => {
 };
 
 export type ChannelRow = { name: string } & ClientEntryChannel;
-export type ReasoningSource = "default" | "explicit";
+export type EffortSource = "default" | "explicit";
 export type WorkerGenerationPolicyRow = {
     model_route_id: number | null;
     spawn_model_route_id: number | null;
-    reasoning_policy: ReasoningPolicy | null;
-    // {§worker-reasoning-source} — `explicit` only through worker.reasoning.set.
-    reasoning_source: ReasoningSource;
+    effort: Effort | null;
+    // {§worker-effort-source} — `explicit` only through worker.effort.set.
+    effort_source: EffortSource;
 };
 type LoopGenerationPolicy = {
     providerSpec: ProviderSpec;
     childProviderSpec: ProviderSpec | null;
-    reasoningPolicy: ReasoningPolicy;
+    effort: Effort;
 };
 
 export default class Daemon implements ApplicationPort {
@@ -236,7 +236,7 @@ export default class Daemon implements ApplicationPort {
                 const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
                 let providerSpec: ProviderSpec;
                 let childProviderSpec: ProviderSpec | null;
-                let reasoningPolicy: ReasoningPolicy;
+                let effort: Effort;
                 if (spawn !== true) {
                     // {§worker-model-selection} — the voice door addresses an
                     // existing worker. Its own durable generation policy is the
@@ -247,22 +247,22 @@ export default class Daemon implements ApplicationPort {
                         throw new Error(`injectWorker: worker ${workerId} has no resolvable model route`);
                     }
                     providerSpec = targetPolicy.providerSpec;
-                    reasoningPolicy = targetPolicy.reasoningPolicy;
+                    effort = targetPolicy.effort;
                     childProviderSpec = await this.#workerModels.resolveWorkerSpawnModel(workerId, undefined);
                 } else {
                     const parentPolicy = await this.#providerPolicyForLoop(sourceLoopId);
                     providerSpec = parentPolicy.childProviderSpec ?? parentPolicy.providerSpec;
-                    reasoningPolicy = parentPolicy.reasoningPolicy;
+                    effort = parentPolicy.effort;
                     // {§worker-model-selection} — lineage inheritance by value:
                     // the child begins with the spawning loop's effective spawn
                     // model and no separate override of its own.
                     childProviderSpec = null;
-                    // {§worker-reasoning-source} — inherited by value, chosen by nobody on this worker.
+                    // {§worker-effort-source} — inherited by value, chosen by nobody on this worker.
                     await this.#workerModels.persistGenerationPolicy(workerId, {
                         model_route_id: await routeForSpec(this.#db, providerSpec),
                         spawn_model_route_id: null,
-                        reasoning_policy: reasoningPolicy,
-                        reasoning_source: "default" });
+                        effort: effort,
+                        effort_source: "default" });
                                     // {§env-option} — the heading's environment lands as the child's own entries through the
                     // family's add, after the copy it inherited at creation ({§functionality-scope}); names
                     // were admitted at the operation, so a refusal here is a defect and throws.
@@ -279,7 +279,7 @@ export default class Daemon implements ApplicationPort {
                     sourceLoopId,
                     ...(source === undefined ? {} : { source }),
                     providerSpec,
-                    reasoningPolicy,
+                    effort,
                     childProviderSpec,
                     systemPrompt,
                     ...(freshLoopPolicy === undefined ? {} : { freshLoopPolicy }) });
@@ -309,7 +309,7 @@ export default class Daemon implements ApplicationPort {
                 loopId,
                 providerSpec,
                 providerSpecExplicit,
-                reasoningPolicy,
+                effort,
                 childProviderSpec,
                 turnCeiling,
                 policy }) => {
@@ -319,7 +319,7 @@ export default class Daemon implements ApplicationPort {
                 if (providerSpecExplicit !== false) {
                     await this.#assertLoopProvider(loopId, providerSpec);
                 }
-                await this.#assertLoopReasoningPolicy(loopId, reasoningPolicy);
+                await this.#assertLoopEffort(loopId, effort);
                 if (childProviderSpec !== undefined) {
                     await this.#assertLoopChildProvider(loopId, childProviderSpec);
                 }
@@ -500,7 +500,7 @@ export default class Daemon implements ApplicationPort {
                     retryable: false },
             ));
         }
-        const { providerSpec: selection, reasoningPolicy } = generationPolicy;
+        const { providerSpec: selection, effort } = generationPolicy;
         // {§methods-loop-run-child-provider} — the worker's persistent spawn override.
         const childSelection = await this.#workerModels.resolveWorkerSpawnModel(workerId, childSelector);
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8");
@@ -525,7 +525,7 @@ export default class Daemon implements ApplicationPort {
             turnCeiling,
             providerSpec: selection,
             providerSpecExplicit: selectorExplicit,
-            reasoningPolicy,
+            effort,
             childProviderSpec: childSelection,
             systemPrompt });
         return { status: 100, action, loopId, ...(turnSeq !== undefined ? { turnSeq } : {}) };
@@ -541,13 +541,13 @@ export default class Daemon implements ApplicationPort {
         if (providerSpec === null) {
             throw new Error(`loop ${loopId}: persisted provider selection is missing — refusing boot-default substitution`);
         }
-        if (row.reasoning_policy === null) {
-            throw new Error(`loop ${loopId}: persisted reasoning policy is missing`);
+        if (row.effort === null) {
+            throw new Error(`loop ${loopId}: persisted effort is missing`);
         }
         return {
             providerSpec,
             childProviderSpec: await specForRoute(this.#db, row.spawn_model_route_id),
-            reasoningPolicy: row.reasoning_policy };
+            effort: row.effort };
     }
 
     async #providerSpecForLoop(loopId: number): Promise<ProviderSpec> {
@@ -556,10 +556,10 @@ export default class Daemon implements ApplicationPort {
 
     async #providersForLoop(loopId: number): Promise<{ provider: Provider; childProvider: Provider }> {
         const policy = await this.#providerPolicyForLoop(loopId);
-        const provider = await this.#workerModels.providerForPolicy(policy.providerSpec, policy.reasoningPolicy);
+        const provider = await this.#workerModels.providerForPolicy(policy.providerSpec, policy.effort);
         const childProvider = policy.childProviderSpec === null
             ? provider
-            : await this.#workerModels.providerForPolicy(policy.childProviderSpec, policy.reasoningPolicy);
+            : await this.#workerModels.providerForPolicy(policy.childProviderSpec, policy.effort);
         return { provider, childProvider };
     }
 
@@ -584,20 +584,20 @@ export default class Daemon implements ApplicationPort {
         }
     }
 
-    async #assertLoopReasoningPolicy(loopId: number, requested: ReasoningPolicy): Promise<void> {
-        const selected = (await this.#providerPolicyForLoop(loopId)).reasoningPolicy;
+    async #assertLoopEffort(loopId: number, requested: Effort): Promise<void> {
+        const selected = (await this.#providerPolicyForLoop(loopId)).effort;
         if (selected !== requested) {
             throw daemonFailure(
                 "daemon:provider",
-                "loop-reasoning-policy-conflict",
+                "loop-effort-conflict",
                 409,
-                `Loop ${loopId} uses reasoning policy '${selected}', not '${requested}'.`,
+                `Loop ${loopId} uses effort '${selected}', not '${requested}'.`,
                 {
                     loopId,
-                    selectedReasoningPolicy: selected,
-                    requestedReasoningPolicy: requested,
+                    selectedEffort: selected,
+                    requestedEffort: requested,
                     stage: "loop-injection",
-                    recovery: "Cancel or conclude the loop before selecting another reasoning policy.",
+                    recovery: "Cancel or conclude the loop before selecting another effort.",
                     retryable: false },
             );
         }
@@ -687,18 +687,27 @@ export default class Daemon implements ApplicationPort {
         const modelSpec = await specForRoute(this.#db, row.model_route_id);
         const spawnModelSpec = await specForRoute(this.#db, row.spawn_model_route_id);
         return {
-            model: modelSpec === null ? null : projectModelRoute(modelSpec, row.reasoning_policy, row.reasoning_source),
-            spawnModel: spawnModelSpec === null ? null : projectModelRoute(spawnModelSpec, row.reasoning_policy, row.reasoning_source) };
+            model: modelSpec === null ? null : projectModelRoute(modelSpec, row.effort, row.effort_source),
+            spawnModel: spawnModelSpec === null ? null : projectModelRoute(spawnModelSpec, row.effort, row.effort_source) };
     }
 
     // {§worker-model-selection} — persist an explicit model selection onto the worker
     // and return the resolved spec. An unresolvable selector fails loud here.
-    async setWorkerModel(args: { workspaceId: number; workerId: number; selector: string }): Promise<ModelRoute> {
+    async setWorkerModel(args: { workspaceId: number; workerId: number; selector: string; effort?: unknown }): Promise<ModelRoute> {
         const workspaceId = ClientInput.assertId("worker.model.set", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("worker.model.set", "workerId", args.workerId);
         await this.#assertModelWorker(workspaceId, workerId);
         const selector = ClientInput.assertSelector("worker.model.set", "selector", args.selector);
-        const policy = await this.#workerModels.resolveWorkerModel(workerId, selector);
+        let chosen: Effort | undefined;
+        if (args.effort !== undefined) {
+            try {
+                chosen = Validator.assertEffort(args.effort);
+            } catch (cause) {
+                throw daemonFailure("daemon:input", "effort-invalid", 400,
+                    cause instanceof Error ? cause.message : "The effort is invalid.", { field: "effort", retryable: false });
+            }
+        }
+        const policy = await this.#workerModels.resolveWorkerModel(workerId, selector, chosen);
         if (policy === null) {
             throw new OperationFailureError(Results.failure(
                 "daemon:provider",
@@ -709,59 +718,62 @@ export default class Daemon implements ApplicationPort {
                 { stage: "provider-selection", recovery: "Select a configured model provider.", retryable: false },
             ));
         }
-        return projectModelRoute(policy.providerSpec, policy.reasoningPolicy, policy.reasoningSource);
+        return projectModelRoute(policy.providerSpec, policy.effort, policy.effortSource);
     }
 
-    // {§worker-reasoning-policy} — the worker's reasoning policy is durable and
+    // {§worker-effort} — the worker's effort is durable and
     // provider-relative. A model-less worker remains explicitly uninitialized.
-    async readWorkerReasoning(args: {
+    async readWorkerEffort(args: {
         workspaceId: number;
         workerId: number;
-    }): Promise<{ policy: ReasoningPolicy | null; source: ReasoningSource; supportedPolicies: readonly ReasoningPolicy[] }> {
-        const workspaceId = ClientInput.assertId("worker.reasoning.get", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("worker.reasoning.get", "workerId", args.workerId);
+    }): Promise<{ effort: Effort | null; source: EffortSource; supportedEfforts: readonly Effort[] }> {
+        const workspaceId = ClientInput.assertId("worker.effort.get", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("worker.effort.get", "workerId", args.workerId);
         await this.#assertModelWorker(workspaceId, workerId);
         await this.#workerModels.resolveWorkerModel(workerId, undefined);
         const row = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
         if (row === undefined) throw new Error(`worker ${workerId}: generation policy row missing`);
         if (row.model_route_id === null) {
-            if (row.reasoning_policy !== null) {
-                throw new Error(`worker ${workerId}: reasoning policy exists without a model route`);
+            if (row.effort !== null) {
+                throw new Error(`worker ${workerId}: effort exists without a model route`);
             }
-            return { policy: null, source: "default", supportedPolicies: [] };
+            return { effort: null, source: "default", supportedEfforts: [] };
         }
-        if (row.reasoning_policy === null) {
-            throw new Error(`worker ${workerId}: durable model has no reasoning policy`);
+        if (row.effort === null) {
+            throw new Error(`worker ${workerId}: durable model has no effort`);
         }
         return {
-            policy: row.reasoning_policy,
-            source: row.reasoning_source,
-            supportedPolicies: await this.#workerModels.supportedPolicies(row) };
+            effort: row.effort,
+            source: row.effort_source,
+            supportedEfforts: await this.#workerModels.supportedEfforts(row) };
     }
 
-    // {§worker-reasoning-policy} — mutate between loops, validate against both
+    // {§worker-effort} — mutate between loops, validate against both
     // the worker model and its optional spawn model, then persist atomically.
-    async setWorkerReasoning(args: {
+    async setWorkerEffort(args: {
         workspaceId: number;
         workerId: number;
-        policy: unknown;
-    }): Promise<{ policy: ReasoningPolicy; source: "explicit"; supportedPolicies: readonly ReasoningPolicy[] }> {
-        const workspaceId = ClientInput.assertId("worker.reasoning.set", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("worker.reasoning.set", "workerId", args.workerId);
-        let policy: ReasoningPolicy;
+        effort: unknown;
+    }): Promise<{ effort: Effort; source: "explicit"; supportedEfforts: readonly Effort[] }> {
+        const workspaceId = ClientInput.assertId("worker.effort.set", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("worker.effort.set", "workerId", args.workerId);
+        let effort: Effort;
         try {
-            policy = Validator.assertReasoningPolicy(args.policy);
+            effort = Validator.assertEffort(args.effort);
         } catch (cause) {
             throw daemonFailure(
                 "daemon:input",
-                "reasoning-policy-invalid",
+                "effort-invalid",
                 400,
-                cause instanceof Error ? cause.message : "The reasoning policy is invalid.",
-                { field: "policy", retryable: false },
+                cause instanceof Error ? cause.message : "The effort is invalid.",
+                { field: "effort", retryable: false },
             );
         }
         await this.#assertModelWorker(workspaceId, workerId);
-        await this.#workerModels.resolveWorkerModel(workerId, undefined);
+        // A model-less worker takes the default first; an existing pair is replaced, not re-validated, so an
+        // effort its model no longer supports can be corrected ({§worker-effort}).
+        const current = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
+        if (current?.model_route_id === null) await this.#workerModels.resolveWorkerModel(workerId, undefined);
         const row = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
         if (row === undefined) throw new Error(`worker ${workerId}: generation policy row missing`);
         const spec = await specForRoute(this.#db, row.model_route_id);
@@ -770,20 +782,20 @@ export default class Daemon implements ApplicationPort {
                 "daemon:provider",
                 "worker-model-unset",
                 409,
-                `Worker ${workerId} has no model against which to validate a reasoning policy.`,
+                `Worker ${workerId} has no model against which to validate an effort.`,
                 {
                     workerId,
                     stage: "provider-selection",
-                    recovery: "Select a model before selecting its reasoning policy.",
+                    recovery: "Select a model before selecting its effort.",
                     retryable: false },
             );
         }
-        const supportedPolicies = await this.#workerModels.persistGenerationPolicy(workerId, {
+        const supportedEfforts = await this.#workerModels.persistGenerationPolicy(workerId, {
             model_route_id: row.model_route_id,
             spawn_model_route_id: row.spawn_model_route_id,
-            reasoning_policy: policy,
-            reasoning_source: "explicit" });
-        return { policy, source: "explicit", supportedPolicies };
+            effort,
+            effort_source: "explicit" });
+        return { effort, source: "explicit", supportedEfforts };
     }
 
     // {§worker-model-selection} — persist the worker's spawn override; a null
@@ -796,7 +808,7 @@ export default class Daemon implements ApplicationPort {
         const spec = await this.#workerModels.resolveWorkerSpawnModel(workerId, selector);
         if (spec === null) return null;
         const row = await this.#db.worker_generation_policy_read.get<WorkerGenerationPolicyRow>({ id: workerId });
-        return projectModelRoute(spec, row?.reasoning_policy ?? null, row?.reasoning_source ?? "default");
+        return projectModelRoute(spec, row?.effort ?? null, row?.effort_source ?? "default");
     }
 
     async #assertWorkerOwned(workspaceId: number, workerId: number): Promise<void> {
@@ -1820,7 +1832,7 @@ export default class Daemon implements ApplicationPort {
             policy: string;
             model_route_id: number | null;
             spawn_model_route_id: number | null;
-            reasoning_policy: ReasoningPolicy | null;
+            effort: Effort | null;
             max_turns: number;
         }>({ loop_id: endedLoopId });
         const first = messages[0];
@@ -1836,7 +1848,7 @@ export default class Daemon implements ApplicationPort {
             policy: first.policy,
             model_route_id: first.model_route_id,
             spawn_model_route_id: first.spawn_model_route_id,
-            reasoning_policy: first.reasoning_policy,
+            effort: first.effort,
             max_turns: first.max_turns,
             orphan_source_loop_id: endedLoopId });
         if (recovery === undefined) throw new Error("reconcileOrphanedMessages: enqueue returned no row");

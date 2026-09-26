@@ -8,7 +8,7 @@
 INSERT INTO workers (
     workspace_id, name, parent_worker_id, origin, default_conversation,
     ambient_event_cursor, fork_event_boundary,
-    model_route_id, spawn_model_route_id, reasoning_policy
+    model_route_id, spawn_model_route_id, effort
 )
 SELECT $workspace_id, $name, $parent_worker_id, $origin, $default_conversation,
        CASE WHEN $fork_snapshot = 1 THEN (
@@ -20,7 +20,7 @@ SELECT $workspace_id, $name, $parent_worker_id, $origin, $default_conversation,
        -- {§worker-fork-trigger}: a branch copies durable generation policy by value, then diverges.
        CASE WHEN $fork_snapshot = 1 THEN (SELECT model_route_id FROM workers WHERE id = $parent_worker_id) END,
        CASE WHEN $fork_snapshot = 1 THEN (SELECT spawn_model_route_id FROM workers WHERE id = $parent_worker_id) END,
-       CASE WHEN $fork_snapshot = 1 THEN (SELECT reasoning_policy FROM workers WHERE id = $parent_worker_id) END
+       CASE WHEN $fork_snapshot = 1 THEN (SELECT effort FROM workers WHERE id = $parent_worker_id) END
 WHERE NOT EXISTS (
     SELECT 1
     FROM workers

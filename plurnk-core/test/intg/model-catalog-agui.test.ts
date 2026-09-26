@@ -30,7 +30,7 @@ test("{§model-catalog}: AG-UI delivers route reasoning choices without creating
             assert.deepEqual(page, daemon.listModels(query));
             const model = page.items.find(({ model }) => model === "gemini-3.7-flash");
             assert.ok(model);
-            assert.deepEqual(model.capabilities.reasoningPolicies, ["adaptive", "low", "medium", "high"]);
+            assert.deepEqual(model.capabilities.efforts, ["adaptive", "low", "medium", "high"]);
             assert.equal(events.at(-1)?.type, "RUN_FINISHED");
             assert.deepEqual(await daemon.listWorkspaces(), []);
         } finally {

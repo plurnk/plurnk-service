@@ -3,7 +3,7 @@
 export * from "./types.generated.ts";
 
 import loopPolicySchema from "../schema/LoopPolicy.json" with { type: "json" };
-import reasoningPolicySchema from "../schema/ReasoningPolicy.json" with { type: "json" };
+import effortSchema from "../schema/Effort.json" with { type: "json" };
 import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
 import type {
     ClientStatement,
@@ -11,7 +11,7 @@ import type {
     Position,
     PlurnkStatement,
     ProviderRequestAccounting,
-    ReasoningPolicy,
+    Effort,
 } from "./types.generated.ts";
 import type PlurnkParseError from "./PlurnkParseError.ts";
 
@@ -61,9 +61,9 @@ export type ProviderRequestObserver = (
 
 // Schema-owned portable reasoning vocabulary. Providers own which subset a
 // route supports; runtimes and clients share this exact wire alphabet.
-export const REASONING_POLICIES = Object.freeze(
-    reasoningPolicySchema.enum as ReasoningPolicy[],
-) as readonly ReasoningPolicy[];
+export const EFFORTS = Object.freeze(
+    effortSchema.enum as Effort[],
+) as readonly Effort[];
 
 // Schema-owned vocabulary of `LoopPolicy.proposals`. {§loop-policy}
 export const PROPOSAL_POLICIES = Object.freeze(

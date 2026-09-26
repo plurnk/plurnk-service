@@ -1,13 +1,13 @@
-import { REASONING_POLICIES, type ReasoningPolicy } from "@plurnk/plurnk-contracts";
+import { EFFORTS, type Effort } from "@plurnk/plurnk-contracts";
 import type { ModelReasoningOption } from "@plurnk/plurnk-models";
-import { UnsupportedReasoningPolicyError } from "./types.ts";
+import { UnsupportedEffortError } from "./types.ts";
 import { providerEnvPrefix, providerSetting } from "./provider-env.ts";
 import { adaptiveEffortFromEnv } from "./reasoning-effort.ts";
 
 type ObjectValue = Record<string, unknown>;
 type Facts = { readonly reasoning: boolean; readonly reasoningOptions?: readonly ModelReasoningOption[] };
-const efforts = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
-type Effort = typeof efforts[number] | "none";
+const wireEfforts = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+type WireEffort = typeof wireEfforts[number] | "none";
 const unsafe = new Set(["__proto__", "constructor", "prototype"]);
 const managed = new Set([
     "model", "messages", "stream", "stream_options", "max_tokens", "max_completion_tokens",
@@ -82,16 +82,16 @@ export default class RequestFields {
         return value;
     }
 
-    static #effortValues(name: string, env: NodeJS.ProcessEnv, suffix: string): readonly Effort[] | undefined {
+    static #effortValues(name: string, env: NodeJS.ProcessEnv, suffix: string): readonly WireEffort[] | undefined {
         const [key, raw] = providerSetting(name, env, suffix);
         if (raw === undefined) return undefined;
         const values = raw.split(",").map((value) => value.trim()).filter(Boolean);
-        const invalid = values.find((value) => value !== "none" && !efforts.includes(value as typeof efforts[number]));
-        if (invalid !== undefined) throw new TypeError(`${key} has invalid value "${invalid}"; declarable efforts: none, ${efforts.join(", ")}`);
-        return [...new Set(values as Effort[])];
+        const invalid = values.find((value) => value !== "none" && !wireEfforts.includes(value as typeof wireEfforts[number]));
+        if (invalid !== undefined) throw new TypeError(`${key} has invalid value "${invalid}"; declarable efforts: none, ${wireEfforts.join(", ")}`);
+        return [...new Set(values as WireEffort[])];
     }
 
-    static declaredEfforts(name: string, env: NodeJS.ProcessEnv): readonly Effort[] {
+    static declaredEfforts(name: string, env: NodeJS.ProcessEnv): readonly WireEffort[] {
         return RequestFields.#effortValues(name, env, "REASONING_EFFORTS") ?? [];
     }
 
@@ -106,20 +106,20 @@ export default class RequestFields {
         }
     }
 
-    readonly policies: readonly [ReasoningPolicy, ...ReasoningPolicy[]];
+    readonly efforts: readonly [Effort, ...Effort[]];
     readonly namespace: string | undefined;
     readonly managedKeys: ReadonlySet<string>;
     readonly #name: string;
     readonly #output: readonly string[];
-    readonly #effort: readonly string[] | undefined;
+    readonly #effortPath: readonly string[] | undefined;
     readonly #budget: readonly string[] | undefined;
     readonly #on: ObjectValue;
     readonly #off: ObjectValue | undefined;
     readonly #adaptive: ObjectValue | undefined;
     readonly #toggle: ObjectValue | undefined;
     readonly #combined: boolean;
-    readonly #efforts: readonly string[];
-    readonly #adaptiveEffort: string | undefined;
+    readonly #wireEfforts: readonly string[];
+    readonly #adaptiveWireEffort: string | undefined;
     readonly #facts: Facts | undefined;
 
     constructor(name: string, env: NodeJS.ProcessEnv, facts?: Facts) {
@@ -135,9 +135,9 @@ export default class RequestFields {
         };
         // The compatible SDK's standard output field, not a vendor default.
         this.#output = readPath("OUTPUT_PATH", true) ?? ["max_tokens"];
-        this.#effort = readPath("REASONING_EFFORT_PATH");
+        this.#effortPath = readPath("REASONING_EFFORT_PATH");
         this.#budget = readPath("REASONING_BUDGET_PATH");
-        const paths = [this.#output, this.#effort, this.#budget].filter((path) => path !== undefined);
+        const paths = [this.#output, this.#effortPath, this.#budget].filter((path) => path !== undefined);
         for (const [index, left] of paths.entries()) {
             if (paths.slice(index + 1).some((right) => prefixOf(left, right) || prefixOf(right, left))) {
                 throw new TypeError(`${name} provider: OUTPUT_PATH, REASONING_EFFORT_PATH, and REASONING_BUDGET_PATH must not overlap`);
@@ -151,7 +151,7 @@ export default class RequestFields {
             if (!object(body)) throw new TypeError(`${key} must be a JSON object`);
             for (const path of leaves(body)) {
                 if (path.some((part) => unsafe.has(part)) || managed.has(path[0]!)) throw new TypeError(`${key} cannot override a transport-owned field`);
-                if (paths.some((dynamic) => (dynamic !== this.#effort || suffix === "REASONING_ON_BODY") && (prefixOf(path, dynamic) || prefixOf(dynamic, path)))) {
+                if (paths.some((dynamic) => (dynamic !== this.#effortPath || suffix === "REASONING_ON_BODY") && (prefixOf(path, dynamic) || prefixOf(dynamic, path)))) {
                     throw new TypeError(`${key} and dynamic request fields overlap`);
                 }
             }
@@ -169,39 +169,39 @@ export default class RequestFields {
         if (controls !== undefined && controls !== "" && controls !== "exclusive" && controls !== "combined") {
             throw new TypeError(`${controlKey} must be exclusive or combined`);
         }
-        if (this.#effort !== undefined && this.#budget !== undefined && (controls === undefined || controls === "")) {
+        if (this.#effortPath !== undefined && this.#budget !== undefined && (controls === undefined || controls === "")) {
             throw new TypeError(`${controlKey} must declare whether effort and budget are exclusive or combined`);
         }
         this.#combined = controls === "combined";
         const declared = RequestFields.declaredEfforts(name, env);
         const transport = RequestFields.#effortValues(name, env, "REASONING_TRANSPORT_EFFORTS");
-        this.#efforts = [...new Set([
+        this.#wireEfforts = [...new Set([
             ...(facts?.reasoningOptions?.flatMap((option) => option.type === "effort" ? option.values.flatMap((value) => value === null ? [] : [value]) : []) ?? []),
             ...declared,
         ])].filter((effort) => transport === undefined || transport.some((value) => value === effort));
-        this.#adaptiveEffort = adaptiveEffortFromEnv(env, this.#efforts);
-        const policies = facts?.reasoning === false
+        this.#adaptiveWireEffort = adaptiveEffortFromEnv(env, this.#wireEfforts);
+        const admitted = facts?.reasoning === false
             ? ["off", "adaptive"] as const
-            : REASONING_POLICIES.filter((policy) => policy === "adaptive"
+            : EFFORTS.filter((policy) => policy === "adaptive"
                 || policy === "off" && (
-                    this.#off !== undefined && (facts === undefined || facts.reasoningOptions?.some((option) => option.type === "toggle") || this.#efforts.includes("none"))
-                    || this.#effort !== undefined && this.#efforts.includes("none")
+                    this.#off !== undefined && (facts === undefined || facts.reasoningOptions?.some((option) => option.type === "toggle") || this.#wireEfforts.includes("none"))
+                    || this.#effortPath !== undefined && this.#wireEfforts.includes("none")
                 )
-                || this.#effort !== undefined && this.#efforts.includes(policy));
-        const [first, ...rest] = policies;
-        if (first === undefined) throw new TypeError(`${name} provider: no reasoning policy is representable`);
-        this.policies = [first, ...rest];
+                || this.#effortPath !== undefined && this.#wireEfforts.includes(policy));
+        const [first, ...rest] = admitted;
+        if (first === undefined) throw new TypeError(`${name} provider: no effort is representable`);
+        this.efforts = [first, ...rest];
     }
 
-    body(mode: ReasoningPolicy, output: number | null, budget: number | null): ObjectValue {
-        if (!this.policies.includes(mode)) throw new UnsupportedReasoningPolicyError(`provider:${this.#name}`, mode, this.policies);
+    body(mode: Effort, output: number | null, budget: number | null): ObjectValue {
+        if (!this.efforts.includes(mode)) throw new UnsupportedEffortError(`provider:${this.#name}`, mode, this.efforts);
         if (this.#facts?.reasoning === false && budget !== null) throw new TypeError(`${this.#name} model does not support reasoning`);
         const active = mode !== "off" && this.#facts?.reasoning !== false;
         let body: ObjectValue = active ? structuredClone(this.#on) : {};
         if (this.#facts?.reasoning !== false) {
             if (!active) {
                 body = this.#off === undefined ? {} : structuredClone(this.#off);
-                if (this.#off === undefined && this.#effort !== undefined && this.#efforts.includes("none")) set(body, this.#effort, "none");
+                if (this.#off === undefined && this.#effortPath !== undefined && this.#wireEfforts.includes("none")) set(body, this.#effortPath, "none");
             } else if (budget !== null) {
                 if (this.#budget === undefined) throw new TypeError(`${this.#name} provider: reasoning budget has no REASONING_BUDGET_PATH`);
                 if (mode !== "adaptive" && !this.#combined) throw new TypeError(`${this.#name} provider: reasoning effort and budget are exclusive; choose one control`);
@@ -211,13 +211,13 @@ export default class RequestFields {
                     if (option.max !== undefined && budget > option.max) throw new TypeError(`${this.#name} provider: reasoning budget ${budget} exceeds catalog maximum ${option.max}`);
                 }
                 set(body, this.#budget, budget);
-                if (mode !== "adaptive") set(body, this.#effort!, mode);
+                if (mode !== "adaptive") set(body, this.#effortPath!, mode);
             } else if (mode !== "adaptive") {
-                set(body, this.#effort!, mode);
+                set(body, this.#effortPath!, mode);
             } else if (this.#adaptive !== undefined) {
                 body = merge(body, this.#adaptive);
-            } else if (this.#effort !== undefined && this.#adaptiveEffort !== undefined) {
-                set(body, this.#effort, this.#adaptiveEffort);
+            } else if (this.#effortPath !== undefined && this.#adaptiveWireEffort !== undefined) {
+                set(body, this.#effortPath, this.#adaptiveWireEffort);
             } else if (this.#toggle !== undefined && this.#facts?.reasoningOptions?.some((option) => option.type === "toggle")) {
                 body = merge(body, this.#toggle);
             }

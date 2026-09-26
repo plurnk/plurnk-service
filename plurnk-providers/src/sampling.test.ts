@@ -7,7 +7,7 @@ const baseEnv = {
     PLURNK_MODEL_sample_box: "fireworks-ai/accounts/fireworks/models/kimi-k3",
     FIREWORKS_API_KEY: "test-key",
     OPENAI_API_KEY: "test-key",
-    PLURNK_PROVIDERS_REASONING: "adaptive",
+    PLURNK_PROVIDERS_EFFORT: "adaptive",
     PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
     PLURNK_PROVIDERS_PROBE_ATTEMPTS: "1",
     PLURNK_PROVIDERS_PROBE_DELAY: "0",

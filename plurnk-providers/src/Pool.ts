@@ -7,7 +7,7 @@ import Meta, {
     type PluginAttributionContext,
 } from "@plurnk/plurnk-meta";
 import { effectiveInputCapacity, effectiveOutputBudget, effectiveReasoningBudget, requestCapacityDecision } from "./capacity.ts";
-import type { InputModality, ReasoningPolicy } from "./types.ts";
+import type { InputModality, Effort } from "./types.ts";
 
 // A backend-AVAILABILITY failure: the sub-provider already exhausted its OWN
 // transient retries before throwing one of these, so re-hitting the same
@@ -95,9 +95,9 @@ export default class Pool implements Provider {
     get maxOutputTokens(): number | null { return this.#minimumKnown((provider) => provider.maxOutputTokens); }
     get outputBudget(): number | null { return this.#minimumKnown((provider) => provider.outputBudget); }
     get reasoningBudget(): number | null { return this.#minimumKnown((provider) => provider.reasoningBudget); }
-    get supportedReasoningPolicies(): readonly ReasoningPolicy[] {
-        return this.#backends[0].supportedReasoningPolicies.filter((policy) =>
-            this.#backends.every((provider) => provider.supportedReasoningPolicies.includes(policy)));
+    get supportedEfforts(): readonly Effort[] {
+        return this.#backends[0].supportedEfforts.filter((policy) =>
+            this.#backends.every((provider) => provider.supportedEfforts.includes(policy)));
     }
     get inputCapacity(): number | null { return this.#minimumKnown((provider) => provider.inputCapacity); }
 

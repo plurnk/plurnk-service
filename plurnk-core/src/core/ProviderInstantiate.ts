@@ -6,8 +6,8 @@
 // The pure selector helpers live in
 // @plurnk/plurnk-providers as framework-grade env parsing.
 
-import { instantiateProvider as instantiateFrameworkProvider, parseReasoningPolicy, PROVIDERS_KNOBS, resolveActiveRoute, scopeEnvToAlias, UnsupportedReasoningPolicyError } from "@plurnk/plurnk-providers";
-import type { Provider, ProviderSpec, ReasoningPolicy } from "@plurnk/plurnk-providers";
+import { instantiateProvider as instantiateFrameworkProvider, parseEffort, PROVIDERS_KNOBS, resolveActiveRoute, scopeEnvToAlias, UnsupportedEffortError } from "@plurnk/plurnk-providers";
+import type { Provider, ProviderSpec, Effort } from "@plurnk/plurnk-providers";
 
 export default class ProviderInstantiate {
     // One provider per complete route+tuning projection for the process lifetime: a provider is
@@ -82,11 +82,11 @@ export default class ProviderInstantiate {
         provider: Provider,
         spec: ProviderSpec,
         env: NodeJS.ProcessEnv = process.env,
-        reasoningPolicy?: ReasoningPolicy,
+        effort?: Effort,
     ): void {
         ProviderInstantiate.#configurationByProvider.set(provider, { alias: spec.alias ?? null, provider: spec.provider });
         ProviderInstantiate.#registeredInstances.set(
-            ProviderInstantiate.#cacheKey(spec, env, reasoningPolicy),
+            ProviderInstantiate.#cacheKey(spec, env, effort),
             provider,
         );
     }
@@ -94,41 +94,41 @@ export default class ProviderInstantiate {
     static async instantiateProvider(
         route: ProviderSpec,
         env: NodeJS.ProcessEnv = process.env,
-        reasoningPolicy?: ReasoningPolicy,
+        effort?: Effort,
     ): Promise<Provider> {
         if (env === process.env) {
             const registered = ProviderInstantiate.#registeredInstances.get(
-                ProviderInstantiate.#cacheKey(route, env, reasoningPolicy),
+                ProviderInstantiate.#cacheKey(route, env, effort),
             );
             if (registered !== undefined) {
-                if (reasoningPolicy !== undefined
-                    && !registered.supportedReasoningPolicies.includes(reasoningPolicy)) {
-                    throw new UnsupportedReasoningPolicyError(
+                if (effort !== undefined
+                    && !registered.supportedEfforts.includes(effort)) {
+                    throw new UnsupportedEffortError(
                         `provider:${route.provider}`,
-                        reasoningPolicy,
-                        registered.supportedReasoningPolicies,
+                        effort,
+                        registered.supportedEfforts,
                     );
                 }
                 return registered;
             }
-            const key = ProviderInstantiate.#cacheKey(route, env, reasoningPolicy);
+            const key = ProviderInstantiate.#cacheKey(route, env, effort);
             let cached = ProviderInstantiate.#instances.get(key);
             if (cached === undefined) {
-                cached = ProviderInstantiate.#instantiate(route, env, reasoningPolicy);
+                cached = ProviderInstantiate.#instantiate(route, env, effort);
                 ProviderInstantiate.#instances.set(key, cached);
                 cached.catch(() => ProviderInstantiate.#instances.delete(key)); // a failed construct never poisons the cache
             }
             return cached;
         }
-        return ProviderInstantiate.#instantiate(route, env, reasoningPolicy); // custom env (tests) — never cached
+        return ProviderInstantiate.#instantiate(route, env, effort); // custom env (tests) — never cached
     }
 
     static #identityKey(route: ProviderSpec): string {
         return `${route.alias ?? ""}|${route.provider}|${route.model}|${route.baseUrl ?? ""}`;
     }
 
-    static #cacheKey(route: ProviderSpec, env: NodeJS.ProcessEnv, reasoningPolicy?: ReasoningPolicy): string {
-        const scoped = ProviderInstantiate.#scopedEnv(route, env, reasoningPolicy);
+    static #cacheKey(route: ProviderSpec, env: NodeJS.ProcessEnv, effort?: Effort): string {
+        const scoped = ProviderInstantiate.#scopedEnv(route, env, effort);
         const tuning = PROVIDERS_KNOBS.map((name) => [name, scoped[name] ?? ""]);
         return `${ProviderInstantiate.#identityKey(route)}|${JSON.stringify(tuning)}`;
     }
@@ -136,31 +136,31 @@ export default class ProviderInstantiate {
     static #scopedEnv(
         route: ProviderSpec,
         env: NodeJS.ProcessEnv,
-        reasoningPolicy?: ReasoningPolicy,
+        effort?: Effort,
     ): NodeJS.ProcessEnv {
         const scoped = route.alias === undefined ? env : scopeEnvToAlias(env, route.alias);
-        return reasoningPolicy === undefined
+        return effort === undefined
             ? scoped
-            : { ...scoped, PLURNK_PROVIDERS_REASONING: reasoningPolicy };
+            : { ...scoped, PLURNK_PROVIDERS_EFFORT: effort };
     }
 
-    static configuredReasoningPolicy(
+    static configuredEffort(
         route: ProviderSpec,
         env: NodeJS.ProcessEnv = process.env,
-    ): ReasoningPolicy {
-        const value = ProviderInstantiate.#scopedEnv(route, env).PLURNK_PROVIDERS_REASONING;
+    ): Effort {
+        const value = ProviderInstantiate.#scopedEnv(route, env).PLURNK_PROVIDERS_EFFORT;
         const selection = route.alias === undefined
             ? `Model route '${route.provider}/${route.model}'`
             : `Provider alias '${route.alias}'`;
-        return parseReasoningPolicy(value, `${selection} reasoning policy`);
+        return parseEffort(value, `${selection} effort`);
     }
 
     static async #instantiate(
         route: ProviderSpec,
         env: NodeJS.ProcessEnv,
-        reasoningPolicy?: ReasoningPolicy,
+        effort?: Effort,
     ): Promise<Provider> {
-        const provider = await ProviderInstantiate.#construct(route, env, reasoningPolicy);
+        const provider = await ProviderInstantiate.#construct(route, env, effort);
         ProviderInstantiate.#configurationByProvider.set(provider, { alias: route.alias ?? null, provider: route.provider });
         return provider;
     }
@@ -168,13 +168,13 @@ export default class ProviderInstantiate {
     static async #construct(
         route: ProviderSpec,
         env: NodeJS.ProcessEnv,
-        reasoningPolicy?: ReasoningPolicy,
+        effort?: Effort,
     ): Promise<Provider> {
         // {§operator-config-precedence} — promote the alias-scoped provider-knob family
         // (PLURNK_PROVIDERS_*_<alias>) to
         // bare BEFORE construction, so per-alias tuning and generation-envelope pins bind. Without this
         // the whole per-alias provider surface was silently dropped at construction.
-        env = ProviderInstantiate.#scopedEnv(route, env, reasoningPolicy);
+        env = ProviderInstantiate.#scopedEnv(route, env, effort);
         return ProviderInstantiate.#constructWith(route, env);
     }
 

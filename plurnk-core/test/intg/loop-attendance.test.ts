@@ -157,7 +157,7 @@ test("{§loop-attendance} a child that inherited an unattended policy concludes 
             workerId: parent,
             prompt: "delegated work",
             providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
-            reasoningPolicy: "adaptive",
+            effort: "adaptive",
             systemPrompt: "test system",
             // Exactly what Worker.ts passes when a parent delegates: the parent's own policy.
             freshLoopPolicy: { proposals: "accept", attended: false },

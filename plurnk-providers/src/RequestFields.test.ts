@@ -5,7 +5,7 @@ import { scopeEnvToAlias } from "./env.ts";
 import { withProviderDefaults } from "./defaults.ts";
 
 const declaration = {
-    PLURNK_PROVIDERS_REASONING_FALLBACK: "high",
+    PLURNK_PROVIDERS_EFFORT_FALLBACK: "high",
     PLURNK_PROVIDERS_PROVIDER_EXAMPLE_OUTPUT_PATH: "/max_completion_tokens",
     PLURNK_PROVIDERS_PROVIDER_EXAMPLE_REASONING_EFFORT_PATH: "/reasoning_effort",
     PLURNK_PROVIDERS_PROVIDER_EXAMPLE_REASONING_BUDGET_PATH: "/thinking_budget",
@@ -15,7 +15,7 @@ const declaration = {
     PLURNK_PROVIDERS_PROVIDER_EXAMPLE_REASONING_OFF_BODY: '{"enable_thinking":false}',
 };
 
-test("{§provider-reasoning-policy} adaptive prefers the configured fallback without escalating or disabling reasoning", () => {
+test("{§provider-effort} adaptive prefers the configured fallback without escalating or disabling reasoning", () => {
     const facts = {
         reasoning: true,
         reasoningOptions: [
@@ -30,8 +30,8 @@ test("{§provider-reasoning-policy} adaptive prefers the configured fallback wit
     };
     for (const [overrides, expected] of [
         [{}, { reasoning_effort: "high" }],
-        [{ PLURNK_PROVIDERS_REASONING_FALLBACK: "medium" }, { reasoning_effort: "medium" }],
-        [{ PLURNK_PROVIDERS_REASONING_FALLBACK: "" }, { reasoning_effort: true }],
+        [{ PLURNK_PROVIDERS_EFFORT_FALLBACK: "medium" }, { reasoning_effort: "medium" }],
+        [{ PLURNK_PROVIDERS_EFFORT_FALLBACK: "" }, { reasoning_effort: true }],
         [{ PLURNK_PROVIDERS_REASONING_TRANSPORT_EFFORTS: "low,xhigh,max" }, { reasoning_effort: true }],
         [{ PLURNK_PROVIDERS_REASONING_ADAPTIVE_BODY: "{}" }, {}],
         [{ PLURNK_PROVIDERS_REASONING_ADAPTIVE_BODY: '{"thinking":{"type":"adaptive"}}' }, { thinking: { type: "adaptive" } }],
@@ -66,8 +66,8 @@ test("{§provider-wire-declaration} a declaration, not a provider identity, dete
     const renamed = Object.fromEntries(Object.entries(declaration).map(([key, value]) => [key.replace("EXAMPLE", "UNLISTED"), value]));
     const first = new RequestFields("example", declaration);
     const second = new RequestFields("unlisted", renamed);
-    assert.deepEqual(first.policies, ["off", "adaptive", "low", "medium", "xhigh"]);
-    assert.deepEqual(second.policies, first.policies);
+    assert.deepEqual(first.efforts, ["off", "adaptive", "low", "medium", "xhigh"]);
+    assert.deepEqual(second.efforts, first.efforts);
     const expected = { enable_thinking: true, reasoning_effort: "medium", max_completion_tokens: 32768 };
     assert.deepEqual(first.body("medium", 32768, null), expected);
     assert.deepEqual(second.body("medium", 32768, null), expected);
@@ -80,7 +80,7 @@ test("{§provider-wire-declaration} a declaration, not a provider identity, dete
 test("{§provider-wire-declaration} an unrepresentable explicit control fails instead of disappearing", () => {
     const wire = new RequestFields("example", declaration);
     assert.throws(() => wire.body("medium", 32768, 8192), /reasoning effort and budget are exclusive/);
-    assert.throws(() => wire.body("high", 32768, null), /reasoning policy 'high' is unsupported/);
+    assert.throws(() => wire.body("high", 32768, null), /effort 'high' is unsupported/);
     const noBudget = new RequestFields("example", { ...declaration, PLURNK_PROVIDERS_PROVIDER_EXAMPLE_REASONING_BUDGET_PATH: "" });
     assert.throws(() => noBudget.body("adaptive", 32768, 8192), /REASONING_BUDGET_PATH/);
     const combined = new RequestFields("example", { ...declaration, PLURNK_PROVIDERS_PROVIDER_EXAMPLE_REASONING_CONTROLS: "combined" });
@@ -113,14 +113,14 @@ test("{§provider-wire-declaration} the catalog supplies efforts and numeric bou
     const wire = new RequestFields("example", {
         ...declaration, PLURNK_PROVIDERS_PROVIDER_EXAMPLE_REASONING_EFFORTS: "",
     }, catalog);
-    assert.deepEqual(wire.policies, ["off", "adaptive", "low", "medium"]);
+    assert.deepEqual(wire.efforts, ["off", "adaptive", "low", "medium"]);
     assert.deepEqual(wire.body("adaptive", 10000, null), {
         enable_thinking: true, max_completion_tokens: 10000,
     });
     assert.throws(() => wire.body("adaptive", 10000, 127), /reasoning budget 127.*128/);
     assert.throws(() => wire.body("adaptive", 10000, 4097), /reasoning budget 4097.*4096/);
     const nonReasoning = new RequestFields("example", declaration, { reasoning: false });
-    assert.deepEqual(nonReasoning.policies, ["off", "adaptive"]);
+    assert.deepEqual(nonReasoning.efforts, ["off", "adaptive"]);
     assert.deepEqual(nonReasoning.body("adaptive", 10000, null), { max_completion_tokens: 10000 });
     assert.throws(() => nonReasoning.body("adaptive", 10000, 1024), /does not support reasoning/);
 });
@@ -158,10 +158,10 @@ test("{§provider-wire-declaration} native option declarations retain control ad
         PLURNK_PROVIDERS_PROVIDER_RENAMED_REASONING_CONTROLS: "exclusive",
     });
     assert.equal(fields.namespace, "testSdk");
-    assert.deepEqual(fields.policies, ["off", "adaptive", "low", "high"]);
+    assert.deepEqual(fields.efforts, ["off", "adaptive", "low", "high"]);
     assert.deepEqual(fields.body("high", 8192, null), { reasoning: { effort: "high" } });
     assert.deepEqual(fields.body("adaptive", 8192, 2048), { reasoning: { max_tokens: 2048 } });
-    assert.throws(() => fields.body("medium", 8192, null), /reasoning policy 'medium' is unsupported/);
+    assert.throws(() => fields.body("medium", 8192, null), /effort 'medium' is unsupported/);
     assert.throws(() => new RequestFields("example", {
         ...declaration, PLURNK_PROVIDERS_OPTIONS_NAMESPACE: "testSdk",
     }), /OUTPUT_PATH.*native SDKs/);

@@ -59,7 +59,7 @@ class ControlledWorkerProvider implements Provider {
     readonly maxOutputTokens = null;
     readonly outputBudget = 1;
     readonly reasoningBudget = null;
-    readonly supportedReasoningPolicies = ["off", "adaptive", "low", "medium", "high"] as const;
+    readonly supportedEfforts = ["off", "adaptive", "low", "medium", "high"] as const;
     readonly inputCapacity = this.contextWindow - this.outputBudget;
     readonly model = "controlled-settlement";
     readonly inputModalities: ReadonlySet<InputModality> = new Set();

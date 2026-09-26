@@ -26,7 +26,7 @@ test("{§loop-wake-identity}: a message's reported and actual receiving loop agr
             const common = {
                 workspaceId, workerId,
                 providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
-                reasoningPolicy: "adaptive" as const, systemPrompt: "test system",
+                effort: "adaptive" as const, systemPrompt: "test system",
             };
             const accepted = await Promise.all([
                 daemon.inject({ ...common, prompt: "First task." }),

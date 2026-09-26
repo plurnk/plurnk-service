@@ -27,7 +27,7 @@ const enqueueLoop = async (
         prompt_source: null,
         model_route_id: await routeForSpec(db, providerSpec),
         spawn_model_route_id: null,
-        reasoning_policy: "adaptive",
+        effort: "adaptive",
         max_turns: 50,
         policy: JSON.stringify({ proposals: "review", attended: true }),
     });
@@ -250,7 +250,7 @@ test("{§message-loop-containment}: boot completes one partially staged orphan r
             policy: JSON.stringify({ proposals: "review", attended: true }),
             model_route_id: await routeForSpec(db, providerSpec),
             spawn_model_route_id: null,
-            reasoning_policy: "adaptive",
+            effort: "adaptive",
             max_turns: 50,
                 orphan_source_loop_id: sourceLoopId,
         });

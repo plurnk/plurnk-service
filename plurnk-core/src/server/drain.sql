@@ -17,9 +17,9 @@ SELECT alias, provider, model, base_url FROM model_routes WHERE id = $id;
 
 -- PREP: drain_enqueue_loop
 -- Insert a loop at queued state. Sequence is per-worker, 1-based.
-INSERT INTO loops (worker_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, reasoning_policy, max_turns, policy)
+INSERT INTO loops (worker_id, sequence, status, prompt, prompt_source, model_route_id, spawn_model_route_id, effort, max_turns, policy)
 VALUES ($worker_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE worker_id = $worker_id), 100,
-        $prompt, $prompt_source, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns, $policy)
+        $prompt, $prompt_source, $model_route_id, $spawn_model_route_id, $effort, $max_turns, $policy)
 RETURNING id;
 
 -- PREP: drain_ready_loop
@@ -107,7 +107,7 @@ RETURNING id;
 SELECT m.body AS body, m.source AS source, m.open_paths AS open_paths,
        l.policy AS policy, l.model_route_id AS model_route_id,
        l.spawn_model_route_id AS spawn_model_route_id,
-       l.reasoning_policy AS reasoning_policy,
+       l.effort AS effort,
        l.max_turns AS max_turns
 FROM loop_messages m
 JOIN loops l ON l.id = m.loop_id
@@ -122,12 +122,12 @@ ORDER BY m.ordinal ASC;
 -- {§message-loop-containment}: recovery identity is the concluded source loop.
 -- Retrying returns that same queued loop instead of minting duplicate work.
 INSERT INTO loops (
-    worker_id, sequence, status, prompt, prompt_source, policy, model_route_id, spawn_model_route_id, reasoning_policy, max_turns,
+    worker_id, sequence, status, prompt, prompt_source, policy, model_route_id, spawn_model_route_id, effort, max_turns,
     orphan_source_loop_id
 )
 VALUES (
     $worker_id, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM loops WHERE worker_id = $worker_id),
-    100, $prompt, $prompt_source, $policy, $model_route_id, $spawn_model_route_id, $reasoning_policy, $max_turns,
+    100, $prompt, $prompt_source, $policy, $model_route_id, $spawn_model_route_id, $effort, $max_turns,
     $orphan_source_loop_id
 )
 ON CONFLICT (orphan_source_loop_id) DO UPDATE
@@ -153,7 +153,7 @@ RETURNING id, ordinal;
 SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequence ASC LIMIT 1;
 
 -- PREP: drain_loop_generation_policy
-SELECT model_route_id, spawn_model_route_id, reasoning_policy FROM loops WHERE id = $loop_id;
+SELECT model_route_id, spawn_model_route_id, effort FROM loops WHERE id = $loop_id;
 
 -- PREP: drain_worker_open_streams
 -- {§exec-lifetime} — whether the worker holds any open stream at all. Cadence is the daemon's

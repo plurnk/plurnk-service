@@ -394,6 +394,7 @@ export default class BuiltinActions {
                         workspaceId: world.workspaceId,
                         workerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                         selector: p.selector,
+                        ...(p.effort === undefined ? {} : { effort: p.effort }),
                     }) };
                 }
                 case "worker.child.set": {
@@ -412,25 +413,25 @@ export default class BuiltinActions {
                         selector: p.selector as string | null,
                     }) };
                 }
-                case "worker.reasoning.get": {
-                    return { ok: true, result: await this.#seam().readWorkerReasoning({
+                case "worker.effort.get": {
+                    return { ok: true, result: await this.#seam().readWorkerEffort({
                         workspaceId: world.workspaceId,
                         workerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                     }) };
                 }
-                case "worker.reasoning.set": {
-                    if (!Object.hasOwn(p, "policy")) {
+                case "worker.effort.set": {
+                    if (!Object.hasOwn(p, "effort")) {
                         return actionFailure(
                             "invalid-action-parameters",
-                            "worker.reasoning.set requires a policy.",
+                            "worker.effort.set requires an effort.",
                             400,
-                            { recovery: "Provide a reasoning policy." },
+                            { recovery: "Provide an effort." },
                         );
                     }
-                    return { ok: true, result: await this.#seam().setWorkerReasoning({
+                    return { ok: true, result: await this.#seam().setWorkerEffort({
                         workspaceId: world.workspaceId,
                         workerId: conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
-                        policy: p.policy,
+                        effort: p.effort,
                     }) };
                 }
                 case "workspace.capabilities.get": {

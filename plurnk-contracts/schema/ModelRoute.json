@@ -2,12 +2,12 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/ModelRoute.json",
     "title": "ModelRoute",
-    "description": "A client-visible resolved provider/model identity. Alias is present only when a declared alias supplied the route; provider configuration remains private to the daemon. reasoningPolicy is the worker's durable effort selection — absent when the model has no reasoning dimension.",
+    "description": "A client-visible resolved provider/model identity. Alias is present only when a declared alias supplied the route; provider configuration remains private to the daemon. effort is the worker's durable effort selection — absent when the model has no reasoning dimension.",
     "type": "object",
     "required": ["provider", "model"],
     "dependentRequired": {
-        "reasoningPolicy": ["reasoningSource"],
-        "reasoningSource": ["reasoningPolicy"]
+        "effort": ["effortSource"],
+        "effortSource": ["effort"]
     },
     "additionalProperties": false,
     "properties": {
@@ -23,11 +23,11 @@
             "type": "string",
             "minLength": 1
         },
-        "reasoningPolicy": {
-            "$ref": "https://schemas.plurnk.xyz/v0/ReasoningPolicy.json"
+        "effort": {
+            "$ref": "https://schemas.plurnk.xyz/v0/Effort.json"
         },
-        "reasoningSource": {
-            "description": "Whether reasoningPolicy was chosen through worker.reasoning.set (explicit) or seeded from the alias configuration (default). Present exactly when reasoningPolicy is.",
+        "effortSource": {
+            "description": "Whether effort was chosen through worker.effort.set (explicit) or seeded from the alias configuration (default). Present exactly when effort is.",
             "type": "string",
             "enum": ["default", "explicit"]
         }

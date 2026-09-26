@@ -54,7 +54,7 @@ test("{§worker-lifecycle-single-drain}: concurrent idle injections claim distin
                 workerId,
                 prompt: "concurrent prompt one",
                 providerSpec,
-                reasoningPolicy: "adaptive",
+                effort: "adaptive",
                 systemPrompt: "test system",
             }),
             daemon.inject({
@@ -62,7 +62,7 @@ test("{§worker-lifecycle-single-drain}: concurrent idle injections claim distin
                 workerId,
                 prompt: "concurrent prompt two",
                 providerSpec,
-                reasoningPolicy: "adaptive",
+                effort: "adaptive",
                 systemPrompt: "test system",
             }),
         ]);
@@ -98,7 +98,7 @@ test("{§worker-delegation-inherits-policy}: a fresh injection persists delegate
             workerId,
             prompt: "delegated work",
             providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
-            reasoningPolicy: "adaptive",
+            effort: "adaptive",
             systemPrompt: "test system",
             freshLoopPolicy: {
                 proposals: "accept",

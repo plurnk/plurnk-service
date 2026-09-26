@@ -46,7 +46,7 @@ export {
     resetDiscoveryCache,
 } from "./ProviderRegistry.ts";
 export { providerReadiness } from "./sdkModels.ts";
-export { catalogReasoningPolicies } from "./catalogProvider.ts";
+export { catalogEfforts } from "./catalogProvider.ts";
 
 // Scope-agnostic plugin discovery ({§plugin-family-kind}).
 export { discover } from "./discover.ts";
@@ -61,11 +61,11 @@ export type { AiSdkProviderConfig, ReasoningStyle, GrammarStyle } from "./AiSdkP
 // DECISION stays the consumer's, by choosing which pool to call.
 export { default as Pool } from "./Pool.ts";
 export type { ProviderFetch } from "./AiSdkProvider.ts";
-export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, requireEnv, reasoningFromEnv, reasoningResponseStyleFromEnv, parseReasoningPolicy, scopeEnvToAlias, dataCaptureFromEnv, contextWindowFromEnv, effectiveContextWindow, generationEnvelopeFromEnv, resolveGenerationEnvelopeFromEnv, resolveTokenBudget, PROVIDERS_KNOBS } from "./env.ts";
-export type { GenerationEnvelope, Reasoning, ReasoningResponseStyle, TokenBudgetSpec } from "./env.ts";
-export { REASONING_POLICIES } from "@plurnk/plurnk-contracts";
-export type { ReasoningPolicy } from "@plurnk/plurnk-contracts";
-export { UnsupportedReasoningPolicyError } from "./types.ts";
+export { parseRequiredInt, parseOptionalInt, parseRequiredFloat, parseOptionalFloat, requireEnv, effortFromEnv, reasoningResponseStyleFromEnv, parseEffort, scopeEnvToAlias, dataCaptureFromEnv, contextWindowFromEnv, effectiveContextWindow, generationEnvelopeFromEnv, resolveGenerationEnvelopeFromEnv, resolveTokenBudget, PROVIDERS_KNOBS } from "./env.ts";
+export type { GenerationEnvelope, EffortSetting, ReasoningResponseStyle, TokenBudgetSpec } from "./env.ts";
+export { EFFORTS } from "@plurnk/plurnk-contracts";
+export type { Effort } from "@plurnk/plurnk-contracts";
+export { UnsupportedEffortError } from "./types.ts";
 export { normalizeUsage, calculateCostUsdDecimal, validateProviderUsage } from "./usage.ts";
 export {
     addDecimals,

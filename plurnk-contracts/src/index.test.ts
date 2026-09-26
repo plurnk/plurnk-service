@@ -12,6 +12,7 @@ test("ProposalProjection's op keywords are the closed operation alphabet; a runt
 test("{§root-value-api} the package root exposes exactly the supported runtime values", () => {
     assert.deepEqual(Object.keys(Contracts).sort(), [
         "CapabilityAdmission",
+        "EFFORTS",
         "INTERNAL_ROW_OPS",
         "InvalidA2aAgentDefinitionError",
         "InvalidAguiClientConformanceError",
@@ -23,6 +24,7 @@ test("{§root-value-api} the package root exposes exactly the supported runtime 
         "InvalidClientInteractionProjectionError",
         "InvalidClientInteractionRequestError",
         "InvalidClientInteractionResolutionError",
+        "InvalidEffortError",
         "InvalidEntryReadResultError",
         "InvalidFunctionalityDiscoverResultError",
         "InvalidFunctionalityListResultError",
@@ -42,7 +44,6 @@ test("{§root-value-api} the package root exposes exactly the supported runtime 
         "InvalidProblemProjectionError",
         "InvalidProposalProjectionError",
         "InvalidRangeExtentError",
-        "InvalidReasoningPolicyError",
         "InvalidSkillDefinitionError",
         "InvalidTextRegionError",
         "PLURNK_FENCE",
@@ -51,7 +52,6 @@ test("{§root-value-api} the package root exposes exactly the supported runtime 
         "PathSyntax",
         "PlurnkParseError",
         "Problems",
-        "REASONING_POLICIES",
         "RUNTIME_TAG",
         "SKILL_NAME",
         "TurnDisposition",

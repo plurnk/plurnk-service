@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS loops (
     -- effective spawn route (was provider_spec/child_provider_spec JSON).
     model_route_id       INTEGER          REFERENCES model_routes(id),
     spawn_model_route_id INTEGER          REFERENCES model_routes(id),
-    reasoning_policy TEXT CHECK (reasoning_policy IS NULL OR length(reasoning_policy) > 0),
+    effort TEXT CHECK (effort IS NULL OR length(effort) > 0),
     max_turns INTEGER NOT NULL CHECK (max_turns >= -1),
     -- {§loop-execution-allowance}: initialized on first execution, charged with disposition.
     execution_budget_ms INTEGER CHECK (execution_budget_ms IS NULL OR execution_budget_ms > 0),
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS loops (
     -- NULL covers model terminals and engine verdicts whose result carries the story.
     terminated_by    TEXT                      CHECK (terminated_by IS NULL OR terminated_by = 'cancel'),
     CONSTRAINT loops_generation_policy_contract CHECK (
-        (model_route_id IS NULL) = (reasoning_policy IS NULL)
+        (model_route_id IS NULL) = (effort IS NULL)
     ),
     CONSTRAINT loops_terminal_result_contract CHECK (
         CASE

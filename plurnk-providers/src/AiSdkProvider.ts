@@ -6,12 +6,12 @@
 // ordinary vendor protocol. The compatible URL path remains only for PLURNK
 // extensions and local endpoint probes the SDK cannot represent.
 
-import type { ChatMessage, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAttempt, ProviderCostNormalizer, ProviderGenerateArgs, ProviderRequestAccounting, ProviderRequestCapacity, ProviderRequestSettlement, ProviderResponse, ProviderUsage, ReasoningPolicy } from "./types.ts";
+import type { ChatMessage, GrammarEvidence, PromptTokenMeasurement, Provider, ProviderAttempt, ProviderCostNormalizer, ProviderGenerateArgs, ProviderRequestAccounting, ProviderRequestCapacity, ProviderRequestSettlement, ProviderResponse, ProviderUsage, Effort } from "./types.ts";
 import type { ProviderCost } from "@plurnk/plurnk-contracts";
-import { REASONING_POLICIES } from "@plurnk/plurnk-contracts";
+import { EFFORTS } from "@plurnk/plurnk-contracts";
 import type { CallWarning, JSONValue } from "ai";
-import { MAX_PROVIDER_TIMEOUT_MS, type Reasoning, type ReasoningResponseStyle } from "./env.ts";
-import { UnsupportedReasoningPolicyError } from "./types.ts";
+import { MAX_PROVIDER_TIMEOUT_MS, type EffortSetting, type ReasoningResponseStyle } from "./env.ts";
+import { UnsupportedEffortError } from "./types.ts";
 import type { InputModality } from "./types.ts";
 import { executeAiSdkModel, executeOpenAICompatible, transportFailureOutputObserved, transportFailureEvidence } from "./aiSdkTransport.ts";
 import type { LanguageModel } from "ai";
@@ -57,7 +57,7 @@ const raceAgainstDeadline = async <T>(work: PromiseLike<T>, signal: AbortSignal)
 // Local protocol toggles; catalog transports use request-field declarations.
 export type ReasoningStyle = "none" | "think" | "template";
 
-export type NativeReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+export type NativeEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 
 // GBNF transport is a local llama-server capability. "none" means no
 // service-managed constrained sampling; endpoint-owned settings are not inferred.
@@ -90,12 +90,12 @@ export type AiSdkProviderConfig = {
     maxOutputTokens?: number | null;
     outputBudget?: number | null;
     reasoningBudget?: number | null;
-    supportedReasoningPolicies?: readonly ReasoningPolicy[];
+    supportedEfforts?: readonly Effort[];
     // Native AI SDK projection for adaptive. Models.dev supplies the route's
     // admissible values; provider-default is reserved for a documented native
     // dynamic option/default or a route with no caller-selectable effort.
-    adaptiveReasoning?: NativeReasoningEffort | "provider-default";
-    adaptiveReasoningProviderOptions?: AiSdkProviderOptions;
+    adaptiveEffort?: NativeEffort | "provider-default";
+    adaptiveEffortProviderOptions?: AiSdkProviderOptions;
     // Native Anthropic and Bedrock SDKs interpret generic maxOutputTokens as
     // visible output and add an explicit provider reasoning budget. This marker lets the
     // adapter subtract that subset so the resulting wire cap remains PLURNK's
@@ -143,9 +143,9 @@ export type AiSdkProviderConfig = {
     // to the wall) — surfaced as Provider.requiresOutputBudget so consumers can
     // boot-refuse an envelope-less local alias. Default unset (no claim).
     requiresOutputBudget?: boolean;
-    // {§provider-reasoning-policy} Required intent, projected through the transport.
+    // {§provider-effort} Required intent, projected through the transport.
     // The independent budget is never an activation flag.
-    reasoning: Reasoning;
+    effort: EffortSetting;
     // {§provider-sampling-passthrough} Configured sampling is below caller sampling.
     // Absent optional values and null temperature retain endpoint defaults.
     temperature: number | null;
@@ -256,10 +256,10 @@ export default class AiSdkProvider implements Provider {
     #outputBudget: number | null;
     #reasoningBudget: number | null;
     #additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
-    #reasoning: Reasoning;
-    #supportedReasoningPolicies: readonly ReasoningPolicy[];
-    #adaptiveReasoning: NativeReasoningEffort | "provider-default";
-    #adaptiveReasoningProviderOptions: AiSdkProviderOptions | undefined;
+    #effort: EffortSetting;
+    #supportedEfforts: readonly Effort[];
+    #adaptiveEffort: NativeEffort | "provider-default";
+    #adaptiveEffortProviderOptions: AiSdkProviderOptions | undefined;
     readonly #samplingDefaults: Readonly<Record<string, number>>;
     #repeatPenalty: number | null;
     #dryMultiplier: number | undefined;
@@ -329,17 +329,17 @@ export default class AiSdkProvider implements Provider {
         this.#outputBudget = config.outputBudget ?? null;
         this.#reasoningBudget = config.reasoningBudget ?? null;
         this.#additiveReasoningProvider = config.additiveReasoningProvider;
-        this.#reasoning = config.reasoning;
-        this.#supportedReasoningPolicies = Object.freeze([
-            ...new Set(config.supportedReasoningPolicies ?? REASONING_POLICIES),
+        this.#effort = config.effort;
+        this.#supportedEfforts = Object.freeze([
+            ...new Set(config.supportedEfforts ?? EFFORTS),
         ]);
-        this.#adaptiveReasoning = config.adaptiveReasoning ?? "provider-default";
-        this.#adaptiveReasoningProviderOptions = config.adaptiveReasoningProviderOptions;
-        if (!this.#supportedReasoningPolicies.includes(this.#reasoning.mode)) {
-            throw new UnsupportedReasoningPolicyError(
+        this.#adaptiveEffort = config.adaptiveEffort ?? "provider-default";
+        this.#adaptiveEffortProviderOptions = config.adaptiveEffortProviderOptions;
+        if (!this.#supportedEfforts.includes(this.#effort.mode)) {
+            throw new UnsupportedEffortError(
                 config.source ?? "provider",
-                this.#reasoning.mode,
-                this.#supportedReasoningPolicies,
+                this.#effort.mode,
+                this.#supportedEfforts,
             );
         }
         // Loud guard: an out-of-date consumer (stale plugin dist) omitting the
@@ -440,10 +440,10 @@ export default class AiSdkProvider implements Provider {
             && this.#reasoningBudget >= this.#outputBudget) {
             throw new Error(`${this.#source}: reasoningBudget must be smaller than the total outputBudget`);
         }
-        if (this.#reasoning.budget !== this.#reasoningBudget) {
-            throw new Error(`${this.#source}: reasoning intent and generation envelope disagree on reasoningBudget`);
+        if (this.#effort.budget !== this.#reasoningBudget) {
+            throw new Error(`${this.#source}: effort and generation envelope disagree on reasoningBudget`);
         }
-        this.#requestFields?.body(this.#reasoning.mode, this.#outputBudget, this.#reasoningBudget);
+        this.#requestFields?.body(this.#effort.mode, this.#outputBudget, this.#reasoningBudget);
         if (this.#requiresOutputBudget === true && this.#outputBudget === null) {
             throw new Error(`${this.#source}: this backend requires a resolved PLURNK_PROVIDERS_OUTPUT_BUDGET`);
         }
@@ -466,7 +466,7 @@ export default class AiSdkProvider implements Provider {
                 return tokens;
             };
         }
-        this.#requestBody = new AiSdkRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, reasoning: this.#reasoning, adaptiveReasoningProviderOptions: this.#adaptiveReasoningProviderOptions, repeatPenalty: this.#repeatPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source, grammarStyle: this.#grammarStyle, cacheAffinity: this.#cacheAffinity, reasoningResponseProviderOptions: this.#reasoningResponseProviderOptions, supportsSlotPinning: this.#supportsSlotPinning, slotCount: this.#slotCount });
+        this.#requestBody = new AiSdkRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, effort: this.#effort, adaptiveEffortProviderOptions: this.#adaptiveEffortProviderOptions, repeatPenalty: this.#repeatPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source, grammarStyle: this.#grammarStyle, cacheAffinity: this.#cacheAffinity, reasoningResponseProviderOptions: this.#reasoningResponseProviderOptions, supportsSlotPinning: this.#supportsSlotPinning, slotCount: this.#slotCount });
     }
 
     get contextWindow(): number | null { return this.#contextWindow; }
@@ -475,7 +475,7 @@ export default class AiSdkProvider implements Provider {
     get maxOutputTokens(): number | null { return this.#maxOutputTokens; }
     get outputBudget(): number | null { return this.#outputBudget; }
     get reasoningBudget(): number | null { return this.#reasoningBudget; }
-    get supportedReasoningPolicies(): readonly ReasoningPolicy[] { return this.#supportedReasoningPolicies; }
+    get supportedEfforts(): readonly Effort[] { return this.#supportedEfforts; }
     get inputCapacity(): number | null {
         return effectiveInputCapacity({
             contextWindow: this.#contextWindow,
@@ -653,7 +653,7 @@ export default class AiSdkProvider implements Provider {
                     ...this.#requestBody.reasoningBody(preserveGrammarSentence, capacity.reasoningBudget),
                     ...(effectiveMaxOutputTokens === undefined ? {} : { max_tokens: effectiveMaxOutputTokens }),
                 }
-                : this.#requestFields.body(this.#reasoning.mode, effectiveMaxOutputTokens ?? null, capacity.reasoningBudget)),
+                : this.#requestFields.body(this.#effort.mode, effectiveMaxOutputTokens ?? null, capacity.reasoningBudget)),
             ...this.#requestBody.grammarBody(sendGrammar),
             // Request per-token logprobs only when enabled (managed field —
             // reserved from caller sampling; the env flag is the single control).
@@ -786,7 +786,7 @@ export default class AiSdkProvider implements Provider {
                         headers: requestHeaders,
                         providerOptions: this.#requestBody.requestProviderOptions(workerId, nativeReasoningBudget,
                             this.#requestFields?.namespace === undefined ? undefined : {
-                                [this.#requestFields.namespace]: this.#requestFields.body(this.#reasoning.mode, null, capacity.reasoningBudget) as AiSdkProviderOptions[string],
+                                [this.#requestFields.namespace]: this.#requestFields.body(this.#effort.mode, null, capacity.reasoningBudget) as AiSdkProviderOptions[string],
                             }),
                         systemProviderOptions: this.#systemCacheProviderOptions,
                         messages,
@@ -812,11 +812,11 @@ export default class AiSdkProvider implements Provider {
                         maxOutputTokens: this.#requestBody.nativeMaxOutputTokens(capacity.outputBudget, nativeReasoningBudget),
                         reasoning: this.#requestFields?.namespace !== undefined
                             ? "provider-default"
-                            : this.#reasoning.mode === "off"
+                            : this.#effort.mode === "off"
                             ? "none"
-                            : this.#reasoning.mode === "adaptive"
-                                ? this.#adaptiveReasoning
-                                : nativeFixedEffort(this.#reasoning.mode),
+                            : this.#effort.mode === "adaptive"
+                                ? this.#adaptiveEffort
+                                : nativeFixedEffort(this.#effort.mode),
                     });
             } catch (error) {
                 if (transportFailureOutputObserved(error)) recoveredAfterOutput = true;

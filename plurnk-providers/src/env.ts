@@ -1,7 +1,7 @@
 // Env-parsing helpers shared by provider construction. `label` keeps failures
 // local to the selected provider.
 
-import { REASONING_POLICIES, Validator, type ReasoningPolicy } from "@plurnk/plurnk-contracts";
+import { EFFORTS, Validator, type Effort } from "@plurnk/plurnk-contracts";
 import RequestFields from "./RequestFields.ts";
 import type { CacheAffinity } from "./AiSdkProvider.ts";
 import { providerSetting } from "./provider-env.ts";
@@ -307,19 +307,19 @@ export const resolveGenerationEnvelopeFromEnv = (
 
 // {§provider-configuration} The side-channel reasoning knobs — policy and budget
 // are separate vars, so a numeric budget can never silently select an effort:
-//   PLURNK_PROVIDERS_REASONING  required portable ReasoningPolicy
+//   PLURNK_PROVIDERS_EFFORT  required portable Effort
 //   PLURNK_PROVIDERS_REASONING_BUDGET  optional reasoning subset of the total
 //     output budget, used for tier/budget mapping where the backend supports it.
 // The provider maps intent to the backend's mechanism; the consumer states
 // intent, never mechanism. working memory is separate from provider reasoning.
-export type Reasoning = { mode: ReasoningPolicy; budget: number | null };
+export type EffortSetting = { mode: Effort; budget: number | null };
 
-export const parseReasoningPolicy = (value: unknown, label: string): ReasoningPolicy => {
-    const result = Validator.validateReasoningPolicy(value);
+export const parseEffort = (value: unknown, label: string): Effort => {
+    const result = Validator.validateEffort(value);
     if (!result.valid) {
-        throw new Error(`${label} must be one of ${REASONING_POLICIES.map((policy) => `"${policy}"`).join(", ")} (got "${String(value)}")`);
+        throw new Error(`${label} must be one of ${EFFORTS.map((policy) => `"${policy}"`).join(", ")} (got "${String(value)}")`);
     }
-    return value as ReasoningPolicy;
+    return value as Effort;
 };
 
 export type ReasoningResponseStyle = "verbatim" | "think-tags";
@@ -337,17 +337,28 @@ export const reasoningResponseStyleFromEnv = (
     return raw;
 };
 
-export const reasoningFromEnv = (
+// {§provider-effort} The effort knobs were named for reasoning; a leftover, bare or alias-suffixed, fails and names its
+// successor rather than sitting unread. Uppercase suffixes are other knobs (REASONING_BUDGET, REASONING_EFFORT_PATH).
+const RETIRED_EFFORT = /^PLURNK_PROVIDERS_REASONING(_FALLBACK)?(_[a-z0-9][A-Za-z0-9_-]*)?$/u; // lexicon-allow
+const shedRetiredEffort = (env: NodeJS.ProcessEnv, label: string): void => {
+    const present = Object.entries(env).find(([key, value]) => RETIRED_EFFORT.test(key) && value !== undefined && value !== "");
+    if (present === undefined) return;
+    const successor = present[0].replace("_REASONING", "_EFFORT"); // lexicon-allow
+    throw new Error(`${label} provider: ${present[0]} was renamed to ${successor}; update the env`);
+};
+
+export const effortFromEnv = (
     env: NodeJS.ProcessEnv,
     label: string,
     resolvedBudget: number | null = null,
-): Reasoning => {
-    shedRenamed(env, "PLURNK_PROVIDERS_THINKING", "PLURNK_PROVIDERS_REASONING", label, "provider configuration contract"); // lexicon-allow
+): EffortSetting => {
+    shedRetiredEffort(env, label);
+    shedRenamed(env, "PLURNK_PROVIDERS_THINKING", "PLURNK_PROVIDERS_EFFORT", label, "provider configuration contract"); // lexicon-allow
     shedRenamed(env, "PLURNK_PROVIDERS_THINKING_CAPACITY", "PLURNK_PROVIDERS_REASONING_BUDGET", label, "provider configuration contract"); // lexicon-allow
-    const name = "PLURNK_PROVIDERS_REASONING";
+    const name = "PLURNK_PROVIDERS_EFFORT";
     const raw = env[name];
-    if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set (${REASONING_POLICIES.join(" | ")})`);
-    const mode = parseReasoningPolicy(raw, `${label} provider: ${name}`);
+    if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set (${EFFORTS.join(" | ")})`);
+    const mode = parseEffort(raw, `${label} provider: ${name}`);
     return { mode, budget: mode === "off" ? null : resolvedBudget };
 };
 
@@ -363,10 +374,10 @@ export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_COST",
     "PLURNK_PROVIDERS_OUTPUT_BUDGET",
     "PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE",
-    "PLURNK_PROVIDERS_REASONING_FALLBACK",
+    "PLURNK_PROVIDERS_EFFORT_FALLBACK",
     ...RequestFields.knobs,
     "PLURNK_PROVIDERS_REASONING_BUDGET",
-    "PLURNK_PROVIDERS_REASONING",
+    "PLURNK_PROVIDERS_EFFORT",
     "PLURNK_PROVIDERS_CONTEXT_WINDOW",
     "PLURNK_PROVIDERS_RETRY_ATTEMPTS",
     "PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT",

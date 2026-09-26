@@ -506,7 +506,7 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
   resource with no body is `422 spawn-prompt-empty`. Naming the child and giving a resource in one
   statement is not expressible; the body can READ the resource instead. Taught in the deep
   reference only.
-- §worker-scheme-irc **irc** — ```` ```SEND (worker://<name>) ```` with a message body or attachments delivers it to an existing worker, the **voice door** ({§actor-boundary-two-doors}): an active worker folds it into its next turn, an idle one wakes ({§actor-boundary-passive-wake}). No text beyond whitespace and no attachments is 422 `message-empty`, before message admission or recipient loop creation. Nonempty text is delivered verbatim; attachment-only delivery uses {§send-resource-attachments}. A fresh receiving loop retains that worker's durable model, spawn override, and reasoning policy; the sender and daemon default do not re-select it. The caller addresses itself by its literal name; a literal name with no worker in the workspace is 404.
+- §worker-scheme-irc **irc** — ```` ```SEND (worker://<name>) ```` with a message body or attachments delivers it to an existing worker, the **voice door** ({§actor-boundary-two-doors}): an active worker folds it into its next turn, an idle one wakes ({§actor-boundary-passive-wake}). No text beyond whitespace and no attachments is 422 `message-empty`, before message admission or recipient loop creation. Nonempty text is delivered verbatim; attachment-only delivery uses {§send-resource-attachments}. A fresh receiving loop retains that worker's durable model, spawn override, and effort; the sender and daemon default do not re-select it. The caller addresses itself by its literal name; a literal name with no worker in the workspace is 404.
 - §worker-scheme-fork **Fork** — ```` ```FORK (worker://<name>)? ```` with a task body branches the
   current worker into a **named** child: its log is deep-copied
   ({§machine-processes-fork-copies-the-log}), which continues with `task`; the
@@ -1339,7 +1339,7 @@ whose text is read once per daemon and handed to the provider verbatim
 name with no path separator is refused with an error that says so, and an
 unreadable file fails the constrained generation loudly; neither ever silently
 becomes unconstrained. Nothing generates, validates, or grades a grammar, and
-no reasoning policy is implied by one. The turn records transport as evidence:
+no effort is implied by one. The turn records transport as evidence:
 `railsAttached: "client"` when the provider reports it sent the grammar, or
 `"withheld"` when it reports it did not ({§provider-grammar-evidence}); there
 is no verdict key and no notice about conformance, because the parser's
@@ -4298,8 +4298,8 @@ registration; there is no separate per-tool availability system.
 
 §model-catalog **Model discovery is a bounded local projection, not provider
 activity.** Core composes the release-pinned Models.dev snapshot with
-provider-owned `{§model-catalog-readiness}` and {§provider-reasoning-policy}.
-Each entry includes the exact route's admitted `reasoningPolicies`; worker-level
+provider-owned `{§model-catalog-readiness}` and {§provider-effort}.
+Each entry includes the exact route's admitted `efforts`; worker-level
 model/spawn intersections and alias tuning are not catalog facts. The default query includes only
 providers configured enough to attempt; `availability: "all"` includes every
 catalog model with structured missing-configuration causes. Provider and text
@@ -4321,7 +4321,7 @@ cascade. A WORK/FORK child copies the spawning loop's effective spawn model
 no live link and begins with no override, so a later parent change affects
 only that worker's future loops and descendants. Client operation actors and
 Plurnk-owned bookkeeping workers run no model loops and own no model
-selection; the model, spawn-override, and reasoning controls refuse them with
+selection; the model, spawn-override, and effort controls refuse them with
 `409 model-worker-required` before any policy row is initialized or written. An explicit model, spawn-override, or reasoning-policy change while
 the worker holds any queued, running, or parked loop is a precise
 `409 worker-loop-active` ({§worker-lifecycle-live}), independent of a process-local
@@ -4332,11 +4332,11 @@ First-time initialization of an unset worker model remains legal and never
 rewrites an existing loop's generation snapshot.
 
 A client-created branch copies the source worker's durable model, spawn
-override, and reasoning policy by value alongside its history. It retains no
+override, and effort by value alongside its history. It retains no
 live policy link to the source worker.
 
-§worker-reasoning-policy **Reasoning is a durable worker policy.** Each selected
-worker model has exactly one member of the shared `{§reasoning-policy-wire}`;
+§worker-effort **Reasoning is a durable worker policy.** Each selected
+worker model has exactly one member of the shared `{§effort-wire}`;
 a modelless worker has none. A declared alias's scoped environment value—or the
 global provider value for an exact route—seeds the policy only when the worker
 first receives its model. Model identity and reasoning
@@ -4345,17 +4345,17 @@ token ceilings remain separate concerns. An explicit policy change validates
 the exact policy against both the worker model and its optional spawn model and
 is refused while the worker owns a live or parked loop. Effort is identity-grade:
 every client-visible model route carries the worker's durable policy as
-`reasoningPolicy`, omitted only when the cataloged model has no reasoning
+`effort`, omitted only when the cataloged model has no reasoning
 dimension. Client inspection
 returns the supported-policy intersection of those two routes. Inspection or
 mutation materializes the daemon-default model and policy onto an uninitialized
 model worker before answering; a deliberately modelless daemon remains unset.
 
-§worker-reasoning-source **A default never masquerades as a choice.** The worker row records
-`reasoning_source` beside `reasoning_policy`: `default` when the value was seeded from the alias
-or provider configuration, `explicit` only after `worker.reasoning.set`. `worker.reasoning.get`
-returns `source`, and a projected `ModelRoute` carries `reasoningSource` exactly when it carries
-`reasoningPolicy`, so a client can render `deepdumb[low]` differently from a seeded `low` without
+§worker-effort-source **A default never masquerades as a choice.** The worker row records
+`effort_source` beside `effort`: `default` when the value was seeded from the alias
+or provider configuration, `explicit` only after `worker.effort.set`. `worker.effort.get`
+returns `source`, and a projected `ModelRoute` carries `effortSource` exactly when it carries
+`effort`, so a client can render `deepdumb[low]` differently from a seeded `low` without
 inferring anything. Selecting a new model keeps an explicit policy (validated against the new
 model) and re-derives a default one from the new alias, so a seeded value never outlives the alias
 that supplied it; the source itself is not part of the mid-loop generation-change check, because
@@ -4376,7 +4376,7 @@ addressed worker before the loop snapshots it; an omitted selector is not a
 selection and continues the worker's durable model
 ({§worker-model-selection}). The fully resolved provider identity and reasoning
 policy are persisted on the loop and remain immutable through turns, parks,
-wakes, and restart ({§worker-reasoning-policy}).
+wakes, and restart ({§worker-effort}).
 Injecting into an existing loop with a conflicting explicit selection fails
 before work is accepted. Provider instances are cached; no resume path
 substitutes a boot default for missing or malformed durable selection.

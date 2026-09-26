@@ -600,6 +600,8 @@ body: MatcherBodyOrNull
 position: Position
 }
 
+export type Effort = ("off" | "adaptive" | "low" | "medium" | "high" | "xhigh" | "max")
+
 export type EntryReadResult = ({
 status: 200
 entry: ClientEntry
@@ -938,12 +940,6 @@ export interface McpServerHeaders {
 [k: string]: string
 }
 
-export type ReasoningPolicy = ("off" | "adaptive" | "low" | "medium" | "high" | "xhigh" | "max")
-
-/**
- * One deterministic bounded page from the release-pinned model catalog.
- */
-
 export interface ModelCatalogPage {
 /**
  * @maxItems 100
@@ -975,11 +971,11 @@ export interface ModelCatalogCapabilities {
 attachment: boolean
 reasoning: boolean
 /**
- * Portable reasoning policies admitted for this exact route by the installed provider adapter and provider-wide operator declarations; not a worker's combined model/spawn policy intersection.
+ * Portable efforts admitted for this exact route by the installed provider adapter and provider-wide operator declarations; not a worker's combined model/spawn policy intersection.
  *
  * @minItems 1
  */
-reasoningPolicies: [ReasoningPolicy, ...(ReasoningPolicy)[]]
+efforts: [Effort, ...(Effort)[]]
 toolCall: boolean
 structuredOutput?: boolean
 temperature?: boolean
@@ -1017,11 +1013,11 @@ export interface ModelRoute {
 alias?: string
 provider: string
 model: string
-reasoningPolicy?: ReasoningPolicy
+effort?: Effort
 /**
- * Whether reasoningPolicy was chosen through worker.reasoning.set (explicit) or seeded from the alias configuration (default). Present exactly when reasoningPolicy is.
+ * Whether effort was chosen through worker.effort.set (explicit) or seeded from the alias configuration (default). Present exactly when effort is.
  */
-reasoningSource?: ("default" | "explicit")
+effortSource?: ("default" | "explicit")
 }
 
 export interface Notice {

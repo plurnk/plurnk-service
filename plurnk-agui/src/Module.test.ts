@@ -64,7 +64,7 @@ const mockSeam = () => {
     }> = [];
     const modelSets: Array<{ selector?: string; childSelector?: string | null }> = [];
     const modelQueries: unknown[] = [];
-    const reasoningSets: unknown[] = [];
+    const effortSets: unknown[] = [];
     const handlers = new Set<(s: number | null, m: string, p: unknown) => void>();
     const seam: ApplicationPort = {
         // {§http-host} — the mock daemon carries no listener; a module started against it under
@@ -110,7 +110,7 @@ const mockSeam = () => {
                     capabilities: {
                         attachment: true,
                         reasoning: true,
-                        reasoningPolicies: ["adaptive", "low", "medium", "high"],
+                        efforts: ["adaptive", "low", "medium", "high"],
                         toolCall: true,
                         inputModalities: ["text", "image"],
                         outputModalities: ["text"],
@@ -143,7 +143,7 @@ const mockSeam = () => {
         createConversationWorker: async (a) => ({ workerId: 77, workerName: a.name ?? "model-fresh" }),
         look: async () => ({ status: 200, content: "looked" }),
         readWorkerModel: async () => ({ model: null, spawnModel: null }),
-        readWorkerReasoning: async () => ({ policy: null, source: "default", supportedPolicies: [] }),
+        readWorkerEffort: async () => ({ effort: null, source: "default", supportedEfforts: [] }),
         readWorkspaceCapabilities: async () => ({
             service: {}, workspace: {}, effective: {},
         }),
@@ -164,9 +164,9 @@ const mockSeam = () => {
                     ? { provider: selector.slice(0, selector.indexOf("/")), model: selector.slice(selector.indexOf("/") + 1) }
                     : { alias: selector, provider: "openai", model: "mocktest" };
         },
-        setWorkerReasoning: async ({ policy }) => {
-            reasoningSets.push(policy);
-            return { policy: "adaptive", source: "explicit", supportedPolicies: ["off", "adaptive", "high"] };
+        setWorkerEffort: async ({ effort }) => {
+            effortSets.push(effort);
+            return { effort: "adaptive", source: "explicit", supportedEfforts: ["off", "adaptive", "high"] };
         },
     };
     const finish = (workspaceId: number | null, workerId: number) => setImmediate(() => handlers.forEach((h) => h(workspaceId, "loop/terminated", termination({
@@ -175,7 +175,7 @@ const mockSeam = () => {
         usage: loopUsage({ inputTokens: 1, outputTokens: 1, curationBudget: 1000 }),
     }))));
     const emit = (workspaceId: number | null, method: string, params: unknown) => handlers.forEach((h) => h(workspaceId, method, params));
-    return { seam, resolves, loopRuns, modelSets, modelQueries, reasoningSets, finish, emit };
+    return { seam, resolves, loopRuns, modelSets, modelQueries, effortSets, finish, emit };
 };
 
 const standardInput = (body: Record<string, unknown>): Record<string, unknown> => ({
@@ -604,25 +604,25 @@ test("{§agui-worker-model-actions}: worker model get/set reach the seam and chi
     } finally { await mod.close(); }
 });
 
-test("{§agui-worker-reasoning-actions}: worker reasoning get/set reach the seam as a separate durable policy", async () => {
-    const { seam, reasoningSets } = mockSeam();
-    seam.readWorkerReasoning = async () => ({ policy: "adaptive", source: "default", supportedPolicies: ["off", "adaptive", "high"] });
+test("{§agui-worker-effort-actions}: worker reasoning get/set reach the seam as a separate durable policy", async () => {
+    const { seam, effortSets } = mockSeam();
+    seam.readWorkerEffort = async () => ({ effort: "adaptive", source: "default", supportedEfforts: ["off", "adaptive", "high"] });
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         const port = mod.address().port;
-        const get = await post(port, { threadId: "t1", workerId: "r1", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.reasoning.get" } } } });
+        const get = await post(port, { threadId: "t1", workerId: "r1", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.effort.get" } } } });
         const got = get.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as {
-            value: { ok: boolean; result: { policy: string | null; supportedPolicies: string[] } };
+            value: { ok: boolean; result: { effort: string | null; supportedEfforts: string[] } };
         };
         assert.equal(got.value.ok, true);
-        assert.equal(got.value.result.policy, "adaptive");
-        assert.deepEqual(got.value.result.supportedPolicies, ["off", "adaptive", "high"]);
+        assert.equal(got.value.result.effort, "adaptive");
+        assert.deepEqual(got.value.result.supportedEfforts, ["off", "adaptive", "high"]);
 
-        const set = await post(port, { threadId: "t1", workerId: "r2", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.reasoning.set", policy: "adaptive" } } } });
+        const set = await post(port, { threadId: "t1", workerId: "r2", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.effort.set", effort: "adaptive" } } } });
         assert.equal(set[set.length - 1].type, "RUN_FINISHED");
-        assert.deepEqual(reasoningSets, ["adaptive"]);
+        assert.deepEqual(effortSets, ["adaptive"]);
 
-        const missing = await post(port, { threadId: "t1", workerId: "r3", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.reasoning.set" } } } });
+        const missing = await post(port, { threadId: "t1", workerId: "r3", forwardedProps: { plurnk: { workspace: "t1", action: { kind: "worker.effort.set" } } } });
         const refused = missing.find((e) => e.type === "CUSTOM" && (e as { name: string }).name === "plurnk.action.result") as {
             value: { ok: boolean; problem: { type: string; status: number } };
         };
@@ -2405,10 +2405,10 @@ test("{§discovery} discover returns the exact public action and notification me
             "providers.list",
             "run.fork",
             "worker.child.set",
+            "worker.effort.get",
+            "worker.effort.set",
             "worker.model.get",
             "worker.model.set",
-            "worker.reasoning.get",
-            "worker.reasoning.set",
             "workspace.attach",
             "workspace.capabilities.get",
             "workspace.capabilities.set",

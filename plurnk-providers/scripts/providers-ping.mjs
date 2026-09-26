@@ -179,7 +179,7 @@ export const pingRunIsRed = (plan, records) =>
 const pingEnvironment = (env, alias) => ({
     ...env,
     [`PLURNK_PROVIDERS_RAWBODY_${alias}`]: "1",
-    [`PLURNK_PROVIDERS_REASONING_${alias}`]: "off",
+    [`PLURNK_PROVIDERS_EFFORT_${alias}`]: "off",
     [`PLURNK_PROVIDERS_RETRY_ATTEMPTS_${alias}`]: "0",
     [`PLURNK_PROVIDERS_TOP_LOGPROBS_${alias}`]: "off",
 });

@@ -1,4 +1,4 @@
-import { REASONING_POLICIES } from "@plurnk/plurnk-contracts";
+import { EFFORTS } from "@plurnk/plurnk-contracts";
 import AiSdkProvider, { type GrammarStyle, type ReasoningStyle } from "./AiSdkProvider.ts";
 import {
     contextWindowFromEnv,
@@ -12,7 +12,7 @@ import {
     parseTimeoutMs,
     cacheAffinityFromEnv,
     cacheWritePolicyFromEnv,
-    reasoningFromEnv,
+    effortFromEnv,
     reasoningResponseStyleFromEnv,
     inferenceAdmissionFromEnv,
 } from "./env.ts";
@@ -174,10 +174,10 @@ export const compatibleProviderFromEnv = async (
         );
     }
     const envelope = generationEnvelopeFromEnv(env, provider, contextWindow, null);
-    const reasoning = reasoningFromEnv(env, provider, envelope.reasoningBudget);
+    const effort = effortFromEnv(env, provider, envelope.reasoningBudget);
     // A detected llama-server rail runs the template style: the chat template governs
     // reasoning, so the operator's stated effort is admitted and forwarded verbatim (#483).
-    const supportedReasoningPolicies = reasoningStyle === "template" ? REASONING_POLICIES : (["off", "adaptive"] as const);
+    const supportedEfforts = reasoningStyle === "template" ? EFFORTS : (["off", "adaptive"] as const);
     return new AiSdkProvider({
         inferenceAdmission: inferenceAdmissionFromEnv(env, url.replace(/\/chat\/completions$/, "")),
         model,
@@ -187,14 +187,14 @@ export const compatibleProviderFromEnv = async (
         maxInputTokens: null,
         maxOutputTokens: null,
         outputBudget: envelope.outputBudget,
-        reasoningBudget: reasoning.budget,
-        supportedReasoningPolicies,
+        reasoningBudget: effort.budget,
+        supportedEfforts,
         fetchTimeoutMs: timeout,
         operationTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "PLURNK_PROVIDERS_OPERATION_TIMEOUT", provider),
         firstContentTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT, "PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT", provider),
         streamIdleTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT, "PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT", provider),
         repeatedLineLimit: parseRequiredInt(env.PLURNK_PROVIDERS_REPEATED_LINE_LIMIT, "PLURNK_PROVIDERS_REPEATED_LINE_LIMIT", provider),
-        reasoning,
+        effort,
         reasoningResponseStyle: reasoningResponseStyleFromEnv(env, provider),
         reasoningStyle,
         ...samplingFromEnv(env, provider),

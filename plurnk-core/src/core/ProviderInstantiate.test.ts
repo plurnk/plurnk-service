@@ -149,7 +149,7 @@ test("a registered handle cannot shadow changed provider tuning", async () => {
     }
 });
 
-test("the process cache separates durable reasoning policies for one route", async () => {
+test("the process cache separates durable efforts for one route", async () => {
     const spec = {
         alias: `reasoning-cache-${crypto.randomUUID()}`,
         provider: "mocktest",
@@ -168,11 +168,11 @@ test("the process cache separates durable reasoning policies for one route", asy
 test("an exact route uses global provider tuning and never fabricates an alias scope", () => {
     const route = { provider: "mocktest", model: "same-model" };
     const env = {
-        PLURNK_PROVIDERS_REASONING: "adaptive",
-        "PLURNK_PROVIDERS_REASONING_mocktest/same-model": "high",
+        PLURNK_PROVIDERS_EFFORT: "adaptive",
+        "PLURNK_PROVIDERS_EFFORT_mocktest/same-model": "high",
     };
     assert.equal(
-        ProviderInstantiate.configuredReasoningPolicy(route, env),
+        ProviderInstantiate.configuredEffort(route, env),
         "adaptive",
         "the exact route string is identity, not an alias-shaped tuning namespace",
     );

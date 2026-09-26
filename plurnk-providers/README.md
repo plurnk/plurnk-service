@@ -108,7 +108,7 @@ flowchart TD
 ```
 
 - **Effort** and **budget** are independent. `adaptive` requests native dynamic
-  reasoning where supported, otherwise `PLURNK_PROVIDERS_REASONING_FALLBACK`
+  reasoning where supported, otherwise `PLURNK_PROVIDERS_EFFORT_FALLBACK`
   (default `high`). An unavailable fallback retains the reasoning-enabled provider default.
   Fixed effort names must be supported by the route; unsupported requests are not silently downgraded.
 - **Output** accepts positive tokens or a percentage of context; known model
