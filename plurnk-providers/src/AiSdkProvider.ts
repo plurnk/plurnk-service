@@ -29,6 +29,7 @@ import { nativeFixedEffort } from "./reasoning-effort.ts";
 import AiSdkRequestBody from "./AiSdkRequestBody.ts";
 import LeadingReasoning from "./LeadingReasoning.ts";
 import type RequestFields from "./RequestFields.ts";
+import type InferenceAdmission from "./InferenceAdmission.ts";
 
 export type ProviderFetch = typeof globalThis.fetch;
 
@@ -41,14 +42,14 @@ const OPERATION_DEADLINE_UNWIND_GRACE_MS = 1_000;
 
 const raceAgainstDeadline = async <T>(work: PromiseLike<T>, signal: AbortSignal): Promise<T> => {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const backstop = new Promise<never>((_resolve, reject) => {
-        const arm = (): void => { timer = setTimeout(() => reject(signal.reason), OPERATION_DEADLINE_UNWIND_GRACE_MS); };
-        if (signal.aborted) arm();
-        else signal.addEventListener("abort", arm, { once: true });
-    });
+    const backstop = Promise.withResolvers<never>();
+    const arm = (): void => { timer = setTimeout(() => backstop.reject(signal.reason), OPERATION_DEADLINE_UNWIND_GRACE_MS); };
+    if (signal.aborted) arm();
+    else signal.addEventListener("abort", arm, { once: true });
     try {
-        return await Promise.race([work, backstop]);
+        return await Promise.race([work, backstop.promise]);
     } finally {
+        signal.removeEventListener("abort", arm);
         if (timer !== undefined) clearTimeout(timer);
     }
 };
@@ -71,6 +72,7 @@ export type AiSdkProviderOptions = Record<string, Record<string, JSONValue | und
 
 
 export type AiSdkProviderConfig = {
+    inferenceAdmission?: InferenceAdmission;
     model: string;
     url?: string;                             // OpenAI-compatible chat-completions URL
     languageModel?: LanguageModel;            // native AI SDK provider model
@@ -232,6 +234,7 @@ const providerWarningMessage = (warning: CallWarning): string => {
 
 
 export default class AiSdkProvider implements Provider {
+    readonly #inferenceAdmission: InferenceAdmission | undefined;
     #model: string;
     #url: string | undefined;
     #languageModel: LanguageModel | undefined;
@@ -292,6 +295,7 @@ export default class AiSdkProvider implements Provider {
     tokenize?: (text: string) => Promise<number[]>;
     readonly #requestBody: AiSdkRequestBody;
     constructor(config: AiSdkProviderConfig) {
+        this.#inferenceAdmission = config.inferenceAdmission;
         this.#model = config.model;
         this.#url = config.url;
         this.#languageModel = config.languageModel;
@@ -684,7 +688,7 @@ export default class AiSdkProvider implements Provider {
             };
         let successfulReasoningStream = "";
         let recoveredAfterOutput = false;
-        const executeRequest = async () => {
+        const executeAdmittedRequest = async () => {
             let requestReasoningStream = "";
             let structuredReasoning = false;
             const envelopes = preserveGrammarSentence ? LeadingReasoning.TEMPLATE
@@ -828,6 +832,16 @@ export default class AiSdkProvider implements Provider {
                 response.chargeEvidence,
             );
             return response;
+        };
+
+        const executeRequest = async () => {
+            const release = await this.#inferenceAdmission?.acquire(operationSignal);
+            try {
+                operationSignal?.throwIfAborted();
+                return await executeAdmittedRequest();
+            } finally {
+                release?.();
+            }
         };
 
         let raw;

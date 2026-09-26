@@ -14,6 +14,7 @@ import {
     cacheWritePolicyFromEnv,
     reasoningFromEnv,
     reasoningResponseStyleFromEnv,
+    inferenceAdmissionFromEnv,
 } from "./env.ts";
 import { providerSource } from "./notices.ts";
 import type { Provider } from "./types.ts";
@@ -178,6 +179,7 @@ export const compatibleProviderFromEnv = async (
     // reasoning, so the operator's stated effort is admitted and forwarded verbatim (#483).
     const supportedReasoningPolicies = reasoningStyle === "template" ? REASONING_POLICIES : (["off", "adaptive"] as const);
     return new AiSdkProvider({
+        inferenceAdmission: inferenceAdmissionFromEnv(env, url.replace(/\/chat\/completions$/, "")),
         model,
         url,
         headers,

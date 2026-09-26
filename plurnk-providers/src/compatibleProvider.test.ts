@@ -3,6 +3,7 @@ import { strict as assert } from "node:assert";
 import { compatibleProviderFromEnv } from "./compatibleProvider.ts";
 
 const env = {
+    PLURNK_PROVIDERS_MAX_CONCURRENCY: "-1",
     OPENAI_BASE_URL: "http://local.test/v1",
     PLURNK_PROVIDERS_FETCH_TIMEOUT: "1000",
     PLURNK_PROVIDERS_OPERATION_TIMEOUT: "3000",

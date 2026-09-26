@@ -167,6 +167,8 @@ PLURNK_MODEL=local
 # Optional explicit generation allowances, in tokens:
 # PLURNK_PROVIDERS_OUTPUT_BUDGET_local=8192
 # PLURNK_PROVIDERS_REASONING_BUDGET_local=4096
+# Optional: serialize inference on a single-slot endpoint without serializing workers:
+# PLURNK_PROVIDERS_MAX_CONCURRENCY_local=1
 ```
 
 Endpoint probing supplies served-model capacity and llama-server capabilities.
@@ -185,6 +187,7 @@ opt-in for endpoints that emit a leading `<think>` envelope, not a reasoning swi
 
 | Concern | Boundary |
 | --- | --- |
+| Inference concurrency | Optional per-endpoint, process-local admission; queued calls remain cancellable. The default is unrestricted ({§provider-inference-admission}). |
 | Attempt, first-content, idle deadlines | Provider transport; a timeout surfaces a failure, not a fabricated response. |
 | Provider-directed waits | Bounded retries honor `Retry-After`; other recoverable failures return to Core. |
 | Loop recovery | Core reissues within its recovery window, then parks for a prompt or wake. |

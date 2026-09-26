@@ -27,6 +27,7 @@ import { providerEnvPrefix as envPrefix } from "./provider-env.ts";
 import { cacheAffinityDeclarationFromEnv } from "./env.ts";
 
 export type SdkModel = {
+    readonly endpoint?: string;
     readonly languageModel?: LanguageModel;
     readonly normalizeCost?: ProviderCostNormalizer;
     readonly compatible?: {
@@ -312,7 +313,7 @@ export const createSdkModel = (
     if (resolved === null) return null;
     const { catalog, url } = resolved;
     const cacheAffinity = cacheAffinityDeclarationFromEnv(env, provider);
-    return { ...modelFromSdk(provider, model, env, catalog, url), cacheAffinity };
+    return { ...modelFromSdk(provider, model, env, catalog, url), cacheAffinity, endpoint: url };
 };
 
 const modelFromSdk = (

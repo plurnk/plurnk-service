@@ -19,6 +19,7 @@ import {
     cacheWritePolicyFromEnv,
     reasoningFromEnv,
     reasoningResponseStyleFromEnv,
+    inferenceAdmissionFromEnv,
 } from "./env.ts";
 import AiSdkProvider, {
     type AiSdkProviderConfig,
@@ -182,6 +183,7 @@ export const providerFromSdkModel = ({
     additiveReasoningProvider,
     sdkPackage,
     grammarStyle,
+    endpoint,
 }: {
     name: string;
     env: NodeJS.ProcessEnv;
@@ -201,6 +203,7 @@ export const providerFromSdkModel = ({
     reasoningResponseProviderOptions?: AiSdkProviderOptions;
     additiveReasoningProvider?: "anthropic" | "bedrock";
     sdkPackage?: string;
+    endpoint?: string;
 }): Provider => {
     emitWarningOnce(
         `${name} provider: request-level prompt counting is a chars/2 estimate; capacity is deferred to the provider`,
@@ -266,6 +269,7 @@ export const providerFromSdkModel = ({
     const cacheWritePolicy = cacheWritePolicyFromEnv(env, name);
 
     return new AiSdkProvider({
+        inferenceAdmission: inferenceAdmissionFromEnv(env, endpoint ?? url?.replace(/\/chat\/completions$/, "") ?? `sdk:${name}`),
         model,
         ...(attributions === undefined ? {} : { attributions }),
         ...(languageModel === undefined ? {} : { languageModel }),
@@ -343,6 +347,7 @@ export const catalogProviderFromEnv = (
         languageModel: sdk.languageModel,
         normalizeCost: sdk.normalizeCost,
         url: sdk.compatible?.url,
+        endpoint: sdk.endpoint,
         headers: sdk.compatible?.headers,
         cacheAffinity: sdk.cacheAffinity,
         systemCacheProviderOptions: sdk.systemCacheProviderOptions,

@@ -745,10 +745,12 @@ deadline:
 
 | Layer | Operator knob | Boundary | Expiry |
 | --- | --- | --- | --- |
-| Operation | `PLURNK_PROVIDERS_OPERATION_TIMEOUT` | Complete logical call, including every attempt and retry delay. | Final `deadline_exceeded` Problem at 504 with `timeoutPhase=operation`; not retried inside this operation. Consumer recovery is separate. Enforced as a race, not only the advisory signal, so a wedged transport that never observes the abort cannot hang the loop past the deadline (#505); a well-behaved transport unwinds within a short grace and settles its own attempt evidence first. |
+| Operation | `PLURNK_PROVIDERS_OPERATION_TIMEOUT` | Complete logical call, including admission queueing, every attempt and retry delay. | Final `deadline_exceeded` Problem at 504 with `timeoutPhase=operation`; not retried inside this operation. Consumer recovery is separate. Enforced as a race, not only the advisory signal, so a wedged transport that never observes the abort cannot hang the loop past the deadline (#505); a well-behaved transport unwinds within a short grace and settles its own attempt evidence first. |
 | Attempt | `PLURNK_PROVIDERS_FETCH_TIMEOUT` | One physical generation request. A non-streamed request is bounded through response consumption; a streamed one only until its first semantic content. After content begins, stream-idle bounds silence and the operation deadline still bounds the whole call. | Surfaced `network_failure` with `timeoutPhase=attempt`; never transport-retried (#479) — the consumer's recovery owns re-issue. |
 | First content | `PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT` | Response-stream start through first semantic model content; metadata, empty deltas, and transport activity do not satisfy it. | Surfaced `network_failure` with `timeoutPhase=first_content`; never transport-retried (#479). |
 | Stream idle | `PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT` | Silence between semantic content chunks after content begins. | Surfaced `network_failure` with `timeoutPhase=stream_idle`; never transport-retried (#479). |
+
+Settled calls remove their deadline timers and cancellation subscriptions.
 
 Caller cancellation spans the operation and preserves the caller's reason.
 A 2xx exchange whose body cannot be processed (a provider invalid-response)
@@ -756,9 +758,10 @@ classifies as the non-retryable 502 on the first failure unless an explicit
 `x-should-retry` directive says otherwise (#479 supersedes #446's budgeted
 promotion). Inner deadline failures surface on the first failure; when a
 directive-driven retry sequence exhausts, `attempts` and `retryExhausted`
-are added and the classification is final. Every scheduler iteration opens and settles exactly
-one ordered {§provider-request-accounting} record, including response-less
-network failures and timed-out attempts.
+are added and the classification is final. Every admitted physical attempt opens
+and settles exactly one ordered {§provider-request-accounting} record, including
+response-less network failures and timed-out attempts. A cancelled or expired
+admission wait opens no physical request.
 
 Each streamed physical request assembles its own response. Failed partial answer
 bytes never enter a later request's completed `ProviderResponse`; recovery is a
@@ -910,7 +913,29 @@ limit advertises `requiresOutputBudget` and fails construction when no total can
 be resolved. The retired additive reserve knobs fail hard rather than creating
 a second envelope contract.
 
-## §13 Capacity pool
+## §13 Inference capacity
+
+### Admission
+
+§provider-inference-admission `PLURNK_PROVIDERS_MAX_CONCURRENCY` controls physical
+generation attempts per resolved endpoint within one process: `-1` is unrestricted;
+a positive safe integer admits that many concurrent attempts. It follows ordinary
+alias scoping. Zero, other negative values and non-integers are invalid.
+
+| Boundary | Contract |
+| --- | --- |
+| Identity | Provider instances and aliases sharing the resolved API base URL share one allowance. SDK/plugin-owned endpoints without a resolved URL share their provider identity. Conflicting limits for one identity fail construction; they never create independent queues. Limits are fixed for that process lifetime. |
+| Admission | FIFO among live waiters. The lease begins before the physical request observer and ends after the complete response or transport failure settles, including streamed bodies. |
+| Cancellation | A queued abort removes that waiter and preserves the caller's reason. It opens no physical request or accounting row. In-flight cancellation signals the transport; capacity is released when that attempt unwinds. A transport still running despite abort does not authorize exceeding the limit. |
+| Retries | Backoff holds no lease. Each retry rejoins admission as a new physical attempt. |
+| Deadlines | The existing operation deadline includes queueing. Attempt, first-content and stream-idle deadlines begin only after admission; queued work is not a stalled stream. |
+| Scope | Workers, tools, messages, waits, token measurement and endpoint discovery are not serialized by inference admission. Independent endpoints progress independently. No cross-process or machine-wide capacity guarantee is implied. |
+
+Admission neither changes worker lifecycle nor selects another model or endpoint.
+Core consumes the same asynchronous Provider contract. A waiting worker holds no
+inference lease; BARE and ordinary generation use the same physical boundary.
+
+### Pool
 
 §provider-capacity-pool `Pool` fronts interchangeable `Provider` instances. It
 keeps workers sticky for
@@ -938,6 +963,8 @@ Coverage MUST prove:
 - native SDK request mapping and normalized responses;
 - compatible extension preservation;
 - timeout, retry, cancellation, interrupted-attempt, and final-error behavior;
+- shared endpoint inference admission, FIFO queueing, queued/in-flight cancellation,
+  full-stream lease lifetime, retry release, and independent endpoint progress;
 - local capability probes and pins;
 - exact, bounded, estimated, and unavailable complete-request measurements;
 - independent input/context/output limits, asymmetric admission, and normalized

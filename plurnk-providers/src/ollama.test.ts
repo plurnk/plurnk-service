@@ -3,6 +3,7 @@ import { strict as assert } from "node:assert";
 import { ollamaProviderFromEnv } from "./ollama.ts";
 
 const env = Object.freeze({
+    PLURNK_PROVIDERS_MAX_CONCURRENCY: "-1",
     PLURNK_PROVIDERS_FETCH_TIMEOUT: "1000",
     PLURNK_PROVIDERS_OPERATION_TIMEOUT: "3000",
     PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT: "1000",

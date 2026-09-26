@@ -61,6 +61,7 @@ export const ollamaProviderFromEnv = async (
         env,
         model,
         languageModel,
+        endpoint: `${baseUrl}/v1`,
         contextWindow,
     });
 };

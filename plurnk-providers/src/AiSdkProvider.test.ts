@@ -1,5 +1,6 @@
 import { chatMessageText } from "./types.ts";
 import test, { mock } from "node:test";
+import { getEventListeners } from "node:events";
 import { strict as assert } from "node:assert";
 import AiSdkProvider, { type AiSdkProviderConfig } from "./AiSdkProvider.ts";
 import { ProviderError } from "./errors.ts";
@@ -8,6 +9,7 @@ import type { LanguageModel } from "ai";
 import RequestFields from "./RequestFields.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import InferenceAdmission from "./InferenceAdmission.ts";
 
 const wireConfig = (env: NodeJS.ProcessEnv) => {
     const requestFields = new RequestFields("test", withProviderDefaults(env));
@@ -337,6 +339,7 @@ test("{§provider-request-observer} request-observer open failures preserve the 
     let calls = 0;
     const provider = testProvider({
         ...injectedBase,
+        inferenceAdmission: InferenceAdmission.forEndpoint(`fixture:${crypto.randomUUID()}`, 1),
         retryAttempts: 3,
         fetch: async () => {
             calls++;
@@ -357,6 +360,8 @@ test("{§provider-request-observer} request-observer open failures preserve the 
         (error: unknown) => error === root,
     );
     assert.equal(calls, 0);
+    assert.equal((await provider.generate({ workerId: "after-open-failure", messages: [] })).assistant.content, "x");
+    assert.equal(calls, 1);
 });
 
 test("{§provider-request-observer} request-observer settlement failures preserve the durability cause without retrying I/O", async () => {
@@ -364,6 +369,7 @@ test("{§provider-request-observer} request-observer settlement failures preserv
     let calls = 0;
     const provider = testProvider({
         ...injectedBase,
+        inferenceAdmission: InferenceAdmission.forEndpoint(`fixture:${crypto.randomUUID()}`, 1),
         retryAttempts: 3,
         fetch: async () => {
             calls++;
@@ -384,6 +390,8 @@ test("{§provider-request-observer} request-observer settlement failures preserv
         (error: unknown) => error === root,
     );
     assert.equal(calls, 1);
+    assert.equal((await provider.generate({ workerId: "after-settlement-failure", messages: [] })).assistant.content, "x");
+    assert.equal(calls, 2);
 });
 
 // Sequenced fetch mock for retry tests: each entry is one HTTP response. A 200
@@ -928,6 +936,57 @@ test("{§provider-connectivity} a wedged transport that ignores the abort still 
         (error: ProviderError) => error.kind === "deadline_exceeded"
             && error.problem.timeoutPhase === "operation",
     );
+});
+
+for (const status of [200, 400]) {
+    test(`{§provider-connectivity} settled ${status} calls remove their cancellation listener`, async () => {
+        const cancellation = new AbortController();
+        const provider = testProvider({
+            ...injectedBase,
+            fetchTimeoutMs: 0,
+            operationTimeoutMs: 0,
+            streaming: false,
+            fetch: async () => new Response(JSON.stringify(status === 200 ? jsonChoice : { error: { message: "rejected" } }), {
+                status, headers: { "content-type": "application/json" },
+            }),
+        });
+        const call = provider.generate({ workerId: "cleanup", messages: [], signal: cancellation.signal });
+        if (status === 200) assert.equal((await call).assistant.content, "x");
+        else await assert.rejects(call, (error) => error instanceof ProviderError && error.kind === "request_rejected");
+        assert.equal(getEventListeners(cancellation.signal, "abort").length, 0);
+    });
+}
+
+test("{§provider-inference-admission} a transport ignoring cancellation retains its slot until it unwinds", { timeout: 5000 }, async () => {
+    const firstResponse = Promise.withResolvers<Response>();
+    const started = Promise.withResolvers<void>();
+    let calls = 0;
+    const provider = testProvider({
+        ...injectedBase,
+        inferenceAdmission: InferenceAdmission.forEndpoint(`fixture:${crypto.randomUUID()}`, 1),
+        fetchTimeoutMs: 0,
+        operationTimeoutMs: 0,
+        streaming: false,
+        fetch: async () => {
+            if (++calls === 1) {
+                started.resolve();
+                return firstResponse.promise;
+            }
+            return new Response(JSON.stringify(jsonChoice), { headers: { "content-type": "application/json" } });
+        },
+    });
+    const cancellation = new AbortController();
+    const first = provider.generate({ workerId: "uncooperative", messages: [], signal: cancellation.signal });
+    const rejected = assert.rejects(first, (error) => error === cancellation.signal.reason);
+    await started.promise;
+    cancellation.abort(new Error("cancelled but transport still running"));
+    await rejected;
+    const second = provider.generate({ workerId: "queued", messages: [] });
+    await flush();
+    assert.equal(calls, 1, "returning cancellation to the caller must not mint capacity");
+    firstResponse.resolve(new Response(JSON.stringify(jsonChoice), { headers: { "content-type": "application/json" } }));
+    assert.equal((await second).assistant.content, "x");
+    assert.equal(calls, 2);
 });
 
 test("generate surfaces and normalizes an out-of-set finish_reason", async () => {

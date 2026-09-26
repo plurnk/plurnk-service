@@ -5,6 +5,14 @@ import { REASONING_POLICIES, Validator, type ReasoningPolicy } from "@plurnk/plu
 import RequestFields from "./RequestFields.ts";
 import type { CacheAffinity } from "./AiSdkProvider.ts";
 import { providerSetting } from "./provider-env.ts";
+import InferenceAdmission from "./InferenceAdmission.ts";
+
+export const inferenceAdmissionFromEnv = (env: NodeJS.ProcessEnv, endpoint: string): InferenceAdmission => {
+    const key = "PLURNK_PROVIDERS_MAX_CONCURRENCY";
+    const value = env[key];
+    if (value === undefined || value.trim() === "") throw new TypeError(`${key} must be set`);
+    return InferenceAdmission.forEndpoint(endpoint, Number(value));
+};
 
 export const parseRequiredInt = (raw: string | undefined, name: string, label: string): number => {
     if (raw === undefined || raw.length === 0) throw new Error(`${label} provider: ${name} must be set`);
@@ -351,6 +359,7 @@ export const reasoningFromEnv = (
 // facts (API keys, canonical endpoints) remain vendor-named; the per-alias
 // endpoint override stays PLURNK_BASEURL_<alias> (its existing precedent).
 export const PROVIDERS_KNOBS = Object.freeze([
+    "PLURNK_PROVIDERS_MAX_CONCURRENCY",
     "PLURNK_PROVIDERS_COST",
     "PLURNK_PROVIDERS_OUTPUT_BUDGET",
     "PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE",
