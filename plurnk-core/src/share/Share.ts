@@ -26,19 +26,23 @@ export default class Share {
         return join(root, `share-${now.toISOString().replace(/[-:]/gu, "").replace(/\.\d+Z$/u, "Z")}`);
     }
 
-    static async write({ dbPath, folder, workspaceId, requiem = false }: ShareOptions): Promise<{ folder: string; zip: string }> {
+    // {§share-snapshot}: a live or WAL-mode database is copied by SQLite, never by the filesystem.
+    static snapshot(dbPath: string, copy: string): void {
         const source = resolve(dbPath);
         if (!existsSync(source)) throw new Error(`share: no database at ${source}`);
+        if (existsSync(copy)) throw new Error(`share: ${resolve(copy)} already exists; remove it first`);
+        using database = new SqlRiteSync({ path: source, dir: [import.meta.dirname] });
+        database.share_snapshot.run({ path: resolve(copy) });
+    }
+
+    static async write({ dbPath, folder, workspaceId, requiem = false }: ShareOptions): Promise<{ folder: string; zip: string }> {
         const target = resolve(folder);
         const zip = `${target}.zip`;
         if (existsSync(zip)) throw new Error(`share: ${zip} already exists; remove it first`);
         const scratch = mkdtempSync(join(tmpdir(), "plurnk-share-"));
         try {
             const copy = join(scratch, "plurnk.db");
-            {
-                using database = new SqlRiteSync({ path: source, dir: [import.meta.dirname] });
-                database.share_snapshot.run({ path: copy });
-            }
+            Share.snapshot(dbPath, copy);
             const scoped = { dbPath: copy, digestDir: target, ...(workspaceId === undefined ? {} : { workspaceId }) };
             Digest.run(scoped);
             if (requiem) await Digest.requiem(scoped);

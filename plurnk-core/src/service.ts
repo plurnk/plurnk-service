@@ -403,6 +403,7 @@ export default class Service {
         const usage = `usage: plurnk-service [options] [start|migrate]
        plurnk-service [options] config [edit|defaults|check]
        plurnk-service [options] share [<file.db>] [<folder>] [--workspace=<id>] [--requiem]
+       plurnk-service [options] requiem <file.db> <folder>
        plurnk-service paths migrate
 
 ${EnvFlags.formatFlagsHelp(flagDescriptors)}
@@ -416,6 +417,7 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
                                (default database: the service's; default folder: a stamped child
                                of PLURNK_SERVICE_SHARE_FOLDER); --workspace=<id> limits it to one
                                workspace; --requiem adds the forensic interview (calls a model)
+  requiem                      add the forensic interview to a digest <folder> of <file.db> (calls a model)
   paths migrate               move a legacy ~/.plurnk into canonical XDG paths
   -v, --version                show executable provenance
   -h, --help                   show this help
@@ -484,6 +486,12 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
                 });
                 process.stdout.write(`${shared.folder}\n${shared.zip}\n`);
                 process.stderr.write("share: this holds what the models saw and wrote, unredacted; review it before sending.\n");
+            };
+        } else if (command === "requiem") {
+            if (positionals.length !== 3) Service.#die(64, `requiem takes <file.db> <folder>\n\n${usage}`);
+            handler = async () => {
+                const { path, reportPath, workers } = await Digest.requiem({ dbPath: positionals[1] as string, digestDir: positionals[2] as string });
+                process.stdout.write(`requiem: interviewed ${workers} worker(s) -> ${path}, ${reportPath}\n`);
             };
         } else if (command === "paths" && action === "migrate") {
             if (positionals.length > 2) Service.#die(64, `unexpected arguments: ${positionals.slice(2).join(" ")}`);

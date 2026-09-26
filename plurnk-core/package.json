@@ -27,6 +27,11 @@
             "types": "./dist/digest/Digest.d.ts",
             "default": "./dist/digest/Digest.js"
         },
+        "./share": {
+            "plurnk-dev": "./src/share/Share.ts",
+            "types": "./dist/share/Share.d.ts",
+            "default": "./dist/share/Share.js"
+        },
         "./package.json": "./package.json"
     },
     "bin": {
