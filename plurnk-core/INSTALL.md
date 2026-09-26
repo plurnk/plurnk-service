@@ -15,7 +15,7 @@ plurnk-service start
 ```
 
 First start seeds the user's configuration once. No model ships active;
-choose a model route before starting a model loop. The version-1 database
+[choose a model route](https://github.com/plurnk/plurnk-service/blob/main/plurnk-providers/README.md#configure-a-model) before starting a model loop. The version-1 database
 baseline is disposable during development.
 
 | Resource | Default location |
@@ -62,7 +62,7 @@ the owning declaration specifies its meaning.
 | File creation and membership | Separate policies. Creating an out-of-root file, admitting a new file, and editing an existing member are distinct decisions. |
 | User-facing behavior | Operating policy; use configuration for runtime controls. |
 
-The `@plurnk/plurnk-providers` README covers alias tuning, reasoning and output
+The [`@plurnk/plurnk-providers` README](https://github.com/plurnk/plurnk-service/blob/main/plurnk-providers/README.md#configure-a-model) covers alias tuning, reasoning and output
 budgets, local endpoints, caching, and connectivity; the
 [model chapter](skill://plurnk/references/models.md) is what a model is told.
 The defaults catalog groups the remaining settings by their owning subsystem:
