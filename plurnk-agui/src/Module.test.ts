@@ -92,6 +92,7 @@ const mockSeam = () => {
         cancelWorker: async () => {},
         executorTags: () => ["sh"],
         executorJsonBodyTags: () => [],
+        shareWorkspace: async ({ folder }: { folder: string }) => ({ folder, zip: `${folder}.zip` }),
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         readLog: async () => [{ id: 1, op: "SEND", status_rx: 200, origin: "model" }],
         readMessages: async () => [],
@@ -2415,6 +2416,7 @@ test("{§discovery} discover returns the exact public action and notification me
             "workspace.list",
             "workspace.prompts",
             "workspace.rename",
+            "workspace.share",
             "workspace.workers",
         ]);
         assert.deepEqual(Object.keys(r.value.result.notifications).toSorted(), [

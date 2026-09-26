@@ -63,7 +63,7 @@ async function assertInstalledDiscovery(sqliteEnabled: boolean): Promise<void> {
             display.find((capability) => capability.kind === "mimetype" && capability.mimetype === "text/html"),
             { kind: "mimetype", mimetype: "text/html", display: { glyph: "🌐" } },
         );
-        assert.equal(Object.keys(discovery.actions).length, 57, "25 built-ins, six Skills verbs, six members verbs, twelve env verbs across worker and workspace scopes, and eight MCP actions");
+        assert.equal(Object.keys(discovery.actions).length, 58, "26 built-ins, six Skills verbs, six members verbs, twelve env verbs across worker and workspace scopes, and eight MCP actions");
         assert.equal(Object.hasOwn(discovery.actions, "workspace.derivation"), false, "indexing activity uses the status stream, not a polling action");
         assert.deepEqual(
             Object.keys(discovery.actions).filter((name) => name.startsWith("workspace.mcp.")).toSorted(),

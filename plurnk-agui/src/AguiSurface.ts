@@ -121,6 +121,7 @@ export const AGUI_BUILTIN_ACTIONS = Object.freeze({
     }),
     "loop.cancel": action("workspace", object({ reason: NONEMPTY }), object({ cancelled: { type: "boolean" } }, ["cancelled"])),
     "workspace.prompts": action("workspace", object({ limit: POSITIVE }), object({ prompts: array(string()) }, ["prompts"])),
+    "workspace.share": action("workspace", object({ folder: NONEMPTY }, ["folder"]), object({ folder: NONEMPTY, zip: NONEMPTY }, ["folder", "zip"])),
     "workspace.rename": action("workspace", object({ name: NONEMPTY }, ["name"]), object({ id: POSITIVE, name: NONEMPTY }, ["id", "name"])),
     "entry.read": action("workspace", object({
         target: NONEMPTY,

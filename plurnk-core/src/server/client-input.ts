@@ -40,6 +40,19 @@ export default class ClientInput {
 
     // A workspace pin must be an absolute path (or null = headless) - a relative root would
     // silently resolve against the daemon's cwd, never the client's.
+    // {§share} — the client resolves the folder; the daemon writes it on its own host.
+    static assertShareFolder(context: string, folder: unknown): string {
+        if (typeof folder !== "string" || !isAbsolute(folder)) {
+            ClientInput.#invalid(
+                context,
+                "share-folder-not-absolute",
+                `${context} requires an absolute folder.`,
+                { field: "folder", value: folder, recovery: "Resolve the folder against the client's working directory first." },
+            );
+        }
+        return folder;
+    }
+
     static assertProjectRoot(context: string, projectRoot: unknown): string | null {
         const root = (projectRoot as string | null | undefined) ?? null;
         if (root === null) return null;

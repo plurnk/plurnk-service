@@ -226,6 +226,8 @@ export interface ApplicationPort extends HttpHost {
         readonly workerId: number;
     }): Promise<ApplicationLoopProjection[]>;
     listPrompts(workspaceId: number, limit?: number): Promise<string[]>;
+    // {§share} — the workspace's share, from a consistent copy of the daemon's database, into an absolute folder.
+    shareWorkspace(args: { readonly workspaceId: number; readonly folder: string }): Promise<{ readonly folder: string; readonly zip: string }>;
     renameWorkspace(workspaceId: number, name: string): Promise<{ readonly id: number; readonly name: string }>;
     workspaceDerivationStatus(workspaceId: number): {
         readonly phase: "preparing" | "indexing" | "complete" | "failed";

@@ -181,6 +181,7 @@ export default class BuiltinActions {
                         ),
                     },
                 };
+                case "workspace.share": return { ok: true, result: await this.#seam().shareWorkspace({ workspaceId: world.workspaceId, folder: p.folder as string }) };
                 case "workspace.rename": {
                     if (typeof p.name !== "string" || p.name.length === 0) {
                         return actionFailure(

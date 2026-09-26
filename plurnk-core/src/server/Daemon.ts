@@ -3,6 +3,7 @@
 
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
+import Share from "../share/Share.ts";
 import type { Db } from "../core/Db.ts";
 import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
 import type { StreamEventPayload } from "../core/ChannelWrite.ts";
@@ -97,6 +98,7 @@ type LoopGenerationPolicy = {
 
 export default class Daemon implements ApplicationPort {
     #db: Db;
+    readonly #dbPath: string | undefined;
     #engine: Engine;
     #workspaceGate: WorkspaceGate;
     #lifecycle: LoopLifecycle;
@@ -130,18 +132,21 @@ export default class Daemon implements ApplicationPort {
     readonly #storage: WorkspaceStorage;
 
     constructor({
-        db, schemes, mimetypes, provider, nodeModulesPath, hostPaths = new HostPaths(), skills, http = null }: {
+        db, schemes, mimetypes, provider, nodeModulesPath, hostPaths = new HostPaths(), skills, http = null, dbPath }: {
         db: Db;
         schemes?: SchemeRegistry;
         mimetypes?: Mimetypes;
         provider?: Provider | null;
         nodeModulesPath?: string;
         hostPaths?: HostPaths;
+        // {§share} — the database file this daemon serves; a share snapshots it.
+        dbPath?: string;
         http?: HttpListener | null;
         // {§skills-functionality} — standard skill machinery, replaceable in tests.
         skills?: { toolchain?: SkillsToolchain };
     }) {
         this.#db = db;
+        this.#dbPath = dbPath;
         this.#http = http;
         this.#storage = new WorkspaceStorage(db, hostPaths);
         this.#lifecycle = new LoopLifecycle(db);
@@ -1161,6 +1166,14 @@ export default class Daemon implements ApplicationPort {
                 : Validator.assertOperationResult(JSON.parse(row.terminalResult) as SchemeResult) }));
     }
     // {§methods-workspace-prompts}: root-conversation loop seeds, newest-first.
+    // {§share} — one workspace's share. The daemon names its own database; the caller names an absolute folder.
+    async shareWorkspace({ workspaceId, folder }: { readonly workspaceId: number; readonly folder: string }): Promise<{ readonly folder: string; readonly zip: string }> {
+        const checkedWorkspaceId = ClientInput.assertId("workspace.share", "workspaceId", workspaceId);
+        const checkedFolder = ClientInput.assertShareFolder("workspace.share", folder);
+        if (this.#dbPath === undefined) throw new Error("share: this daemon was started without its database path");
+        return await Share.write({ dbPath: this.#dbPath, folder: checkedFolder, workspaceId: checkedWorkspaceId });
+    }
+
     listPrompts(workspaceId: number, limit?: number) {
         const checkedWorkspaceId = ClientInput.assertId("workspace.prompts", "workspaceId", workspaceId);
         const checkedLimit = ClientInput.assertLimit("workspace.prompts", limit);

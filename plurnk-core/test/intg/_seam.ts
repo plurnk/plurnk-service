@@ -201,6 +201,7 @@ export default class SeamSocket {
                 const sid = ((p.workspaceId ?? p.id) as number | undefined) ?? this.#attached().workspaceId;
                 return { prompts: await daemon.listPrompts(sid, p.limit as number | undefined) };
             }
+            case "workspace.share": return daemon.shareWorkspace({ workspaceId: this.#attached().workspaceId, folder: p.folder as string });
             case "providers.list": return daemon.listProviders();
             case "op.look": {
                 const s = this.#attached();

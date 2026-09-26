@@ -251,7 +251,7 @@ export default class Service {
             observability = await startObservability();
             const hooksModule = HooksModule.init();
             const provider = route === null ? null : await ProviderInstantiate.loadActiveProvider();
-            daemon = new Daemon({ db, provider, nodeModulesPath: Service.#pluginsNodeModules(), hostPaths: Service.#hostPaths, http: listener });
+            daemon = new Daemon({ db, dbPath, provider, nodeModulesPath: Service.#pluginsNodeModules(), hostPaths: Service.#hostPaths, http: listener });
             ServiceModules.registerWorkspaceCapabilities(daemon);
             daemon.registerModule(hooksModule);
             const a2a = hostedAgentConfiguration();
