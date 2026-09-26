@@ -4,7 +4,7 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import { createOpenAI } from "@ai-sdk/openai";
 import { catalogProviderFromEnv, catalogReasoningPolicies, providerFromSdkModel } from "./catalogProvider.ts";
-import { lookupProvider, resolveModel } from "@plurnk/plurnk-models";
+import { catalogSnapshot, lookupProvider, resolveModel } from "@plurnk/plurnk-models";
 import { calculateCostUsdDecimal } from "./usage.ts";
 
 // A rate literal breaks at every catalog refresh (the 1.17.0 stamp moved DeepSeek's rates); the
@@ -1046,4 +1046,44 @@ test("(#458) declared efforts union into the supported set under the models.dev-
     }, "accounts/fireworks/models/glm-5p3-flash");
     // (#474) "max" joined the portable vocabulary; "off" still requires a declared "none".
     assert.deepEqual(provider?.supportedReasoningPolicies, ["adaptive", "low", "high", "max"]);
+});
+
+// {§provider-wire-declaration}: DeepInfra's and Together's native SDKs extend openai-compatible, whose body writes
+// `reasoning_effort` from its own `reasoningEffort` option after spreading the others; the shipped declaration
+// therefore names that option, and every effort the catalog documents for a route reaches the wire.
+for (const name of ["deepinfra", "togetherai"]) {
+    test(`{§provider-wire-declaration} ${name}: the catalog's strongest effort, and off, reach the wire as reasoning_effort`, async (t) => {
+        const routes = Object.entries(catalogSnapshot()[name] ?? {})
+            .map(([model]) => ({ model, efforts: catalogEffortsOf(name, model) }))
+            .filter(({ efforts }) => efforts.length > 0);
+        assert.ok(routes.length > 0, `the ${name} catalog documents no reasoning effort to witness`);
+        const { model, efforts } = routes.find((route) => route.efforts.includes("max")) ?? routes[0]!;
+        const effort = [...EFFORT_ORDER].reverse().find((value) => efforts.includes(value))!;
+        const bodies: Record<string, unknown>[] = [];
+        mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+            const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+            bodies.push(body);
+            const chunk = { id: "x", object: "chat.completion.chunk", created: 1, model, choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }], usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 } };
+            return new Response(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
+        });
+        t.after(() => mock.restoreAll());
+        const credential = lookupProvider(name)!.env[0]!;
+        for (const [policy, wire] of [[effort, effort], ["off", "none"]] as const) {
+            const provider = catalogProviderFromEnv(name, withProviderDefaults({ [credential]: "test-key", PLURNK_PROVIDERS_REASONING: policy }), model)!;
+            await provider.generate({ workerId: "wire", messages: [{ role: "user", content: "hi" }] });
+            assert.equal(bodies.at(-1)?.reasoning_effort, wire);
+        }
+    });
+}
+
+test("{§provider-wire-declaration} a native route refusing its catalog's max names the declaration that sends it", () => {
+    const route = Object.keys(catalogSnapshot().deepinfra ?? {}).find((model) => catalogEffortsOf("deepinfra", model).includes("max"));
+    assert.ok(route !== undefined, "the deepinfra catalog documents no max effort to witness");
+    assert.throws(() => catalogProviderFromEnv("deepinfra", withProviderDefaults({
+        DEEPINFRA_API_KEY: "test-key",
+        PLURNK_PROVIDERS_REASONING: "max",
+        PLURNK_PROVIDERS_PROVIDER_DEEPINFRA_OPTIONS_NAMESPACE: "",
+        PLURNK_PROVIDERS_PROVIDER_DEEPINFRA_REASONING_EFFORT_PATH: "",
+        PLURNK_PROVIDERS_PROVIDER_DEEPINFRA_REASONING_OFF_BODY: "",
+    }), route), { message: /The catalog documents 'max' for this route, but the native SDK's portable reasoning setting cannot express it; declare the SDK's own effort option: PLURNK_PROVIDERS_PROVIDER_DEEPINFRA_OPTIONS_NAMESPACE and PLURNK_PROVIDERS_PROVIDER_DEEPINFRA_REASONING_EFFORT_PATH\.$/ });
 });

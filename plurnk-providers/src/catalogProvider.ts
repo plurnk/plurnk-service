@@ -30,7 +30,7 @@ import AiSdkProvider, {
 import { configuredProviderInfo, createSdkModel } from "./sdkModels.ts";
 import { providerSource } from "./notices.ts";
 import type { InputModality, Provider, ProviderCostNormalizer } from "./types.ts";
-import { INPUT_MODALITIES } from "./types.ts";
+import { INPUT_MODALITIES, UnsupportedReasoningPolicyError } from "./types.ts";
 import { REASONING_POLICIES, type ReasoningPolicy } from "@plurnk/plurnk-contracts";
 import { estimateProviderCost } from "./cost.ts";
 import { emitWarningOnce } from "./warnings.ts";
@@ -226,6 +226,13 @@ export const providerFromSdkModel = ({
     const { declaredEfforts, policies, requestFields } = reasoningCapabilities(
         name, env, info, languageModel !== undefined,
     );
+    // The AI SDK's portable reasoning setting has no `max`; a native route whose catalog documents it needs the
+    // provider's own option declared ({§provider-wire-declaration}), not a wider effort list.
+    if (reasoning.mode === "max" && !(policies as readonly ReasoningPolicy[]).includes("max") && requestFields === undefined && info !== undefined
+        && catalogSupportedReasoningPolicies({ info, declared: declaredEfforts }).includes("max")) {
+        const prefix = `PLURNK_PROVIDERS_PROVIDER_${name.replaceAll(/[^a-zA-Z0-9]/g, "_").toUpperCase()}`;
+        throw new UnsupportedReasoningPolicyError(`provider:${name}`, "max", policies, `The catalog documents 'max' for this route, but the native SDK's portable reasoning setting cannot express it; declare the SDK's own effort option: ${prefix}_OPTIONS_NAMESPACE and ${prefix}_REASONING_EFFORT_PATH.`);
+    }
     const adaptiveReasoning = adaptiveReasoningProjection({
         env,
         sdkPackage,

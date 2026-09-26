@@ -412,6 +412,15 @@ non-streaming calls use the same projection.
 Retired `REASONING_STYLE` selectors fail at the selected provider/alias boundary;
 they neither select a preset nor silently coexist with these declarations.
 
+A native SDK's portable reasoning setting has no `max`, so a native route without
+a namespace cannot send an effort the catalog documents beyond it; construction
+refuses it and names the declaration that would. Native SDKs built on
+openai-compatible (DeepInfra, Together) write `reasoning_effort` from their own
+`reasoningEffort` option after spreading the others, overwriting a raw
+`reasoning_effort`; their shipped declarations therefore point at
+`/reasoningEffort`, with `{"reasoningEffort":"none"}` as the off body the portable
+setting used to send.
+
 ## §4 Operator configuration
 
 §provider-configuration Every operational value is an environment knob
