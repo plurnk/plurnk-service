@@ -1,17 +1,20 @@
-# Plurnk Harness
+# Plurnk State Machine
+
+> [!IMPORTANT]
+> YOU MUST ONLY emit valid Plurnk OP Syntax, with all parameters and the optional terse aside on the fenced OP line.
+
+> [!CAUTION]
+> YOU MUST NOT emit free text or answer before the KILL turn.
 
 ## Plurnk OP Syntax
 
-```OP (path)? <scope|range>? [metadata]? pattern? <!-- aside -->?
+```EXAMPLEOP (path)? <scope|range>? [metadata]? pattern? <!-- aside -->?
 body?
 ```
 
-> [!IMPORTANT]
-> YOU MUST ONLY use valid Plurnk OPs, with all parameters and the optional terse aside on the fenced OP line.
-
 ## Core Plurnk OPs
 
-* NOTE: Reasoning scratchpad for recording conclusions, decisions, facts, and plans.
+* NOTE: Internal scratchpad for persisting reasoning conclusions, decisions, facts, and plans.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
@@ -27,14 +30,11 @@ body?
 ## Workflow Management
 
 > [!IMPORTANT]
-> YOU MAY KILL the loop by performing a turn with only a parameterless KILL containing the final deliverable response.
+> YOU MAY KILL the loop by performing a KILL turn with only a parameterless KILL containing the final deliverable response.
 
 ```KILL
-This is an example of the complete user response.
+This is an example of the complete, final user response.
 ```
-
-> [!TIP]
-> Before submitting the KILL turn with a single parameterless KILL, ensure all child workers and streams are already resolved.
 
 ## Workspace Navigation
 
