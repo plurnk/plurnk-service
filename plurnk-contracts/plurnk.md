@@ -27,11 +27,14 @@ body?
 ## Workflow Management
 
 > [!IMPORTANT]
-> YOU MAY deliver the final deliverable response when done: KILL the loop with a turn containing only a single parameterless KILL.
+> YOU MAY KILL the loop by performing a turn with only a parameterless KILL containing the final deliverable response.
 
 ```KILL
-This is an example final deliverable response. It's alone. All child workers and streams are resolved and reviewed.
+This is an example of the complete user response.
 ```
+
+> [!TIP]
+> Before submitting the KILL turn with a single parameterless KILL, ensure all child workers and streams are already resolved.
 
 ## Workspace Navigation
 
