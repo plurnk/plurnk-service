@@ -1,7 +1,7 @@
 -- MIGRATE: 7 subscriptions
 -- Chapter 7 of the schema baseline ({§db-schema-baseline}): held streams, events and their observation cursors.
--- Version numbers order the chapters on a fresh database; they are not history. A shape
--- change edits the chapter in place; existing development databases are recreated.
+-- Released and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never
+-- an edit here.
 
 -- subscriptions
 -- Durable subscription lifecycle per SPEC {§subscriptions}. The row records what

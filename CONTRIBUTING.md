@@ -44,8 +44,8 @@ then run `npm test` on main pushes.
 ## Changes
 
 Change the owning package, cover externally meaningful behavior, and remove
-superseded paths and prose. During the pre-migration phase, edit the version-1
-schema baseline and recreate disposable databases. Never commit secrets, private
+superseded paths and prose. A schema change is the next migration version;
+released migrations are never edited. Never commit secrets, private
 state, transcripts, or generated artifacts. Commit subjects are Conventional and
 at most 80 characters; reference the issue when useful.
 

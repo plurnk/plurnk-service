@@ -57,8 +57,8 @@ resources in `finally` blocks or test hooks.
 
 ## Boundaries
 
-- Follow the repository's **No Migrations Yet** baseline rule for every SQLite
-  shape change; do not infer upgrade compatibility from SqlRite's terminology.
+- Every SQLite shape change is the next `MIGRATE` version ({§db-migrations});
+  released versions are frozen.
 - Put shared wire and model-language shapes in `plurnk-contracts`, and
   persistence-only types in core.
 - Keep AG-UI transport and event translation in `plurnk-agui`.

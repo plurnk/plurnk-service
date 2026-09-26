@@ -214,11 +214,10 @@ surprise mutation is a failure in this tier even when the final text is right.
 - JSON Schema is authoritative for shared wire shapes.
 - TypeScript types provide local ergonomics and should be generated from shared
   schemas where generation is already part of the package workflow.
-- **No Migrations Yet.** Until the operator explicitly ends the pre-migration
-  phase, SQLite has one version-1 baseline defining the complete current schema.
-  Schema changes edit that baseline and disposable development databases are
-  deleted and recreated. Do not add incremental migrations, compatibility
-  transforms, data backfills, or upgrade-path coverage during this phase.
+- **Migrations.** Released SQLite versions are frozen ({§db-migrations}). A shape
+  change is one new `migrations/` file at the next `MIGRATE` version that carries
+  existing databases forward in place, with upgrade coverage. Never edit a released
+  migration or tell an operator to delete a database.
 - Each environment variable is documented by the package that reads it.
 - Reject invalid state at the boundary that owns the contract. Recovery,
   retries, and compatibility behavior must be intentional and tested; they are

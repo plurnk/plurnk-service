@@ -1,7 +1,7 @@
 -- MIGRATE: 1 workspaces
 -- Chapter 1 of the schema baseline ({§db-schema-baseline}): The workspace: identity, module state, membership constraints.
--- Version numbers order the chapters on a fresh database; they are not history. A shape
--- change edits the chapter in place; existing development databases are recreated.
+-- Released and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never
+-- an edit here.
 
 -- workspaces
 -- project_root: workspace pointer. NULL = headless (no disk side-effects);

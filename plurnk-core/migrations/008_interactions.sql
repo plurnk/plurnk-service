@@ -1,7 +1,7 @@
 -- MIGRATE: 8 interactions
 -- Chapter 8 of the schema baseline ({§db-schema-baseline}): Client interactions raised by a turn.
--- Version numbers order the chapters on a fresh database; they are not history. A shape
--- change edits the chapter in place; existing development databases are recreated.
+-- Released and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never
+-- an edit here.
 
 -- {§client-interactions}: the durable discoverable half of a client-owned
 -- interaction. The process-local lifecycle owner holds the awaiting callable;

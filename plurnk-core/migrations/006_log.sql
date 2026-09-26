@@ -1,7 +1,7 @@
 -- MIGRATE: 6 log
 -- Chapter 6 of the schema baseline ({§db-schema-baseline}): The log: rows, their projections, curation effects, and the views the packet reads.
--- Version numbers order the chapters on a fresh database; they are not history. A shape
--- change edits the chapter in place; existing development databases are recreated.
+-- Released and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never
+-- an edit here.
 
 -- log_entries
 -- Chronological event store. sequence is 1-based, scoped to the turn —

@@ -1,7 +1,7 @@
 -- MIGRATE: 5 entries
 -- Chapter 5 of the schema baseline ({§db-schema-baseline}): Entries and their channels, derivations and the search artifacts over them, native content.
--- Version numbers order the chapters on a fresh database; they are not history. A shape
--- change edits the chapter in place; existing development databases are recreated.
+-- Released and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never
+-- an edit here.
 
 -- {§content-store} Every settled body is stored once, addressed by its sha256, however many
 -- channels, workspaces, forks or full-text rows carry it. Rows are immutable; retention collects

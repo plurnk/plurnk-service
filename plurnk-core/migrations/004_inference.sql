@@ -1,7 +1,7 @@
 -- MIGRATE: 4 inference
 -- Chapter 4 of the schema baseline ({§db-schema-baseline}): Inference: logical calls, model responses, emission attempts, physical provider requests.
--- Version numbers order the chapters on a fresh database; they are not history. A shape
--- change edits the chapter in place; existing development databases are recreated.
+-- Released and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never
+-- an edit here.
 
 -- One logical model call owns its lifecycle and physical-request ledger.
 -- Response and admission evidence specialize this identity. {§tokenomics-provider-usage}
