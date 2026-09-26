@@ -70,11 +70,11 @@ test("{§turn-shape} SEND does not conclude a turn or manufacture a disposition"
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
 });
 
-test("{§interstitial-fence} an unlabeled fence between operations does not hide WAIT", () => {
+test("{§quotation} an unlabeled fence between operations quotes to its first closer at least as wide", () => {
     const result = PlurnkParser.parse("````READ (notes.md)\n````\n```\n````WAIT\nDone.\n````");
-    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ", "WAIT"]);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["READ"]);
     assert.equal(result.unparsedTail, undefined);
-    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []), ["`WAIT` inside a code block was shown, not run."]);
 });
 
 test("{§send-wait-scope} any WAIT scope is skipped unread; the WAIT keeps its target and aside (#756)", () => {

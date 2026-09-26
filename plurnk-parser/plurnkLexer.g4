@@ -9,7 +9,54 @@ tokens {
     TARGET_TEXT, METADATA_TEXT, BODY_TEXT, TEXT, ASIDE
 }
 
+@lexer::header {
+import FencePairing, { type BlockEnd, type Pairing } from "../FencePairing.ts";
+}
+
 @lexer::members {
+// {§fence-pairing} — block boundaries are decided once, for the whole input, by FencePairing; the
+// predicates below only ask it where the block they are in ends.
+private pairingCache: Pairing | null = null;
+// A lexer over one heading line only answers whether that line closes its own block.
+public lineOnly: boolean = false;
+private fencePairing(): Pairing {
+    this.pairingCache ??= FencePairing.pair(this.inputStream.toString(), {
+        operations: new Set(Object.keys(plurnkLexer.OPERATIONS)),
+        executors: this.knownExecutors,
+        reasoning: this.reasoning,
+        closesOnLine: (heading) => this.headingClosesOnLine(heading),
+    });
+    return this.pairingCache;
+}
+// The heading lexer decides whether a heading line closes its block on that line: targets, metadata
+// strings and asides may hold backticks that close nothing ({§one-line-turn}, {§transparent-inline-closer}).
+private headingClosesOnLine(heading: string): boolean {
+    const lexer = new plurnkLexer(antlr.CharStream.fromString(heading + "\n"));
+    lexer.knownExecutors = this.knownExecutors;
+    lexer.reasoning = this.reasoning;
+    lexer.lineOnly = true;
+    lexer.removeErrorListeners();
+    let closed = false;
+    for (let token = lexer.nextToken(); token.type !== Token.EOF; token = lexer.nextToken()) {
+        if (token.type === plurnkLexer.SECTION_END && token.text?.includes("\x60")) closed = true;
+    }
+    return lexer.mode === plurnkLexer.DEFAULT_MODE && (closed || lexer.inlineCloserSeen);
+}
+private lineStartOf(index: number): number {
+    const starts = this.fencePairing().lineStarts;
+    let lo = 0, hi = starts.length - 1;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid]! <= index) lo = mid; else hi = mid - 1; }
+    return starts[lo]!;
+}
+// Where the open block ends. A body without an entry is a classifier disagreement: fail hard.
+private blockEnd(required: boolean): BlockEnd | undefined {
+    if (this.lineOnly) return undefined;
+    const end = this.fencePairing().ends.get(this.lineStartOf(this.openFenceStart));
+    if (end === undefined && required) throw new Error(`fence pairing has no end for the block opened at ${this.openFenceStart}`);
+    return end;
+}
+private quotationHere(): boolean { return this.lineOnly ? this.fenceOpens() : this.fencePairing().quotations.has(this.lineStartOf(this.inputStream.index)); }
+private surplusHere(): boolean { return !this.lineOnly && this.fencePairing().surplus.has(this.lineStartOf(this.inputStream.index)); }
 private openOp: string = "";
 // {§executor-runtime-declaration} — the opener names a runtime rather than an operation keyword.
 private execFence: boolean = false;
@@ -19,8 +66,6 @@ private openHeadingColumn: number = 0;
 private fenceLength: number = 0;
 private fenceCharacter: number = 0x60;
 private openFenceStart: number = 0;
-private balancedEnds: Map<number, number | null> = new Map();
-private fenceLines: Array<{ start: number; width: number; character: number; tail: string } | null> | null = null;
 // {§reasoning-notes} — quotations are opaque; program-boundary recovery is not note extraction.
 public reasoning: boolean = false;
 private started: boolean = false;
@@ -227,7 +272,9 @@ private openNaked(): void {
 // naked block it opened.
 private nakedCloserAfterEol(): boolean {
     const after = this.offsetAfterEol(1);
-    if (after === null || this.balancedEnd() !== null) return false;
+    if (after === null) return false;
+    const ends = this.blockEnd(false);
+    if (ends?.kind !== "closer" || this.lineStartOf(this.inputStream.index + after - 1) !== ends.offset) return false;
     for (let index = 0; index < this.openOp.length; index++) {
         if (this.inputStream.LA(after + index) !== this.openOp.charCodeAt(index)) return false;
     }
@@ -258,22 +305,6 @@ private open(implicitName?: string): void {
     this.slotReady = true;
     this.metadataReady = this.execFence || this.openOp === "SEND" || this.openOp === "WAIT";
     this.inlineBody = false;
-}
-
-// {§quotation} - the line above this one carries a fence run of three or more backticks anywhere
-// (a heading, a closer, or a heading written mid-line that opened nothing).
-private previousLineIsFence(): boolean {
-    let back = 1;
-    while (this.inputStream.LA(-back) === 0x20 || this.inputStream.LA(-back) === 0x09) back++;
-    if (this.inputStream.LA(-back) !== 0x0A) return false;
-    back++;
-    if (this.inputStream.LA(-back) === 0x0D) back++;
-    let run = 0;
-    for (let c = this.inputStream.LA(-back); c > 0 && c !== 0x0A; c = this.inputStream.LA(-(++back))) {
-        run = c === 0x60 ? run + 1 : 0;
-        if (run >= 3) return true;
-    }
-    return false;
 }
 
 // {§quotation} CommonMark: a backtick fence's info string cannot contain a backtick, so a line
@@ -342,86 +373,6 @@ private offsetAfterEol(offset: number): number | null {
     return this.inputStream.LA(offset) === 0x0A ? offset + 1 : null;
 }
 
-// {§balanced-fences} — retain complete nested blocks before trying local missing-closer
-// recovery. Cache descendants as well as the root so an unclosed prefix is scanned once.
-private balancedEnd(): number | null {
-    if (this.balancedEnds.has(this.openFenceStart)) return this.balancedEnds.get(this.openFenceStart)!;
-    if (this.fenceLines === null) {
-        let start = 0;
-        this.fenceLines = this.inputStream.toString().split("\n").map((line) => {
-            // {§indented-fences} - four spaces or a tab make the line indented code, not a fence.
-            const match = /^( {0,3})(\x60{3,}|~{3,})(.*?)[ \t\r]*$/u.exec(line);
-            const fence = match === null ? null : {
-                start: start + match[1].length,
-                width: match[2].length,
-                character: match[2].charCodeAt(0),
-                tail: match[3],
-            };
-            // ANTLR indexes Unicode code points, not JavaScript UTF-16 units.
-            start += [...line].length + 1;
-            return fence;
-        });
-    }
-    // {§naked-operation} - a naked block has no closer, so nothing balances it; its nested blocks still do.
-    const stack = [{ start: this.openFenceStart, width: this.naked ? Infinity : this.fenceLength, character: this.fenceCharacter }];
-    for (let index = this.openHeadingLine; index < this.fenceLines.length; index++) {
-        const fence = this.fenceLines[index];
-        if (fence === null) continue;
-        const continuation = this.continuedFence(fence);
-        const closes = fence.tail === "" || continuation !== null ? this.closedBy(stack, fence) : -1;
-        if (closes !== -1) {
-            const [closed] = stack.splice(closes);
-            this.balancedEnds.set(closed.start, fence.start);
-            if (stack.length === 0) return fence.start;
-            if (continuation !== null) {
-                const nested = this.nestedFence(continuation);
-                if (nested !== null) stack.push(nested);
-            }
-            continue;
-        }
-        if (fence.tail.trim() === "") continue;
-        const nested = this.nestedFence(fence);
-        if (nested !== null) stack.push(nested);
-    }
-    for (const fence of stack) this.balancedEnds.set(fence.start, null);
-    return null;
-}
-
-// {§balanced-fences} - a bare fence closes the innermost open block of exactly its width, else the
-// outermost block narrower than it; the narrower blocks it steps over are body, and a wider or
-// differently fenced block inside blocks it.
-private closedBy(stack: ReadonlyArray<{ width: number; character: number }>, fence: { width: number; character: number }): number {
-    const exact = stack.findLastIndex((block) => block.character === fence.character && block.width === fence.width);
-    const index = exact !== -1 ? exact : stack.findIndex((block) => block.character === fence.character && block.width < fence.width);
-    if (index === -1) return -1;
-    const blocked = stack.slice(index + 1).some((block) => block.character !== fence.character || block.width > fence.width);
-    return blocked ? -1 : index;
-}
-
-private continuedFence(fence: { start: number; width: number; tail: string }): { start: number; width: number; character: number; tail: string } | null {
-    const match = /^([ \t]*)(\x60{3,})([A-Za-z0-9_.+-]+)(.*)$/u.exec(fence.tail);
-    if (match === null || !Object.hasOwn(plurnkLexer.OPERATIONS, match[3]) && !this.knownExecutor(match[3])) return null;
-    return { start: fence.start + fence.width + match[1].length, width: match[2].length, character: 0x60, tail: match[3] + match[4] };
-}
-
-private nestedFence(fence: { start: number; width: number; character: number; tail: string }): { start: number; width: number; character: number } | null {
-    if (!/[\x60~]{3}/u.test(fence.tail)) return fence;
-    const name = /^[A-Za-z0-9_.+-]+/u.exec(fence.tail)?.[0];
-    if (name === undefined) return fence;
-    // Reuse the heading lexer: fences quoted in a target, metadata or aside are not closers.
-    // Literal examples need only a lexical boundary; their slot diagnostics stay opaque.
-    const lexer = new plurnkLexer(antlr.CharStream.fromString(String.fromCharCode(fence.character).repeat(fence.width) + fence.tail + "\n"));
-    lexer.knownExecutors = new Set([...this.knownExecutors, name]);
-    lexer.reasoning = fence.character !== 0x60;
-    lexer.removeErrorListeners();
-    let closed = false;
-    for (let token = lexer.nextToken(); token.type !== Token.EOF; token = lexer.nextToken()) {
-        if (token.type === plurnkLexer.SECTION_END && token.text?.includes("\x60")) closed = true;
-    }
-    if (lexer.mode === plurnkLexer.DEFAULT_MODE && (closed || lexer.inlineCloserSeen)) return null;
-    return { start: fence.start + lexer.openFenceStart, width: lexer.fenceLength, character: lexer.fenceCharacter };
-}
-
 // {§fence-closer} - a closer is a line of at least the opener's backticks and nothing else, within
 // three spaces of the line start ({§indented-fences}); {§balanced-fences} claims nested closers first.
 private closingAt(offset: number): boolean {
@@ -430,8 +381,13 @@ private closingAt(offset: number): boolean {
     if (fence === null) return false;
     offset = fence;
     if ((this.mode === plurnkLexer.BODY || this.mode === plurnkLexer.QUOTATION) && !(this.inlineBody && offset === 1)) {
-        const end = this.balancedEnd();
-        if (end !== null && this.inputStream.index + offset - 1 !== end) return false;
+        // {§fence-pairing} decides every block end in a body or quotation, whatever the closer's width; only a
+        // heading that closes on its own line keeps the local rule below.
+        if (!this.lineOnly) {
+            const end = this.blockEnd(false);
+            if (end !== undefined) return end.kind === "closer" && this.lineStartOf(this.inputStream.index + offset - 1) === end.offset;
+            if (!this.fencePairing().selfClosed.has(this.lineStartOf(this.openFenceStart))) throw new Error(`fence pairing has no end for the block opened at ${this.openFenceStart}`);
+        }
     }
     let cursor = offset;
     while (this.inputStream.LA(cursor) === this.fenceCharacter) cursor++;
@@ -485,7 +441,9 @@ private headingAt(offset: number): boolean {
 private headingAfterEol(): boolean {
     const after = this.offsetAfterEol(1);
     const at = after === null ? null : this.fenceIndent(after);
-    return at !== null && this.balancedEnd() === null && this.headingAt(at);
+    if (at === null || this.lineOnly) return false;
+    const end = this.blockEnd(false);
+    return end?.kind === "before" && this.lineStartOf(this.inputStream.index + after! - 1) === end.offset && this.headingAt(at);
 }
 
 // `<!-- … -->` at this offset, then only horizontal whitespace to the end of the line or input.
@@ -630,11 +588,11 @@ NAKED_OPEN : { this.atColumnZero() && !this.reasoning && this.nakedHeadingAhead(
 // {§reasoning-notes} — an enclosing code fence is quotation, including unknown tags and tildes.
 // {§quotation} - a bare fence directly under a fence line is that block's orphaned closer: it
 // closes nothing and quotes nothing (a malformed heading's block ends at its own line).
-ORPHAN_CLOSER : { this.atLineStart() && this.previousLineIsFence() }? FENCE [ \t]* { this.orphanAtLineEnd() }? -> channel(HIDDEN) ;
+ORPHAN_CLOSER : { this.atLineStart() && this.surplusHere() }? FENCE [ \t]* { this.orphanAtLineEnd() }? -> channel(HIDDEN) ;
 // {§quotation} - every other fence at a line start quotes to its closer or the end of the input.
 // A line-start fence whose line carries more backticks is inline code: it quotes nothing.
 INLINE_TAG : { this.atLineStart() && !this.fenceOpens() }? FENCE NAME { this.noteMissed(); } -> type(TEXT), channel(HIDDEN) ;
-QUOTE : { this.atLineStart() && this.fenceOpens() }? (FENCE NAME? | '~~~' '~'* NAME?) { this.quote(); } -> type(TEXT), channel(HIDDEN), mode(QUOTATION) ;
+QUOTE : { this.atLineStart() && this.quotationHere() }? (FENCE NAME? | '~~~' '~'* NAME?) { this.quote(); } -> type(TEXT), channel(HIDDEN), mode(QUOTATION) ;
 // {§interstitial-fence} - a fence naming nothing known, or nothing at all, is prose outside a block.
 WS : [ \t\r\n]+ -> channel(HIDDEN) ;
 // {§whitespace-contract} - outside text has no AST or execution semantics.

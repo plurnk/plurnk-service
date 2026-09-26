@@ -732,29 +732,17 @@ export default class AstBuilder {
         return inner.trim();
     }
 
-    // {§closer-fallback} — without a real closer (the block ended at the next heading or at the end
-    // of the input) the body is cut back to its last bare fence line within three spaces of the line
-    // start ({§indented-fences}), which is the closer the model meant, and one terminating line
-    // ending goes with it. A synthetic SECTION_END carries no backtick.
+    // {§fence-pairing} — a block that ends without a closer of its own (a supplied closer, at the next
+    // heading or at the end of the input) keeps its whole body: FencePairing has already decided which
+    // fence lines inside it are content. One terminating line ending goes with it. A synthetic
+    // SECTION_END carries no backtick.
     static #bodyTextOf(ctx: ParserRuleContext): string | null {
         const text = AstBuilder.#findFirst(ctx, BodyContext)?.getText() ?? null;
         if (text === null) return null;
         const closer = AstBuilder.#findToken(ctx, plurnkLexer.SECTION_END);
         if (closer !== null && closer.includes("`")) return text;
-        // {§naked-operation} — a naked block expects no closer: its body is whole, to the end.
-        if (!(ctx.start?.text ?? "`").startsWith("`")) {
-            const whole = text.replace(/\r?\n$/u, "");
-            return whole === "" ? null : whole;
-        }
-        const lines = text.split("\n");
-        for (let index = lines.length - 1; index >= 0; index -= 1) {
-            if (/^ {0,3}`{3,}[ \t]*\r?$/u.test(lines[index] ?? "")) {
-                const kept = lines.slice(0, index).join("\n");
-                return kept === "" ? null : kept;
-            }
-        }
-        const trimmed = text.replace(/\r?\n$/u, "");
-        return trimmed === "" ? null : trimmed;
+        const whole = text.replace(/\r?\n$/u, "");
+        return whole === "" ? null : whole;
     }
 
     static #requiredBodyTextOf(ctx: ParserRuleContext): string {

@@ -273,26 +273,21 @@ convention and never demanded ({§fence-closer}, {§closer-fallback}). There are
 operation suffixes or heading levels. Complete nested matches take precedence
 over local recovery ({§balanced-fences}).
 
-§fence-closer A block opened with N backticks closes at the first unclaimed line made of
-at least N backticks and nothing else but horizontal whitespace, within three spaces of
-its line start ({§indented-fences}). Count follows CommonMark: a shorter fence inside the
-body is body; an equal or longer bare fence closes the block unless {§balanced-fences}
-claims it for a nested block. The compact one-line form closes on its heading line after
-the modifiers under the same rule.
+§fence-closer A block opened with N backticks closes at a line made of at least N backticks and
+nothing else but horizontal whitespace, within three spaces of its line start
+({§indented-fences}). Count follows CommonMark: a shorter fence inside the body is body; an equal
+or longer bare fence may close the block or open a nested one, and {§fence-pairing} decides
+which. The compact one-line form closes on its heading line after the modifiers under the same
+rule.
 
 §balanced-fences A complete nested interpretation takes precedence over missing-closer
-recovery. Within a body, line-leading labeled fences open literal blocks. A bare fence
-closes the innermost open block of exactly its width, otherwise the outermost open block
-narrower than it; the narrower blocks it steps over are literal body, and a wider or
-differently fenced block inside stops it. So a wider outer fence holds any narrower body,
-finished or not, and equal widths nest when every inner block closes. The enclosing block
-and its nested blocks must all
-close under {§fence-closer}; equal opener/closer totals alone are insufficient, and a
-complete inline block is already closed. Preserve every nested body byte, including
-apparent OPs and known executors, without dispatching them. If no complete enclosing
-interpretation exists, retain {§fence-heading-in-body} and {§closer-fallback}. These
-rules apply equally to model programs, stored programs, client operations, and
-reasoning quotations.
+recovery. Within a body, a line-leading labeled fence opens a literal block, and an equal or
+wider bare fence nests where closing there would cost the reading more
+({§fence-pairing}). A nested block ends at its first valid closer, as a CommonMark code block
+does. So a wider outer fence holds any narrower body, finished or not, and equal widths nest
+when every inner block closes. Preserve every nested body byte, including apparent operations
+and known executors, without dispatching them. These rules apply equally to model programs,
+stored programs, client operations, and reasoning quotations.
 
 §operation-fences **Accept three or more backticks; teach and render three.** A line-start fence
 of three or more backticks naming a native operation or registered executor opens that
@@ -322,20 +317,18 @@ three loops lost to the refusal at the strike threshold.
 
 §fence-heading-in-body Outside a complete nested block ({§balanced-fences}), a fence
 line of three or more backticks and a name that is a native operation or a known executor
-is a heading. Inside an open block of any width it ends that block without closing it
-({§closer-fallback}) and opens the next statement: a wider fence holds the narrower headings
-inside it only while it closes ({§balanced-fences}). Fence lines of fewer than three
-backticks are never headings ({§operation-fences}). Known executors are `sh` plus what
-the host names in `ParseOptions.executors`. Consequences: a closer glued to the next opener
-(six backticks then `READ`) can never swallow an unbalanced turn, and no unclosed block, however
-wide, swallows the operations after it.
+is a heading. Inside an open block it either ends that block without closing it and opens the
+next statement, or it is a literal example held by the block; the block holds it only while
+the block ends at a real closer, and {§fence-pairing} chooses between the two. Fence lines of
+fewer than three backticks are never headings ({§operation-fences}). Known executors are `sh`
+plus what the host names in `ParseOptions.executors`. Inside a parameterless `KILL` a
+heading never ends the block ({§terminal-kill}).
 
-§closer-fallback A block that ends at a heading or at the end of the input has no
-closer of its own. Its body is cut back to its last bare fence line (any count, within
-three spaces of its line start), which is the closer the author meant, and one terminating line
-ending goes with it; when no bare fence line exists the body is the whole span less
-one terminating line ending. This carries no diagnostic: a missing closer is never
-an admission failure, and {§unparsed-tail-boundary} is not involved.
+§closer-fallback A block that ends at a heading or at the end of the input has no closer of its
+own; its body is the whole span less one terminating line ending. Where a same-character fence
+narrower than an outermost block stands where its closer belongs, {§fence-pairing} may read it
+as that closer, at the cost of one repair. This carries no diagnostic: a missing closer is
+never an admission failure, and {§unparsed-tail-boundary} is not involved.
 
 `plurnk.md` shows every operation closed; this recovery is not taught. It sits at the quiet end of
 the scale {§response-text-note} describes: the model opened the operation correctly
@@ -343,16 +336,87 @@ and only failed to close it, so the harness reads what it plainly meant and says
 A departure that small earns no correction — telling a model its closer was missing costs
 a sentence in every future packet to fix something already fixed.
 
-§fence-boundary Balanced nesting is resolved before local recovery. Otherwise,
-fences are read by count, except for the heading rule above:
+§fence-boundary Every fence line inside a body takes one of these meanings, chosen for the whole
+input at once by {§fence-pairing}:
 
 | Fence encountered inside a body | Meaning |
 |---|---|
-| Part of a complete nested block | Literal body, including its openers and closers |
 | Indented four spaces or more, or by a tab | Body ({§indented-fences}) |
-| Fewer backticks than the block's own | Body |
-| At least the block's backticks, bare | The block's closer |
-| Three or more backticks naming a native operation or known executor | A heading: ends the block, opens the next statement |
+| Fewer backticks than the block's own, or another character | Body, or the opener of a nested block |
+| At least the block's backticks, bare | The block's closer, or the opener of a nested block |
+| Labeled, naming nothing known | The opener of a nested block, or body |
+| Three or more backticks naming a native operation or known executor | A heading that ends the block, or a literal example |
+
+### §fence-pairing Fence pairing
+
+A whole-input pass, `FencePairing`, decides where every block ends before the lexer reads a
+token; the lexer's semantic predicates consult its decision, and ANTLR keeps framing, slots and
+statement composition ({§parser-architecture}). The pass is a least-cost parse of the fence
+lines as a bracket language, in the manner of Aho and Peterson's least-errors parser
+(SIAM J. Comput. 1(4), 1972): every reading of the fences is a derivation, and the pass returns
+the cheapest.
+
+§pairing-need **Why a pass ahead of the grammar.** Whether a bare fence closes a block or opens a
+nested one depends on every fence after it, unboundedly. Measured on 10,486 distinct recorded
+emissions before this pass existed:
+
+| Alternative | Result |
+|---|---|
+| The fence structure as an ANTLR grammar under SLL prediction | 10,000 accepted, 0.2 ms mean; 486 not: 119 valid only under full LL, 243 needing repair, 113 unrepairable |
+| The same grammar under full LL | A 267 KB packet echo took 4.8 s. Full-context results are not cached: the runtime records that caching them "was slower than interpreting and much more complicated" (`ParserATNSimulator`) |
+| ANTLR's error recovery for the 356 that need repair | `DefaultErrorStrategy` repairs only at the point of detection, by single-token insertion or deletion; it has no least-cost repair over the input |
+| Nongreedy lexer loops | A lexer decision is local, not "globally correct" (ANTLR `doc/wildcard.md`), so a nongreedy body ends at the first closer even when a later one is the block's |
+| CommonMark's rule alone | The first closer of sufficient width closes (CommonMark 0.31.2 §4.5), and CommonMark declines to backtrack because it "would require backtracking… much less efficient". It cuts 110 recorded bodies at an inner bare block |
+| A budgeted depth-first search over stacks | Exhausted its step budget on 20 recorded emissions of 188 to 3,501 fence lines |
+
+The ALL(*) paper (Parr, Harwell, Fisher, OOPSLA 2014) states the limits relied on here: SLL either
+behaves like LL or reports an error (Theorem 6.5, §3.2), and an ambiguity resolves to the lowest
+alternative (§4.2), so neither mode chooses among complete readings by cost. The grammars-v4
+Python (`INDENT`/`DEDENT`) and PHP (heredoc) grammars settle block structure the same way:
+outside the grammar, then hand the lexer tokens.
+
+§pairing-algorithm **Algorithm.** Each line is classified by the lexer's line-start rules: text, a
+bare fence, a labeled fence, a heading, a closer glued to a heading, or a naked operation name.
+A block's contents read the same whatever lies beneath it on the stack, so the pass summarizes
+each (position, block, what the block holds so far) once. For a nested block, the summary maps
+every place the block could end to its cheapest reading up to there; parents compose their
+children's summaries. An outermost block is evaluated in the root's frame, where only the cost
+to the end of the input matters, so it holds one entry. Evaluation runs on an explicit work
+stack. Candidates are taken in preference order and replace one another only by costing
+strictly less, so each entry is the reading a preference-ordered exhaustive search returns.
+Inside a quotation or a nested block the first valid closer closes, CommonMark's rule, applied
+as a disambiguation filter (Klint and Visser, 1994); an operation body keeps the choice between
+nesting and closing.
+
+§pairing-objective **Objective.** Readings compare lexicographically:
+
+| Rank | Counted | Why |
+|---|---|---|
+| 1 | Repairs: a supplied closer, a fence read as a stray, a narrower closer accepted, a body under an operation that takes none (FIND, READ, COPY, MOVE, targeted KILL) | The least-errors distance |
+| 2 | Operation headings that will not run, read as text or held as a literal example; labeled fences in a body read as text | Every operation the author wrote should run, and every code block the author declared should stand, where a reading allows it |
+| 3 | Supplied closers | Among equally few repairs, a block the author opened should end at a fence the author wrote |
+| 4 | Other fences read as text | The least departure from the fences as written |
+
+Equal cost goes to the earlier alternative: nesting before closing in an operation body,
+closing before nesting in a quotation, and a supplied closer before a literal example at a
+heading. An operation example quoted in a body of its own width therefore reads as the body
+closing and the example running; the wider outer fence or the tab offset quotes it
+({§operation-fences}).
+
+§terminal-kill **A KILL body is the deliverable.** Inside a parameterless `KILL`, at any depth, a
+heading is a literal example or text and never ends the block; the block ends at its closer or
+the end of the input. Of 796 recorded parameterless KILLs, 9 were followed by any other
+operation, while 62 of 120 SENDs were, so the rule is KILL's alone. It keeps a final report whole
+and never runs a command the report only shows.
+
+§pairing-witness **Witnesses.**
+
+| Witness | Result |
+|---|---|
+| Every input up to six lines over eleven line shapes, against a forward exhaustive search over explicit stacks under the same moves | 1,948,716 inputs, 0 differences in cost, block ends, strays, quotations or repairs |
+| The generated matrix: six operations × widths 3–5 × twelve body shapes × four tails | 864 of 864 (`fence-matrix.test.ts`) |
+| 10,486 recorded emissions | All parse; 0.85 ms mean, 235 ms at most (3,501 fence lines). The work is polynomial in fence lines, cubic at worst, so no step bound is needed |
+| The same, against origin/main 461fa136f | 10,257 identical. Of 229 changed: 112 bodies kept whole, 51 with only outside text or diagnostics moved, 30 with a closer glued to the next opener (neither reading splits the run), 16 quoted under {§quotation} with its warning, 20 read with more, fewer or other operations on degenerate fences |
 
 §indented-fences **CommonMark's indentation, everywhere.** A fence line may follow at most three
 spaces; four or more, or a tab, make it indented code. That one rule reads every fence purpose the
@@ -1058,7 +1122,8 @@ The implementation this section describes lives in `@plurnk/plurnk-parser`
 ({§parser-consumers}); this section remains the contract it implements.
 
 ANTLR owns framing, slots and statement composition; AstBuilder produces the
-schema-owned AST. Registration, effects and authority remain runtime concerns.
+schema-owned AST. Where each block ends is decided first, over the whole input, by
+{§fence-pairing}; the lexer's fence predicates consult that decision and never decide it. Registration, effects and authority remain runtime concerns.
 
 ```mermaid
 stateDiagram-v2
