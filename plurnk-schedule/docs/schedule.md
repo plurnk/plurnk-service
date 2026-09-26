@@ -24,7 +24,7 @@ Nothing is persisted.
 admitted under the loop's policy.
 
 ```schedule (add)
-{"alias": "daily", "definition": {"rule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20", "target": "worker://alice", "prompt": "Text delivered at each occurrence."}}
+{"alias": "daily", "definition": {"rule": "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20", "target": "worker://exampleWorkerName", "prompt": "Text delivered at each occurrence."}}
 ```
 
 - `rule`: bare `FREQ=…` parts, or a `DTSTART` line and an `RRULE` line. A

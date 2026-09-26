@@ -69,7 +69,7 @@ When representing markdown, `~~~` notation can disambiguate nested content.
 
 ## Delegation
 
-```WORK (worker://alice) <!-- the child's result lands in your log -->
+```WORK (worker://exampleWorkerName) <!-- the child's result lands in your log -->
 The child's complete task.
 ```
 
