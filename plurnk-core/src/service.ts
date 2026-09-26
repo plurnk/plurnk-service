@@ -201,7 +201,7 @@ export default class Service {
             // ({§db-schema-baseline}): a chapter changed under it, and the remedy is deletion. Say
             // so; the bare cause reads like a bug.
             const diagnosis = cause instanceof Error ? cause.message : String(cause);
-            const baseline = /^no such (?:column|table)\b/.test(diagnosis)
+            const baseline = /^no such (?:column|table)\b|\bhas no column named\b/.test(diagnosis)
                 ? ` — the database predates the current schema baseline: stop every daemon that holds it, delete ${dbPath} with its -wal and -shm sidecars, then start again`
                 : "";
             throw new Error(`open ${dbPath} failed${hint}${baseline}`, { cause });
