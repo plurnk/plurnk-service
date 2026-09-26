@@ -18,7 +18,7 @@ const comparePosition = (
     b: { line: number; column: number },
 ): number => a.line - b.line || a.column - b.column;
 import type SchemeRegistry from "./SchemeRegistry.ts";
-import { Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { Mimetypes, type BaseHandler } from "@plurnk/plurnk-mimetypes";
 import Meta, { type PluginAttributionContext } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
 import GitMembership from "./git-membership.ts";
@@ -307,12 +307,16 @@ type TurnRequest = PacketFacts & {
 // Phase 4 — the attempt loop's bookkeeping: every logical provider call's durable
 // identities, the recovery clock ({§provider-recovery}) and the wire spend, shared
 // with the failure handler.
+type BodyCheck = (runtime: string, body: string) => boolean;
+
 type ProviderAttempts = {
     wire: MaterializedModelRequest;
     response: ProviderAttempt | undefined;
     split: SplitProviderResponse | undefined;
     railGrammar: string | undefined;
     railEvidence: GrammarEvidence | undefined;
+    // {§pairing-objective}: judges a body in its runtime's declared media type; undefined when none declares one.
+    wellFormed: BodyCheck | undefined;
     emissionAttempts: number;
     callInFlight: boolean;
     modelCallSequence: number;
@@ -1097,6 +1101,7 @@ export default class TurnRunner {
             response: undefined,
             split: undefined,
             railGrammar: undefined,
+            wellFormed: undefined,
             railEvidence: undefined,
             emissionAttempts: 0,
             callInFlight: false,
@@ -1125,6 +1130,7 @@ export default class TurnRunner {
         // {§turn-lifecycle}: bracket the complete provider-attempt window with liveness notices.
         if (!signal?.aborted) this.#notices.push(workspaceId, workerId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
         attempts.railGrammar = await this.#operatorGrammar(provider);
+        attempts.wellFormed = await this.#bodyChecks(workspaceId);
         const attemptLimit = readEmissionAttempts();
         const strikeStreak = await this.#strikes.streak(loopId);
         for (let attempt = 1; attempt <= attemptLimit;) {
@@ -1242,7 +1248,7 @@ export default class TurnRunner {
         attempts.turnWireAccounting.push(...completedResponse.accounting);
         await modelCall.observeResponse(completedResponse, null, attempts.wire.nativeInputs);
         attempts.railEvidence = attempts.railGrammar === undefined ? undefined : completedResponse.grammarEvidence;
-        const split = this.#splitResponse(completedResponse, this.#executors()?.availableRuntimes(workspaceId) ?? []);
+        const split = this.#splitResponse(completedResponse, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed);
         attempts.split = split;
         await this.#classifyProviderAttempt(attempts, attemptRow.id, split, attempt, split.emissionValid);
         return split.emissionValid ? "admitted" : "rejected";
@@ -1369,7 +1375,7 @@ export default class TurnRunner {
             // {§provider-interrupted-attempt} — the interrupted response stays durable
             // as an unaccepted attempt; it is never admitted or replayed.
             await modelCall.observeResponse(error.attempt, failure, attempts.wire.nativeInputs);
-            await this.#classifyProviderAttempt(attempts, attemptId, this.#splitResponse(error.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? []), attempts.currentEmissionAttempt, false);
+            await this.#classifyProviderAttempt(attempts, attemptId, this.#splitResponse(error.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed), attempts.currentEmissionAttempt, false);
         } else {
             await modelCall.fail(failure, error.capacity ?? null);
         }
@@ -1469,7 +1475,7 @@ export default class TurnRunner {
         if (err instanceof ProviderError && err.attempt !== undefined) {
             attempts.response = err.attempt;
             await attempts.modelCall.observeResponse(err.attempt, failure, attempts.wire.nativeInputs);
-            attempts.split = this.#splitResponse(err.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? []);
+            attempts.split = this.#splitResponse(err.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed);
             await this.#classifyProviderAttempt(attempts, attempts.attemptId, attempts.split, attempts.currentEmissionAttempt, false);
         } else {
             await attempts.modelCall.fail(
@@ -1754,7 +1760,33 @@ export default class TurnRunner {
     // its assistant payload to skip the parse roundtrip. The wire Provider
     // contract has no `ops` field; only Mock exposes one. Real providers
     // always take the parse path because their `assistant.ops` is undefined.
-    #splitResponse(response: ProviderAttempt, executors: readonly string[] = []): SplitProviderResponse {
+    // {§pairing-objective}: each runtime that declares its body's media type is judged by that media type's
+    // handler. The parse is synchronous, so the handler must validate synchronously; one that cannot breaks the
+    // declaration's contract and fails here.
+    async #bodyChecks(workspaceId: number): Promise<BodyCheck | undefined> {
+        const registry = this.#executors();
+        if (registry === undefined) return undefined;
+        const declared = registry.availableRuntimes(workspaceId).flatMap((runtime) => {
+            const mimetype = registry.entry(runtime, workspaceId)?.invocation.body.mimetype;
+            return mimetype === undefined ? [] : [{ runtime, mimetype }];
+        });
+        if (declared.length === 0) return undefined;
+        const handlers = new Map<string, BaseHandler>(await Promise.all(declared.map(async ({ runtime, mimetype }) => {
+            const handler = await this.#mimetypes.getHandler(mimetype);
+            if (handler === null) throw new Error(`runtime '${runtime}' declares body media type ${mimetype}, which no installed handler reads`);
+            return [runtime, handler] as const;
+        })));
+        return (runtime, body) => {
+            const handler = handlers.get(runtime);
+            if (handler === undefined) return true;
+            let verdict: void | Promise<void>;
+            try { verdict = handler.validate(body); } catch { return false; }
+            if (verdict instanceof Promise) throw new Error(`the ${runtime} body media type validates asynchronously; a declared body media type must validate synchronously`);
+            return true;
+        };
+    }
+
+    #splitResponse(response: ProviderAttempt, executors: readonly string[] = [], wellFormed?: BodyCheck): SplitProviderResponse {
         const { assistant } = response;
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
         const ops: PlurnkStatement[] = [];
@@ -1771,7 +1803,7 @@ export default class TurnRunner {
             const parsed = observedSync("contracts.parse", {}, (span) => {
                 // {§fence-heading-in-body} {§interstitial-fence} — the executors this workspace can run
                 // are heading tags to the parser; anything else tagged is a code block.
-                const result = PlurnkParser.parse(assistant.content, { executors });
+                const result = PlurnkParser.parse(assistant.content, { executors, ...(wellFormed === undefined ? {} : { wellFormed }) });
                 span.setAttribute("statements", result.items.filter((item) => item.kind === "statement").length);
                 return result;
             });

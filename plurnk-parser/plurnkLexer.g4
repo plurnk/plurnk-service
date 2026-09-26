@@ -25,6 +25,7 @@ private fencePairing(): Pairing {
         executors: this.knownExecutors,
         reasoning: this.reasoning,
         closesOnLine: (heading) => this.headingClosesOnLine(heading),
+        wellFormed: this.wellFormed,
     });
     return this.pairingCache;
 }
@@ -114,6 +115,7 @@ private asideClosesOnLine(): boolean {
 }
 // {§fence-heading-in-body} - tags that end an open block from inside it; the host adds executors.
 public knownExecutors: Set<string> = new Set(["sh"]);
+public wellFormed: ((runtime: string, body: string) => boolean) | undefined = undefined;
 // {§executor-case} - an executor tag matches its registered name in any case (`SH` is `sh`).
 private knownExecutor(name: string): boolean {
     if (this.knownExecutors.has(name)) return true;

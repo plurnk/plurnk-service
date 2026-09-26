@@ -97,7 +97,7 @@ test("runtime declaration derives the server summary from the chain", async () =
     const declaration = runtimeDecl("echo", serverSummary("echo", undefined, undefined), false);
     assert.equal(declaration.summary, "MCP server echo.");
     assert.deepEqual(declaration.invocation, {
-        body: { role: "JSON arguments", required: false },
+        body: { role: "JSON arguments", required: false, mimetype: "application/json" },
         target: { role: "MCP tool", required: true, kind: "literal" },
         example: { target: "tool_name" },
     });

@@ -392,7 +392,7 @@ nesting and closing.
 
 | Rank | Counted | Why |
 |---|---|---|
-| 1 | Repairs: a supplied closer, a fence read as a stray, a narrower closer accepted, a body under an operation that takes none (FIND, READ, COPY, MOVE, targeted KILL) | The least-errors distance |
+| 1 | Repairs: a supplied closer, a fence read as a stray, a narrower closer accepted, a body under an operation that takes none (FIND, READ, COPY, MOVE, targeted KILL), a body not well-formed in the media type its runtime declares ({§executor-invocation}) | The least-errors distance |
 | 2 | Operation headings that will not run, read as text or held as a literal example; labeled fences in a body read as text | Every operation the author wrote should run, and every code block the author declared should stand, where a reading allows it |
 | 3 | Supplied closers | Among equally few repairs, a block the author opened should end at a fence the author wrote |
 | 4 | Other fences read as text | The least departure from the fences as written |

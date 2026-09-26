@@ -38,6 +38,8 @@ const CONTAINER_RULES = new Set<number>([
 // when a complete nested block cannot be established ({§balanced-fences}).
 export interface ParseOptions {
     readonly executors?: readonly string[];
+    // {§pairing-objective}: whether a runtime's body is well-formed in the media type it declares.
+    readonly wellFormed?: (runtime: string, body: string) => boolean;
 }
 
 export default class PlurnkParser {
@@ -230,6 +232,7 @@ export default class PlurnkParser {
         const lexer = new plurnkLexer(CharStream.fromString(input));
         lexer.reasoning = tier === "reasoning";
         for (const name of options.executors ?? []) lexer.knownExecutors.add(name);
+        lexer.wellFormed = options.wellFormed;
         const spellings = new Map([...lexer.knownExecutors].map((name) => [name.toLowerCase(), name]));
         const node = spellings.get("node");
         if (node !== undefined && !spellings.has("js")) {

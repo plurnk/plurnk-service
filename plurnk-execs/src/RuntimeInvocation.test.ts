@@ -49,6 +49,18 @@ test("{§executor-invocation} validates and preserves the one runtime invocation
     });
 });
 
+test("{§executor-invocation} preserves a declared body media type and refuses a malformed one", () => {
+    assert.deepEqual(assertInvocation({
+        body: { role: "JSON arguments", required: false, mimetype: "application/json" },
+        target: { role: "MCP tool", required: true, kind: "literal" },
+        example: { target: "tool_name" },
+    }).body, { role: "JSON arguments", required: false, mimetype: "application/json" });
+    assert.throws(() => assertInvocation({
+        body: { role: "JSON arguments", required: false, mimetype: "JSON" },
+        example: { body: "{}" },
+    }), /invocation\.body\.mimetype must be one lowercase type\/subtype media type/);
+});
+
 test("{§executor-invocation} rejects incomplete, ambiguous, and typo-bearing declarations", () => {
     const cases: Array<[unknown, RegExp]> = [
         [undefined, /invocation must be an object/],

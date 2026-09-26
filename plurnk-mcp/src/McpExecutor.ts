@@ -129,7 +129,7 @@ export const runtimeDecl = (name: string, summary: RuntimeSummaryDecl, expandToo
     resourcesPath: "/tools",
     ...(expandTools ? { expandTools: true } : {}),
     invocation: {
-        body: { role: "JSON arguments", required: false },
+        body: { role: "JSON arguments", required: false, mimetype: "application/json" },
         target: { role: "MCP tool", required: true, kind: "literal" },
         example: { target: "tool_name" },
     },

@@ -88,10 +88,14 @@ export default class RuntimeInvocation {
         assertKnownFields(invocation, new Set(["body", "target", "exclusive", "example", "signature", "inputSchema"]), "invocation", fail);
 
         const bodyValue = recordOf(invocation.body, "invocation.body", fail);
-        assertKnownFields(bodyValue, new Set(["role", "required"]), "invocation.body", fail);
+        assertKnownFields(bodyValue, new Set(["role", "required", "mimetype"]), "invocation.body", fail);
+        if ("mimetype" in bodyValue && (typeof bodyValue.mimetype !== "string" || !/^[a-z0-9][a-z0-9.+-]*\/[a-z0-9][a-z0-9.+-]*$/u.test(bodyValue.mimetype))) {
+            fail("invocation.body.mimetype must be one lowercase type/subtype media type");
+        }
         const body: RuntimeBodyDecl = {
             role: roleOf(bodyValue.role, "invocation.body.role", fail),
             required: requiredOf(bodyValue.required, "invocation.body.required", fail),
+            ...("mimetype" in bodyValue ? { mimetype: bodyValue.mimetype as string } : {}),
         };
 
         let exclusive = false;

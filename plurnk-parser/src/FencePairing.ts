@@ -10,7 +10,7 @@ type Line =
     | { readonly kind: "text"; readonly blank?: boolean }
     | { readonly kind: "bare"; readonly character: FenceCharacter; readonly width: number; readonly underFence: boolean }
     | { readonly kind: "info"; readonly character: FenceCharacter; readonly width: number }
-    | { readonly kind: "heading"; readonly width: number; readonly selfClosed: boolean; readonly bodiless: boolean; readonly terminal: boolean }
+    | { readonly kind: "heading"; readonly width: number; readonly selfClosed: boolean; readonly bodiless: boolean; readonly terminal: boolean; readonly runtime: string | null }
     | { readonly kind: "closeThenHeading"; readonly width: number; readonly headingWidth: number; readonly selfClosed: boolean; readonly bodiless: boolean }
     | { readonly kind: "name"; readonly name: string };
 
@@ -48,6 +48,9 @@ export type PairingOptions = {
     /** Whether a heading line closes its block on that line, decided by the heading lexer itself
      * (targets, metadata strings and asides may hold backticks that close nothing). */
     readonly closesOnLine: (heading: string) => boolean;
+    /** {§pairing-objective}: whether a body is well-formed in its runtime's declared media type; absent, or
+     * true for a runtime with none, is no opinion. */
+    readonly wellFormed?: (runtime: string, body: string) => boolean;
 };
 
 const NAME = /^[A-Za-z0-9_.+-]+/u;
@@ -56,7 +59,7 @@ const NAME = /^[A-Za-z0-9_.+-]+/u;
 export default class FencePairing {
     static pair(input: string, options: PairingOptions): Pairing {
         const { lines, lineStarts } = FencePairing.#classify(input, options);
-        const solved = new Search(lines).solve();
+        const solved = new Search(lines, input.split("\n"), options.wellFormed).solve();
         if (solved === null) throw new Error("fence pairing found no reading");
         const { result } = solved;
         const [, hidden, , demotions] = solved.cost;
@@ -132,7 +135,7 @@ export default class FencePairing {
             const name = NAME.exec(tail)?.[0];
             const after = name === undefined ? "" : tail.slice(name.length);
             const opens = name !== undefined && (after === "" || /^[ \t(<[]/u.test(after));
-            if (opens && FencePairing.#known(name, options)) return { kind: "heading", width, selfClosed: options.closesOnLine(text.trimStart()), bodiless: FencePairing.#bodiless(name, after), terminal: name === "KILL" && !FencePairing.#bodiless(name, after) };
+            if (opens && FencePairing.#known(name, options)) return { kind: "heading", width, selfClosed: options.closesOnLine(text.trimStart()), bodiless: FencePairing.#bodiless(name, after), terminal: name === "KILL" && !FencePairing.#bodiless(name, after), runtime: options.operations.has(name) ? null : name };
             if (tail.includes("`")) return { kind: "text" };
         }
         return { kind: "info", character, width };
@@ -170,6 +173,9 @@ type Context = {
     readonly bodiless?: boolean;
     // {§terminal-kill}: inside a parameterless KILL, at any depth, a heading is shown, never run.
     readonly terminal?: boolean;
+    // An executor block whose body its runtime may judge, and the line it opened on.
+    readonly runtime?: string;
+    readonly opener?: number;
 };
 // What the contents read so far say about their block: whether it holds any line, and whether it holds a
 // heading as an example ({§fence-heading-in-body}: such a block ends only at a real closer).
@@ -205,10 +211,15 @@ class Search {
     readonly #lines: readonly Line[];
     readonly #nextFence: readonly number[];
     readonly #writtenRun: readonly boolean[];
+    readonly #raw: readonly string[];
+    readonly #check: ((runtime: string, body: string) => boolean) | undefined;
+    readonly #verdicts = new Map<string, boolean>();
     readonly #memo = new Map<string, Summary>();
 
-    constructor(lines: readonly Line[]) {
+    constructor(lines: readonly Line[], raw: readonly string[], check: ((runtime: string, body: string) => boolean) | undefined) {
         this.#lines = lines;
+        this.#raw = raw;
+        this.#check = check;
         // Text lines only mark the innermost block non-empty, so a run of them is one step.
         const next: number[] = new Array(lines.length + 1).fill(lines.length);
         for (let i = lines.length - 1; i >= 0; i--) next[i] = lines[i]!.kind === "text" ? next[i + 1]! : i;
@@ -251,7 +262,7 @@ class Search {
     }
 
     #key(position: number, context: Context | null, flags: Flags): string {
-        return `${position}|${context === null ? "" : `${context.kind}${context.character}${context.width}${context.bareOpened ? "b" : ""}${context.top ? "t" : ""}${context.quoted ? "q" : ""}${context.bodiless ? "n" : ""}${context.terminal ? "k" : ""}${context.name}`}|${flags.empty ? "e" : ""}${flags.holds ? "h" : ""}${flags.written ? "w" : ""}`;
+        return `${position}|${context === null ? "" : `${context.kind}${context.character}${context.width}${context.bareOpened ? "b" : ""}${context.top ? "t" : ""}${context.quoted ? "q" : ""}${context.bodiless ? "n" : ""}${context.terminal ? "k" : ""}${context.runtime === undefined ? "" : `r${context.opener}`}${context.name}`}|${flags.empty ? "e" : ""}${flags.holds ? "h" : ""}${flags.written ? "w" : ""}`;
     }
 
     // Summaries depend only on summaries at later positions. They are evaluated on an explicit work stack, so
@@ -331,9 +342,29 @@ class Search {
     #framed(position: number, context: Context | null, flags: Flags): Move[] {
         return [...this.#moves(position, context, flags)].map((move): Move => {
             if (context === null && move.kind === "child") return { kind: "stay", cost: move.cost, effects: move.effects, next: at(move.line + 1), flags: FRESH, into: move.child, opener: move.line };
-            if (context?.top && move.kind === "end") return { kind: "stay", cost: context.bodiless && flags.written ? add(move.cost, REPAIR) : move.cost, effects: move.effects, next: move.end, flags: FRESH, into: null, record: move.record };
+            if (context?.top && move.kind === "end") return { kind: "stay", cost: context.bodiless && flags.written || !this.#wellFormed(context, move.record) ? add(move.cost, REPAIR) : move.cost, effects: move.effects, next: move.end, flags: FRESH, into: null, record: move.record };
             return move;
         });
+    }
+
+    // An executor heading whose runtime can judge its body carries the runtime and its opening line.
+    #judged(line: number): { runtime?: string; opener?: number } {
+        const runtime = (this.#lines[line] as { runtime?: string | null }).runtime;
+        return this.#check === undefined || runtime === null || runtime === undefined ? {} : { runtime, opener: line };
+    }
+
+    // A body that is not well-formed in its runtime's media type costs a repair ({§pairing-objective}); the
+    // trailing aside is the writer's, not the body's ({§mcp-trailing-aside}).
+    #wellFormed(context: Context, record: End | undefined): boolean {
+        if (context.runtime === undefined || context.opener === undefined || record === undefined) return true;
+        const last = record.kind === "end" ? this.#raw.length - 1 : record.line - 1;
+        const key = `${context.opener}:${last}`;
+        const known = this.#verdicts.get(key);
+        if (known !== undefined) return known;
+        const body = this.#raw.slice(context.opener + 1, last + 1).join("\n").replace(/(?:\s*<!--[\s\S]*?-->)+\s*$/u, "");
+        const verdict = body.trim() === "" || this.#check!(context.runtime, body);
+        this.#verdicts.set(key, verdict);
+        return verdict;
     }
 
     #closable(context: Context, flags: Flags, character: FenceCharacter, width: number): boolean {
@@ -386,7 +417,7 @@ class Search {
         const next = at(i + 1);
         if (context === null) {
             if (selfClosed) yield { kind: "stay", cost: ZERO, effects: [], next, flags };
-            else yield { kind: "child", cost: ZERO, effects: [], child: { kind: "operation", character: "`", width, bareOpened: false, name: "", top: true, quoted: false, bodiless: (this.#lines[i] as { bodiless: boolean }).bodiless, terminal: (this.#lines[i] as { terminal?: boolean }).terminal === true }, line: i, flags };
+            else yield { kind: "child", cost: ZERO, effects: [], child: { kind: "operation", character: "`", width, bareOpened: false, name: "", top: true, quoted: false, bodiless: (this.#lines[i] as { bodiless: boolean }).bodiless, terminal: (this.#lines[i] as { terminal?: boolean }).terminal === true, ...this.#judged(i) }, line: i, flags };
             return;
         }
         const example = (cost: Cost, held: Flags): Move => selfClosed

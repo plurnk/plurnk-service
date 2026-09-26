@@ -406,6 +406,7 @@ details; the generated tool document owns the one model-facing H1.
 | ------------------ | --------------------------------------------------------------------------------------------------------- |
 | `body.role`        | One-line model-facing description of the authored body.                                                    |
 | `body.required`    | When true, an empty body is refused before effect admission.                                               |
+| `body.mimetype`    | Optional lowercase media type the body must be well-formed in; the fence pairing counts a body that is not as a repair ({§pairing-objective}). |
 | `target`           | Omitted when this runtime accepts no target; a present authored target is then refused.                    |
 | `target.role`      | One-line model-facing description of the target.                                                          |
 | `target.required`  | When true, an absent target is refused before effect admission.                                           |

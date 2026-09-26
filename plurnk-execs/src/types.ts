@@ -130,6 +130,8 @@ export interface RuntimeAvailability {
 export interface RuntimeBodyDecl {
     readonly role: string;
     readonly required: boolean;
+    // {§executor-invocation}: the media type the body must be well-formed in, when it has one.
+    readonly mimetype?: string;
 }
 
 // `script`: a resource that must be an existing local script file (or a materialized data-scheme
