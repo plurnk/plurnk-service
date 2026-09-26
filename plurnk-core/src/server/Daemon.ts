@@ -1167,7 +1167,7 @@ export default class Daemon implements ApplicationPort {
     }
     // {§methods-workspace-prompts}: root-conversation loop seeds, newest-first.
     // {§share} — one workspace's share. The daemon names its own database; the caller names an absolute folder.
-    async shareWorkspace({ workspaceId, folder }: { readonly workspaceId: number; readonly folder: string }): Promise<{ readonly folder: string; readonly zip: string }> {
+    async shareWorkspace({ workspaceId, folder }: { readonly workspaceId: number; readonly folder: string }): Promise<{ readonly folder: string }> {
         const checkedWorkspaceId = ClientInput.assertId("workspace.share", "workspaceId", workspaceId);
         const checkedFolder = ClientInput.assertShareFolder("workspace.share", folder);
         if (this.#dbPath === undefined) throw new Error("share: this daemon was started without its database path");

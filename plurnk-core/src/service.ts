@@ -413,7 +413,7 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
   --config=<path>              layer additional env from <path>
   config defaults             print every installed package's annotated .env.defaults
   config check                validate configuration without contacting a provider
-  share                        share a consistent copy of the database: <folder> and <folder>.zip
+  share                        share a consistent copy of the database as a digest <folder>
                                (default database: the service's; default folder: a stamped child
                                of PLURNK_SERVICE_SHARE_FOLDER); --workspace=<id> limits it to one
                                workspace; --requiem adds the forensic interview (calls a model)
@@ -484,7 +484,7 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
                     dbPath, folder, requiem: values.requiem === true,
                     ...(typeof workspace === "string" ? { workspaceId: Number(workspace) } : {}),
                 });
-                process.stdout.write(`${shared.folder}\n${shared.zip}\n`);
+                process.stdout.write(`${shared.folder}\n`);
                 process.stderr.write("share: this holds what the models saw and wrote, unredacted; review it before sending.\n");
             };
         } else if (command === "requiem") {

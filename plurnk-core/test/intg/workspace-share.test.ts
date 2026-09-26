@@ -10,7 +10,7 @@ import { openMigrated } from "./_helpers.ts";
 import { connect, rpcCall } from "./_rpc.ts";
 
 // {§share} — the client names an absolute folder; the daemon shares its own database, scoped to the workspace.
-test("{§share}: workspace.share writes the workspace's share and its zip from the daemon's own database", { timeout: 30_000 }, async (t) => {
+test("{§share}: workspace.share writes the workspace's share from the daemon's own database", { timeout: 30_000 }, async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-workspace-share-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const dbPath = join(root, "plurnk.db");
@@ -23,10 +23,9 @@ test("{§share}: workspace.share writes the workspace's share and its zip from t
     await rpcCall(ws, 1, "workspace.create", { name: "not-shared" });
     await rpcCall(ws, 2, "workspace.create", { name: "shared-here" }); // creation attaches the connection
     const folder = join(root, "share_this_session_here");
-    const shared = (await rpcCall(ws, 4, "workspace.share", { folder })).result as { folder: string; zip: string };
-    assert.deepEqual(shared, { folder, zip: `${folder}.zip` });
+    const shared = (await rpcCall(ws, 4, "workspace.share", { folder })).result as { folder: string };
+    assert.deepEqual(shared, { folder });
     assert.ok(existsSync(join(folder, "digest.md")));
-    assert.ok(existsSync(`${folder}.zip`));
     const digest = JSON.parse(readFileSync(join(folder, "digest.json"), "utf8")) as { workspaces: Array<{ name: string }> };
     assert.deepEqual(digest.workspaces.map(({ name }) => name), ["shared-here"], "the share is the attached workspace alone");
     const refused = await rpcCall(ws, 5, "workspace.share", { folder: "relative/folder" });

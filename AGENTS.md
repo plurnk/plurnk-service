@@ -30,7 +30,7 @@ Where things are, for an agent that has to act before it has read everything:
   errors, cost), `<worker>-<loop>-<turn>.assistant.md` (the model's raw emissions),
   `.user.md` and `.system.md` (what it saw), named by log coordinate. Read the digest;
   the database is evidence, never the diagnostic interface. For any other database,
-  `npm run share -- <plurnk.db> [folder]` writes the same folder plus `<folder>.zip`
+  `npm run share -- <plurnk.db> [folder]` writes the same folder
   from a consistent copy it takes itself ({§share}); a live database is safe to name.
 - **A daemon may already be attached to this checkout**, run from its source and
   listening on `PLURNK_PORT` (1066 by default) — commonly as a user service

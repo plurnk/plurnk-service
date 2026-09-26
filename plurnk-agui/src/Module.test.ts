@@ -92,7 +92,7 @@ const mockSeam = () => {
         cancelWorker: async () => {},
         executorTags: () => ["sh"],
         executorJsonBodyTags: () => [],
-        shareWorkspace: async ({ folder }: { folder: string }) => ({ folder, zip: `${folder}.zip` }),
+        shareWorkspace: async ({ folder }: { folder: string }) => ({ folder }),
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         readLog: async () => [{ id: 1, op: "SEND", status_rx: 200, origin: "model" }],
         readMessages: async () => [],
