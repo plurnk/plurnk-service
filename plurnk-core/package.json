@@ -63,7 +63,7 @@
         "fixture:demo": "node --conditions=plurnk-dev test/demo/_fixture.ts",
         "test": "npm run test:lint && npm run test:unit && npm run test:intg",
         "digest:missing": "node --conditions=plurnk-dev bin/digest-missing.ts",
-        "dev:digest": "node --conditions=plurnk-dev bin/digest.ts",
+        "share": "node --conditions=plurnk-dev src/service.ts share",
         "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",
         "build:sql": "node --conditions=plurnk-dev scripts/copy-sql.mjs",

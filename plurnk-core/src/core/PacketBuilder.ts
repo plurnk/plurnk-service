@@ -15,7 +15,7 @@ import Paths from "../Paths.ts";
 import { readTeachingSource } from "./teaching-corpus.ts";
 import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
 import { acceptedKinds } from "./attachments.ts";
-// Shared module imported by both Engine and bin/digest.ts, so wire
+// Shared module imported by both Engine and the digest, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
 import PacketWire from "./packet-wire.ts";

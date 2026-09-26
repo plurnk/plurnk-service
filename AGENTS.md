@@ -29,8 +29,9 @@ Where things are, for an agent that has to act before it has read everything:
   `plurnk.db`, `workspace`, and `digest/` with `digest.md` (loops, turns, ops,
   errors, cost), `packetNNN.assistant.md` (the model's raw emissions),
   `packetNNN.user.md` and `packetNNN.system.md` (what it saw). Read the digest;
-  the database is evidence, never the diagnostic interface. For any other database:
-  `npm run dev:digest -- <copy of plurnk.db> [out-dir]` from `plurnk-core`, over a copy.
+  the database is evidence, never the diagnostic interface. For any other database,
+  `npm run share -- <plurnk.db> [folder]` writes the same folder plus `<folder>.zip`
+  from a consistent copy it takes itself ({§share}); a live database is safe to name.
 - **A daemon may already be attached to this checkout**, run from its source and
   listening on `PLURNK_PORT` (1066 by default) — commonly as a user service
   (`systemctl --user status plurnk`, `journalctl --user -u plurnk -f`). Treat any
@@ -195,16 +196,11 @@ PLURNK_MODEL=<selector> npm run test:live:specimen -- <exact name>       # one s
 An operator drives a daemon in an ordinary, unscripted conversation — web research,
 questions about plurnk's own syntax, changing their mind mid-task — and the session is then read
 like a demo. Its lack of structure is the point: benchmarks grade the workspace afterwards, a
-conversation grades the reply. Never digest a live database; copy it first, and put the copy
-somewhere with room, because it is large.
+conversation grades the reply. Share the daemon's database; the share takes its own consistent
+copy, so the daemon keeps running.
 
 ```sh
-# 1. a consistent copy (the daemon keeps running)
-node -e 'new (require("node:sqlite").DatabaseSync)(process.env.HOME+"/.local/share/plurnk/plurnk.db",{readOnly:true})
-  .exec("VACUUM INTO \x27<copy>.db\x27")'
-
-# 2. digest the copy, beside the drill runs
-cd plurnk-core && npm run -s dev:digest -- <copy>.db ~/benchmarks/dogfood-teamwork-<stamp>/digest
+npm run -s share -- ~/.local/share/plurnk/plurnk.db ~/benchmarks/dogfood-teamwork-<stamp>
 ```
 
 Report friction first (the standing rule): refused or failed operations by

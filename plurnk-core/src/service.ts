@@ -31,6 +31,8 @@ import ServiceTeardown from "./core/ServiceTeardown.ts";
 import Paths from "./Paths.ts";
 import { startObservability } from "./observe/init.ts";
 import FileCreationPolicy from "./core/file-creation-policy.ts";
+import Digest from "./digest/Digest.ts";
+import Share from "./share/Share.ts";
 
 // The `plurnk-service` executable: launches the daemon (start) or applies the schema baseline.
 // Not the user-facing client — that is the separate `plurnk` project.
@@ -400,6 +402,7 @@ export default class Service {
 
         const usage = `usage: plurnk-service [options] [start|migrate]
        plurnk-service [options] config [edit|defaults|check]
+       plurnk-service [options] share [<file.db>] [<folder>] [--workspace=<id>] [--requiem]
        plurnk-service paths migrate
 
 ${EnvFlags.formatFlagsHelp(flagDescriptors)}
@@ -409,6 +412,10 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
   --config=<path>              layer additional env from <path>
   config defaults             print every installed package's annotated .env.defaults
   config check                validate configuration without contacting a provider
+  share                        share a consistent copy of the database: <folder> and <folder>.zip
+                               (default database: the service's; default folder: a stamped child
+                               of PLURNK_SERVICE_SHARE_FOLDER); --workspace=<id> limits it to one
+                               workspace; --requiem adds the forensic interview (calls a model)
   paths migrate               move a legacy ~/.plurnk into canonical XDG paths
   -v, --version                show executable provenance
   -h, --help                   show this help
@@ -421,6 +428,8 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
                 help: { type: "boolean", short: "h" },
                 version: { type: "boolean", short: "v" },
                 config: { type: "string" },
+                workspace: { type: "string" },
+                requiem: { type: "boolean" },
                 ...flagOptions,
             },
         });
@@ -462,6 +471,20 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
                     handler = Service.#configStatus;
                 }
             }
+        } else if (command === "share") {
+            if (positionals.length > 3) Service.#die(64, `unexpected arguments: ${positionals.slice(3).join(" ")}`);
+            const workspace = values.workspace;
+            if (workspace !== undefined && (typeof workspace !== "string" || !/^[1-9]\d*$/u.test(workspace))) Service.#die(64, "--workspace takes a workspace id");
+            handler = async () => {
+                const dbPath = typeof positionals[1] === "string" ? positionals[1] : Digest.defaultDbPath();
+                const folder = typeof positionals[2] === "string" ? positionals[2] : Share.defaultFolder(process.env, Service.#hostPaths);
+                const shared = await Share.write({
+                    dbPath, folder, requiem: values.requiem === true,
+                    ...(typeof workspace === "string" ? { workspaceId: Number(workspace) } : {}),
+                });
+                process.stdout.write(`${shared.folder}\n${shared.zip}\n`);
+                process.stderr.write("share: this holds what the models saw and wrote, unredacted; review it before sending.\n");
+            };
         } else if (command === "paths" && action === "migrate") {
             if (positionals.length > 2) Service.#die(64, `unexpected arguments: ${positionals.slice(2).join(" ")}`);
             name = "paths migrate";

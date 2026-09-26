@@ -56,7 +56,7 @@ test("{§digest-forensic-fidelity}: exports repeated large wire evidence under a
         await db.close();
     }
     await execFileP(process.execPath, [
-        "--max-old-space-size=192", "--conditions=plurnk-dev", "bin/digest.ts", dbPath, digestDir,
+        "--max-old-space-size=192", "--conditions=plurnk-dev", "src/service.ts", "share", dbPath, digestDir,
     ], { cwd: resolve(import.meta.dirname, "../.."), timeout: 20000, maxBuffer: 1024 * 1024 });
     const digest = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8"));
     assert.equal(digest.turns.length, count);

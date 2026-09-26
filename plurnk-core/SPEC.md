@@ -3645,6 +3645,7 @@ Each knob's value lives on its panel and nowhere else (`plurnk-service config de
 | Var | Purpose |
 |---|---|
 | `PLURNK_SERVICE_DB_PATH` | SQLite file path; an explicit non-empty value overrides the derived default. |
+| `PLURNK_SERVICE_SHARE_FOLDER` | Parent of the shares written when no folder is named ({§share-folder}); empty is `$XDG_STATE_HOME/plurnk/shares`. |
 | §operator-config-shared-keys `PLURNK_HOST`, `PLURNK_PORT` | The listener's bind address and TCP port — THE client surface, the AG-UI+ listener the plurnk-agui module binds at boot; production is single-listener. **A key the daemon and its clients both read has a shared owner**: `@plurnk/plurnk-contracts` declares these two and the optional `PLURNK_AGUI_URL` on its own panel, the one package every side depends on. The daemon folds it like any installed member's, a client folds it beneath its own, and so neither holds the other's default. The service's `--host` and `--port` flags are generated from that panel. |
 | §operator-config-git-ceiling `PLURNK_SERVICE_GIT_ALLOWED` | Hard service ceiling: only `1` admits Git membership and status; every other value denies them. |
 | §operator-config-file-create-scope `PLURNK_SERVICE_FILE_CREATE_SCOPE` | Hard file-creation ceiling: `none < root < namespace`. `none` denies new filesystem files, `root` admits only paths inside `project_root`, and `namespace` also admits canonical outside-root paths. Existing-member writes are unaffected. |
@@ -4988,6 +4989,12 @@ retain distinct contracts and lifetimes.
 §operation-result-no-error-scheme Private strike and cycle accounting stays engine-internal ({§rail-accounting-private}). Every failure within an accepted turn - a bounded parse error, failed action, or engine rail - is a LOG ITEM (`log:///<coord>`, `status_rx ≥ 400`) with Problem Details, independently curatable and exactly READable while active. The `errors` section surfaces a derived pointer to each. Rejected emissions stay in the forensic model-call and admission relations. There is **no bespoke `error://` scheme** and no ephemeral per-category failure buffer.
 
 §notice-event-notify **Client surface.** Engine Notices broadcast live via the `notice/event` notification — `{ workerId, loopId, notice: { source, kind, level, message?, position?, …kind-specific } }` per the grammar's `Notice` schema — the moment they land. A loop Notice names its owning Worker; workspace derivation progress alone carries `workerId=null, loopId=0`. AG-UI projects the same observation as the custom `plurnk.notice` event. Failures do not broadcast on this surface: they are log rows, and the client reads them through `log.read` / the `log/entry` notification, the durable log.
+
+§share **A share is the database's record, packaged to send.** `plurnk-service share [<file.db>] [<folder>]`, and `npm run share` from a checkout, take a consistent copy of the database (`VACUUM INTO`; a live database is never read in place), write its digest into `<folder>`, and write `<folder>.zip` beside it. Without a database the service's own is shared. A folder that overlaps the database is refused before anything is copied, because the digest replaces its output folder. The share is the user's bug report and our dogfood, benchmark and forensics artifact alike.
+
+§share-scope **A share is unredacted.** `--workspace=<id>` limits a share to one workspace; without it the whole database is shared. Nothing is filtered, redacted or scanned: a share holds what the models saw and wrote in scope, including prompts, file contents read, command output and reasoning, and the command says so. `--requiem` adds the forensic interview ({§digest-requiem}), which calls a model.
+
+§share-folder **Shares land in one place.** With no folder named, a share is a stamped child, `share-<UTC stamp>`, of `PLURNK_SERVICE_SHARE_FOLDER` (a leading `~/` expands, as for every explicit Plurnk path) or of `$XDG_STATE_HOME/plurnk/shares`.
 
 §digest-programmatic-surface **The digest is an importable forensic surface.**
 

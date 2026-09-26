@@ -219,13 +219,13 @@ const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", ".."
 export const MIGRATIONS_DIR = resolve(PROJECT_ROOT, "migrations");
 // File-backed per-test DB so on-disk consumers (digest tool, future
 // forensics) exercise the same artifacts the suite produces. `:memory:`
-// hid a column-rename regression in bin/digest.ts for an unknown number
+// hid a column-rename regression in the digest tool for an unknown number
 // of PRs. Per-test UUID filenames eliminate parallel collisions.
 //
 // {§test-artifact-retention} — the run's directory lives under PLURNK_BENCHMARKS beside every
 // other harness's artifacts, so a database is born where it lives: nothing is written into the
 // checkout, nothing is swept, and any test worth review is handed straight to
-// `npm run dev:digest -- <the path the run reported>`.
+// `npm run share -- <the path the run reported>`.
 let artifacts: Promise<string> | null = null;
 const artifactDirectory = (): Promise<string> => (artifacts ??= testArtifactDirectory("core"));
 

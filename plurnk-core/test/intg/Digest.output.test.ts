@@ -89,7 +89,7 @@ for (const entrypoint of ["CLI", "built package"]) {
         const db = await openMigrated(dbPath);
         await db.close();
         const args = entrypoint === "CLI"
-            ? ["--conditions=plurnk-dev", "bin/digest.ts", dbPath, root]
+            ? ["--conditions=plurnk-dev", "src/service.ts", "share", dbPath, root]
             : ["--input-type=module", "--eval", `
                 import Digest from "@plurnk/plurnk-service/digest";
                 Digest.run(${JSON.stringify({ dbPath, digestDir: root })});

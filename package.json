@@ -48,6 +48,7 @@
     "scripts": {
         "prepare": "git config core.hooksPath .githooks && npm run build",
         "start": "npm start -w @plurnk/plurnk-service",
+        "share": "npm run -s share -w @plurnk/plurnk-service --",
         "source:check": "oxlint --type-aware --report-unused-disable-directives .",
         "docs:check": "markdownlint-cli2",
         "changelog": "node scripts/changelog.mjs",

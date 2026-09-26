@@ -44,7 +44,7 @@ export const resolveOperatorGrammarPath = (value: string): string => {
     if (value.startsWith("/") || value.startsWith(".") || value.includes("/")) return resolvePath(value);
     throw new Error(`PLURNK_PROVIDERS_GBNF=${value} names a bundled grammar profile; the service ships none (#588). Give the path of a grammar file you wrote.`);
 };
-// Shared module imported by both Engine and bin/digest.ts, so wire
+// Shared module imported by both Engine and the digest, so wire
 // projection and digest projection are structurally one function — no
 // drift between wire and digest possible.
 import PacketWire from "./packet-wire.ts";
