@@ -299,9 +299,9 @@ export default class PlurnkParser {
         for (const note of lexer.takeMissedTags()) {
             items.push({ kind: "error", error: new PlurnkParseError(note.line, note.column, "parser", `\`${note.tag}\` is not an operation or a known executor here.`, "warning") });
         }
-        // {§quotation} — an operation heading under an unlabeled fence is the operation with its tag forgotten.
-        for (const note of lexer.takeUnlabeledHeadings()) {
-            items.push({ kind: "error", error: new PlurnkParseError(note.line, note.column, "parser", `\`${note.tag}\` inside an unlabeled fence did not run; the tag is the operation.`, "warning") });
+        // {§forgotten-tag} — the operation ran; its opener spanned two lines, so say how it is written once.
+        for (const note of lexer.takeForgottenTags()) {
+            items.push({ kind: "error", error: new PlurnkParseError(note.line, note.column, "parser", `\`${note.tag}\` ran, though its fence was malformed: the opening fence, OP, parameters, and aside share one line.`, "warning") });
         }
 
         if (tier === "model") {

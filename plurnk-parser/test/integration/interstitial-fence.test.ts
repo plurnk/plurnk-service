@@ -64,11 +64,11 @@ test("{§response-text}: headings inside bodies remain body content", () => {
     assert.deepEqual(statements(result).map(({ op }) => op), ["SEND", "WAIT"]);
 });
 
-test("{§quotation}: a heading inside an unlabeled fence is quoted data: nothing runs, and the receipt names the forgotten tag", () => {
+test("{§forgotten-tag}: a heading under a bare fence at the top level runs, and one warning states the form", () => {
     const source = unlabeled("KILL (worker:///notes.md)") + "\n" + task;
     const result = PlurnkParser.parse(source);
-    assert.deepEqual(statements(result).map(({ op }) => op), ["WAIT"]);
-    assert.deepEqual(errors(result).map(({ severity, message }) => [severity, message]), [["warning", "`KILL` inside an unlabeled fence did not run; the tag is the operation."]]);
+    assert.deepEqual(statements(result).map(({ op }) => op), ["KILL", "WAIT"]);
+    assert.deepEqual(errors(result).map(({ severity, message }) => [severity, message]), [["warning", "`KILL` ran, though its fence was malformed: the opening fence, OP, parameters, and aside share one line."]]);
 });
 
 test("{§interstitial-fence}: explicit SEND keeps its aside, target, and literal body", () => {

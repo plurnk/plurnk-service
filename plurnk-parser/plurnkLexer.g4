@@ -57,6 +57,7 @@ private blockEnd(required: boolean): BlockEnd | undefined {
     return end;
 }
 private quotationHere(): boolean { return this.lineOnly ? this.fenceOpens() : this.fencePairing().quotations.has(this.lineStartOf(this.inputStream.index)); }
+private splitHere(): boolean { return !this.lineOnly && this.fencePairing().splits.has(this.lineStartOf(this.inputStream.index)); }
 private surplusHere(): boolean { return !this.lineOnly && this.fencePairing().surplus.has(this.lineStartOf(this.inputStream.index)); }
 private openOp: string = "";
 // {§executor-runtime-declaration} — the opener names a runtime rather than an operation keyword.
@@ -133,7 +134,7 @@ private inlineBodies: Array<{ line: number; column: number; heading: string }> =
 private headingMetadata: boolean = false;
 private quotedTags: Array<{ line: number; column: number; tag: string }> = [];
 private missedTags: Array<{ line: number; column: number; tag: string }> = [];
-private unlabeledHeadings: Array<{ line: number; column: number; tag: string }> = [];
+private forgottenTags: Array<{ line: number; column: number; tag: string }> = [];
 private quotedSpans: Array<{ start: number; end: number }> = [];
 private quoteLabeled = false;
 private quoteStart: number = -1;
@@ -156,40 +157,19 @@ private quote(): void {
     this.quoteLabeled = /[A-Za-z]/.test(this.text.replace(/^[\x60~]+/, ""));
     this.open();
     this.noteMissed();
-    this.noteUnlabeledHeading();
 }
 
-// {§quotation} - an unlabeled fence whose first line is an operation heading is the operation with
-// its tag forgotten: it runs nothing, and one receipt names the form. A native name qualifies
-// alone or with a slot; an executor's name needs its operand, since sh and env are words.
-private noteUnlabeledHeading(): void {
-    if (this.reasoning || this.quoteLabeled || this.text.charCodeAt(0) !== 0x60) return;
-    let cursor = 1;
-    while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
-    const after = this.offsetAfterEol(cursor);
-    if (after === null) return;
-    let name = "";
-    for (cursor = after; ; cursor++) {
-        const c = this.inputStream.LA(cursor);
-        if (c <= 0) break;
-        const ch = String.fromCharCode(c);
-        if (!/[A-Za-z0-9_.+-]/.test(ch)) break;
-        name += ch;
-    }
-    if (name === "") return;
-    const native = Object.hasOwn(plurnkLexer.OPERATIONS, name);
-    if (!native && !this.knownExecutor(name)) return;
-    while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
-    const next = this.inputStream.LA(cursor);
-    const slot = next === 0x28 || next === 0x3C || next === 0x5B;
-    const alone = next <= 0 || next === 0x0A || next === 0x0D;
-    if (!(native ? slot || alone : next === 0x28)) return;
-    this.unlabeledHeadings.push({ line: (this as any).currentTokenStartLine + 1, column: 0, tag: name });
+// {§forgotten-tag} - at the top level, a bare fence and the operation heading on the line under it are one
+// opener: the line break is dropped from the token, so the operation opens exactly as if written on one line.
+private splitOpen(): void {
+    this.forgottenTags.push({ line: (this as any).currentTokenStartLine, column: 0, tag: this.text.replace(/^\x60+[ \t]*\r?\n/, "") });
+    this.text = this.text.replace(/[ \t]*\r?\n/, "");
+    this.open();
 }
 
-public takeUnlabeledHeadings(): Array<{ line: number; column: number; tag: string }> {
-    const taken = this.unlabeledHeadings;
-    this.unlabeledHeadings = [];
+public takeForgottenTags(): Array<{ line: number; column: number; tag: string }> {
+    const taken = this.forgottenTags;
+    this.forgottenTags = [];
     return taken;
 }
 
@@ -594,6 +574,7 @@ ORPHAN_CLOSER : { this.atLineStart() && this.surplusHere() }? FENCE [ \t]* { thi
 // {§quotation} - every other fence at a line start quotes to its closer or the end of the input.
 // A line-start fence whose line carries more backticks is inline code: it quotes nothing.
 INLINE_TAG : { this.atLineStart() && !this.fenceOpens() }? FENCE NAME { this.noteMissed(); } -> type(TEXT), channel(HIDDEN) ;
+SPLIT_OPEN : { this.atLineStart() && this.splitHere() }? FENCE [ \t]* EOL NAME { this.splitOpen(); } -> mode(SLOTS) ;
 QUOTE : { this.atLineStart() && this.quotationHere() }? (FENCE NAME? | '~~~' '~'* NAME?) { this.quote(); } -> type(TEXT), channel(HIDDEN), mode(QUOTATION) ;
 // {§interstitial-fence} - a fence naming nothing known, or nothing at all, is prose outside a block.
 WS : [ \t\r\n]+ -> channel(HIDDEN) ;

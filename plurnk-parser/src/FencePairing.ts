@@ -6,9 +6,12 @@
 
 export type FenceCharacter = "`" | "~";
 
+// {§forgotten-tag}: an operation heading on the line under a bare fence, as the heading it would be.
+type Split = { readonly selfClosed: boolean; readonly bodiless: boolean; readonly terminal: boolean; readonly runtime: string | null };
+
 type Line =
     | { readonly kind: "text"; readonly blank?: boolean }
-    | { readonly kind: "bare"; readonly character: FenceCharacter; readonly width: number; readonly underFence: boolean }
+    | { readonly kind: "bare"; readonly character: FenceCharacter; readonly width: number; readonly underFence: boolean; readonly split?: Split }
     | { readonly kind: "info"; readonly character: FenceCharacter; readonly width: number }
     | { readonly kind: "heading"; readonly width: number; readonly selfClosed: boolean; readonly bodiless: boolean; readonly terminal: boolean; readonly runtime: string | null }
     | { readonly kind: "closeThenHeading"; readonly width: number; readonly headingWidth: number; readonly selfClosed: boolean; readonly bodiless: boolean }
@@ -27,6 +30,8 @@ export type Pairing = {
     readonly surplus: ReadonlySet<number>;
     /** Code-point offsets of top-level fence lines that open a quotation. */
     readonly quotations: ReadonlySet<number>;
+    /** Code-point offsets of top-level bare fences whose next line is the operation they open ({§forgotten-tag}). */
+    readonly splits: ReadonlySet<number>;
     /** Missing closers supplied, as line indexes they precede (the input length for the end). */
     readonly repairs: readonly number[];
     /** Fence lines read as content, by line index (the objective's second term). */
@@ -72,6 +77,7 @@ export default class FencePairing {
             ends,
             surplus: new Set(result.surplus.map((line) => lineStarts[line]!)),
             quotations: new Set(result.quotations.map((line) => lineStarts[line]!)),
+            splits: new Set(result.splits.map((line) => lineStarts[line]!)),
             repairs: result.repairs,
             demotions,
             hidden,
@@ -99,7 +105,27 @@ export default class FencePairing {
             lines.push(line.kind === "text" ? { kind: "text", blank: text.trim() === "" } : line.kind === "bare" ? { ...line, underFence: /\S[^`]*`{3,}/u.test(previous) && !/^ {0,3}`{3,}/u.test(previous) } : line);
             previous = text;
         }
+        for (const [index, line] of lines.entries()) {
+            if (line.kind !== "bare" || line.character !== "`" || /\S/u.test(raw[index]!.replace(/^ {0,3}`+/u, ""))) continue;
+            const split = FencePairing.#split(raw[index]!.trim(), (raw[index + 1] ?? "").replace(/\r$/u, ""), options);
+            if (split !== null) lines[index] = { ...line, split };
+        }
         return { lines, lineStarts };
+    }
+
+    // {§forgotten-tag}: the line under a bare fence is an operation heading when it names a native operation
+    // alone or with a slot, or a known executor with its operand (sh and env are words); reasoning opens none.
+    static #split(fence: string, next: string, options: PairingOptions): Split | null {
+        if (options.reasoning) return null;
+        const name = NAME.exec(next)?.[0];
+        if (name === undefined) return null;
+        const native = options.operations.has(name);
+        if (!native && !FencePairing.#known(name, options)) return null;
+        const after = next.slice(name.length);
+        const rest = after.trimStart();
+        if (!(native ? rest === "" || /^[(<[]/u.test(rest) : rest.startsWith("("))) return null;
+        const bodiless = FencePairing.#bodiless(name, after);
+        return { selfClosed: options.closesOnLine(`${fence}${next}`), bodiless, terminal: name === "KILL" && !bodiless, runtime: native ? null : name };
     }
 
     // FIND, READ, COPY, MOVE and a targeted KILL take no body ({§matcher-body-redirect}, {§read-exact-target},
@@ -144,7 +170,7 @@ export default class FencePairing {
 }
 
 type End = { kind: "closer"; line: number } | { kind: "before"; line: number } | { kind: "end" };
-type Result = { ends: Map<number, End>; surplus: number[]; quotations: number[]; repairs: number[] };
+type Result = { ends: Map<number, End>; surplus: number[]; quotations: number[]; splits: number[]; repairs: number[] };
 
 // The objective, compared lexicographically ({§pairing-objective}): repairs (supplied closers, surplus fences,
 // undersized closers accepted); then operation headings read as text (operations the author wrote that will
@@ -186,13 +212,13 @@ const FRESH: Flags = { empty: true, holds: false, written: false };
 // A position is a line and a phase; the heading phase reads the rest of a line whose fence run closed a block.
 const at = (line: number, heading = false): number => line * 2 + (heading ? 1 : 0);
 
-type Effect = { readonly kind: "quotation" | "surplus" | "repair"; readonly line: number };
+type Effect = { readonly kind: "quotation" | "surplus" | "split" | "repair"; readonly line: number };
 // One alternative at a position, in preference order: the block ends here (`end` is the position its parent
 // resumes at), it continues at `next`, or it opens a child block and continues after the child ends.
 type Move =
     | { readonly kind: "end"; readonly cost: Cost; readonly effects: readonly Effect[]; readonly end: number; readonly record: End }
     | { readonly kind: "stay"; readonly cost: Cost; readonly effects: readonly Effect[]; readonly next: number; readonly flags: Flags; readonly into?: Context | null; readonly opener?: number; readonly record?: End }
-    | { readonly kind: "child"; readonly cost: Cost; readonly effects: readonly Effect[]; readonly child: Context; readonly line: number; readonly flags: Flags };
+    | { readonly kind: "child"; readonly cost: Cost; readonly effects: readonly Effect[]; readonly child: Context; readonly line: number; readonly flags: Flags; readonly start?: number };
 
 // A summary lists, for every position the block could end at, its cheapest reading of the rest of the block,
 // ordered by the preference order of those readings.
@@ -232,7 +258,7 @@ class Search {
     solve(): { result: Result; cost: Cost } | null {
         const root = this.#summary(0, null, FRESH);
         if (root.length === 0) return null;
-        const result: Result = { ends: new Map(), surplus: [], quotations: [], repairs: [] };
+        const result: Result = { ends: new Map(), surplus: [], quotations: [], splits: [], repairs: [] };
         this.#replay(root[0]!, null, -1, result);
         return { result, cost: root[0]!.cost };
     }
@@ -246,6 +272,7 @@ class Search {
             for (const effect of move.effects) {
                 if (effect.kind === "quotation") result.quotations.push(effect.line);
                 else if (effect.kind === "surplus") result.surplus.push(effect.line);
+                else if (effect.kind === "split") result.splits.push(effect.line);
                 else result.repairs.push(effect.line);
             }
             if (move.kind === "end") return;
@@ -341,7 +368,7 @@ class Search {
     // input, so the frame of an open top-level block has one entry, not one per place the block could end.
     #framed(position: number, context: Context | null, flags: Flags): Move[] {
         return [...this.#moves(position, context, flags)].map((move): Move => {
-            if (context === null && move.kind === "child") return { kind: "stay", cost: move.cost, effects: move.effects, next: at(move.line + 1), flags: FRESH, into: move.child, opener: move.line };
+            if (context === null && move.kind === "child") return { kind: "stay", cost: move.cost, effects: move.effects, next: move.start ?? at(move.line + 1), flags: FRESH, into: move.child, opener: move.line };
             if (context?.top && move.kind === "end") return { kind: "stay", cost: context.bodiless && flags.written || !this.#wellFormed(context, move.record) ? add(move.cost, REPAIR) : move.cost, effects: move.effects, next: move.end, flags: FRESH, into: null, record: move.record };
             return move;
         });
@@ -459,6 +486,14 @@ class Search {
         const { character, width } = line;
         const next = at(i + 1);
         const marked: Flags = { ...flags, empty: false, written: true };
+        if (context === null && line.split !== undefined) {
+            // {§forgotten-tag}: at the top level the fence and the heading under it are one opener.
+            const { split } = line;
+            const effects: Effect[] = [{ kind: "split", line: i }];
+            if (split.selfClosed) yield { kind: "stay", cost: ZERO, effects, next: at(i + 2), flags };
+            else yield { kind: "child", cost: ZERO, effects, child: { kind: "operation", character: "`", width, bareOpened: false, name: "", top: true, quoted: false, bodiless: split.bodiless, terminal: split.terminal, ...(split.runtime === null || this.#check === undefined ? {} : { runtime: split.runtime, opener: i + 1 }) }, line: i, start: at(i + 2), flags };
+            return;
+        }
         if (context === null) {
             // {§quotation}: the closer of a heading written mid-line in prose, which opened nothing, is an orphan
             // and quotes nothing.

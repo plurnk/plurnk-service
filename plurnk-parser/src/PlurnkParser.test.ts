@@ -140,13 +140,19 @@ test("{§quotation}: an unknown tag with a target slot is a missed operation and
     assert.deepEqual(warnings("    ```OP (x)\n    ```"), [], "an offset example draws nothing");
 });
 
-test("{§quotation}: an operation heading under an unlabeled fence is the operation with its tag forgotten", () => {
-    const warnings = (source: string) => PlurnkParser.parse(source, { executors: ["sh", "gitea"] }).items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
-    assert.deepEqual(warnings("```\nREAD (notes.md) <1,-1>\n```"), ["`READ` inside an unlabeled fence did not run; the tag is the operation."]);
-    assert.deepEqual(warnings("```\nKILL\nDone.\n```"), ["`KILL` inside an unlabeled fence did not run; the tag is the operation."], "a native name alone qualifies");
-    assert.deepEqual(warnings('```\ngitea (list_issues) {"owner": "plurnk"}\n```'), ["`gitea` inside an unlabeled fence did not run; the tag is the operation."], "an executor with its operand");
+test("{§forgotten-tag}: at the top level, an operation heading under a bare fence runs, with one warning", () => {
+    const parse = (source: string) => PlurnkParser.parse(source, { executors: ["sh", "gitea"] }).items;
+    const ran = (source: string) => parse(source).flatMap((item) => item.kind === "statement" ? [item.statement.op ?? (item.statement as { runtime?: string }).runtime] : []);
+    const warnings = (source: string) => parse(source).flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
+    const malformed = (tag: string) => `\`${tag}\` ran, though its fence was malformed: the opening fence, OP, parameters, and aside share one line.`;
+    assert.deepEqual(ran("```\nREAD (notes.md) <1,-1>\n```"), ["READ"]);
+    assert.deepEqual(warnings("```\nREAD (notes.md) <1,-1>\n```"), [malformed("READ")]);
+    assert.deepEqual(ran("```\nKILL\nDone.\n```"), ["KILL"], "a native name alone qualifies");
+    assert.deepEqual(warnings("```\nKILL\nDone.\n```"), [malformed("KILL")]);
+    assert.deepEqual(ran("```\ngitea (list_issues)\n{\"owner\": \"plurnk\"}\n```"), ["gitea"], "an executor with its operand");
     assert.deepEqual(warnings("```\nsh\n$ npm test\n```"), [], "an executor's bare name is a word in a transcript");
     assert.deepEqual(warnings("```\ndef f():\n    pass\n```"), [], "a code snippet draws nothing");
-    assert.deepEqual(warnings("```text\nREAD (notes.md)\n```"), [], "a labeled block is an example by declaration");
+    assert.deepEqual(ran("```text\nREAD (notes.md)\n```"), [], "a labeled block is an example by declaration");
+    assert.deepEqual(ran("```NOTE\nshown:\n```\nREAD (x)\n```\n```"), ["NOTE"], "inside a body the same shape stays literal");
     assert.deepEqual(warnings("```\n```READ (notes.md)\n```\n```"), ["`READ` inside a code block was shown, not run."], "a fenced example inside keeps its own receipt");
 });
