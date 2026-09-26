@@ -275,3 +275,19 @@ test("createSdkModel fails clearly for a declared but unsupported SDK package", 
         /Models.dev declares unsupported AI SDK package @acme\/ai-sdk/,
     );
 });
+
+// {§provider-fact-authority}: the catalog admits a provider only for an SDK package it names, so every admitted
+// provider constructs; a package on the generator's list without a construction here is a route that reports ready
+// and then cannot run.
+test("{§provider-fact-authority} every catalog provider constructs a model through its SDK package", async () => {
+    const { catalogSnapshot, lookupProvider } = await import("@plurnk/plurnk-models");
+    const failures: string[] = [];
+    for (const [provider, models] of Object.entries(catalogSnapshot())) {
+        const info = lookupProvider(provider)!;
+        const model = Object.keys(models)[0]!;
+        const env = withProviderDefaults(Object.fromEntries(info.env.map((name) => [name, "test-value"])));
+        try { if (createSdkModel(provider, model, env) === null) failures.push(`${provider} (${info.npm}): no model`); }
+        catch (cause) { failures.push(`${provider} (${info.npm}): ${(cause as Error).message}`); }
+    }
+    assert.deepEqual(failures, []);
+});

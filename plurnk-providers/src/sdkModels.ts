@@ -7,6 +7,7 @@ import { createGroq } from "@ai-sdk/groq";
 import { createMistral } from "@ai-sdk/mistral";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createTogetherAI } from "@ai-sdk/togetherai";
+import { createXai } from "@ai-sdk/xai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
     isProviderCredentialName,
@@ -349,6 +350,11 @@ const modelFromSdk = (
         case "@ai-sdk/togetherai":
             return {
                 languageModel: createTogetherAI({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).languageModel(model),
+                catalog,
+            };
+        case "@ai-sdk/xai":
+            return {
+                languageModel: createXai({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).languageModel(model),
                 catalog,
             };
         case "@ai-sdk/deepinfra":
