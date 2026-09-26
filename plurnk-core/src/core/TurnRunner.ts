@@ -19,6 +19,7 @@ const comparePosition = (
 ): number => a.line - b.line || a.column - b.column;
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, type BaseHandler } from "@plurnk/plurnk-mimetypes";
+import FabricatedLog from "./FabricatedLog.ts";
 import Meta, { type PluginAttributionContext } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
 import GitMembership from "./git-membership.ts";
@@ -1794,6 +1795,7 @@ export default class TurnRunner {
         let contentStatementCount = 0;
         let hasUnparsedTail = false;
         const parseNotices: Notice[] = [];
+        const fabrications: ParseErrorInfo[] = [];
         if (preParsedOps !== undefined) {
             ops.push(...preParsedOps);
             contentStatementCount = preParsedOps.length;
@@ -1817,6 +1819,12 @@ export default class TurnRunner {
                 // authored. Operation boundaries stay the parser's responsibility; foreign markup
                 // remains only at ops:// instead of being echoed into the log.
                 else if (item.kind === "text") {
+                    // {§fabricated-log-entry}: a log-entry heading in outside text rejects the attempt.
+                    const fabricated = FabricatedLog.find(item.content);
+                    if (fabricated !== null) {
+                        fabrications.push({ message: FabricatedLog.message(fabricated.heading), line: item.position.line + fabricated.line, column: 1, source: "harness" });
+                        continue;
+                    }
                     if (!KnownToxins.retains(item.content)) continue;
                     ops.push({
                         op: "NOTE", aside: null, target: null, metadata: null, lineMarker: null,
@@ -1858,6 +1866,7 @@ export default class TurnRunner {
                 parseErrors.push({ message: tail.reason, line: tail.from.line, column: tail.from.column, source: "grammar" });
             }
         }
+        parseErrors.unshift(...fabrications.slice(0, 1));
         // {§kill-conclusion}: response shape expresses completion, not reasoning-side NOTE capture.
         const finalResponse = TurnDisposition.requestsCompletion(ops)
             && !hasUnparsedTail && parseErrors.length === 0
@@ -1868,9 +1877,9 @@ export default class TurnRunner {
         ops.unshift(...notes);
         // {§unparsed-tail-boundary}: only a closed response operation can justify admitting a
         // lost boundary; outside text and reasoning NOTE do not supply that evidence.
-        const emissionValid = preParsedOps !== undefined
+        const emissionValid = fabrications.length === 0 && (preParsedOps !== undefined
             || emptyTurn
-            || contentStatementCount > 0;
+            || contentStatementCount > 0);
         const recoverableParseErrors = parseErrors
             .filter((error) => error.message !== PlurnkParser.NO_VALID_OPERATION)
             .toSorted(comparePosition);
