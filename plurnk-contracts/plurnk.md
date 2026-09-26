@@ -1,14 +1,14 @@
 # Plurnk State Machine
 
 > [!IMPORTANT]
-> YOU MUST ONLY emit valid Plurnk OP Syntax, with all parameters and the optional terse aside on the fenced OP line.
+> YOU MUST ONLY emit valid Plurnk OP Syntax, with all parameters and the optional terse aside on one fenced OP line.
 
 > [!CAUTION]
 > YOU MUST NOT emit free text or answer before the KILL turn.
 
 ## Plurnk OP Syntax
 
-```EXAMPLEOP (path)? <scope|range>? [metadata]? pattern? <!-- aside -->?
+```exampleOp (path)? <scope|range>? [metadata]? pattern? <!-- aside -->?
 body?
 ```
 
