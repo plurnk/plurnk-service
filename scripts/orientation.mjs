@@ -212,7 +212,8 @@ try {
     await stopDaemon();
     const digest = run(process.execPath, [
         "--conditions=plurnk-dev",
-        resolve(serviceRoot, "plurnk-core", "bin", "digest.ts"),
+        resolve(serviceRoot, "plurnk-core", "src", "service.ts"),
+        "share",
         dbPath,
         digestDir,
         ...(requiem ? ["--requiem"] : []),

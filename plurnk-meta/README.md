@@ -14,6 +14,4 @@ The plurnk metaproject layer, published — what the family shares that no singl
 
 **The teaching corpus**: authored policy, an optional Recap, the Plurnk skill entry, and built-in scheme references resolved from this installed package. Meta owns the source bytes and membership; core owns admission, resource composition, and projection. See [`CORPUS.md`](./CORPUS.md) and {§teaching-corpus}.
 
-[`DOGFOOD.md`](./DOGFOOD.md) defines the whole-product, outside-client acceptance gate for daily-driver and release readiness.
-
 Third-party plugin authors: your package is discovered under any scope through one string `plurnk.kind`, enumerated by these primitives, and gated before import by the operator's trust knob — no registration with us required. An admitted package may declare always-on `plurnk.attribution` tags and its loaded plugin object may decide per provider attempt whether to return additional tags from `attributions(context)` ({§plugin-attribution}). MIT.

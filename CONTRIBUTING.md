@@ -56,7 +56,7 @@ at most 80 characters; reference the issue when useful.
 | Configuration/startup | `npm run config:list`, then [`plurnk-core/INSTALL.md`](./plurnk-core/INSTALL.md); startup failure is authoritative for route-dependent credentials. |
 | Deterministic test failure | The reported workspace `test/intg/.tmp/`; each normal run replaces only its own prior evidence. |
 | Runtime state/telemetry | [`plurnk-core/README.md`](./plurnk-core/README.md) for database, digest, and OpenTelemetry surfaces. |
-| Candidate/model forensics | `candidate` prints its retained artifact directory; [`plurnk-meta/DOGFOOD.md`](./plurnk-meta/DOGFOOD.md) defines digest/reasoning/requiem evidence. |
+| Candidate/model forensics | `candidate` prints its retained artifact directory; `npm run share -- <plurnk.db> [folder]` writes any database's digest from a consistent copy ([`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md) {§share}). |
 | Published type resolution | Optional `npm run packages:types` (or `-- --only plurnk-contracts`): pinned ATTW 0.18.5 checks actual packed packages, invoking their normal prepack builds. |
 
 The type-resolution audit uses ATTW's `esm-only` profile and leaves its findings
@@ -80,6 +80,27 @@ systemd-run --user --scope -p MemoryMax=1G -p MemorySwapMax=0 \
 Choose a limit for the focused workload, not the entire machine. For binary
 equality, assert `actual.equals(expected)` rather than deep-diffing large
 Buffers; the byte comparison remains exact and failure diagnostics stay bounded.
+
+## Metaproject readiness
+
+`npm run readiness:metaproject -- --model <selector> [--requiem] [--preserve]` asks
+a model, through the outside client, to inspect an assembled open-project forest
+and deliver an evidence-bearing orientation report. It is expensive and runs only
+after the package, integration, live/demo, candidate and bench layers are healthy;
+it is not a release gate.
+
+- **Preconditions**, each a failure when missing, never a skip:
+  - `PLURNK_ACCEPTANCE_PROJECT_ROOT`, the assembled forest with its root `AGENTS.md`;
+  - `PLURNK_CLIENT_CHECKOUT`, the built outside client;
+  - a clean service checkout.
+- **Verdict** (`scripts/orientation-verdict.mjs`): the report must be terminal and
+  must have inspected the repository, including a READ. It must cover the service,
+  the contracts, the client and AG-UI, the repository topology, current work (or the
+  forge's unavailability) and its own gaps.
+- **Evidence**: each preserved run claims `benchmarks/run<N>-orientation/` with the
+  prompt, the client and service logs, `phases.json`, `verdict.json`, `plurnk.db`, and
+  its share in `digest/` (with the requiem under `--requiem`). A failing run is always
+  preserved.
 
 ## Release
 
