@@ -56,7 +56,8 @@ export default class Zip {
         end.writeUInt16LE(files.length, 10);
         end.writeUInt32LE(central.length, 12);
         end.writeUInt32LE(offset, 16);
-        writeFileSync(target, Buffer.concat([...parts, central, end]));
+        // wx: an existing archive is never overwritten.
+        writeFileSync(target, Buffer.concat([...parts, central, end]), { flag: "wx" });
     }
 
     static #files(folder: string): string[] {

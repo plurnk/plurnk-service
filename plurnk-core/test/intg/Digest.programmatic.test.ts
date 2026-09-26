@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -274,7 +274,7 @@ test("{§digest-programmatic-surface}: importing the public subpath performs no 
     }
 });
 
-test("{§digest-programmatic-surface}: selectors prune emitted evidence and each selected directory is recreated", async () => {
+test("{§digest-programmatic-surface}: selectors prune emitted evidence and each selection writes its own folder", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-digest-programmatic-"));
     const dbPath = join(dir, "plurnk.db");
     const db = await openMigrated(dbPath);
@@ -300,11 +300,8 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         selectors: { workerId?: number; workspaceId?: number },
     ): Promise<{ json: DigestJson; markdown: string; reasoning: string; files: string[] }> => {
         const digestDir = join(dir, name);
-        await mkdir(digestDir, { recursive: true });
-        await writeFile(join(digestDir, "packet999.user.md"), "stale packet");
         Digest.run({ dbPath, digestDir, ...selectors });
         const files = (await readdir(digestDir)).toSorted();
-        assert.ok(!files.includes("packet999.user.md"), `${name} directory was wiped before rendering`);
         return {
             json: JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as DigestJson,
             markdown: await readFile(join(digestDir, "digest.md"), "utf8"),
@@ -317,8 +314,8 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         const worker = await run("worker", { workerId: a1.workerId });
         // {§digest-programmatic-surface}: a turn line names its own artifact and the model's own
         // count, so a reader never subtracts harness turns or counts packet files by hand.
-        assert.match(worker.markdown, /^T\d+ \(model turn \d+ · packet\d{3}\): producer=model/m);
-        for (const stem of worker.markdown.match(/packet\d{3}/gu) ?? []) {
+        assert.match(worker.markdown, /^T\d+ \(model turn \d+ · worker-a1-1-1\): producer=model/m);
+        for (const stem of worker.markdown.match(/worker-[a-z0-9]+-\d+-\d+/gu) ?? []) {
             assert.ok(worker.files.some((file) => file.startsWith(`${stem}.`)), `${stem} names a written artifact`);
         }
         assert.deepEqual(worker.json.workspaces.map(({ id }) => id), [workspaceA]);
@@ -350,8 +347,8 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.match(worker.reasoning, /reason-a1/);
         assert.doesNotMatch(`${JSON.stringify(worker.json)}${worker.markdown}${worker.reasoning}`, /(?:prompt|reason)-(?:a2|b1)/);
         assert.doesNotMatch(worker.markdown, /(?:\$0\.002000|\$0\.003000|Op mix:\s+(?:EDIT|COPY)=1)/);
-        assert.ok(worker.files.includes("packet000.user.md"));
-        assert.ok(!worker.files.some((file) => file.startsWith("packet001")));
+        assert.ok(worker.files.includes("worker-a1-1-1.user.md"));
+        assert.ok(!worker.files.some((file) => file.startsWith("worker-a2")));
 
         const workspace = await run("workspace", { workspaceId: workspaceA });
         assert.deepEqual(workspace.json.workspaces.map(({ id }) => id), [workspaceA]);
@@ -385,9 +382,9 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.match(workspace.markdown, /Cost:\s+\$0\.002 \(charged\)/);
         assert.doesNotMatch(`${JSON.stringify(workspace.json)}${workspace.markdown}${workspace.reasoning}`, /(?:prompt|reason)-b1/);
         assert.doesNotMatch(workspace.markdown, /(?:\$0\.003000|Op mix:\s+COPY=1)/);
-        assert.ok(workspace.files.some((file) => file.startsWith("packet000")));
-        assert.ok(workspace.files.some((file) => file.startsWith("packet001")));
-        assert.ok(!workspace.files.some((file) => file.startsWith("packet002")));
+        assert.ok(workspace.files.some((file) => file.startsWith("worker-a1-1-1.")));
+        assert.ok(workspace.files.some((file) => file.startsWith("worker-a2-1-1.")));
+        assert.ok(!workspace.files.some((file) => file.startsWith("worker-b1-")));
 
         const intersection = await run("intersection", { workerId: b1.workerId, workspaceId: workspaceA });
         assert.deepEqual(intersection.json.workspaces, []);

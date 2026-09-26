@@ -7,7 +7,7 @@ import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
 import Digest from "../../src/digest/Digest.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, digestStems } from "./_helpers.ts";
 
 test("{§provider-wire-emission}: blank emissions retain their wire channels through persistence and digest", async () => {
     const dir = await mkdtemp(join(await testArtifactDirectory("core"), "wire-evidence-"));
@@ -44,8 +44,9 @@ test("{§provider-wire-emission}: blank emissions retain their wire channels thr
     }
     assert.equal(requests, 1);
     Digest.run({ dbPath, digestDir });
-    const raw = JSON.parse(await readFile(join(digestDir, "packet001.assistantRaw.json"), "utf8"));
-    assert.equal(await readFile(join(digestDir, "packet001.assistant.md"), "utf8"), "");
+    const stems = await digestStems(digestDir);
+    const raw = JSON.parse(await readFile(join(digestDir, `${stems[1]}.assistantRaw.json`), "utf8"));
+    assert.equal(await readFile(join(digestDir, `${stems[1]}.assistant.md`), "utf8"), "");
     assert.equal(raw.rawBody, undefined);
     assert.deepEqual(raw.wire.toolCalls, [
         { index: 0, id: "call-1", type: "function", name: "READ", arguments: '{"path":"example.txt"}' },

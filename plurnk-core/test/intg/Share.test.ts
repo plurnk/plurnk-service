@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,7 +17,7 @@ test("{§share} {§share-scope}: a scoped share holds one workspace, beside its 
     await insertLoop(db, await insertWorker(db, kept, null, "alice"), 1, "kept task");
     await insertLoop(db, await insertWorker(db, other, null, "bob"), 1, "other task");
     await db.close();
-    const before = statSync(dbPath).mtimeMs;
+    const before = readFileSync(dbPath);
 
     const folder = join(root, "shares", "share_this_session_here");
     const shared = await Share.write({ dbPath, folder, workspaceId: kept });
@@ -27,15 +27,15 @@ test("{§share} {§share-scope}: a scoped share holds one workspace, beside its 
     assert.ok(readFileSync(`${folder}.zip`).subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])), "the zip is a ZIP archive");
     const digest = JSON.parse(readFileSync(join(folder, "digest.json"), "utf8")) as { workspaces: Array<{ name: string }> };
     assert.deepEqual(digest.workspaces.map(({ name }) => name), ["kept"]);
-    assert.equal(statSync(dbPath).mtimeMs, before, "the database itself is only read");
+    assert.ok(readFileSync(dbPath).equals(before), "the database itself is only read");
 });
 
-test("{§share}: a folder that overlaps the database is refused before anything is written", async (t) => {
+test("{§share}: a folder that already holds files, the database's own included, is refused and never cleared", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-share-overlap-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const dbPath = join(root, "plurnk.db");
     await (await openMigrated(dbPath)).close();
-    await assert.rejects(Share.write({ dbPath, folder: root }), { message: `digest: output directory ${root} overlaps input database ${dbPath}` });
+    await assert.rejects(Share.write({ dbPath, folder: root }), { message: `digest: ${root} already exists and is not an empty folder; remove it first` });
     assert.ok(existsSync(dbPath));
     assert.ok(!existsSync(`${root}.zip`));
 });

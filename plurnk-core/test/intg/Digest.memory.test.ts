@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, testDeferredProviderCapacity } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, testDeferredProviderCapacity, digestStems } from "./_helpers.ts";
 import Turn from "../../src/core/Turn.ts";
 import StoredPacket from "../../src/core/StoredPacket.ts";
 
@@ -59,11 +59,12 @@ test("{§digest-forensic-fidelity}: exports repeated large wire evidence under a
         "--max-old-space-size=192", "--conditions=plurnk-dev", "src/service.ts", "share", dbPath, digestDir,
     ], { cwd: resolve(import.meta.dirname, "../.."), timeout: 20000, maxBuffer: 1024 * 1024 });
     const digest = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8"));
+    const stems = await digestStems(digestDir);
     assert.equal(digest.turns.length, count);
     assert.equal(digest.model_calls.length, count);
     assert.equal(digest.turn_attempts.length, count);
     for (let index = 0; index < count; index++) {
-        const stem = `packet${String(index).padStart(3, "0")}`;
+        const stem = stems[index]!;
         assert.equal(await readFile(join(digestDir, `${stem}.assistant.md`), "utf8"), `response-${index}`);
         assert.equal(JSON.parse(await readFile(join(digestDir, `${stem}.assistantRaw.json`), "utf8")).evidence, payload);
         assert.equal(digest.model_calls[index].response.assistantRaw.evidence, payload);

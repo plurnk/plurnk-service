@@ -11,7 +11,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Digest from "../../src/digest/Digest.ts";
 import { ProviderAccountingIntegrityError } from "../../src/core/ModelCall.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, logEntries, packetSection, seedEntryWithChannel, testProviderCapacity } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, logEntries, packetSection, seedEntryWithChannel, testProviderCapacity, digestStems } from "./_helpers.ts";
 
 const requestUsage = (
     inputTokens: number,
@@ -1235,16 +1235,17 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
 
     try {
         Digest.run({ dbPath, digestDir });
+        const stems = await digestStems(digestDir);
         assert.equal(
-            await readFile(join(digestDir, "packet001.attempt001.rejected.assistant.md"), "utf8"),
+            await readFile(join(digestDir, `${stems[1]}.attempt001.rejected.assistant.md`), "utf8"),
             rejected,
         );
         const rejectedResponse = JSON.parse(
-            await readFile(join(digestDir, "packet001.attempt001.rejected.response.json"), "utf8"),
+            await readFile(join(digestDir, `${stems[1]}.attempt001.rejected.response.json`), "utf8"),
         ) as { assistant?: { content?: string } };
         assert.equal(rejectedResponse.assistant?.content, rejected);
         const parseErrors = JSON.parse(
-            await readFile(join(digestDir, "packet001.attempt001.rejected.parse-errors.json"), "utf8"),
+            await readFile(join(digestDir, `${stems[1]}.attempt001.rejected.parse-errors.json`), "utf8"),
         ) as Array<{ line?: number; column?: number; source?: string }>;
         assert.deepEqual(
             { line: parseErrors[0]?.line, column: parseErrors[0]?.column, source: parseErrors[0]?.source },
@@ -1252,7 +1253,7 @@ test("digest preserves rejected emissions as forensic artifacts without putting 
             "the persisted digest evidence retains the boundary's coordinates",
         );
         assert.equal(
-            await readFile(join(digestDir, "packet001.assistant.md"), "utf8"),
+            await readFile(join(digestDir, `${stems[1]}.assistant.md`), "utf8"),
             "\n````KILL\naccepted bytes\n````\n",
         );
         const markdown = await readFile(join(digestDir, "digest.md"), "utf8");

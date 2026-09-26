@@ -2,7 +2,7 @@ import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // Packet → wire markdown projection. Single source of truth for how the
 // Packet's ordered list of sections renders to ChatMessage.content
 // strings the LLM receives. Engine imports this for the wire payload; the
-// digest tool imports it to write byte-identical packetNNN.{system,user}.md
+// digest tool imports it to write byte-identical <stem>.{system,user}.md
 // files. No second implementation, no drift.
 //
 // Format and omission rules are owned by {§packet-markdown}. Section producers
@@ -289,7 +289,7 @@ export default class PacketWire {
 
     // Project a packet to the request ChatMessage[] for the wire: one message
     // per slot. Engine calls this directly; the result is what provider.generate
-    // receives. The digest calls renderSlot for byte-identical packetNNN files.
+    // receives. The digest calls renderSlot for byte-identical packet files.
     static packetToWireMessages(packet: Packet): Array<{ role: string; content: string }> {
         const sections = packet.sections ?? [];
         return [

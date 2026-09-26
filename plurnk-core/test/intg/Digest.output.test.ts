@@ -60,11 +60,11 @@ for (const kind of ["parent", "ancestor", "database", "input-alias", "output-ali
         assert.ok((await readFile(original)).equals(before), "digest must preserve its input database bytes");
         assert.equal(await readFile(join(directory, "witness.txt"), "utf8"), "preserve source evidence");
         assert.ok(failure instanceof Error);
-        assert.equal(failure.message, `digest: output directory ${resolve(digestDir)} overlaps input database ${resolve(dbPath)}`);
+        assert.equal(failure.message, `digest: ${resolve(digestDir)} already exists and is not an empty folder; remove it first`);
     });
 }
 
-test("{§digest-programmatic-surface}: a sibling with the database's filename prefix remains valid and refreshable", async (t) => {
+test("{§digest-programmatic-surface}: a sibling with the database's filename prefix is valid; an occupied folder is refused, never cleared", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-digest-sibling-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const dbPath = join(root, "evidence.db");
@@ -72,10 +72,12 @@ test("{§digest-programmatic-surface}: a sibling with the database's filename pr
     await db.close();
     const digestDir = join(root, "evidence");
     await mkdir(digestDir);
-    await writeFile(join(digestDir, "packet999.user.md"), "stale");
+    await writeFile(join(digestDir, "stale.md"), "stale");
+    assert.throws(() => Digest.run({ dbPath, digestDir }), { message: `digest: ${digestDir} already exists and is not an empty folder; remove it first` });
+    assert.equal(await readFile(join(digestDir, "stale.md"), "utf8"), "stale", "an occupied folder is never cleared");
+    await rm(join(digestDir, "stale.md"));
     Digest.run({ dbPath, digestDir });
     assert.equal(existsSync(dbPath), true);
-    assert.equal(existsSync(join(digestDir, "packet999.user.md")), false);
     assert.deepEqual(JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")).workspaces, []);
     Digest.run({ dbPath, digestDir: join(digestDir, "nested") });
     assert.equal(existsSync(join(digestDir, "nested", "digest.md")), true);
@@ -100,7 +102,7 @@ for (const entrypoint of ["CLI", "built package"]) {
             assert.ok(cause instanceof Error);
             const failure = cause as Error & { code: number; stderr: string };
             assert.equal(failure.code, 1);
-            assert.ok(failure.stderr.includes(`digest: output directory ${root} overlaps input database ${dbPath}`));
+            assert.ok(failure.stderr.includes(`digest: ${root} already exists and is not an empty folder; remove it first`));
             return true;
         });
         assert.equal(existsSync(dbPath), true);
@@ -131,6 +133,6 @@ for (const name of ["requiem.json", "requiem.md"]) {
         catch (cause) { failure = cause; }
         assert.ok((await readFile(dbPath)).equals(before), "requiem must preserve its input database bytes");
         assert.ok(failure instanceof Error);
-        assert.equal(failure.message, `digest: output directory ${root} overlaps input database ${dbPath}`);
+        assert.equal(failure.message, `digest: ${dbPath} already exists; remove it first`);
     });
 }

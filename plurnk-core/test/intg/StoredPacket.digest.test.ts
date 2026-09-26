@@ -10,7 +10,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Turn from "../../src/core/Turn.ts";
 import StoredPacket from "../../src/core/StoredPacket.ts";
-import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated, digestStems } from "./_helpers.ts";
 import { urlPath } from "./_dsl.ts";
 
 test("{§digest-forensic-fidelity}: unknown actionless rows remain evidence without hiding turn programs", async () => {
@@ -46,7 +46,8 @@ test("{§digest-forensic-fidelity}: unknown actionless rows remain evidence with
     }
     try {
         Digest.run({ dbPath, digestDir });
-        assert.equal(await readFile(join(digestDir, "packet000.assistant.md"), "utf8"), source);
+        const stems = await digestStems(digestDir);
+        assert.equal(await readFile(join(digestDir, `${stems[0]}.assistant.md`), "utf8"), source);
         const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8"));
         assert.equal(json.log_entries.length, 3, "no source row is discarded or rewritten");
         const report = await readFile(join(digestDir, "digest.md"), "utf8");
@@ -125,9 +126,10 @@ test("{§log-history-projection}: digest retains programs after all source READ 
 
     try {
         Digest.run({ dbPath, digestDir });
+        const stems = await digestStems(digestDir);
         for (const [index, source] of sources.entries()) {
             assert.equal(
-                await readFile(join(digestDir, `packet${String(index).padStart(3, "0")}.assistant.md`), "utf8"),
+                await readFile(join(digestDir, `${stems[index]}.assistant.md`), "utf8"),
                 source,
                 "broad curation cannot erase any admitted turn artifact",
             );
@@ -211,25 +213,22 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
 
     try {
         Digest.run({ dbPath, digestDir });
+        const stems = await digestStems(digestDir);
         assert.equal(
-            await readFile(join(digestDir, "packet000.assistant.md"), "utf8"),
+            await readFile(join(digestDir, `${stems[0]}.assistant.md`), "utf8"),
             initializationSource,
             "the first durable turn projects its exact persisted turnOps",
         );
-        await assert.rejects(() => access(join(digestDir, "packet000.system.md")), { code: "ENOENT" });
-        await assert.rejects(() => access(join(digestDir, "packet000.user.md")), { code: "ENOENT" });
-        await assert.rejects(() => access(join(digestDir, "packet000.assistantRaw.json")), { code: "ENOENT" });
+        await assert.rejects(() => access(join(digestDir, `${stems[0]}.system.md`)), { code: "ENOENT" });
+        await assert.rejects(() => access(join(digestDir, `${stems[0]}.user.md`)), { code: "ENOENT" });
+        await assert.rejects(() => access(join(digestDir, `${stems[0]}.assistantRaw.json`)), { code: "ENOENT" });
 
-        assert.equal(await readFile(join(digestDir, "packet001.assistant.md"), "utf8"), inferenceSource);
-        await access(join(digestDir, "packet001.system.md"));
-        await access(join(digestDir, "packet001.user.md"));
-        await access(join(digestDir, "packet001.assistantRaw.json"));
+        assert.equal(await readFile(join(digestDir, `${stems[1]}.assistant.md`), "utf8"), inferenceSource);
+        await access(join(digestDir, `${stems[1]}.system.md`));
+        await access(join(digestDir, `${stems[1]}.user.md`));
+        await access(join(digestDir, `${stems[1]}.assistantRaw.json`));
 
-        await assert.rejects(() => access(join(digestDir, "packet002.assistant.md")), { code: "ENOENT" });
-        await assert.rejects(() => access(join(digestDir, "packet002.system.md")), { code: "ENOENT" });
-        await assert.rejects(() => access(join(digestDir, "packet002.user.md")), { code: "ENOENT" });
-        await assert.rejects(() => access(join(digestDir, "packet002.assistantRaw.json")), { code: "ENOENT" });
-        await assert.rejects(() => access(join(digestDir, "packet003.assistant.md")), { code: "ENOENT" });
+        assert.equal(stems.length, 2, "only the two durable turns wrote artifacts");
     } finally {
         await rm(dir, { recursive: true, force: true });
     }
@@ -260,13 +259,14 @@ test("Digest: operation and request-only turns remain visibly distinct", async (
 
     try {
         Digest.run({ dbPath, digestDir });
-        await assert.rejects(() => access(join(digestDir, "packet000.packet.md")));
+        const stems = await digestStems(digestDir);
+        await assert.rejects(() => access(join(digestDir, `${stems[0]}.packet.md`)));
         assert.match(
-            await readFile(join(digestDir, "packet000.response.md"), "utf8"),
+            await readFile(join(digestDir, `${stems[0]}.response.md`), "utf8"),
             /No provider response was admitted/,
         );
         await assert.rejects(
-            () => access(join(digestDir, "packet001.response.md")),
+            () => access(join(digestDir, `${stems[1]}.response.md`)),
             { code: "ENOENT" },
             "source-less programmatic turns create no artifact ordinals",
         );
@@ -276,7 +276,7 @@ test("Digest: operation and request-only turns remain visibly distinct", async (
         assert.match(markdown, /T1: producer=client kind=operation status=200/);
         assert.doesNotMatch(markdown, /T1:.*(?:model=|input=|cost=)/);
         assert.match(markdown, /T2: producer=plugin kind=operation status=200/);
-        assert.match(markdown, /T3 \(model turn 1 · packet\d{3}\):.*\n  ↳ emission: \(none admitted\)/);
+        assert.match(markdown, /T3 \(model turn 1 · [A-Za-z0-9_.-]+-\d+-\d+\):.*\n  ↳ emission: \(none admitted\)/);
     } finally {
         await rm(dir, { recursive: true, force: true });
     }
@@ -337,24 +337,25 @@ test("{§digest-forensic-fidelity}: one malformed historical packet remains exac
 
     try {
         Digest.run({ dbPath, digestDir });
+        const stems = await digestStems(digestDir);
         assert.equal(
-            await readFile(join(digestDir, "packet000.packet.raw.txt"), "utf8"),
+            await readFile(join(digestDir, `${stems[0]}.packet.raw.txt`), "utf8"),
             malformedPacket,
             "the diagnostic artifact preserves the stored text exactly",
         );
-        const diagnostic = JSON.parse(await readFile(join(digestDir, "packet000.packet.invalid.json"), "utf8"));
+        const diagnostic = JSON.parse(await readFile(join(digestDir, `${stems[0]}.packet.invalid.json`), "utf8"));
         assert.equal(diagnostic.turnId, malformedTurnId);
         assert.match(diagnostic.error.message, new RegExp(`digest turn ${malformedTurnId} has an invalid packet shape`));
         assert.match(diagnostic.error.cause.message, /attributions\[0\] must be a non-empty string/);
 
-        await access(join(digestDir, "packet001.system.md"));
-        assert.equal(await readFile(join(digestDir, "packet001.user.md"), "utf8"), "later");
-        await access(join(digestDir, "packet001.response.md"));
+        await access(join(digestDir, `${stems[1]}.system.md`));
+        assert.equal(await readFile(join(digestDir, `${stems[1]}.user.md`), "utf8"), "later");
+        await access(join(digestDir, `${stems[1]}.response.md`));
 
         const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
         assert.match(markdown, /Stored packet failures: 1/);
-        assert.match(markdown, /T1 \(model turn 1 · packet\d{3}\):.*packet=invalid/);
-        assert.match(markdown, /T2 \(model turn 2 · packet\d{3}\):.*status=502/);
+        assert.match(markdown, /T1 \(model turn 1 · [A-Za-z0-9_.-]+-\d+-\d+\):.*packet=invalid/);
+        assert.match(markdown, /T2 \(model turn 2 · [A-Za-z0-9_.-]+-\d+-\d+\):.*status=502/);
 
         const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8"));
         assert.equal(json.turns.length, 2);

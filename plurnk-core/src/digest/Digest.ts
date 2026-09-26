@@ -11,19 +11,19 @@
 //   test/digest/reasoning.md        Every provider attempt's reasoning and admission result
 //   test/digest/requiem.md          Out-of-band model audit
 //   test/digest/requiem.json        Exact audit messages, responses, usage, and cost
-//   test/digest/packetNNN.system.md       BYTE-FOR-BYTE the system message sent
+//   <digest>/<stem>.system.md       BYTE-FOR-BYTE the system message sent
 //                                         when the turn involved a provider.
-//   test/digest/packetNNN.user.md         User text slot; digest.json retains native attachment descriptors.
-//   test/digest/packetNNN.response.md      Request-only note when no response was admitted.
-//   test/digest/packetNNN.assistant.md     Exact persisted turnOps, regardless of producer.
-//   test/digest/packetNNN.assistantRaw.json  Opaque provider response.
-//   test/digest/packetNNN.packet.raw.txt      Exact malformed stored packet text.
-//   test/digest/packetNNN.packet.invalid.json Validation failure for that packet.
-//   test/digest/packetNNN.attemptNNN.rejected.assistant.md
+//   <digest>/<stem>.user.md         User text slot; digest.json retains native attachment descriptors.
+//   <digest>/<stem>.response.md      Request-only note when no response was admitted.
+//   <digest>/<stem>.assistant.md     Exact persisted turnOps, regardless of producer.
+//   <digest>/<stem>.assistantRaw.json  Opaque provider response.
+//   <digest>/<stem>.packet.raw.txt      Exact malformed stored packet text.
+//   <digest>/<stem>.packet.invalid.json Validation failure for that packet.
+//   <digest>/<stem>.attemptNNN.rejected.assistant.md
 //                                          Rejected provider emission.
-//   test/digest/packetNNN.attemptNNN.rejected.response.json
+//   <digest>/<stem>.attemptNNN.rejected.response.json
 //                                          Full rejected provider response.
-//   test/digest/packetNNN.attemptNNN.rejected.parse-errors.json
+//   <digest>/<stem>.attemptNNN.rejected.parse-errors.json
 //                                          Admission errors for that attempt.
 //
 // Provider request slots are byte-identical to what Engine emits because both
@@ -32,7 +32,7 @@
 // SQL lives in the co-located digest.sql; opened the sqlrite way (SqlRiteSync,
 // the sync CLI/script facade). Each PREP block is read through its own accessor.
 
-import { closeSync, mkdirSync, openSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { observedSync } from "../observe/spans.ts";
 import type SqlRiteSync from "@possumtech/sqlrite/sync";
@@ -92,6 +92,10 @@ export default class Digest {
         // {§digest-programmatic-surface}: digest.sql is packaged beside this module
         // (src/digest → dist/digest via copy-sql), including in an installed package.
         const { dbPath, digestDir } = digestPaths(opts);
+        // {§share}: the digest never deletes; a caller reusing a folder removes it first.
+        if (existsSync(digestDir) && (!statSync(digestDir).isDirectory() || readdirSync(digestDir).length > 0)) {
+            throw new Error(`digest: ${digestDir} already exists and is not an empty folder; remove it first`);
+        }
         readDigestDb(dbPath, (db) => Digest.#write(db, dbPath, digestDir, opts));
     }
 
@@ -168,7 +172,6 @@ export default class Digest {
 
         // Wipe-then-recreate the digest dir so each worker is a clean snapshot —
         // orphaned packet*.* files from a prior digest don't linger.
-        rmSync(digestDir, { recursive: true, force: true });
         mkdirSync(digestDir, { recursive: true });
 
         const workersByWorkspace = new Map<number, WorkerRow[]>();

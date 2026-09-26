@@ -27,8 +27,8 @@ Where things are, for an agent that has to act before it has read everything:
   `npm run candidate` at the root (see README).
 - **Every live or demo worker leaves evidence** under `~/benchmarks/<label>-XXXXXX/`:
   `plurnk.db`, `workspace`, and `digest/` with `digest.md` (loops, turns, ops,
-  errors, cost), `packetNNN.assistant.md` (the model's raw emissions),
-  `packetNNN.user.md` and `packetNNN.system.md` (what it saw). Read the digest;
+  errors, cost), `<worker>-<loop>-<turn>.assistant.md` (the model's raw emissions),
+  `.user.md` and `.system.md` (what it saw), named by log coordinate. Read the digest;
   the database is evidence, never the diagnostic interface. For any other database,
   `npm run share -- <plurnk.db> [folder]` writes the same folder plus `<folder>.zip`
   from a consistent copy it takes itself ({§share}); a live database is safe to name.

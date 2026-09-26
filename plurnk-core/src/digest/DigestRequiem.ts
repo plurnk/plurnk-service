@@ -1,6 +1,7 @@
 // The requiem ({§digest-requiem}): an out-of-band forensic interview of a completed worker history.
 import {
     closeSync,
+    existsSync,
     fsyncSync,
     mkdirSync,
     openSync,
@@ -95,6 +96,10 @@ export default class DigestRequiem {
     // historical evidence and a required witness provider.
     static async interview(opts: DigestOptions & { signal?: AbortSignal; provider?: Provider }): Promise<{ path: string; reportPath: string; workers: number }> {
         const { dbPath, digestDir } = digestPaths(opts);
+        // {§share}: a writer never deletes; an existing interview is removed by its caller first.
+        for (const name of ["requiem.json", "requiem.md"]) {
+            if (existsSync(join(digestDir, name))) throw new Error(`digest: ${join(digestDir, name)} already exists; remove it first`);
+        }
         mkdirSync(digestDir, { recursive: true });
 
         const provider = opts.provider ?? await ProviderInstantiate.loadActiveProvider();

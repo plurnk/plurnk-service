@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
 import Digest from "../digest/Digest.ts";
-import { digestPaths } from "../digest/digest-paths.ts";
 import HostPaths from "../core/HostPaths.ts";
 import Zip from "./Zip.ts";
 
@@ -30,9 +29,9 @@ export default class Share {
     static async write({ dbPath, folder, workspaceId, requiem = false }: ShareOptions): Promise<{ folder: string; zip: string }> {
         const source = resolve(dbPath);
         if (!existsSync(source)) throw new Error(`share: no database at ${source}`);
-        // The digest replaces its output folder, and it will read a copy elsewhere: refuse a folder that
-        // overlaps the real database before anything is copied or written.
-        const target = digestPaths({ dbPath: source, digestDir: folder }).digestDir;
+        const target = resolve(folder);
+        const zip = `${target}.zip`;
+        if (existsSync(zip)) throw new Error(`share: ${zip} already exists; remove it first`);
         const scratch = mkdtempSync(join(tmpdir(), "plurnk-share-"));
         try {
             const copy = join(scratch, "plurnk.db");
@@ -46,7 +45,6 @@ export default class Share {
         } finally {
             rmSync(scratch, { recursive: true, force: true });
         }
-        const zip = `${target}.zip`;
         Zip.writeFolder(target, zip);
         return { folder: target, zip };
     }

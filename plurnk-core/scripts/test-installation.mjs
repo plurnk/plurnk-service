@@ -373,6 +373,7 @@ execFileSync(process.execPath, ["--input-type=module", "--eval", packedDigestPro
     encoding: "utf8",
 });
 const packedDigest = JSON.parse(readFileSync(resolve(packedDigestDir, "digest.json"), "utf8"));
+const packedStem = packedDigest.turns[0]?.artifact;
 ok(
     packedDigest.workspaces.some(({ name }) => name === "packed-digest-workspace")
         && packedDigest.workers.some(({ name }) => name === "packed-digest-worker")
@@ -381,10 +382,10 @@ ok(
     "the packed digest subpath resolves its SQL and writes selected forensic artifacts",
 );
 ok(
-    readFileSync(resolve(packedDigestDir, "packet000.assistant.md"), "utf8") === packedTurnOps
-        && !existsSync(resolve(packedDigestDir, "packet000.system.md"))
-        && !existsSync(resolve(packedDigestDir, "packet000.user.md"))
-        && !existsSync(resolve(packedDigestDir, "packet000.assistantRaw.json")),
+    readFileSync(resolve(packedDigestDir, `${packedStem}.assistant.md`), "utf8") === packedTurnOps
+        && !existsSync(resolve(packedDigestDir, `${packedStem}.system.md`))
+        && !existsSync(resolve(packedDigestDir, `${packedStem}.user.md`))
+        && !existsSync(resolve(packedDigestDir, `${packedStem}.assistantRaw.json`)),
     "the packed digest projects exact source-only turnOps without fabricated provider artifacts",
 );
 

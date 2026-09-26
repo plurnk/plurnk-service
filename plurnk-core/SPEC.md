@@ -1245,7 +1245,7 @@ optional, with no omission warning or invented operation ({§turn-shape}).
 
 §safe-uri-target-groups After source and authored-command admission, Core tolerates one target group on READ or KILL only when splitting its raw target at top-level comma or whitespace separators produces at least two members and every member independently parses as an explicit `scheme://` URI. Request-metadata blocks are opaque to this split. Each member becomes one ordinary statement with an independent dispatch outcome and log row, in authored member order at that operation's position under {§op-execution-order}. Otherwise the target remains exactly singular, including local filenames containing spaces or commas. The stored `turnOps` and authored command count remain unexpanded, and no other operation admits target groups.
 
-Core retries a rejected emission against the exact same packet beneath the same engine turn, up to `PLURNK_SERVICE_EMISSION_ATTEMPTS`. Rejected bytes never dispatch or reach the engine strike rail. Before each `generate`, Core opens one durable logical `inference_calls` row with its `model_calls` specialization and emission-specific `turn_attempts` admission row. A call that ends without response evidence leaves that admission row unclassified (`accepted IS NULL`) and does not consume the emission-attempt ceiling. Beneath the logical call, every provider observer invocation opens one cardinal `provider_requests` occurrence immediately before physical I/O and settles it as response or error. Adapter retries and capacity failover append requests in issue order; a response-less failure therefore remains an accounted occurrence rather than disappearing. Normalized response evidence is durable before parser classification and does not duplicate the separately owned accounting. The accepted exchange alone extends `turns.packet` with response evidence; every physical request remains in turn and loop accounting, while the context gauge reads the latest settled emission request on the latest turn. Digest exposes rejected response evidence as `packetNNN.attemptNNN.rejected.*` and every physical request in its machine-readable ledger.
+Core retries a rejected emission against the exact same packet beneath the same engine turn, up to `PLURNK_SERVICE_EMISSION_ATTEMPTS`. Rejected bytes never dispatch or reach the engine strike rail. Before each `generate`, Core opens one durable logical `inference_calls` row with its `model_calls` specialization and emission-specific `turn_attempts` admission row. A call that ends without response evidence leaves that admission row unclassified (`accepted IS NULL`) and does not consume the emission-attempt ceiling. Beneath the logical call, every provider observer invocation opens one cardinal `provider_requests` occurrence immediately before physical I/O and settles it as response or error. Adapter retries and capacity failover append requests in issue order; a response-less failure therefore remains an accounted occurrence rather than disappearing. Normalized response evidence is durable before parser classification and does not duplicate the separately owned accounting. The accepted exchange alone extends `turns.packet` with response evidence; every physical request remains in turn and loop accounting, while the context gauge reads the latest settled emission request on the latest turn. Digest exposes rejected response evidence as `<stem>.attemptNNN.rejected.*` and every physical request in its machine-readable ledger.
 
 When the loop continues after exhaustion under {§invalid-emission-attempts}, the next ordinary turn's packet projects the latest rejected response visibly from a durably body-suppressed emission-attempt item under {§rejected-emission-entry} and carries one transient `invalid_emission` Notice: `Response rejected before dispatch; no operations were performed.` followed by `Parser: <the latest attempt's first diagnostic>` with its `content-offset` position — the model sees why, at which line, against its own projected text. The Notice states only observed admission facts; it does not classify the response as unrecoverable, infer why generation ended, or prescribe intent beyond the parser-owned diagnostic. Attempt count and rail state never become model-facing. The recovery turn has its own honestly stored packet and its configured private same-packet attempts. The packet-local projection never changes the row's curation state, so no later packet repeats that malformed body unless the model explicitly READs its exact address. Admission clears the recovery projection; another exhaustion replaces it with the latest rejected response if the loop continues.
 
@@ -4791,23 +4791,30 @@ turn receives a note instead of a fabricated response.
 §digest-turn-artifact-identity **Digest packet artifacts project durable turns.**
 After selectors are applied, digest retains every turn with exact program source, a
 valid stored provider request, or malformed stored packet evidence; orders those
-turns by durable chronology; and names them contiguously from `packet000`. The
+turns by durable chronology; and names each by its log coordinate ({§share-packet-names}). The
 producer does not affect projection.
+
+§share-packet-names **Packet artifacts carry the coordinate the log uses.** A turn's files are named
+`<worker>-<loop>-<turn>`, the worker's name and the loop and turn sequences that `log:///<loop>/<turn>/…`
+addresses: the model's first turn in its first loop is `<worker>-1-2`, because the initialization
+survey is turn 1 and writes no packet. A digest spanning several workspaces nests each workspace's
+files in a folder named for it. `digest.json` records each turn's stem as `artifact`, so no
+consumer reconstructs a name. A name that cannot be a file name, or two turns sharing one, fails.
 
 | Artifact | Present when | Authority |
 |----------|--------------|-----------|
-| `packetNNN.assistant.md` | The turn has an `ops` source | Exact `turn_sources.content`, independent of log rows |
-| `packetNNN.system.md`, `packetNNN.user.md` | The turn stored a provider request | Stored text sections projected through `PacketWire`; native parts are not Markdown |
+| `<stem>.assistant.md` | The turn has an `ops` source | Exact `turn_sources.content`, independent of log rows |
+| `<stem>.system.md`, `<stem>.user.md` | The turn stored a provider request | Stored text sections projected through `PacketWire`; native parts are not Markdown |
 | `digest.json` turn `attachments` | Every turn | Stored native attachment descriptors; `[]` means a request without attachments, `null` means no valid stored request. Selection is not proof of provider acceptance. |
-| `packetNNN.assistantRaw.json` | The request has an admitted provider response | Stored opaque provider response |
-| `packetNNN.response.md`, attempt artifacts | The request received no admitted response | Stored request and attempt state |
-| `packetNNN.packet.raw.txt` | The stored packet fails typed validation | Exact stored packet text |
-| `packetNNN.packet.invalid.json` | The stored packet fails typed validation | Turn identity and complete validation error chain |
+| `<stem>.assistantRaw.json` | The request has an admitted provider response | Stored opaque provider response |
+| `<stem>.response.md`, attempt artifacts | The request received no admitted response | Stored request and attempt state |
+| `<stem>.packet.raw.txt` | The stored packet fails typed validation | Exact stored packet text |
+| `<stem>.packet.invalid.json` | The stored packet fails typed validation | Turn identity and complete validation error chain |
 
 A source-backed turn without provider participation therefore produces only
 `assistant.md`; a request-only turn produces no fabricated assistant. A
 source-less programmatic turn with no provider request has no forensic payload
-to project and reserves no ordinal.
+to project and writes no files.
 
 The external tokenless draft and transformation boundary is owned by
 {§scheme-packet-transform}. Core alone extends each validated draft with its

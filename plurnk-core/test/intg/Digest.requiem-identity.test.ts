@@ -9,7 +9,7 @@ import type { ChatMessage, ProviderAccounting, ProviderRequestAccounting } from 
 import Digest from "../../src/digest/Digest.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertPacketTurn, testDeferredProviderCapacity } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertPacketTurn, testDeferredProviderCapacity, digestStems } from "./_helpers.ts";
 import type { DurablePacket } from "../../src/core/StoredPacket.ts";
 
 // A witness that records the identity of every generate() call the requiem makes.
@@ -176,8 +176,9 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
     });
     const digestDir = join(TMP_DIR, `requiem-out-${crypto.randomUUID()}`);
     Digest.run({ dbPath, digestDir });
+    const stems = await digestStems(digestDir);
     const durableAttempt = JSON.parse(readFileSync(
-        join(digestDir, "packet000.attempt001.rejected.response.json"),
+        join(digestDir, `${stems[0]}.attempt001.rejected.response.json`),
         "utf8",
     )) as { assistantRaw?: { rawBody?: unknown }; rawBody?: unknown };
     assert.deepEqual(durableAttempt.rawBody, { chunks: ["same", "body"] });

@@ -520,3 +520,9 @@ export const isArrivalRow = (row: { op?: unknown; origin?: unknown; attrs?: unkn
     const attrs = typeof row.attrs === "string" ? JSON.parse(row.attrs) as unknown : row.attrs;
     return attrs !== null && typeof attrs === "object" && (attrs as { kind?: unknown }).kind === "message";
 };
+
+// {§share-packet-names}: the packet artifact stems a digest wrote, in turn-id order, as its digest.json records them.
+export const digestStems = async (digestDir: string): Promise<string[]> => {
+    const { turns } = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as { turns: Array<{ id: number; artifact: string | null }> };
+    return turns.toSorted((a, b) => a.id - b.id).flatMap(({ artifact }) => artifact === null ? [] : [artifact]);
+};

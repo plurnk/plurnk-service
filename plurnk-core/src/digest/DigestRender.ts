@@ -1,7 +1,7 @@
 // Digest renderers ({§digest-programmatic-surface}): the markdown, JSON, reasoning, and packet
 // artifacts of one DigestModel, reading heavy evidence on demand through DigestEvidence.
-import { writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import PacketWire from "../core/packet-wire.ts";
 import StoredPacket from "../core/StoredPacket.ts";
 import { renderTarget } from "../core/plurnk-uri.ts";
@@ -497,18 +497,31 @@ export default class DigestRender {
 
     // Per-turn forensic files. turnOps is the source authority; PacketWire
     // reproduces provider request slots, and assistantRaw preserves provider bytes.
-    // The artifact stem each turn's packet files carry: one ordering, shared with the turn lines
-    // so a reader never counts files by hand.
+    // {§share-packet-names}: the stem each turn's packet files carry is its log coordinate, worker, loop and
+    // turn, as `log:///<loop>/<turn>/…` addresses it; a digest spanning workspaces nests one folder per
+    // workspace. Shared with the turn lines so a reader never counts files by hand.
     static #stemCache = new WeakMap<DigestModel, Map<number, string>>();
 
     static packetStems(m: DigestModel): Map<number, string> {
         const cached = DigestRender.#stemCache.get(m);
         if (cached !== undefined) return cached;
+        const nested = m.workspaces.length > 1;
+        const segment = (name: string, what: string): string => {
+            if (!/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/u.test(name)) throw new TypeError(`digest: ${what} name ${JSON.stringify(name)} cannot name a file`);
+            return name;
+        };
         const stems = new Map<number, string>();
-        m.turns
-            .filter((turn) => turn.has_packet === 1 || turn.program !== null)
-            .toSorted((a, b) => a.id - b.id)
-            .forEach((turn, ordinal) => stems.set(turn.id, `packet${String(ordinal).padStart(3, "0")}`));
+        const taken = new Set<string>();
+        for (const turn of m.turns.filter((row) => row.has_packet === 1 || row.program !== null).toSorted((a, b) => a.id - b.id)) {
+            const loop = m.loopsById.get(turn.loop_id);
+            const worker = loop === undefined ? undefined : m.workersById.get(loop.worker_id);
+            if (loop === undefined || worker === undefined) throw new TypeError(`digest: turn ${turn.id} has no loop or worker in scope`);
+            const workspace = m.workspaces.find(({ id }) => id === worker.workspace_id);
+            const stem = `${nested ? `${segment(workspace?.name ?? String(worker.workspace_id), "workspace")}/` : ""}${segment(worker.name, "worker")}-${loop.sequence}-${turn.sequence}`;
+            if (taken.has(stem)) throw new TypeError(`digest: two turns share the packet name ${stem}`);
+            taken.add(stem);
+            stems.set(turn.id, stem);
+        }
         DigestRender.#stemCache.set(m, stems);
         return stems;
     }
@@ -524,18 +537,24 @@ export default class DigestRender {
 
     static packetFiles(m: DigestModel): string[] {
         const written: string[] = [];
+        const stems = DigestRender.packetStems(m);
+        const write = (file: string, body: string): void => {
+            mkdirSync(dirname(join(m.digestDir, file)), { recursive: true });
+            writeFileSync(join(m.digestDir, file), body);
+            written.push(file);
+        };
         m.turns
             .map((turn) => ({ turn, source: turn.program }))
             .filter(({ turn, source }) => turn.has_packet === 1 || source !== null)
             .toSorted((a, b) => a.turn.id - b.turn.id)
-            .forEach(({ turn, source }, ordinal) => {
-            const padded = String(ordinal).padStart(3, "0");
+            .forEach(({ turn, source }) => {
+            const padded = stems.get(turn.id)!;
             const files: Array<[string, string]> = [];
             const { packet, packetFailure } = m.evidence.packet(turn);
             if (packetFailure !== null) {
                 files.push(
-                    [`packet${padded}.packet.raw.txt`, packetFailure.raw],
-                    [`packet${padded}.packet.invalid.json`, JSON.stringify({
+                    [`${padded}.packet.raw.txt`, packetFailure.raw],
+                    [`${padded}.packet.invalid.json`, JSON.stringify({
                         turnId: turn.id,
                         error: packetFailure.error,
                     }, null, 2)],
@@ -543,47 +562,42 @@ export default class DigestRender {
             }
             if (packet !== null) {
                 files.push(
-                    [`packet${padded}.system.md`, PacketWire.renderSlot(packet.sections, "system")],
-                    [`packet${padded}.user.md`, PacketWire.renderSlot(packet.sections, "user")],
+                    [`${padded}.system.md`, PacketWire.renderSlot(packet.sections, "system")],
+                    [`${padded}.user.md`, PacketWire.renderSlot(packet.sections, "user")],
                 );
             }
             if (source !== null) {
-                files.push([`packet${padded}.assistant.md`, source]);
+                files.push([`${padded}.assistant.md`, source]);
             }
             if (packet !== null && StoredPacket.isAdmitted(packet)) {
                 if (source !== null && packet.assistant.content !== source) {
                     throw new TypeError(`digest: turn ${turn.id} packet assistant differs from its turnOps source`);
                 }
-                files.push([`packet${padded}.assistantRaw.json`, JSON.stringify(packet.assistantRaw, null, 2)]);
+                files.push([`${padded}.assistantRaw.json`, JSON.stringify(packet.assistantRaw, null, 2)]);
             } else if (packet !== null) {
                 files.push([
-                    `packet${padded}.response.md`,
-                    `# Packet ${ordinal} — request only\n\nNo provider response was admitted. Rejected attempt evidence, when present, is written separately.\n`,
+                    `${padded}.response.md`,
+                    `# ${padded} — request only\n\nNo provider response was admitted. Rejected attempt evidence, when present, is written separately.\n`,
                 ]);
             }
-            for (const [file, body] of files) {
-                writeFileSync(join(m.digestDir, file), body);
-                written.push(file);
-            }
+            for (const [file, body] of files) write(file, body);
             for (const attempt of m.attemptsByTurn.get(turn.id) ?? []) {
                 if (attempt.accepted === 1) continue;
                 const attemptPadded = String(attempt.sequence).padStart(3, "0");
                 if (attempt.state !== "response") {
-                    const file = `packet${padded}.attempt${attemptPadded}.${attempt.state}.json`;
-                    writeFileSync(join(m.digestDir, file), JSON.stringify({
+                    write(`${padded}.attempt${attemptPadded}.${attempt.state}.json`, JSON.stringify({
                         state: attempt.state,
                         failure: DigestRender.parseJson(attempt.failure),
                         attributions: DigestRender.parseJson(attempt.attributions, []),
                         openedAt: attempt.timestamp,
                         completedAt: attempt.completed_at,
                     }, null, 2));
-                    written.push(file);
                     continue;
                 }
                 const response = DigestRender.parseJson(m.evidence.response(attempt.model_call_id), {}) as {
                     assistant?: { content?: unknown };
                 };
-                const prefix = `packet${padded}.attempt${attemptPadded}.rejected`;
+                const prefix = `${padded}.attempt${attemptPadded}.rejected`;
                 const attemptFiles: Array<[string, string]> = [
                     [
                         `${prefix}.assistant.md`,
@@ -593,10 +607,7 @@ export default class DigestRender {
                     [`${prefix}.parse-errors.json`, JSON.stringify(DigestRender.parseJson(attempt.parse_errors, []), null, 2)],
                     [`${prefix}.attributions.json`, JSON.stringify(DigestRender.parseJson(attempt.attributions, []), null, 2)],
                 ];
-                for (const [file, body] of attemptFiles) {
-                    writeFileSync(join(m.digestDir, file), body);
-                    written.push(file);
-                }
+                for (const [file, body] of attemptFiles) write(file, body);
             }
         });
         return written;
@@ -631,6 +642,8 @@ export default class DigestRender {
                 const { packet, packetFailure } = m.evidence.packet(t);
                 return {
                     id: t.id, loop_id: t.loop_id, sequence: t.sequence,
+                    // {§share-packet-names}: the stem of this turn's packet files, or null when it wrote none.
+                    artifact: DigestRender.packetStems(m).get(t.id) ?? null,
                     producer: t.producer, kind: t.kind,
                     program: t.program,
                     status: t.status, completed_at: t.completed_at,
