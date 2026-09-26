@@ -899,10 +899,18 @@ test("native provider routes project their documented cache controls through the
     });
 });
 
+test("an uncataloged model names the ids whose final segment begins with it", () => {
+    assert.throws(
+        () => catalogProviderFromEnv("fireworks-ai", env, "deepseek-flash"),
+        (error: Error) => error.message.includes('model "deepseek-flash" is not a Models.dev id or a unique path suffix of one; candidates: ')
+            && error.message.includes("accounts/fireworks/routers/deepseek-flash-latest"),
+    );
+});
+
 test("cataloged unknown model fails unless its context is explicit", () => {
     assert.throws(
         () => catalogProviderFromEnv("groq", env, "not-in-the-catalog"),
-        /context window unresolved/,
+        /^Error: groq provider: model "not-in-the-catalog" is not a Models\.dev id or a unique path suffix of one — correct the model id, or set PLURNK_PROVIDERS_CONTEXT_WINDOW to route an uncataloged model$/,
     );
     const provider = catalogProviderFromEnv("groq", {
         ...env,

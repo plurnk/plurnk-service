@@ -1,4 +1,5 @@
 import {
+    catalogSnapshot,
     lookupProvider,
     resolveModel,
     type ModelInfo,
@@ -314,6 +315,17 @@ export const providerFromSdkModel = ({
     });
 };
 
+// A model the snapshot does not resolve is named as such, with the ids it may have meant: those that share its
+// final path segment ambiguously, or whose final segment begins with it.
+const uncatalogedModel = (name: string, model: string): string => {
+    const ids = Object.keys(catalogSnapshot()[name] ?? {});
+    const ambiguous = ids.filter((id) => id.endsWith(`/${model}`));
+    const near = ambiguous.length > 0 ? ambiguous : ids.filter((id) => (id.split("/").at(-1) ?? id).startsWith(model));
+    const reason = ambiguous.length > 1 ? `matches ${ambiguous.length} Models.dev ids by path suffix` : "is not a Models.dev id or a unique path suffix of one";
+    const hint = near.length === 0 ? "" : `; candidates: ${near.slice(0, 3).join(", ")}`;
+    return `${name} provider: model "${model}" ${reason}${hint} — correct the model id, or set PLURNK_PROVIDERS_CONTEXT_WINDOW to route an uncataloged model`;
+};
+
 export const catalogProviderFromEnv = (
     name: string,
     env: NodeJS.ProcessEnv,
@@ -324,11 +336,7 @@ export const catalogProviderFromEnv = (
     const contextOverride = contextWindowFromEnv(env, name);
     if (lookupProvider(name) === null && configuredProviderInfo(name, env) === null) return null;
     if ((name === "openai" || name === "ollama") && resolved === null) return null;
-    if (resolved === null && contextOverride === null) {
-        throw new Error(
-            `${name} provider: context window unresolved for "${model}" — set PLURNK_PROVIDERS_CONTEXT_WINDOW or update the Models.dev snapshot`,
-        );
-    }
+    if (resolved === null && contextOverride === null) throw new Error(uncatalogedModel(name, model));
     const wireModel = resolved?.id ?? model;
     const info = resolved?.info;
     const contextWindow = effectiveContextWindow(contextOverride, info?.contextWindow ?? null);

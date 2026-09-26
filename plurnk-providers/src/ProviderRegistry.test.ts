@@ -340,7 +340,7 @@ test("a catalog provider with unknown model metadata never falls through to plug
                 };
             },
         ),
-        /cloudflare-workers-ai provider: context window unresolved for "vendor\/model-outside-snapshot" — set PLURNK_PROVIDERS_CONTEXT_WINDOW or update the Models.dev snapshot/,
+        /cloudflare-workers-ai provider: model "vendor\/model-outside-snapshot" is not a Models\.dev id or a unique path suffix of one — correct the model id, or set PLURNK_PROVIDERS_CONTEXT_WINDOW to route an uncataloged model/,
     );
     assert.equal(scanned, false);
 });
