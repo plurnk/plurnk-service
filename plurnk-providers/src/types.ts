@@ -143,7 +143,7 @@ export type ProviderReasoningObserver = (delta: string) => void;
 // A successful exchange's closed finish set. ProviderAttemptFinishReason adds
 // the failed disposition that may occur only on ProviderError attempt evidence.
 export type FinishReason = "stop" | "length" | "tool_calls" | "content_filter" | null;
-export type ProviderAttemptFinishReason = FinishReason | "resource_interrupted";
+export type ProviderAttemptFinishReason = FinishReason | "resource_interrupted" | "repetition";
 
 // {§provider-evidence} A per-token logprob. `logprob` is the backend's raw model
 // log-probability of the emitted token — the sampling-transform-invariant

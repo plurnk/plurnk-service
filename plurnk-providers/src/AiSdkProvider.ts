@@ -81,6 +81,7 @@ export type AiSdkProviderConfig = {
     operationTimeoutMs: number;                // complete logical call across retries/backoff; zero disables
     firstContentTimeoutMs: number;             // first semantic streamed content; zero disables
     streamIdleTimeoutMs?: number;             // semantic streamed-content idle deadline; zero/unset disables
+    repeatedLineLimit?: number;               // {§repetition-stop} a line repeated this many times stops the stream; zero/unset disables
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
     fetch?: ProviderFetch;                    // per-instance request executor; default globalThis.fetch
     contextWindow?: number | null;              // default null; caller resolves-or-fails, narrows to required with the interface
@@ -242,6 +243,7 @@ export default class AiSdkProvider implements Provider {
     #operationTimeoutMs: number;
     #firstContentTimeoutMs: number;
     #streamIdleTimeoutMs: number | undefined;
+    #repeatedLineLimit: number;
     #headers: Record<string, string>;
     #fetch: ProviderFetch;
     #hasApiKey = false;
@@ -317,6 +319,7 @@ export default class AiSdkProvider implements Provider {
         this.#operationTimeoutMs = config.operationTimeoutMs;
         this.#firstContentTimeoutMs = config.firstContentTimeoutMs;
         this.#streamIdleTimeoutMs = config.streamIdleTimeoutMs;
+        this.#repeatedLineLimit = config.repeatedLineLimit ?? 0;
         this.#headers = config.headers ?? {};
         this.#fetch = config.fetch ?? ((input, init) => globalThis.fetch(input, init));
         this.#contextWindow = config.contextWindow ?? null;
@@ -773,6 +776,7 @@ export default class AiSdkProvider implements Provider {
                         fetchTimeoutMs: this.#fetchTimeoutMs,
                         firstContentTimeoutMs: this.#firstContentTimeoutMs,
                         streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
+                        repeatedLineLimit: this.#repeatedLineLimit,
                         streaming: this.#streaming,
                         captureRawBody: this.#rawBody,
                         ...observers,
@@ -790,6 +794,7 @@ export default class AiSdkProvider implements Provider {
                         fetchTimeoutMs: this.#fetchTimeoutMs,
                         firstContentTimeoutMs: this.#firstContentTimeoutMs,
                         streamIdleTimeoutMs: this.#streamIdleTimeoutMs,
+                        repeatedLineLimit: this.#repeatedLineLimit,
                         streaming: this.#streaming,
                         captureRawBody: this.#rawBody,
                         ...observers,
@@ -1043,6 +1048,21 @@ export default class AiSdkProvider implements Provider {
                         reportedOutputTokens: usage.outputTokens,
                     },
                 },
+            );
+        }
+        if (raw.finishReason === "repetition") {
+            // {§repetition-stop}: the stream was stopped at a repeated line; the partial attempt is evidence, and the
+            // consumer reads it as an invalid emission, never as a provider failure to recover.
+            const attempt: ProviderResponse<"repetition"> = {
+                assistant: { ...assistant, finishReason: raw.finishReason },
+                ...evidence,
+            };
+            const { line, count } = raw.repetition!;
+            throw new ProviderError(
+                this.#source,
+                "repetition",
+                `The response repeated one line ${count} times and was stopped: \`${line}\``,
+                { attempt, accounting, extensions: { stage: "provider-response", finishReason: "repetition", repeatedLine: line, repeatedCount: count } },
             );
         }
         if (raw.finishReason === "resource_interrupted") {

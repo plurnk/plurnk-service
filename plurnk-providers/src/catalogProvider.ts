@@ -293,6 +293,7 @@ export const providerFromSdkModel = ({
         operationTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "PLURNK_PROVIDERS_OPERATION_TIMEOUT", name),
         firstContentTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT, "PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT", name),
         streamIdleTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT, "PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT", name),
+        repeatedLineLimit: parseRequiredInt(env.PLURNK_PROVIDERS_REPEATED_LINE_LIMIT, "PLURNK_PROVIDERS_REPEATED_LINE_LIMIT", name),
         reasoning,
         reasoningResponseStyle: reasoningResponseStyleFromEnv(env, name),
         ...samplingFromEnv(env, name),

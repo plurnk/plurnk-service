@@ -628,6 +628,16 @@ reasoning enclosure only after preserving grammar evidence. Process-wide
 llama-server flags are fallback server configuration, not part of the PLURNK
 contract and need not be synchronized with an alias.
 
+§repetition-stop **A response that repeats itself is stopped.** A degenerate model can stream one line
+without end; content keeps arriving, so no silence deadline fires, and the call runs to its output
+allowance. The transport counts the complete lines of each streamed channel, text and reasoning, and
+when one line of 16 or more characters has appeared `PLURNK_PROVIDERS_REPEATED_LINE_LIMIT` times it stops
+reading: the stream is cancelled, the physical request settles with whatever usage the chunks carried,
+and the call fails as `repetition` (422, not retryable) carrying the partial attempt and the sentence
+"The response repeated one line N times and was stopped: `<line>`". The consumer reads it as an invalid
+emission, never as a provider failure to recover. Measured: a granite-4.2-8b run repeated one line 358
+times across 45,875 tokens and 9 min 42 s; a limit of 32 stops it 14.6% of the way in (#876).
+
 §llama-reasoning-request The allowance is cumulative across the complete response. Opening a second or
 later reasoning block does not replenish it. Template parsing, the reasoning
 sampler, normalized usage, and the returned reasoning channel MUST agree on that
@@ -749,6 +759,7 @@ deadline:
 | Attempt | `PLURNK_PROVIDERS_FETCH_TIMEOUT` | One physical generation request. A non-streamed request is bounded through response consumption; a streamed one only until its first semantic content. After content begins, stream-idle bounds silence and the operation deadline still bounds the whole call. | Surfaced `network_failure` with `timeoutPhase=attempt`; never transport-retried (#479) — the consumer's recovery owns re-issue. |
 | First content | `PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT` | Response-stream start through first semantic model content; metadata, empty deltas, and transport activity do not satisfy it. | Surfaced `network_failure` with `timeoutPhase=first_content`; never transport-retried (#479). |
 | Stream idle | `PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT` | Silence between semantic content chunks after content begins. | Surfaced `network_failure` with `timeoutPhase=stream_idle`; never transport-retried (#479). |
+| Repeated line | `PLURNK_PROVIDERS_REPEATED_LINE_LIMIT` | A streamed line of 16 or more characters repeated this many times; `0` disables. | Stopped as `repetition` ({§repetition-stop}); never transport-retried. |
 
 Settled calls remove their deadline timers and cancellation subscriptions.
 

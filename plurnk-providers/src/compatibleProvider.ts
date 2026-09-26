@@ -193,6 +193,7 @@ export const compatibleProviderFromEnv = async (
         operationTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "PLURNK_PROVIDERS_OPERATION_TIMEOUT", provider),
         firstContentTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT, "PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT", provider),
         streamIdleTimeoutMs: parseTimeoutMs(env.PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT, "PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT", provider),
+        repeatedLineLimit: parseRequiredInt(env.PLURNK_PROVIDERS_REPEATED_LINE_LIMIT, "PLURNK_PROVIDERS_REPEATED_LINE_LIMIT", provider),
         reasoning,
         reasoningResponseStyle: reasoningResponseStyleFromEnv(env, provider),
         reasoningStyle,

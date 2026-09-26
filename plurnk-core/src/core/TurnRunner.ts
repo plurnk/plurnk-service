@@ -1218,6 +1218,10 @@ export default class TurnRunner {
         try {
             completedResponse = await this.#generate(args, request, attempts, modelCall, reasoning, strikeStreak);
         } catch (error) {
+            if (error instanceof ProviderError && error.kind === "repetition" && error.attempt !== undefined) {
+                await this.#rejectRepetition(args, attempts, modelCall, attemptRow.id, error, error.attempt);
+                return "rejected";
+            }
             if (error instanceof ProviderError
                 && ProviderRecovery.RECOVERABLE.has(error.kind)
                 && attempts.signal?.aborted !== true) {
@@ -1355,6 +1359,25 @@ export default class TurnRunner {
                 provider.model,
             ),
         );
+    }
+
+    // {§repetition-stop} — a response stopped at a repeated line is an invalid emission, not a provider failure:
+    // the partial attempt is durable evidence, the provider's sentence is its diagnostic, and the same packet is
+    // resampled under {§invalid-emission-attempts}. No recovery wait, no provider notice, no problem row.
+    async #rejectRepetition(
+        { workspaceId }: TurnArgs, attempts: ProviderAttempts, modelCall: ModelCall, attemptId: number, error: ProviderError, attempt: ProviderAttempt,
+    ): Promise<void> {
+        await modelCall.observeResponse(attempt, TurnRunner.#providerFailure(error, attempts.signal), attempts.wire.nativeInputs);
+        attempts.callInFlight = false;
+        const split = this.#splitResponse(attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []);
+        attempts.response = attempt;
+        attempts.split = {
+            ...split,
+            emissionValid: false,
+            recoverableParseErrors: [],
+            parseErrors: [{ message: error.message, line: 1, column: 1, source: "provider" }, ...split.parseErrors],
+        };
+        await this.#classifyProviderAttempt(attempts, attemptId, attempts.split, attempts.currentEmissionAttempt, false);
     }
 
     // {§provider-recovery} — a transient provider failure never ends the loop: record

@@ -398,6 +398,40 @@ test("{§fabricated-log-entry}: an emission that writes the harness log is resam
     }
 });
 
+test("{§repetition-stop}: a response stopped at a repeated line is a rejected emission, resampled against the same packet", async () => {
+    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    try {
+        const line = "gitea list_issues {\"owner\": \"plunk\", \"repo\": \"plunk-service\"}";
+        const chunk = (content: string, finish: string | null = null): string => `data: ${JSON.stringify({ id: "r", object: "chat.completion.chunk", created: 1, model: "repeat-witness", choices: [{ index: 0, delta: { content }, finish_reason: finish }] })}\n\n`;
+        const usage = `data: ${JSON.stringify({ id: "r", object: "chat.completion.chunk", created: 1, model: "repeat-witness", choices: [], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } })}\n\n`;
+        const stream = (body: string): Response => new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+        let calls = 0;
+        const provider = new AiSdkProvider({
+            model: "repeat-witness",
+            url: "https://provider.test/v1/chat/completions",
+            contextWindow: 100_000,
+            fetch: async () => ++calls === 1
+                ? stream(Array.from({ length: 100 }, () => chunk(`${line}\n`)).join("") + "data: [DONE]\n\n")
+                : stream(chunk("\n````KILL\nrecovered\n````", "stop") + usage + "data: [DONE]\n\n"),
+            fetchTimeoutMs: 1_000, operationTimeoutMs: 5_000, firstContentTimeoutMs: 1_000, streamIdleTimeoutMs: 1_000,
+            repeatedLineLimit: 4,
+            temperature: 0.2, repeatPenalty: 1.15, reasoning: { mode: "off", budget: null }, retryAttempts: 0,
+            source: "provider:repeat-witness",
+        });
+        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "do the task" }] });
+        assert.equal(result.status, 200);
+        assert.equal(calls, 2, "the stopped response is resampled once, not recovered by waiting");
+        assert.equal(result.emissionAttempts, 2);
+        const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
+        assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 1]);
+        assert.equal(JSON.parse(attempts[0]!.parse_errors)[0].message, `The response repeated one line 4 times and was stopped: \`${line}\``);
+        const requests = await db.test_provider_requests.all<{ attempt_sequence: number }>({ turn_id: result.turnId });
+        assert.deepEqual(requests.map(({ attempt_sequence }) => attempt_sequence), [1, 2], "both physical requests are settled");
+    } finally {
+        await db.close();
+    }
+});
+
 test("{§turn-shape} a valid operation without a lifecycle verb is admitted once without an omission receipt", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
