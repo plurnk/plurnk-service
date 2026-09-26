@@ -435,7 +435,7 @@ const executeModelOnce = async (
     });
     // {§provider-connectivity} — a streamed attempt's deadline holds only until semantic content
     // flows; after that, stream-idle catches a stall and the operation deadline bounds the whole.
-    // A healthy stream still producing (long reasoning) is never cut off and its tokens wasted.
+    // Semantic output retires the attempt deadline, not the operation deadline.
     const attemptDeadline = request.streaming && request.fetchTimeoutMs > 0 ? new AbortController() : null;
     const attemptTimer = attemptDeadline === null ? null : setTimeout(
         () => attemptDeadline.abort(new ProviderTimeoutError("attempt", request.fetchTimeoutMs)),

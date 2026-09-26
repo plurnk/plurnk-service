@@ -483,7 +483,7 @@ Provider and model facts resolve independently:
 | Context window | Catalog metadata or local endpoint probe. | `PLURNK_PROVIDERS_CONTEXT_WINDOW`. | Minimum when both exist; sole value otherwise. Cataloged cloud miss fails construction; compatible probe miss remains `null` with one warning. |
 | Maximum input | Catalog `limit.input`; no generic live probe. | None. | Catalog value or `null`; never reconstructed from context and output. |
 | Maximum output | Catalog `limit.output`; no generic live probe. | None. | Minimum of catalog value and effective context, or `null`. |
-| Total output budget | None. | `PLURNK_PROVIDERS_OUTPUT_BUDGET`. | Percentage of effective context or absolute count, capped by known context/output limits; a call may only tighten it. |
+| Total output budget | None. | `PLURNK_PROVIDERS_OUTPUT_BUDGET`. | Curation reservation: percentage of effective context or absolute count, capped by known context/output limits; a call may only tighten it. The response grant may expand under {§provider-flexed-allowance}. |
 | Reasoning policy | Catalog `reasoning_options` intersected with the installed adapter; explicit adapter declaration for uncataloged routes. | `PLURNK_PROVIDERS_REASONING`, initially; durable worker selection thereafter. | A supported member of {§reasoning-policy-wire}, projected under {§provider-reasoning-policy}. The shipped selection is `adaptive`. |
 | Reasoning budget | None. | Optional `PLURNK_PROVIDERS_REASONING_BUDGET`. | Percentage of effective context or absolute count; valid only as a strict subset of total output and effective unless reasoning is `off`. |
 | Cost override | None. | Optional `PLURNK_PROVIDERS_COST`. | {§operator-cost-override} — comma-separated `key=value` per-1M-token USD rates over `input, output, reasoning, cacheRead, cacheWrite`; merges over the Models.dev catalog block (the catalog is the starting point), alias-scoped like every knob. Without catalog rates the override must declare `input` and `output`. The cost estimate's `source` names the override; a provider-reported response cost still outranks any estimate. |
@@ -877,8 +877,9 @@ budget is a strict subset of that total, never an additive reserve. The
 configured total is a percentage of effective context or an absolute count;
 percentages resolve to the nearest whole token with a one-token minimum. It is
 capped by known context and model-output limits; `generate.maxOutputTokens` may
-only tighten it for one call. The effective reasoning subset tightens with that
-total and remains strictly smaller.
+only tighten this reservation for one call. The effective reasoning subset tightens
+with that total and remains strictly smaller. Exact prompt measurements may expand
+the response grant beyond the reservation under {§provider-flexed-allowance}.
 
 The adapter owns native projection. A backend whose generic SDK maximum already
 includes reasoning receives the total directly. When a native SDK instead adds
@@ -892,7 +893,7 @@ and provider minimum; an envelope too small to represent the minimum fails
 before provider I/O.
 
 §provider-output-budget-conformance When a completed response reports
-normalized output-token usage greater than its effective total output budget,
+normalized output-token usage greater than its response grant ({§provider-flexed-allowance}),
 the exchange is an `invalid_response` at 502 rather than an admitted result or
 a prompt-capacity 413. Its complete failed-attempt evidence and settled charged
 request remain available. The violation is final and is never automatically
