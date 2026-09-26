@@ -140,11 +140,8 @@ export type AiSdkProviderConfig = {
     // to the wall) — surfaced as Provider.requiresOutputBudget so consumers can
     // boot-refuse an envelope-less local alias. Default unset (no claim).
     requiresOutputBudget?: boolean;
-    // The side-channel reasoning intent — REQUIRED, no in-code default
-    // (PLURNK_PROVIDERS_REASONING + _BUDGET, read via reasoningFromEnv):
-    // { mode: off|adaptive|low|medium|high, budget: independent optional cap }.
-    // to the backend's mechanism via reasoningStyle; budget is only ever an
-    // explicit magnitude, never a hidden activation flag.
+    // {§provider-reasoning-policy} Required intent, projected through the transport.
+    // The independent budget is never an activation flag.
     reasoning: Reasoning;
     // {§provider-sampling-passthrough} Configured sampling is below caller sampling.
     // Absent optional values and null temperature retain endpoint defaults.
@@ -329,7 +326,7 @@ export default class AiSdkProvider implements Provider {
         this.#supportedReasoningPolicies = Object.freeze([
             ...new Set(config.supportedReasoningPolicies ?? REASONING_POLICIES),
         ]);
-        this.#adaptiveReasoning = config.adaptiveReasoning ?? "high";
+        this.#adaptiveReasoning = config.adaptiveReasoning ?? "provider-default";
         this.#adaptiveReasoningProviderOptions = config.adaptiveReasoningProviderOptions;
         if (!this.#supportedReasoningPolicies.includes(this.#reasoning.mode)) {
             throw new UnsupportedReasoningPolicyError(

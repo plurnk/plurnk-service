@@ -2,6 +2,7 @@ import { REASONING_POLICIES, type ReasoningPolicy } from "@plurnk/plurnk-contrac
 import type { ModelReasoningOption } from "@plurnk/plurnk-models";
 import { UnsupportedReasoningPolicyError } from "./types.ts";
 import { providerEnvPrefix, providerSetting } from "./provider-env.ts";
+import { adaptiveEffortFromEnv } from "./reasoning-effort.ts";
 
 type ObjectValue = Record<string, unknown>;
 type Facts = { readonly reasoning: boolean; readonly reasoningOptions?: readonly ModelReasoningOption[] };
@@ -118,6 +119,7 @@ export default class RequestFields {
     readonly #toggle: ObjectValue | undefined;
     readonly #combined: boolean;
     readonly #efforts: readonly string[];
+    readonly #adaptiveEffort: string | undefined;
     readonly #facts: Facts | undefined;
 
     constructor(name: string, env: NodeJS.ProcessEnv, facts?: Facts) {
@@ -177,6 +179,7 @@ export default class RequestFields {
             ...(facts?.reasoningOptions?.flatMap((option) => option.type === "effort" ? option.values.flatMap((value) => value === null ? [] : [value]) : []) ?? []),
             ...declared,
         ])].filter((effort) => transport === undefined || transport.some((value) => value === effort));
+        this.#adaptiveEffort = adaptiveEffortFromEnv(env, this.#efforts);
         const policies = facts?.reasoning === false
             ? ["off", "adaptive"] as const
             : REASONING_POLICIES.filter((policy) => policy === "adaptive"
@@ -211,13 +214,12 @@ export default class RequestFields {
                 if (mode !== "adaptive") set(body, this.#effort!, mode);
             } else if (mode !== "adaptive") {
                 set(body, this.#effort!, mode);
-            } else if (this.#toggle !== undefined && this.#facts?.reasoningOptions?.some((option) => option.type === "toggle")) {
-                body = merge(body, this.#toggle);
             } else if (this.#adaptive !== undefined) {
                 body = merge(body, this.#adaptive);
-            } else if (this.#effort !== undefined) {
-                const strongest = efforts.findLast((effort) => this.#efforts.includes(effort));
-                if (strongest !== undefined) set(body, this.#effort, strongest);
+            } else if (this.#effort !== undefined && this.#adaptiveEffort !== undefined) {
+                set(body, this.#effort, this.#adaptiveEffort);
+            } else if (this.#toggle !== undefined && this.#facts?.reasoningOptions?.some((option) => option.type === "toggle")) {
+                body = merge(body, this.#toggle);
             }
         }
         if (output !== null && this.namespace === undefined) set(body, this.#output, output);

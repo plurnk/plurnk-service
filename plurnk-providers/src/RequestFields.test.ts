@@ -2,8 +2,10 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import RequestFields from "./RequestFields.ts";
 import { scopeEnvToAlias } from "./env.ts";
+import { withProviderDefaults } from "./defaults.ts";
 
 const declaration = {
+    PLURNK_PROVIDERS_REASONING_FALLBACK: "high",
     PLURNK_PROVIDERS_PROVIDER_EXAMPLE_OUTPUT_PATH: "/max_completion_tokens",
     PLURNK_PROVIDERS_PROVIDER_EXAMPLE_REASONING_EFFORT_PATH: "/reasoning_effort",
     PLURNK_PROVIDERS_PROVIDER_EXAMPLE_REASONING_BUDGET_PATH: "/thinking_budget",
@@ -12,6 +14,41 @@ const declaration = {
     PLURNK_PROVIDERS_PROVIDER_EXAMPLE_REASONING_ON_BODY: '{"enable_thinking":true}',
     PLURNK_PROVIDERS_PROVIDER_EXAMPLE_REASONING_OFF_BODY: '{"enable_thinking":false}',
 };
+
+test("{§provider-reasoning-policy} adaptive prefers the configured fallback without escalating or disabling reasoning", () => {
+    const facts = {
+        reasoning: true,
+        reasoningOptions: [
+            { type: "toggle" as const },
+            { type: "effort" as const, values: ["low", "medium", "high", "xhigh", "max"] as const },
+        ],
+    };
+    const configured = {
+        ...declaration,
+        PLURNK_PROVIDERS_PROVIDER_EXAMPLE_REASONING_EFFORTS: "",
+        PLURNK_PROVIDERS_PROVIDER_EXAMPLE_REASONING_TOGGLE_BODY: '{"reasoning_effort":true}',
+    };
+    for (const [overrides, expected] of [
+        [{}, { reasoning_effort: "high" }],
+        [{ PLURNK_PROVIDERS_REASONING_FALLBACK: "medium" }, { reasoning_effort: "medium" }],
+        [{ PLURNK_PROVIDERS_REASONING_FALLBACK: "" }, { reasoning_effort: true }],
+        [{ PLURNK_PROVIDERS_REASONING_TRANSPORT_EFFORTS: "low,xhigh,max" }, { reasoning_effort: true }],
+        [{ PLURNK_PROVIDERS_REASONING_ADAPTIVE_BODY: "{}" }, {}],
+        [{ PLURNK_PROVIDERS_REASONING_ADAPTIVE_BODY: '{"thinking":{"type":"adaptive"}}' }, { thinking: { type: "adaptive" } }],
+    ] as const) {
+        const fields = new RequestFields("example", { ...configured, ...overrides }, facts);
+        assert.deepEqual(fields.body("adaptive", 32768, null), {
+            enable_thinking: true, ...expected, max_completion_tokens: 32768,
+        }, JSON.stringify(overrides));
+    }
+    const missingHigh = new RequestFields("example", configured, {
+        reasoning: true,
+        reasoningOptions: [{ type: "effort", values: ["low", "medium", "xhigh"] }],
+    });
+    assert.deepEqual(missingHigh.body("adaptive", 32768, null), {
+        enable_thinking: true, max_completion_tokens: 32768,
+    }, "missing high preserves activation without selecting xhigh");
+});
 
 test("{§provider-wire-declaration} retired style selectors fail at the selected configuration boundary", () => {
     for (const key of ["PLURNK_PROVIDERS_REASONING_STYLE", "PLURNK_PROVIDERS_PROVIDER_EXAMPLE_REASONING_STYLE"]) {
@@ -78,7 +115,7 @@ test("{§provider-wire-declaration} the catalog supplies efforts and numeric bou
     }, catalog);
     assert.deepEqual(wire.policies, ["off", "adaptive", "low", "medium"]);
     assert.deepEqual(wire.body("adaptive", 10000, null), {
-        enable_thinking: true, reasoning_effort: "medium", max_completion_tokens: 10000,
+        enable_thinking: true, max_completion_tokens: 10000,
     });
     assert.throws(() => wire.body("adaptive", 10000, 127), /reasoning budget 127.*128/);
     assert.throws(() => wire.body("adaptive", 10000, 4097), /reasoning budget 4097.*4096/);
@@ -112,6 +149,7 @@ test("{§provider-wire-declaration} pointers follow RFC 6901 and conflicting par
 
 test("{§provider-wire-declaration} native option declarations retain control admission without writing an output field", () => {
     const fields = new RequestFields("renamed", {
+        ...withProviderDefaults({}),
         PLURNK_PROVIDERS_PROVIDER_RENAMED_OPTIONS_NAMESPACE: "testSdk",
         PLURNK_PROVIDERS_PROVIDER_RENAMED_REASONING_EFFORT_PATH: "/reasoning/effort",
         PLURNK_PROVIDERS_PROVIDER_RENAMED_REASONING_BUDGET_PATH: "/reasoning/max_tokens",

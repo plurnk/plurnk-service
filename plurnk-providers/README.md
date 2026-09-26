@@ -108,8 +108,9 @@ flowchart TD
 ```
 
 - **Effort** and **budget** are independent. `adaptive` requests native dynamic
-  reasoning where supported, otherwise the supported high posture. Fixed effort
-  names must be supported by the route; an unsupported request is not silently downgraded.
+  reasoning where supported, otherwise `PLURNK_PROVIDERS_REASONING_FALLBACK`
+  (default `high`). An unavailable fallback retains the reasoning-enabled provider default.
+  Fixed effort names must be supported by the route; unsupported requests are not silently downgraded.
 - **Output** accepts positive tokens or a percentage of context; known model
   limits cap it. An explicit reasoning budget must be smaller than total output.
   Leaving the reasoning budget unset does not disable reasoning.

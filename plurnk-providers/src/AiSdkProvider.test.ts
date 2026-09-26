@@ -10,7 +10,7 @@ import { withProviderDefaults } from "./defaults.ts";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 
 const wireConfig = (env: NodeJS.ProcessEnv) => {
-    const requestFields = new RequestFields("test", env);
+    const requestFields = new RequestFields("test", withProviderDefaults(env));
     return { requestFields, supportedReasoningPolicies: requestFields.policies };
 };
 
@@ -32,6 +32,7 @@ const testProvider = (config: TestProviderConfig): AiSdkProvider => {
 
 test("{§provider-wire-declaration} native SDK requests reproject controls for streaming and buffered calls", async () => {
     const fields = new RequestFields("unlisted", {
+        ...withProviderDefaults({}),
         PLURNK_PROVIDERS_OPTIONS_NAMESPACE: "openrouter",
         PLURNK_PROVIDERS_REASONING_EFFORT_PATH: "/reasoning/effort",
         PLURNK_PROVIDERS_REASONING_BUDGET_PATH: "/reasoning/max_tokens",
@@ -1312,14 +1313,15 @@ test("{§provider-wire-declaration} explicit off and adaptive omission remain di
     }
 });
 
-test("{§provider-wire-declaration} a catalog toggle selects the declared adaptive activation", async () => {
-    for (const [reasoning, expected] of [
-        [{ mode: "adaptive", budget: null }, true],
-        [{ mode: "off", budget: null }, "none"],
-        [{ mode: "low", budget: null }, "low"],
-    ] as Array<[{ mode: "off" | "adaptive" | "low"; budget: null }, boolean | string]>) {
+test("{§provider-wire-declaration} graded fallback precedes a catalog toggle without changing explicit policies", async () => {
+    for (const [reasoning, efforts, expected] of [
+        [{ mode: "adaptive", budget: null }, ["low"], true],
+        [{ mode: "adaptive", budget: null }, ["low", "high", "max"], "high"],
+        [{ mode: "off", budget: null }, ["low", "high", "max"], "none"],
+        [{ mode: "low", budget: null }, ["low", "high", "max"], "low"],
+    ] as const) {
         const requestFields = new RequestFields("fireworks-ai", withProviderDefaults({}), {
-            reasoning: true, reasoningOptions: [{ type: "toggle" }, { type: "effort", values: ["low"] }],
+            reasoning: true, reasoningOptions: [{ type: "toggle" }, { type: "effort", values: [...efforts] }],
         });
         const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, reasoning, retryAttempts: 0, requestFields, supportedReasoningPolicies: requestFields.policies });
         const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
@@ -1332,7 +1334,7 @@ test("{§provider-wire-declaration} a catalog toggle selects the declared adapti
 test("{§deepseek-reasoning-request} the panel maps DeepSeek activation and exact effort", async () => {
     const cases = [
         [{ mode: "off", budget: null }, { thinking: { type: "disabled" } }],
-        [{ mode: "adaptive", budget: null }, { thinking: { type: "enabled" } }],
+        [{ mode: "adaptive", budget: null }, { thinking: { type: "enabled" }, reasoning_effort: "high" }],
         [{ mode: "high", budget: null }, { thinking: { type: "enabled" }, reasoning_effort: "high" }],
     ] as const;
     for (const [reasoning, expected] of cases) {
@@ -2800,6 +2802,7 @@ test("native additive-reasoning adapters derive a bounded manual allowance when 
             languageModel,
             additiveReasoningProvider: provider,
             outputBudget: 1500,
+            adaptiveReasoning: "high",
             reasoningBudget: null,
             fetchTimeoutMs: 5000,
             temperature: 0.2,

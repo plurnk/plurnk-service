@@ -299,7 +299,7 @@ export const resolveGenerationEnvelopeFromEnv = (
 
 // {§provider-configuration} The side-channel reasoning knobs — policy and budget
 // are separate vars, so a numeric budget can never silently select an effort:
-//   PLURNK_PROVIDERS_REASONING  off | adaptive | low | medium | high (REQUIRED, fail-hard)
+//   PLURNK_PROVIDERS_REASONING  required portable ReasoningPolicy
 //   PLURNK_PROVIDERS_REASONING_BUDGET  optional reasoning subset of the total
 //     output budget, used for tier/budget mapping where the backend supports it.
 // The provider maps intent to the backend's mechanism; the consumer states
@@ -354,6 +354,7 @@ export const PROVIDERS_KNOBS = Object.freeze([
     "PLURNK_PROVIDERS_COST",
     "PLURNK_PROVIDERS_OUTPUT_BUDGET",
     "PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE",
+    "PLURNK_PROVIDERS_REASONING_FALLBACK",
     ...RequestFields.knobs,
     "PLURNK_PROVIDERS_REASONING_BUDGET",
     "PLURNK_PROVIDERS_REASONING",

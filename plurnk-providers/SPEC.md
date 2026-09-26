@@ -278,16 +278,20 @@ response cost still outranks any estimate. Unknown keys, repeats, and negative
 or non-numeric rates refuse at construction.
 
 §provider-reasoning-policy The portable vocabulary comes from
-{§reasoning-policy-wire}. `adaptive` requests the provider's
-documented dynamic mechanism where one exists. Otherwise, a cataloged graded
-route receives its strongest positive Models.dev effort that the installed
-transport can represent; a route that declares a toggle control receives an
-explicit enable on transports that document one (OpenRouter `reasoning.enabled`,
-Fireworks Boolean `reasoning_effort`) — an unconfigured reasoning-capable route
-must not run reasoning-off, and `off` stays the explicit opt-out; otherwise the
-provider default holds. A fixed policy retains its exact name and is rejected before
-provider I/O when either the route or transport cannot represent it. Every
-provider exposes that exact intersection. A numeric reasoning budget constrains
+{§reasoning-policy-wire}. `adaptive` uses the first applicable projection:
+
+| Condition | Projection |
+| --- | --- |
+| Explicit adaptive declaration or documented native dynamic mechanism | Preserve that mechanism; an explicit `{}` retains the enabled endpoint's default. |
+| The configured `PLURNK_PROVIDERS_REASONING_FALLBACK` is supported by both model and transport | Send that exact effort. The shipped fallback is `high`, not the strongest available level. |
+| No supported fallback, including an empty fallback setting | Retain reasoning activation and the provider's default effort; never invent a level or escalate to another one. |
+
+Activation is distinct from effort: declared enable fields accompany active
+reasoning, and a toggle-only route uses its documented enable mechanism.
+Non-reasoning models receive no reasoning controls; `off` is the explicit opt-out.
+A fixed policy retains its exact name and is rejected before provider I/O when
+either the route or transport cannot represent it. Every provider exposes that
+exact intersection. A numeric reasoning budget constrains
 the generation envelope independently and never selects or changes policy. On
 routes whose controls are exclusive, fixed effort plus a numeric budget is
 rejected before I/O. Under `adaptive`, an explicit budget selects the numeric
@@ -389,8 +393,8 @@ environment panel supplies a bounded projection, independent of provider identit
 | `REASONING_CONTROLS` | Required when both pointers exist: `exclusive` refuses fixed effort plus budget; `combined` sends both. |
 | `REASONING_ON_BODY` | Static reasoning activation fields, merged with the selected control. |
 | `REASONING_OFF_BODY` | Explicit disable fields; otherwise a declared `none` effort can disable. |
-| `REASONING_ADAPTIVE_BODY` | Explicit adaptive fields; `{}` retains the enabled endpoint's default. Absent selects the strongest representable catalog/declaration effort. |
-| `REASONING_TOGGLE_BODY` | Adaptive activation in place of `ADAPTIVE_BODY` when Models.dev declares a toggle control. |
+| `REASONING_ADAPTIVE_BODY` | Explicit adaptive fields, ahead of graded fallback; `{}` retains the enabled endpoint's default. |
+| `REASONING_TOGGLE_BODY` | Reasoning enable fields when Models.dev declares a toggle and neither an explicit adaptive body nor a supported fallback effort applies. |
 
 The existing provider declaration prefix is
 `PLURNK_PROVIDERS_PROVIDER_<NAME>_`; `PLURNK_PROVIDERS_<suffix>` overrides

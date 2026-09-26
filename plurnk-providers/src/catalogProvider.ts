@@ -33,6 +33,7 @@ import { REASONING_POLICIES, type ReasoningPolicy } from "@plurnk/plurnk-contrac
 import { estimateProviderCost } from "./cost.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import RequestFields from "./RequestFields.ts";
+import { adaptiveEffortFromEnv } from "./reasoning-effort.ts";
 import type { LanguageModel } from "ai";
 import type { AiSdkProviderOptions, CacheAffinity } from "./AiSdkProvider.ts";
 import type { PluginAttribution, PluginAttributionContext } from "@plurnk/plurnk-meta";
@@ -44,9 +45,6 @@ export const inputModalitiesOf = (input: readonly string[] | undefined): Readonl
 
 const activationPolicies = Object.freeze(["off", "adaptive"] as const);
 
-const reasoningEffortOrder = Object.freeze([
-    "minimal", "low", "medium", "high", "xhigh", "max",
-] as const);
 const nativeReasoningEfforts = new Set<NativeReasoningEffort>([
     "minimal", "low", "medium", "high", "xhigh",
 ]);
@@ -62,15 +60,6 @@ const catalogEfforts = (
         ...declared,
     ]),
 ];
-
-const strongestCatalogEffort = <T extends NativeReasoningEffort>(
-    info: ModelInfo,
-    supported: ReadonlySet<T>,
-    declared: readonly ModelReasoningEffort[] = [],
-): T | undefined => {
-    const values = new Set(catalogEfforts(info, declared));
-    return reasoningEffortOrder.findLast((effort) => supported.has(effort as T) && values.has(effort)) as T | undefined;
-};
 
 const catalogSupportsToggle = (info: ModelInfo): boolean =>
     info.reasoningOptions?.some((option) => option.type === "toggle") === true;
@@ -127,12 +116,14 @@ export const catalogReasoningPolicies = (
 ).policies;
 
 const adaptiveReasoningProjection = ({
+    env,
     sdkPackage,
     model,
     reasoningCapable,
     info,
     declared,
 }: {
+    env: NodeJS.ProcessEnv;
     sdkPackage?: string;
     model: string;
     reasoningCapable: boolean;
@@ -164,9 +155,10 @@ const adaptiveReasoningProjection = ({
             },
         };
     }
-    if (info?.reasoningOptions !== undefined) {
+    if (info !== undefined) {
         return {
-            adaptiveReasoning: strongestCatalogEffort(info, nativeReasoningEfforts, declared) ?? "provider-default",
+            adaptiveReasoning: adaptiveEffortFromEnv(env, catalogEfforts(info, declared)
+                .filter((effort): effort is NativeReasoningEffort => nativeReasoningEfforts.has(effort as NativeReasoningEffort))) ?? "provider-default",
         };
     }
     return { adaptiveReasoning: "provider-default" };
@@ -230,6 +222,7 @@ export const providerFromSdkModel = ({
         name, env, info, languageModel !== undefined,
     );
     const adaptiveReasoning = adaptiveReasoningProjection({
+        env,
         sdkPackage,
         model,
         reasoningCapable,

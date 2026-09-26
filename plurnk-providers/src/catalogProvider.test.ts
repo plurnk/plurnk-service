@@ -2,6 +2,7 @@ import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { once } from "node:events";
 import { createServer } from "node:http";
+import { createOpenAI } from "@ai-sdk/openai";
 import { catalogProviderFromEnv, catalogReasoningPolicies, providerFromSdkModel } from "./catalogProvider.ts";
 import { lookupProvider, resolveModel } from "@plurnk/plurnk-models";
 import { calculateCostUsdDecimal } from "./usage.ts";
@@ -17,9 +18,9 @@ const policiesOver = (efforts: Iterable<string>, off = false): string[] => {
     const set = new Set(efforts);
     return [...(off ? ["off"] : []), "adaptive", ...EFFORT_ORDER.filter((effort) => effort !== "minimal" && set.has(effort))];
 };
-const strongestOf = (efforts: Iterable<string>): string | undefined => {
+const fallbackOf = (efforts: Iterable<string>): string | undefined => {
     const set = new Set(efforts);
-    return EFFORT_ORDER.findLast((effort) => set.has(effort));
+    return set.has("high") ? "high" : undefined;
 };
 const catalogRatesOf = (provider: string, model: string) => {
     const cost = resolveModel(provider, model)?.info.cost;
@@ -292,7 +293,7 @@ test("Models.dev controls Cloudflare's exact effort vocabulary", async () => {
     assert.deepEqual(ungradedReasoner?.supportedReasoningPolicies, policiesOver(catalogEffortsOf("cloudflare-workers-ai", "@cf/zai-org/glm-5.3-flash")), "the catalog's vocabulary, exactly");
     await ungradedReasoner?.generate({ workerId: "cloudflare-ungraded", messages: [{ role: "user", content: "hello" }] });
 
-    assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", "xhigh", undefined, strongestOf(catalogEffortsOf("cloudflare-workers-ai", "@cf/zai-org/glm-5.3-flash"))], "adaptive takes the strongest catalog effort, or none when the catalog lists none");
+    assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", undefined, undefined, fallbackOf(catalogEffortsOf("cloudflare-workers-ai", "@cf/zai-org/glm-5.3-flash"))], "adaptive selects high only when supported; it does not escalate to xhigh");
     assert.throws(
         () => catalogProviderFromEnv("cloudflare-workers-ai", cloudflareEnv, "@cf/qwen/qwen3.8-27b"),
         /reasoning policy 'off' is unsupported; supported policies: adaptive, low, medium/,
@@ -333,7 +334,7 @@ test("an operator-declared effort vocabulary extends Models.dev's for a provider
     await low?.generate({ workerId: "declared-low", messages: [{ role: "user", content: "hello" }] });
     const adaptive = catalogProviderFromEnv("cloudflare-workers-ai", { ...declaredEnv, PLURNK_PROVIDERS_REASONING: "adaptive" }, "@cf/zai-org/glm-5.3-flash");
     await adaptive?.generate({ workerId: "declared-adaptive", messages: [{ role: "user", content: "hello" }] });
-    assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", strongestOf([...catalogEffortsOf("cloudflare-workers-ai", "@cf/zai-org/glm-5.3-flash"), "low", "medium", "high"])], "a fixed level keeps its name; adaptive takes the strongest effort in the union");
+    assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", "high"], "a fixed level keeps its name; declared high admits the configured fallback");
     // A declared `none` admits `off` on an effort transport; the catalog's own vocabulary stays in the union.
     const withOff = catalogProviderFromEnv("cloudflare-workers-ai", {
         ...declaredEnv,
@@ -516,9 +517,48 @@ test("Meta Muse adaptive reasoning is requested even when the endpoint returns n
         messages: [{ role: "user", content: "hello" }],
     });
 
-    assert.equal(body?.reasoning_effort, "xhigh");
+    assert.equal(body?.reasoning_effort, "high");
     assert.equal(result?.assistant.reasoning, null);
     assert.equal(result?.accounting[0]?.usage?.outputTokenDetails?.reasoningTokens, 37);
+});
+
+test("{§provider-reasoning-policy} native graded requests use only the supported configured fallback", async () => {
+    let body: Record<string, unknown> | undefined;
+    const sdk = createOpenAI({
+        apiKey: "test-key",
+        fetch: async (_input, init) => {
+            body = JSON.parse(String(init?.body));
+            return new Response(`data: ${JSON.stringify({
+                id: "fallback", object: "chat.completion.chunk", created: 1, model: "o3",
+                choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
+            })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
+        },
+    });
+    for (const [efforts, fallback, expected] of [
+        [["low", "medium", "high", "xhigh", "max"], "high", "high"],
+        [["low", "medium", "xhigh"], "high", undefined],
+        [["low", "medium", "high", "xhigh"], "medium", "medium"],
+        [["high", "max"], "max", undefined],
+        [["high", "xhigh"], "", undefined],
+    ] as const) {
+        const provider = providerFromSdkModel({
+            name: "openai", model: "o3", languageModel: sdk.chat("o3"),
+            sdkPackage: "@ai-sdk/openai", contextWindow: 16_384,
+            env: {
+                ...env,
+                PLURNK_PROVIDERS_REASONING: "adaptive",
+                PLURNK_PROVIDERS_REASONING_FALLBACK: fallback,
+            },
+            info: {
+                name: "reasoning fixture", contextWindow: 16_384, maxOutputTokens: 8_192,
+                reasoning: true, reasoningOptions: [{ type: "effort", values: [...efforts] }],
+                attachment: false, toolCall: false, modalities: { input: ["text"], output: ["text"] },
+            },
+        });
+        const result = await provider.generate({ workerId: "fallback", messages: [{ role: "user", content: "hello" }] });
+        assert.equal(result.assistant.content, "ok");
+        assert.equal(body?.reasoning_effort, expected, `${fallback || "provider default"} with ${efforts.join(",")}`);
+    }
 });
 
 test("Google adaptive reasoning requests and preserves readable thought summaries", async () => {
@@ -819,14 +859,14 @@ test("native provider routes project their documented cache controls through the
             workerId: "openrouter-budget",
             messages: [{ role: "user", content: "budgeted" }],
         });
-        assert.deepEqual(call?.body.reasoning, { max_tokens: 2048 });
+        assert.deepEqual(call?.body.reasoning, { enabled: true, max_tokens: 2048 });
         await adaptive?.generate({
             workerId: "openrouter-budget",
             messages: [{ role: "user", content: "tighter" }],
             maxOutputTokens: 1500,
         });
         assert.equal(call?.body.max_tokens, 1500);
-        assert.deepEqual(call?.body.reasoning, { max_tokens: 1499 }, "the actual request keeps reasoning inside a tightened total envelope");
+        assert.deepEqual(call?.body.reasoning, { enabled: true, max_tokens: 1499 }, "the actual request keeps reasoning inside a tightened total envelope");
         assert.throws(() => catalogProviderFromEnv("openrouter", {
             ...budgetEnv,
             PLURNK_PROVIDERS_REASONING: "low",
@@ -840,7 +880,17 @@ test("native provider routes project their documented cache controls through the
             workerId: "openrouter-budget",
             messages: [{ role: "user", content: "budgeted" }],
         });
-        assert.deepEqual(call?.body.reasoning, { effort: "low" }, "a fixed policy keeps the effort form");
+        assert.deepEqual(call?.body.reasoning, { enabled: true, effort: "low" }, "a fixed policy keeps the effort form");
+        const fallback = catalogProviderFromEnv("openrouter", {
+            ...budgetEnv,
+            PLURNK_PROVIDERS_REASONING_BUDGET: "",
+            PLURNK_PROVIDERS_REASONING: "adaptive",
+        }, "z-ai/glm-5.3-flash", `http://127.0.0.1:${address.port}/api/v1`);
+        await fallback?.generate({
+            workerId: "openrouter-fallback",
+            messages: [{ role: "user", content: "hello" }],
+        });
+        assert.deepEqual(call?.body.reasoning, { enabled: true, effort: "high" }, "activation does not mask the adaptive effort fallback");
     });
 });
 
