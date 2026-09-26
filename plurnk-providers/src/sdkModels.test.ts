@@ -229,24 +229,17 @@ test("{§provider-cache-affinity} the environment panel supplies each documented
         "the SDK binding does not reconstruct a missing declaration from provider identity");
 });
 
-test("explicit stable-system cache breakpoints exist only on supported Claude routes", () => {
+test("{§provider-model-options} explicit stable-system cache breakpoints exist only where a provider declares them", () => {
     const cacheControl = { type: "ephemeral" };
-    assert.deepEqual(
-        createSdkModel("anthropic", "claude-sonnet-4-6", { ANTHROPIC_API_KEY: "key" })?.systemCacheProviderOptions,
-        { anthropic: { cacheControl } },
-    );
-    assert.deepEqual(
-        createSdkModel("openrouter", "anthropic/claude-sonnet-4.6", { OPENROUTER_API_KEY: "key" })?.systemCacheProviderOptions,
-        { openrouter: { cacheControl } },
-    );
-    assert.equal(
-        createSdkModel("openrouter", "openai/gpt-5", { OPENROUTER_API_KEY: "key" })?.systemCacheProviderOptions,
-        undefined,
-    );
-    assert.equal(
-        createSdkModel("deepseek", "deepseek-v4-flash", { DEEPSEEK_API_KEY: "key" })?.systemCacheProviderOptions,
-        undefined,
-    );
+    const system = (provider: string, model: string, env: NodeJS.ProcessEnv) => createSdkModel(provider, model, withProviderDefaults(env))?.systemCacheProviderOptions;
+    assert.deepEqual(system("anthropic", "claude-sonnet-4-6", { ANTHROPIC_API_KEY: "key" }), { anthropic: { cacheControl } });
+    assert.deepEqual(system("openrouter", "anthropic/claude-sonnet-4.6", { OPENROUTER_API_KEY: "key" }), { openrouter: { cacheControl } });
+    assert.deepEqual(system("openrouter", "~anthropic/claude-sonnet-latest", { OPENROUTER_API_KEY: "key" }), { openrouter: { cacheControl } });
+    assert.equal(system("openrouter", "openai/gpt-5", { OPENROUTER_API_KEY: "key" }), undefined);
+    assert.equal(system("deepseek", "deepseek-v4-flash", { DEEPSEEK_API_KEY: "key" }), undefined);
+    assert.equal(system("minimax", "MiniMax-M2.5", { MINIMAX_API_KEY: "key" }), undefined, "another provider on the Anthropic SDK declares none");
+    assert.equal(createSdkModel("anthropic", "claude-sonnet-4-6", { ANTHROPIC_API_KEY: "key" })?.systemCacheProviderOptions, undefined,
+        "the SDK binding does not reconstruct a missing declaration from provider identity");
 });
 
 test("an operator-declared compatible provider receives no guessed cache extension", () => {

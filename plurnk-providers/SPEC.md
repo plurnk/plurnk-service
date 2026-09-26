@@ -282,7 +282,7 @@ or non-numeric rates refuse at construction.
 
 | Condition | Projection |
 | --- | --- |
-| Explicit adaptive declaration or documented native dynamic mechanism | Preserve that mechanism; an explicit `{}` retains the enabled endpoint's default. |
+| Explicit adaptive declaration: `REASONING_ADAPTIVE_BODY`, or a native model family's `ADAPTIVE_OPTIONS` ({§provider-model-options}) | Preserve that mechanism; an explicit `{}` retains the enabled endpoint's default. |
 | The configured `PLURNK_PROVIDERS_REASONING_FALLBACK` is supported by both model and transport | Send that exact effort. The shipped fallback is `high`, not the strongest available level. |
 | No supported fallback, including an empty fallback setting | Retain reasoning activation and the provider's default effort; never invent a level or escalate to another one. |
 
@@ -355,10 +355,23 @@ the provider/route/alias precedence of {§provider-wire-declaration}; `null`
 clears the declaration. Placement is independent of the enable switch, cannot
 replace transport-owned fields, and does not imply support from a provider's name.
 
+§provider-model-options **A model family's native options are a provider declaration.** Models.dev
+does not say which models on a native SDK take adaptive reasoning or explicit cache writes, and the SDKs
+do not export their tables, so a provider declares them as data: `ADAPTIVE_OPTIONS` and
+`SYSTEM_CACHE_OPTIONS` are JSON arrays of `{"models":["<glob>",…],"options":{…}}` rules. The first rule
+with a glob matching the route's model id (`path.matchesGlob`) supplies its per-call provider options;
+without a match none apply. They follow the provider/route/alias precedence of
+{§provider-wire-declaration}, an empty value declares none, and a malformed value fails construction.
+The shipped declarations cover adaptive reasoning on Claude families (`anthropic`, `freemodel`,
+`amazon-bedrock`), Gemini 2.5's dynamic reasoning (`google`), and system cache writes on `anthropic`
+and on OpenRouter's `anthropic/*` routes; they decide exactly as the identity checks they replaced for
+all 6,936 cataloged models.
+
 §provider-cache-write-policy **Cache-write policy is separate from affinity.**
 `PLURNK_PROVIDERS_CACHE_WRITE_POLICY` is `off` or `stable-system`. The latter
 marks only the final leading system instruction as an explicit reusable cache
-boundary, and only on routes whose native SDK documents that control. It does
+boundary, and only on routes whose provider declares the control in
+`SYSTEM_CACHE_OPTIONS` ({§provider-model-options}). It does
 not mark the changing user packet or enable an API-wide automatic cache mode.
 Unsupported routes receive no invented option. The default five-minute
 provider lifetime is used; a longer, differently priced lifetime is not an

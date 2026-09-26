@@ -36,6 +36,7 @@ import { estimateProviderCost } from "./cost.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import RequestFields from "./RequestFields.ts";
 import { adaptiveEffortFromEnv } from "./reasoning-effort.ts";
+import { providerModelOptions } from "./model-options.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import type { LanguageModel } from "ai";
 import type { AiSdkProviderOptions, CacheAffinity } from "./AiSdkProvider.ts";
@@ -84,9 +85,6 @@ const catalogSupportedReasoningPolicies = ({
             && efforts.has(policy));
 };
 
-const anthropicSupportsAdaptiveThinking = (model: string): boolean =>
-    /claude-(?:opus-(?:4-[678]|5)|sonnet-(?:4-6|5)|fable-5)/.test(model);
-
 const reasoningCapabilities = (
     name: string,
     env: NodeJS.ProcessEnv,
@@ -119,45 +117,24 @@ export const catalogReasoningPolicies = (
 ).policies;
 
 const adaptiveReasoningProjection = ({
+    name,
     env,
-    sdkPackage,
     model,
     reasoningCapable,
     info,
     declared,
 }: {
+    name: string;
     env: NodeJS.ProcessEnv;
-    sdkPackage?: string;
     model: string;
     reasoningCapable: boolean;
     info?: ModelInfo;
     declared: readonly ModelReasoningEffort[];
 }): Pick<AiSdkProviderConfig, "adaptiveReasoning" | "adaptiveReasoningProviderOptions"> => {
     if (!reasoningCapable) return { adaptiveReasoning: "provider-default" };
-    if (sdkPackage === "@ai-sdk/google" && /^gemini-2\.5(?:-|$)/i.test(model)) {
-        return {
-            adaptiveReasoning: "provider-default",
-            adaptiveReasoningProviderOptions: {
-                google: { thinkingConfig: { thinkingBudget: -1 } },
-            },
-        };
-    }
-    if (sdkPackage === "@ai-sdk/anthropic" && anthropicSupportsAdaptiveThinking(model)) {
-        return {
-            adaptiveReasoning: "provider-default",
-            adaptiveReasoningProviderOptions: {
-                anthropic: { thinking: { type: "adaptive", display: "summarized" } },
-            },
-        };
-    }
-    if (sdkPackage === "@ai-sdk/amazon-bedrock" && anthropicSupportsAdaptiveThinking(model)) {
-        return {
-            adaptiveReasoning: "provider-default",
-            adaptiveReasoningProviderOptions: {
-                bedrock: { reasoningConfig: { type: "adaptive" } },
-            },
-        };
-    }
+    // {§provider-model-options}: a model family's adaptive reasoning, where the provider declares one.
+    const familyOptions = providerModelOptions(name, env, "ADAPTIVE_OPTIONS", model);
+    if (familyOptions !== undefined) return { adaptiveReasoning: "provider-default", adaptiveReasoningProviderOptions: familyOptions };
     if (info !== undefined) {
         return {
             adaptiveReasoning: adaptiveEffortFromEnv(env, catalogEfforts(info, declared)
@@ -234,8 +211,8 @@ export const providerFromSdkModel = ({
         throw new UnsupportedReasoningPolicyError(`provider:${name}`, "max", policies, `The catalog documents 'max' for this route, but the native SDK's portable reasoning setting cannot express it; declare the SDK's own effort option: ${prefix}_OPTIONS_NAMESPACE and ${prefix}_REASONING_EFFORT_PATH.`);
     }
     const adaptiveReasoning = adaptiveReasoningProjection({
+        name,
         env,
-        sdkPackage,
         model,
         reasoningCapable,
         info,

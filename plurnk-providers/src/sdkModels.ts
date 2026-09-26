@@ -9,6 +9,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createTogetherAI } from "@ai-sdk/togetherai";
 import { createXai } from "@ai-sdk/xai";
 import { providerSetting } from "./provider-env.ts";
+import { providerModelOptions } from "./model-options.ts";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
     isProviderCredentialName,
@@ -43,7 +44,6 @@ export type SdkModel = {
     readonly catalog: ProviderInfo | null;
 };
 
-const cacheControl = { type: "ephemeral" as const };
 // The release generator admits only packages implemented by this package.
 // Derive runtime readiness from that same pinned provider projection instead
 // of maintaining a second support list beside the construction switch.
@@ -312,7 +312,13 @@ export const createSdkModel = (
     if (resolved === null) return null;
     const { catalog, url } = resolved;
     const cacheAffinity = cacheAffinityDeclarationFromEnv(env, provider);
-    return { ...modelFromSdk(provider, model, env, catalog, url), cacheAffinity, endpoint: url };
+    const systemCacheProviderOptions = providerModelOptions(provider, env, "SYSTEM_CACHE_OPTIONS", model);
+    return {
+        ...modelFromSdk(provider, model, env, catalog, url),
+        ...(systemCacheProviderOptions === undefined ? {} : { systemCacheProviderOptions }),
+        cacheAffinity,
+        endpoint: url,
+    };
 };
 
 const modelFromSdk = (
@@ -373,9 +379,6 @@ const modelFromSdk = (
             return {
                 languageModel: createAnthropic({ apiKey: requireApiKey(provider, env, catalog), baseURL: url }).languageModel(model),
                 additiveReasoningProvider: "anthropic",
-                ...(catalog.id === "anthropic"
-                    ? { systemCacheProviderOptions: { anthropic: { cacheControl } } }
-                    : {}),
                 catalog,
             };
         case "@ai-sdk/amazon-bedrock":
@@ -400,9 +403,6 @@ const modelFromSdk = (
                     baseURL: url,
                     ...openRouterAttribution(provider, env),
                 }).languageModel(model),
-                ...(catalog.id === "openrouter" && model.replace(/^~/, "").startsWith("anthropic/")
-                    ? { systemCacheProviderOptions: { openrouter: { cacheControl } } }
-                    : {}),
                 ...(normalizeCost === undefined ? {} : { normalizeCost }),
                 catalog,
             };
