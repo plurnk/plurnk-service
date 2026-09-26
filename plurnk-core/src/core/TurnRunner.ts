@@ -1249,7 +1249,7 @@ export default class TurnRunner {
         attempts.turnWireAccounting.push(...completedResponse.accounting);
         await modelCall.observeResponse(completedResponse, null, attempts.wire.nativeInputs);
         attempts.railEvidence = attempts.railGrammar === undefined ? undefined : completedResponse.grammarEvidence;
-        const split = this.#splitResponse(completedResponse, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed);
+        const split = this.#splitResponse(completedResponse, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []);
         attempts.split = split;
         await this.#classifyProviderAttempt(attempts, attemptRow.id, split, attempt, split.emissionValid);
         return split.emissionValid ? "admitted" : "rejected";
@@ -1376,7 +1376,7 @@ export default class TurnRunner {
             // {§provider-interrupted-attempt} — the interrupted response stays durable
             // as an unaccepted attempt; it is never admitted or replayed.
             await modelCall.observeResponse(error.attempt, failure, attempts.wire.nativeInputs);
-            await this.#classifyProviderAttempt(attempts, attemptId, this.#splitResponse(error.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed), attempts.currentEmissionAttempt, false);
+            await this.#classifyProviderAttempt(attempts, attemptId, this.#splitResponse(error.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []), attempts.currentEmissionAttempt, false);
         } else {
             await modelCall.fail(failure, error.capacity ?? null);
         }
@@ -1476,7 +1476,7 @@ export default class TurnRunner {
         if (err instanceof ProviderError && err.attempt !== undefined) {
             attempts.response = err.attempt;
             await attempts.modelCall.observeResponse(err.attempt, failure, attempts.wire.nativeInputs);
-            attempts.split = this.#splitResponse(err.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed);
+            attempts.split = this.#splitResponse(err.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []);
             await this.#classifyProviderAttempt(attempts, attempts.attemptId, attempts.split, attempts.currentEmissionAttempt, false);
         } else {
             await attempts.modelCall.fail(
@@ -1787,7 +1787,7 @@ export default class TurnRunner {
         };
     }
 
-    #splitResponse(response: ProviderAttempt, executors: readonly string[] = [], wellFormed?: BodyCheck): SplitProviderResponse {
+    #splitResponse(response: ProviderAttempt, executors: readonly string[] = [], wellFormed?: BodyCheck, jsonBodyExecutors: readonly string[] = []): SplitProviderResponse {
         const { assistant } = response;
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
         const ops: PlurnkStatement[] = [];
@@ -1805,7 +1805,7 @@ export default class TurnRunner {
             const parsed = observedSync("contracts.parse", {}, (span) => {
                 // {§fence-heading-in-body} {§interstitial-fence} — the executors this workspace can run
                 // are heading tags to the parser; anything else tagged is a code block.
-                const result = PlurnkParser.parse(assistant.content, { executors, ...(wellFormed === undefined ? {} : { wellFormed }) });
+                const result = PlurnkParser.parse(assistant.content, { executors, jsonBodyExecutors, ...(wellFormed === undefined ? {} : { wellFormed }) });
                 span.setAttribute("statements", result.items.filter((item) => item.kind === "statement").length);
                 return result;
             });

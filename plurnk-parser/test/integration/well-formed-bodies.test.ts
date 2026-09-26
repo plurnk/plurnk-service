@@ -33,3 +33,15 @@ test("{§pairing-objective}: a runtime with no declared media type keeps the fen
     const [body] = bodies(SOURCE);
     assert.ok(body!.includes("git remote -v"), "without a check the call keeps its nested reading");
 });
+
+test("{§bare-option-object}: a bare heading object is the body of an executor whose body is JSON, and options otherwise", () => {
+    const parse = (source: string) => PlurnkParser.parse(source, { executors: ["sh", "gitea"], jsonBodyExecutors: ["gitea"] }).items;
+    const statement = (source: string) => parse(source).flatMap((item) => item.kind === "statement" ? [item.statement as { metadata: readonly string[] | null; body: unknown }] : [])[0]!;
+    const warnings = (source: string) => parse(source).flatMap((item) => item.kind === "error" ? [item.error.message] : []);
+    const mcp = "```gitea (list_issues) {\"owner\":\"plurnk\"}\n```";
+    assert.deepEqual([statement(mcp).metadata, statement(mcp).body], [null, "{\"owner\":\"plurnk\"}"], "an MCP tool's heading object is its arguments body");
+    assert.deepEqual(warnings(mcp), ["`gitea` took its body on the heading line; the body belongs on the lines below it."]);
+    const shell = "```sh {\"cwd\":\"/tmp\"}\nls\n```";
+    assert.deepEqual([statement(shell).metadata, statement(shell).body], [["{\"cwd\":\"/tmp\"}"], "ls"], "the house option array is the shell's option block");
+    assert.deepEqual(warnings(shell), ["`sh` took a bare option object; the taught form is `[{…}]`."]);
+});

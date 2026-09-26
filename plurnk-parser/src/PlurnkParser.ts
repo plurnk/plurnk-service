@@ -40,6 +40,8 @@ export interface ParseOptions {
     readonly executors?: readonly string[];
     // {§pairing-objective}: whether a runtime's body is well-formed in the media type it declares.
     readonly wellFormed?: (runtime: string, body: string) => boolean;
+    // {§bare-option-object}: the executors whose declared body is JSON; their bare heading object is that body.
+    readonly jsonBodyExecutors?: readonly string[];
 }
 
 export default class PlurnkParser {
@@ -241,6 +243,7 @@ export default class PlurnkParser {
             spellings.set("js", node);
         }
         AstBuilder.executorSpellings = spellings;
+        AstBuilder.jsonBodyExecutors = new Set(options.jsonBodyExecutors ?? []);
         const errors: PlurnkParseError[] = [];
         lexer.removeErrorListeners();
         lexer.addErrorListener(new RecordingListener("lexer", errors));

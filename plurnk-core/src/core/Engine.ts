@@ -368,6 +368,11 @@ export default class Engine {
         return this.#executors?.availableRuntimes(workspaceId) ?? [];
     }
 
+    // {§bare-option-object} — the executors whose declared body is JSON.
+    executorJsonBodyTags(workspaceId?: number): readonly string[] {
+        return this.#executors?.jsonBodyRuntimes(workspaceId) ?? [];
+    }
+
     setExecutors(executors: ExecutorRegistry): void {
         this.#executors = executors;
     }

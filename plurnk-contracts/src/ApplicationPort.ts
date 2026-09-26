@@ -172,6 +172,9 @@ export interface ApplicationPort extends HttpHost {
     // {§fence-heading-in-body} — the executor tags this workspace can run: what a client-tier
     // parse must know for those tags to open blocks ({§interstitial-fence}).
     executorTags(workspaceId: number): readonly string[];
+    // {§bare-option-object} — the executors whose declared body is JSON; a client-tier parse reads their bare
+    // heading object as that body instead of the option array.
+    executorJsonBodyTags(workspaceId: number): readonly string[];
     readLog(args: {
         readonly workspaceId: number;
         readonly workerId: number;

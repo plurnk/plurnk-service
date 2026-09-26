@@ -365,6 +365,11 @@ export default class ExecutorRegistry {
     // The actionable set offered to the model — available tags only. Unavailable
     // or unknown tags are omitted; they surface their `detail` on the 501 if the
     // model attempts one anyway.
+    // {§bare-option-object} — the available runtimes whose declared body is JSON.
+    jsonBodyRuntimes(workspaceId?: number): readonly string[] {
+        return this.availableRuntimes(workspaceId).filter((tag) => this.entry(tag, workspaceId)?.invocation.body.mimetype === "application/json");
+    }
+
     availableRuntimes(workspaceId?: number): readonly string[] {
         const tags = new Set<string>();
         for (const [tag, entry] of this.#byTag) if (entry.available) tags.add(tag);

@@ -190,6 +190,15 @@ export default class AstBuilder {
         return { metadata: [split.inline.trim()], lifted: true };
     }
 
+    // {§bare-option-object}: for an executor whose declared body is JSON, a bare heading object is that body,
+    // written on the wrong line; the lexer withheld the inline-body advisory, so name the form here.
+    static #inlineObjectBody(tag: string, metadata: SchemeMetadata, split: { inline: string | null; below: string | null }, position: Position): { metadata: SchemeMetadata; lifted: boolean } {
+        if (metadata === null && split.inline !== null && AstBuilder.#isJsonObject(split.inline.trim())) {
+            AstBuilder.#advisories.push(new PlurnkParseError(position.line, position.column, "parser", `\`${tag}\` took its body on the heading line; the body belongs on the lines below it.`, "warning"));
+        }
+        return { metadata, lifted: false };
+    }
+
     // {§matcher-option} — shared by admission and rendering; invalid blocks remain owner input.
     static metadataOptions(metadata: readonly string[] | null | undefined): Record<string, unknown> | null {
         if (metadata?.length !== 1) return null;
@@ -456,7 +465,11 @@ export default class AstBuilder {
         const runtime = AstBuilder.#executorOf(ctx);
         const slots = AstBuilder.#extractExecSlots(ctx.execModifiers(), position, runtime);
         const split = AstBuilder.#splitInlineBody(ctx, position);
-        const options = AstBuilder.#liftBareOptionObject(runtime, slots.metadata, split, position);
+        // {§bare-option-object}: the option-array shape is the house convention; an executor whose declared body is
+        // JSON (an MCP tool's arguments) reads a bare heading object as that body.
+        const options = AstBuilder.jsonBodyExecutors.has(runtime)
+            ? AstBuilder.#inlineObjectBody(runtime, slots.metadata, split, position)
+            : AstBuilder.#liftBareOptionObject(runtime, slots.metadata, split, position);
         return {
             runtime,
             aside: AstBuilder.#asideOf(ctx),
@@ -469,6 +482,8 @@ export default class AstBuilder {
 
     // {§executor-case} — the AST carries the registered spelling; the tag may be written in any case.
     static executorSpellings: ReadonlyMap<string, string> = new Map();
+    // {§bare-option-object} — per parse: the executors whose declared body is JSON.
+    static jsonBodyExecutors: ReadonlySet<string> = new Set();
 
     static #executorOf(ctx: ExecStatementContext): RuntimeTag {
         const name = ctx.OPEN_EXEC().getText().replace(/^`+[0-9]*/, "").toLowerCase();

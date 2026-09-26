@@ -598,14 +598,17 @@ The ingester tolerates body text after horizontal whitespace on the header,
 preserves it, and emits one warning stating that normalization. This does not
 change the meaning of a compact empty block or permit unmatched fences.
 
-§bare-option-object A bare option object is the option block. On an
-operation that takes an option block and no bare matcher — SEND, BARE, WORK,
-FORK and every executor fence — heading text after the slots that is exactly
-one JSON object `{…}` is read as `[{…}]`: the AST carries the array form, the
-written heading renders it, every consumer sees the taught shape, and one
-warning-severity receipt names the indulgence in place of the
-{§heading-inline-body} advisory: "`SEND` took a bare option object; the taught
-form is `[{…}]`." A heading that already carries a block keeps the object as
+§bare-option-object A bare option object is the option block, where the house option array owns the
+block. On an operation that takes an option block and no bare matcher — SEND, BARE, WORK, FORK and
+every executor fence — heading text after the slots that is exactly one JSON object `{…}` is read
+as `[{…}]`: the AST carries the array form, the written heading renders it, and one
+warning-severity receipt names the indulgence in place of the {§heading-inline-body} advisory:
+"`SEND` took a bare option object; the taught form is `[{…}]`." The option array is a house
+convention, not a language rule ({§scheme-metadata-modifier}): an executor whose declared body is
+JSON ({§executor-invocation}), an MCP tool, reads the object as its body instead — its arguments,
+written on the heading line — with one warning: "`gitea` took its body on the heading line; the
+body belongs on the lines below it." The host names those executors to the parse
+(`ParseOptions.jsonBodyExecutors`). A heading that already carries a block keeps the object as
 inline body. On FIND, READ and KILL the same text is the matcher
 ({§naked-pattern}), because a search for JSON text is legitimate; a bare matcher
 that parses as a JSON object draws one advisory naming the option form ("`{…}`

@@ -920,6 +920,10 @@ export default class Daemon implements ApplicationPort {
         return this.#engine.executorTags(workspaceId);
     }
 
+    executorJsonBodyTags(workspaceId: number): readonly string[] {
+        return this.#engine.executorJsonBodyTags(workspaceId);
+    }
+
     async dispatchClientAction(args: { workspaceId: number; workerId: number; statements: PlurnkStatement[] }): Promise<Array<{ status: number; [key: string]: unknown }>> {
         const workspaceId = ClientInput.assertId("operation.dispatch-batch", "workspaceId", args.workspaceId);
         const workerId = ClientInput.assertId("operation.dispatch-batch", "workerId", args.workerId);

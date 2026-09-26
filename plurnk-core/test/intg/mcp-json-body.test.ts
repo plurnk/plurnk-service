@@ -12,7 +12,10 @@ import { connect, makeMockResponse, makeRawMockResponse, rpcCall, runLoopToTermi
 // {§pairing-objective} — the dogfood shape (2026-09-26): an MCP call closed at once, then prose that later
 // shows a bare block. The runtime declares an application/json body, so the call ends at its own closer
 // and the tool receives exactly the object the model wrote.
-test("{§pairing-objective}: an MCP call's JSON body is not extended into the prose after it", { timeout: 30_000 }, async (t) => {
+for (const [name, source] of [
+    ["the prose after it does not extend its JSON body", ["So I can invoke:", "", "```fixture (inspect)", "{\"query\":\"fixture\"}", "```", "", "Then I will check the remote:", "", "```", "git remote -v", "```", "", "Done."].join("\n")],
+    ["arguments on its heading line are its body ({§bare-option-object})", "```fixture (inspect) {\"query\":\"fixture\"}\n```"],
+] as const) test(`{§pairing-objective}: an MCP call receives exactly the object the model wrote: ${name}`, { timeout: 30_000 }, async (t) => {
     const received: unknown[] = [];
     const served = await serveMcpHttp(t, createMcpHandler(() => {
         const server = new McpServer({ name: "json-body-fixture", version: "1.0.0" });
@@ -25,10 +28,6 @@ test("{§pairing-objective}: an MCP call's JSON body is not extended into the pr
         });
         return server;
     }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
-    const source = [
-        "So I can invoke:", "", "```fixture (inspect)", "{\"query\":\"fixture\"}", "```", "",
-        "Then I will check the remote:", "", "```", "git remote -v", "```", "", "Done.",
-    ].join("\n");
     const provider = new StreamMock({ contextWindow: 100_000, responses: [
         makeRawMockResponse(source, 10),
         makeMockResponse(PlurnkParser.frame("KILL", "Checked.")),

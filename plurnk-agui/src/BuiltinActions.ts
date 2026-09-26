@@ -258,7 +258,7 @@ export default class BuiltinActions {
                             { field: "text", recovery: "Provide PLURNK statements to parse." },
                         );
                     }
-                    const parsed = PlurnkParser.parseClient(p.text, { executors: this.#seam().executorTags(world.workspaceId) });
+                    const parsed = PlurnkParser.parseClient(p.text, { executors: this.#seam().executorTags(world.workspaceId), jsonBodyExecutors: this.#seam().executorJsonBodyTags(world.workspaceId) });
                     const results: Array<OperationResult | null> = [];
                     const statements: PlurnkStatement[] = [];
                     for (const item of parsed.items) {
@@ -309,7 +309,7 @@ export default class BuiltinActions {
                             { field: "text", recovery: "Provide one PLURNK statement to observe." },
                         );
                     }
-                    const parsed = PlurnkParser.parseClient(p.text, { executors: this.#seam().executorTags(world.workspaceId) });
+                    const parsed = PlurnkParser.parseClient(p.text, { executors: this.#seam().executorTags(world.workspaceId), jsonBodyExecutors: this.#seam().executorJsonBodyTags(world.workspaceId) });
                     // Advisories (warnings) describe a normalization; only a hard error fails the observation.
                     const diagnostic = parsed.items.find((item) => item.kind === "error" && item.error.severity === "error");
                     if (diagnostic !== undefined && diagnostic.kind === "error") {

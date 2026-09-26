@@ -91,6 +91,7 @@ const mockSeam = () => {
         cancelDrain: () => true,
         cancelWorker: async () => {},
         executorTags: () => ["sh"],
+        executorJsonBodyTags: () => [],
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
         readLog: async () => [{ id: 1, op: "SEND", status_rx: 200, origin: "model" }],
         readMessages: async () => [],
