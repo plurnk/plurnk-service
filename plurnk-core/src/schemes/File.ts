@@ -240,8 +240,8 @@ export default class File extends CoreSchemeAdapterBase {
             {
                 target: key,
                 recovery: occupied
-                    ? "EDIT creates member files; admit an existing file with the `members` executor's `add` tool and a `{\"glob\": \"<path>\"}` body."
-                    : "A file is read only as a member: EDIT creates one at this path, and the `members` executor's `add` tool admits a file that already exists, with a `{\"glob\": \"<path>\"}` body.",
+                    ? "Admit it with `members (add)` and a `{\"glob\": \"<path>\"}` body."
+                    : "Check the path with FIND. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body.",
                 retryable: false,
             },
         ) as SchemeResultBase;
