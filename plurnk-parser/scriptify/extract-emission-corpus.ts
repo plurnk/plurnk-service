@@ -16,6 +16,8 @@
 //
 // Without --write it reports what would change, so a drift is visible before it is adopted.
 import { readFileSync, readdirSync, existsSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { homedir, hostname, userInfo } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
@@ -38,7 +40,29 @@ export type CorpusRecord = {
     readonly emission: string;
 };
 
-const TURN = /model turn \d+ · (packet\d+)\): producer=model kind=inference status=(\d+)/u;
+// The turn line names the packet files' stem: `packetNNN` in older digests, the log coordinate in current ones.
+const TURN = /model turn \d+ · ([^)\s]+)\): producer=model kind=inference status=(\d+)/u;
+
+// Recorded emissions are public fixtures. The recording machine's own identifiers (home directory, user, host,
+// git name, forge organization) and every email address become neutral stand-ins; syntax is untouched.
+export const localIdentifiers = (): ReadonlyArray<readonly [RegExp, string]> => {
+    const git = (...args: string[]): string => spawnSync("git", args, { encoding: "utf8" }).stdout?.trim() ?? "";
+    const organization = /(?:@|\/\/)(?:[\w-]+\.)*?([\w-]+)\.[a-z]+[:/]/iu.exec(git("remote", "get-url", "origin"))?.[1];
+    const literal = (value: string): string => value.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    const named: Array<readonly [string | undefined, string]> = [
+        [homedir(), "/home/user"], [userInfo().username, "user"], [hostname(), "workstation"],
+        [git("config", "user.name"), "maintainer"], [organization, "example-org"],
+    ];
+    return [
+        [/[\w.+-]+@(?!example\.test\b)[\w-]+(?:\.[\w-]+)+/gu, "maintainer@example.test"],
+        ...named.filter((entry): entry is readonly [string, string] => entry[0] !== undefined && entry[0].length > 2)
+            .map(([value, standIn]) => [new RegExp(literal(value), "giu"), standIn] as const),
+    ];
+};
+
+export const redact = (text: string, identifiers = localIdentifiers()): string =>
+    identifiers.reduce((redacted, [pattern, standIn]) => redacted.replace(pattern, standIn), text);
+
 
 export const classify = (emission: string): Pick<CorpusRecord, "ops" | "outsideText" | "bareKills"> => {
     const parsed = PlurnkParser.parse(emission, {});
@@ -64,6 +88,7 @@ const shapeOf = (r: Omit<CorpusRecord, "specimen" | "packet" | "emission" | "tur
 export const harvest = (root: string): CorpusRecord[] => {
     const chosen = new Map<string, CorpusRecord>();
     const seen = new Map<string, number>();
+    const identifiers = localIdentifiers();
     for (const specimen of readdirSync(root).sort()) {
         const digest = join(root, specimen, "digest");
         const index = join(digest, "digest.md");
@@ -73,7 +98,7 @@ export const harvest = (root: string): CorpusRecord[] => {
             if (match === null) continue;
             const file = join(digest, `${match[1]!}.assistant.md`);
             if (!existsSync(file)) continue;
-            const emission = readFileSync(file, "utf8");
+            const emission = redact(readFileSync(file, "utf8"), identifiers);
             const record: CorpusRecord = {
                 specimen, packet: match[1]!, recordedStatus: Number(match[2]),
                 ...classify(emission), turns: 0, emission,

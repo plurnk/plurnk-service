@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { classify, CORPUS, type CorpusRecord } from "../../scriptify/extract-emission-corpus.ts";
+import { classify, CORPUS, localIdentifiers, type CorpusRecord } from "../../scriptify/extract-emission-corpus.ts";
 
 const records: CorpusRecord[] = readFileSync(CORPUS, "utf8")
     .split("\n").filter((line) => line !== "").map((line) => JSON.parse(line) as CorpusRecord);
@@ -48,4 +48,11 @@ test("{§recorded-emissions}: the corpus spans the contract, not one corner of i
     assert.ok(records.some(({ bareKills }) => bareKills > 0), "no parameterless KILL: the conclusion path is uncovered");
     assert.ok(records.some(({ recordedStatus, bareKills }) => recordedStatus === 200 && bareKills === 0),
         "no pre-KILL conclusion retained: the corpus has forgotten that the contract used to differ");
+});
+
+test("{§recorded-emissions}: the corpus carries no identifier of the machine that recorded or runs it", () => {
+    const leaked = records.flatMap((record) => localIdentifiers()
+        .filter(([pattern]) => new RegExp(pattern.source, pattern.flags.replace("g", "")).test(`${record.specimen}\n${record.emission}`))
+        .map(([pattern]) => `${record.specimen}/${record.packet}: ${pattern.source}`));
+    assert.deepEqual(leaked, []);
 });
