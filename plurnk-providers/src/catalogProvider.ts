@@ -34,6 +34,7 @@ import { estimateProviderCost } from "./cost.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import RequestFields from "./RequestFields.ts";
 import { adaptiveEffortFromEnv } from "./reasoning-effort.ts";
+import { withProviderDefaults } from "./defaults.ts";
 import type { LanguageModel } from "ai";
 import type { AiSdkProviderOptions, CacheAffinity } from "./AiSdkProvider.ts";
 import type { PluginAttribution, PluginAttributionContext } from "@plurnk/plurnk-meta";
@@ -112,7 +113,7 @@ export const catalogReasoningPolicies = (
     info: ModelInfo,
     env: NodeJS.ProcessEnv,
 ): readonly [ReasoningPolicy, ...ReasoningPolicy[]] => reasoningCapabilities(
-    provider.id, env, info, provider.npm !== "@ai-sdk/openai-compatible",
+    provider.id, withProviderDefaults(env), info, provider.npm !== "@ai-sdk/openai-compatible",
 ).policies;
 
 const adaptiveReasoningProjection = ({

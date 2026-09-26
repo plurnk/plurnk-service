@@ -298,8 +298,8 @@ rejected before I/O. Under `adaptive`, an explicit budget selects the numeric
 control; `off` suppresses it.
 
 `catalogReasoningPolicies` projects that same admission calculation from catalog
-facts and provider-wide environment declarations without constructing a model,
-requiring credentials, or performing provider I/O.
+facts and provider-wide environment declarations over the installed defaults,
+without constructing a model, requiring credentials, or performing provider I/O.
 Admission respects the installed projection: native SDK fixed efforts exclude
 `max`; declared transport vocabularies constrain per-call option projections.
 
@@ -318,7 +318,7 @@ explicit compatible adapter owns the wire projection:
 | --- | --- | --- |
 | `reasoning: false` | No reasoning request | `off` |
 | `reasoning_options: []` | Provider default | None |
-| `effort.values` | Native dynamic mechanism, otherwise strongest transportable positive value | Transportable fixed members of {§reasoning-policy-wire}; `off` only when `none` is transportable |
+| `effort.values` | Native dynamic mechanism, otherwise the supported configured fallback or provider default | Transportable fixed members of {§reasoning-policy-wire}; `off` only when `none` is transportable |
 | `toggle` | Native or explicitly declared activation, otherwise provider default | `off` only when that transport owns the toggle wire |
 | `budget_tokens` | Does not select policy | None; an adapter may use its bounds when projecting the independent budget |
 | No catalog entry | Explicit adapter declaration | Only the declaration's exact subset |

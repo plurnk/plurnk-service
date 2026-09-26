@@ -215,6 +215,11 @@ test("{§provider-reasoning-policy}: catalog discovery and construction agree on
                 provider.supportedReasoningPolicies,
                 `${name}/${model} with declared efforts ${JSON.stringify(declaration)}`,
             );
+            assert.deepEqual(
+                catalogReasoningPolicies(providerInfo, info, { [key]: declaration }),
+                provider.supportedReasoningPolicies,
+                `${name}/${model}: discovery applies the same installed floor without credentials or operational knobs`,
+            );
         }
     }
     assert.equal(fetch.mock.callCount(), 0);
