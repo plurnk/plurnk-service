@@ -456,7 +456,7 @@ try {
     passed = true;
 } catch (cause) {
     throw new Error(
-        `${cause instanceof Error ? cause.message : String(cause)}\nservice stdout:\n${daemonOutput.stdout}\nservice stderr:\n${daemonOutput.stderr}`,
+        `${cause instanceof Error ? cause.message : String(cause)}\nfixture errors:\n${(fixture?.errors ?? []).join("\n")}\nservice stdout:\n${daemonOutput.stdout}\nservice stderr:\n${daemonOutput.stderr}`,
         { cause },
     );
 } finally {

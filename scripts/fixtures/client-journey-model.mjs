@@ -83,6 +83,8 @@ const streamProgram = async (response, journey, program, index) => {
 export const startClientJourneyModel = async () => {
     const requests = [];
     const counts = new Map(Object.keys(journeys).map((name) => [name, 0]));
+    // A failed witness answers 500 and is kept here, so a timeout upstream can name it (#896).
+    const errors = [];
     const server = createServer(async (request, response) => {
         try {
             const url = new URL(request.url ?? "/", "http://fixture.invalid");
@@ -147,6 +149,8 @@ export const startClientJourneyModel = async () => {
             }
             await streamProgram(response, journey, program, index);
         } catch (error) {
+            errors.push(String(error));
+            process.stderr.write(`client-journey fixture: ${String(error)}\n`);
             response.writeHead(500, { "content-type": "application/json" });
             response.end(JSON.stringify({ error: { message: String(error) } }));
         }
@@ -176,6 +180,7 @@ export const startClientJourneyModel = async () => {
             PLURNK_PROVIDERS_CACHE_WRITE_POLICY_journey: "off",
         },
         requests,
+        errors,
         assertComplete: () => {
             for (const [name, { programs }] of Object.entries(journeys)) {
                 const actual = counts.get(name) ?? 0;
