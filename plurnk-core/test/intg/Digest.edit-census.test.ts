@@ -8,7 +8,7 @@ import { testArtifactPath } from "../../../scripts/test-artifacts.ts";
 import Digest from "../../src/digest/Digest.ts";
 import DigestRender from "../../src/digest/DigestRender.ts";
 import type { Db } from "../../src/core/Db.ts";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 const TMP_DIR = testArtifactPath("core");
 
