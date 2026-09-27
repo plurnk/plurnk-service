@@ -10,13 +10,13 @@ export type FenceCharacter = "`" | "~";
 const PROSE: ReadonlySet<string> = new Set(["SEND", "WORK", "FORK", "BARE"]);
 
 // {§forgotten-tag}: an operation heading on the line under a bare fence, as the heading it would be.
-type Split = { readonly selfClosed: boolean; readonly bodiless: boolean; readonly terminal: boolean; readonly prose: boolean; readonly runtime: string | null };
+type Split = { readonly selfClosed: boolean; readonly bodiless: boolean; readonly terminal: boolean; readonly prose: boolean; readonly mutation: boolean; readonly runtime: string | null };
 
 type Line =
     | { readonly kind: "text"; readonly blank?: boolean }
     | { readonly kind: "bare"; readonly character: FenceCharacter; readonly width: number; readonly underFence: boolean; readonly split?: Split }
     | { readonly kind: "info"; readonly character: FenceCharacter; readonly width: number }
-    | { readonly kind: "heading"; readonly width: number; readonly selfClosed: boolean; readonly bodiless: boolean; readonly terminal: boolean; readonly prose: boolean; readonly runtime: string | null }
+    | { readonly kind: "heading"; readonly width: number; readonly selfClosed: boolean; readonly bodiless: boolean; readonly terminal: boolean; readonly prose: boolean; readonly mutation: boolean; readonly runtime: string | null }
     | { readonly kind: "closeThenHeading"; readonly width: number; readonly headingWidth: number; readonly selfClosed: boolean; readonly bodiless: boolean }
     | { readonly kind: "name"; readonly name: string };
 
@@ -129,7 +129,7 @@ export default class FencePairing {
         const rest = after.trimStart();
         if (!(native ? rest === "" || /^[(<[]/u.test(rest) : rest.startsWith("("))) return null;
         const bodiless = FencePairing.#bodiless(name, after);
-        return { selfClosed: options.closesOnLine(`${fence}${next}`), bodiless, terminal: name === "KILL" && !bodiless, prose: PROSE.has(name), runtime: native ? null : name };
+        return { selfClosed: options.closesOnLine(`${fence}${next}`), bodiless, terminal: name === "KILL" && !bodiless, prose: PROSE.has(name), mutation: name === "EDIT", runtime: native ? null : name };
     }
 
     // FIND, READ, COPY, MOVE and a targeted KILL take no body ({§matcher-body-redirect}, {§read-exact-target},
@@ -165,7 +165,7 @@ export default class FencePairing {
             const name = NAME.exec(tail)?.[0];
             const after = name === undefined ? "" : tail.slice(name.length);
             const opens = name !== undefined && (after === "" || /^[ \t(<[]/u.test(after));
-            if (opens && FencePairing.#known(name, options)) return { kind: "heading", width, selfClosed: options.closesOnLine(text.trimStart()), bodiless: FencePairing.#bodiless(name, after), terminal: name === "KILL" && !FencePairing.#bodiless(name, after), prose: PROSE.has(name), runtime: options.operations.has(name) ? null : name };
+            if (opens && FencePairing.#known(name, options)) return { kind: "heading", width, selfClosed: options.closesOnLine(text.trimStart()), bodiless: FencePairing.#bodiless(name, after), terminal: name === "KILL" && !FencePairing.#bodiless(name, after), prose: PROSE.has(name), mutation: name === "EDIT", runtime: options.operations.has(name) ? null : name };
             if (tail.includes("`")) return { kind: "text" };
         }
         return { kind: "info", character, width };
@@ -183,27 +183,32 @@ type Result = { ends: Map<number, End>; surplus: number[]; quotations: number[];
 // or a KILL); supplied closers; other fence lines read as text. Equal cost goes to the reading whose first
 // differing choice comes earlier in the preference order, which is how a repair lands at the earliest viable
 // position.
-type Cost = readonly [hidden: number, repairs: number, declared: number, supplied: number, demoted: number, runOn: number];
-const ZERO: Cost = [0, 0, 0, 0, 0, 0];
-const add = (a: Cost, b: Cost): Cost => [a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3], a[4] + b[4], a[5] + b[5]];
+type Cost = readonly [hidden: number, repairs: number, declared: number, supplied: number, demoted: number, runOn: number, swallowed: number];
+const ZERO: Cost = [0, 0, 0, 0, 0, 0, 0];
+const add = (a: Cost, b: Cost): Cost => [a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3], a[4] + b[4], a[5] + b[5], a[6] + b[6]];
 // Repaired readings: [hidden, repairs, declared, supplied, demoted], in that order.
+// {§unclosed-mutation-yields}: a native heading swallowed by a mutation body outranks any number of repairs.
 const less = (a: Cost, b: Cost): boolean => {
-    for (let k = 0; k < a.length; k++) if (a[k] !== b[k]) return a[k]! < b[k]!;
+    if (a[6] !== b[6]) return a[6] < b[6];
+    for (let k = 0; k < 6; k++) if (a[k] !== b[k]) return a[k]! < b[k]!;
     return false;
 };
 // Complete readings: every operation or code block not read as written counts alike, then supplied closers,
 // then demotions.
 const lessComplete = (a: Cost, b: Cost): boolean => a[0] + a[2] !== b[0] + b[2] ? a[0] + a[2] < b[0] + b[2]
     : a[3] !== b[3] ? a[3] < b[3] : a[4] < b[4];
-const HIDE: Cost = [1, 0, 0, 0, 0, 0];
-const REPAIR: Cost = [0, 1, 0, 0, 0, 0];
-const SUPPLY: Cost = [0, 1, 0, 1, 0, 0];
-const DECLARED: Cost = [0, 0, 1, 0, 0, 0];
+const HIDE: Cost = [1, 0, 0, 0, 0, 0, 0];
+const REPAIR: Cost = [0, 1, 0, 0, 0, 0, 0];
+const SUPPLY: Cost = [0, 1, 0, 1, 0, 0, 0];
+const DECLARED: Cost = [0, 0, 1, 0, 0, 0, 0];
 // {§message-run-on}: a message, prompt or deliverable that runs to the end of the turn is supplied its closer there
 // without a repair — the text after its last inner block is still the message — and the run is counted apart.
-const RUN_ON: Cost = [0, 0, 0, 1, 0, 1];
-const DEMOTE: Cost = [0, 0, 0, 0, 1, 0];
-const repaired = (cost: Cost): boolean => cost[1] > 0;
+const RUN_ON: Cost = [0, 0, 0, 1, 0, 1, 0];
+const DEMOTE: Cost = [0, 0, 0, 0, 1, 0, 0];
+// {§unclosed-mutation-yields}: a same-width native heading held as an example by a mutation body (EDIT) is a
+// swallowed operation; such a reading is never complete, and loses to any repaired reading that runs it.
+const SWALLOW: Cost = [1, 0, 0, 0, 0, 0, 1];
+const repaired = (cost: Cost): boolean => cost[1] > 0 || cost[6] > 0;
 
 // An open block as its contents see it. `top`: it is the outermost block; `quoted`: it is or lies inside a
 // quotation. Nothing else about the enclosing stack changes how its contents read.
@@ -220,6 +225,8 @@ type Context = {
     readonly terminal?: boolean;
     // {§prose-code-blocks}: inside a SEND, WORK, FORK or BARE body, at any depth, an executor heading is shown.
     readonly prose?: boolean;
+    // {§unclosed-mutation-yields}: a mutation body (EDIT) never hides a same-width native heading.
+    readonly mutation?: boolean;
     // An executor block whose body its runtime may judge, and the line it opened on.
     readonly runtime?: string;
     readonly opener?: number;
@@ -315,7 +322,7 @@ class Search {
     }
 
     #key(position: number, context: Context | null, flags: Flags): string {
-        return `${position}|${context === null ? "" : `${context.kind}${context.character}${context.width}${context.bareOpened ? "b" : ""}${context.top ? "t" : ""}${context.quoted ? "q" : ""}${context.bodiless ? "n" : ""}${context.terminal ? "k" : ""}${context.prose ? "p" : ""}${context.runtime === undefined ? "" : `r${context.opener}`}${context.name}`}|${flags.empty ? "e" : ""}${flags.holds ? "h" : ""}${flags.written ? "w" : ""}`;
+        return `${position}|${context === null ? "" : `${context.kind}${context.character}${context.width}${context.bareOpened ? "b" : ""}${context.top ? "t" : ""}${context.quoted ? "q" : ""}${context.bodiless ? "n" : ""}${context.terminal ? "k" : ""}${context.prose ? "p" : ""}${context.mutation ? "m" : ""}${context.runtime === undefined ? "" : `r${context.opener}`}${context.name}`}|${flags.empty ? "e" : ""}${flags.holds ? "h" : ""}${flags.written ? "w" : ""}`;
     }
 
     // Summaries depend only on summaries at later positions. They are evaluated on an explicit work stack, so
@@ -479,7 +486,7 @@ class Search {
         const next = at(i + 1);
         if (context === null) {
             if (selfClosed) yield { kind: "stay", cost: ZERO, effects: [], next, flags };
-            else yield { kind: "child", cost: ZERO, effects: [], child: { kind: "operation", character: "`", width, bareOpened: false, name: "", top: true, quoted: false, bodiless: (this.#lines[i] as { bodiless: boolean }).bodiless, terminal: (this.#lines[i] as { terminal?: boolean }).terminal === true, prose: (this.#lines[i] as { prose?: boolean }).prose === true, ...this.#judged(i) }, line: i, flags };
+            else yield { kind: "child", cost: ZERO, effects: [], child: { kind: "operation", character: "`", width, bareOpened: false, name: "", top: true, quoted: false, bodiless: (this.#lines[i] as { bodiless: boolean }).bodiless, terminal: (this.#lines[i] as { terminal?: boolean }).terminal === true, prose: (this.#lines[i] as { prose?: boolean }).prose === true, mutation: (this.#lines[i] as { mutation?: boolean }).mutation === true, ...this.#judged(i) }, line: i, flags };
             return;
         }
         const example = (cost: Cost, held: Flags): Move => selfClosed
@@ -518,7 +525,9 @@ class Search {
         // declaration; a wider one cannot be part of that block's content.
         const narrower = context.character === "`" && width < context.width;
         const declared = narrower || context.kind === "nested" && !context.bareOpened && width <= context.width;
-        yield example(declared ? DECLARED : HIDE, holding);
+        // {§unclosed-mutation-yields}: an EDIT body reading a same-width native heading as its example swallows it.
+        const native = (this.#lines[i] as { runtime?: string | null }).runtime == null;
+        yield example(declared ? DECLARED : context.mutation && native ? SWALLOW : HIDE, holding);
         if (narrower) yield { kind: "stay", cost: DECLARED, effects: [], next, flags: holding };
     }
 
@@ -531,7 +540,7 @@ class Search {
             const { split } = line;
             const effects: Effect[] = [{ kind: "split", line: i }];
             if (split.selfClosed) yield { kind: "stay", cost: ZERO, effects, next: at(i + 2), flags };
-            else yield { kind: "child", cost: ZERO, effects, child: { kind: "operation", character: "`", width, bareOpened: false, name: "", top: true, quoted: false, bodiless: split.bodiless, terminal: split.terminal, prose: split.prose, ...(split.runtime === null || this.#check === undefined ? {} : { runtime: split.runtime, opener: i + 1 }) }, line: i, start: at(i + 2), flags };
+            else yield { kind: "child", cost: ZERO, effects, child: { kind: "operation", character: "`", width, bareOpened: false, name: "", top: true, quoted: false, bodiless: split.bodiless, terminal: split.terminal, prose: split.prose, mutation: split.mutation, ...(split.runtime === null || this.#check === undefined ? {} : { runtime: split.runtime, opener: i + 1 }) }, line: i, start: at(i + 2), flags };
             return;
         }
         if (context === null) {

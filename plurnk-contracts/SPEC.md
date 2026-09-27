@@ -329,7 +329,8 @@ heading never ends the block ({§terminal-kill}).
 §closer-fallback A block that ends at a heading or at the end of the input has no closer of its
 own; its body is the whole span less one terminating line ending. Where a same-character fence
 narrower than an outermost block stands where its closer belongs, {§fence-pairing} may read it
-as that closer, at the cost of one repair. This carries no diagnostic: a missing closer is
+as that closer, at the cost of one repair; an unclosed EDIT yields to the native heading after it
+({§unclosed-mutation-yields}). This carries no diagnostic: a missing closer is
 never an admission failure, and {§unparsed-tail-boundary} is not involved.
 
 `plurnk.md` shows every operation closed; this recovery is not taught. It sits at the quiet end of
@@ -411,6 +412,21 @@ body, and ended a turn's KILL inside a WAIT. A summary keeps, for every place a 
 best complete reading under each order and the best repaired reading, so the search stays exact:
 a repaired total may take either class for any of its parts.
 
+§unclosed-mutation-yields **A mutation body never swallows a native operation.** An example
+inside an EDIT is written with a wider outer fence ({§operation-fences}); a heading narrower than
+the EDIT's fence is literal by declaration and stays text. At the EDIT's own width a native
+operation heading runs, closed or not: read as the body's example it would be a *swallowed*
+operation, and a swallowed operation outranks any number of repairs — a reading that swallows one
+is never complete, and among repaired readings the fewest swallowed wins before every other class.
+So where ```` ```EDIT (b.py) ```` follows ```` ```EDIT (a.py) ```` with no closer between, the
+reading that supplies `a.py`'s closer before that heading wins, both EDITs run, and no operation
+heading is written into a file; the same shape with a closer after the example is fence-identical
+and reads the same way. Of 67 recorded EDIT bodies holding a native heading, 66 use the wider fence
+and read unchanged, and the one at equal width (glm run158) had written a test EDIT's heading and
+body into `functional.py` and never run it. Only EDIT mutates from its body, so only EDIT carries
+the rule: an executor heading inside an EDIT keeps the ordinary reading, and SEND, WORK, FORK and
+BARE bodies keep {§prose-code-blocks}.
+
 Equal cost goes to the earlier alternative: nesting before closing in an operation body,
 closing before nesting in a quotation, and a supplied closer before a literal example at a
 heading. An operation example quoted in a body of its own width therefore reads as the body
@@ -457,7 +473,7 @@ already read as quotation; this rule makes the two forms one.
 | Witness | Result |
 |---|---|
 | Every input up to six lines over eleven line shapes, against a forward exhaustive search over explicit stacks under the same moves and class orders | 1,948,716 inputs, 0 differences in chosen cost; the same harness reports 37 differences at four lines when a summary keeps one entry per end regardless of class |
-| The generated matrix: six operations × widths 3–5 × twelve body shapes × four tails | 864 of 864 (`fence-matrix.test.ts`) |
+| The generated matrix: six operations × widths 3–5 × twelve body shapes × four tails | 864 of 864 (`fence-matrix.test.ts`); the four `EDIT · outer 3 · labeled quoted operation` cells read the example as an operation ({§unclosed-mutation-yields}), and in the `next operation` cell the EDIT's written closer, now a stray top-level fence, quotes the operation after it ({§quotation}) |
 | 10,486 recorded emissions | All parse; 0.9 ms mean, 267 ms at most (3,501 fence lines). The work is polynomial in fence lines, cubic at worst, so no step bound is needed |
 | The same, against the single-order objective | 10,466 identical; 19 read more operations, where headings follow unclosed blocks or a closer is glued to the next opener; 1 echoed transcript reads a different operation; none reads fewer |
 
@@ -653,6 +669,19 @@ has at most one scope; its metadata blocks retain their authored order.
 §lifecycle-slots NOTE accepts no target, scope, or metadata. WAIT retains its
 optional target and ignores syntactically valid scope and metadata without diagnostics
 ({§send-wait-scope}). Their literal bodies begin below the header.
+
+§scope-on-scopeless **A scope on an operation that takes none is dropped, and named.** WORK, FORK,
+BARE and NOTE take no scope, and neither does a SEND without a recipient; a `<…>` slot on such a
+heading, in any position, is skipped and the operation runs, with one warning-severity advisory
+naming the operation's slots and the dropped scope — `` `WORK` takes a target only; the scope
+`<1,-1>` was ignored. A scope selects lines in READ, EDIT and KILL. `` (`` `NOTE` takes no target or
+scope; … ``, `` `SEND` without a recipient takes no scope; … ``). An aside is never a scope, a
+recipient SEND keeps its scope for the recipient ({§send-directed-scope}), and WAIT's is skipped
+unread ({§send-wait-scope}). There is no ambiguity: the operation has one reading with or without
+the slot. Before this, the heading drew the grammar's expected-token diagnostic and the turn was
+dead; in the distinct recorded emissions one heading carried the form (zai run426,
+```` ```WORK (worker://deprecation-implementer) <1,-1> ````), beside two recipient SENDs whose scope
+the recipient refuses at runtime.
 
 §heading-inline-body Nonempty body text belongs below the fence header.
 The ingester tolerates body text after horizontal whitespace on the header,

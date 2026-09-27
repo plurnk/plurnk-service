@@ -93,3 +93,30 @@ test("{§naked-kill} a naked KILL shows a fenced `KILL (notes.md)` without runni
     const closed = statements("KILL\nShown:\n```READ (a.md)\n```\nKILL\n```READ (b.md)\n```");
     assert.deepEqual(closed.map((statement) => `${statement.op}${"target" in statement && statement.target ? ` ${statement.target.raw}` : ""}`), ["KILL", "READ b.md"], "the name alone still closes a naked block; a fence inside never does");
 });
+
+test("{§unclosed-mutation-yields} glm run158: an unclosed EDIT never swallows the EDIT after it; both run and no heading is written (recorded)", () => {
+    const text = recorded("glm-run158-packet007.md");
+    const result = parse(text);
+    const executed = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.deepEqual(executed.map((statement) => [statement.op, "target" in statement ? statement.target?.raw : null]), [
+        ["EDIT", "django/utils/functional.py"],
+        ["EDIT", "tests/utils_tests/test_simplelazyobject.py"],
+    ]);
+    const [first, second] = executed;
+    assert.equal(bodyOf(first), text.split("\n").slice(1, 7).join("\n"), "the first body ends before the second heading, its blank line the supplied closer's line ending");
+    assert.match(bodyOf(first)!, /return other \+ self\._wrapped$/u);
+    assert.match(bodyOf(second)!, /^\n    def test_radd\(self\):[\s\S]*self\.assertEqual\(6, 1 \+ x\)$/u);
+    for (const statement of executed) assert.doesNotMatch(bodyOf(statement)!, /```EDIT/u, "no body carries an EDIT heading");
+    const text2 = result.items.filter((item) => item.kind === "text").map((item) => item.kind === "text" ? item.content : "");
+    assert.equal(text2.length, 1);
+    assert.match(text2[0]!, /Now verify with the existing and new tests:```sh/u, "the trailing prose and inline sh are outside text, not a body");
+});
+
+test("{§unclosed-mutation-yields} an EDIT body holds a same-width native heading only inside a wider fence; equal widths run it", () => {
+    const unclosed = statements("```EDIT (a.md) <1,-1>\nBefore.\n```KILL (x)\n```\nAfter.\n");
+    assert.deepEqual(unclosed.map((statement) => [statement.op, bodyOf(statement)]), [["EDIT", "Before."], ["KILL", null]], "shape (c): the closer is supplied before the heading, and KILL (x) runs");
+    const closed = statements("```EDIT (a.md) <1,-1>\nBefore.\n```KILL (x)\n```\nAfter.\n```\n");
+    assert.deepEqual(closed.map((statement) => [statement.op, bodyOf(statement)]), [["EDIT", "Before."], ["KILL", null]], "shape (b) is fence-identical to run158 and reads the same way");
+    const wider = statements("````EDIT (a.md) <1,-1>\nBefore.\n```KILL (x)\n```\nAfter.\n````\n");
+    assert.deepEqual(wider.map((statement) => [statement.op, bodyOf(statement)]), [["EDIT", "Before.\n```KILL (x)\n```\nAfter."]], "shape (a): the taught wider fence holds the example as text");
+});
