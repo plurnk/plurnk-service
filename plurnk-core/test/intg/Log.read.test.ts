@@ -528,7 +528,7 @@ test("Log.read: an empty-extent 416 without a recorded stream keeps the generic 
         assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
         assert.deepEqual(miss.problem?.range, { unit: "line", total: 0, requested: [2, 3] });
         assert.equal(Object.hasOwn(miss.problem ?? {}, "stream"), false);
-        assert.equal(miss.problem?.recovery, "Choose a range within the available extent.");
+        assert.equal(miss.problem?.recovery, "Choose a range within the available extent."); // {§problems-schemes}
         assert.equal(miss.problem?.detail, "Range 2,3 cannot select from empty content.");
         assert.equal(miss.problem?.retryable, false);
     } finally { db.close(); }

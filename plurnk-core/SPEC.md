@@ -586,6 +586,8 @@ Worker control rides the daemon's inject seam (active→fold, idle→enqueue+dra
 
 ## §membership File membership and project roots
 
+A file is a member of a workspace when Git tracks it or a members definition includes it and none excludes it; only members can be READ, found by FIND, or changed by EDIT, and every member path resolves under the project root.
+
 The project-file path has two explicit reconciliation gates. Internal entries do
 not participate in this disk loop.
 
@@ -5708,3 +5710,152 @@ exits; a failed suite's evidence is never touched and stays exactly where the ru
 caller's own run directory.
 
 §fs-world-state **The world-state harness — coverage that closes the class.** Op-outcome tests check what an op returned; the harness checks the resulting world. `WorldState.check(db)` asserts, pure-db and read-only: identity uniqueness in practice (no tuple holds two rows), the canonical fixpoint on every file-class key, channel orphan-freedom, the closed admission set (every file row's origin is Git or constraint), and sig-coherence. Generated-pick incorporation and lifecycle require filesystem/Git evidence and are covered by the composed creation matrix rather than a false pure-database proxy. The harness runs as a lifecycle-test epilogue and at every soak turn boundary, where the delta half applies: an idle turn grows the entries table by ZERO. A violation names its law and its row.
+
+## Problem codes and pinned wording
+
+Every Problem code core mints is named here under its family ({§problem-error-carrier} carries it); the root lint (`scripts/problem-codes.mjs`) refuses a code no owning SPEC names.
+
+§problems-dispatch **Dispatch Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+
+| code | status | contract |
+|---|---:|---|
+| `target-required` | 400 | *OP* requires a target path. Recovery: Write the target in parentheses on the opening fence line: `OP (path)`. |
+| `scheme-not-found` | 501 | Scheme '*name*' is not registered. |
+| `scheme-metadata-unsupported` | 400 | *OP* on '*scheme*' does not accept the [metadata] modifier. |
+| `operation-not-implemented` | 501 | Scheme '*name*' does not implement *OP* (or exec). |
+| `entry-read-not-implemented` | 501 | The '*scheme*' scheme does not provide entry reads. |
+| `entry-write-not-implemented` | 501 | The '*scheme*' scheme does not provide entry writes. |
+| `entry-delete-not-implemented` | 501 | The '*scheme*' scheme does not provide entry deletion. |
+| `channel-delete-not-implemented` | 501 | The '*scheme*' scheme does not provide channel deletion. |
+| `scheme-handler-threw` | 500 | The '*scheme*' scheme did not produce a result for *OP*. |
+| `exec-source-not-data` | 501 | Scheme '*name*' is not a data source for an execution. |
+| `writer-forbidden` | 403 | Writer '*origin*' cannot modify scheme '*name*'. |
+| `capability-denied` | 403 | Capability '*route*' is denied by *scope* policy. |
+| `spawn-prompt-empty` | 422 | *OP* has no prompt text: the resource is empty and there is no body. |
+| `message-not-found` | 404 | No accepted message exists at *address*. |
+| `edit-collision` | 409 | EDIT collided with the current resource state ({§edit-collision}). Recovery: *n* of *m* edits applied. READ the target for current coordinates. |
+| `edit-target-required` | 400 | A line-anchored EDIT requires a target resource. Recovery: Provide the target that rendered the line anchor. |
+| `kill-target-required` | 400 | KILL requires a target path. |
+| `kill-target-scheme-required` | 400 | KILL target requires a scheme. |
+| `worker-not-found` | 404 | Worker '*name*' does not exist in this workspace. |
+| `entry-operation-unsupported` | 400 | KILL requires an entry-bearing target; '*scheme*' does not provide one. |
+| `resource-scheme-required` | 400 | Resource selection requires an address. |
+| `channel-required` | 400 | The '*scheme*' scheme has no default channel. Recovery: Address a named channel with a URI fragment. |
+| `binary-source-unsupported` | 415 | Channel #*name* is binary and its scheme keeps no bytes to transfer. |
+| `metadata-unsupported` | 400 | *OP* takes only the env option; '*key*' is not one. |
+| `worker-name-conflict` | 409 | Worker '*name*' already exists in this workspace. Recovery: To give '*name*' more work, write `SEND (worker://_name_)` with the task as the body; to start another worker, choose a name no worker holds. |
+| `no-operation` | 422 | The turn performed no operation ({§empty-turn}). |
+| `send-target-not-a-recipient` | 400 | The addressed scheme is not a SEND recipient. Recovery: A targetless SEND answers the open messages; a directed SEND requires a recipient that implements SEND. |
+
+§problems-content **Content and transfer Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+
+| code | status | contract |
+|---|---:|---|
+| `handler-crashed` | 415 | The *mimetype* content handler failed on *key*: *cause*. |
+| `line-anchor-unsupported` | 400 | The byte view of *target* publishes no anchors. Recovery: Use byte coordinates: `<first,last>`. |
+| `line-anchor-invalid` | 400 | A line anchor in the marker is malformed or names no current line ({§line-anchors}). |
+| `channel-not-found` | 404 | The addressed channel does not exist at *target*. Recovery: Use one of the available channels: #*a*, #*b*. |
+| `binary-read-unsupported` | 415 | The representation at *target* is binary and cannot be rendered. |
+| `pattern-unapplicable` | 422 | The pattern could not be applied to *target*. |
+| `move-region-overlap` | 409 | MOVE cannot insert a whole channel into itself and then remove that channel. |
+| `mimetype-mismatch` | 415 | COPY or MOVE cannot write '*source-mimetype*' into a '*destination-mimetype*' channel. |
+| `binary-region-unsupported` | 415 | Channel #*name* is binary and cannot receive a textual region. |
+| `copy-destination-exists` | 409 | COPY or MOVE destination *address* already contains different content. |
+| `proposal-apply-missing` | 500 | The source scheme accepted its MOVE proposal without applying the source mutation. |
+| `line-anchor-collision` | 409 | READ coordinates collided with current content at *target*. |
+
+§problems-file **File scheme Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+
+| code | status | contract |
+|---|---:|---|
+| `edit-empty` | 400 | EDIT requires at least one statement. Recovery: Provide an EDIT statement. |
+| `edit-batch-mismatch` | 400 | The EDIT batch spans multiple resources. Recovery: Submit a separate EDIT batch for each resource. |
+| `line-marker-required` | 400 | EDIT of an existing file requires a line marker ({§edit-marker-required-on-existing}). Recovery: Name the lines to replace with `<@hash>` or `<@start,@end>` from a READ of the file; `<L,1,L,1>` inserts before line L, and `<1,-1>` replaces the whole file. |
+| `creation-batch-conflict` | 409 | Multiple EDIT operations attempted to create the same file. Recovery: Create the file with one EDIT before applying additional edits. |
+| `member-read-only` | 403 | The mounted member '*path*' is read-only. |
+| `project-root-required` | 400 | The workspace has no project root, so it cannot write files. |
+| `path-names-no-file` | 403 | The spelling '*path*' does not name a file: it is empty, or it names a directory. |
+| `path-occupied-by-nonmember` | 403 | A non-member file already occupies '*path*'. Recovery: Choose an unoccupied member path. |
+| `path-outside-workspace` | 403 | A symlink on '*path*' resolves outside the namespace. |
+| `binary-write-unsupported` | 415 | A text EDIT cannot author binary '*mimetype*'; COPY or MOVE the bytes instead. |
+| `file-create-excluded` | 403 | A members exclusion (`!_glob_`) covers '*path*'. Recovery: Remove or disable the excluding members definition, or choose another path. |
+| `file-create-gitignored` | 403 | Active Git policy ignores '*path*', and no members definition includes it. Recovery: Choose a Git-admitted path or add a members definition that includes it. |
+| `file-materialization-limit` | 413 | The file exceeds the materialization byte limit and is not read into the workspace. |
+| `entry-not-found` | 404 | No member of this workspace is at '*path*'. Recovery: Check the path with FIND. EDIT creates files; `members (add)` admits existing files with a `{"glob": "<path>"}` body. |
+
+§problems-exec **Execution Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+
+| code | status | contract |
+|---|---:|---|
+| `invalid-input-target` | 400 | SEND input addresses an execution, without a channel or scope. |
+| `input-unavailable` | 409 | This execution's input receiver is no longer enabled. |
+| `stream-not-found` | 404 | No execution exists at the requested address. |
+| `input-closed` | 410 | Execution input is closed. |
+
+§problems-entries **Entry scheme Problems (log, worker, entries).** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+
+| code | status | contract |
+|---|---:|---|
+| `read-target-required` | 400 | READ requires a log coordinate. Recovery: Provide one exact log coordinate. |
+| `coordinate-malformed` | 400 | The log coordinate '*path*' is malformed. Recovery: Use one exact loop/turn/sequence coordinate. |
+| `worker-target-required` | 400 | EDIT requires a worker:// target. Recovery: Provide the worker target. |
+| `binary-edit-unsupported` | 415 | The #*channel* channel is binary and cannot be edited. |
+| `message-not-implemented` | 501 | SEND does not deliver messages to *scheme* entries. Recovery: To reply, SEND to an Open Message address or omit the target. `SEND (worker://<name>)` sends a new message. |
+| `worker-entity-not-editable` | 400 | A worker entity is not an editable entry. Recovery: EDIT requires an entry path, such as worker:///example.md. |
+| `message-empty` | 400 | SEND has no message text or attachments. |
+| `scope-unsupported` | 400 | A worker SEND takes no scope. |
+
+§problems-functionality **Server and Functionality Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+
+| code | status | contract |
+|---|---:|---|
+| `service-starting` | 503 | The PLURNK service owns this listener but has not admitted its client interface yet. |
+| `configuration-unsupported` | 400 | Environment discovery reads this installation's declared configuration; client configuration contributes nothing. |
+| `name-reserved` | 400 | '*alias*' is plurnk's own: PLURNK_* configuration and provider credential names never reach a subprocess. |
+| `value-invalid` | 400 | '*alias*' needs a string value. |
+| `env-invalid` | 400 | `env` must be an object of string values; '*name*' is not a name a shell can export. |
+| `query-required` | 400 | discover takes a path or a glob. Recovery: Supply `{ "query": "<path or glob>" }`. |
+| `headless` | 409 | The workspace has no project root, so there are no file members. Recovery: Open the workspace on a project root. |
+| `definition-invalid` | 400 | A members definition is { glob }: a gitignore-style pattern, `!glob` to exclude; a skill definition names an installable skill. |
+| `model-scope` | 403 | The model may not change membership here: the members scope is none. Recovery: `git add` the file so git tracks it, or ask the operator to add it (/members add) or raise PLURNK_SERVICE_MEMBERS_MODEL_SCOPE. |
+| `registry-unreachable` | 502 | Skills registry *url* could not be reached. |
+| `registry-rejected` | 502 | Skills registry *url* answered *status*. |
+| `registry-invalid` | 502 | Skills registry *url* returned no skills array. |
+| `discover-failed` | 502 | Agent Skills source '*source*' could not be listed: *cause*. |
+| `alias-mismatch` | 400 | Alias '*alias*' must equal the skill name '*name*'. |
+| `scope-not-installable` | 400 | Service-provided skills can be enabled or disabled; adding a skill requires project or global scope. Recovery: Add it with scope "global" or open a workspace rooted in a project. |
+| `source-required` | 400 | Adding '*alias*' requires the standard installer source that provides it. |
+| `uninstall-failed` | 502 | Agent Skill '*name*' could not be removed from its *scope* root: *cause*. |
+| `workspace-not-found` | 404 | Workspace *id* does not exist. |
+| `state-not-json` | 400 | Worker module state is not JSON-serializable. |
+| `workspace-busy` | 409 | Workspace *id* is running an operation or another capability change. Recovery: Settle the current operation and retry the capability change. |
+| `not-configured` | 503 | No provider is configured for this worker. |
+| `model-worker-required` | 404 | No model worker exists for prompt injection (or to fork). |
+| `name-conflict` | 409 | The worker name is taken. Recovery: Choose another worker name. |
+| `offset-channel-required` | 400 | Recovery: Select the channel to read from the offset. |
+| `target-invalid` | 400 | Recovery: Use a scheme://path target. |
+| `proposal-not-pending` | 409 | Recovery: Refresh pending proposals before resolving one. |
+| `loop-policy-invalid` | 400 | An unattended loop cannot hold a proposal for review: nobody is present to answer. Recovery: State proposals accept or reject, or attend the loop. |
+| `scope-cancelled` | 499 | The worker scope was cancelled: *reason*. |
+| `range-not-satisfiable` | 416 | `Range <0,-1>` starts at 0, which is not a line; lines are numbered from 1. Recovery: Write `<1,-1>` to trim every line of the body; `KILL (log:///…/READ)` with no scope retires the item. |
+| `registry-not-configured` | 501 | Skills registry search is disabled; PLURNK_SERVICE_SKILLS_REGISTRY_URL is empty. |
+| `install-failed` | 502 | Agent Skill '*name*' could not be installed from '*source*': *cause* (or the installer reported it but its SKILL.md does not exist). |
+| `skill-missing` | 404 | Agent Skill '*alias*' is not installed under its *scope* root, or is not provided by this service. |
+| `skill-invalid` | 422 | Agent Skill '*alias*' is not a valid standard skill: *cause*. |
+
+§pinned-wording-core **Pinned wording.** Verbatim sentences tests pin: each is contract, and a change here is a change of contract.
+
+| sentence | arises when |
+|---|---|
+| Nothing is in flight. Continuing. | a WAIT (or a premature terminal) with no live work ({§wait-obligation-matrix}) |
+| Completion deferred. Conclude with KILL alone. | a concluding KILL that carries other operations ({§kill-conclusion}) |
+| Context Token Budget Overflow: logTokensTotal exceeds logTokensMax; retained context cannot be admitted. | output admission over the retained-context ceiling |
+| This run is unattended: nobody is present to answer. | a capability that needs a present operator in an unattended loop ({§loop-attendance}) |
+| Worker name '*name*' must match `[A-Za-z0-9][A-Za-z0-9_-]{0,62}`. Recovery: Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit. | an invalid worker name |
+| Provide the client identifier. / Provide an absolute project path. / Use a positive integer limit. / prompt is not a non-empty string. | client input validation on the daemon's methods |
+| The stream was cancelled by KILL. | a stream terminal after KILL |
+| '*program*' exited with code *n*. | an execution's non-zero exit |
+| '*path*' is a directory, not a file; READ reads one file. Recovery: List its files with `FIND (_path_/)`, then READ one by its path. | READ of a directory |
+| The execution at ops://*worker*/*loop* has not concluded. | a bare READ of a running worker's result (425) |
+| The child provider failed. | a child's provider failure read back by its parent |
+| '*path*' exists on disk but is not a member of this workspace. Recovery: Admit it with `members (add)` and a `{"glob": "<path>"}` body. | a non-member on disk at the addressed path |

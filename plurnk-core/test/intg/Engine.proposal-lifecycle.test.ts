@@ -240,7 +240,7 @@ test("proposal: resolveProposal for unknown id throws", () => {
                 assert.ok(error instanceof OperationFailureError);
                 assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/proposal/resolution/proposal-not-pending");
                 assert.equal(error.result.problem.logEntryId, 99999);
-                assert.equal(error.result.problem.recovery, "Refresh pending proposals before resolving one.");
+                assert.equal(error.result.problem.recovery, "Refresh pending proposals before resolving one."); // {§problems-functionality}
                 return true;
             });
         } finally { await db.close(); }

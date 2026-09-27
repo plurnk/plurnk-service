@@ -725,3 +725,28 @@ checks; an empty or skipped report never passes. Extension scenarios have no
 dated-spec filter and do not alter the core pass rate. The JWT arm remains
 excluded under {§oauth-client-credentials}. Atlas and third-party
 stdio/Streamable HTTP servers are composition evidence only.
+
+§problems-mcp **MCP Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+
+| code | status | contract |
+|---|---:|---|
+| `tool-required` | 400 | An MCP tool target is required. Recovery: Select a target documented under worker:///_plurnk/tools/*runtime*/. |
+| `tool-not-enabled` | 404 | The MCP tool is not enabled. Recovery: Select a target documented under worker:///_plurnk/tools/*runtime*/. |
+| `tool-reported-error` | 502 | The MCP tool reported an error (the tool call failed). |
+| `invalid-tool-arguments` | 400 | The tool arguments are not one JSON object. Recovery: One JSON object per MCP tool call; a second call is a second fence. |
+| `oauth-client-credentials-failed` | 502 | MCP server '*name*' rejected the client-credentials grant; check the configured client credentials and issuer. |
+| `parameters-invalid` | 400 | Unsupported parameter(s): *names*. |
+| `configuration-invalid` | 400 | The supplied MCP configuration is invalid. |
+| `discover-failed` | 502 | MCP target '*source*' could not be inspected. |
+| `registry-not-configured` | 501 | MCP registry search requires a configured downstream registry; none is configured. Recovery: Discover an explicit source (URL or command) or configure a registry. |
+| `env-transport` | 400 | An HTTP MCP server has no local process environment. |
+| `definition-invalid` | 400 | The MCP server definition is invalid. |
+| `alias-mismatch` | 400 | Alias '*alias*' must equal the definition's name '*name*'. |
+| `server-busy` | 409 | MCP server '*name*' has *n* active request(s). |
+| `obsolete-connection-close-failed` | 500 | The MCP capability change committed, but an obsolete connection did not close cleanly. |
+| `oauth-not-pending` | 404 | MCP server '*alias*' has no pending OAuth authorization. |
+| `oauth-target-conflict` | 409 | MCP server '*alias*' changed while its OAuth authorization was pending. Recovery: Start authorization again from the server's current definition. |
+| `oauth-callback-invalid` | 400 | OAuth authorization for MCP server '*alias*' could not be completed. |
+| `server-not-connected` | 409 | MCP server '*name*' is not connected for this workspace. |
+| `completion-parameters-invalid` | 400 | MCP completion requires 'ref' and 'argument' objects. |
+| `server-unavailable` | 502 | Configured MCP server '*name*' is unavailable. |

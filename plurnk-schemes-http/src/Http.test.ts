@@ -1767,7 +1767,7 @@ test("HTTP rejects malformed metadata without reflecting its contents", async ()
     );
     assert.equal(result.status, 400);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/http/metadata-invalid");
-    assert.equal(result.problem?.detail, "[metadata] must be a JSON array of option objects.");
+    assert.equal(result.problem?.detail, "[metadata] must be a JSON array of option objects."); // {§pinned-wording-schemes}
     assert.doesNotMatch(JSON.stringify(result), /do-not-reflect/);
 });
 
@@ -1817,7 +1817,7 @@ test("EDIT: a <L> line marker is rejected — http PUT replaces the whole resour
     const r = await httpEdit(editStmt(urlTarget("https://api.x/thing/42", "/thing/42"), "x", { marks: [1] }), ctx);
     assert.equal(r.status, 400);
     assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/http/line-edit-unsupported");
-    assert.equal(r.problem?.recovery, "Remove the line range and submit the complete replacement body.");
+    assert.equal(r.problem?.recovery, "Remove the line range and submit the complete replacement body."); // {§pinned-wording-http}
 });
 
 test("{§channel-selection-missing} an absent HTTP response channel is a 404 without a remote mutation", async () => {

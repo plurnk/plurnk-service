@@ -45,7 +45,7 @@ test("{§methods-worker-name-admission} {§methods-conversation-worker}: fresh n
                     assert.ok(error instanceof OperationFailureError);
                     assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/name-invalid");
                     assert.equal(error.result.problem.name, "_plurnk");
-                    assert.equal(error.result.problem.recovery, "Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit.");
+                    assert.equal(error.result.problem.recovery, "Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit."); // {§pinned-wording-core}
                     return true;
                 },
             );
@@ -67,7 +67,7 @@ test("{§methods-worker-name-admission} {§methods-conversation-worker}: fresh n
                     assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/name-conflict");
                     assert.equal(error.result.problem.workspaceId, workspaceId);
                     assert.equal(error.result.problem.name, "Thread_2");
-                    assert.equal(error.result.problem.recovery, "Choose another worker name.");
+                    assert.equal(error.result.problem.recovery, "Choose another worker name."); // {§problems-functionality}
                     return true;
                 },
             );

@@ -177,10 +177,10 @@ test("matcher: UnsupportedDialectError → 415", async () => {
     });
     const r = await Matcher.matchAgainstContent(regexBody, "x", "image/png", mts);
     assert.equal(r.status, 415);
-    assert.equal(r.problem?.detail, "The regex matcher is not supported for image/png.");
+    assert.equal(r.problem?.detail, "The regex matcher is not supported for image/png."); // {§problems-schemes}
     assert.equal(r.problem?.mimetype, "image/png");
     assert.equal(r.problem?.dialect, "regex");
-    assert.equal(r.problem?.recovery, "Use a matcher supported by the resource mimetype.");
+    assert.equal(r.problem?.recovery, "Use a matcher supported by the resource mimetype."); // {§problems-schemes}
 });
 
 test("matcher: InvalidExpressionError → 400", async () => {
@@ -197,10 +197,10 @@ test("matcher: InvalidExpressionError → 400", async () => {
         (cause) => cause instanceof Error ? cause.message : String(cause),
     );
     assert.equal(r.status, 400);
-    assert.equal(r.problem?.detail, "The regex matcher expression is invalid.");
+    assert.equal(r.problem?.detail, "The regex matcher expression is invalid."); // {§problems-schemes}
     assert.equal(r.problem?.diagnostic, "unclosed bracket");
     assert.equal(r.problem?.dialect, "regex");
-    assert.equal(r.problem?.recovery, "Revise the matcher expression.");
+    assert.equal(r.problem?.recovery, "Revise the matcher expression."); // {§problems-schemes}
     assert.equal("expression" in (r.problem ?? {}), false);
 });
 

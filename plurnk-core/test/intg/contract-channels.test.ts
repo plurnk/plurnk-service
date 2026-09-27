@@ -177,7 +177,7 @@ test("{§channel-selection-missing}: FIND reports an undeclared channel with the
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/channel-not-found");
         assert.equal(result.problem?.requestedChannel, "results");
         assert.deepEqual(result.problem?.availableChannels, ["stdout", "stderr"]);
-        assert.equal(result.problem?.recovery, "Use one of the available channels: #stdout, #stderr.");
+        assert.equal(result.problem?.recovery, "Use one of the available channels: #stdout, #stderr."); // {§problems-content}
     } finally { await db.close(); }
 });
 
@@ -466,7 +466,7 @@ test("{§channel-selection-missing} READ and EDIT retain topology facts on chann
         assert.equal(read.problem?.type, "https://problems.plurnk.xyz/scheme/exec/channel-not-found");
         assert.equal(read.problem?.requestedChannel, "results");
         assert.deepEqual(read.problem?.availableChannels, ["stdout", "stderr"]);
-        assert.equal(read.problem?.recovery, "Use one of the available channels: #stdout, #stderr.");
+        assert.equal(read.problem?.recovery, "Use one of the available channels: #stdout, #stderr."); // {§problems-content}
         // EDIT side via Worker (exec streams are not model-editable): same fact shape.
         const k = new Worker();
         await k.edit(editStmt(urlPath("worker", "/note"), "seeded"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -475,7 +475,7 @@ test("{§channel-selection-missing} READ and EDIT retain topology facts on chann
         assert.equal(edit.problem?.type, "https://problems.plurnk.xyz/scheme/worker/channel-not-found");
         assert.equal(edit.problem?.requestedChannel, "nope");
         assert.deepEqual(edit.problem?.availableChannels, ["body", "readable"]);
-        assert.equal(edit.problem?.recovery, "Use one of the available channels: #body, #readable.");
+        assert.equal(edit.problem?.recovery, "Use one of the available channels: #body, #readable."); // {§problems-content}
     } finally { await db.close(); }
 });
 

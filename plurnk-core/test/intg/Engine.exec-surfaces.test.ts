@@ -207,7 +207,7 @@ test("a failed execution reaches the model as the executor's exact Problem on it
             assert.equal(result.exitCode, 3);
             assert.equal(result.problem?.status, 500);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit");
-            assert.equal(result.problem?.detail, "'sh' exited with code 3.");
+            assert.equal(result.problem?.detail, "'sh' exited with code 3."); // {§pinned-wording-core}
             assert.match(
                 result.problem?.instance ?? "",
                 new RegExp(`^log:///\\d+/\\d+/${terminal.sequence}/READ$`),

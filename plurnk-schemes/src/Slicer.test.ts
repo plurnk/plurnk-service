@@ -351,7 +351,7 @@ test("page rejects text-shaped and threshold-prefixed coordinate lists", () => {
     for (const marks of [[1, 1, 1, 1], [0.7, 1, 1, 1, 1]]) {
         const result = Slicer.page(["a", "b"], { marks: marks as [number, ...number[]] });
         assert.equal(result.status, 416);
-        assert.match(result.problem?.detail ?? "", /requires one position or an inclusive two-position range/);
+        assert.match(result.problem?.detail ?? "", /requires one position or an inclusive two-position range/); // {§pinned-wording-schemes}
         assert.deepEqual(result.problem?.requestedPositions, marks);
     }
 });
@@ -397,7 +397,7 @@ test("lineMarkerEditBatch rejects every kind of overlap atomically", () => {
     ]);
     assert.equal(rangeOverlap.status, 409);
     assert.equal(rangeOverlap.result, undefined);
-    assert.equal(rangeOverlap.problem?.detail, "Two EDIT regions overlap.");
+    assert.equal(rangeOverlap.problem?.detail, "Two EDIT regions overlap."); // {§problems-schemes}
     assert.deepEqual(rangeOverlap.problem?.conflictingRegions, [[2, 3], [3, 4]]);
     assert.equal(rangeOverlap.problem?.conflictingRanges, undefined, "one coordinate representation owns the conflict");
 
@@ -441,7 +441,7 @@ test("an overlap receipt carries the whole conflict graph, the clean regions, an
         { marker: { marks: [6, 6] }, body: "clean" },
     ]);
     assert.equal(result.status, 409);
-    assert.equal(result.problem?.detail, "Two EDIT regions overlap.");
+    assert.equal(result.problem?.detail, "Two EDIT regions overlap."); // {§problems-schemes}
     assert.deepEqual(result.problem?.conflictingRegions, [[1, 4], [2, 2]], "conflictingRegions names the first pair");
     assert.deepEqual(result.problem?.conflicts, [
         { regions: [[1, 4], [2, 2]], relation: "one contains the other" },
@@ -570,7 +570,7 @@ test("{§range-starts-at-one} EDIT <0,795> is refused 416 and names the zero-wid
     const result = Slicer.lineMarkerEdit(HEAD, { marks: [0, 795] }, "def test_new():\n    pass");
     assert.equal(result.status, 416);
     assert.equal(result.result, undefined, "no content is produced");
-    assert.equal(result.problem?.detail, "Range <0,795> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the <0> prepend position.");
+    assert.equal(result.problem?.detail, "Range <0,795> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the <0> prepend position."); // {§pinned-wording-schemes}
     assert.equal(
         result.problem?.recovery,
         "To insert before line 795, write <795,1,795,1>; <0> prepends and <-1> appends; to select lines 1 through 795, write <1,795>.",
@@ -595,7 +595,7 @@ test("{§range-starts-at-one} <0,-1> is not a whole-file alias: EDIT, READ and C
     for (const content of [HEAD, ""]) {
         const edit = Slicer.lineMarkerEdit(content, { marks: [0, -1] }, "replacement");
         assert.equal(edit.status, 416, `EDIT on ${content.length} chars`);
-        assert.equal(edit.problem?.detail, "Range <0,-1> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the <0> prepend position.");
+        assert.equal(edit.problem?.detail, "Range <0,-1> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the <0> prepend position."); // {§pinned-wording-schemes}
         assert.equal(edit.problem?.recovery, recovery);
         assert.equal(Slicer.lines(content, { marks: [0, -1] }).problem?.recovery, recovery);
         assert.equal(Slicer.linesRaw(content, { marks: [0, -1] }).problem?.recovery, recovery);
@@ -613,11 +613,11 @@ test("{§range-starts-at-one} READ <0,30> refuses rather than clamping to <1,30>
 test("{§range-starts-at-one} pages and byte windows refuse a zero start in their own unit", () => {
     const page = Slicer.page(["a", "b"], { marks: [0, -1] }, { unit: "resource" });
     assert.equal(page.status, 416);
-    assert.equal(page.problem?.detail, "Range <0,-1> starts at 0; resource positions are numbered from 1.");
-    assert.equal(page.problem?.recovery, "Write <1,-1> to start at the first resource.");
+    assert.equal(page.problem?.detail, "Range <0,-1> starts at 0; resource positions are numbered from 1."); // {§pinned-wording-schemes}
+    assert.equal(page.problem?.recovery, "Write <1,-1> to start at the first resource."); // {§pinned-wording-schemes}
     assert.equal(Slicer.page([], { marks: [0, 5] }, { unit: "resource" }).status, 416, "an empty result set does not excuse a zero start");
     const window = Slicer.window({ marks: [0, 16] }, 40, "byte");
     assert.equal(window.status, 416);
-    assert.equal(window.problem?.recovery, "Write <1,16> to start at the first byte.");
+    assert.equal(window.problem?.recovery, "Write <1,16> to start at the first byte."); // {§pinned-wording-schemes}
     assert.equal(Slicer.window({ marks: [0] }, 40, "byte").start, null, "the single <0> position stays a sentinel");
 });

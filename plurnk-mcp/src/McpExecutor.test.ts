@@ -284,7 +284,7 @@ test("{§mcp-tool-problem-detail} a tool Problem names its runtime and tool and 
         else process.env[ERROR_DETAIL_LIMIT] = previous;
     }
 
-    assert.equal(result.problem?.detail, "The MCP tool call failed.", "the prose states the boundary fact and nothing else");
+    assert.equal(result.problem?.detail, "The MCP tool call failed.", "the prose states the boundary fact and nothing else"); // {§problems-mcp}
     assert.equal(result.problem?.runtime, "effects", "the failed runtime is a field, not prose");
     assert.equal(result.problem?.tool, "mutate", "so is the tool");
     assert.equal(result.problem?.diagnostic, "conn...", "the remote cause is admitted only within the operator's bound");
@@ -563,7 +563,7 @@ test("invalid tool arguments carry the one-object recovery", async () => {
             const result = await executor.run(harness({ target: "echo", body }).args);
             assert.equal(result.status, 400, body);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/invalid-tool-arguments");
-            assert.equal(result.problem?.recovery, "One JSON object per MCP tool call; a second call is a second fence.");
+            assert.equal(result.problem?.recovery, "One JSON object per MCP tool call; a second call is a second fence."); // {§problems-mcp}
         }
     } finally {
         await connection.close();

@@ -138,11 +138,11 @@ replacement
                     const problem = JSON.parse(row.rx).problem;
                     assert.equal(row.status_rx, 409);
                     assert.equal(problem.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-                    assert.equal(problem.detail, "EDIT collided with the current resource state.");
+                    assert.equal(problem.detail, "EDIT collided with the current resource state."); // {§problems-dispatch}
                     assert.deepEqual(problem.unresolvedAnchors, ownUnresolved, "each row diagnoses all of its own unresolved anchors");
                     assert.equal(problem.editCount, 1);
                     assert.equal(problem.applied, 0);
-                    assert.equal(problem.recovery, "0 of 1 edits applied. READ the target for current coordinates.");
+                    assert.equal(problem.recovery, "0 of 1 edits applied. READ the target for current coordinates."); // {§problems-dispatch}
                     assert.equal(problem.retryable, false);
                     assert.equal("staleAnchors" in problem, false, "absence is not evidence of earlier validity");
                 }

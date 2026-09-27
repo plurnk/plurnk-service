@@ -38,7 +38,7 @@ test("{§methods-workspace-prompts}: workspace prompts are newest-first and limi
             const problem = rpcProblem(bad);
             assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/limit-invalid");
             assert.equal(problem.value, 0);
-            assert.equal(problem.recovery, "Use a positive integer limit.");
+            assert.equal(problem.recovery, "Use a positive integer limit."); // {§pinned-wording-core}
 
             // A malformed workerId fails the same way.
             const badWorker = rpcProblem(await rpcCall(ws, 7, "workspace.prompts", { workerId: 0 }));

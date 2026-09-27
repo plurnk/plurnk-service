@@ -58,8 +58,8 @@ test("{§file-directory-target}: a directory target says it is a directory and g
         "'changelog' is a directory, not a file; READ reads one file.",
         "List its files with `FIND (changelog/)`, then READ one by its path.",
     ]);
-    assert.equal(slashed?.problem?.detail, "'tests/forms_tests' is a directory, not a file; READ reads one file.");
-    assert.equal(slashed?.problem?.recovery, "List its files with `FIND (tests/forms_tests/)`, then READ one by its path.");
+    assert.equal(slashed?.problem?.detail, "'tests/forms_tests' is a directory, not a file; READ reads one file."); // {§pinned-wording-core}
+    assert.equal(slashed?.problem?.recovery, "List its files with `FIND (tests/forms_tests/)`, then READ one by its path."); // {§pinned-wording-core}
     assert.equal(listing?.status, 200, "the named listing form works");
     assert.match(String(listing?.content), /changelog\/7122\.bugfix\.rst/u);
     assert.equal(member?.status, 200, "and the listed path reads");

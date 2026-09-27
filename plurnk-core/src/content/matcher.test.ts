@@ -151,7 +151,7 @@ test("malformed matcher expression → 400 (model-facing, not a 500)", async () 
     assert.equal(r.problem?.stage, "matcher");
     assert.equal(r.problem?.dialect, "xpath");
     assert.equal("diagnostic" in (r.problem ?? {}), false, "an unavailable native cause is not guessed");
-    assert.equal(r.problem?.recovery, "Revise the matcher expression.");
+    assert.equal(r.problem?.recovery, "Revise the matcher expression."); // {§problems-schemes}
     assert.equal(r.problem?.retryable, false);
 });
 

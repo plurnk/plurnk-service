@@ -647,3 +647,33 @@ event and `plurnk.terminated.result.problem` are lossless; `RUN_ERROR.code` and
 `message` are the required standard projection, not a second failure object.
 Consumers preserve the exact Problem from the lossless surface and never
 reconstruct one from `RUN_ERROR`.
+
+§problems-agui **AG-UI Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+
+| code | status | contract |
+|---|---:|---|
+| `parse-failed` | 400 | A client-authored block did not parse; the detail is the parser's own diagnostic, verbatim, with its line, column and source ({§agui-outside-text}). |
+| `service-starting` | 503 | The PLURNK service owns this listener but has not completed durable recovery. |
+| `route-not-found` | 404 | The requested HTTP route does not exist. |
+| `request-failed` | 500 | The AG-UI request failed unexpectedly. |
+| `workspace-required` | 400 | forwardedProps.plurnk.workspace must name a workspace. Recovery: Provide a non-empty workspace name. |
+| `interrupt-duplicate` | 400 | The resume contains the same interrupt more than once. Recovery: Include each pending interrupt exactly once. |
+| `interrupt-invalid` | 400 | The resume contains an invalid client interrupt. Recovery: Resume with the interrupt IDs and response shapes supplied by the pending tool calls. |
+| `interrupt-not-pending` | 409 | The resume addresses an interrupt that is not pending. Recovery: Refresh pending interrupts before resuming. |
+| `worker-scope-invalid` | 400 | One resume must address interrupts for exactly one worker. Recovery: Resume each worker separately. |
+| `interrupt-set-incomplete` | 409 | The resume does not address every pending interrupt for worker *id*. Recovery: Resolve every pending interrupt for this worker in one resume. |
+| `invalid-json` | 400 | The request body is not valid JSON. |
+| `invalid-run-input` | 400 | The request body does not satisfy the AG-UI RunAgentInput contract. |
+| `unsupported-run-mode` | 400 | forwardedProps.plurnk.mode must be "sync" when present. |
+| `invalid-sync-input` | 400 | Conversation synchronization cannot include messages, an action, or an interrupt resume. |
+| `user-message-required` | 400 | A new AG-UI Run requires a non-empty textual user message. Recovery: Provide a non-empty user message. |
+| `run-failed` | 500 | The AG-UI Run failed unexpectedly. |
+
+§pinned-wording-agui **Pinned wording.** Verbatim sentences tests pin: each is contract, and a change here is a change of contract.
+
+| sentence | arises when |
+|---|---|
+| Action '*name*' is not registered. Recovery: Use an action advertised by discover. | an action call naming no registered action |
+| Action '*name*' rejected parameters. *schema path*: *reason*. | an action call whose parameters fail the action's schema |
+| *action* parsed *n* statements; exactly one *OP* statement is required. | a client op action whose block holds other than one statement |
+| The action failed unexpectedly. | an action handler that threw |

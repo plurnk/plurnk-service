@@ -497,9 +497,9 @@ test("{§agui-management-plane} a management-action AG-UI Run executes via the s
         };
         assert.equal(err.value.ok, false);
         assert.equal(err.value.problem.type, "https://problems.plurnk.xyz/agui/action/unknown-action");
-        assert.equal(err.value.problem.detail, "Action 'nope.nothing' is not registered.");
+        assert.equal(err.value.problem.detail, "Action 'nope.nothing' is not registered."); // {§pinned-wording-agui}
         assert.equal(err.value.problem.requestedAction, "nope.nothing");
-        assert.equal(err.value.problem.recovery, "Use an action advertised by discover.");
+        assert.equal(err.value.problem.recovery, "Use an action advertised by discover."); // {§pinned-wording-agui}
         assert.equal(err.value.problem.retryable, false);
         assert.doesNotMatch(err.value.problem.detail, /seam surface/, "no internal jargon leaks to the client");
     } finally { await mod.close(); }
@@ -841,12 +841,12 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
         const missing = await invoke(" \n\t");
         assert.equal(missing.ok, false);
         assert.equal(missing.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
-        assert.equal(missing.problem?.detail, "op.look parsed 0 statements; exactly one LOOK statement is required.");
+        assert.equal(missing.problem?.detail, "op.look parsed 0 statements; exactly one LOOK statement is required."); // {§pinned-wording-agui}
 
         const extra = await invoke("````LOOK (worker:///x)````\n````LOOK (worker:///y)````");
         assert.equal(extra.ok, false);
         assert.equal(extra.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
-        assert.equal(extra.problem?.detail, "op.look parsed 2 statements; exactly one LOOK statement is required.");
+        assert.equal(extra.problem?.detail, "op.look parsed 2 statements; exactly one LOOK statement is required."); // {§pinned-wording-agui}
         assert.equal(extra.problem?.stage, "action-validation");
 
         for (const operation of ["READ", "EDIT"] as const) {
@@ -865,7 +865,7 @@ test("#136: op.look admits one clean LOOK and rejects every other parser fact be
         // {§quotation} an opener after text on its line is prose, for client operations too.
         const inline = await invoke("text ````LOOK (worker:///x)````");
         assert.equal(inline.ok, false);
-        assert.equal(inline.problem?.detail, "op.look parsed 0 statements; exactly one LOOK statement is required.");
+        assert.equal(inline.problem?.detail, "op.look parsed 0 statements; exactly one LOOK statement is required."); // {§pinned-wording-agui}
 
         const pinned = await post(mod.address().port, {
             threadId: "look-admission",
@@ -1076,7 +1076,7 @@ test("{§agui-action-schema-enforcement} human-readable input failures retain th
             value: { ok: boolean; problem: { detail: string; issues: unknown[] } };
         };
         assert.equal(failure.value.ok, false);
-        assert.equal(failure.value.problem.detail, "Action 'workspace.workers' rejected parameters. #/id: 0 is less than 1.");
+        assert.equal(failure.value.problem.detail, "Action 'workspace.workers' rejected parameters. #/id: 0 is less than 1."); // {§pinned-wording-agui}
         assert.ok(failure.value.problem.issues.length > 0, "structured validation evidence also survives");
     } finally { await mod.close(); }
 });
@@ -1471,7 +1471,7 @@ test("an unexpected action exception becomes one generic Problem without leaking
         } | undefined;
         assert.equal(result?.value?.ok, false);
         assert.equal(result?.value?.problem?.type, "https://problems.plurnk.xyz/agui/action/action-failed");
-        assert.equal(result?.value?.problem?.detail, "The action failed unexpectedly.");
+        assert.equal(result?.value?.problem?.detail, "The action failed unexpectedly."); // {§pinned-wording-agui}
         assert.equal(result?.value?.problem?.stage, "action-execution");
         assert.doesNotMatch(JSON.stringify(events), /private adapter detail/);
     } finally { await mod.close(); }
@@ -2225,7 +2225,7 @@ test("NO workspace prop is a 400 Problem - a worker has no world to forge from t
         assert.equal(body.status, 400);
         assert.match(body.detail, /forwardedProps\.plurnk\.workspace must name a workspace/);
         assert.equal(body.stage, "request-validation");
-        assert.equal(body.recovery, "Provide a non-empty workspace name.");
+        assert.equal(body.recovery, "Provide a non-empty workspace name."); // {§problems-agui}
         assert.equal(body.retryable, false);
         assert.doesNotMatch(body.detail, /world|existence/, "the error states the contract, never the machine-model philosophy");
         assert.equal(created, 0, "NO workspace was forged from the threadId");
@@ -2911,7 +2911,7 @@ test("an unexpected post-headers runLoop exception becomes one generic Problem w
             value?: { type?: string; detail?: string; stage?: string };
         } | undefined;
         assert.equal(exact?.value?.type, "https://problems.plurnk.xyz/agui/http/run-failed");
-        assert.equal(exact?.value?.detail, "The AG-UI Run failed unexpectedly.");
+        assert.equal(exact?.value?.detail, "The AG-UI Run failed unexpectedly."); // {§problems-agui}
         assert.equal(exact?.value?.stage, "run");
         assert.doesNotMatch(JSON.stringify(events), /secret internal failure/);
     } finally { await mod.close(); }

@@ -93,7 +93,7 @@ test("loop.inject speaks into an existing worker; errors when there's none", asy
             const noWorkerResult = noWorker.result as { status: number; problem: { type: string; detail: string } };
             assert.equal(noWorkerResult.status, 409);
             assert.equal(noWorkerResult.problem.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required");
-            assert.equal(noWorkerResult.problem.detail, "No model worker exists for prompt injection.");
+            assert.equal(noWorkerResult.problem.detail, "No model worker exists for prompt injection."); // {§problems-functionality}
 
             // Start a worker; completed inventory ends its loop, leaving the worker idle. Wait for the terminal
             // (loop.run does not block) so the worker is genuinely idle before we inject.
@@ -127,7 +127,7 @@ test("run.fork branches the model worker into a named worker; errors with no wor
             const noWorkerResult = noWorker.result as { status: number; problem: { type: string; detail: string } };
             assert.equal(noWorkerResult.status, 409);
             assert.equal(noWorkerResult.problem.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required");
-            assert.equal(noWorkerResult.problem.detail, "No model worker exists to fork.");
+            assert.equal(noWorkerResult.problem.detail, "No model worker exists to fork."); // {§problems-functionality}
 
             // A loop builds the model worker + its log; forking branches it. Wait for the
             // terminal so the log is settled before the fork copies it.
@@ -312,7 +312,7 @@ test("loop.run without provider returns 501", async () => {
             const result = response.result as { status: number; problem?: { type?: string; detail?: string } };
             assert.equal(result.status, 501);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/daemon/provider/not-configured");
-            assert.equal(result.problem?.detail, "No provider is configured for this worker.");
+            assert.equal(result.problem?.detail, "No provider is configured for this worker."); // {§problems-functionality}
         } finally { ws.close(); }
     });
 });
@@ -327,7 +327,7 @@ test("loop.run requires non-empty prompt", async () => {
             const result = response.result as { status: number; problem?: { type?: string; detail?: string; field?: string } };
             assert.equal(result.status, 400);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/daemon/input/prompt-invalid");
-            assert.equal(result.problem?.detail, "prompt is not a non-empty string.");
+            assert.equal(result.problem?.detail, "prompt is not a non-empty string."); // {§pinned-wording-core}
             assert.equal(result.problem?.field, "prompt");
         } finally { ws.close(); }
     });

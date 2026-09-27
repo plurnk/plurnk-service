@@ -310,7 +310,7 @@ export default class WebFetcher implements WebMaterializer {
                     ? result.problem
                     : (result.problem ?? {
                         status: 502,
-                        code: "materializer-recoverable",
+                        code: "materializer-recoverable", // {§problems-http}
                         detail: `The materializer could not extract ${fetched.url} (${result.reason}).`,
                         retryable: true,
                     });

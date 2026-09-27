@@ -45,7 +45,7 @@ test("a bare execution of a tool's name fails with a receipt that names the tool
             assert.ok(receipts.every((row) => row.status_rx === 500), "the shell's exit 127 is still a 500 receipt");
             const receipt = JSON.parse(receipts[0]!.rx) as { exitCode?: number; problem?: { detail?: string; recovery?: string; toolRuntimes?: string[]; tool?: string } };
             assert.equal(receipt.exitCode, 127);
-            assert.equal(receipt.problem?.detail, "'sh' exited with code 127; `fail` is a registered tool of `fixture`.");
+            assert.equal(receipt.problem?.detail, "'sh' exited with code 127; `fail` is a registered tool of `fixture`."); // {§pinned-wording-core}
             assert.equal(
                 receipt.problem?.recovery,
                 "Use the `fixture` fence with target `(fail)` and JSON input in the body; contract: worker:///_plurnk/tools/fixture/fail.json.",
@@ -80,7 +80,7 @@ test("an ordinary missing shell command keeps the plain exit-127 receipt", { tim
             assert.ok(terminal);
             const receipt = JSON.parse(terminal.rx) as { exitCode?: number; problem?: { detail?: string; toolRuntimes?: unknown } };
             assert.equal(receipt.exitCode, 127);
-            assert.equal(receipt.problem?.detail, "'sh' exited with code 127.");
+            assert.equal(receipt.problem?.detail, "'sh' exited with code 127."); // {§pinned-wording-core}
             assert.equal(receipt.problem?.toolRuntimes, undefined, "no tool is invented for a program the registry does not know");
         } finally { ws.close(); }
     } finally {

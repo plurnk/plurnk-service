@@ -593,7 +593,7 @@ test("sh: non-zero exit → channels=errored, stderr captured, subscription clos
         assert.equal(terminal.exitCode, 7);
         assert.equal(terminal.problem?.status, 500);
         assert.equal(terminal.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit");
-        assert.equal(terminal.problem?.detail, "'sh' exited with code 7.");
+        assert.equal(terminal.problem?.detail, "'sh' exited with code 7."); // {§pinned-wording-core}
         // {§read-content-wins} — reading the failed command's stderr delivers the content; the exit stays the execution row's verdict.
         const stderrRead = await ctx.engine.dispatch({
             statement: readStmt(urlPath("sh", pathname, "stderr")),

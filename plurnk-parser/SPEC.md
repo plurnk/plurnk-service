@@ -28,3 +28,9 @@ and contracts candidates, installs both into a clean consumer, verifies their
 installed versions, and exercises every tier entry point, `parsePath`, the CLI,
 and a browser-Worker bundle. Prepublication checks must not resolve the candidate
 contracts version from the registry.
+
+§pinned-wording-parser **Pinned wording.** Verbatim sentences tests pin: each is contract, and a change here is a change of contract.
+
+| sentence | arises when |
+|---|---|
+| A pattern is a regex: write `/url/` to match lines containing url; `*` repeats what precedes it, so `/*url*/` is invalid. | a glob written where a regex is required ({§parse-recovery}) |

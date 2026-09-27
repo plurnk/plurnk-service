@@ -461,7 +461,7 @@ test("WORK-spawning a name a LIVE sister holds is refused 409 — legible, never
         });
         assert.equal(result.status, 409, "a live name-collision is a legible 409, not a 500");
         assert.match(result.problem?.detail ?? "", /already exists in this workspace/, "the message names the live worker");
-        assert.equal(result.problem?.recovery, "To give 'worker' more work, write `SEND (worker://worker)` with the task as the body; to start another worker, choose a name no worker holds.", "the receipt names the working form");
+        assert.equal(result.problem?.recovery, "To give 'worker' more work, write `SEND (worker://worker)` with the task as the body; to start another worker, choose a name no worker holds.", "the receipt names the working form"); // {§problems-dispatch}
         assert.equal(calls.length, 0, "no inject on a refused spawn");
     } finally { await db.close(); }
 });
@@ -519,8 +519,8 @@ test("WORK and FORK reject non-mintable worker authorities before creating or st
             assert.equal(result.status, 400);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/worker-name-invalid");
             assert.equal(result.problem?.worker, "_invalid");
-            assert.equal(result.problem?.detail, "Worker name '_invalid' must match [A-Za-z0-9][A-Za-z0-9_-]{0,62}.");
-            assert.equal(result.problem?.recovery, "Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit.");
+            assert.equal(result.problem?.detail, "Worker name '_invalid' must match [A-Za-z0-9][A-Za-z0-9_-]{0,62}."); // {§pinned-wording-core}
+            assert.equal(result.problem?.recovery, "Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit."); // {§pinned-wording-core}
             assert.equal(result.problem?.retryable, false);
         }
 
@@ -612,7 +612,7 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
         const running = await lookThroughScheme("worker", null, readStmt(workerPath("worker-db")), ctx);
         assert.equal(running.status, 425, "a still-running worker hasn't delivered — 425, not its result");
         assert.equal(running.problem?.type, "https://problems.plurnk.xyz/scheme/ops/loop-running");
-        assert.equal(running.problem?.detail, "The execution at ops://worker-db/1 has not concluded.");
+        assert.equal(running.problem?.detail, "The execution at ops://worker-db/1 has not concluded."); // {§pinned-wording-core}
         assert.equal(running.resource, "ops://worker-db/1", "the selected execution has an exact identity");
         assert.equal("awaitWorker" in running, false, "a READ result does not carry hidden scheduling intent");
 
@@ -664,8 +664,8 @@ test("READ(worker://name) collects the exact terminal result — 425 running, 40
         await new LoopLifecycle(db).finish(failedLoop, failure);
         const failed = await lookThroughScheme("worker", null, readStmt(workerPath("worker-failed")), ctx);
         assert.equal(failed.status, 502, "READ preserves the child's exact failure status");
-        assert.equal(failed.problem?.detail, "The child provider failed.", "READ preserves the child's exact Problem");
-        assert.equal(failed.content, "The child provider failed.", "READ derives a readable body from the exact Problem");
+        assert.equal(failed.problem?.detail, "The child provider failed.", "READ preserves the child's exact Problem"); // {§pinned-wording-core}
+        assert.equal(failed.content, "The child provider failed.", "READ derives a readable body from the exact Problem"); // {§pinned-wording-core}
     } finally { await db.close(); }
 });
 
@@ -688,8 +688,8 @@ test("EDIT on the bare worker entity is rejected — WORK spawns, not EDIT (400,
         });
         assert.equal(result.status, 400, "EDIT on the worker entity is rejected");
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/worker/worker-entity-not-editable");
-        assert.equal(result.problem?.detail, "A worker entity is not an editable entry.");
-        assert.equal(result.problem?.recovery, "EDIT requires an entry path, such as worker:///example.md.");
+        assert.equal(result.problem?.detail, "A worker entity is not an editable entry."); // {§problems-entries}
+        assert.equal(result.problem?.recovery, "EDIT requires an entry path, such as worker:///example.md."); // {§problems-entries}
         assert.equal(result.problem?.retryable, false);
         assert.equal(calls.length, 0, "no inject on a rejected EDIT");
         const worker = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "worker" });
@@ -744,7 +744,7 @@ test("{§worker-scheme-irc}: empty and whitespace-only messages never reach work
             });
             assert.equal(result.status, 422);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/worker/message-empty");
-            assert.equal(result.problem?.detail, "SEND has no message text or attachments.");
+            assert.equal(result.problem?.detail, "SEND has no message text or attachments."); // {§problems-entries}
         }
         assert.equal(calls.length, 0);
         const literal = " \tMessage with significant whitespace.\n ";
@@ -1102,7 +1102,7 @@ test("WAIT: a live obligation parks; an empty join continues without inventing c
         const eng2 = new Engine({ db, schemes: new SchemeRegistry() });
         const satisfied = await eng2.dispatch({ statement: dispositionStmt("WAIT", "standing by"), workspaceId: s2, workerId: worker, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
         assert.equal(satisfied.status, 102);
-        assert.equal(satisfied.detail, "Nothing is in flight. Continuing.");
+        assert.equal(satisfied.detail, "Nothing is in flight. Continuing."); // {§pinned-wording-core}
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop }))?.status, 102, "the empty join is not terminal");
 
         // {§send-wait-scope} — an ignored scope never invents a future wake.
@@ -1115,7 +1115,7 @@ test("WAIT: a live obligation parks; an empty join continues without inventing c
         const continued = await eng3.dispatch({ statement: scoped, workspaceId: s3, workerId: run3, loopId: loop3, turnId: turn3, sequence: 1, origin: "model" });
         assert.equal(continued.status, 102);
         assert.equal(continued.problem, undefined);
-        assert.equal(continued.detail, "Nothing is in flight. Continuing.");
+        assert.equal(continued.detail, "Nothing is in flight. Continuing."); // {§pinned-wording-core}
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop3 }))?.status, 102, "no held-open 202");
     } finally { await db.close(); }
 });

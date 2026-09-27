@@ -10,7 +10,7 @@ const refusals = (input: string) => PlurnkParser.parse(input, { executors: ["sh"
 test("{§parse-recovery} a glob-shaped regex is refused with the regex that matches its words and the target glob that selects files (run429)", () => {
     const [error] = refusals("```FIND (tests/*) /*url*/ <!-- test modules mentioning url -->\n```");
     assert.equal(error?.message, "pattern leads with `/` but is not a valid `/pattern/flags` regex - Invalid regular expression: /*url*/: Nothing to repeat: `/*url*/`");
-    assert.equal(error?.recovery, "A pattern is a regex: write `/url/` to match lines containing url; `*` repeats what precedes it. To select files by name, put the glob in the target: `FIND (tests/*url*)`.");
+    assert.equal(error?.recovery, "A pattern is a regex: write `/url/` to match lines containing url; `*` repeats what precedes it. To select files by name, put the glob in the target: `FIND (tests/*url*)`."); // {§pinned-wording-parser}
     assert.equal(refusals("```READ (django) /*.py/\n```")[0]?.recovery,
         "A pattern is a regex: write `/\\.py/` to match lines containing .py; `*` repeats what precedes it. To select files by name, put the glob in the target: `FIND (django/*.py)`.");
     assert.equal(refusals("```FIND (src/a.py) /?x/\n```")[0]?.recovery,

@@ -58,7 +58,7 @@ test("{§park-202-only} {§wait-obligation-matrix} WAIT retains literal prose wi
         assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["WAIT"]);
         const wait = rows.find(({ op }) => op === "WAIT")!;
         assert.equal(wait.status_rx, 102);
-        assert.equal(JSON.parse(wait.rx).detail, "Nothing is in flight. Continuing.");
+        assert.equal(JSON.parse(wait.rx).detail, "Nothing is in flight. Continuing."); // {§pinned-wording-core}
         assert.equal(JSON.parse(wait.tx).body, body);
         const projection = LogBody.resolve({ op: "WAIT", tx: JSON.parse(wait.tx), rx: JSON.parse(wait.rx) });
         assert.equal(projection.mimetype, "text/plain");
@@ -84,7 +84,7 @@ test("{§wait-obligation-matrix} a second idle WAIT says what WAIT is for, and t
             return JSON.parse(rows.find(({ op }) => op === "WAIT")!.rx).detail as string;
         };
 
-        assert.equal(await detailOf(), "Nothing is in flight. Continuing.", "one yield is honest and is not corrected");
+        assert.equal(await detailOf(), "Nothing is in flight. Continuing.", "one yield is honest and is not corrected"); // {§pinned-wording-core}
         assert.equal(
             await detailOf(),
             "WAIT doesn't wait unless there's a child worker or stream to wait on. Use schedule for specific timing decisions.",

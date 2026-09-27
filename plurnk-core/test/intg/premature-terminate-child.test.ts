@@ -158,7 +158,7 @@ test("{§send-wait-scope} a direct WAIT ignores its scope and continues without 
         assert.equal(row.length, 1);
         assert.equal(row[0].status_rx, 102);
         assert.equal(JSON.parse(row[0].rx).problem, undefined);
-        assert.equal(JSON.parse(row[0].rx).detail, "Nothing is in flight. Continuing.");
+        assert.equal(JSON.parse(row[0].rx).detail, "Nothing is in flight. Continuing."); // {§pinned-wording-core}
     } finally { await db.close(); }
 });
 
@@ -183,7 +183,7 @@ test("{§send-wait-scope} a decorated WAIT keeps its sibling, source evidence, a
         const task = rows.find(({ op }) => op === "WAIT");
         assert.equal(task?.status_rx, 102);
         assert.equal(JSON.parse(task!.rx).problem, undefined);
-        assert.equal(JSON.parse(task!.rx).detail, "Nothing is in flight. Continuing.");
+        assert.equal(JSON.parse(task!.rx).detail, "Nothing is in flight. Continuing."); // {§pinned-wording-core}
         const packet = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         assert.ok(packet);
         assert.equal(JSON.parse(packet.packet).assistant.content, content);

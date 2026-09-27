@@ -135,7 +135,7 @@ test("KILL resolves the registry to the owning scheme + stored handle and tears 
         assert.equal(terminal.status, 499);
         assert.equal(terminal.problem?.status, 499);
         assert.equal(terminal.problem?.type, "https://problems.plurnk.xyz/scheme/fakestream/cancelled");
-        assert.equal(terminal.problem?.detail, "The stream was cancelled by KILL.");
+        assert.equal(terminal.problem?.detail, "The stream was cancelled by KILL."); // {§pinned-wording-core}
         assert.equal(await ChannelWrite.findActiveSubscription(db, { entryId }), null, "no active subscription remains");
 
         const channel = await db.test_get_channel.get<{ state: string }>({ entry_id: entryId, name: "data" });

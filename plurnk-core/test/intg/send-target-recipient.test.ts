@@ -22,8 +22,8 @@ test("a SEND addressed to a turn source the model may not write is refused 400 w
             assert.equal(sends[0]?.status_rx, 400, "the directed SEND was refused 400, not 403");
             const problem = (JSON.parse(sends[0]!.rx) as { problem?: Record<string, unknown> }).problem;
             assert.equal(problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/send-target-not-a-recipient");
-            assert.equal(problem?.detail, "The addressed scheme is not a SEND recipient.");
-            assert.equal(problem?.recovery, "A targetless SEND answers the open messages; a directed SEND requires a recipient that implements SEND.");
+            assert.equal(problem?.detail, "The addressed scheme is not a SEND recipient."); // {§problems-dispatch}
+            assert.equal(problem?.recovery, "A targetless SEND answers the open messages; a directed SEND requires a recipient that implements SEND."); // {§problems-dispatch}
             assert.doesNotMatch(JSON.stringify(problem), /meant|intended|wanted|tried/u);
             assert.ok(!sends.some((r) => r.status_rx === 403), "the writer rule never speaks first");
             assert.deepEqual(sends.map(({ status_rx }) => status_rx), [400]);
@@ -50,7 +50,7 @@ test("a SEND addressed to a file path preserves the scheme's factual 501", async
             const first = rows.filter((r) => r.op === "SEND" && r.origin === "model")[0];
             assert.equal(first?.status_rx, 501);
             const problem = (JSON.parse(first!.rx) as { problem?: Record<string, unknown> }).problem;
-            assert.equal(problem?.detail, "Scheme 'file' does not implement SEND.");
+            assert.equal(problem?.detail, "Scheme 'file' does not implement SEND."); // {§problems-dispatch}
             assert.equal(problem?.recovery, undefined);
         } finally { ws.close(); }
     });

@@ -32,7 +32,7 @@ test("{§worker-scheme-irc}: an empty directed SEND refuses before admission and
         assert.equal(refused.status_rx, 422);
         const receipt = refused.rx as SchemeResult;
         assert.equal(receipt.problem?.type, "https://problems.plurnk.xyz/scheme/worker/message-empty");
-        assert.equal(receipt.problem?.detail, "SEND has no message text or attachments.");
+        assert.equal(receipt.problem?.detail, "SEND has no message text or attachments."); // {§problems-entries}
         assert.ok(rows.some((row) => row.origin === "model" && row.op === "NOTE" && row.status_rx === 200));
         assert.deepEqual(await daemon.listWorkerLoops({ workspaceId, workerId: receiver.workerId }), [], "no empty receiving loop is created");
         assert.deepEqual(await daemon.readMessages({ workspaceId, workerId: receiver.workerId }), [], "no empty message is stored");

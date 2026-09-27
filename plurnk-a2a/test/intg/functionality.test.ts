@@ -48,11 +48,11 @@ test("{§a2a-problem-detail} A2A Problems bound caught diagnostics and keep requ
     t.after(() => { if (prior === undefined) delete process.env[ERROR_DETAIL_LIMIT]; else process.env[ERROR_DETAIL_LIMIT] = prior; });
     const family = new A2aFunctionality(diagnosticEnv);
     const invalidSource = await problemOf(() => family.discover({ source: "ftp://sensitive.example" }));
-    assert.equal(invalidSource.detail, "A2A discovery requires an absolute HTTP(S) agent URL.");
+    assert.equal(invalidSource.detail, "A2A discovery requires an absolute HTTP(S) agent URL."); // {§problems-a2a}
     assert.doesNotMatch(invalidSource.detail, /sensitive/u);
 
     const invalidConfiguration = await problemOf(() => family.discover({ configuration: { PLURNK_A2A_BAD: "not a url" } }));
-    assert.equal(invalidConfiguration.detail, "The offered A2A configuration is invalid.");
+    assert.equal(invalidConfiguration.detail, "The offered A2A configuration is invalid."); // {§problems-a2a}
     assert.equal(invalidConfiguration.diagnostic?.length, 7);
     assert.match(invalidConfiguration.diagnostic ?? "", /\.\.\.$/u);
     assert.doesNotMatch(JSON.stringify(invalidConfiguration), /not a url/u);

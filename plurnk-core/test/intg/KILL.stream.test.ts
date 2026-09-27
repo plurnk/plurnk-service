@@ -137,7 +137,7 @@ test("End-to-end: synthetic streaming scheme — KILL tears down subscription, t
         assert.equal(terminal.status, 499);
         assert.equal(terminal.problem?.status, 499);
         assert.equal(terminal.problem?.type, "https://problems.plurnk.xyz/scheme/teststream/cancelled");
-        assert.equal(terminal.problem?.detail, "The stream was cancelled by KILL.");
+        assert.equal(terminal.problem?.detail, "The stream was cancelled by KILL."); // {§pinned-wording-core}
 
         const channelState = (await db.test_get_channel.get<{ state: string }>({ entry_id: entryId, name: "data" }))?.state;
         assert.equal(channelState, "errored", "cancelled content remains readable but is not marked complete");

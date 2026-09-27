@@ -115,7 +115,7 @@ test("{§loop-attendance} an unattended run is refused an interactive partner, n
     const refused = await ask(false, "unattended-asker");
     const status = await refused.promise.then(() => 0, (error: { result?: { status?: number; problem?: { detail?: string } } }) => error.result);
     assert.equal((status as { status?: number }).status, 501, "asking is not available when nobody is there to answer");
-    assert.equal((status as { problem?: { detail?: string } }).problem?.detail, "This run is unattended: nobody is present to answer.");
+    assert.equal((status as { problem?: { detail?: string } }).problem?.detail, "This run is unattended: nobody is present to answer."); // {§pinned-wording-core}
     assert.equal((await interactions.list(workspaceId)).length, 1, "and no second row was written down for nobody");
 });
 

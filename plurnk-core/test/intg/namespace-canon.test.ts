@@ -174,15 +174,15 @@ test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty s
         // ENOENT on a READ miss carries the resolved name in wire canon.
         const miss = await readFileScheme(readStmt("/no/such.md"), ctx);
         assert.equal(miss.status, 404);
-        assert.equal(miss.problem?.detail, "No member of this workspace is at 'no/such.md'.", "the READ miss states its fact — resolved form, wire canon");
-        assert.equal(miss.problem?.recovery, "Check the path with FIND. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body.");
+        assert.equal(miss.problem?.detail, "No member of this workspace is at 'no/such.md'.", "the READ miss states its fact — resolved form, wire canon"); // {§problems-file}
+        assert.equal(miss.problem?.recovery, "Check the path with FIND. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body."); // {§problems-file}
 
         // Exact-path FIND distinguishes absence from a successful empty survey.
         const findMissStmt = { op: "FIND", aside: null, lineMarker: null, position: { line: 1, column: 1 },
             target: { kind: "local", raw: "no/such.md" }, matcher: null, body: null } as never;
         const findMiss = await file.find(findMissStmt, ctx);
         assert.equal(findMiss.status, 404, "FIND over an absent exact path cannot certify an empty set");
-        assert.equal(findMiss.problem?.detail, "No member of this workspace is at 'no/such.md'.");
+        assert.equal(findMiss.problem?.detail, "No member of this workspace is at 'no/such.md'."); // {§problems-file}
 
         // A FOLDER scope with zero matches stays the blessed orienting empty survey.
         const surveyStmt = { op: "FIND", aside: null, lineMarker: null, position: { line: 1, column: 1 },
@@ -195,15 +195,15 @@ test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty s
         const clobber = await file.edit(editStmt("occupied.md", "x\n"), ctx);
         assert.equal(clobber.status, 403);
         assert.equal(clobber.problem?.type, "https://problems.plurnk.xyz/scheme/file/path-occupied-by-nonmember");
-        assert.equal(clobber.problem?.detail, "A non-member file already occupies 'occupied.md'.");
+        assert.equal(clobber.problem?.detail, "A non-member file already occupies 'occupied.md'."); // {§problems-file}
         assert.equal(clobber.problem?.path, "occupied.md");
         // {§membership-read-refusal} — a READ of that same non-member names the door, not absence.
         const peek = await readFileScheme(readStmt("occupied.md"), ctx);
         assert.equal(peek.status, 404);
         assert.equal(peek.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-member");
-        assert.equal(peek.problem?.detail, "'occupied.md' exists on disk but is not a member of this workspace.");
-        assert.equal(peek.problem?.recovery, "Admit it with `members (add)` and a `{\"glob\": \"<path>\"}` body.");
-        assert.equal(clobber.problem?.recovery, "Choose an unoccupied member path.");
+        assert.equal(peek.problem?.detail, "'occupied.md' exists on disk but is not a member of this workspace."); // {§pinned-wording-core}
+        assert.equal(peek.problem?.recovery, "Admit it with `members (add)` and a `{\"glob\": \"<path>\"}` body."); // {§pinned-wording-core}
+        assert.equal(clobber.problem?.recovery, "Choose an unoccupied member path."); // {§problems-file}
         assert.equal(clobber.problem?.retryable, false);
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
@@ -221,7 +221,7 @@ test("{§membership-read-refusal}: beyond the root a miss is the same sentence w
             assert.equal(result.status, 404);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-found");
             assert.equal(result.problem?.detail, `No member of this workspace is at '../${name}'.`, "about the address's membership: it neither claims absence nor hints at presence");
-            assert.equal(result.problem?.recovery, "Check the path with FIND. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body.", "path correction, creation and admission stay alternatives; none is presumed");
+            assert.equal(result.problem?.recovery, "Check the path with FIND. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body.", "path correction, creation and admission stay alternatives; none is presumed"); // {§problems-file}
         }
         // The disk beyond the root stays dark: swap the names and the two answers are one answer.
         const normalize = (result: typeof there, name: string): string => JSON.stringify(result).replaceAll(name, "<name>");

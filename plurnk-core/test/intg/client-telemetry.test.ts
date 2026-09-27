@@ -41,7 +41,7 @@ test("workspace.create refuses an empty client id", async () => {
             const problem = rpcProblem(r);
             assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
             assert.equal(problem.field, "settings.client");
-            assert.equal(problem.recovery, "Provide the client identifier.");
+            assert.equal(problem.recovery, "Provide the client identifier."); // {§pinned-wording-core}
         } finally { ws.close(); }
     });
 });

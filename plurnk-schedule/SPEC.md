@@ -102,3 +102,17 @@ key is refused by name. A service definition is disable-only in a workspace,
 as for every family. An explicitly empty definition masks that service rule and
 its inherited `ENABLED` selection; it does not remove a workspace-owned rule or
 prohibit adding one. Case-fold collisions still fail validation.
+
+§problems-schedule **Schedule Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+
+| code | status | contract |
+|---|---:|---|
+| `configuration-unsupported` | 400 | schedule discovery reads rule text from `source`; it takes no configuration. |
+| `query-unsupported` | 400 | schedule discovery reads rule text from `source`; there is no catalog to search. |
+| `source-required` | 400 | schedule discovery needs rule text in `source`; `FREQ=DAILY` is enough to read the time. |
+| `alias-required` | 400 | schedule add needs an alias. |
+| `definition-invalid` | 400 | The schedule definition is invalid. |
+| `rule-invalid` | 400 | The rule of '*alias*' is unreadable: *cause*. |
+| `delivery-failed` | 502 | Delivering the scheduled message '*alias*' failed. |
+| `target-missing` | 404 | No worker named '*name*' exists in this workspace. |
+| `rule-unbounded` | 400 | A workspace rule ends: give the RRULE a COUNT or an UNTIL. |

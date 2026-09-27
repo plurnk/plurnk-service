@@ -327,3 +327,35 @@ Message, Artifact, and Part READs need no active remote connection. READ alone
 controls native attachment delivery through {§packet-attachment-parts}; listing
 a resource does not inject its bytes into model context. Log curation does not
 delete the retained source.
+
+§problems-a2a **A2A Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+
+| code | status | contract |
+|---|---:|---|
+| `metadata-unsupported` | 400 | A2A READ does not accept the [metadata] modifier. |
+| `agent-required` | 400 | An A2A resource requires an agent alias in its authority. |
+| `message-not-found` | 404 | No retained A2A Message exists at `a2a://<authority><path>`. |
+| `artifact-not-found` | 404 | A2A Task *id* has no Artifact *artifact*. |
+| `resource-not-found` | 404 | No A2A resource exists at `a2a://<authority><path>`. |
+| `message-required` | 400 | A2A SEND requires a body or attachments. |
+| `send-target-invalid` | 400 | A2A SEND targets an agent root or an exact Task resource. Recovery: Use `a2a://<agent>` for new work or `a2a://<agent>/tasks/<task-id>` to continue a Task. |
+| `stream-first-result-invalid` | 502 | The A2A agent returned no Task or Message as its first stream item. |
+| `direct-message-stream-invalid` | 502 | The A2A agent emitted additional stream items after a direct Message. |
+| `task-identity-changed` | 502 | The A2A agent answered continuation of Task *id* with Task *other*. |
+| `bad-target` | 400 | An A2A target uses `a2a://<agent>`. |
+| `target-metadata-unsupported` | 400 | A2A targets do not accept credentials or query parameters. |
+| `channel-not-found` | 400 | A2A resources have no #*fragment* channel. |
+| `task-rejected` | 403 | A2A Task *id* was rejected by the remote agent. |
+| `task-failed` | 502 | A2A Task *id* failed at the remote agent. |
+| `stream-ended-early` | 502 | The A2A stream ended while Task *id* remained *state*. |
+| `task-cancelled` | 499 | A2A Task *id* was cancelled. |
+| `remote-request-failed` | 502 | The A2A request to '*authority*' failed during *stage*. |
+| `configuration-invalid` | 400 | The offered A2A configuration is invalid. |
+| `source-invalid` | 400 | A2A discovery requires an absolute HTTP(S) agent URL. |
+| `definition-invalid` | 400 | The A2A agent definition is invalid. |
+| `alias-mismatch` | 400 | Alias '*alias*' must equal the definition's name '*name*'. |
+| `agent-not-configured` | 404 | No A2A agent is configured as '*authority*'. |
+| `authorization-unresolved` | 409 | A2A agent '*alias*' references *variable* in *field*, which is not set in the service environment. |
+| `card-unreachable` | 502 | Agent Card discovery failed (for the A2A agent); retryable. |
+| `registry-not-configured` | 501 | A2A registry search requires a configured downstream registry; none is configured. |
+| `interface-unsupported` | 502 | The Agent Card advertises no usable HTTP+JSON 1.0 interface. |

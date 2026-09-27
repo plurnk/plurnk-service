@@ -1340,7 +1340,7 @@ test("the client-interface seam — readEntry returns an entry's shape and incre
             assert.equal(offset.status, 400);
             assert.ok("problem" in offset);
             assert.equal(offset.problem.type, "https://problems.plurnk.xyz/daemon/entry/offset-channel-required");
-            assert.equal(offset.problem.recovery, "Select the channel to read from the offset.");
+            assert.equal(offset.problem.recovery, "Select the channel to read from the offset."); // {§problems-functionality}
 
             const networkEntry = await db.test_seed_entry_workspace.get<{ id: number }>({ attributes: "{}", default_channel: "body", output: 0,
                 workspace_id: created.id,

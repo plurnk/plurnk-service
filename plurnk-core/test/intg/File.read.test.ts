@@ -292,8 +292,8 @@ test("{§matcher-invalid-expression} File.find: an invalid matcher preserves the
         assert.equal(r.problem?.type, "https://problems.plurnk.xyz/schemes/matcher/invalid-expression");
         assert.equal(r.problem?.stage, "matcher");
         assert.equal(r.problem?.dialect, "regex");
-        assert.equal(r.problem?.recovery, "Revise the matcher expression.");
-        assert.equal(r.problem?.detail, "The regex matcher expression is invalid.");
+        assert.equal(r.problem?.recovery, "Revise the matcher expression."); // {§problems-schemes}
+        assert.equal(r.problem?.detail, "The regex matcher expression is invalid."); // {§problems-schemes}
         assert.match(String(r.problem?.diagnostic), /Invalid regular expression|unterminated character class/i);
         assert.equal(r.problem?.retryable, false);
         assert.equal(r.content, null);
@@ -311,9 +311,9 @@ test("File.find: an invalid matcher exposes stable cause and recovery facts", as
         assert.equal(r.status, 400);
         assert.equal(r.problem?.stage, "matcher");
         assert.equal(r.problem?.dialect, "jsonpath");
-        assert.equal(r.problem?.detail, "The jsonpath matcher expression is invalid.");
+        assert.equal(r.problem?.detail, "The jsonpath matcher expression is invalid."); // {§problems-schemes}
         assert.ok(typeof r.problem?.diagnostic === "string");
-        assert.equal(r.problem?.recovery, "Revise the matcher expression.");
+        assert.equal(r.problem?.recovery, "Revise the matcher expression."); // {§problems-schemes}
         assert.equal(r.problem?.retryable, false);
         assert.equal("expression" in (r.problem ?? {}), false);
     });

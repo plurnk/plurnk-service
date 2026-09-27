@@ -50,7 +50,7 @@ test("{§loop-attendance} only a creator's own statement can ask for a review no
             assert.equal(error.result.status, 400);
             assert.match(error.result.problem!.type, /daemon\/input\/loop-policy-invalid$/u);
             assert.match(error.result.problem!.detail!, /unattended loop cannot hold a proposal for review: nobody is present to answer/u);
-            assert.equal(error.result.problem!.recovery, "State proposals accept or reject, or attend the loop.");
+            assert.equal(error.result.problem!.recovery, "State proposals accept or reject, or attend the loop."); // {§problems-functionality}
             return true;
         });
     };

@@ -746,7 +746,7 @@ test("EDIT and SEND: no claimed socket → 409", async () => {
     for (const result of [edit, send]) {
         assert.equal(result.status, 409);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/no-open-socket");
-        assert.equal(result.problem?.recovery, "READ the WebSocket URL before sending a message.");
+        assert.equal(result.problem?.recovery, "READ the WebSocket URL before sending a message."); // {§pinned-wording-http}
     }
 });
 
@@ -802,7 +802,7 @@ test("SEND: a socket send throw becomes a structured transport failure", async (
     const result = await wsSend(ws, sendStmt(wss(PUB, "/feed"), "ping"), ctx);
     assert.equal(result.status, 502);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/send-failed");
-    assert.equal(result.problem?.detail, "The WebSocket message could not be sent.");
+    assert.equal(result.problem?.detail, "The WebSocket message could not be sent."); // {§pinned-wording-http}
     assert.equal(result.problem?.stage, "transfer");
     sock.close(1000);
     await read;
@@ -865,7 +865,7 @@ test("KILL: a socket close throw becomes a structured transport failure", async 
     const result = await ws.kill(killStmt(wss(PUB, "/feed")), ctx);
     assert.equal(result.status, 502);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/close-failed");
-    assert.equal(result.problem?.detail, "The WebSocket connection could not be closed.");
+    assert.equal(result.problem?.detail, "The WebSocket connection could not be closed."); // {§pinned-wording-http}
 });
 
 test("READ: message persistence failure settles with a structured problem", async () => {

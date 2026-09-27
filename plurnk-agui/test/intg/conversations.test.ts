@@ -109,11 +109,11 @@ test("two threads, one world: distinct workers, shared filesystem (the environme
         });
         assert.equal(ambiguousLook.ok, false);
         assert.equal(ambiguousLook.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
-        assert.equal(ambiguousLook.problem?.detail, "op.look parsed 2 statements; exactly one LOOK statement is required.");
+        assert.equal(ambiguousLook.problem?.detail, "op.look parsed 2 statements; exactly one LOOK statement is required."); // {§pinned-wording-agui}
         const textOnlyLook = await action(port, "second-look", "shared-world", "op.look", { text: "Only commentary." });
         assert.equal(textOnlyLook.ok, false);
         assert.equal(textOnlyLook.problem?.type, "https://problems.plurnk.xyz/agui/action/invalid-action-parameters");
-        assert.equal(textOnlyLook.problem?.detail, "op.look parsed 0 statements; exactly one LOOK statement is required.");
+        assert.equal(textOnlyLook.problem?.detail, "op.look parsed 0 statements; exactly one LOOK statement is required."); // {§pinned-wording-agui}
         const unchanged = await action(port, "second-look", "shared-world", "op.look", {
             text: "````LOOK (worker:///notes.md)````",
         });

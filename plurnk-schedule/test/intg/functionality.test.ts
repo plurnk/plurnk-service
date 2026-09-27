@@ -340,7 +340,7 @@ test("{§schedule-delivery} a failed delivery holds the rule unavailable with it
     assert.equal(outcome.state, "unavailable");
     assert.equal(outcome.problem.type, "https://problems.plurnk.xyz/schedule/delivery/target-missing");
     assert.equal(outcome.problem.status, 404);
-    assert.equal(outcome.problem.detail, "No worker named 'bot' exists in this workspace.");
+    assert.equal(outcome.problem.detail, "No worker named 'bot' exists in this workspace."); // {§problems-schedule}
     await held.commit();
     assert.deepEqual(adapter.scheduler.armed(1), [], "republishing does not retry on its own");
 

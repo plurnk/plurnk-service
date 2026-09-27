@@ -572,6 +572,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         });
         if (target?.kind !== "url" || target.scheme !== runtime || target.fragment !== null
             || target.query !== null || statement.lineMarker !== null) {
+            // {§problems-exec}
             return failure("invalid-input-target", 400, "SEND input addresses an execution, without a channel or scope.");
         }
         const coordinate = entryCoordinateOf(target, "namespace");

@@ -671,3 +671,20 @@ refused 405 `message-immutable`; its detail names the address as a received mess
 answering settles, and its `recovery` gives the working form with that address:
 `` Answer it with `SEND (message://tester/bde40185)` and your reply as the body, or finish your
 work with a parameterless KILL whose body is the answer. ``
+
+§problems-schemes **Slicer and matcher Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+
+| code | status | contract |
+|---|---:|---|
+| `range-not-satisfiable` | 416 | The range lies outside the available extent (a line before 1, past the end, or a column outside its line). Recovery: Choose a range within the available extent. |
+| `overlapping-edits` | 409 | Two EDIT regions overlap, or a whole-resource replacement cannot coexist with another EDIT. Recovery: Submit the whole-resource replacement by itself. |
+| `invalid-expression` | 400 | The *dialect* matcher expression is invalid. Recovery: Revise the matcher expression. |
+| `unsupported-dialect` | 415 | The *dialect* matcher is not supported for *mimetype*. Recovery: Use a matcher supported by the resource mimetype. |
+
+§pinned-wording-schemes **Pinned wording.** Verbatim sentences tests pin: each is contract, and a change here is a change of contract.
+
+| sentence | arises when |
+|---|---|
+| `Range <0,end>` starts at 0, which is not a line; lines are numbered from 1 and 0 is only the prepend position. / `Range <0,-1>` starts at 0; resource positions are numbered from 1. Recovery: Write `<1,-1>` to start at the first resource. / Write `<1,n>` to start at the first byte. | a range whose start is 0 ({§range-starts-at-one}) |
+| [metadata] must be a JSON array of option objects. | a metadata modifier that is not an array of objects |
+| A scope requires one position or an inclusive two-position range. | a scope of unsupported arity |

@@ -176,7 +176,7 @@ test("{§context-output-hard-413}: an impossible floor terminates the loop witho
         const provider = providerAt(2, [response(continuing)]);
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, messages, provider, maxTurns: 3 });
         assert.equal(result.result.status, 413);
-        assert.equal(result.result.problem?.detail, "Context Token Budget Overflow: logTokensTotal exceeds logTokensMax; retained context cannot fit.");
+        assert.equal(result.result.problem?.detail, "Context Token Budget Overflow: logTokensTotal exceeds logTokensMax; retained context cannot fit."); // {§pinned-wording-core}
         assert.equal(result.reason, "token_budget");
         assert.equal(provider.remaining, 1);
         const turn = await db.test_get_turn.get<{ kind: string; producer: string; packet: string | null; status: number }>({ id: result.turnIds.at(-1)! });
@@ -203,7 +203,7 @@ test("{§context-output-selection}: prior admitted output and an oversized autho
         const small = providerAt(12_000, [response(continuing)]);
         const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: small });
         assert.equal(second.status, 413);
-        assert.equal(second.curationFailure?.problem?.detail, "Context Token Budget Overflow: logTokensTotal exceeds logTokensMax; retained context cannot fit.");
+        assert.equal(second.curationFailure?.problem?.detail, "Context Token Budget Overflow: logTokensTotal exceeds logTokensMax; retained context cannot fit."); // {§pinned-wording-core}
         assert.equal(small.remaining, 1);
         const after = await db.engine_render_log.all({ worker_id: workerId });
         assert.deepEqual(after, before, "authored state cannot be removed to manufacture a fit");

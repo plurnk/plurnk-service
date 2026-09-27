@@ -343,7 +343,7 @@ test("Engine.dispatch: a current READ line anchor lowers to a numeric EDIT preco
         });
         assert.equal(stale.status, 409);
         assert.equal(stale.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(stale.problem?.detail, "EDIT collided with the current resource state.");
+        assert.equal(stale.problem?.detail, "EDIT collided with the current resource state."); // {§problems-dispatch}
         assert.equal(stale.problem?.target, identity);
         assert.equal(stale.problem?.anchor, undefined);
     } finally { await db.close(); }
@@ -561,7 +561,7 @@ test("Engine.dispatch: a scoped READ anchor includes nearby lines outside the re
         });
         assert.equal(stale.status, 409);
         assert.equal(stale.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(stale.problem?.detail, "EDIT collided with the current resource state.");
+        assert.equal(stale.problem?.detail, "EDIT collided with the current resource state."); // {§problems-dispatch}
         assert.equal(stale.problem?.target, "worker:///contextual-anchor.md");
         assert.equal(stale.problem?.anchor, undefined);
     } finally { await db.close(); }
@@ -621,7 +621,7 @@ test("{§resolved-edit-statement} Engine.dispatch: a mutation between anchor res
         });
         assert.equal(collided.status, 409);
         assert.equal(collided.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(collided.problem?.detail, "EDIT collided with the current resource state.");
+        assert.equal(collided.problem?.detail, "EDIT collided with the current resource state."); // {§problems-dispatch}
         assert.equal(collided.problem?.target, identity);
         assert.equal(collided.problem?.anchor, undefined);
 
@@ -889,7 +889,7 @@ test("{§reasoning-history}: log EDIT has no mutation surface; reasoning uses an
         });
         assert.equal(result.status, 501);
         assert.match(result.problem!.type, /operation-not-implemented$/);
-        assert.equal(result.problem!.detail, "Scheme 'log' does not implement EDIT.");
+        assert.equal(result.problem!.detail, "Scheme 'log' does not implement EDIT."); // {§problems-dispatch}
     } finally { await db.close(); }
 });
 
@@ -1016,7 +1016,7 @@ test("Engine.dispatch: scheme handler that throws → action-entry at status 500
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 500);
-        assert.equal(result.problem?.detail, "The 'boom' scheme did not produce a result for EDIT.");
+        assert.equal(result.problem?.detail, "The 'boom' scheme did not produce a result for EDIT."); // {§problems-dispatch}
         assert.equal(result.problem?.stage, "scheme-dispatch");
         assert.equal(result.problem?.scheme, "boom");
         assert.equal(result.problem?.operation, "EDIT");
@@ -1027,7 +1027,7 @@ test("Engine.dispatch: scheme handler that throws → action-entry at status 500
         assert.equal(log?.scheme, "boom");
         const rx = JSON.parse(log?.rx ?? "{}");
         assert.equal(rx.status, 500);
-        assert.equal(rx.problem.detail, "The 'boom' scheme did not produce a result for EDIT.");
+        assert.equal(rx.problem.detail, "The 'boom' scheme did not produce a result for EDIT."); // {§problems-dispatch}
         assert.doesNotMatch(log?.rx ?? "", /scheme handler deliberately threw/);
     } finally { await db.close(); }
 });
@@ -1054,7 +1054,7 @@ test("Engine.dispatch: non-Error throw becomes the same generic contract Problem
         });
         assert.equal(result.status, 500);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/scheme-handler-threw");
-        assert.equal(result.problem?.detail, "The 'boomstr' scheme did not produce a result for EDIT.");
+        assert.equal(result.problem?.detail, "The 'boomstr' scheme did not produce a result for EDIT."); // {§problems-dispatch}
         assert.doesNotMatch(JSON.stringify(result), /raw string thrown/);
     } finally { await db.close(); }
 });

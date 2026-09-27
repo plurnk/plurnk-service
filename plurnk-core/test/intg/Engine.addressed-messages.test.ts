@@ -113,8 +113,8 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
         const failedRows = await db.test_log_entries_by_turn.all<{ origin: string; rx: string }>({ turn_id: failed.turnId });
         const problem = JSON.parse(failedRows.find(({ origin }) => origin === "model")!.rx).problem;
         assert.match(problem.type, /message-not-implemented$/);
-        assert.equal(problem.detail, "SEND does not deliver messages to worker entries.");
-        assert.equal(problem.recovery, "To reply, SEND to an Open Message address or omit the target. SEND (worker://<name>) sends a new message.");
+        assert.equal(problem.detail, "SEND does not deliver messages to worker entries."); // {§problems-entries}
+        assert.equal(problem.recovery, "To reply, SEND to an Open Message address or omit the target. SEND (worker://<name>) sends a new message."); // {§problems-entries}
         assert.equal((await db.message_unanswered_count.get({ loop_id: loopId }))?.count, 1);
 
         assert.equal((await run()).status, 102, "both reply forms are messaging, not completion");

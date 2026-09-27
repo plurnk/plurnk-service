@@ -19,7 +19,7 @@ test("{§send-directed-scope}: a scoped worker SEND is refused and admits no tas
             const receipts = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: initial.loopId });
             const refusal = receipts.map(({ rx }) => JSON.parse(rx)).find((rx) => rx.problem?.type.endsWith("/scope-unsupported"));
             assert.equal(refusal?.status, 400);
-            assert.equal(refusal.problem.detail, "A worker SEND takes no scope.");
+            assert.equal(refusal.problem.detail, "A worker SEND takes no scope."); // {§problems-entries}
             assert.deepEqual((await daemon.listWorkerLoops({ workspaceId, workerId }))
                 .filter(({ prompt }) => prompt !== "").map(({ id }) => id), [initial.loopId], "the scoped SEND admitted no task");
             assert.equal(provider.received.length, 2);

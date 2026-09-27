@@ -157,7 +157,7 @@ test("scheme metadata remains outside the target and reaches only an opted-in sc
             rejected.problem?.type,
             "https://problems.plurnk.xyz/engine/dispatcher/scheme-metadata-unsupported",
         );
-        assert.equal(rejected.problem?.detail, "READ on 'plain' does not accept the [metadata] modifier.");
+        assert.equal(rejected.problem?.detail, "READ on 'plain' does not accept the [metadata] modifier."); // {§problems-dispatch}
         assert.equal(unsupportedInvoked, false);
     } finally {
         await schemes.close();

@@ -592,3 +592,17 @@ transport-close failures under {§handler-lifecycle}.
 | Reconnection       | None; READ again after terminal cleanup                                                                 |
 | Handshake metadata | `[metadata]` is unsupported; the default global-WebSocket identity is used                              |
 | Runtime            | Node ≥26                                                                                                |
+
+§problems-http **Web materialization Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
+
+| code | status | contract |
+|---|---:|---|
+| `materializer-recoverable` | 502 | The materializer could not extract *url* (*reason*); the failure is retryable. |
+
+§pinned-wording-http **Pinned wording.** Verbatim sentences tests pin: each is contract, and a change here is a change of contract.
+
+| sentence | arises when |
+|---|---|
+| Remove the line range and submit the complete replacement body. | an HTTP EDIT that carries a line range |
+| READ the WebSocket URL before sending a message. | a SEND to a WebSocket that was never opened |
+| The WebSocket message could not be sent. / The WebSocket connection could not be closed. | socket send or close failures |

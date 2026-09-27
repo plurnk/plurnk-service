@@ -135,7 +135,7 @@ for (const completionFirst of [false, true]) {
             const rows = await f.db.test_log_entries_by_turn.all<{ op: string; rx: string; status_rx: number }>({ turn_id: first.turnId });
             assert.equal(rows.find(({ op }) => op === "EDIT")?.status_rx, 201);
             assert.equal(rows.find(({ op }) => op === "KILL")?.status_rx, 102);
-            assert.equal(JSON.parse(rows.find(({ op }) => op === "KILL")!.rx).detail, "Completion deferred. Conclude with KILL alone.");
+            assert.equal(JSON.parse(rows.find(({ op }) => op === "KILL")!.rx).detail, "Completion deferred. Conclude with KILL alone."); // {§pinned-wording-core}
             assert.equal((await f.turn()).status, 200);
             assert.deepEqual(await f.replies(), ["Verified answer."], "the deferred body is not silently replayed");
         } finally { await f.db.close(); }
