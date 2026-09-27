@@ -917,7 +917,7 @@ test("Engine.runTurn: the log section parses an application/json rx body", async
         // The EDIT's result span renders as an anchored coordinate line —
         // observable proof #buildLog parsed the JSON rx: a string rx couldn't yield
         // rx.span, so the render would fall back to the authored statement instead.
-        assert.match(String(edit.body), /^@[0-9A-Za-z]{5} 1:v\n$/, "{§edit-receipt-anchored-context}");
+        assert.match(String(edit.body), /^1<@[0-9A-Za-z]{5}>v\n$/, "{§edit-receipt-anchored-context}");
     } finally { await db.close(); }
 });
 

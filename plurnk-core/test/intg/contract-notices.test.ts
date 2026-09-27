@@ -167,8 +167,8 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
         const packet = await getPacket(db, second.turnId);
 
         const read = logEntries(packet).find(({ logPath, body }) =>
-            typeof logPath === "string" && logPath.endsWith("/READ") && String(body).includes("2:beta"));
-        assert.match(String(read?.body), /^@[0-9A-Za-z]{5} 2:beta\n@[0-9A-Za-z]{5} 3:gamma\n$/);
+            typeof logPath === "string" && logPath.endsWith("/READ") && /2<@[0-9A-Za-z]{5}>beta/.test(String(body)));
+        assert.match(String(read?.body), /^2<@[0-9A-Za-z]{5}>beta\n3<@[0-9A-Za-z]{5}>gamma\n$/);
         assert.equal(
             packetSection(packet, "notices"),
             "* scope_normalized: Scope <2,1,3> was normalized to <2,1,3,6>.",

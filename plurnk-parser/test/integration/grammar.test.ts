@@ -793,24 +793,26 @@ test("{§text-line-anchor-syntax} text-coordinate operations admit Base62 anchor
 });
 
 // {§combined-anchor-tolerance}
-test("a combined anchor and displayed line number reads as the anchor, with one advisory per position", () => {
-    for (const input of [
-        section("EDIT", " (p) <@aZ09b:42,@0Aa9Z:43>", "body"),
-        section("EDIT", " (p) <@aZ09b 42,@0Aa9Z 43>", "body"),
-        section("COPY", " (p) (q) <@aZ09b 42,@0Aa9Z 43>"),
-    ]) {
+test("the displayed row prefix copied whole — digits before the scope — reads as the anchor, with one advisory", () => {
+    for (const [input, marks] of [
+        [section("EDIT", " (p) 42<@aZ09b>", "body"), ["@aZ09b"]],
+        [section("EDIT", " (p) 42<@aZ09b,@0Aa9Z>", "body"), ["@aZ09b", "@0Aa9Z"]],
+        [section("COPY", " (p) (q) 42<@aZ09b>"), ["@aZ09b"]],
+    ] as const) {
         const result = PlurnkParser.parseStatements(input);
         const ops = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
         assert.equal(ops.length, 1, input);
         const marker = ops[0]!.op === "COPY" ? ops[0]!.destination.lineMarker : (ops[0] as { lineMarker: { marks: unknown[] } | null }).lineMarker;
-        assert.deepEqual(marker, { marks: ["@aZ09b", "@0Aa9Z"] }, input);
+        assert.deepEqual(marker, { marks: [...marks] }, input);
+        assert.equal((ops[0] as { matcher?: unknown }).matcher ?? null, null, `the digits are not a matcher: ${input}`);
         const advisories = result.items.filter((item) => item.kind === "error");
-        assert.equal(advisories.length, 2, input);
-        for (const advisory of advisories) {
-            assert.equal(advisory.kind === "error" ? advisory.error.severity : null, "warning");
-            assert.match(advisory.kind === "error" ? advisory.error.message : "", /was read as the anchor `@[0-9A-Za-z]{5}`; a scope position takes the anchor without its displayed line number/u);
-        }
+        assert.equal(advisories.length, 1, input);
+        assert.equal(advisories[0]!.kind === "error" ? advisories[0]!.error.severity : null, "warning");
+        assert.match(advisories[0]!.kind === "error" ? advisories[0]!.error.message : "", /was read as the scope `<@[0-9A-Za-z]{5}(?:,@[0-9A-Za-z]{5})?>`; a scope takes the anchor without its displayed line number/u);
     }
+    // The retired forms fail hard: the old prefix copied whole is a malformed scope, never a silent anchor.
+    const retired = PlurnkParser.parseStatements(section("EDIT", " (p) <@aZ09b:42>", "body"));
+    assert.ok(retired.items.some((item) => item.kind === "error" && item.error.severity === "error"), "`<@aZ09b:42>` is refused");
 });
 
 test("{§send-wait-scope} WAIT discards scope while execution retains its runtime timing", () => {

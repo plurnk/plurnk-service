@@ -116,17 +116,17 @@ export const startClientJourneyModel = async () => {
                     String(row.logPath).endsWith("/READ") && row.path === "log:///1/2/1/SEND");
                 assert.ok(messageRead, "installed TUI must READ its message from the arrival's log address");
                 assert.equal(messageRead.status ?? 200, 200, "the message READ succeeded");
-                assert.match(String(messageRead.body ?? ""), /^(?:@[0-9A-Za-z]{5} )?\s*1:Exercise the installed interactive terminal\./u,
+                assert.match(String(messageRead.body ?? ""), /^ *1(?:<@[0-9A-Za-z]{5}>|:)Exercise the installed interactive terminal\./u,
                     "the READ receipt contains the addressed message, not merely a final success claim");
                 for (const witness of [
-                    /(?:^|\n)@[0-9A-Za-z]{5} +\d+:```BARE\n@[0-9A-Za-z]{5} +\d+:A self-contained prompt, with everything it needs pasted in\./u,
-                    /(?:^|\n)@[0-9A-Za-z]{5} +\d+:```node <!--/u,
+                    /(?:^|\n) *\d+<@[0-9A-Za-z]{5}>```BARE\n *\d+<@[0-9A-Za-z]{5}>A self-contained prompt, with everything it needs pasted in\./u,
+                    /(?:^|\n) *\d+<@[0-9A-Za-z]{5}>```node <!--/u,
                     /(?:^|\n) *\d+:.*\[Complete \.env\.defaults\]\(\.env\.defaults\)/u,
                     /^### log:\/\/\/\S+\/READ → skill:\/\/plurnk\/\.env\.defaults · \d+$/mu,
                 ]) {
                     if (!witness.test(text)) throw new Error(`installed reference READ omitted ${witness}`);
                 }
-                if (/@[0-9A-Za-z]{5} +\d+:.*\[Complete \.env\.defaults\]\(\.env\.defaults\)/u.test(text)) {
+                if (/\d+<@[0-9A-Za-z]{5}>.*\[Complete \.env\.defaults\]\(\.env\.defaults\)/u.test(text)) {
                     throw new Error("installed read-only skill advertised model EDIT anchors");
                 }
             }

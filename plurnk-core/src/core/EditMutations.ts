@@ -200,7 +200,7 @@ export default class EditMutations {
             const rows = body.split("\n");
             const filled = rows.filter((row) => row.length > 0);
             if (filled.length === 0 || !filled.every((row) => LineAnchors.isAnchoredLine(row))) return statement;
-            const pasted = filled.map((row) => { const match = /^(@[0-9A-Za-z]{5}) +(\d+):/.exec(row)!; return { hash: match[1]!, line: Number(match[2]) }; });
+            const pasted = filled.map((row) => { const match = /^ *(\d+)<(@[0-9A-Za-z]{5})>/.exec(row)!; return { hash: match[2]!, line: Number(match[1]) }; });
             const verifies = (anchors: readonly string[], startLine: number): boolean =>
                 pasted.every(({ hash, line }) => anchors[line - startLine] === hash);
             const current = verifies(lineAnchors as readonly string[], 1);
@@ -212,7 +212,7 @@ export default class EditMutations {
             prefixFact = { rule: "rendered-prefix-stripped", lines: filled.length, source };
             // A rendered row per line: a blank last line keeps its terminator so the paste
             // reproduces exactly the lines it rendered.
-            const stripped = rows.map((row) => row.replace(/^@[0-9A-Za-z]{5} +\d+:/, ""));
+            const stripped = rows.map((row) => row.replace(/^ *\d+<@[0-9A-Za-z]{5}>/, ""));
             return { ...statement, body: stripped.join("\n") + (stripped.length > 1 && stripped.at(-1) === "" ? "\n" : "") };
         };
         const statement = await stripRendered(authored);

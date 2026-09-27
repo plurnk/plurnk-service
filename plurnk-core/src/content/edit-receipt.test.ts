@@ -344,11 +344,11 @@ test("{§edit-receipt-anchored-context} with an identity the resulting context i
     const anchors = LineAnchors.tokens("worker:///notes.md", updated);
     const context = receipt.effects[0]?.context ?? "";
     for (const line of context.split("\n")) {
-        const match = /^(@[0-9A-Za-z]{5}) +([1-9]\d*):(.*)$/.exec(line);
+        const match = /^ *([1-9]\d*)<(@[0-9A-Za-z]{5})>(.*)$/.exec(line);
         assert.ok(match, `anchored render: ${JSON.stringify(line)}`);
-        assert.equal(match![1], anchors[Number(match![2]) - 1], "the anchor is the READ projector's anchor for that line");
+        assert.equal(match![2], anchors[Number(match![1]) - 1], "the anchor is the READ projector's anchor for that line");
     }
-    assert.match(context, /@[0-9A-Za-z]{5} 2:TWO/);
+    assert.match(context, /2<@[0-9A-Za-z]{5}>TWO/);
     const plain = editReceipt(original, updated, [{ marker: { marks: [2] }, body: "TWO" }]);
     assert.match(plain.effects[0]?.context ?? "", /^1:one\n2:TWO/, "no identity keeps the line-numbered form");
 });

@@ -444,7 +444,7 @@ const addContext = (
     const width = LineAnchors.lineNumberWidth(updated);
     const prefix = (line: number): string => anchors === null
         ? `${line}:`
-        : `${anchors[line - 1]} ${String(line).padStart(width)}:`;
+        : `${String(line).padStart(width)}<${anchors[line - 1]}>`;
     return effects.map((effect) => {
         const selected = new Set<number>();
         const addRange = (first: number, last: number): void => {

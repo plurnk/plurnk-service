@@ -275,7 +275,7 @@ export default class AstBuilder {
     static readonly #SIGIL = /^(\/|\$|~|&|\^)/u;
     // The scope shapes the lexer admits, matched at the right end of the heading text.
     static readonly #TAIL_POSITIONS = /\s*(<-?[0-9]+(?:\.[0-9]+)?(?:(?:,\s?|-)-?[0-9]+(?:\.[0-9]+)?)*>)\s*$/u;
-    static readonly #TAIL_TEXT_SCOPE = /\s*(<(?:-?[0-9]+(?:\.[0-9]+)?|@[0-9A-Za-z]{5}(?:[: ][1-9][0-9]*)?|@[0-9]{1,4})(?:(?:,\s?|-)(?:-?[0-9]+(?:\.[0-9]+)?|@[0-9A-Za-z]{5}(?:[: ][1-9][0-9]*)?|@[0-9]{1,4}))*>)\s*$/u;
+    static readonly #TAIL_TEXT_SCOPE = /\s*(<(?:-?[0-9]+(?:\.[0-9]+)?|@[0-9A-Za-z]{5}|@[0-9]{1,4})(?:(?:,\s?|-)(?:-?[0-9]+(?:\.[0-9]+)?|@[0-9A-Za-z]{5}|@[0-9]{1,4}))*>)\s*$/u;
 
     // The body text that opened on the heading line itself, split from the lines beneath it.
     static #splitInlineBody(ctx: ParserRuleContext, position: Position): { inline: string | null; below: string | null } {
@@ -776,7 +776,15 @@ export default class AstBuilder {
         return AstBuilder.#parseTextLineMarker(text, AstBuilder.#positionOf(ctx));
     }
 
-    static #parseTextLineMarker(text: string, position?: Position): TextLineMarker {
+    static #parseTextLineMarker(marker: string, position?: Position): TextLineMarker {
+        // {§combined-anchor-tolerance} — `42<@abcde>` is the displayed row prefix copied whole: the
+        // scope is the anchor, the digits are dropped, and one advisory names the anchor-only form.
+        const prefixed = /^([1-9][0-9]*)(<[\s\S]*)$/u.exec(marker);
+        const text = prefixed === null ? marker : prefixed[2]!;
+        if (prefixed !== null && position !== undefined) {
+            AstBuilder.#advisories.push(new PlurnkParseError(position.line, position.column, "parser",
+                `\`${marker}\` was read as the scope \`${text}\`; a scope takes the anchor without its displayed line number.`, "warning"));
+        }
         if (!text.includes("@")) {
             // {§anchor-offset} — a bare `+N` counts only from an anchor (#749).
             if (/[<,] ?\+/u.test(text)) {
@@ -793,16 +801,6 @@ export default class AstBuilder {
                         `\`${component}\` was read as line ${component.slice(1)}; an anchor is five characters (\`@abcde\`).`, "warning"));
                 }
                 return Number.parseInt(component.slice(1), 10);
-            }
-            // {§combined-anchor-tolerance} — `@abcde 42` / `@abcde:42` is the displayed prefix copied whole;
-            // the anchor is the coordinate and the number is dropped.
-            const combined = /^(@[0-9A-Za-z]{5})[: ][1-9][0-9]*$/u.exec(component);
-            if (combined !== null) {
-                if (position !== undefined) {
-                    AstBuilder.#advisories.push(new PlurnkParseError(position.line, position.column, "parser",
-                        `\`${component}\` was read as the anchor \`${combined[1]}\`; a scope position takes the anchor without its displayed line number.`, "warning"));
-                }
-                return combined[1]!;
             }
             return component.startsWith("@") ? component : Number.parseFloat(component);
         });

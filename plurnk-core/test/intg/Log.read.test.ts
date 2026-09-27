@@ -130,7 +130,7 @@ test("Log.read: EDIT op log entry returns its canonical effect receipt", async (
         const result = await readLog(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(result.status, 200);
         assert.equal(result.mimetype, "text/plain");
-        assert.match(String(result.content), /^@[0-9A-Za-z]{5} +1:Paris$/, "storage envelope fields do not replace the model-facing edit result");
+        assert.match(String(result.content), /^1<@[0-9A-Za-z]{5}>Paris$/, "storage envelope fields do not replace the model-facing edit result");
     } finally { db.close(); }
 });
 
@@ -189,7 +189,7 @@ test("Log.read: each coordinate addresses its own canonical body", async () => {
         const r2 = await readLog(readStmt(urlPath("log", "/1/1/2")), makeSchemeCtx({ db, workspaceId, workerId }));
         const r3 = await readLog(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, workspaceId, workerId }));
         assert.deepEqual(
-            [r1.content, r2.content, r3.content].map((content) => String(content).replace(/^@[0-9A-Za-z]{5} +/, "")),
+            [r1.content, r2.content, r3.content].map((content) => String(content).replace(/^ *(\d+)<@[0-9A-Za-z]{5}>/, "$1:")),
             ["1:1", "1:2", "1:3"],
             "coordinates resolve their own receipts rather than a neighboring row",
         );
@@ -207,8 +207,8 @@ test("Log.read: cross-loop coordinates within a worker resolve correctly", async
 
         const r1 = await readLog(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workspaceId, workerId }));
         const r2 = await readLog(readStmt(urlPath("log", "/2/1/1")), makeSchemeCtx({ db, workspaceId, workerId }));
-        assert.match(String(r1.content), /^@[0-9A-Za-z]{5} +1:x$/);
-        assert.match(String(r2.content), /^@[0-9A-Za-z]{5} +1:y$/);
+        assert.match(String(r1.content), /^1<@[0-9A-Za-z]{5}>x$/);
+        assert.match(String(r2.content), /^1<@[0-9A-Za-z]{5}>y$/);
     } finally { db.close(); }
 });
 
@@ -333,7 +333,7 @@ test("Log.read: a READ signal does not filter the addressed log resource", async
         const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), };
         const result = await readLog(stmt, makeSchemeCtx({ db, workspaceId, workerId }));
         assert.equal(result.status, 200);
-        assert.match(String(result.content), /^@[0-9A-Za-z]{5} 1:v$/, "{§edit-receipt-anchored-context} an EDIT row's body is its anchored landed context");
+        assert.match(String(result.content), /^1<@[0-9A-Za-z]{5}>v$/, "{§edit-receipt-anchored-context} an EDIT row's body is its anchored landed context");
     } finally { db.close(); }
 });
 
@@ -403,7 +403,7 @@ test("Log.read: dispatches correctly via Engine.dispatch routing to log scheme",
         });
         assert.equal(result.status, 200);
         assert.equal((result as unknown as { mimetype: string }).mimetype, "text/plain");
-        assert.match((result as unknown as { content: string }).content, /^@[0-9A-Za-z]{5} 1:knowledge$/, "{§edit-receipt-anchored-context}");
+        assert.match((result as unknown as { content: string }).content, /^1<@[0-9A-Za-z]{5}>knowledge$/, "{§edit-receipt-anchored-context}");
     } finally { db.close(); }
 });
 

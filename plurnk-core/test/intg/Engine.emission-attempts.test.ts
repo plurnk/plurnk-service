@@ -757,9 +757,9 @@ test("#409: a READ carrying pasted READ lines as a body dispatches without it; o
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const renderedRead = [
-            "@et6xE 2286:\t// Set debug flag from environment if not already set",
-            "@alreh 2287:\tif !requireDebug {",
-            "@84fBk 2288:\t\trequireDebug = true;",
+            "2286<@et6xE>\t// Set debug flag from environment if not already set",
+            "2287<@alreh>\tif !requireDebug {",
+            "2288<@84fBk>\t\trequireDebug = true;",
         ].join("\n");
         const provider = new AttemptWitness({
             contextWindow: 100_000,

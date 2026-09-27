@@ -93,13 +93,13 @@ test("{§edit-execution}: each EDIT records its own revision; an earlier READ re
             assert.equal(edits.length, 2);
             assert.match(edits[0].receipt?.revision ?? "", /^[a-f0-9]{64}$/);
             assert.notEqual(edits[0].receipt?.revision, edits[1].receipt?.revision, "each EDIT identifies its own committed revision");
-            const unanchored = (context: unknown): string => String(context).replace(/^@[0-9A-Za-z]{5} +/gm, "");
+            const unanchored = (context: unknown): string => String(context).replace(/^ *(\d+)<@[0-9A-Za-z]{5}>/gm, "$1:");
             assert.deepEqual(edits.map((row) => ({ ...(row.receipt?.effect ?? {}), context: unanchored((row.receipt?.effect as { context?: unknown } | undefined)?.context) })), [
                 // {§edit-receipt-anchored-context} — four lines of boundary context (the shipped default) reach the whole file here.
                 { requested: "<4>", source: "<4>", result: "<4>", removed: 1, inserted: 1, context: "1:one\n2:two\n3:three\n4:FOUR" },
                 { requested: "<2>", source: "<2>", result: "<2,3>", removed: 1, inserted: 2, context: "1:one\n2:TWO\n3:2.5\n4:three\n5:FOUR" },
             ]);
-            for (const row of edits) assert.match(String((row.receipt?.effect as { context?: unknown } | undefined)?.context), /^@[0-9A-Za-z]{5} +[1-9]/, "{§edit-receipt-anchored-context}");
+            for (const row of edits) assert.match(String((row.receipt?.effect as { context?: unknown } | undefined)?.context), /^ *[1-9]\d*<@[0-9A-Za-z]{5}>/, "{§edit-receipt-anchored-context}");
         } finally { ws.close(); }
     });
 });

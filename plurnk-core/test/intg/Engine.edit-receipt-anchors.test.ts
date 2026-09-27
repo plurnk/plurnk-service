@@ -56,13 +56,13 @@ second
                 const context = JSON.parse(editRow!.rx).receipt.effect.context as string;
                 const lines = context.split("\n");
                 assert.ok(lines.length >= 3, `bounded context around the landed line; got ${JSON.stringify(context)}`);
-                for (const line of lines) assert.match(line, /^@[0-9A-Za-z]{5} +[1-9]\d*:/, `every context line is anchored: ${JSON.stringify(line)}`);
+                for (const line of lines) assert.match(line, /^ *[1-9]\d*<@[0-9A-Za-z]{5}>/, `every context line is anchored: ${JSON.stringify(line)}`);
                 // The packet the model saw carries the same anchored body.
                 const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: first.turnIds![2]! }))!.packet);
                 const log = (packet.sections as Array<{ name: string; content: string }>).find((s) => s.name === "log")?.content ?? JSON.stringify(packet);
-                assert.match(log, /@[0-9A-Za-z]{5} +3:func requireFn\(a int\) int \{/, "the model sees line 3 with its anchor on the EDIT row");
-                const line3 = lines.find((line) => / 3:func requireFn/.test(line))!;
-                pending.anchor = line3.slice(0, 6);
+                assert.match(log, /3<@[0-9A-Za-z]{5}>func requireFn\(a int\) int \{/, "the model sees line 3 with its anchor on the EDIT row");
+                const line3 = lines.find((line) => /^ *3<@[0-9A-Za-z]{5}>func requireFn/.test(line))!;
+                pending.anchor = /<(@[0-9A-Za-z]{5})>/.exec(line3)![1]!;
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit again", policy: { proposals: "accept" } });
                 assert.equal(second.result.status, 200);
                 // The worker persists across loops: the first loop's one EDIT row precedes this loop's.

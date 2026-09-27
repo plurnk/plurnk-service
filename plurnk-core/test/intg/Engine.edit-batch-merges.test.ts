@@ -88,17 +88,17 @@ editing
                 const readRow = (await db.engine_render_log.all<Row>({ worker_id: first.modelWorkerId! })).find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
                 const anchors = JSON.parse(readRow!.rx).lineAnchors as string[];
                 assert.equal(anchors.length, 7);
-                // Lines 1-2 pasted back exactly as rendered (anchor, right-aligned ordinal, colon, text);
+                // Lines 1-2 pasted back exactly as rendered (right-aligned ordinal, the anchor as the delimiter, text);
                 // line 7's "prefix" carries a hash that is not this resource's anchor.
-                pending.body = `${anchors[0]} 1:var x int\n${anchors[1]} 2:`;
-                pending.fake = "@zzzzz 7:func other() { /* kept */ }";
+                pending.body = `1<${anchors[0]}>var x int\n2<${anchors[1]}>`;
+                pending.fake = "7<@zzzzz>func other() { /* kept */ }";
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit", policy: { proposals: "accept" } });
                 assert.equal(second.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: second.modelWorkerId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [304, 200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
                 assert.deepEqual(edits[0]!.rx.merged, [{ rule: "rendered-prefix-stripped", lines: 2, source: "current" }]);
                 assert.deepEqual(edits[1]!.rx.merged, [{ rule: "rendered-prefix-unverified", lines: 1 }]);
-                assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int\n\nfunc requireFn(a int) int {\n\treturn a\n}\n\n@zzzzz 7:func other() { /* kept */ }\n", "verified prefixes stripped; the look-alike written verbatim");
+                assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int\n\nfunc requireFn(a int) int {\n\treturn a\n}\n\n7<@zzzzz>func other() { /* kept */ }\n", "verified prefixes stripped; the look-alike written verbatim");
             } finally { ws.close(); }
         });
     } finally { await rm(root, { recursive: true, force: true }); }
@@ -138,7 +138,7 @@ editing
                 // Line 4 changes out-of-band after the READ: line 2's neighbourhood now differs, so the
                 // pasted prefixes no longer verify against the current anchors - only against the READ's.
                 await writeFile(join(root, "f.go"), SOURCE.replace("\treturn a\n", "\treturn a // changed\n"));
-                pending.body = `${anchors[0]} 1:var x int64\n${anchors[1]} 2:`;
+                pending.body = `1<${anchors[0]}>var x int64\n2<${anchors[1]}>`;
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit", policy: { proposals: "accept" } });
                 assert.equal(second.result.status, 200);
                 const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: second.modelWorkerId! }));

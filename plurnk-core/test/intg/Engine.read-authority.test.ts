@@ -55,9 +55,9 @@ const assertProjection = (read: AnchoredReadResult, editable: boolean) => {
     if (editable) assert.equal(read.lineAnchors?.length, 3);
     const wire = PacketWire.renderLog([{ coordinate: "1/1/1", op: "READ", origin: "_plurnk",
         status: read.status, rx: read, lineAnchors: read.lineAnchors, lineNumberWidth: read.lineNumberWidth }], contentWeight);
-    assert.match(wire, /1:first/);
-    if (editable) assert.match(wire, /@[0-9A-Za-z]{5} +1:first/);
-    else assert.doesNotMatch(wire, /@[0-9A-Za-z]{5} +\d+:/);
+    assert.match(wire, /1(?:<@[0-9A-Za-z]{5}>|:)first/);
+    if (editable) assert.match(wire, /1<@[0-9A-Za-z]{5}>first/);
+    else assert.doesNotMatch(wire, /\d+<@[0-9A-Za-z]{5}>/);
 };
 
 for (const mode of ["writable", "read-only", "unresolved", "unavailable"] as const) {

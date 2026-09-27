@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 const ADDRESS = /^### (log:\/\/\/\S+)(?: (.*))? · (\d+)$/;
-const COORDINATE = /^(?: *[1-9]\d*:|@[0-9A-Za-z]{5} +[1-9]\d*:)/;
+const COORDINATE = /^(?: *[1-9]\d*:| *[1-9]\d*<@[0-9A-Za-z]{5}>)/;
 
 // Independent test reader for Core's standard Markdown + JSON projection ({§log-wire-format}):
 // the address with its resources/patterns and charge, one JSON object of facts, the body.

@@ -195,9 +195,9 @@ test("{§log-readable-projection}: sparse READ rendering keeps source numbers an
         lineAnchors: ["@abcde", "@fghij"], lineNumberWidth: 1,
     };
     const complete = PacketWire.renderLog([read], tok);
-    assert.match(complete, /@abcde 2:two\n@fghij 4:four/);
+    assert.match(complete, /2<@abcde>two\n4<@fghij>four/);
     const trimmed = PacketWire.renderLog([{ ...read, folded: [[1, 1]] }], tok);
-    assert.match(trimmed, /@fghij 4:four/);
+    assert.match(trimmed, /4<@fghij>four/);
     assert.doesNotMatch(trimmed, /2:two|3:four/);
     assert.doesNotMatch(complete, /"lineOrdinals"/, "internal coordinate maps do not become packet trivia");
 });
@@ -1335,8 +1335,8 @@ test("READ bodies render copyable Base62 line anchors while other numbered bodie
         lineAnchors: ["@aZ09b", "@Q1w2E"],
         lineNumberWidth: 1,
     }], tok);
-    assert.match(read, /@aZ09b 7:alpha/);
-    assert.match(read, /@Q1w2E 8:beta/);
+    assert.match(read, /7<@aZ09b>alpha/);
+    assert.match(read, /8<@Q1w2E>beta/);
 
     const find = PacketWire.renderLog([{
         coordinate: "1/2/2",
@@ -1348,7 +1348,7 @@ test("READ bodies render copyable Base62 line anchors while other numbered bodie
         folded: [],
     }], tok);
     assert.match(find, /\n1:\["one"\]$/);
-    assert.doesNotMatch(find, /@[0-9A-Za-z]{5} 1:/);
+    assert.doesNotMatch(find, /1<@[0-9A-Za-z]{5}>/);
 });
 
 test("partially suppressed log bodies preserve source coordinates and expose only hidden intervals", () => {
@@ -1365,8 +1365,8 @@ test("partially suppressed log bodies preserve source coordinates and expose onl
     }], tok);
     assert.equal(typeof parseLogRecords(rendered)[0]?.body, "string", "a visible row carries coordinate lines — presence IS the state (#338)");
     assert.match(rendered, /"trimmed":\["<2,3>"\]/);
-    assert.match(rendered, /@00001 17:one/);
-    assert.match(rendered, /@00004 20:four/);
+    assert.match(rendered, /17<@00001>one/);
+    assert.match(rendered, /20<@00004>four/);
     assert.doesNotMatch(rendered, /18:two|19:three/);
 });
 

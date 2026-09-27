@@ -118,7 +118,7 @@ Read the input schema.
         const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds!.at(-1)! });
         const read = logEntries(JSON.parse(row!.packet)).find((entry) => entry.path === target);
         assert.ok(read && typeof read.body === "string", "ordinary READ delivers the linked input document to the next model packet");
-        const body = read.body.replace(/^(?: *\d+:|@[0-9A-Za-z]{5} +\d+:)/gm, "");
+        const body = read.body.replace(/^(?: *\d+:| *\d+<@[0-9A-Za-z]{5}>)/gm, "");
         const doc = JSON.parse(body);
         assert.deepEqual(doc.required, ["definition"]);
         const definition = doc.$defs?.["https://schemas.plurnk.xyz/v0/McpServerDefinition.json"];

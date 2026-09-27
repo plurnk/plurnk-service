@@ -313,15 +313,15 @@ test("{§edit-receipt-anchored-context}: every EDIT receipt carries its own padd
         const contexts = edits.map(({ context }) => context!);
         assert.deepEqual(contexts.map((lines) => lines.length), [9, 9, 9], "four lines above and four below each single-line change");
         const anchorAt = (lines: string[], line: number): string => {
-            const match = lines.map((text) => /^(@[0-9A-Za-z]{5}) +(\d+):/u.exec(text)).find((m) => m !== null && Number(m[2]) === line);
+            const match = lines.map((text) => /^ *(\d+)<(@[0-9A-Za-z]{5})>/u.exec(text)).find((m) => m !== null && Number(m[1]) === line);
             assert.ok(match, `line ${line} in ${JSON.stringify(lines)}`);
-            return match[1]!;
+            return match[2]!;
         };
         assert.notEqual(anchorAt(contexts[0]!, 12), a(12), "after line 11 changed, the first receipt already shows line 12 under a new anchor (its neighbourhood changed)");
         assert.equal(edits[1]!.landed, "<12>", "yet the program's original anchor for line 12 still landed there ({§edit-anchor-continuity})");
         assert.notEqual(anchorAt(contexts[1]!, 11), anchorAt(contexts[0]!, 11), "the second receipt supersedes the first receipt's anchor for line 11");
         assert.equal(anchorAt(contexts[2]!, 23), anchorAt(contexts[2]!, 23));
-        assert.match(contexts[2]![4]!, /^@[0-9A-Za-z]{5} +23:    except Http404:$/u, "the changed line sits in the middle of its window");
+        assert.match(contexts[2]![4]!, /^ *23<@[0-9A-Za-z]{5}>    except Http404:$/u, "the changed line sits in the middle of its window");
     });
 });
 

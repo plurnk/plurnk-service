@@ -1558,7 +1558,7 @@ Registration precedes loop affinity:
 - §anchor-offset **An anchor offset is tolerated, never taught (#749).** A line mark may carry an offset from its anchor (`@abcde+1`, `@abcde-2`), and a bare `+N` after an anchor counts from that anchor (`<@abcde,+1>`). The anchor resolves as usual and the offset is added; a result before line 1 is an invalid mark, and past the end is the ordinary range refusal. Continuity and current-anchor preconditions check the anchor's own line. No teaching text, scope table or receipt mentions offsets; `plurnk.md` keeps its two anchor forms. A bare `+N` with no anchor before it is refused as before.
 - §edit-batch **One compound operation may require atomic splices.** The scheme's `editBatch` primitive validates all supplied numeric edits against one snapshot and commits one revision or none. Core supplies one statement for an authored EDIT; same-resource MOVE can supply multiple splices as one operation. This primitive does not group separate authored operations. Its replacement, insertion, conflict, and receipt rules remain owned by the shared Slicer.
 - §edit-batch-receipt **A refusal describes its own unapplied work.** An anchor collision lists every distinct unresolved anchor in that EDIT, including both range endpoints, in `unresolvedAnchors` (`anchor`, `kind: missing | ambiguous`, and matching `lines` when ambiguous). Missing is not proof of earlier validity or subsequent change. It carries `editCount: 1`, `applied: 0`, and recovery directing a READ for current coordinates; it makes no claim about other operations. A refused compound splice batch lists all conflicting pairs in `conflicts`, non-conflicting regions in `cleanRegions`, its first pair in `conflictingRegions`, and its own `editCount` and `applied: 0`.
-- §edit-batch-merges **Normalizations require evidence and a receipt.** An EDIT body carrying only this resource's published `@xxxxx L:` prefixes is stripped when those prefixes verify against current anchors or this worker's preserved READ receipts (`rendered-prefix-stripped`); otherwise it remains literal content (`rendered-prefix-unverified`). Within a single atomic splice batch, the Slicer can deduplicate identical regions/bodies, concatenate same-boundary insertions, assign a shared endpoint to the sole body reproducing that line, or relocate an inner change when its original content occurs exactly once in the outer body. An already-applied inner body can be dropped. Unevidenced overlap remains a collision. These batch resolutions never reinterpret separate authored EDITs. Applied normalizations carry their exact merge facts and a notice; receipts describe only the applied effects.
+- §edit-batch-merges **Normalizations require evidence and a receipt.** An EDIT body carrying only this resource's published `L<@xxxxx>` prefixes (the number right-aligned) is stripped when those prefixes verify against current anchors or this worker's preserved READ receipts (`rendered-prefix-stripped`); otherwise it remains literal content (`rendered-prefix-unverified`). Within a single atomic splice batch, the Slicer can deduplicate identical regions/bodies, concatenate same-boundary insertions, assign a shared endpoint to the sole body reproducing that line, or relocate an inner change when its original content occurs exactly once in the outer body. An already-applied inner body can be dropped. Unevidenced overlap remains a collision. These batch resolutions never reinterpret separate authored EDITs. Applied normalizations carry their exact merge facts and a notice; receipts describe only the applied effects.
 
 ### Cross-scheme orchestration
 
@@ -1918,9 +1918,11 @@ anchors from the complete canonical selected channel before applying the
 authored text slice; its durable result retains the canonical derivation
 identity and anchors aligned with returned lines. Packet rendering right-aligns
 `L` to the decimal width of the complete canonical selected channel's final
-addressable line and emits `@xxxxx L:<content>` with one or more ASCII spaces
-before `L`; a source line therefore retains the same prefix across projections
-of one revision.
+addressable line and emits `L<@xxxxx><content>` with `L` right-aligned to that
+width, the scope literal as the delimiter, the content beginning after `>`. The anchor
+stands against its own text and never opens the row after the previous line's text —
+the placement that reads correctly at long context on every model measured (#893); a
+source line therefore retains the same prefix across projections of one revision.
 An explicit default-channel fragment and its fragmentless spelling share that
 identity; a selected non-default channel retains its canonical `#channel`.
 

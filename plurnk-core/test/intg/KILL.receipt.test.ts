@@ -36,8 +36,8 @@ Continue the task.
                 mock.generate = async (args) => {
                     if (++calls === 3) {
                         const packet = args.messages.map(chatMessageText).join("\n");
-                        const start = packet.match(/^(@[A-Za-z0-9]{5}) +10:line 10$/m)?.[1];
-                        const end = packet.match(/^(@[A-Za-z0-9]{5}) +11:line 11$/m)?.[1];
+                        const start = packet.match(/^ *10<(@[A-Za-z0-9]{5})>line 10$/m)?.[1];
+                        const end = packet.match(/^ *11<(@[A-Za-z0-9]{5})>line 11$/m)?.[1];
                         assert.ok(start && end, "the preceding READ published the coordinates used by KILL");
                         const scope = anchored ? `${start},${end}` : "10,11";
                         return new Mock({ contextWindow: 32768, responses: [makeMockResponse(`\`\`\`\`KILL (${target}) <${scope}>\`\`\`\`

@@ -235,7 +235,7 @@ test("{§log-readable-projection}: trimming invalidates search and a racing deri
     assert.equal((await dispatch("````FIND (log:///1/1/2/READ) [{\"pattern\":\"~pear\"}]````")).status, 204, "later curation also invalidates an already attached artifact");
     const read = await dispatch("````READ (log:///1/1/2/READ) <1,-1>````");
     const wire = PacketWire.renderLog([{ coordinate: "1/1/99", op: "READ", origin: "model", status: read.status, rx: read, lineAnchors: read.lineAnchors, lineNumberWidth: read.lineNumberWidth }], contentWeight);
-    assert.match(wire, /1:apple/);
+    assert.match(wire, /1(?:<@[0-9A-Za-z]{5}>|:)apple/);
     assert.doesNotMatch(wire, /secret|pear/);
 });
 

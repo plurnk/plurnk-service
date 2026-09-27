@@ -76,7 +76,7 @@ This is an example of the complete, final user response.
 
 ## File Editing
 
-```EDIT (example.md) <@abcde> <!-- READ showed @abcde  42:foo; the body replaces line 42 -->
+```EDIT (example.md) <@abcde> <!-- READ showed 42<@abcde>foo; the body replaces line 42 -->
 bar
 ```
 

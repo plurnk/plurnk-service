@@ -37,7 +37,8 @@ export default class LineAnchors {
     static readonly #MODULUS = BigInt(LineAnchors.#ALPHABET.length) ** BigInt(LineAnchors.#LENGTH);
     static readonly #MAX_LINE_NUMBER_WIDTH = String(Number.MAX_SAFE_INTEGER).length;
     static readonly #TOKEN = /^@[0-9A-Za-z]{5}$/;
-    static readonly #PREFIXED_LINE = /^@[0-9A-Za-z]{5} +[1-9]\d*:/;
+    // The rendered row: the right-aligned line number, the scope literal as the delimiter, the text.
+    static readonly #PREFIXED_LINE = /^ *[1-9]\d*<@[0-9A-Za-z]{5}>/;
 
     // {§anchor-offset} — a scope mark may carry an offset from its anchor's line (`@abcde+1`): a
     // tolerated extrapolation, resolved like the numeric line it names and never taught (#749).
@@ -222,8 +223,9 @@ export default class LineAnchors {
         return lines.map((line, index) => {
             const lineNumber = startLine + index;
             const body = content.slice(line.start, line.contentEnd);
-            const separator = " ".repeat(lineNumberWidth - String(lineNumber).length + 1);
-            return `${anchors[index]}${separator}${lineNumber}:${body}${line.separator}`;
+            // {§line-anchors}: ` 42<@abcde>text` — the anchor sits against its own text, never first on
+            // the row after the previous line, and the document starts after `>` (#893).
+            return `${String(lineNumber).padStart(lineNumberWidth)}<${anchors[index]}>${body}${line.separator}`;
         }).join("");
     }
 

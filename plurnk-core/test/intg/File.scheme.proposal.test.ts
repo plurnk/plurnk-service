@@ -184,7 +184,7 @@ test("{§fs-write-member} file.edit: writes file on accept via applyResolution",
             receipt?: { revision?: string; effect?: { context?: string } };
         };
         assert.match(appliedRx.receipt?.revision ?? "", /^[a-f0-9]{64}$/);
-        assert.match(appliedRx.receipt?.effect?.context ?? "", /1:hello world/, "applied EDIT rx shows bounded landed context");
+        assert.match(appliedRx.receipt?.effect?.context ?? "", /1(?:<@[0-9A-Za-z]{5}>|:)hello world/, "applied EDIT rx shows bounded landed context");
     });
 });
 
@@ -380,7 +380,7 @@ test("{§edit-result-reviewer-replacement}: reviewer-modified acceptance receipt
         assert.equal(rx.receipt?.revision, createHash("sha256").update(reviewed).digest("hex"));
         assert.equal(rx.receipt?.disposition, "superseded");
         assert.equal(rx.receipt?.requested, "<1,-1>");
-        assert.match(rx.receipt?.replacement?.context ?? "", /1:reviewer revision/);
+        assert.match(rx.receipt?.replacement?.context ?? "", /1(?:<@[0-9A-Za-z]{5}>|:)reviewer revision/);
         assert.doesNotMatch(rx.receipt?.replacement?.context ?? "", /model proposal/);
     });
 });

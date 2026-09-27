@@ -354,8 +354,8 @@ export default class PacketWire {
             if (!LineAnchors.isAnchor(anchor)) {
                 throw new TypeError(`A sparse READ projection has no line anchor for body line ${ordinal}.`);
             }
-            const separator = " ".repeat(width - String(lineNumber).length + 1);
-            return `${anchor}${separator}${lineNumber}:${content}${line.separator}`;
+            // {§line-anchors}: ` 42<@abcde>text`, exactly as LineAnchors.render frames a whole projection.
+            return `${String(lineNumber).padStart(width)}<${anchor}>${content}${line.separator}`;
         }).join("");
     }
 
@@ -443,9 +443,9 @@ export default class PacketWire {
         const endsWithLineBreak = /(?:\r\n|\r|\n)$/.test(body);
         const lines = body.split(/\r\n|\r|\n/);
         const contentLines = endsWithLineBreak ? lines.slice(0, -1) : lines;
-        if (contentLines.length === 0 || contentLines.some((line) =>
-            !/^ *[1-9]\d*:/.test(line) && !LineAnchors.isAnchoredLine(line))) {
-            throw new TypeError("A packet log body requires a positive coordinate prefix on every physical line.");
+        const unframed = contentLines.find((line) => !/^ *[1-9]\d*:/.test(line) && !LineAnchors.isAnchoredLine(line));
+        if (contentLines.length === 0 || unframed !== undefined) {
+            throw new TypeError(`A packet log body requires a positive coordinate prefix on every physical line; got ${JSON.stringify((unframed ?? "").slice(0, 80))}.`);
         }
         return endsWithLineBreak ? body.replace(/(?:\r\n|\r|\n)$/, "") : body;
     }

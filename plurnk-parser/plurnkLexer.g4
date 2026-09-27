@@ -603,9 +603,6 @@ fragment ANCHOR_OFFSET : LINE_ANCHOR [+-] [0-9]+ ;
 fragment RELATIVE_COORD : '+' [0-9]+ ;
 fragment TEXT_COORD : NUM | ANCHOR_OFFSET | LINE_ANCHOR | DIGIT_ANCHOR | RELATIVE_COORD ;
 fragment TEXT_L_PATTERN : '<' TEXT_COORD (',' ' '? TEXT_COORD)* '>' ;
-fragment COMBINED_LINE_COORD : LINE_ANCHOR (':' | ' ') [1-9] [0-9]* ;
-fragment COMBINED_TEXT_COORD : TEXT_COORD | COMBINED_LINE_COORD ;
-fragment COMBINED_TEXT_L_PATTERN : '<' COMBINED_TEXT_COORD (',' ' '? COMBINED_TEXT_COORD)* '>' ;
 fragment EOL : '\r'? '\n' ;
 
 // {§fence-boundary} - only top-level fences can open statements. The first
@@ -654,9 +651,9 @@ SLOTS_WAIT_SCOPE : { this.slotReady && this.openOp === "WAIT" }? '<' (~[!\r\n>] 
 // {§scope-on-scopeless} - a scope on an operation that takes none is skipped, and named once. An aside (`<!--`) is not a scope.
 SLOTS_NO_SCOPE : { this.slotReady && this.scopeless() }? '<' (~[!\r\n>] ~[\r\n>]*)? '>' { this.noteNotation("scope"); } -> skip ;
 SLOTS_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? TEXT_L_PATTERN -> type(L_MARKER) ;
+// {§combined-anchor-tolerance} — `42<@abcde>` is the displayed row prefix copied whole; the builder drops the digits.
+SLOTS_PREFIXED_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? [1-9] [0-9]* TEXT_L_PATTERN -> type(L_MARKER) ;
 SLOTS_L : { this.slotReady }? L_PATTERN -> type(L_MARKER) ;
-// {§combined-anchor-tolerance} — `<@abcde 42>` is the anchor with its displayed line number; the builder drops the number.
-SLOTS_COMBINED_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? COMBINED_TEXT_L_PATTERN -> type(L_MARKER) ;
 SLOTS_ASIDE : { this.slotReady }? '<!--' ~[\r\n]*? '-->' -> type(ASIDE) ;
 // {§unclosed-aside} — an aside that never closes on its line is the aside to the end of the line.
 SLOTS_ASIDE_OPEN : { this.slotReady && !this.asideClosesOnLine() }? '<!--' ~[\r\n]* { this.noteUnclosedAside(); } -> type(ASIDE) ;
@@ -692,6 +689,8 @@ TARGET_BACKSLASH : '\\' -> type(TARGET_TEXT) ;
 TARGET_NEST_OPEN : '(' { this.targetDepth++; } -> type(TARGET_TEXT) ;
 TARGET_NEST_END : { this.targetDepth > 0 }? ')' { this.targetDepth--; } -> type(TARGET_TEXT) ;
 TARGET_TEXT_SCOPE : { this.isTextCoordinateOp() }? TEXT_L_PATTERN { this.targetScopeEnd() }? -> type(L_MARKER) ;
+// {§combined-anchor-tolerance} — the displayed row prefix copied whole after an operand path.
+TARGET_PREFIXED_TEXT_SCOPE : { this.isTextCoordinateOp() }? [1-9] [0-9]* TEXT_L_PATTERN { this.targetScopeEnd() }? -> type(L_MARKER) ;
 TARGET_SCOPE : { this.openOp === "FIND" || this.execFence || this.openOp === "SEND" }? L_PATTERN { this.targetScopeEnd() }? -> type(L_MARKER) ;
 TARGET_TICK : '`' -> type(TARGET_TEXT) ;
 TARGET_END : ')' { this.slotReady = true; this.metadataReady = true; this.headingTarget = true; } -> type(RPAREN), mode(SLOTS) ;

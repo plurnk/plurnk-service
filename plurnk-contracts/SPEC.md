@@ -1830,9 +1830,9 @@ diagnostics are:
   `parse_advisory` notice (a warning, never an error). One sigil line beneath the heading is the bare form
   written a line low and still lifts; nothing else is promoted into a matcher from
   below the heading, and the advisory never echoes the body.
-- §combined-anchor-tolerance **Combined anchor and line number in a scope.** A
-  text-coordinate scope position written `@hash:L` or `@hash L` is the displayed
-  `@abcde 42:` prefix copied whole: the position is the anchor, the number is dropped, and one
+- §combined-anchor-tolerance **Combined line number and anchor in a scope.** A
+  text-coordinate scope written `L<@hash>` — digits immediately before the opener — is the
+  displayed `42<@abcde>` row prefix copied whole: the scope is the anchor, the number is dropped, and one
   warning-severity advisory names the anchor-only form. The scope lexes as one
   ordinary marker at any text-coordinate operation, either COPY/MOVE operand
   included; nothing cascades.

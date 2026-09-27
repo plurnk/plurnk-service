@@ -106,7 +106,7 @@ test("assembled packet: editable READ lines carry copyable anchors without chang
             && typeof entry.logPath === "string"
             && entry.logPath.endsWith("/READ"));
         assert.equal(read?.path, "worker:///anchored.md");
-        assert.match(String(read?.body), /^@[0-9A-Za-z]{5}   9:line 9\n@[0-9A-Za-z]{5}  10:line 10\n$/);
+        assert.match(String(read?.body), /^ *9<@[0-9A-Za-z]{5}>line 9\n *10<@[0-9A-Za-z]{5}>line 10\n$/);
     } finally { await db.close(); }
 });
 
@@ -363,7 +363,7 @@ test("assembled packet: scoped COPY reports both operands and its landed text ma
         assert.equal(copies[1]?.effects, undefined);
         assert.ok(copies[1] !== undefined && !("body" in copies[1]) && !("tokensBody" in copies[1]), "the whole-channel effect has no text body (#338)");
 
-        assert.match(packetSection(packet, "log"), /1:two\n(?:@[0-9A-Za-z]{5} +)?2:three/);
+        assert.match(packetSection(packet, "log"), /1(?:<@[0-9A-Za-z]{5}>|:)two\n2(?:<@[0-9A-Za-z]{5}>|:)three/);
     } finally { await db.close(); }
 });
 

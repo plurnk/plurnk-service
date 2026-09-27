@@ -79,8 +79,8 @@ test("{§tokenomics-fetch-fits-free} {§context-output-admission}: oversized out
         const reread = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: fourth.turnId }))!.packet);
         const slice = logEntries(reread).find((row) => row.path === `log://${path}`)!;
         assert.ok(slice, "an explicit scoped READ returns the omitted content as a fresh occurrence");
-        assert.match(String(slice.body), /2:2: evidence/u);
-        assert.match(String(slice.body), /3:3: evidence/u);
+        assert.match(String(slice.body), /2(?:<@[0-9A-Za-z]{5}>|:)2: evidence/u);
+        assert.match(String(slice.body), /3(?:<@[0-9A-Za-z]{5}>|:)3: evidence/u);
         assert.equal(slice.overflow, undefined);
         const branch = await Fork.fork(db, workerId, "output-branch");
         const branchRows = await db.engine_render_log.all<{ op: string; pathname: string; output_withheld: number; output_admission_turn_id: number | null; folded: string }>({ worker_id: branch });
