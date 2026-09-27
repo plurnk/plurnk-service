@@ -2,7 +2,8 @@
 // module: it registers the family adapter beneath the shared coordinator, and
 // the adapter carries the scheme face that serves `a2a://`. The hosted inbound
 // listener ({§a2a-inbound-exposure}) remains the separate, optional `Module`.
-import A2aFunctionality, { type FunctionalityFamilyHandle } from "./Functionality.ts";
+import type { FunctionalityFamilyHandle } from "@plurnk/plurnk-contracts";
+import A2aFunctionality from "./Functionality.ts";
 
 interface SetupSeam {
     registerFunctionalityAdapter(adapter: A2aFunctionality): FunctionalityFamilyHandle;

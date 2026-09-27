@@ -4,7 +4,6 @@ export {
     SCHEDULE_FAMILY,
     SCHEDULE_OWNER,
     ScheduleFunctionalityError,
-    type FunctionalityFamilyHandle,
     type ScheduleFunctionalityOptions,
 } from "./Functionality.ts";
 export {

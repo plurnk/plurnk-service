@@ -25,7 +25,6 @@ import HostPaths from "../core/HostPaths.ts";
 import Knob from "../core/Knob.ts";
 import Paths from "../Paths.ts";
 import type {
-    FunctionalityAdapter,
     FunctionalityDefinitionSource,
     FunctionalityFamilyHandle,
     FunctionalityOutcome,
@@ -33,6 +32,9 @@ import type {
     FunctionalityPrepared,
     FunctionalityServiceDefinition,
     WorkspaceCapabilityIdentity,
+} from "@plurnk/plurnk-contracts";
+import type {
+    FunctionalityAdapter,
 } from "./DaemonModule.ts";
 
 const execFileP = promisify(execFile);

@@ -10,10 +10,15 @@ import Translator from "./Translator.ts";
 import type {
     ApplicationActionContext,
     ApplicationPort,
+    LogEntryWire,
     ProposalProjection,
     ProposalResolution,
 } from "@plurnk/plurnk-contracts";
 import type { AguiEvent } from "./types.ts";
+
+// Partial log rows for a mock seam: the port serves the daemon's whole LogEntryWire; these fixtures
+// carry only what the module under test reads.
+const logRows = (rows: readonly Record<string, unknown>[]): LogEntryWire[] => rows as unknown as LogEntryWire[];
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Problems, Validator } from "@plurnk/plurnk-contracts";
 import { loopUsage } from "../test/accounting-fixture.ts";
@@ -94,7 +99,7 @@ const mockSeam = () => {
         executorJsonBodyTags: () => [],
         shareWorkspace: async ({ folder }: { folder: string }) => ({ folder }),
         dispatchClientAction: async ({ statements }) => statements.map(() => ({ status: 200 })),
-        readLog: async () => [{ id: 1, op: "SEND", status_rx: 200, origin: "model" }],
+        readLog: async () => logRows([{ id: 1, op: "SEND", status_rx: 200, origin: "model" }]),
         readMessages: async () => [],
         listProviders: () => ({ aliases: [{ alias: "opus", provider: "anthropic", model: "claude", active: true, inputCapacity: 200000 }] }),
         listModels: (query) => {
@@ -257,7 +262,7 @@ test("{§agui-lifecycle-projection}: log.read and live NOTE rows retain literal 
         { id: 1, worker_id: 20, loop_id: 1, turn_id: 1, coordinate: "1/1/1/NOTE", origin: "_plurnk", op: "NOTE", tx: JSON.stringify(tx), rx: null },
     ];
     const before = structuredClone(rows);
-    seam.readLog = async () => rows;
+    seam.readLog = async () => logRows(rows);
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         const events = await post(mod.address().port, {
@@ -1884,12 +1889,12 @@ test("reattach replays SEND as speech without inventing an activity from NOTE", 
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "workspace")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "workspace", projectRoot: null, workerId: 10, workerName: "client-1" });
-    seam.readLog = async () => [
+    seam.readLog = async () => logRows([
         { id: 0, coordinate: "1/1/0/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 0, tx: { body: { raw: "original question" } } },
         { id: 1, coordinate: "1/1/1/NOTE", op: "NOTE", origin: "model", turn_id: 1, sequence: 1, tx: { body: "Inspect, repair, and verify." } },
         { id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: [] }, turn_id: 1, sequence: 2, tx: { body: "checkpoint complete" } },
         { id: 3, coordinate: "1/1/3/attempt", op: null, origin: "model", turn_id: 1, sequence: 3, attrs: { kind: "emissionAttempt" } },
-    ];
+    ]);
     seam.runLoop = async (args) => {
         finish(args.workspaceId, args.workerId);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
@@ -1924,11 +1929,11 @@ test("{§agui-conversation-sync}: an inference-free sync replays durable convers
     });
     seam.readLog = async (args) => {
         reads.push(args);
-        return [
+        return logRows([
             { id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 1, tx: { body: { raw: "Prior question." } } },
             { id: 2, coordinate: "1/1/2/NOTE", op: "NOTE", origin: "model", turn_id: 1, sequence: 2, tx: { body: "Answered the prior question." } },
             { id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: [] }, turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
-        ];
+        ]);
     };
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
@@ -2064,11 +2069,11 @@ test("the official AG-UI client keeps the accepted current user message after au
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "replay-client")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "replay-client", projectRoot: null, workerId: 10, workerName: "client-1" });
-    seam.readLog = async () => [
+    seam.readLog = async () => logRows([
         { id: 3, coordinate: "1/1/3/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: [] }, turn_id: 1, sequence: 3, tx: { body: "Prior answer." } },
         { id: 2, coordinate: "1/1/2/NOTE", op: "NOTE", origin: "model", turn_id: 1, sequence: 2, tx: { body: "Answer the prior question." } },
         { id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 1, tx: { body: { raw: "Prior question." } } },
-    ];
+    ]);
     seam.runLoop = async (args) => {
         finish(args.workspaceId, args.workerId);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };
@@ -2110,10 +2115,10 @@ test("a client carrying a durable assistant identity is already oriented and rec
     const { seam, finish } = mockSeam();
     seam.listWorkspaces = async () => [workspaceRow(3, "oriented-client")];
     seam.attachWorkspace = async () => ({ workspaceId: 3, workspaceName: "oriented-client", projectRoot: null, workerId: 10, workerName: "client-1" });
-    seam.readLog = async () => [
+    seam.readLog = async () => logRows([
         { id: 2, coordinate: "1/1/2/SEND", op: "SEND", status_rx: 200, origin: "model", rx: { answers: [] }, turn_id: 1, sequence: 2, tx: { body: "Prior answer." } },
         { id: 1, coordinate: "1/1/1/SEND", op: "SEND", status_rx: 200, origin: "_plurnk", attrs: { kind: "message" }, turn_id: 1, sequence: 1, tx: { body: { raw: "Prior question." } } },
-    ];
+    ]);
     seam.runLoop = async (args) => {
         finish(args.workspaceId, args.workerId);
         return { status: 100, action: "enqueued_new_loop", loopId: 9 };

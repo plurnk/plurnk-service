@@ -13,8 +13,13 @@ import {
     type A2AAgentDefinition as A2aAgentDefinition,
     type FunctionalityCandidate,
     type FunctionalityDiscoverQuery,
+    type FunctionalityFamilyHandle,
+    type FunctionalityOutcome,
+    type FunctionalityPreparation,
+    type FunctionalityPrepared,
     type JsonSchema,
     type ProblemDetails,
+    type WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
 import A2a from "./A2a.ts";
 import { outboundDefinitions, serviceEnabledNames } from "./config.ts";
@@ -26,41 +31,6 @@ export const A2A_OWNER = "@plurnk/plurnk-a2a";
 const DEFINITION = { $ref: "https://schemas.plurnk.xyz/v0/A2aAgentDefinition.json" } as const satisfies JsonSchema;
 const ALIAS = /^[a-z][a-z0-9-]*$/u;
 const ENV_REFERENCE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/u;
-
-// Structural views of the core seam, as every module declares them.
-interface WorkspaceIdentity {
-    readonly workspaceId: number;
-}
-
-type Outcome =
-    | { readonly state: "active"; readonly detail?: object }
-    | { readonly state: "unavailable"; readonly problem: ProblemDetails }
-    | { readonly state: "authorization-required"; readonly authorization: { readonly url: string } };
-
-interface Preparation extends WorkspaceIdentity {
-    readonly enabled: ReadonlyMap<string, object>;
-    readonly previous: unknown | null;
-    readonly failure: "publish-unavailable" | "reject";
-    readonly force?: string;
-    retain(): () => void;
-}
-
-interface Prepared {
-    readonly documents: readonly { readonly pathname: string; readonly content: string }[];
-    readonly outcomes: ReadonlyMap<string, Outcome>;
-    readonly snapshot: unknown;
-    commit(): Promise<void>;
-    abort(): Promise<void>;
-}
-
-export interface FunctionalityFamilyHandle {
-    invoke(
-        verb: "list" | "discover" | "add" | "enable" | "disable" | "remove",
-        params: unknown,
-        identity: WorkspaceIdentity,
-    ): Promise<{ readonly status: number; readonly body: unknown }>;
-    refresh(identity: WorkspaceIdentity): Promise<void>;
-}
 
 interface Attachment {
     readonly definition: A2aAgentDefinition;
@@ -297,11 +267,11 @@ export default class A2aFunctionality {
         return { definition, card, client };
     }
 
-    async prepare(preparation: Preparation): Promise<Prepared> {
+    async prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared> {
         const previous = preparation.previous as Snapshot | null;
         const attachments = new Map<string, Attachment>();
         const unavailable = new Map<string, { definition: A2aAgentDefinition; problem: ProblemDetails }>();
-        const outcomes = new Map<string, Outcome>();
+        const outcomes = new Map<string, FunctionalityOutcome>();
         for (const [alias, raw] of preparation.enabled) {
             const definition = raw as A2aAgentDefinition;
             const kept = previous?.attachments.get(alias);
@@ -347,7 +317,7 @@ export default class A2aFunctionality {
         };
     }
 
-    async teardown(_snapshot: unknown, identity: WorkspaceIdentity): Promise<void> {
+    async teardown(_snapshot: unknown, identity: WorkspaceCapabilityIdentity): Promise<void> {
         this.#snapshots.delete(identity.workspaceId);
     }
 }

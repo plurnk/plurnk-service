@@ -1,9 +1,14 @@
 // {§workspace-env} {§env-functionality} — workspace defaults and worker overrides
 // compose through one family; lifecycle verbs and persistence belong to the coordinator.
 import type {
-    FunctionalityAdapter, FunctionalityDefinitionSource,
-    FunctionalityPreparation, FunctionalityPrepared, FunctionalityServiceDefinition,
+    FunctionalityDefinitionSource,
+    FunctionalityPreparation,
+    FunctionalityPrepared,
+    FunctionalityServiceDefinition,
     WorkspaceCapabilityIdentity,
+} from "@plurnk/plurnk-contracts";
+import type {
+    FunctionalityAdapter,
 } from "./DaemonModule.ts";
 import type { FunctionalityCandidate, FunctionalityDiscoverQuery, JsonSchema } from "@plurnk/plurnk-contracts";
 import { MetadataOptions } from "@plurnk/plurnk-schemes";

@@ -28,31 +28,22 @@ import LogBody from "./LogBody.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
 import EntryAddressBinding from "./EntryAddressBinding.ts";
-import { isExecution } from "@plurnk/plurnk-contracts";
+import { isExecution, type ProposalResolution } from "@plurnk/plurnk-contracts";
 
 // Proposal lifecycle types. A scheme returns DispatchResult{status:202,attrs}
 // to propose; dispatch writes a state='proposed' log entry, registers a waiter
 // in #pending, and awaits resolution. Resolution arrives via
 // Engine.resolveProposal(id, decision, body?) — from the ApplicationPort resolution call,
 // core-owned disposition, or a timeout.
-export type ProposalDecision = "accept" | "reject" | "cancel";
-export interface ProposalResolution {
-    decision: ProposalDecision;
-    // Final body the resolver wants written/applied (e.g., reviewer-edited
-    // content) — INPUT to applyResolution, not echoed back verbatim. The applied
-    // result reaches the model via the scheme's applyResult body (e.g. the EDIT diff).
-    body?: string;
-    // Structured model-facing result produced by the accepted scheme apply.
-    // Unlike the resolver body, this describes what actually landed.
-    result?: object;
-    // Operational reason (rejected / timeout / write_failed / policy_veto / etc.).
-    // Stored on log_entries.outcome COLUMN for forensics; a NON-accept also
-    // carries it as the rx's terse error token — the one-word why the model
-    // acts on (a mechanically failed apply must not read like a mute 400).
-    outcome?: string;
+// The resolution as the port states it (`ProposalResolution`: decision, the resolver's body —
+// INPUT to applyResolution, not echoed back — and the operational outcome stored on the
+// log_entries.outcome column, which a NON-accept also carries as the rx's terse error token),
+// plus what the accepted scheme apply actually landed: the structured model-facing result.
+export interface AppliedProposalResolution extends ProposalResolution {
+    readonly result?: object;
 }
 interface ProposalWaiter {
-    resolve: (resolution: ProposalResolution) => void;
+    resolve: (resolution: AppliedProposalResolution) => void;
     // Drops whatever the wait armed — its timer, its abort listener — on every exit path.
     release: () => void;
 }
@@ -93,7 +84,7 @@ const HARNESS_SETTLEMENTS: Readonly<Record<string, { readonly condition: string;
 };
 
 export interface ProposalSettlement {
-    resolution: ProposalResolution;
+    resolution: AppliedProposalResolution;
     applied?: DispatchResult;
 }
 
@@ -446,9 +437,9 @@ export default class ProposalLifecycle {
     // The wait is untimed by default because a decision belongs to whoever is deciding. It still
     // does not outlive its loop: an aborted loop settles the proposal the way shutdown already
     // does, carrying the abort's own reason as the outcome (#769).
-    awaitResolution(logEntryId: number, signal?: AbortSignal): Promise<ProposalResolution> {
+    awaitResolution(logEntryId: number, signal?: AbortSignal): Promise<AppliedProposalResolution> {
         const timeoutMs = readProposalTimeoutMs();
-        return new Promise<ProposalResolution>((resolve) => {
+        return new Promise<AppliedProposalResolution>((resolve) => {
             // Synthesize a cancel resolution through the same path as any other decision. State
             // transitions to cancelled with this outcome. {§proposal-timeout-cancels}
             const cancel = (outcome: string): void => {
@@ -476,7 +467,7 @@ export default class ProposalLifecycle {
     async workerApply(
         statement: PlurnkStatement,
         originalResult: DispatchResult,
-        resolution: ProposalResolution,
+        resolution: AppliedProposalResolution,
         // `resources` is the dispatcher's own capture capability. An applied operation may need
         // it — an outbound SEND snapshots its attachments when the settlement accepts, not when the
         // proposal was raised — and the fallback in SchemeCtxImpl refuses any non-empty capture.

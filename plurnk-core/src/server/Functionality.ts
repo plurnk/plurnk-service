@@ -15,17 +15,19 @@ import type {
     JsonSchema,
 } from "@plurnk/plurnk-contracts";
 import type {
-    FunctionalityAdapter,
     FunctionalityCaller,
     FunctionalityFamilyHandle,
     FunctionalityIdentity,
     FunctionalityOptions,
     FunctionalityOutcome,
     FunctionalityPrepared,
-    ModuleActionRegistration,
-    RuntimeRegistration,
     WorkspaceCapabilityIdentity,
     WorkspaceCapabilityGate,
+} from "@plurnk/plurnk-contracts";
+import type {
+    FunctionalityAdapter,
+    ModuleActionRegistration,
+    RuntimeRegistration,
     WorkspaceCapabilityProvider,
     WorkspaceCapabilityReplacement,
     WorkspaceCapabilityPublication,
@@ -99,7 +101,7 @@ interface EffectiveDefinition {
 
 interface WorkspaceFamily {
     state: FamilyState;
-    prepared: FunctionalityPrepared | null;
+    prepared: FunctionalityPrepared<RuntimeRegistration> | null;
 }
 
 const STATE_VERSION = 1;
@@ -626,7 +628,7 @@ export default class Functionality {
         identity: FunctionalityIdentity,
         effective: ReadonlyMap<string, EffectiveDefinition>,
         failureMode: "publish-unavailable" | "reject",
-    ): Promise<FunctionalityPrepared> {
+    ): Promise<FunctionalityPrepared<RuntimeRegistration>> {
         const enabled = Functionality.#enabled(effective);
         const prepared = await adapter.prepare({
             workspaceId: identity.workspaceId, enabled, previous: null, failure: failureMode,
@@ -651,7 +653,7 @@ export default class Functionality {
         return enabled;
     }
 
-    static #checkOutcomes(adapter: FunctionalityAdapter, enabled: ReadonlyMap<string, object>, prepared: FunctionalityPrepared): void {
+    static #checkOutcomes(adapter: FunctionalityAdapter, enabled: ReadonlyMap<string, object>, prepared: FunctionalityPrepared<RuntimeRegistration>): void {
         for (const alias of enabled.keys()) {
             if (!prepared.outcomes.has(alias)) throw new Error(`${adapter.family} preparation reported no outcome for enabled alias '${alias}'.`);
         }
@@ -735,7 +737,7 @@ export default class Functionality {
         return { outcomes: prepared.outcomes };
     }
 
-    static async #abort(prepared: FunctionalityPrepared, cause: unknown): Promise<never> {
+    static async #abort(prepared: FunctionalityPrepared<RuntimeRegistration>, cause: unknown): Promise<never> {
         try { await prepared.abort(); }
         catch (abortCause) { throw new AggregateError([cause, abortCause], "Functionality publication and candidate cleanup failed"); }
         throw cause;

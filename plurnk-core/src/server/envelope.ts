@@ -11,7 +11,7 @@ import GitMembership from "../core/git-membership.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import WorkerName from "../core/WorkerName.ts";
-import { lifecycleOfLoopStatus, selectWorkerLoop, type ApplicationWorkerKind, type LoopLifecycle as WorkerLifecycle } from "@plurnk/plurnk-contracts";
+import { lifecycleOfLoopStatus, selectWorkerLoop, type ApplicationWorkerKind, type ClientEnvelope, type LoopLifecycle as WorkerLifecycle } from "@plurnk/plurnk-contracts";
 
 const envelopeFailure = (
     owner: string,
@@ -50,17 +50,6 @@ export const projectWorkerRow = <T extends { loopObservations: string }>(row: T)
 export interface WorkerQuery {
     origin?: WorkerRow["origin"];
     parentWorkerId?: number | null;
-}
-
-// `workerId` is the client actor's worker: dispatched client actions live there
-// ({§connection-lifecycle}, {§machine-processes}). The conversation worker is
-// resolved separately by the client-interface module.
-export interface ClientEnvelope {
-    workspaceId: number;
-    workspaceName: string;
-    projectRoot: string | null;
-    workerId: number;
-    workerName: string;
 }
 
 export default class Envelope {

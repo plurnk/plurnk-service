@@ -6,7 +6,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setImmediate as nextTick } from "node:timers/promises";
 import { MAX_TIMER_MS } from "@plurnk/plurnk-contracts";
-import ScheduleFunctionality, { ScheduleFunctionalityError, type FunctionalityFamilyHandle } from "../../src/Functionality.ts";
+import type { FunctionalityFamilyHandle } from "@plurnk/plurnk-contracts";
+import ScheduleFunctionality, { ScheduleFunctionalityError } from "../../src/Functionality.ts";
 import type { DeliveryPort, SchedulerTimers } from "../../src/Scheduler.ts";
 
 // 2026-09-16 12:30:15.250 UTC.

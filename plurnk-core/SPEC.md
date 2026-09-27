@@ -4050,7 +4050,12 @@ actions from model operations where the family contract requires it
 outcomes, and a snapshot with `commit`/`abort`. Successful publication commits;
 failure aborts; cooling tears down. Protocol continuations remain ordinary
 module actions. Optional `forget` releases an installed or provisioned
-definition before removal; failure rejects removal ({§skills-remove}).
+definition before removal; failure rejects removal ({§skills-remove}). The
+seam's shapes — the identity a verb acts under, its options, definition
+sources, outcomes, preparation, the prepared result and the family handle —
+are declared once in `plurnk-contracts` and imported by core and every
+module; core adds only its own face of the seam, the runtime registration a
+resident family prepares and the scheme facet it may expose.
 
 An adapter may expose a `scheme` facet beneath its family's runtime namespace
 ({§runtime-resource-binding}). A facet claims a path subtree and is the scheme's

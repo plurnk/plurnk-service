@@ -10,10 +10,12 @@ import WorkspaceCapabilities, {
     type WorkspaceCapabilityRelease,
 } from "./WorkspaceCapabilities.ts";
 import type {
-    RuntimeRegistration,
-    WorkspaceCapabilityPublication,
     WorkspaceCapabilityIdentity,
     WorkspaceCapabilityGate,
+} from "@plurnk/plurnk-contracts";
+import type {
+    RuntimeRegistration,
+    WorkspaceCapabilityPublication,
     WorkspaceCapabilityProvider,
     WorkspaceCapabilityReplacement,
 } from "./DaemonModule.ts";

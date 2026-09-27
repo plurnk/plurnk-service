@@ -6,7 +6,7 @@
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Dsl from "./dsl.ts";
 import type Daemon from "../../src/server/Daemon.ts";
-import type { ClientEnvelope } from "../../src/server/envelope.ts";
+import type { ClientEnvelope } from "@plurnk/plurnk-contracts";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
 
 type Listener = (data: string) => void;

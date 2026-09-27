@@ -9,11 +9,10 @@ import { join } from "node:path";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Problems } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { PlurnkStatement, ProblemDetails } from "@plurnk/plurnk-contracts";
+import type { FunctionalityOutcome, PlurnkStatement, ProblemDetails } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import type {
     FunctionalityAdapter,
-    FunctionalityPrepared,
     ModuleSetupSeam,
     RuntimeRegistration,
 } from "../../src/server/DaemonModule.ts";
@@ -83,7 +82,7 @@ const fixtureAdapter = (log: string[]): FunctionalityAdapter => ({
     },
     prepare: async ({ enabled, failure }) => {
         log.push(`prepare:${[...enabled.keys()].join(",")}`);
-        const outcomes = new Map<string, FunctionalityPrepared["outcomes"] extends ReadonlyMap<string, infer V> ? V : never>();
+        const outcomes = new Map<string, FunctionalityOutcome>();
         const runtimes: RuntimeRegistration[] = [];
         const documents: Array<{ pathname: string; content: string }> = [];
         for (const [alias, definition] of enabled) {

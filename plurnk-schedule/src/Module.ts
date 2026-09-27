@@ -1,3 +1,4 @@
+import type { FunctionalityFamilyHandle } from "@plurnk/plurnk-contracts";
 // {§schedule-family} — the daemon module: registers the family at setup, arms every workspace's
 // enabled rules at start from the coordinator's persisted state ({§schedule-residency}), and
 // disarms at close.
@@ -6,7 +7,6 @@ import { readDefinition } from "./definition.ts";
 import ScheduleFunctionality, {
     SCHEDULE_OWNER,
     type EnvironmentSeam,
-    type FunctionalityFamilyHandle,
     type ScheduleFunctionalityOptions,
 } from "./Functionality.ts";
 import { parseRule } from "./rules.ts";

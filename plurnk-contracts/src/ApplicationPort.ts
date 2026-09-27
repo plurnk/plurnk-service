@@ -39,6 +39,9 @@ export interface ApplicationActionDescriptor {
     readonly outputSchema: JsonSchema;
 }
 
+// `workerId` is the client actor's worker: dispatched client actions live there
+// ({§connection-lifecycle}, {§machine-processes}). The conversation worker is
+// resolved separately by the client-interface module.
 export interface ClientEnvelope {
     readonly workspaceId: number;
     readonly workspaceName: string;
@@ -93,7 +96,41 @@ export interface ApplicationLoopPacket {
     readonly packetCount: number;
 }
 
-export type LogEntryWire = Readonly<Record<string, unknown>>;
+// Every log entry carries its logical coordinate — loop_seq/turn_seq/sequence — so the
+// client renders ordering without re-deriving it from DB keys. {§methods-log-coordinate}
+// A type alias, not an interface: a serialized wire bag must satisfy index-signature
+// consumers (Record<string, unknown>), which TypeScript grants aliases but not interfaces.
+export type LogEntryWire = {
+    id: number;
+    worker_id: number;
+    loop_id: number;
+    loop_seq: number;
+    turn_id: number;
+    turn_seq: number;
+    sequence: number;
+    at: string;
+    origin: string;
+    source: string | null;
+    op: string | null;
+    signal: unknown;
+    scheme: string | null;
+    username: string | null;
+    password: string | null;
+    hostname: string | null;
+    port: number | null;
+    pathname: string | null;
+    query: string | null;
+    fragment: string | null;
+    lineMarker: unknown;
+    tx: unknown;
+    mimetype_tx: string;
+    rx: unknown;
+    mimetype_rx: string;
+    status_rx: number;
+    weight: number;
+    attrs: unknown;
+    reasoning?: string;
+};
 export type ApplicationEventHandler = (
     workspaceId: number | null,
     method: string,

@@ -1,5 +1,5 @@
 import { Policy as RuntimePolicy, RuntimeInvocation, RuntimeTag } from "@plurnk/plurnk-execs";
-import type { ClientInteractionProjection, ClientInteractionResolution, CapabilityProjection, PlurnkStatement, ParsedPath, MessageEvidence } from "@plurnk/plurnk-contracts";
+import type { ClientInteractionProjection, ClientInteractionResolution, CapabilityProjection, PlurnkStatement, ParsedPath, MessageEvidence, ProposalResolution } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import Meta from "@plurnk/plurnk-meta";
@@ -24,7 +24,7 @@ import ProblemLog from "./ProblemLog.ts";
 import StrikeRail from "./StrikeRail.ts";
 import PacketBuilder from "./PacketBuilder.ts";
 import ProposalLifecycle from "./ProposalLifecycle.ts";
-import type { ProposalResolution, ProposalPendingEvent } from "./ProposalLifecycle.ts";
+import type { ProposalPendingEvent } from "./ProposalLifecycle.ts";
 import ClientInteractions, { type ClientInteractionPendingEvent } from "./ClientInteractions.ts";
 import type { ProposalProjection } from "@plurnk/plurnk-contracts";
 import Dispatcher from "./Dispatcher.ts";
@@ -36,7 +36,7 @@ import { providerRequestFromStorageRow, type ProviderRequestStorageRow } from ".
 
 // Proposal types are part of Engine's public API (resolveProposal/onProposalPending);
 // their definitions live with the lifecycle.
-export type { ProposalDecision, ProposalResolution, ProposalPendingEvent } from "./ProposalLifecycle.ts";
+export type { ProposalPendingEvent } from "./ProposalLifecycle.ts";
 export type WorkspaceDerivationStatus = {
     phase: "preparing" | "indexing" | "complete" | "failed";
     completed: number;

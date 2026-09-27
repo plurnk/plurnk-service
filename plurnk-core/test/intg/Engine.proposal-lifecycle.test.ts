@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { InvalidLoopPolicyError, type EditStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
-import type { ProposalResolution } from "../../src/core/Engine.ts";
+import type { ProposalResolution } from "@plurnk/plurnk-contracts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";

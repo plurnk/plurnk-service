@@ -7,8 +7,15 @@ import {
     Problems,
     type FunctionalityCandidate,
     type FunctionalityDiscoverQuery,
+    type FunctionalityFamilyHandle,
+    type FunctionalityIdentity,
+    type FunctionalityOptions,
+    type FunctionalityOutcome,
+    type FunctionalityPreparation,
+    type FunctionalityPrepared,
     type JsonSchema,
     type ProblemDetails,
+    type WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
 import { previewOccurrences, serviceDefinitions, serviceEnabled } from "./config.ts";
 import { DEFINITION_SCHEMA, DefinitionError, readDefinition, type ScheduleDefinition } from "./definition.ts";
@@ -19,50 +26,6 @@ import ScheduleResources from "./ScheduleResources.ts";
 
 export const SCHEDULE_FAMILY = "schedule";
 export const SCHEDULE_OWNER = "@plurnk/plurnk-schedule";
-
-// Structural views of the core seam, as every module declares them.
-interface WorkspaceIdentity {
-    readonly workspaceId: number;
-}
-
-// The coordinator names the invoking Worker on a model-invoked verb.
-interface CallIdentity extends WorkspaceIdentity {
-    readonly workerId?: number;
-}
-
-interface CallOptions {
-    readonly env?: Readonly<Record<string, string>>;
-}
-
-type Outcome =
-    | { readonly state: "active"; readonly detail?: object }
-    | { readonly state: "unavailable"; readonly problem: ProblemDetails }
-    | { readonly state: "authorization-required"; readonly authorization: { readonly url: string } };
-
-interface Preparation extends WorkspaceIdentity {
-    readonly enabled: ReadonlyMap<string, object>;
-    readonly previous: unknown | null;
-    readonly failure: "publish-unavailable" | "reject";
-    readonly force?: string;
-    retain(): () => void;
-}
-
-interface Prepared {
-    readonly documents: readonly { readonly pathname: string; readonly content: string }[];
-    readonly outcomes: ReadonlyMap<string, Outcome>;
-    readonly snapshot: unknown;
-    commit(): Promise<void>;
-    abort(): Promise<void>;
-}
-
-export interface FunctionalityFamilyHandle {
-    invoke(
-        verb: "list" | "discover" | "add" | "enable" | "disable" | "remove",
-        params: unknown,
-        identity: WorkspaceIdentity,
-    ): Promise<{ readonly status: number; readonly body: unknown }>;
-    refresh(identity: WorkspaceIdentity): Promise<void>;
-}
 
 export interface EnvironmentSeam {
     readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
@@ -181,7 +144,7 @@ export default class ScheduleFunctionality {
     }
 
     // {§schedule-clock} — the one place the time is told: on demand, beside the rule it reads.
-    async discover(query: FunctionalityDiscoverQuery, identity: CallIdentity, options?: CallOptions): Promise<readonly FunctionalityCandidate[]> {
+    async discover(query: FunctionalityDiscoverQuery, identity: FunctionalityIdentity, options?: FunctionalityOptions): Promise<readonly FunctionalityCandidate[]> {
         if (query.configuration !== undefined) {
             throw failure("configuration-unsupported", 400, "schedule discovery reads rule text from `source`; it takes no configuration.", { retryable: false });
         }
@@ -208,7 +171,7 @@ export default class ScheduleFunctionality {
         }];
     }
 
-    async admit(input: unknown, identity: CallIdentity, _caller?: unknown, options?: CallOptions): Promise<{ alias: string; definition: object }> {
+    async admit(input: unknown, identity: FunctionalityIdentity, _caller?: unknown, options?: FunctionalityOptions): Promise<{ alias: string; definition: object }> {
         const params = isRecord(input) ? input : {};
         if (typeof params.alias !== "string") throw failure("alias-required", 400, "schedule add needs an alias.", { retryable: false });
         let definition: ScheduleDefinition;
@@ -227,12 +190,12 @@ export default class ScheduleFunctionality {
         return { alias: params.alias, definition: { ...definition, rule: parsed.text } };
     }
 
-    async prepare(preparation: Preparation): Promise<Prepared> {
+    async prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared> {
         const { workspaceId } = preparation;
         const previous = preparation.previous as Snapshot | null;
         const rules = new Map<string, ScheduledRule>();
         const unavailable = new Map<string, string>();
-        const outcomes = new Map<string, Outcome>();
+        const outcomes = new Map<string, FunctionalityOutcome>();
         const now = this.#scheduler.now();
         for (const [alias, raw] of preparation.enabled) {
             if (preparation.force === alias) this.#scheduler.forgive(workspaceId, alias);
@@ -285,12 +248,12 @@ export default class ScheduleFunctionality {
 
     // {§schedule-residency} — a schedule is an obligation, not a runtime: cooling the workspace
     // leaves its timers armed.
-    async teardown(_snapshot: unknown, _identity: WorkspaceIdentity): Promise<void> {}
+    async teardown(_snapshot: unknown, _identity: WorkspaceCapabilityIdentity): Promise<void> {}
 
     // {§schedule-zone} — the zone a rule is read in: the call's own env when it carries one (a
     // worker's `env` metadata), else the invoking Worker's environment (its overrides over the
     // workspace layer over the service's), else the workspace's.
-    async #zone(identity: CallIdentity, options?: CallOptions): Promise<string> {
+    async #zone(identity: FunctionalityIdentity, options?: FunctionalityOptions): Promise<string> {
         const called = options?.env?.TZ;
         if (called !== undefined && called.length > 0) return called;
         const environment = this.#environment === null

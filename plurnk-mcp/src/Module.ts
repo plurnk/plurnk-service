@@ -23,10 +23,16 @@ import {
     Validator,
     type FunctionalityCandidate,
     type FunctionalityDiscoverQuery,
+    type FunctionalityFamilyHandle,
+    type FunctionalityOptions,
+    type FunctionalityOutcome,
+    type FunctionalityPreparation,
+    type FunctionalityPrepared,
     type McpConfigurationOverlay,
     type McpServerDefinition,
     type JsonSchema,
     type ProblemDetails,
+    type WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
 
 import ServerConnection, {
@@ -84,36 +90,6 @@ type ModuleActionContext =
     | { readonly scope: "workspace"; readonly workspaceId: number }
     | { readonly scope: "worker"; readonly workspaceId: number; readonly workerId: number };
 
-interface WorkspaceIdentity {
-    readonly workspaceId: number;
-}
-
-interface FunctionalityOptions {
-    readonly env?: Readonly<Record<string, string>>;
-}
-
-type Outcome =
-    | { readonly state: "active"; readonly detail?: object }
-    | { readonly state: "unavailable"; readonly problem: ProblemDetails }
-    | { readonly state: "authorization-required"; readonly authorization: { readonly url: string } };
-
-interface Preparation extends WorkspaceIdentity {
-    readonly enabled: ReadonlyMap<string, object>;
-    readonly previous: unknown | null;
-    readonly failure: "publish-unavailable" | "reject";
-    readonly force?: string;
-    retain(): () => void;
-}
-
-interface Prepared {
-    readonly runtimes: readonly RuntimeRegistration[];
-    readonly documents: readonly { readonly pathname: string; readonly content: string }[];
-    readonly outcomes: ReadonlyMap<string, Outcome>;
-    readonly snapshot: unknown;
-    commit(): Promise<void>;
-    abort(): Promise<void>;
-}
-
 interface FunctionalityAdapter {
     readonly family: string;
     readonly namespaceOwner: string;
@@ -122,20 +98,11 @@ interface FunctionalityAdapter {
     readonly example?: { readonly alias: string; readonly definition: object };
     readonly discovery?: { readonly details: string };
     readonly docsDir?: string;
-    available(identity: WorkspaceIdentity): Promise<readonly { alias: string; definition: object; enabled: boolean }[]>;
-    discover(query: FunctionalityDiscoverQuery, identity: WorkspaceIdentity, options?: FunctionalityOptions): Promise<readonly FunctionalityCandidate[]>;
-    admit(input: unknown, identity: WorkspaceIdentity, caller?: "action" | "operation", options?: FunctionalityOptions): Promise<{ alias: string; definition: object }>;
-    prepare(preparation: Preparation): Promise<Prepared>;
-    teardown(snapshot: unknown, identity: WorkspaceIdentity): Promise<void>;
-}
-
-interface FunctionalityFamilyHandle {
-    invoke(
-        verb: "list" | "discover" | "add" | "enable" | "disable" | "remove",
-        params: unknown,
-        identity: WorkspaceIdentity,
-    ): Promise<{ readonly status: number; readonly body: unknown }>;
-    refresh(identity: WorkspaceIdentity): Promise<void>;
+    available(identity: WorkspaceCapabilityIdentity): Promise<readonly { alias: string; definition: object; enabled: boolean }[]>;
+    discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity, options?: FunctionalityOptions): Promise<readonly FunctionalityCandidate[]>;
+    admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller?: "action" | "operation", options?: FunctionalityOptions): Promise<{ alias: string; definition: object }>;
+    prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared<RuntimeRegistration>>;
+    teardown(snapshot: unknown, identity: WorkspaceCapabilityIdentity): Promise<void>;
 }
 
 interface ModuleSetupSeam {
@@ -320,7 +287,7 @@ const requiredString = (
     return value;
 };
 
-const workspaceIdentityOf = (context: ModuleActionContext): WorkspaceIdentity => {
+const workspaceIdentityOf = (context: ModuleActionContext): WorkspaceCapabilityIdentity => {
     if (context.scope !== "workspace") throw new Error("MCP actions require a workspace-scoped context.");
     return { workspaceId: context.workspaceId };
 };
@@ -359,7 +326,7 @@ export default class Module {
     // The committed attachments per workspace: the adapter's mirror of the snapshot
     // the coordinator holds, for continuations and refresh.
     readonly #attachments = new Map<number, ReadonlyMap<string, Attachment>>();
-    readonly #identities = new Map<number, WorkspaceIdentity>();
+    readonly #identities = new Map<number, WorkspaceCapabilityIdentity>();
     readonly #pending = new Map<string, PendingAuthorization>();
     readonly #dirty = new Map<string, symbol>();
     readonly #connections = new Set<ServerConnection>();
@@ -467,7 +434,7 @@ export default class Module {
     // {§mcp-discovery} — inert: a direct target is probed and disconnected;
     // caller configuration is parsed into candidates; registry search waits for
     // a configured downstream registry.
-    async #discover(query: FunctionalityDiscoverQuery, identity: WorkspaceIdentity, options: FunctionalityOptions = {}): Promise<FunctionalityCandidate[]> {
+    async #discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity, options: FunctionalityOptions = {}): Promise<FunctionalityCandidate[]> {
         this.#assertOpen();
         const candidates: FunctionalityCandidate[] = [];
         if (query.configuration !== undefined) {
@@ -657,7 +624,7 @@ export default class Module {
     // attachments, prepare the rest, and hand the coordinator runtimes and
     // outcomes; commit adopts the set and closes what it no longer uses, abort
     // closes only what this attempt opened.
-    async #prepare(preparation: Preparation): Promise<Prepared> {
+    async #prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared<RuntimeRegistration>> {
         this.#assertOpen();
         const { workspaceId, enabled, failure, force } = preparation;
         this.#identities.set(workspaceId, { workspaceId });
@@ -675,7 +642,7 @@ export default class Module {
             }
         }
         const next = new Map<string, Attachment>();
-        const outcomes = new Map<string, Outcome>();
+        const outcomes = new Map<string, FunctionalityOutcome>();
         const fresh: ConnectedAttachment[] = [];
         const consumedPending = new Map<string, PendingAuthorization>();
         const refreshed = new Map<string, symbol | undefined>();
@@ -810,7 +777,7 @@ export default class Module {
         };
     }
 
-    async #teardown(snapshot: unknown, identity: WorkspaceIdentity): Promise<void> {
+    async #teardown(snapshot: unknown, identity: WorkspaceCapabilityIdentity): Promise<void> {
         const { workspaceId } = identity;
         const pending = [...this.#pending.keys()].filter((key) => key.startsWith(`${workspaceId}:`));
         if (pending.length > 0) {
@@ -830,7 +797,7 @@ export default class Module {
     // {§oauth-continuation} — the callback finishes the pending connection's
     // authorization, prepares its attachment, and re-enables the alias through
     // the coordinator, which consumes the prepared attachment on publication.
-    async #completeOAuth(identity: WorkspaceIdentity, params: Readonly<Record<string, unknown>>): Promise<unknown> {
+    async #completeOAuth(identity: WorkspaceCapabilityIdentity, params: Readonly<Record<string, unknown>>): Promise<unknown> {
         assertActionKeys(params, ["alias", "callbackUrl"]);
         const alias = requiredString(params, "alias");
         const callbackUrl = requiredString(params, "callbackUrl");

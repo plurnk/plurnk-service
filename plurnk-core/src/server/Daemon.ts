@@ -5,7 +5,6 @@ import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import Share from "../share/Share.ts";
 import type { Db } from "../core/Db.ts";
-import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
 import type { StreamEventPayload } from "../core/ChannelWrite.ts";
 import type { ReasoningEventPayload } from "../core/ReasoningEvent.ts";
 import type { OutsideEventPayload } from "../core/OutsideEvent.ts";
@@ -31,7 +30,6 @@ import LogEntry from "./logEntry.ts";
 import HttpListener from "./HttpListener.ts";
 import Envelope, { projectWorkerRow } from "./envelope.ts";
 import ClientInput from "./client-input.ts";
-import type { ClientEnvelope } from "./envelope.ts";
 import Turn from "../core/Turn.ts";
 import SkillsFunctionality, { type SkillsToolchain } from "./SkillsFunctionality.ts";
 import PlurnkSkill from "./PlurnkSkill.ts";
@@ -54,12 +52,12 @@ import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import { parseAliasesFromEnv, resolveActiveRoute } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import type { LoopPolicy, LoopPolicyRequest } from "../core/types.ts";
-import type { CapabilityPolicy } from "@plurnk/plurnk-contracts";
+import type { CapabilityPolicy, ClientEnvelope, FunctionalityFamilyHandle, ProposalResolution } from "@plurnk/plurnk-contracts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
 import type { WorkspaceCapabilityRelease } from "./WorkspaceCapabilities.ts";
 import WorkspaceResidency from "./WorkspaceResidency.ts";
-import type { DaemonModule, FunctionalityAdapter, FunctionalityFamilyHandle, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration, ModuleSetupSeam, RuntimeRegistration, StartedModule, WorkspaceCapabilityProvider, WorkspaceCapabilityReplacement } from "./DaemonModule.ts";
+import type { DaemonModule, FunctionalityAdapter, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration, ModuleSetupSeam, RuntimeRegistration, StartedModule, WorkspaceCapabilityProvider, WorkspaceCapabilityReplacement } from "./DaemonModule.ts";
 import Functionality from "./Functionality.ts";
 import { observed, observedSync } from "../observe/spans.ts";
 import { listModelCatalog } from "./model-catalog.ts";
@@ -412,7 +410,7 @@ export default class Daemon implements ApplicationPort {
         return this.#engine.pendingProposals(checkedWorkspaceId);
     }
 
-    resolveProposal(logEntryId: number, resolution: Omit<ProposalResolution, "result">): void {
+    resolveProposal(logEntryId: number, resolution: ProposalResolution): void {
         const checkedLogEntryId = ClientInput.assertId("resolveProposal", "logEntryId", logEntryId);
         const checkedResolution = ClientInput.assertProposalResolution("resolveProposal", resolution);
         this.#engine.resolveProposal(checkedLogEntryId, checkedResolution);

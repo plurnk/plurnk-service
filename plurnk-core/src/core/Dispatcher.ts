@@ -9,7 +9,7 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import type ProposalLifecycle from "./ProposalLifecycle.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
-import type { ProposalResolution } from "./ProposalLifecycle.ts";
+import type { AppliedProposalResolution } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import { foldAuthorityIntoPath, renderAddress, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
 import WorkerName from "./WorkerName.ts";
@@ -671,7 +671,7 @@ export default class Dispatcher {
             // this live event and reconnect discovery ({§proposal-projection}). Its
             // disposition is also the one automatic settlement decision: policy is
             // not an observer and cannot silently degrade into client ownership.
-            let resolutionPromise: Promise<ProposalResolution>;
+            let resolutionPromise: Promise<AppliedProposalResolution>;
             try {
                 resolutionPromise = this.#proposals.awaitResolution(logEntryId, this.#loopSignal(loopId));
                 const event = await this.#proposals.pending(logEntryId);

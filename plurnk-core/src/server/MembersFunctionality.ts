@@ -17,7 +17,6 @@ import Results, { OperationFailureError } from "../core/results.ts";
 import WorkspaceSettings from "../core/workspace-settings.ts";
 import Paths from "../Paths.ts";
 import type {
-    FunctionalityAdapter,
     FunctionalityCaller,
     FunctionalityDefinitionSource,
     FunctionalityOutcome,
@@ -25,6 +24,9 @@ import type {
     FunctionalityPrepared,
     FunctionalityServiceDefinition,
     WorkspaceCapabilityIdentity,
+} from "@plurnk/plurnk-contracts";
+import type {
+    FunctionalityAdapter,
 } from "./DaemonModule.ts";
 
 const MEMBERS_FAMILY = "members";

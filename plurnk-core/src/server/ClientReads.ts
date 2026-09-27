@@ -5,7 +5,7 @@ import Engine from "../core/Engine.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { Validator, type ClientEntryChannel, type EntryReadResult } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
-import type { LogEntryWire } from "./logEntry.ts";
+import type { LogEntryWire } from "@plurnk/plurnk-contracts";
 import ClientInput from "./client-input.ts";
 import Results from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
