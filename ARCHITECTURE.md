@@ -181,6 +181,11 @@ reviewed register of deliberate non-knobs, each with its reason; a bare number
 handed to a timer has no register at all. Before adding a constant, a flag, a
 parameter default or a settings field, find its knob — or say why it has none.
 
+**The SQL core owns each invariant.** Contracts (JSON Schema) are enforced at
+the gates: a scheme's result entering core, and the wire leaving to clients.
+Everything between trusts core and the gates and carries no defensive
+re-validation ({§validation-topology}).
+
 ## Process composition
 
 ```mermaid

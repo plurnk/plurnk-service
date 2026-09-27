@@ -377,7 +377,7 @@ test("entry resources have no tag relation", async () => {
 });
 
 // {§logical-line-count} — `entry_channels.lines` is the persisted mirror of the one line count: the
-// frozen trigger expression and `TextCoordinates.lineCount` agree on every shape, at insert and at
+// trigger expression and `TextCoordinates.lineCount` agree on every shape, at insert and at
 // update ({§tokenomics-weight-stored-at-write}).
 const LINE_CORPUS: ReadonlyArray<readonly [label: string, content: string]> = [
     ["empty", ""],
@@ -411,9 +411,8 @@ test("entry_channels: the stored line count mirrors TextCoordinates.lineCount on
     } finally { await db.close(); }
 });
 
-// #783 F1: the frozen trigger counts LF only while {§logical-line-count} also breaks on a lone CR;
-// #883's migration makes the mirror exact, and this record turns into an assertion there.
-test("entry_channels: the stored line count mirrors TextCoordinates.lineCount on a lone CR", { todo: "#883: the frozen SQL counts LF only until migration 11" }, async () => {
+// {§logical-line-count} — a lone CR breaks a line; `011_settled` counts it.
+test("entry_channels: the stored line count mirrors TextCoordinates.lineCount on a lone CR", async () => {
     const db = await openMigrated();
     try {
         const entryId = await insertEntry(db, "worker", "/lines/lone-cr");

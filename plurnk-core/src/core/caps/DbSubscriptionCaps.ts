@@ -10,7 +10,6 @@
 // The returned object owns the exact retained lifecycle. Namespace methods are
 // operation-scoped compatibility forwarders to that same object.
 
-import { Results } from "@plurnk/plurnk-schemes";
 import type {
     SubscriptionCaps,
     SubscriptionHandle,
@@ -77,7 +76,7 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
             summary?: string,
             channelResults?: Readonly<Record<string, ChannelProducerResult>>,
         ): Promise<void> => {
-            Results.assertChannelProducerResult(result);
+            // {§validation-topology}: ChannelWrite.closeSubscription is the gate this result crosses.
             await ChannelWrite.closeSubscription(db, {
                 subscriptionId,
                 result,

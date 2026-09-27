@@ -598,6 +598,8 @@ export class SqlRiteSync {
 	test_turns_insert_missing_producer: SqlRiteSyncPreparedStatements;
 	test_turns_insert_missing_kind: SqlRiteSyncPreparedStatements;
 	test_turns_update_identity: SqlRiteSyncPreparedStatements;
+	test_topology_settle_subscription: SqlRiteSyncPreparedStatements;
+	test_topology_subscription_closed: SqlRiteSyncPreparedStatements;
 	test_workers_table_sql: SqlRiteSyncPreparedStatements;
 	test_workers_insert: SqlRiteSyncPreparedStatements;
 	test_workers_insert_with_parent: SqlRiteSyncPreparedStatements;
@@ -1182,6 +1184,8 @@ export default class SqlRite {
 	test_turns_insert_missing_producer: SqlRitePreparedStatements;
 	test_turns_insert_missing_kind: SqlRitePreparedStatements;
 	test_turns_update_identity: SqlRitePreparedStatements;
+	test_topology_settle_subscription: SqlRitePreparedStatements;
+	test_topology_subscription_closed: SqlRitePreparedStatements;
 	test_workers_table_sql: SqlRitePreparedStatements;
 	test_workers_insert: SqlRitePreparedStatements;
 	test_workers_insert_with_parent: SqlRitePreparedStatements;

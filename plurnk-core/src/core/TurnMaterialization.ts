@@ -213,7 +213,8 @@ export default class TurnMaterialization {
             // the executor closes the channel (#818).
             if (ch.producer_result === null) continue;
             if (skipped.has(ch.publication_id)) continue;
-            const terminal = Results.assert(JSON.parse(ch.producer_result) as SchemeResult);
+            // {§validation-topology}: a stored result is chapter 5's; it is parsed, not re-asserted.
+            const terminal = JSON.parse(ch.producer_result) as SchemeResult;
             const sequence = fromSequence + entryIds.length;
             const page = await ReadResolve.resolve({ content: ch.content, mimetype: ch.mimetype, lineMarker: null });
             const emptySiblings = siblings.get(ch.publication_id) ?? {};

@@ -86,13 +86,10 @@ export default class EntryCrud {
                 content: row.content,
                 mimetype: row.mimetype,
                 state: row.state,
+                // {§validation-topology}: a stored result is chapter 5's; it is parsed, not re-asserted.
                 ...(row.producer_result === null
                     ? {}
-                    : {
-                        producerResult: Results.assertChannelProducerResult(
-                            JSON.parse(row.producer_result) as ChannelProducerResult,
-                        ),
-                    }),
+                    : { producerResult: JSON.parse(row.producer_result) as ChannelProducerResult }),
             };
         }
 

@@ -1175,9 +1175,8 @@ export default class Daemon implements ApplicationPort {
             promptSource: row.promptSource,
             terminatedAt: row.terminatedAt,
             packetCount: row.packetCount,
-            terminalResult: row.terminalResult === null
-                ? null
-                : Validator.assertOperationResult(JSON.parse(row.terminalResult) as SchemeResult) }));
+            // {§validation-topology}: a stored result is chapter 3's (`loops_terminal_result_contract`); it is parsed, not re-asserted.
+            terminalResult: row.terminalResult === null ? null : JSON.parse(row.terminalResult) as SchemeResult }));
     }
     // {§methods-workspace-prompts}: root-conversation loop seeds, newest-first.
     // {§share} — one workspace's share. The daemon names its own database; the caller names an absolute folder.
