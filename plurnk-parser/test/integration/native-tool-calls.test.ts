@@ -1,6 +1,7 @@
 // {§native-tool-calls} — recorded DSML emissions read as the operations they name (#760).
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { PlurnkParser } from "../../src/index.ts";
 
 const EXECUTORS = ["sh", "node"];
@@ -89,7 +90,7 @@ test("{§native-tool-calls} a call naming a tool plurnk does not have, or a para
         "<tool_call>\n{\"name\": \"read_file\", \"arguments\": {\"path\": \"x\"}}\n</tool_call>",
         "<tool_call><function=EDIT><parameter=old_string>a</parameter><parameter=new_string>b</parameter></function></tool_call>",
         "[TOOL_CALLS][{\"name\": \"READ\", \"arguments\": {\"encoding\": \"utf8\"}}]",
-        "<|tool_call_begin|>functions.bash:0<|tool_call_argument_begin|>{\"command\": \"ls\"}<|tool_call_end|>",
+        "<|tool_call_begin|>functions.grep:0<|tool_call_argument_begin|>{\"pattern\": \"ls\"}<|tool_call_end|>",
     ]) {
         assert.deepEqual(ops(input), [], `no operation is invented from ${input.slice(0, 40)}`);
     }
@@ -169,7 +170,9 @@ test("{§native-tool-call-receipt} markup that was not read is named with the fe
         "`<tool_call>` is tool-call markup, which plurnk does not run, so nothing ran. An operation is a fenced block: three backticks and `EDIT (django/forms/widgets.py)` on the opening line.",
         PlurnkParser.NO_VALID_OPERATION,
     ]);
-    assert.equal(receipt("<tool_call>\n{\"name\":\"Bash\",\"input\":{\"command\":\"cd /workspace && git status\"}}\n</tool_call>")[0],
+    // `bash` names `sh` when `sh` is the registered shell, so the recorded Bash call runs; a shell by an unknown name draws the sh form.
+    assert.deepEqual(withoutPosition(ops("<tool_call>\n{\"name\":\"Bash\",\"input\":{\"command\":\"cd /workspace && git status\"}}\n</tool_call>")), canonical("````sh\ncd /workspace && git status\n````"));
+    assert.equal(receipt("<tool_call>\n{\"name\":\"zsh\",\"input\":{\"command\":\"cd /workspace && git status\"}}\n</tool_call>")[0],
         "`<tool_call>` is tool-call markup, which plurnk does not run, so nothing ran. An operation is a fenced block: three backticks and `sh` on the opening line, the command on the lines below it, and three backticks to close.");
     assert.equal(receipt("<tool_call>\n{\"text\": \"Let me fix the `_css` property.\", \"type\": \"note\"}\n</tool_call>")[0],
         "`<tool_call>` is tool-call markup, which plurnk does not run, so nothing ran. An operation is a fenced block: three backticks and `NOTE` on the opening line, the note on the lines below it, and three backticks to close.");
@@ -177,4 +180,36 @@ test("{§native-tool-call-receipt} markup that was not read is named with the fe
         "`<tool_call>` is tool-call markup, which plurnk does not run, so nothing ran. An operation is a fenced block: three backticks and the operation with its target, such as `READ (path)`, on the opening line.");
     const beside = read("````READ (a.md)\n````\n\n<tool_call>\n<tool_call>");
     assert.ok(beside.items.every((item) => item.kind !== "error" || !item.error.message.includes("tool-call markup")), "an emission that ran an operation draws no receipt");
+});
+
+// {§native-tool-calls} — DeepSeek's dialect with the heading in the invoke's name, verbatim from run429 (#853).
+test("{§native-tool-calls} DeepSeek run429: invoke names holding whole headings, an unclosed `name=\"sh`, and parameter debris read as NOTE, two FINDs and the sh (recorded)", () => {
+    const text = readFileSync(new URL("../fixtures/recorded/deepdumb-run429-10730551-1-13.md", import.meta.url), "utf8");
+    const result = read(text);
+    const executed = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.deepEqual(executed.map((statement) => "runtime" in statement ? statement.runtime : statement.op), ["NOTE", "FIND", "FIND", "sh"]);
+    const [note, first, second, sh] = executed;
+    assert.match(note?.op === "NOTE" ? note.body ?? "" : "", /^Working the Http404-in-converter issue\./u);
+    assert.equal(first?.op === "FIND" ? first.target?.raw : null, "docs/**");
+    assert.equal(first?.op === "FIND" ? first.matcher?.raw : null, "/Http404/");
+    assert.equal(first?.aside, "docs mentions");
+    assert.equal(second?.op === "FIND" ? second.target?.raw : null, "django/urls/**");
+    assert.equal(second?.op === "FIND" ? second.matcher?.raw : null, "/converter/");
+    assert.equal(second?.aside, "converter references");
+    const script = sh !== undefined && "runtime" in sh ? sh.body ?? "" : "";
+    assert.match(script, /^git log -1 --format='%H %ci %s'; echo '---'; git status --short;/u, "the script under `name=\"sh` is the body");
+    assert.doesNotMatch(script, /DSML|parameter/u, "the tag debris never enters the script");
+    assert.deepEqual(result.items.filter((item) => item.kind === "text"), [], "no outside text");
+    assert.deepEqual(result.items.filter((item) => item.kind === "error" && item.error.severity === "error"), [], "no receipt: every call was read");
+});
+
+test("{§native-tool-calls} DeepSeek debris: a copied facts line, a `comment` attribute, an executor's option, `bash` as `sh`, and slots after the tag", () => {
+    const facts = "<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name=\"sh\" comment=\"run the suite\">\n{\"lines\":6}\nnpm test\n</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>";
+    assert.deepEqual(withoutPosition(ops(facts)), canonical("````sh <!-- run the suite -->\nnpm test\n````"));
+    const option = "<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name=\"python3\">\nprint(1)\n</｜｜DSML｜｜ parameter>\n<｜｜DSML｜｜ parameter name=\"maxTokens\" string=\"true\">2500</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n<｜｜DSML｜｜ invoke name=\"READ\">(sympy/tensor/array/__init__.py) <225,248>\n</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>";
+    assert.deepEqual(withoutPosition(PlurnkParser.parse(option, { executors: ["sh", "python3"] }).items.flatMap((item) => item.kind === "statement" ? [item.statement] : [])),
+        PlurnkParser.parse("````python3 [{\"maxTokens\":\"2500\"}]\nprint(1)\n````\n\n````READ (sympy/tensor/array/__init__.py) <225,248>\n````", { executors: ["sh", "python3"] }).items.flatMap((item) => item.kind === "statement" ? [{ ...item.statement, position: undefined }] : []));
+    const bash = "<｜｜DSML｜｜tool_calls>\n<｜｜DSML｜｜invoke name=\"Bash\">\n<｜｜DSML｜｜parameter name=\"command\" string=\"true\">ls -la</｜｜DSML｜｜parameter>\n<｜｜DSML｜｜/invoke>\n<｜｜DSML｜｜/tool_calls>";
+    assert.deepEqual(withoutPosition(ops(bash)), canonical("````sh\nls -la\n````"));
+    assert.deepEqual(ops("<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name=\"READ\">\n<｜｜DSML｜｜ parameter name=\"height\">3</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>"), [], "an unknown parameter on a native operation still leaves the emission unread");
 });

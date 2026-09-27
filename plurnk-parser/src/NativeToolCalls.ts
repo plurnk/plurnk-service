@@ -18,14 +18,20 @@ const SLOT_OF: Readonly<Record<string, "path" | "scope" | "pattern" | "aside" | 
     end: "end", end_line: "end", endLine: "end", to: "end",
     limit: "limit",
     pattern: "pattern", regex: "pattern", query: "pattern",
-    aside: "aside", reason: "aside", description: "aside",
+    aside: "aside", reason: "aside", description: "aside", comment: "aside",
     body: "body", content: "body", command: "body", text: "body", input: "body",
 });
 
 const DSML = "(?:｜｜DSML｜｜\\s*)?";
-const INVOKE_OPEN = new RegExp(`^\\s*<${DSML}invoke\\s+name="([^"]+)"(.*)$`);
-const INVOKE_CLOSE = new RegExp(`^\\s*</${DSML}invoke>\\s*$`);
+// The name attribute may hold a whole plurnk heading (`name="FIND (docs/**) /re/ <!-- why -->"`) and its closing
+// quote may be missing (`name="sh` then the script on the lines below).
+const INVOKE_OPEN = new RegExp(`^\\s*<${DSML}invoke\\s+name="([^"]*)("(.*))?$`);
+const INVOKE_CLOSE = new RegExp(`^\\s*<${DSML}/?invoke>\\s*$|^\\s*</${DSML}invoke>\\s*$`);
 const PARAMETER = new RegExp(`^\\s*<${DSML}parameter\\s+name="([^"]+)"[^>]*>(.*?)</${DSML}parameter>\\s*$`);
+// A parameter whose closing tag never comes: its value runs to the end of the line.
+const PARAMETER_OPEN = new RegExp(`^\\s*<${DSML}parameter\\s+name="([^"]+)"[^>]*>(.*)$`);
+// The packet's facts line copied under a heading (`{"lines":6}`): receipt debris, never a body's first line.
+const FACTS_LINE = /^\{"(?:lines|tokens|range|status|resource|exitCode)"[^\n]*\}\s*$/u;
 const STRAY_PARAMETER_CLOSE = new RegExp(`^\\s*</${DSML}parameter>\\s*$`);
 const FENCE_LINE = /^\s*`{3,}\s*$/;
 // A key that names the operation inside a flat JSON call, `{"op": "READ", "path": …}`, in any case.
@@ -34,7 +40,7 @@ const OP_KEYS = new Set(["op", "action", "cmd"]);
 const STRAY_CLOSERS = /^(?:\s*<\/[A-Za-z_｜ ]*>)*\s*$/u;
 const MARKERS = ["DSML", "<function_calls>", "<invoke ", "<tool_call", "<function=", "[TOOL_CALLS]", "<|python_tag|>", "<|tool_call"];
 
-type Slots = { path?: string; scope?: string; pattern?: string; aside?: string; start?: string; end?: string; limit?: string; body: string[]; extra: string };
+type Slots = { path?: string; scope?: string; pattern?: string; aside?: string; start?: string; end?: string; limit?: string; body: string[]; extra: string; options?: Record<string, string> };
 type Call = { name: string; slots: Slots; line: number };
 // A block of markup: its character span, the lines it covers, and the calls it names (null when unmappable).
 type Block = { from: number; to: number; startLine: number; endLine: number; calls: Call[] | null };
@@ -136,7 +142,7 @@ export default class NativeToolCalls {
             const m = re.exec(input);
             return m === null ? -1 : m.index;
         };
-        const callsOpen = at(/<(?:｜｜DSML｜｜\s*)?(?:calls|function_calls)>/);
+        const callsOpen = at(/<(?:｜｜DSML｜｜\s*)?(?:calls|tool_calls|function_calls)>/);
         if (callsOpen !== -1) candidates.push({ at: callsOpen, read: () => NativeToolCalls.#elementBlock(input, callsOpen, known) });
         const toolCall = at(/<tool_call(?:\s[^>]*)?>/);
         if (toolCall !== -1) candidates.push({ at: toolCall, read: () => NativeToolCalls.#toolCallBlock(input, toolCall, known) });
@@ -159,14 +165,14 @@ export default class NativeToolCalls {
     // DSML and Anthropic-style: `<calls>`/`<function_calls>` holding `invoke` elements with `parameter` children.
     // A block written on one line is read as if each tag had its own line.
     static #elementBlock(input: string, from: number, known: ReadonlySet<string>): Omit<Block, "startLine" | "endLine"> | null {
-        const open = /<(?:｜｜DSML｜｜\s*)?(?:calls|function_calls)>/y;
+        const open = /<(?:｜｜DSML｜｜\s*)?(?:calls|tool_calls|function_calls)>/y;
         open.lastIndex = from;
         const opened = open.exec(input)!;
         const contentStart = from + opened[0].length;
-        const closeRe = /<\/(?:｜｜DSML｜｜\s*)?(?:calls|function_calls)>/g;
+        const closeRe = /<\/(?:｜｜DSML｜｜\s*)?(?:calls|tool_calls|function_calls)>|<｜｜DSML｜｜\s*\/(?:calls|tool_calls|function_calls)>/g;
         closeRe.lastIndex = contentStart;
         const close = closeRe.exec(input);
-        const nextOpen = /<(?:｜｜DSML｜｜\s*)?(?:calls|function_calls)>/g;
+        const nextOpen = /<(?:｜｜DSML｜｜\s*)?(?:calls|tool_calls|function_calls)>/g;
         nextOpen.lastIndex = contentStart;
         const next = nextOpen.exec(input);
         const closeAt = close === null ? -1 : close.index;
@@ -193,22 +199,27 @@ export default class NativeToolCalls {
             const invoke = INVOKE_OPEN.exec(line);
             if (invoke !== null) {
                 finish();
-                const name = NativeToolCalls.#operation(invoke[1]!, known);
-                const slots = NativeToolCalls.#headingSlots(invoke[2]!);
+                // The name is a heading: its first word names the operation, the rest are its slots.
+                const heading = invoke[1]!.trim();
+                const nameEnd = heading.search(/[\s(<[]/u);
+                const name = NativeToolCalls.#operation(nameEnd === -1 ? heading : heading.slice(0, nameEnd), known);
+                const written = nameEnd === -1 ? "" : NativeToolCalls.#withoutStrayClosers(heading.slice(nameEnd));
+                const slots = invoke[2] === undefined ? { body: [], extra: "" } : NativeToolCalls.#headingSlots(invoke[3]!);
                 if (name === null || slots === null) { mappable = false; continue; }
+                if (written.length > 0) slots.extra = slots.extra.length > 0 ? `${written} ${slots.extra}` : written;
                 current = { name, slots, line: sourceLine };
                 continue;
             }
-            if (INVOKE_CLOSE.test(line) || STRAY_PARAMETER_CLOSE.test(line) || FENCE_LINE.test(line)) { finish(); continue; }
-            const parameter = PARAMETER.exec(line);
+            if (INVOKE_CLOSE.test(line) || FENCE_LINE.test(line)) { finish(); continue; }
+            // A parameter's closing tag with no opener is debris: the call goes on to its own closer.
+            if (STRAY_PARAMETER_CLOSE.test(line)) continue;
+            const parameter = PARAMETER.exec(line) ?? PARAMETER_OPEN.exec(line);
             if (parameter !== null) {
-                const slot = SLOT_OF[parameter[1]!];
-                if (current === null || slot === undefined) { mappable = false; continue; }
-                if (slot === "body") current.slots.body.push(parameter[2]!);
-                else current.slots[slot] = parameter[2]!;
+                if (current === null || !NativeToolCalls.#assign(current.slots, parameter[1]!, parameter[2]!, known.has(current.name.toLowerCase()))) { mappable = false; continue; }
                 continue;
             }
             if (current === null) { if (line.trim().length > 0) mappable = false; continue; }
+            if (current.slots.body.length === 0 && FACTS_LINE.test(line.trim())) continue;
             current.slots.body.push(line);
         }
         finish();
@@ -497,12 +508,19 @@ export default class NativeToolCalls {
     static #operation(raw: string, known: ReadonlySet<string>): string | null {
         const name = raw.trim();
         if (OPERATIONS.has(name.toUpperCase())) return name.toUpperCase();
+        // A shell by another model's name: `bash` is `sh` when `sh` is the registered shell.
+        if (name.toLowerCase() === "bash" && !known.has("bash") && known.has("sh")) return "sh";
         return known.has(name.toLowerCase()) ? name : null;
     }
 
-    static #assign(slots: Slots, key: string, value: string): boolean {
+    // An executor's unknown parameter is one of its options, written as the option block its owner reads.
+    static #assign(slots: Slots, key: string, value: string, executor = false): boolean {
         const slot = SLOT_OF[key];
-        if (slot === undefined) return false;
+        if (slot === undefined) {
+            if (!executor) return false;
+            slots.options = { ...slots.options, [key]: value };
+            return true;
+        }
         if (slot === "body") slots.body.push(...value.split("\n"));
         else slots[slot] = value;
         return true;
@@ -580,7 +598,10 @@ export default class NativeToolCalls {
     // model wrote verbatim after the name (`(path) <scope> [{"cwd":"."}] <!-- … -->`).
     static #headingSlots(rest: string, tagClosed = true): Slots | null {
         const slots: Slots = { body: [], extra: "" };
-        let remainder = tagClosed ? rest.replace(/(?<!--)\/?>\s*$/, "") : rest;
+        // The tag's own `>` follows an attribute's closing quote or a space before `/>`; a scope's `>` never does.
+        let remainder = tagClosed ? rest.replace(/(?<=^|")\s*\/?>\s*$|\s\/?>\s*$/, "") : rest;
+        // The tag closed and the slots follow it on the line: `<invoke name="READ">(a.py) <1,5>`.
+        remainder = remainder.replace(/^\s*\/?>\s*(?=[(<[])/u, " ").replace(/(?:\s*<\/(?:[A-Za-z_｜ ]*)>)+\s*$/u, "");
         for (const [whole, key, value] of remainder.matchAll(/\s([a-z_]+)="([^"]*)"/g)) {
             if (!NativeToolCalls.#assign(slots, key!, value!) || SLOT_OF[key!] === "body") return null;
             remainder = remainder.replace(whole, "");
@@ -603,6 +624,7 @@ export default class NativeToolCalls {
             slots.path === undefined ? "" : `(${slots.path.trim()})`,
             scope === "" ? "" : scope.startsWith("<") ? scope : `<${scope}>`,
             slots.pattern === undefined ? "" : `[${JSON.stringify({ pattern: slots.pattern })}]`,
+            slots.options === undefined ? "" : `[${JSON.stringify(slots.options)}]`,
             slots.extra,
             slots.aside === undefined ? "" : `<!-- ${slots.aside.trim()} -->`,
         ].filter((part) => part.length > 0).join(" ");
