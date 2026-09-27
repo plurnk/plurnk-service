@@ -106,7 +106,7 @@ test("#809: parameterless SEND delivers but only KILL concludes", async () => {
     } finally { await f.db.close(); }
 });
 
-test("{§response-text-note}: stray text answers nothing, so an empty KILL cannot conclude after it", async () => {
+test("{§outside-text}: stray text answers nothing, so an empty KILL cannot conclude after it", async () => {
     const f = await setup([
         { assistant: { content: "42.", reasoning: null } },
         { assistant: { content: frame("KILL", ""), reasoning: null } },

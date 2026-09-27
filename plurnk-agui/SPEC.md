@@ -85,6 +85,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | transport failure after SSE opens          | `CUSTOM plurnk.problem` (exact Problem Details) + `RUN_ERROR` (`code` = Problem `type`, `message` = Problem `detail`) |
 | `notice/event`                             | `CUSTOM plurnk.notice`; routine derivation lifecycle uses only `STATE /plurnk/status/activity`, while warnings/errors also retain their diagnostic Notice. |
 | `reasoning/event`                          | Standard live `REASONING_START` → `REASONING_MESSAGE_START` → one or more `REASONING_MESSAGE_CONTENT` → `REASONING_MESSAGE_END` → `REASONING_END` {§agui-readable-reasoning} |
+| §agui-outside-text `outside/event`          | `CUSTOM plurnk.outside` with `{ coordinate, text, tokens }` exactly as core stored and weighed it ({§notifications-outside-event}): the thread's model worker's text outside every operation, once per admitted emission, after the turn's `STEP_STARTED`. Never assistant speech, reasoning or a NOTE; a foreign worker's text never enters the thread. |
 | `stream/event` + `stream/concluded`        | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475). A conclusion preserves its exact universal `result`, including RFC 9457 Problem Details; AG-UI does not reconstruct failure from a status or summary. |
 
 §agui-lifecycle-projection **Lifecycle, memory and speech remain distinct.** Live
@@ -131,7 +132,7 @@ sequence.
   streams and conversation replay remain {§agui-readable-reasoning}.
 - §agui-custom-namespace **The custom namespace** — plurnk-specific metadata rides
   `CUSTOM` events named `plurnk.*` (`plurnk.send`, `plurnk.ambient`,
-  `plurnk.notice`, `plurnk.stream`, `plurnk.terminated` — the full loop
+  `plurnk.notice`, `plurnk.outside`, `plurnk.stream`, `plurnk.terminated` — the full loop
   outcome and {§provider-accounting} the gauge `STATE_DELTA` cannot represent). Generic frontends skip unknown customs; plurnk-aware frontends render
   them richly. Nothing plurnk-specific ever masquerades as a core event.
 
@@ -487,6 +488,7 @@ event families:
 | `loop/interaction` |
 | `notice/event` |
 | `reasoning/event` |
+| `outside/event` |
 | `stream/event` |
 | `stream/concluded` |
 

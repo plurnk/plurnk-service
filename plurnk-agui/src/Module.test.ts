@@ -2423,6 +2423,7 @@ test("{§discovery} discover returns the exact public action and notification me
             "loop/proposal",
             "loop/terminated",
             "notice/event",
+            "outside/event",
             "reasoning/event",
             "stream/concluded",
             "stream/event",

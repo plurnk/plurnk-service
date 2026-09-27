@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import PacketWire from "../core/packet-wire.ts";
 import StoredPacket from "../core/StoredPacket.ts";
+import { contentWeight } from "../core/content-weight.ts";
 import { renderTarget } from "../core/plurnk-uri.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
 import {
@@ -243,6 +244,8 @@ export default class DigestRender {
         const rails = attached === undefined || attached === false ? ""
             : ` rails=${attached === true ? "client" : attached}`;
         const model = turn.model ?? "—";
+        // {§outside-text}: the weight the model was told, so a digest reader sees the discard at a glance.
+        const outside = turn.outside === null ? "" : ` outside=${contentWeight(turn.outside)} tok`;
         const errs = (m.logEntriesByTurn.get(turn.id) ?? [])
             .filter((le) => le.status_rx >= 400 && !DigestRender.#isExecutorEvidence(le)).length;
         const errBadge = errs > 0 ? `  ⚠ errs=${errs}` : "";
@@ -264,7 +267,7 @@ export default class DigestRender {
         const provenance = [modelTurn === null ? null : `model turn ${modelTurn}`, stem].filter((part) => part !== null).join(" · ");
         const lifecycle = `T${turn.sequence}${provenance === "" ? "" : ` (${provenance})`}: producer=${turn.producer} kind=${turn.kind} status=${turn.status}${turn.completed_at === null ? " state=open" : ""}`;
         const head = turn.kind === "inference"
-            ? `${lifecycle} finish=${finishReason}${rails} model=${model} ${tokens}${cost}${errBadge}${attemptBadge}${packetBadge}`
+            ? `${lifecycle} finish=${finishReason}${rails} model=${model} ${tokens}${cost}${outside}${errBadge}${attemptBadge}${packetBadge}`
             : `${lifecycle}${errBadge}${packetBadge}`;
         const summary = packetFailure !== null
             ? `  ↳ provider packet: invalid stored evidence (${packetFailure.error.message})`

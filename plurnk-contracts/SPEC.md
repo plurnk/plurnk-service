@@ -333,7 +333,7 @@ as that closer, at the cost of one repair. This carries no diagnostic: a missing
 never an admission failure, and {§unparsed-tail-boundary} is not involved.
 
 `plurnk.md` shows every operation closed; this recovery is not taught. It sits at the quiet end of
-the scale {§response-text-note} describes: the model opened the operation correctly
+the scale {§outside-text} describes: the model opened the operation correctly
 and only failed to close it, so the harness reads what it plainly meant and says nothing.
 A departure that small earns no correction — telling a model its closer was missing costs
 a sentence in every future packet to fix something already fixed.
@@ -543,7 +543,7 @@ response text under {§response-text}, not an executable program or a completion
 example, and shows its own examples offset; the other quoting fences are untaught: a tilde
 fence, an unlabeled fence and an unknown tag all quote. Each is a shape a model reaches for from ordinary Markdown rather than from this
 teaching, so honouring it protects an example the model already believed was safe
-({§response-text-note} places the scale). The offset is the one form that survives every
+({§outside-text} places the scale). The offset is the one form that survives every
 fence style.
 
 §interstitial-fence Only a native operation or a known executor opens a block. A fence naming
@@ -1226,21 +1226,22 @@ Quoted blocks remain literal text, including every nested operation-looking line
 Operation bodies, asides, malformed operation regions and unfenced operation lines
 ({§unfenced-operation}) are not response text;
 nothing at or beyond a lost boundary is recovered as text. The statement and client
-tiers ignore outside text. Core alone owns filing it as a NOTE ({§response-text-note})
+tiers ignore outside text. Core alone owns storing it as the turn's outside source ({§outside-text})
 and no-operation strikes ({§empty-turn}); parsing never infers delivery or completion
 intent.
 
 §unfenced-operation **An operation written without its fence did not run, and the parser says
 so.** An outside-text line that opens at column zero with an operation's name and anything else
 — `KILL The answer…`, `READ (a.md)`, `KILL (notes.md)` — draws one warning: `` `KILL` has no
-fence, so it did not run. `` The line is not response text ({§response-text}): it is neither filed as
-a NOTE nor echoed into the next packet, and the exact emission remains at `ops://`; the bare name alone
+fence, so it did not run. `` The line is not response text ({§response-text}): it is neither stored
+as outside text nor echoed into the next packet, and the exact emission remains at `ops://`; the bare name alone
 opens the operation instead ({§naked-operation}). A registered executor's name followed by an
 operand slot — `gitea (list_issues)`, `sh(build.sh)` — draws the same warning under the executor's
 own spelling; quoted blocks, offset lines and names inside a sentence draw nothing, since `sh`,
-`env` and `members` are ordinary words. The model that wrote it believes it ran: filed as a
-NOTE ({§response-text-note}), an unfenced KILL would read back as an answer already given, and
-the model would repeat it. The warning and the exclusion together prevent that echo.
+`env` and `members` are ordinary words. The model that wrote it believes it ran: stored as
+outside text ({§outside-text}), an unfenced KILL would sit in the record as an answer never given,
+and only the warning tells the model otherwise. The warning and the exclusion together keep the
+line out of the record.
 
 §recorded-emissions **The parser is regressed against emissions models actually produced,
 not fixtures we wrote.** `test/fixtures/recorded-emissions.jsonl` holds one real exemplar
@@ -1664,7 +1665,7 @@ diagnostics are:
   position after the closing `/`. Only a leading group of `i`, `m` and `s` lifts;
   `(?i:…)` scoped modifiers are valid ECMAScript and pass through untouched.
   `plurnk.md` teaches one regex spelling, `/\btimeout\b/i`, with flags after the closing
-  slash; the lift is not taught. Unlike the tolerances on the {§response-text-note}
+  slash; the lift is not taught. Unlike the tolerances on the {§outside-text}
   scale, this one forgives a departure the model did not choose: `(?i)` is the spelling
   a great many models were trained on, so refusing it would punish an instinct rather
   than a mistake ({§naked-pattern} carries `^` for the same reason). The advisory still
@@ -1726,7 +1727,7 @@ diagnostics are:
   itself ends in one of those shapes takes the option escape.
   `plurnk.md` teaches one order — `OP (path)? <scope|range>? [metadata]? pattern?
   <!-- aside -->?` — and free ordering is not taught. Small departure, small
-  reinterpretation ({§response-text-note}): every slot the model wrote is present and
+  reinterpretation ({§outside-text}): every slot the model wrote is present and
   unambiguous, so only their sequence differs from the taught form, and nothing is
   invented to read it. The advisory names the canonical order rather than refusing,
   because the operation the model meant is never in doubt.

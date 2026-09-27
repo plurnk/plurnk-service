@@ -52,14 +52,16 @@ test("{§forgotten-tag}: operations on the line after a bare fence run; a bare e
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "send-misfenced" });
-            const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "research plurnk", policy: { proposals: "accept" } });
+            const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "research plurnk", policy: { proposals: "accept" } });
             assert.equal(finalStatus, 200, "the second turn concludes");
             await flush();
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; tx: string }>({ loop_id: loopId });
             const model = rows.filter((r) => r.origin === "model").map(({ op, tx }) => ({ op, tx }));
             assert.ok(model.some(({ op }) => op === "READ"), "the READ under a bare fence ran");
             assert.ok(model.some(({ op }) => op === "WAIT"), "the WAIT under a bare fence ran");
-            assert.ok(model.some(({ op, tx }) => op === "NOTE" && /printf plurnk/.test(tx)), "a bare executor name is a word: its block stays quoted text");
+            assert.equal(model.some(({ op }) => op === "NOTE"), false, "quoted text is no row");
+            const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: modelWorkerId! });
+            assert.ok(sources.some((row) => row.kind === "outside" && /printf plurnk/.test(row.content)), "a bare executor name is a word: its block stays quoted text, stored outside the turn ({§outside-text})");
             assert.match(JSON.stringify(mock.received[1]), /ran, though its fence was malformed: the opening fence, OP, parameters, and aside share one line/, "the next packet states the form once");
             assert.equal(await lastReply(db, loopId), "the answer");
             const shells = await db.test_get_entry_by_pathname_scheme.get({ scheme: "sh", pathname: "/1/1/1/sh" });

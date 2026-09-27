@@ -40,6 +40,7 @@ export interface TurnRow {
     finish_reason: string | null; model: string | null;
     meta: string | null;  // {§meta-passthrough}, {§operator-grammar}
     program: string | null;
+    outside: string | null;  // {§outside-text}
 }
 export interface PacketEvidence { packet: DurablePacket | null; packetFailure: PacketFailure | null }
 export interface TurnAttemptRow {

@@ -55,6 +55,17 @@ export type ReasoningEventNotification = {
     | { phase: "content"; delta: string }
 );
 
+// {§agui-outside-text}: one admitted emission's text outside every operation, with the exact
+// weight the model was told and the `<worker>-<loop>-<turn>` coordinate its evidence is filed under.
+export interface OutsideEventNotification {
+    workerId: number;
+    loopId: number;
+    turnId: number;
+    coordinate: string;
+    text: string;
+    tokens: number;
+}
+
 export interface TerminatedNotification {
     workerId: number;
     loopId: number;

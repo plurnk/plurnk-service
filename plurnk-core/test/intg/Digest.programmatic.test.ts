@@ -12,6 +12,7 @@ import type { Db } from "../../src/core/Db.ts";
 import Turn from "../../src/core/Turn.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, testDeferredProviderCapacity } from "./_helpers.ts";
+import { contentWeight } from "../../src/core/content-weight.ts";
 
 const execFileP = promisify(execFile);
 
@@ -58,6 +59,7 @@ const seedWorkerEvidence = async (
         model: `model-${marker}`,
         meta: "{}",
     });
+    await Turn.recordSource(db, turnId, "outside", `outside-${marker}`);
     await Turn.complete(db, turnId, 200);
     const modelCall = await db.engine_open_model_call.get<{ id: number }>({
         turn_id: turnId,
@@ -315,6 +317,8 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         // {§digest-programmatic-surface}: a turn line names its own artifact and the model's own
         // count, so a reader never subtracts harness turns or counts packet files by hand.
         assert.match(worker.markdown, /^T\d+ \(model turn \d+ · worker-a1-1-1\): producer=model/m);
+        assert.match(worker.markdown, new RegExp(`^T\\d+ \\(model turn \\d+ · worker-a1-1-1\\): producer=model.* outside=${contentWeight("outside-a1")} tok`, "m"),
+            "{§outside-text}: the turn line carries the weight of its outside text");
         for (const stem of worker.markdown.match(/worker-[a-z0-9]+-\d+-\d+/gu) ?? []) {
             assert.ok(worker.files.some((file) => file.startsWith(`${stem}.`)), `${stem} names a written artifact`);
         }

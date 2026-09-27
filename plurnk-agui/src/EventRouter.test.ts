@@ -160,3 +160,15 @@ test("terminated serves the standard RAW channel — the provider's native compl
     const bare = router().route("loop/terminated", termination({ usage: loopUsage({ inputTokens: 5, outputTokens: 6, curationBudget: 200000 }) }));
     assert.equal(bare.find((e) => e.type === "RAW"), undefined, "empty meta → no RAW");
 });
+
+test("{§agui-outside-text}: outside/event validates its payload and projects plurnk.outside", () => {
+    const r = router();
+    const events = r.route("outside/event", { workerId: 10, loopId: 2, turnId: 3, coordinate: "w-2-3", text: "an aside", tokens: 4 });
+    assert.deepEqual(events.map(({ type }) => type), [EventType.STEP_STARTED, EventType.CUSTOM]);
+    assert.deepEqual(events[1], { type: EventType.CUSTOM, name: "plurnk.outside", value: { coordinate: "w-2-3", text: "an aside", tokens: 4 } });
+    assert.throws(
+        () => r.route("outside/event", { workerId: 10, loopId: 2, turnId: 3, coordinate: "w-2-3", text: "", tokens: 4 }),
+        /outside\/event notification/,
+        "empty text is not an event",
+    );
+});

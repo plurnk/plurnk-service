@@ -30,6 +30,8 @@ import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
+import type { OutsideEventNotify } from "./OutsideEvent.ts";
+import { contentWeight } from "./content-weight.ts";
 import type { LoopPacketNotify } from "./LoopPacket.ts";
 import { generatedPathname } from "./plurnk-uri.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
@@ -152,6 +154,8 @@ type SplitProviderResponse = {
     emptyTurn: boolean;
     // {§kill-conclusion}: an explicit completion request, without new operational work.
     finalResponse: boolean;
+    // {§outside-text}: every span outside an operation, in source order, weighed by the packet's ruler.
+    outside: { text: string; tokens: number } | null;
 };
 
 type MaterializedModelRequest = {
@@ -392,6 +396,7 @@ export default class TurnRunner {
     readonly #liveSubscriptions: LiveSubscriptions;
     readonly #streamEventNotify: StreamEventNotify | undefined;
     readonly #reasoningEventNotify: ReasoningEventNotify | undefined;
+    readonly #outsideEventNotify: OutsideEventNotify | undefined;
     readonly #loopPacketNotify: LoopPacketNotify | undefined;
     readonly #wakeWorkerNotify: WakeWorkerNotify | undefined;
     readonly #executors: () => ExecutorRegistry | undefined;
@@ -420,6 +425,7 @@ export default class TurnRunner {
         liveSubscriptions,
         streamEventNotify,
         reasoningEventNotify,
+        outsideEventNotify,
         loopPacketNotify,
         wakeWorkerNotify,
         executors,
@@ -441,6 +447,7 @@ export default class TurnRunner {
         liveSubscriptions: LiveSubscriptions;
         streamEventNotify?: StreamEventNotify;
         reasoningEventNotify?: ReasoningEventNotify;
+        outsideEventNotify?: OutsideEventNotify;
         loopPacketNotify?: LoopPacketNotify;
         wakeWorkerNotify?: WakeWorkerNotify;
         executors: () => ExecutorRegistry | undefined;
@@ -462,6 +469,7 @@ export default class TurnRunner {
         this.#liveSubscriptions = liveSubscriptions;
         this.#streamEventNotify = streamEventNotify;
         this.#reasoningEventNotify = reasoningEventNotify;
+        this.#outsideEventNotify = outsideEventNotify;
         this.#loopPacketNotify = loopPacketNotify;
         this.#wakeWorkerNotify = wakeWorkerNotify;
         this.#executors = executors;
@@ -1678,6 +1686,25 @@ export default class TurnRunner {
                 level: "warn",
             });
         }
+        // {§outside-text} — text outside the operations is the turn's own source, never a log row
+        // or a packet field; the model reads only its weight, the client reads its text once.
+        if (split.outside !== null) {
+            await Turn.recordSource(this.#db, request.turnId, "outside", split.outside.text, { modelCallId: emission.modelCallId });
+            this.#notices.push(workspaceId, workerId, loopId, {
+                source: "engine:turn",
+                kind: "outside_text",
+                level: "warn",
+                message: `${split.outside.tokens} tokens emitted outside OPs. Discarded.`,
+            });
+            this.#outsideEventNotify?.(workspaceId, {
+                workerId,
+                loopId,
+                turnId: request.turnId,
+                coordinate: `${request.workerName}-${request.loopSeq}-${request.seq}`,
+                text: split.outside.text,
+                tokens: split.outside.tokens,
+            });
+        }
         // {§operator-grammar} — transport evidence only: the turn records whether the operator's
         // grammar reached the wire. Nothing grades the response against it; the parser's
         // admission is the one verdict (#588).
@@ -1748,7 +1775,7 @@ export default class TurnRunner {
 
     // {§reasoning-empty-turn-read} — after a turn with no operation, one runtime turn READs that
     // turn's reasoning back to the model. A trace or emission carrying a foreign tool-call grammar
-    // is not echoed ({§response-text-note}); a turn without reasoning has nothing to read.
+    // is not echoed (`KnownToxins`); a turn without reasoning has nothing to read.
     async #readEmptyTurnReasoning(args: TurnArgs, request: TurnRequest, { content, reasoning }: PacketAssistant): Promise<void> {
         const { provider, workspaceId, workerId, loopId, onDispatch, onSettled } = args;
         if (!reasoning?.length || KnownToxins.match(content) !== null || KnownToxins.match(reasoning) !== null) return;
@@ -1823,6 +1850,9 @@ export default class TurnRunner {
         let hasUnparsedTail = false;
         const parseNotices: Notice[] = [];
         const fabrications: ParseErrorInfo[] = [];
+        // {§outside-text}: every span outside an operation, verbatim and in source order; never an
+        // operation of its own, so a repetitive or length-cut response stays one source.
+        const outside: string[] = [];
         if (preParsedOps !== undefined) {
             ops.push(...preParsedOps);
             contentStatementCount = preParsedOps.length;
@@ -1836,18 +1866,13 @@ export default class TurnRunner {
                 span.setAttribute("statements", result.items.filter((item) => item.kind === "statement").length);
                 return result;
             });
-            // {§response-text-note}: retain prose in source order without counting it as authored — one
-            // NOTE per response, at its first span, so a repetitive response cannot mint a row per fragment.
-            const outside: string[] = [];
-            let outsidePosition: number | undefined;
             for (const item of parsed.items) {
                 if (item.kind === "statement") {
                     ops.push(item.statement);
                     contentStatementCount += 1;
                 }
-                // Text outside an OP is the model's NOTE, never delivered and never counted as
-                // authored. Operation boundaries stay the parser's responsibility; foreign markup
-                // remains only at ops:// instead of being echoed into the log.
+                // Operation boundaries stay the parser's responsibility; what falls outside them is
+                // stored as the turn's outside source and counted as nothing.
                 else if (item.kind === "text") {
                     // {§fabricated-log-entry}: a log-entry heading in outside text rejects the attempt.
                     const fabricated = FabricatedLog.find(item.content);
@@ -1855,8 +1880,6 @@ export default class TurnRunner {
                         fabrications.push({ message: FabricatedLog.message(fabricated.heading), line: item.position.line + fabricated.line, column: 1, source: "harness" });
                         continue;
                     }
-                    if (!KnownToxins.retains(item.content)) continue;
-                    outsidePosition ??= ops.length;
                     outside.push(item.content.trim());
                 }
                 else if (item.kind === "error") {
@@ -1884,10 +1907,6 @@ export default class TurnRunner {
                     }
                 }
             }
-            if (outsidePosition !== undefined) ops.splice(outsidePosition, 0, {
-                op: "NOTE", aside: null, target: null, metadata: null, lineMarker: null,
-                body: outside.join("\n\n"), position: UNKNOWN_POSITION,
-            });
             // {§unparsed-tail-boundary} — the lexer's one boundary fact: from `unparsedTail.from` on,
             // nothing was read. The statements that closed before it are ordinary facts and run; the
             // loss itself is one more hard diagnostic, a failed row the model sees. An emission that
@@ -1908,13 +1927,14 @@ export default class TurnRunner {
         const notes = reasoning === null ? [] : PlurnkParser.parseReasoningNotes(reasoning);
         ops.unshift(...notes);
         // {§unparsed-tail-boundary}: only a closed response operation can justify admitting a
-        // lost boundary; outside text and reasoning NOTE do not supply that evidence.
+        // lost boundary; outside text and reasoning NOTEs do not supply that evidence.
         const emissionValid = fabrications.length === 0 && (preParsedOps !== undefined
             || emptyTurn
             || contentStatementCount > 0);
         const recoverableParseErrors = parseErrors
             .filter((error) => error.message !== PlurnkParser.NO_VALID_OPERATION)
             .toSorted(comparePosition);
+        const outsideText = outside.join("\n\n");
         return {
             packetAssistant: { content: assistant.content, ops, reasoning },
             sourceBacked: preParsedOps === undefined,
@@ -1925,6 +1945,7 @@ export default class TurnRunner {
             finalResponse,
             parseNotices,
             emissionValid,
+            outside: outside.length === 0 ? null : { text: outsideText, tokens: contentWeight(outsideText) },
         };
     }
 

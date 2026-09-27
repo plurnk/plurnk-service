@@ -6,7 +6,7 @@
 // so this router deliberately leaves loop/proposal to it — one owner per concern.
 
 import Translator, { type TranslatorContinuation } from "./Translator.ts";
-import { EventType, type AguiEvent, type LogEntryNotification, type ReasoningEventNotification, type TerminatedNotification, type UserMessage } from "./types.ts";
+import { EventType, type AguiEvent, type LogEntryNotification, type OutsideEventNotification, type ReasoningEventNotification, type TerminatedNotification, type UserMessage } from "./types.ts";
 import type { ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
 import { observedSync } from "./observe.ts";
 import { Validator } from "@plurnk/plurnk-contracts";
@@ -46,6 +46,7 @@ export default class EventRouter {
             case "loop/packet": return this.#t.packet(params as ApplicationLoopPacket);
             case "notice/event": return this.#t.notice((params as { notice?: unknown }).notice ?? params);
             case "reasoning/event": return this.#t.reasoning(params as ReasoningEventNotification);
+            case "outside/event": return this.#t.outside(params as OutsideEventNotification);
             case "stream/event":
             case "stream/concluded": return [
                 // Family channel (rich, full payload) AND the standard ACTIVITY channel (§475):

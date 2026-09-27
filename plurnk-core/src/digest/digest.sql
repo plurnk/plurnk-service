@@ -17,7 +17,8 @@ SELECT * FROM loops ORDER BY worker_id, sequence;
 -- PREP: digest_turns
 SELECT t.id, t.loop_id, t.sequence, t.producer, t.kind, t.status, t.completed_at,
        t.packet IS NOT NULL AS has_packet, t.finish_reason, t.model, t.meta, t.timestamp,
-       (SELECT content FROM turn_sources WHERE turn_id = t.id AND kind = 'ops') AS program
+       (SELECT content FROM turn_sources WHERE turn_id = t.id AND kind = 'ops') AS program,
+       (SELECT content FROM turn_sources WHERE turn_id = t.id AND kind = 'outside') AS outside
 FROM turns t ORDER BY t.loop_id, t.sequence;
 
 -- PREP: digest_turn_packet

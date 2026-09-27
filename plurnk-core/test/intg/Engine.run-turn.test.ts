@@ -1015,7 +1015,7 @@ test("Engine.runTurn: Errors includes only the immediately previous turn", async
     } finally { await db.close(); }
 });
 
-test("{§response-text-note}: free text is the model's NOTE, never delivered, and the following operation still runs", async () => {
+test("{§outside-text}: free text is the turn's outside source, never delivered, and the following operation still runs", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -1027,10 +1027,11 @@ test("{§response-text-note}: free text is the model's NOTE, never delivered, an
             messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
         });
         assert.deepEqual(result.outcomes, [
-            { op: "NOTE", status: 200, problemType: null },
             { op: "SEND", status: 200, problemType: null },
-        ], "the text is noted, the authored message delivered, without a corrective failure");
+        ], "only the authored message is an operation, delivered without a corrective failure");
         assert.equal(result.status, 102);
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "outside")?.content, "Just thinking out loud here.");
     } finally { await db.close(); }
 });
 

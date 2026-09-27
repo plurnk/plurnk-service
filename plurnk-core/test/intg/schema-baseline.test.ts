@@ -60,6 +60,12 @@ test(`{§db-migrations}: a ${RELEASED.release} database migrates in place and ke
             INSERT INTO model_routes (id, alias, provider, model) VALUES (1, 'example', 'deepseek', 'deepseek-chat');
             INSERT INTO workers (id, workspace_id, name, model_route_id, reasoning_policy, reasoning_source)
                 VALUES (1, 1, 'exampleWorkerName', 1, 'medium', 'explicit');
+            INSERT INTO loops (id, worker_id, sequence, prompt, policy, max_turns) VALUES (1, 1, 1, 'example prompt', '{}', 3);
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES (1, 1, 1, 'model', 'inference', 200);
+            INSERT INTO turn_sources (turn_id, kind, content) VALUES (1, 'ops', 'exampleProgram');
+            -- The fork trigger names turn_sources and persists between opens; the rebuild must survive it.
+            CREATE TRIGGER workers_fork_copies_history AFTER INSERT ON workers
+            BEGIN INSERT INTO turn_sources (turn_id, kind, content) SELECT turn_id, kind, content FROM turn_sources WHERE 0; END;
         `);
     } finally { before.close(); }
 
@@ -74,5 +80,13 @@ test(`{§db-migrations}: a ${RELEASED.release} database migrates in place and ke
         assert.deepEqual({ ...after.prepare("SELECT name, effort, effort_source FROM workers WHERE id = 1").get() },
             { name: "exampleWorkerName", effort: "medium", effort_source: "explicit" });
         assert.throws(() => after.exec("UPDATE workers SET effort = NULL WHERE id = 1"), /CHECK constraint failed/, "the generation-policy CHECK follows the rename");
+        // {§outside-text}: the rebuilt turn_sources keeps its rows, admits the outside kind and still refuses an unknown one.
+        assert.deepEqual({ ...after.prepare("SELECT turn_id, kind, sequence, content FROM turn_sources").get() },
+            { turn_id: 1, kind: "ops", sequence: 0, content: "exampleProgram" });
+        after.exec("INSERT INTO turn_sources (turn_id, kind, content) VALUES (1, 'outside', 'stray text')");
+        assert.throws(() => after.exec("INSERT INTO turn_sources (turn_id, kind, content) VALUES (1, 'aside', 'x')"), /CHECK constraint failed/, "an unknown source kind is refused after the rebuild");
+        assert.throws(() => after.exec("UPDATE turn_sources SET content = 'rewritten' WHERE kind = 'outside'"), /turn source evidence is immutable/, "the immutability trigger is recreated");
+        assert.throws(() => after.exec("DELETE FROM turn_sources WHERE kind = 'outside'"), /belongs to its retained turn/, "the retention trigger is recreated");
+        assert.equal(after.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'turn_sources_deep_hash'").get()?.name, "turn_sources_deep_hash");
     } finally { after.close(); }
 });

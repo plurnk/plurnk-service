@@ -1139,8 +1139,8 @@ immune to the hard-result source** (operator ruling, 2026-09-26, #853): its hard
 failures keep their exact rows, but the turn counts as progress — it earns no strike
 and clears the streak. A successful operation is any admitted operation that acts on the
 task — executions included — whose result status is `< 400`. Operations that steer the
-loop never qualify: NOTE (it cannot fail, and outside text and reasoning are filed as
-NOTEs, {§response-text-note}), WAIT, a parameterless KILL and a targetless SEND; a turn
+loop never qualify: NOTE (it cannot fail; reasoning NOTEs are filed as NOTEs, and outside
+text is no operation at all, {§outside-text}), WAIT, a parameterless KILL and a targetless SEND; a turn
 of failures beside a WAIT still strikes. The cycle source is not exempted: a repeating
 turn's operations succeed by construction, and the backstop exists to catch exactly
 that ({§engine-cycle-evidence}).
@@ -1237,13 +1237,13 @@ The parser owns its boundaries; core admits determinate work and exposes its fai
 | Parsed response | Admission |
 |---|---|
 | Bounded program, including malformed operations | Admit valid operations and record parser failures; with no authored operation, apply {§empty-turn}. |
-| Outside response text | Keep it as the model's NOTE under {§response-text-note}; never deliver it or infer completion. |
+| Outside response text | Store it as the turn's `outside` source under {§outside-text}; never a row, never delivered, never completion. |
 | Lost boundary after a closed operation | Admit the closed operations and record the boundary diagnostic under {§unparsed-tail-boundary}. |
 | Lost boundary before any closed operation | Reject the attempt; neither outside text nor a reasoning NOTE substitutes for a closed response operation. |
 | Outside text carrying a log-entry heading | Reject the attempt ({§fabricated-log-entry}). |
 | A response the provider stopped at a repeated line | Reject the attempt with the provider's sentence as its diagnostic ({§repetition-stop}); no provider recovery, notice, or problem row. |
 
-§fabricated-log-entry **Only the harness writes the log.** A line of outside response text that begins with a log-entry heading, `### log:///<loop>/<turn>/<sequence>/` ({§log-wire-format}), is the model continuing the packet's transcript instead of answering it: it writes the receipts it expects and then acts on them. The attempt is rejected under {§invalid-emission-attempts}, so neither that text nor any operation beside it runs or is retained as a NOTE, and its one diagnostic, at the heading's line, reads `` `### log:///2/1/5/READ` is a log entry, and only the harness writes the log. Write the operation, then wait for its receipt. `` Text inside an operation body is not examined, so a SEND or KILL may quote a receipt. In 10,486 recorded emissions, 101 carried such a heading in outside text, every one a fabrication: 85 of 1,675 from deepseek-flash, 81 of them opening with one, and 16 from glm-5.3-flash, deepseek-v4-pro and qwen3.8-flash, which appended an invented `## Log` after their own operations.
+§fabricated-log-entry **Only the harness writes the log.** A line of outside response text that begins with a log-entry heading, `### log:///<loop>/<turn>/<sequence>/` ({§log-wire-format}), is the model continuing the packet's transcript instead of answering it: it writes the receipts it expects and then acts on them. The attempt is rejected under {§invalid-emission-attempts}, so neither that text nor any operation beside it runs or is stored as outside text ({§outside-text}), and its one diagnostic, at the heading's line, reads `` `### log:///2/1/5/READ` is a log entry, and only the harness writes the log. Write the operation, then wait for its receipt. `` Text inside an operation body is not examined, so a SEND or KILL may quote a receipt. In 10,486 recorded emissions, 101 carried such a heading in outside text, every one a fabrication: 85 of 1,675 from deepseek-flash, 81 of them opening with one, and 16 from glm-5.3-flash, deepseek-v4-pro and qwen3.8-flash, which appended an invented `## Log` after their own operations.
 
 Warnings and closer recovery ({§closer-fallback}) do not reject. `finish=length`
 discloses truncation and precludes completion; it is not independently a rejection.
@@ -2153,8 +2153,8 @@ turn admitted under {§empty-turn}, one runtime turn of the same loop
 reasoning source; its receipt renders in the next packet like any other log row.
 `PLURNK_REASONING_EMPTY_TURN_LINES` (alias-scoped, default in `.env.defaults`) selects the scope on the same
 scale as `PLURNK_REASONING_VIEW_LINES`. No read follows a turn without reasoning, and none follows
-a turn whose emission or reasoning carries a foreign tool-call grammar ({§response-text-note});
-the strike and its error row are unchanged.
+a turn whose emission or reasoning carries a foreign tool-call grammar or leaked template token
+(`KnownToxins` names them); the strike and its error row are unchanged.
 
 ### §log-kill-scope KILL on the log: whole items and scoped bodies
 
@@ -2335,10 +2335,10 @@ single line past the end, a reversed range, empty content, a command's log row
 
 | Surface | Contract |
 |---|---|
-| Identity | `ops://<worker>/<loop>/<turn>`, `reasoning://<worker>/<loop>/<turn>`, and `note://<worker>/<loop>/<turn>/<item>` name a worker in the current workspace and its durable coordinates. A note's item is its dispatched NOTE ordinal. The worker authority is required and case-sensitive; userinfo, ports, and queries are invalid. Source identity never depends on the reading worker. `log:///` remains local; READ, FIND and KILL reject log authorities, userinfo, ports and queries with 400, never substitute the caller's log. |
+| Identity | `ops://<worker>/<loop>/<turn>`, `reasoning://<worker>/<loop>/<turn>`, and `note://<worker>/<loop>/<turn>/<item>` name a worker in the current workspace and its durable coordinates. A note's item is its dispatched NOTE ordinal. The `outside` source ({§outside-text}) has no address: no `outside://` scheme exists, and it is reached only through `outside/event`, FORK and the digest. The worker authority is required and case-sensitive; userinfo, ports, and queries are invalid. Source identity never depends on the reading worker. `log:///` remains local; READ, FIND and KILL reject log authorities, userinfo, ports and queries with 400, never substitute the caller's log. |
 | Source | `ops` is exact admitted `text/vnd.plurnk`; `reasoning` is `text/plain` containing the selected original provider reasoning or a non-model producer's authored rationale. Producer identity comes from the owning turn; a harness rationale is not provider evidence. The turn decides existence and the source decides content: a turn that exists but has no source of that kind reads as the ordinary empty resource (204, empty body), never a fabricated one; a worker or turn that does not exist is 404. |
 | Notes | Each dispatched NOTE stores its exact literal body as an immutable `text/plain` source and returns its worker-qualified address. There may be multiple notes in a turn, from reasoning, content, or another producer. A missing note is 404, not an empty invented note. Sharing its URI uses ordinary SEND; the receiver deliberately READs it. NOTE itself sends no ambient update. |
-| Retention | One ops source and one reasoning source per turn; one note source per NOTE ordinal. An optional inference-call link records provenance. Source removal follows deletion of its owning turn, never log curation. |
+| Retention | One ops source, one reasoning source and one outside source per turn; one note source per NOTE ordinal. An optional inference-call link records provenance. Source removal follows deletion of its owning turn, never log curation. |
 | Operations | Ordinary scoped READ, FIND, content search and COPY from any named worker's source within the workspace. FIND accepts authority and path patterns, retaining complete worker-qualified identities in results and folder selectors. READ returns data and never executes it. Sources are read-only for every actor and have no edit hashes. |
 | Index | Source text uses the existing derivation, FTS and graph machinery; only its derivation attachment is replaceable. |
 | FORK | Sources copy with the inherited turns at identical loop/turn/item coordinates under the fork's own authority. Bytes and embedded source references are preserved verbatim; an explicit reference still names its original worker. Branch receipt curation is independent; neither branch can rewrite source evidence. |
@@ -2730,8 +2730,8 @@ accounting and model-visible failure evidence remain separately owned by
   contains exactly one KILL without a target, scope, matcher or metadata, no hard
   parse error or lost boundary, and was not cut at the provider's output allowance.
   The operation limit must admit the entire program.
-  SEND, NOTE (outside text included, {§response-text-note}) and log-targeted KILL may
-  accompany it; every other operation requires continuation. This tolerance is unadvertised:
+  SEND, NOTE and log-targeted KILL may accompany it, as may outside text ({§outside-text});
+  every other operation requires continuation. This tolerance is unadvertised:
   model teaching requests KILL alone. Reasoning-side NOTEs remain ordinary notes.
   An aside is allowed. After the program settles, {§wait-obligation-matrix} admits the
   completion or returns a non-striking continuation/parking receipt explaining the
@@ -2743,19 +2743,23 @@ accounting and model-visible failure evidence remain separately owned by
   completion. New arrivals still guard the terminal transition atomically
   ({§completion-defers-to-messages}); an arrival concurrent with an accepted reply
   remains unanswered and keeps the loop running. No implicit successful exit exists.
-- §response-text-note **Text outside the operations is the model's NOTE, never delivered.** The
-  spans {§response-text} supplies become one ordinary NOTE per response, unmarked, placed at
-  the first span and holding every retained span in source order joined by a blank line, so the
-  model's log retains its text even on a prose-only turn and a repetitive or length-cut response
-  cannot mint a row per fragment. It is not an authored operation:
+- §outside-text **Text outside the operations is the turn's `outside` source: stored, weighed, never a row.**
+  The spans {§response-text} supplies are stored verbatim as one immutable `outside` turn source
+  per admitted emission, in source order joined by a blank line ({§turn-source-resources}); no
+  operation is minted for them, a repetitive or length-cut response stays one source, and nothing
+  filters what is stored. The model hears only the weight: the next packet's Notices section
+  carries `outside_text: N tokens emitted outside OPs. Discarded.`, N by {§tokenomics-agnostic-ruler};
+  the text itself never enters a packet, is never delivered and never concludes.
   {§empty-turn} still strikes a turn that holds only text, with unchanged reasoning recovery
-  ({§reasoning-empty-turn-read}), reply accounting and completion rules. A NOTE neither
-  delivers nor concludes. Spans carrying known foreign tool-call grammar or leaked template
-  tokens are excluded by `KnownToxins`; unfenced operation lines are excluded by
-  {§unfenced-operation}. Exact emissions remain at `ops://` regardless of retention.
-  This is recovery, not an alternate authoring format: the `plurnk.md` requirement to use
-  only valid Plurnk OPs remains. Prose does not quote executable fences; {§response-text}
-  alone owns which bytes are operations, quotations or outside text.
+  ({§reasoning-empty-turn-read}), reply accounting and completion rules. A log-entry heading in
+  outside text still rejects the attempt ({§fabricated-log-entry}); an unfenced operation line is
+  not response text ({§unfenced-operation}) and so never reaches the source; `KnownToxins` guards
+  only the read-back ({§reasoning-empty-turn-read}). Clients receive the text once through
+  `outside/event` ({§notifications-outside-event}, {§agui-outside-text}); FORK snapshots the
+  source with the turn's others; the digest names its weight. It has no address: there is no
+  `outside://` scheme, and exact emissions remain at `ops://`. This is evidence, not an alternate
+  authoring format: the `plurnk.md` requirement to use only valid Plurnk OPs remains, and
+  {§response-text} alone owns which bytes are operations, quotations or outside text.
 - §loop-answer **A loop's address is what it said.** READ `ops://<worker>/<loop>` resolves to
   the latest reply the loop gave to the message that started it: the body of a SEND
   or accepted final KILL that answered that message. A running loop without one is 425; a loop that
@@ -2765,10 +2769,9 @@ accounting and model-visible failure evidence remain separately owned by
   remains that turn's emission. A concluded child's `loop_termination` row to its parent
   READs this same loop resource. Witness: `test/intg/loop-answer.test.ts`.
 - §empty-turn **No authored response operation is a recoverable turn, never completion.**
-  Count parsed response operations before outside-text and reasoning NOTEs join them;
-  neither enters the count. When none exist and no boundary was lost, retain the turn and its raw
-  sources and count one progress-contract strike, whether or not the turn carried text
-  ({§response-text-note}). The strike sends no notice of its own: the turn records one `_plurnk`
+  Count parsed response operations before reasoning NOTEs join them; neither they nor outside
+  text ({§outside-text}) enter the count. When none exist and no boundary was lost, retain the turn
+  and its raw sources and count one progress-contract strike, whether or not the turn carried text. The strike sends no notice of its own: the turn records one `_plurnk`
   error row, `422` `The turn performed no operation.`, which rides the next packet's errors like
   any failure ({§operation-result-uniform-error-channel}), and its reasoning is read back to the
   model under {§reasoning-empty-turn-read}; the threshold terminal still says why ({§engine-rails}).
@@ -4453,6 +4456,7 @@ adding a loop to it. LOOK text anchors resolve through the same
 | §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, workerId, target, channel, state, contentLength, mimetype?, loop_seq?, turn_seq?, sequence? }` | Channel content grows or channel state transitions. `workerId` is the initiating actor used for conversation routing, never entry ownership or access control. `target` is the canonical resource URI. Optional numeric coordinates identify the causal log item, independently of that URI. Core-managed channel writes include the current stored `mimetype`, which may change per call ({§channel-mimetype}); the generic plugin notification capability does not require it. It carries metadata, not content; consumers read bytes by canonical workspace address. |
 | §notifications-stream-concluded `stream/concluded`           | `{ entryId, workerId, target, subscriptionId, scheme, result, summary, wakeAction, loop_seq?, turn_seq?, sequence? }` | A subscription closes. `workerId` identifies the initiating actor; `target` is the canonical resource URI. Optional numeric fields identify the causal log item, never parsed from `target`. Exact result truth is preserved. `wakeAction` reports `wake-pending` before settlement, `no-op-active-loop` when work is already executing, `no-loop`, or `skipped-aborted`/`skipped-cancelled` for an aborted worker scope. A pending wake predicts neither execution nor recipient count; subsequent ordinary loop events report actual progress and completion. |
 | §notifications-notice-event `notice/event`                   | `{ workerId, loopId, notice: Notice }` | A transient observation or progress notice occurs. `workerId` owns loop activity; only workspace derivation progress uses `null` with `loopId=0`. It cannot alter durable history, scheduling, recovery, or model-visible failure truth. |
+| §notifications-outside-event `outside/event`                 | `{ workerId, loopId, turnId, coordinate, text, tokens }` | An admitted emission carried text outside every operation ({§outside-text}): once per admitted emission, the exact stored text, its packet weight, and the turn's `<worker>-<loop>-<turn>` coordinate. It is transient presentation evidence; the turn's `outside` source remains the durable authority. |
 | §notifications-reasoning-event `reasoning/event`             | `{ workerId, loopId, turnId, modelCallId, requestSequence, phase, delta? }` | A main emission call exposes readable reasoning. Each physical request that emits reasoning owns a distinct positive `requestSequence` and balanced start/content/end stream; opening a retry closes the preceding stream before any retry delta. Only content carries a nonempty exact delta. It is transient presentation evidence, never a log row, Notice, packet field, or BARE/child channel. The settled provider response remains the durable authority. |
 
 §notifications-stream-event-failure-isolation The plugin-facing

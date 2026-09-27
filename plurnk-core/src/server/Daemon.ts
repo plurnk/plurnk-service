@@ -8,6 +8,7 @@ import type { Db } from "../core/Db.ts";
 import type { ProposalResolution } from "../core/ProposalLifecycle.ts";
 import type { StreamEventPayload } from "../core/ChannelWrite.ts";
 import type { ReasoningEventPayload } from "../core/ReasoningEvent.ts";
+import type { OutsideEventPayload } from "../core/OutsideEvent.ts";
 import Paths from "../Paths.ts";
 import Engine from "../core/Engine.ts";
 import ExecutorRegistry from "../core/ExecutorRegistry.ts";
@@ -220,6 +221,7 @@ export default class Daemon implements ApplicationPort {
             streamEventNotify: (workspaceId, event) => this.notifyStreamEvent(workspaceId, event),
             operationSettledNotify: (workspaceId, logEntryId) => this.#drains.operationSettled(workspaceId, logEntryId),
             reasoningEventNotify: (workspaceId, event) => this.notifyReasoningEvent(workspaceId, event),
+            outsideEventNotify: (workspaceId, event) => this.notifyOutsideEvent(workspaceId, event),
             wakeWorkerNotify: (payload) => this.#drains.notifyWakeWorker(payload),
             // worker:// loop-start primitive — spawn/fork/irc deliver through
             // Daemon.inject (active sister → fold; idle → enqueue + drain). The
@@ -1782,6 +1784,11 @@ export default class Daemon implements ApplicationPort {
     /** Emit transient readable reasoning for an in-flight model call. */
     notifyReasoningEvent(workspaceId: number, event: ReasoningEventPayload): void {
         this.#broadcast({ workspaceId }, "reasoning/event", event);
+    }
+
+    /** Emit one admitted emission's text outside every operation ({§notifications-outside-event}). */
+    notifyOutsideEvent(workspaceId: number, event: OutsideEventPayload): void {
+        this.#broadcast({ workspaceId }, "outside/event", event);
     }
 
     /**

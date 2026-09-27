@@ -78,6 +78,14 @@ test("{§turn-source-resources}: initialization reads its real program; later so
             assert.ok("content" in inherited);
             assert.equal(inherited.content, expected, "forked history keeps the same local coordinate");
         }
+        // {§outside-text}: the outside source is snapshotted with the others, at the same coordinates, and has no address of its own.
+        const outsideOf = async (id: number) => (await db.test_turn_sources.all<{ kind: string; content: string; loop_seq: number; turn_seq: number }>({ worker_id: id }))
+            .filter(({ kind }) => kind === "outside").map(({ loop_seq, turn_seq, content }) => [loop_seq, turn_seq, content]);
+        const parentOutside = await outsideOf(workerId);
+        assert.ok(parentOutside.some(([, turnSeq, content]) => turnSeq === turn.sequence && content === "An interstitial sentence retained as evidence."));
+        assert.deepEqual(await outsideOf(child), parentOutside, "the fork carries every outside source under the child's coordinates");
+        const unaddressed = await engine.look({ ...context, workerId: child, statement: statement(`\`\`\`\`READ (outside://branch/${coordinate}) <1,-1>\`\`\`\``) });
+        assert.ok(unaddressed.status >= 400, "outside text is not a readable resource");
     } finally { await db.close(); }
 });
 

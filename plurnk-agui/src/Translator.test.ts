@@ -579,3 +579,14 @@ test("runtime protocol and family dependencies are declared explicitly", async (
     // devDep in place).
     assert.ok(deps.includes("@plurnk/plurnk-contracts"), "the contracts and grammar runtime import is declared in dependencies");
 });
+
+test("{§agui-outside-text}: outside text projects one plurnk.outside per admitted emission for the thread's worker, and nothing for a foreign one", () => {
+    const tr = new Translator({ threadId: "th", runId: "run", modelWorkerId: 2 });
+    const event = { workerId: 2, loopId: 4, turnId: 7, coordinate: "alice-4-7", text: "Thinking out loud.", tokens: 9 };
+    assert.deepEqual(tr.outside(event), [
+        { type: EventType.STEP_STARTED, stepName: "turn-7" },
+        { type: EventType.CUSTOM, name: "plurnk.outside", value: { coordinate: "alice-4-7", text: "Thinking out loud.", tokens: 9 } },
+    ], "the exact text and its weight ride the custom namespace, never assistant speech");
+    assert.deepEqual(tr.outside({ ...event, workerId: 9, loopId: 12, turnId: 13 }), [], "a foreign worker's text never enters the thread");
+    assert.equal(tr.outside({ ...event, turnId: 7 }).filter(({ type }) => type === EventType.STEP_STARTED).length, 0, "a second emission in the same turn opens no second step");
+});

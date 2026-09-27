@@ -254,7 +254,8 @@ export default class Portal {
             case "log/entry": return owns(payload.entry?.worker_id, payload.entry?.loop_id);
             case "loop/terminated":
             case "loop/packet":
-            case "reasoning/event": return owns(payload.workerId, payload.loopId);
+            case "reasoning/event":
+            case "outside/event": return owns(payload.workerId, payload.loopId);
             case "notice/event": return payload.workerId === null
                 ? thread.notificationScope === "conversation"
                 : owns(payload.workerId, payload.loopId);

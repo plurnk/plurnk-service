@@ -11,6 +11,7 @@ import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { RegistryEntry, RuntimeRegistryRegistration } from "./ExecutorRegistry.ts";
 import type { StreamEventNotify, NoticeNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWorkerNotify } from "./ChannelWrite.ts";
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
+import type { OutsideEventNotify } from "./OutsideEvent.ts";
 import type { LoopPacketNotify } from "./LoopPacket.ts";
 import { contentWeight } from "./content-weight.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
@@ -257,13 +258,14 @@ export default class Engine {
     readonly #workspaceTurnStarting: WorkspaceTurnStarting | undefined;
     readonly #loopDriver: LoopDriver;
 
-    constructor({ db, lifecycle, schemes, mimetypes, streamEventNotify, reasoningEventNotify, loopPacketNotify, wakeWorkerNotify, injectWorker, cancelWorker, operationSettledNotify, acquireWorkspaceTurn, workspaceTurnStarting, noticeNotify, weigh }: {
+    constructor({ db, lifecycle, schemes, mimetypes, streamEventNotify, reasoningEventNotify, outsideEventNotify, loopPacketNotify, wakeWorkerNotify, injectWorker, cancelWorker, operationSettledNotify, acquireWorkspaceTurn, workspaceTurnStarting, noticeNotify, weigh }: {
         db: Db;
         lifecycle?: LoopLifecycle;
         schemes: SchemeRegistry;
         mimetypes?: Mimetypes;
         streamEventNotify?: StreamEventNotify;
         reasoningEventNotify?: ReasoningEventNotify;
+        outsideEventNotify?: OutsideEventNotify;
         loopPacketNotify?: LoopPacketNotify;
         wakeWorkerNotify?: WakeWorkerNotify;
         injectWorker?: InjectWorkerNotify;
@@ -333,6 +335,7 @@ export default class Engine {
             liveSubscriptions: this.#liveSubscriptions,
             streamEventNotify,
             reasoningEventNotify,
+            outsideEventNotify,
             loopPacketNotify,
             wakeWorkerNotify,
             executors,

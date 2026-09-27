@@ -54,7 +54,7 @@ export default class Turn {
         await db.turn_observe_completions.run({ turn_id: id });
     }
 
-    static async recordSource(db: Db, turnId: number, kind: "ops" | "reasoning" | "note", content: string, options: {
+    static async recordSource(db: Db, turnId: number, kind: "ops" | "reasoning" | "note" | "outside", content: string, options: {
         modelCallId?: number | null;
         sequence?: number;
     } = {}): Promise<void> {

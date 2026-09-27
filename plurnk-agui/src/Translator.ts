@@ -9,6 +9,8 @@ import { TurnDisposition } from "@plurnk/plurnk-contracts";
 //                                 tool call: tx is the args, rx the result, coordinate the id)
 //   log/entry          (plurnk) → CUSTOM plurnk.ambient (foists, deltas, narrations — the
 //                                 environment speaking; generic UIs skip, rich UIs render)
+//   outside/event               → CUSTOM plurnk.outside (the thread's worker only: text the model
+//                                 emitted outside every operation, never assistant speech)
 //   turn_id advances            → STEP_FINISHED/STEP_STARTED
 //   loop/proposal|interaction   → owned by ProposalHitl (tool call + AG-UI interrupt)
 //   loop/terminated             → STATE_DELTA (budget truth) + RUN_FINISHED or RUN_ERROR
@@ -20,6 +22,7 @@ import {
     type AguiEvent,
     type AssistantMessage,
     type LogEntryNotification,
+    type OutsideEventNotification,
     type ReasoningEventNotification,
     type ReasoningMessage,
     type TerminatedNotification,
@@ -228,6 +231,15 @@ export default class Translator {
             { type: EventType.REASONING_MESSAGE_END, messageId: active.messageId },
             { type: EventType.REASONING_END, messageId: active.messageId },
         ];
+    }
+
+    // {§agui-outside-text} — once per admitted emission, for the thread's model worker only.
+    outside(event: OutsideEventNotification): AguiEvent[] {
+        if (this.#modelWorkerId === null) this.#modelWorkerId = event.workerId;
+        if (event.workerId !== this.#modelWorkerId) return [];
+        const events = this.#enterTurn(event.turnId);
+        events.push({ type: EventType.CUSTOM, name: "plurnk.outside", value: { coordinate: event.coordinate, text: event.text, tokens: event.tokens } });
+        return events;
     }
 
     terminated(n: TerminatedNotification): AguiEvent[] {

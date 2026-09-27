@@ -1011,3 +1011,19 @@ test("{§agui-delegation-observation}: a Run that asks for its delegation receiv
     assert.ok(seen.some((event) => event.type === "RUN_FINISHED"), "the bound Loop's terminal settles the Run; a descendant's open stream never defers it");
     portal.stop();
 });
+
+test("{§agui-outside-text}: outside/event fans to the bound thread for its worker and stays out for another worker", async () => {
+    const m = mockSeam();
+    const seen: AguiEvent[] = [];
+    const portal = new Portal(m.seam);
+    portal.start();
+    const thread = portal.openThread({ workspaceId: 3, workerId: 10, threadId: "tui", notificationScope: "conversation", emit: (evs) => seen.push(...evs) });
+    const ack = await portal.run(thread, { workspaceId: 3, workerId: 10, prompt: "go" });
+    assert.ok(ack !== null);
+    m.fire(3, "outside/event", { workerId: 10, loopId: 77, turnId: 1, coordinate: "w-77-1", text: "Thinking out loud.", tokens: 9 });
+    m.fire(3, "outside/event", { workerId: 11, loopId: 78, turnId: 1, coordinate: "x-78-1", text: "Someone else's aside.", tokens: 11 });
+    await nextTask();
+    const outside = seen.filter((e) => e.type === EventType.CUSTOM && (e as { name?: string }).name === "plurnk.outside");
+    assert.deepEqual(outside.map((e) => (e as { value: { text: string } }).value.text), ["Thinking out loud."], "one event for the thread's worker, none for the other");
+    portal.stop();
+});

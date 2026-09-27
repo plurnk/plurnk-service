@@ -7,7 +7,8 @@ import Engine from "../../src/core/Engine.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { DEFAULT_MIMETYPES, holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection, seedEntryWithChannel } from "./_helpers.ts";
+import { contentWeight } from "../../src/core/content-weight.ts";
 import { statement } from "./reasoning-fixture.ts";
 
 const said = (content: string, reasoning: string | null = null): MockResponse => ({ assistant: { content, reasoning } });
@@ -169,7 +170,7 @@ test("{§kill-conclusion}: a NOTE after the messages were answered does not sile
 
 for (const response of ["200", "````markdown\nFour.\n````", "````md\nFour.\n````"]) {
     test(`{§kill-conclusion}: ${JSON.stringify(response)} cannot confirm a previous free response`, async () => {
-        const { db, turn, answer } = await setup([said(send("Four.")), said(response), said(conclude("Four, precisely."))]);
+        const { db, turn, answer, ids } = await setup([said(send("Four.")), said(response), said(conclude("Four, precisely."))]);
         try {
             assert.equal((await turn()).status, 102);
             const token = await turn();
@@ -177,8 +178,9 @@ for (const response of ["200", "````markdown\nFour.\n````", "````md\nFour.\n````
             assert.equal(token.emptyTurn, true);
             const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: token.turnId });
             assert.equal(rows.some(({ op, origin }) => op === "SEND" && origin === "model"), false, "outside text is never delivered");
-            assert.deepEqual(rows.filter(({ op, origin }) => op === "NOTE" && origin === "model").map(({ tx }) => JSON.parse(tx).body),
-                [response], "retained text is a NOTE, not confirmation of completion ({§response-text-note})");
+            assert.equal(rows.some(({ op, origin }) => op === "NOTE" && origin === "model"), false, "outside text is not a NOTE ({§outside-text})");
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: ids.workerId });
+            assert.equal(sources.find((row) => row.turn_id === token.turnId && row.kind === "outside")?.content, response, "the text is the turn's outside source, not confirmation of completion");
             assert.equal((await turn()).status, 200);
             const result = await answer();
             assert.ok("content" in result);
@@ -187,33 +189,67 @@ for (const response of ["200", "````markdown\nFour.\n````", "````md\nFour.\n````
     });
 }
 
-test("{§response-text-note}: outside fragments become one NOTE at the first, in source order, never delivered, and siblings run without a strike", async () => {
+test("{§outside-text}: outside fragments are one source in order, never a row, and siblings run without a strike", async () => {
     const source = `Before.\n\n${PlurnkParser.frame("NOTE", "remember")}\n\nBetween.\n\n${send("Four.")}\n\nAfter.`;
     const { db, engine, provider, ids, notices } = await setup([said(source), said(conclude())]);
     try {
         const result = await engine.runLoop({ ...ids, provider, maxTurns: 4, maxStrikes: 1, messages: [] });
         assert.equal(result.result.status, 200, "commentary does not strike even at a one-strike threshold");
         assert.equal(provider.received.length, 2);
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string; rx: string }>({ turn_id: result.turnIds.at(-2)! });
+        const turnId = result.turnIds.at(-2)!;
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string; rx: string }>({ turn_id: turnId });
         const operations = rows.filter(({ origin, op }) => origin === "model" && ["SEND", "NOTE"].includes(op));
         assert.deepEqual(operations.map(({ op, tx }) => [op, op === "SEND" ? JSON.parse(tx).body.raw : JSON.parse(tx).body]),
-            [["NOTE", "Before.\n\nBetween.\n\nAfter."], ["NOTE", "remember"], ["SEND", "Four."]]);
+            [["NOTE", "remember"], ["SEND", "Four."]], "only the authored operations are rows");
         assert.equal(rows.some(({ op }) => op === "error"), false, "stray text is not a failed operation");
-        assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error"), [], "and draws no complaint");
+        const text = "Before.\n\nBetween.\n\nAfter.";
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: ids.workerId });
+        assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "outside")?.content, text, "every outside span in source order, joined by a blank line");
+        assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error").map(({ kind, message }) => [kind, message]),
+            [["outside_text", `${contentWeight(text)} tokens emitted outside OPs. Discarded.`]], "the one complaint is the weight of what was discarded");
+    } finally { await db.close(); }
+});
+
+test("{§outside-text}: a mixed turn stores its text as the turn's outside source, and the next packet's Notices carry its weight", async () => {
+    const prose = ["Let me check the input first.", "That settles it."];
+    const source = `${prose[0]}\n\n${PlurnkParser.frame("READ (worker:///input.txt)", null)}\n\n${prose[1]}`;
+    const { db, turn, ids, notices } = await setup([said(source), said(conclude())]);
+    try {
+        await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, scheme: "worker", pathname: "/input.txt",
+            channel: "body", content: "input-witness", mimetype: "text/plain", state: "static" });
+        const mixed = await turn();
+        assert.equal(mixed.status, 102);
+        assert.equal(mixed.emptyTurn, false, "the READ is an authored operation");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string }>({ turn_id: mixed.turnId });
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["READ"], "no NOTE row is minted for the text");
+        const text = prose.join("\n\n");
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string; model_call_id: number | null }>({ worker_id: ids.workerId });
+        const outside = sources.find((row) => row.turn_id === mixed.turnId && row.kind === "outside");
+        assert.equal(outside?.content, text, "every outside span, in source order, joined by a blank line");
+        assert.equal(typeof outside?.model_call_id, "number", "the source cites the admitted call");
+        const line = `${contentWeight(text)} tokens emitted outside OPs. Discarded.`;
+        assert.deepEqual(notices.filter(({ kind }) => kind === "outside_text").map(({ source: from, level, message }) => [from, level, message]),
+            [["engine:turn", "warn", line]]);
+        const next = await turn();
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnId }))!.packet);
+        assert.ok(packetSection(packet, "notices").split("\n").includes(`* outside_text: ${line}`), "the next packet's Notices section carries the exact line");
+        assert.doesNotMatch(packetSection(packet, "log"), /Let me check the input first\./u, "the text itself never enters a packet");
     } finally { await db.close(); }
 });
 
 // The recorded shape (#853, run286 pytest-5103): a length-cut response repeating `Proceeding.` beside a
 // fence minted 2,858 NOTE rows in one turn, one per fragment.
-test("{§response-text-note}: a repetitive response files its outside text as one NOTE, however many fragments", async () => {
+test("{§outside-text}: a repetitive response stores its outside text as one source, however many fragments, and mints no NOTE", async () => {
     const fragments = Array.from({ length: 400 }, () => `Proceeding.\n\n${PlurnkParser.frame("NOTE", "waiting")}`).join("\n\n");
     const { db, engine, provider, ids } = await setup([said(`${fragments}\n\n${send("Four.")}\n\nProceeding`), said(conclude())]);
     try {
         const result = await engine.runLoop({ ...ids, provider, maxTurns: 4, maxStrikes: 1, messages: [] });
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: result.turnIds.at(-2)! });
-        const outside = rows.filter(({ origin, op, tx }) => origin === "model" && op === "NOTE" && JSON.parse(tx).body !== "waiting");
-        assert.equal(outside.length, 1, "one NOTE carries the response's outside text");
-        assert.equal(JSON.parse(outside[0]!.tx).body, [...Array.from({ length: 400 }, () => "Proceeding."), "Proceeding"].join("\n\n"));
+        const turnId = result.turnIds.at(-2)!;
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: turnId });
+        assert.equal(rows.filter(({ origin, op, tx }) => origin === "model" && op === "NOTE" && JSON.parse(tx).body !== "waiting").length, 0, "no NOTE carries outside text");
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: ids.workerId });
+        assert.deepEqual(sources.filter((row) => row.turn_id === turnId && row.kind === "outside").map(({ content }) => content),
+            [[...Array.from({ length: 400 }, () => "Proceeding."), "Proceeding"].join("\n\n")], "one outside source holds every fragment");
     } finally { await db.close(); }
 });
 
@@ -231,13 +267,13 @@ test("{§empty-turn}: operations beside stray text reset the no-operation strike
     } finally { await db.close(); }
 });
 
-for (const [label, response, reasoning, kept] of [
-    ["prose", "Four.", null, ["Four."]],
-    ["prose with reasoning", "Four.", "I should verify the arithmetic.", ["Four."]],
-    ["empty response", "", null, []],
-    ["reasoning NOTE only", "", PlurnkParser.frame("NOTE", "Still calculating."), ["Still calculating."]],
+for (const [label, response, reasoning, notes, outside] of [
+    ["prose", "Four.", null, [], "Four."],
+    ["prose with reasoning", "Four.", "I should verify the arithmetic.", [], "Four."],
+    ["empty response", "", null, [], undefined],
+    ["reasoning NOTE only", "", PlurnkParser.frame("NOTE", "Still calculating."), ["Still calculating."], undefined],
 ] as const) {
-    test(`{§empty-turn}: ${label} retains its eligible NOTEs without avoiding a no-operation strike or changing recovery`, async () => {
+    test(`{§empty-turn}: ${label} stores its outside text without avoiding a no-operation strike or changing recovery`, async () => {
         const { db, engine, provider, ids, notices } = await setup([said(response, reasoning)]);
         try {
             const result = await engine.runLoop({ ...ids, provider, maxTurns: 3, maxStrikes: 1, messages: [] });
@@ -245,7 +281,7 @@ for (const [label, response, reasoning, kept] of [
             assert.ok("problem" in result.result && result.result.problem);
             assert.equal(result.result.problem.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
             assert.match(result.result.problem.detail, /performed no operation\.$/);
-            assert.deepEqual(notices.filter(({ level }) => level === "warn"), [], "the strike is silent");
+            assert.deepEqual(notices.filter(({ level, kind }) => level === "warn" && kind !== "outside_text"), [], "the strike is silent; only the discarded text is weighed ({§outside-text})");
             // {§reasoning-empty-turn-read} — a reasoning-bearing empty turn is followed by the runtime turn
             // that reads it back, so the model turn is located by its producer, not its position.
             const turns = await Promise.all(result.turnIds.map(async (id) => (await db.test_get_turn.get<{ id: number; producer: string }>({ id }))!));
@@ -254,8 +290,10 @@ for (const [label, response, reasoning, kept] of [
             const rows = await db.test_log_entries_by_turn.all<{ op: string; source: string; origin: string; tx: string; status_rx: number }>({ turn_id: modelTurn });
             assert.equal(rows.some(({ op, source }) => op === "error" && source === "grammar"), false);
             assert.deepEqual(rows.filter(({ op, origin }) => op === "error" && origin === "_plurnk").map(({ status_rx }) => status_rx), [422], "the strike is one error row on the turn");
-            assert.deepEqual(rows.filter(({ op, origin }) => op === "NOTE" && origin === "model").map(({ tx }) => JSON.parse(tx).body), [...kept],
-                "retained prose and reasoning NOTEs do not count as authored response operations");
+            assert.deepEqual(rows.filter(({ op, origin }) => op === "NOTE" && origin === "model").map(({ tx }) => JSON.parse(tx).body), [...notes],
+                "reasoning NOTEs are rows that do not count as authored response operations; outside text is none");
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: ids.workerId });
+            assert.equal(sources.find((row) => row.turn_id === modelTurn && row.kind === "outside")?.content, outside, "a prose-only turn still records its outside source ({§outside-text})");
         } finally { await db.close(); }
     });
 }
@@ -264,7 +302,7 @@ for (const [failure, operation, failedOp] of [
     ["parser", "````EDIT (worker:///broken.md) <bad>\nnot a message\n````", "error"],
     ["operation", PlurnkParser.frame("SEND (reasoning://alice/1/1)", "Not a recipient."), "SEND"],
 ] as const) {
-    test(`{§response-text-note}: stray text kept as a NOTE does not mask an actual ${failure} failure`, async () => {
+    test(`{§outside-text}: stray text stored outside the turn does not mask an actual ${failure} failure`, async () => {
         const source = `Working.\n\n${PlurnkParser.frame("NOTE", "Checking.")}\n\n${operation}`;
         const { db, engine, provider, ids, notices } = await setup([said(source)]);
         try {
@@ -279,7 +317,7 @@ for (const [failure, operation, failedOp] of [
 }
 
 for (const op of ["NOTE", "WAIT"] as const) {
-    test(`{§wait-obligation-matrix}: stray text beside ${op} is kept as a NOTE, and ${op === "WAIT" ? "the explicit park holds" : "work continues before automatic parking"}`, async () => {
+    test(`{§wait-obligation-matrix}: stray text beside ${op} is stored outside the turn, and ${op === "WAIT" ? "the explicit park holds" : "work continues before automatic parking"}`, async () => {
         const { db, turn, ids, notices } = await setup([said(`Working.\n\n${PlurnkParser.frame(op, "Await the child.")}`)]);
         try {
             await holdChild(db, ids.workspaceId, ids.workerId);
@@ -287,8 +325,8 @@ for (const op of ["NOTE", "WAIT"] as const) {
             assert.equal(result.status, op === "WAIT" ? 202 : 102);
             const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
             assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]),
-                [["NOTE", 200], [op, op === "WAIT" ? 202 : 200]], "the stray text is the model's NOTE, never delivered");
-            assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error"), []);
+                [[op, op === "WAIT" ? 202 : 200]], "the stray text is no row, and never delivered ({§outside-text})");
+            assert.deepEqual(notices.filter(({ level, kind }) => (level === "warn" || level === "error") && kind !== "outside_text"), []);
         } finally { await db.close(); }
     });
 }

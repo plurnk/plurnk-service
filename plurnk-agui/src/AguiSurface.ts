@@ -237,6 +237,14 @@ export const AGUI_NOTIFICATIONS = Object.freeze({
             }, ["workerId", "loopId", "turnId", "modelCallId", "requestSequence", "phase", "delta"]),
         ],
     }),
+    "outside/event": notification(object({
+        workerId: POSITIVE,
+        loopId: POSITIVE,
+        turnId: POSITIVE,
+        coordinate: NONEMPTY,
+        text: NONEMPTY,
+        tokens: POSITIVE,
+    }, ["workerId", "loopId", "turnId", "coordinate", "text", "tokens"])),
     "stream/event": notification(object(streamBase, ["entryId", "workerId", "target", "channel", "state", "contentLength"])),
     "stream/concluded": notification(object({
         entryId: POSITIVE,

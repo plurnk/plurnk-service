@@ -1,6 +1,6 @@
-// {§response-text-note}: exclude foreign tool-call grammar and leaked template tokens from
-// retained prose. The parser owns operation boundaries ({§response-text}).
-// Mechanism, not a knob: literal registers, extended as digests show new shapes.
+// {§reasoning-empty-turn-read}: a trace or emission carrying foreign tool-call grammar or leaked
+// template tokens is not read back to the model. The parser owns operation boundaries
+// ({§response-text}). Mechanism, not a knob: literal registers, extended as digests show new shapes.
 const MARKERS: readonly string[] = Object.freeze([
     "<｜｜DSML｜｜",        // DeepSeek V4 tool-call markup, as emitted in the text channel
     "<|DSML|>",
@@ -18,9 +18,5 @@ export default class KnownToxins {
     // The first marker the text carries, or null when it carries none.
     static match(text: string): string | null {
         return MARKERS.find((marker) => text.includes(marker)) ?? null;
-    }
-
-    static retains(text: string): boolean {
-        return KnownToxins.match(text) === null;
     }
 }
