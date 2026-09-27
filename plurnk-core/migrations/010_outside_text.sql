@@ -1,4 +1,5 @@
 -- MIGRATE: 10 outside
+-- Released in 1.22.0 and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never an edit here.
 -- #881 adds the 'outside' turn source ({§outside-text}): the response text that fell outside
 -- every operation, stored verbatim beside the turn's ops and reasoning sources. The kind CHECK
 -- lives in the table definition, so the table is rebuilt with the same columns, keys and

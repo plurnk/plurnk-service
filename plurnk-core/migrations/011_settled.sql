@@ -1,4 +1,5 @@
 -- MIGRATE: 11 settled
+-- Released in 1.22.0 and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never an edit here.
 -- #883: two guards are redeclared so each invariant is stated once in SQL ({§validation-topology}).
 -- No table is rebuilt: `subscriptions` is the parent of `subscription_publications` (ON DELETE
 -- CASCADE, itself the parent of `log_entries.subscription_publication_id`), and a DROP TABLE

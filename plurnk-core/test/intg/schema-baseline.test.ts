@@ -11,14 +11,17 @@ import { SqlRiteSync } from "@possumtech/sqlrite";
 import sha256 from "../../src/core/sha256.ts";
 import { MIGRATIONS_DIR, openMigrated } from "./_helpers.ts";
 
-// {§db-migrations} — the last released schema version and the fingerprint of its shape.
-const RELEASED = Object.freeze({ version: 8, release: "1.21.1", shape: "2d93e9044b58ba0167e3b21e9bb9f6daade6cd20221ad153f1079551f9cf9f25" });
+// {§db-migrations} — the released schema versions and the fingerprints of their shapes: every
+// release freezes what it shipped, and the previous release is the path an existing database takes.
+const RELEASED = Object.freeze({ version: 11, release: "1.22.0", shape: "e6c30907c5a19216150ed1c29b2f4ba6a8cca1ac0dd08a1a85e31cfa286aa4d3" });
+const PREVIOUS = Object.freeze({ version: 8, release: "1.21.1", shape: "2d93e9044b58ba0167e3b21e9bb9f6daade6cd20221ad153f1079551f9cf9f25" });
+type Release = typeof RELEASED;
 
-const released = async (): Promise<string> => {
+const released = async (release: Release): Promise<string> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-released-"));
     const dir = join(root, "migrations");
     await mkdir(dir);
-    const chapters = (await readdir(MIGRATIONS_DIR)).filter((name) => Number(name.split("_")[0]) <= RELEASED.version);
+    const chapters = (await readdir(MIGRATIONS_DIR)).filter((name) => Number(name.split("_")[0]) <= release.version);
     await Promise.all(chapters.map((name) => copyFile(join(MIGRATIONS_DIR, name), join(dir, name))));
     const path = join(root, "released.db");
     new SqlRiteSync({ path, dir }).close();
@@ -40,7 +43,7 @@ const columns = (db: DatabaseSync, table: string): string[] =>
 test("{§db-migrations}: versions are consecutive from 1 and a fresh database lands on the last", async () => {
     const versions = SqlRiteCore.loadChunks({ dir: MIGRATIONS_DIR }).MIGRATE.map(({ version }) => version);
     assert.deepEqual(versions, versions.map((_, index) => index + 1), "versions are numbered consecutively from 1 with no gaps");
-    assert.ok(versions.length > RELEASED.version, "evolution continues past the released baseline");
+    assert.ok(versions.length >= RELEASED.version, "the released versions are all present");
     const db = await openMigrated();
     try {
         const row = await db.test_schema_version.get<{ v: number }>({});
@@ -48,12 +51,14 @@ test("{§db-migrations}: versions are consecutive from 1 and a fresh database la
     } finally { await db.close(); }
 });
 
-test(`{§db-migrations}: the released versions keep the ${RELEASED.release} shape`, async () => {
-    assert.equal(shape(await released()), RELEASED.shape, `a released migration changed shape; add the next MIGRATE version instead of editing versions 1-${RELEASED.version}`);
-});
+for (const release of [RELEASED, PREVIOUS]) {
+    test(`{§db-migrations}: versions 1-${release.version} keep the ${release.release} shape`, async () => {
+        assert.equal(shape(await released(release)), release.shape, `a released migration changed shape; add the next MIGRATE version instead of editing versions 1-${release.version}`);
+    });
+}
 
-test(`{§db-migrations}: a ${RELEASED.release} database migrates in place and keeps its rows`, async () => {
-    const path = await released();
+test(`{§db-migrations}: a ${PREVIOUS.release} database migrates in place and keeps its rows`, async () => {
+    const path = await released(PREVIOUS);
     const before = new DatabaseSync(path);
     before.function("sha256", { deterministic: true }, (text) => sha256(text as string));
     try {
