@@ -365,6 +365,7 @@ export class SqlRiteSync {
 	test_get_loop_execution: SqlRiteSyncPreparedStatements;
 	test_get_loop_posture: SqlRiteSyncPreparedStatements;
 	test_messages_by_loop: SqlRiteSyncPreparedStatements;
+	test_loop_seed_message: SqlRiteSyncPreparedStatements;
 	test_messages_by_worker: SqlRiteSyncPreparedStatements;
 	test_get_turn: SqlRiteSyncPreparedStatements;
 	test_turn_attempts: SqlRiteSyncPreparedStatements;
@@ -952,6 +953,7 @@ export default class SqlRite {
 	test_get_loop_execution: SqlRitePreparedStatements;
 	test_get_loop_posture: SqlRitePreparedStatements;
 	test_messages_by_loop: SqlRitePreparedStatements;
+	test_loop_seed_message: SqlRitePreparedStatements;
 	test_messages_by_worker: SqlRitePreparedStatements;
 	test_get_turn: SqlRitePreparedStatements;
 	test_turn_attempts: SqlRitePreparedStatements;
