@@ -53,6 +53,7 @@ import type {
     ModelCallRow,
     ProviderRequestRow,
     LogRow,
+    EditRow,
     LogCurationEffectRow,
     WorkerRollupRow,
     OpMixRow,
@@ -113,6 +114,7 @@ export default class Digest {
             turnAttempts: (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all(),
             providerRequests: (db.digest_provider_requests as SyncPrep<ProviderRequestRow>).all(),
             logEntries: (db.digest_log_entries as SyncPrep<LogRow>).all(),
+            editRows: (db.digest_edit_statements as SyncPrep<EditRow>).all(),
             curationEffects: (db.digest_curation_effects as SyncPrep<LogCurationEffectRow>).all(),
             workerRollupRows: (db.digest_worker_rollups as SyncPrep<WorkerRollupRow>).all(),
             opMixRows: (db.digest_worker_op_mix as SyncPrep<OpMixRow>).all(),
@@ -125,7 +127,7 @@ export default class Digest {
             storageTables: (db.digest_storage_tables as SyncPrep<StorageTableRow>).all(),
         };
         let { workspaces, workers, inferenceCalls, modelCalls, turnAttempts, providerRequests,
-            logEntries, curationEffects, workerRollupRows, opMixRows } = rows;
+            logEntries, editRows, curationEffects, workerRollupRows, opMixRows } = rows;
         const { environmentRows, searchState, derivationState, dispositionCounts, dispositions, storageTables } = rows;
         let loops = rows.loops.map((loop): LoopRow => ({ ...loop, claimed_at: loop.claimed_at ?? null }));
         if (rows.storage === undefined) throw new Error("digest: the database reported no storage facts");
@@ -162,6 +164,7 @@ export default class Digest {
             turnAttempts = turnAttempts.filter((attempt) => keptTurnIds.has(attempt.turn_id));
             providerRequests = providerRequests.filter((request) => keptInferenceCallIds.has(request.inference_call_id));
             logEntries = logEntries.filter((le) => keptTurnIds.has(le.turn_id));
+            editRows = editRows.filter((row) => keptTurnIds.has(row.turn_id));
             const keptLogEntryIds = new Set(logEntries.map((entry) => entry.id));
             curationEffects = curationEffects.filter((effect) =>
                 keptLogEntryIds.has(effect.operation_log_entry_id)
@@ -207,6 +210,8 @@ export default class Digest {
             if (request.worker_id !== null) appendRequest(requestsByWorker, request.worker_id, request);
             appendRequest(requestsByWorkspace, request.workspace_id, request);
         }
+        const editRowsByWorker = new Map<number, EditRow[]>();
+        for (const row of editRows) { const arr = editRowsByWorker.get(row.worker_id) ?? []; arr.push(row); editRowsByWorker.set(row.worker_id, arr); }
         const logEntriesByTurn = new Map<number, LogRow[]>();
         for (const le of logEntries) { const arr = logEntriesByTurn.get(le.turn_id) ?? []; arr.push(le); logEntriesByTurn.set(le.turn_id, arr); }
         const loopsById = new Map(loops.map((l) => [l.id, l]));
@@ -221,7 +226,7 @@ export default class Digest {
             dbPath, storage, digestDir, workspaces, workers, loops, turns, inferenceCalls, modelCalls, turnAttempts, providerRequests, logEntries, curationEffects,
             workersByWorkspace, loopsByWorker, turnsByLoop, attemptsByTurn,
             requestsByInferenceCall, requestsByAttempt, requestsByTurn, requestsByLoop, requestsByWorker, requestsByWorkspace,
-            logEntriesByTurn, environments, loopsById, workersById,
+            logEntriesByTurn, editRows, editRowsByWorker, environments, loopsById, workersById,
             workerRollups, opMixByWorker, search,
         };
 

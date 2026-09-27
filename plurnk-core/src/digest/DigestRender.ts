@@ -23,9 +23,14 @@ import type {
     TurnRow,
     ProviderRequestRow,
     LogRow,
+    EditRow,
+    EditCensus,
+    EditForm,
+
     DigestModel,
     CacheLedgerEntry,
 } from "./digest-rows.ts";
+import { EDIT_FORMS } from "./digest-rows.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 function* projectRows<T, R>(rows: Iterable<T>, project: (row: T) => R): Generator<R> {
@@ -229,6 +234,76 @@ export default class DigestRender {
     // {§digest-cache-ledger} — per provider request, keyed by request id: the character prefix it shares
     // with the previous request of its loop, in the packet's own token estimate, beside the provider's
     // reported cache read. Walked loop by loop so at most two prompts are held at once.
+    // {§digest-edit-census}: the form an EDIT authored, read from its stored marker and pattern.
+    static editForm(row: Pick<EditRow, "line_marker" | "pattern">): EditForm {
+        if (row.pattern !== null) return "pattern";
+        if (row.line_marker === null) return "whole";
+        const { marks } = DigestRender.parseJson(row.line_marker, { marks: [] }) as { marks: Array<number | string> };
+        if (marks.length === 1) {
+            const [mark] = marks;
+            if (typeof mark === "string") return "hash";
+            if (mark === -1) return "append";
+            if (mark === 0) return "prepend";
+            return "line";
+        }
+        if (marks.length === 2) return "range";
+        if (marks.length === 3) return "offset";
+        if (marks.length === 4 && marks[0] === marks[2] && marks[1] === 1 && marks[3] === 1) return "insert";
+        return "column";
+    }
+
+    static #editCensusCache = new WeakMap<DigestModel, { byWorker: Map<number, EditCensus>; formById: Map<number, EditForm>; revisitById: Set<number> }>();
+
+    // {§digest-edit-census}: per worker, every model EDIT by authored form and status, and the
+    // revisits — an EDIT of a path the same worker edited within its previous two model turns.
+    static #editCensus(m: DigestModel): { byWorker: Map<number, EditCensus>; formById: Map<number, EditForm>; revisitById: Set<number> } {
+        const cached = DigestRender.#editCensusCache.get(m);
+        if (cached !== undefined) return cached;
+        const loopWorker = new Map(m.loops.map((loop) => [loop.id, loop.worker_id]));
+        // A worker's model turns in order; the ordinal is the distance the revisit window counts in.
+        const ordinal = new Map<number, number>();
+        const perWorker = new Map<number, number>();
+        for (const turn of [...m.turns].sort((a, b) => a.id - b.id)) {
+            if (turn.producer !== "model") continue;
+            const workerId = loopWorker.get(turn.loop_id);
+            if (workerId === undefined) throw new TypeError(`digest: turn ${turn.id} has no loop in scope`);
+            const next = (perWorker.get(workerId) ?? 0) + 1;
+            perWorker.set(workerId, next);
+            ordinal.set(turn.id, next);
+        }
+        const byWorker = new Map<number, EditCensus>();
+        const formById = new Map<number, EditForm>();
+        const revisitById = new Set<number>();
+        for (const [workerId, rows] of m.editRowsByWorker) {
+            const census: EditCensus = { edits: 0, refused: 0, revisits: 0, forms: Object.fromEntries(EDIT_FORMS.map((form) => [form, 0])) as Record<EditForm, number> };
+            const lastEdited = new Map<string, number>();
+            for (const row of rows) {
+                const form = DigestRender.editForm(row);
+                formById.set(row.id, form);
+                census.edits += 1;
+                census.forms[form] += 1;
+                if (row.status_rx >= 400) census.refused += 1;
+                const at = ordinal.get(row.turn_id);
+                if (at === undefined) throw new TypeError(`digest: EDIT ${row.id} sits on a turn no model produced`);
+                if (row.pathname !== null) {
+                    const previous = lastEdited.get(row.pathname);
+                    if (previous !== undefined && previous < at && at - previous <= 2) { census.revisits += 1; revisitById.add(row.id); }
+                    lastEdited.set(row.pathname, at);
+                }
+            }
+            byWorker.set(workerId, census);
+        }
+        const result = { byWorker, formById, revisitById };
+        DigestRender.#editCensusCache.set(m, result);
+        return result;
+    }
+
+    static #renderEditCensus(census: EditCensus | undefined): string {
+        if (census === undefined || census.edits === 0) return "(no edits)";
+        const forms = EDIT_FORMS.filter((form) => census.forms[form] > 0).map((form) => `${form}=${census.forms[form]}`).join(" ");
+        return `${census.edits} · ${forms} · refused=${census.refused} · revisits=${census.revisits}`;
+    }
+
     static #cacheLedgerCache = new WeakMap<DigestModel, Map<number, CacheLedgerEntry>>();
 
     static cacheLedger(m: DigestModel): Map<number, CacheLedgerEntry> {
@@ -449,6 +524,7 @@ export default class DigestRender {
             `Cost:       ${costStr}${kindStr}${usagelessStr}`,
             `Wire:       ${wireStr}`,
             `Op mix:     ${opMix.length > 0 ? opMix : "(no ops)"}`,
+            `EDITs:      ${DigestRender.#renderEditCensus(DigestRender.#editCensus(m).byWorker.get(worker.id))}`,
         ].join("\n");
     }
 
@@ -727,6 +803,7 @@ export default class DigestRender {
                 workspace_id: r.workspace_id,
                 name: r.name,
                 accounting: DigestRender.#accounting(m.requestsByWorker.get(r.id) ?? []),
+                edit_census: DigestRender.#editCensus(m).byWorker.get(r.id) ?? null,
             })),
             loops: m.loops.map((l) => ({
                 id: l.id, worker_id: l.worker_id, sequence: l.sequence, status: l.status,
@@ -837,6 +914,9 @@ export default class DigestRender {
                     : { stream: DigestRender.#renderStream(le) }),
                 ...(DigestRender.#environmentOf(le, m) === undefined ? {} : { env: DigestRender.#environmentOf(le, m) }),
                 ...(le.status_rx >= 400 ? { problem: DigestRender.#rowProblem(le) } : {}),
+                ...(DigestRender.#editCensus(m).formById.has(le.id)
+                    ? { edit_form: DigestRender.#editCensus(m).formById.get(le.id), edit_revisit: DigestRender.#editCensus(m).revisitById.has(le.id) }
+                    : {}),
             })),
             log_curation_effects: m.curationEffects.map(({ active_before, active_after, folded_before, folded_after, ...effect }) => ({
                 ...effect,

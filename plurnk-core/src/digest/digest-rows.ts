@@ -123,6 +123,20 @@ export interface LogRow {
     rx: string | null; mimetype_rx: string; status_rx: number; state: string; outcome: string | null;
     initial_folded: string; projection_active: 0 | 1; projection_folded: string;
 }
+// {§digest-edit-census} — one model-authored EDIT: the scope it authored (the log row's lineMarker
+// JSON), the pattern its durable statement carried, and the status it landed with.
+export interface EditRow {
+    id: number; worker_id: number; loop_id: number; turn_id: number; sequence: number;
+    pathname: string | null; status_rx: number; line_marker: string | null; pattern: string | null;
+}
+export const EDIT_FORMS = Object.freeze(["hash", "line", "range", "insert", "column", "prepend", "append", "offset", "pattern", "whole"] as const);
+export type EditForm = (typeof EDIT_FORMS)[number];
+export interface EditCensus {
+    edits: number;
+    refused: number;   // status >= 400
+    revisits: number;  // an EDIT of a path this worker edited within its previous two model turns
+    forms: Record<EditForm, number>;
+}
 // {§exec-env-scoped} — one output's recorded environment; `stream` is the log row's stream address.
 export interface ExecutionEnvironmentRow { workspace_id: number; stream: string; env: string }
 export interface LogCurationEffectRow {
@@ -186,6 +200,8 @@ export interface DigestModel {
     requestsByWorker: Map<number, ProviderRequestRow[]>;
     requestsByWorkspace: Map<number, ProviderRequestRow[]>;
     logEntriesByTurn: Map<number, LogRow[]>;
+    editRows: EditRow[];
+    editRowsByWorker: Map<number, EditRow[]>;
     // keyed `${workspace_id}:${stream}`; a spawn's environment as recorded on its output ({§exec-env-scoped})
     environments: Map<string, Record<string, unknown>>;
     loopsById: Map<number, LoopRow>;

@@ -112,6 +112,16 @@ WHERE op IS NOT NULL
 GROUP BY worker_id, op
 ORDER BY worker_id, n DESC, op;
 
+-- PREP: digest_edit_statements
+-- {§digest-edit-census}: every model-authored EDIT with the scope it authored, the pattern the
+-- durable statement carried, and how it landed. tx is the statement (application/json).
+SELECT id, worker_id, loop_id, turn_id, sequence, pathname, status_rx,
+       lineMarker AS line_marker,
+       CASE WHEN json_valid(tx) THEN json_extract(tx, '$.pattern') END AS pattern
+FROM log_entries
+WHERE op = 'EDIT' AND origin = 'model'
+ORDER BY worker_id, turn_id, sequence;
+
 -- PREP: digest_curation_effects
 SELECT operation_log_entry_id, target_log_entry_id,
        active_before, active_after,
