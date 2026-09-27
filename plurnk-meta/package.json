@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-meta",
-    "version": "1.21.1",
+    "version": "1.22.0",
     "description": "Plugin discovery and trust primitives shared by plurnk plugin families, and the teaching material the plurnk service gives models: policy, Recap, the plurnk skill and scheme references.",
     "keywords": [
         "plurnk",
