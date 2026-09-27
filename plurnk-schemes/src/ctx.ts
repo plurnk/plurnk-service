@@ -120,9 +120,9 @@ export interface EntryOperationCaps {
 }
 
 // ── entries ──────────────────────────────────────────────────────────────
-// Direct storage over the scheme's own namespace plus the standard PLURNK
-// entry-op implementation. A scheme may use these semantics or implement an
-// op itself.
+// {§scheme-ctx-entries} — direct storage over the scheme's own namespace plus the
+// standard PLURNK entry-op implementation. A scheme may use these semantics or
+// implement an op itself.
 export interface EntryStorageReadResult extends SchemeResult {
     readonly entry: StoredEntryData | null;
 }

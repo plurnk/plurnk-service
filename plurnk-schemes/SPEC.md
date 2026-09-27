@@ -226,7 +226,7 @@ ordinary; handlers must make concurrent access and semantic isolation explicit.
 Handlers without initialization or retained resources omit the corresponding
 hook.
 
-The entry CRUD primitives (`readEntry`/`writeEntry`/`deleteEntry`) are not handler operations; schemes use `ctx.entries`. Proposal application is the optional `applyResolution` handler hook described in §3.bis.
+§scheme-ctx-entries The entry CRUD primitives (`readEntry`/`writeEntry`/`deleteEntry`) are not handler operations; schemes use the manifest-bound `ctx.entries` (`read`, `write`, and `delete`), and the engine drives that same capability for COPY/MOVE/KILL orchestration when a `data` scheme omits resource-specific storage hooks. Proposal application is the optional `applyResolution` handler hook described in §3.bis.
 
 A log-targeted KILL is not a handler method. Core owns that active-projection
 curation; an entry scheme has no log visibility state and never receives it.
@@ -581,13 +581,6 @@ This permits one multi-channel producer to preserve successful evidence beside
 an independently failed representation without inventing another settlement
 path or reducing a result to a state label.
 
-The module setup seam registers a scheme-bound producer with `pending()` and
-`settle(workspaceId, event, result)`. Settlement preserves the universal result,
-is idempotent and notifies only the attached live loops. A producer serializes
-resolution/registration against settlement and reconciles retained pending
-identities at startup. Core settles attachments whose producer is absent at
-boot as unavailable. This is independent of process-owned stream subscriptions.
-
 `EntryCoordinates.resolve(target, authority)` supplies the same canonical
 coordinate Core binds ({§scheme-address}); handlers do not invent another
 interpretation of namespace authorities.
@@ -619,10 +612,8 @@ or ordered resource effects.
 
 DB-coupled entry/channel machinery — CRUD + write-time tokenization, the
 standard entry operations, channel writes, and subscription registry — lives
-in the consumer. This package defines their stable interfaces and pure helpers.
-Raw CRUD methods are not a parallel handler protocol. For `data` schemes whose
-handlers omit resource-specific storage hooks, engine-owned COPY/MOVE/KILL
-orchestration uses the manifest-bound `ctx.entries` implementation.
+in the consumer. This package defines their stable interfaces and pure helpers
+({§scheme-ctx-entries}).
 
 ## §5 Trusted extension contract
 

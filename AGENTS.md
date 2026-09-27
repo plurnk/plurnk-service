@@ -77,7 +77,10 @@ Where things are, for an agent that has to act before it has read everything:
   shared types and schemas, runtime-neutral Problems, operation results, Notices,
   and text coordinates.
 - `plurnk-parser` owns the ANTLR grammars and the parser that implements that
-  language; only the service's execution path imports it.
+  language. Its importers are the service's execution path, `plurnk-agui`
+  (`parseClient`, for client-authored blocks) and `plurnk-execs`
+  (`parseStatements` and `frame`, for runtime invocation and teaching examples);
+  no other package parses the language.
 - `plurnk-agui` owns the external client protocol and translates between AG-UI
   and daemon operations.
 - `plurnk-hooks` owns exact-command delivery of selected core lifecycle events.

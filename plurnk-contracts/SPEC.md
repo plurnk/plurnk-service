@@ -1275,9 +1275,9 @@ An explicit disposition may sit anywhere in it
 ({§disposition-anywhere}). An omitted WAIT produces no synthesized statement, diagnostic, receipt,
 warning, or strike. The authored operations and source remain unchanged.
 Unfinished blocks never receive inferred closers.
-Bounded operation errors retain valid siblings, and so does a lost boundary:
-the statements that closed before `unparsedTail.from` are facts, and only what
-follows is undefined ({§unparsed-tail-boundary}).
+A bounded operation error leaves its siblings' facts intact, and a lost boundary
+leaves the facts before it ({§unparsed-tail-boundary}); running them is the
+consumer's admission ({§emission-admission}).
 
 The host records programs per turn; no operation acts as a separator between
 saved programs. There is no outer Markdown program wrapper; the executable

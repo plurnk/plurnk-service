@@ -1196,6 +1196,7 @@ export default class Dispatcher {
             }
         }
         const prompt = [resource, statement.body].filter((part) => part !== "").join("\n\n");
+        // {§bare-inference} — empty combined text is a refusal that creates no model call.
         if (prompt.trim() === "") {
             return { result: Dispatcher.#failure(
                 "bare-prompt-empty", 422, "BARE has no prompt text: the prompt is the fence body, a resource path, or both; the aside is not a prompt.", {}, { retryable: false },

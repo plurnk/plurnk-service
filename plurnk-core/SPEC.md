@@ -653,7 +653,7 @@ and never re-fetch a match.
   exclusions — an `AGENTS.md` the repository ignores or an exclusion matches
   is not projected. (4) A definition the model proposes through the `members`
   family ({§members-functionality}), admitted only under the operator's ceiling
-  `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (shipped `namespace`), projected with source
+  `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` ({§members-model-scope}), projected with source
   `model`, and never admitted past the repository's ignore rules or an exclusion.
   Nothing else.
 - §membership-git-membership The workspace owns the Git repository containing
@@ -710,7 +710,7 @@ identity, and terminal disposition without exposing raw bytes or a base64 lane.
 workspace.** `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES` is a required positive
 byte ceiling over one disk source before Core reads it into the canonical file
 snapshot. Its valid range is `1..104857600`, bounded by the channel storage
-contract, and it ships at that 100 MiB maximum. An oversized path remains a real member
+contract. An oversized path remains a real member
 with an empty body channel carrying a durable 413 producer result; no diagnostic
 sentinel impersonates file content. READ therefore names the path, observed bytes,
 ceiling, and recovery through the ordinary result contract, while EDIT returns the
@@ -766,7 +766,7 @@ The version travels *with the proposal*, never re-read from the entry at accept:
 
 The CAS is the **hard backstop**, at the moment of writing, on every accept path. It composes with the model-facing {§line-anchors}: an anchor rejects a target whose relevant neighborhood changed before dispatch, while the CAS refuses to write against a snapshot disk left after proposal. An unanchored edit deliberately claims no pre-dispatch stale-view guarantee.
 
-§membership-git-flags **Permission flags.** Service-wide Git admission comes from {§operator-config-git-ceiling}. `PLURNK_SERVICE_GIT_AUTO=1` (default) includes the repository containing `project_root`; `=0` disables automatic Git membership, leaving member definitions as the only membership source. `ALLOWED` gates `AUTO`.
+§membership-git-flags **Permission flags.** Service-wide Git admission comes from {§operator-config-git-ceiling}. `PLURNK_SERVICE_GIT_AUTO=1` includes the repository containing `project_root`; `=0` disables automatic Git membership, leaving member definitions as the only membership source. `ALLOWED` gates `AUTO`.
 
 **Rationale.** Workspace is the right scope unit and the containing Git repository is its ordinary development boundary. Membership curation is tiered: Git bounds it by tracking, the client supersedes by overlay, and the model curates its render by READ/KILL. Supporting several independent repositories as one world would require Plurnk-owned topology, synchronization, and model teaching that Git already solves cleanly by treating them as separate workspaces.
 
@@ -1144,8 +1144,8 @@ text is no operation at all, {§outside-text}), WAIT, a parameterless KILL and a
 of failures beside a WAIT still strikes. The cycle source is not exempted: a repeating
 turn's operations succeed by construction, and the backstop exists to catch exactly
 that ({§engine-cycle-evidence}).
-The streak counts consecutive violating turns; `MAX_STRIKES` (default 3) is the
-threshold, crossed ON the third strike; the crossing turn terminates at **508
+The streak counts consecutive violating turns; `PLURNK_SERVICE_MAX_STRIKES` is the
+threshold, crossed ON the strike that reaches it; the crossing turn terminates at **508
 Loop Detected** when cycle-detected, otherwise **500**.
 
 The contracts, and the violation of each that strikes:
@@ -1210,10 +1210,10 @@ Author-facing contract: [`@plurnk/plurnk-providers`](../plurnk-providers/SPEC.md
 Three current entry points:
 
 - §provider-surface-generate `provider.generate(args)` — once per logical model call. An emission attempt supplies the complete packet messages, worker/turn coordinates, generation envelope, optional local grammar, first-party metadata, and `callKind: "emission"`. A BARE inference supplies only one user message containing its resolved prompt plus non-prompt call identity and accounting metadata, including `callKind: "bare"` ({§bare-inference} {§provider-call-kind}). Both receive a durable physical-request observer; provider-owned retry and failover may issue several ordered requests beneath either call. A successful `ProviderResponse` reaches its call-specific consumer; a `ProviderError.attempt` remains failed response evidence under {§provider-interrupted-attempt}. Core persists normalized response evidence separately from physical accounting.
-- §provider-surface-capacity `provider.assessRequestCapacity(messages, maxOutputTokens?, signal?)` — provider-owned intersection of request-shaped token evidence and every known physical input limit. It admits, rejects only a proven exact overflow, or defers ambiguity to upstream ({§tokenomics-context-envelope-admission}). `generate` performs this assessment for its exact request and preserves the evidence on success and capacity failure.
-- §provider-surface-prompt-measurement `provider.countPromptTokens(messages, signal)` — the cancellable complete-request measurement primitive used by provider capacity assessment, with `exact`, `upper_bound`, `estimate`, or `unavailable` provenance. Core never substitutes this physical fact for its curation ruler.
+- §provider-surface-capacity `provider.assessRequestCapacity(messages, maxOutputTokens?, signal?)` — the provider's verdict under {§provider-capacity-admission}; core acts on it under {§tokenomics-context-envelope-admission}. `generate` performs this assessment for its exact request and preserves the evidence on success and capacity failure.
+- §provider-surface-prompt-measurement `provider.countPromptTokens(messages, signal)` — the cancellable complete-request measurement primitive used by provider capacity assessment, with the provenance of {§provider-prompt-measurement}. Core never substitutes this physical fact for its curation ruler.
 
-§provider-surface-identity Provider capacity and identity are immutable for one instance. `contextWindow`, `maxInputTokens`, and `maxOutputTokens` carry known model limits; `outputBudget` is the total output reservation, optional `reasoningBudget` is its strict subset, and `inputCapacity` is the stable intersection of known input constraints ({§tokenomics}). A call's response grant may expand under {§provider-flexed-allowance}. Unknown facts remain `null`. `model` identifies persisted turn/provider evidence. Local GBNF admission also consumes `constrainsOutput` ({§grammar-configuration-admission}).
+§provider-surface-identity Provider capacity and identity are immutable for one instance ({§provider-interface}); core invents no stand-in for a `null` fact. `inputCapacity` feeds {§tokenomics}; a call's response grant may expand under {§provider-flexed-allowance}; `model` identifies persisted turn/provider evidence; local GBNF admission also consumes `constrainsOutput` ({§grammar-configuration-admission}).
 
 §inference-ledger **Logical inference is provider-neutral and physical requests have one ledger.** Every `inference_calls` identity belongs to a workspace and a model/inference turn, records its ordered kind and request model, and has a forward-only lifecycle. Its `model_calls` specialization owns normalized failure and capacity evidence; the response body is `model_call_responses`, present or retired under {§retention-policy}; one observation view records evidence, body and close together, and a settled call refuses a second observation. Only an `emission` has `turn_attempts` admission evidence; `bare` calls retain independent results. Every physical request is an ordered `provider_requests` child opened before I/O and settled once. Calls contribute to turn, loop, worker, and workspace accounting; only an emission supplies the latest context gauge.
 
@@ -1430,6 +1430,8 @@ historical execution. No address grants ownership or access restrictions.
 
 §fs-visibility-grantors **File visibility has two represented grantors; Plurnk never invents a private third one.** A file member is admitted by the active Git substrate or by an ordinary `include` row of the overlay. An `include` is either a projected `members` definition ({§members-projection}) or the exact, inspectable record of an accepted creation ({§fs-create-record}); both resolve to `constraint` membership. AGENTS.md remains auto-pulled as POLICY ({§policy-sections}), deliberately not a file member. A physically existing path that neither Git nor an `include` admits does not exist for the model and cannot be overwritten.
 
+### File scheme: creation and misses
+
 §fs-write-surface **The write surface — one admission and incorporation path.** Existing writes remain membership-gated. An absent path additionally crosses the effective creation scope and the complete constraint/Git policy before a proposal is issued. EDIT, COPY destinations, and MOVE destinations use this same path regardless of whether the producer is a model, client, plugin, or `_plurnk`. A COPY or MOVE destination scope on an absent channel resolves against its empty pre-mutation value under {§empty-mutation-scope}; a valid scope creates the channel with the selected source as its complete value. A coordinate outside that empty value is 416. Binary scopes remain numeric byte positions or ranges under {§binary-parity}.
 
 | Case | Required admission | Accepted result |
@@ -1489,18 +1491,15 @@ invalid range, read-only authority, and occupied hidden state without guessing.
 
 §file-directory-target **A directory is named as a directory.** Inside the root, a READ (or other exact-path read), KILL or EDIT whose target is a directory on disk — with or without a trailing slash — is refused `path-is-directory`, never as a missing or non-member file, since admitting it is not what the model needs: READ and KILL answer 404, EDIT 403. The detail is `'<key>' is a directory, not a file; <OP> reads/removes/writes one file.` and the recovery names the listing that reaches its files, `` List its files with `FIND (<key>/)`, then READ one by its path. `` (KILL: `then KILL each by its path`; EDIT: `` Name a file inside it, as `EDIT (<key>/<file>)`; list its files with `FIND (<key>/)`. ``). Beyond the root the disk stays dark and {§membership-read-refusal} holds unchanged.
 
-§fs-world-state **The world-state harness — coverage that closes the class.** Op-outcome tests check what an op returned; the harness checks the resulting world. `WorldState.check(db)` asserts, pure-db and read-only: identity uniqueness in practice (no tuple holds two rows), the canonical fixpoint on every file-class key, channel orphan-freedom, the closed admission set (every file row's origin is Git or constraint), and sig-coherence. Generated-pick incorporation and lifecycle require filesystem/Git evidence and are covered by the composed creation matrix rather than a false pure-database proxy. The harness runs as a lifecycle-test epilogue and at every soak turn boundary, where the delta half applies: an idle turn grows the entries table by ZERO. A violation names its law and its row.
-
 ### §scheme-manifest Manifest
 
 §scheme-manifest-manifest Per the framework-owned author contract ({§manifest}), each registered scheme exposes one closed `SchemeManifest`. `Manifest.of` validates the complete declaration and enforces that `manifest.name` matches `package.json#plurnk.name` before registration.
 
 ### §crud CRUD primitives
 
-Entry-bearing schemes expose direct storage through their manifest-bound
-`ctx.entries` capability (`read`, `write`, and `delete`). The engine uses that
-same public capability for COPY/MOVE/KILL orchestration when a scheme does not
-own a more specific operation. A stored-entry publication atomically upserts
+Core implements the `ctx.entries` capability of {§scheme-ctx-entries} and drives
+it for COPY/MOVE/KILL orchestration when a scheme does not own a more specific
+operation. A stored-entry publication atomically upserts
 one workspace identity, metadata, and its complete channel set. Concurrent
 publications expose one complete result, never a mix of channels; a failed
 publication leaves the prior entry unchanged. Omitted attributes preserve the
@@ -1716,7 +1715,7 @@ empty setting excludes nothing, and the first match is the observable reason.
 
 §search-size-bound Every search subject, whatever its scheme, is also bounded
 by size when the operator sets one: a body longer than
-`PLURNK_SERVICE_SEARCH_MAX_BYTES` (default empty = unbounded) is `excluded` with the reason `larger than N bytes`, before
+`PLURNK_SERVICE_SEARCH_MAX_BYTES` (empty = unbounded) is `excluded` with the reason `larger than N bytes`, before
 its body is read. It is neither parsed for symbols nor full-text indexed; READ,
 FIND by path, and membership are unaffected. The reason joins the derivation
 identity, so changing the bound re-derives the affected bodies and retention
@@ -1926,8 +1925,7 @@ range. COPY/MOVE mutation owners retain
 the resolved endpoint neighborhoods as compare-and-swap preconditions. There is
 no revision sidecar or fuzzy relocation. A range authenticates both endpoint
 neighborhoods, so every line of a range up to `2C + 2` lines is covered; a
-longer range retains an unauthenticated interior gap. The shipped `C = 2`
-covers ranges through six lines.
+longer range retains an unauthenticated interior gap.
 
 ### §edit EDIT
 
@@ -2024,7 +2022,7 @@ READ is the one fan-out core performs ({§read-fan-out}).
   result carries `matched`, the count of selected lines inside the scope. Zero
   matches is an empty read (204, `matched: 0`), never a failure. A full-text
   (`~`) or graph (`&`) pattern selects resources, not lines: 400
-  `pattern-dialect-unsupported`; a matcher its mimetype cannot run answers the
+  `pattern-dialect-unsupported` ({§pattern-dialect-find-only}); a matcher its mimetype cannot run answers the
   matcher's own 415/400 ({§matcher-dispatch}).
 - §pattern-dialect-find-only **A `~` or `&` matcher outside FIND is refused as FIND's alone.** Every
   400 `pattern-dialect-unsupported` — READ, EDIT, KILL, COPY, MOVE, SEND — names the model's
@@ -3097,11 +3095,13 @@ observations alike, independently of mimetype: `active` gives false, `closed` or
 projection preserves that Boolean, any included
 integer `exitCode`, and a producer's `page` receipt ({§executor-page-receipt}), even for an empty body. An automatic observation's atomic
 publication transition consumes the same result flag; private log attributes
-retain only the publication offset, not a second liveness value.
+retain only the publication offset, not a second liveness value. A closed channel
+publishes only once subscription settlement has installed its terminal result;
+until then the stream is still in flight and publishes on the turn after it settles.
 
 §exec-concurrency **Bounded admission per workspace (#389).** At most
-`PLURNK_SERVICE_EXEC_CONCURRENCY` executions run at once in one workspace (shipped `12`;
-`-1` unbounded); the scope is the workspace, so neither delegation nor later turns
+`PLURNK_SERVICE_EXEC_CONCURRENCY` executions run at once in one workspace (`-1`
+unbounded); the scope is the workspace, so neither delegation nor later turns
 bypass it and no other workspace can starve it. Every admitted execution still creates its
 entry, channels, and open subscription before its receipt returns, so queued work is
 cancellable, restart-reconcilable, completion-gated, and observed through the ordinary
@@ -3216,7 +3216,7 @@ body prefixes.
   key WORK or FORK does not take is refused the same way. The durable row redacts the block
   wholesale ({§log-sensitive-request-evidence}); the spawn's record names each such value's
   provenance as the modifier's.
-- §exec-hold-until-concluded **The turn-hold exception** — for runtimes in `PLURNK_SERVICE_EXEC_HOLD` (a decision-table env, shipped listing the search family), an in-flight stream **pauses the cycle**: the next packet does not assemble until the stream concludes, so the model never burns a turn asking "are we there yet" about a result the engine controls end-to-end. This exception is limited to seconds-bounded runtimes whose final result the engine controls end-to-end. Bounded by `PLURNK_SERVICE_EXEC_HOLD_MS` and **fail-open**: at the cap the standard cycle resumes untouched (waits, wakes, polls). Zero grammar or teaching surface — the model emits an executor fence, optionally followed by WAIT; the wake-shaped world simply arrives one packet sooner. It extends selected runtimes beyond the ordinary {§worker-optimistic-settlement} cap before the next packet assembles. A bare entry holds ALL of a runtime's spawns; a `<runtime>:<effect>` suffix (`github:read`) holds only that effect-class — an MCP server is one runtime whose tools split (a `read` `get_issue` is instant; a `host` `run_migration` is a slow mutation), so an operator opts the known-fast read-class in without parking on the mutation. Conservative stays default: an arbitrary third-party server's latency never parks the engine unless a suffix opts a class in.
+- §exec-hold-until-concluded **The turn-hold exception** — for runtimes in `PLURNK_SERVICE_EXEC_HOLD` (a decision-table env), an in-flight stream **pauses the cycle**: the next packet does not assemble until the stream concludes, so the model never burns a turn asking "are we there yet" about a result the engine controls end-to-end. This exception is limited to seconds-bounded runtimes whose final result the engine controls end-to-end. Bounded by `PLURNK_SERVICE_EXEC_HOLD_MS` and **fail-open**: at the cap the standard cycle resumes untouched (waits, wakes, polls). Zero grammar or teaching surface — the model emits an executor fence, optionally followed by WAIT; the wake-shaped world simply arrives one packet sooner. It extends selected runtimes beyond the ordinary {§worker-optimistic-settlement} cap before the next packet assembles. A bare entry holds ALL of a runtime's spawns; a `<runtime>:<effect>` suffix (`github:read`) holds only that effect-class — an MCP server is one runtime whose tools split (a `read` `get_issue` is instant; a `host` `run_migration` is a slow mutation), so an operator opts the known-fast read-class in without parking on the mutation. Conservative stays default: an arbitrary third-party server's latency never parks the engine unless a suffix opts a class in.
 - §exec-entry-sink **The entry() sink** implements {§executor-entry-sink} over ordinary scheme-owned entries. Core owns allocation, materialization, and persistence; executors receive only the returned resource address.
 
   | Input / effect | Consumer behavior |
@@ -3239,7 +3239,7 @@ body prefixes.
 
 - **Client disposition** ({§methods-proposal-resolve}) — a client interface delivers accept, reject, or cancel; AG-UI uses standard resume entries ({§agui-proposal-resolve}).
 - **Loop disposition** ({§proposal-disposition}) — core applies the exact automatic accept/reject before observational subscribers run; automatic policy is not an event listener or client fallback.
-- §proposal-timeout-cancels **Timeout is OPT-IN; the shipped default is a world that WAITS** - `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` empty (shipped) means a pending proposal - a file edit awaiting review - waits indefinitely for its human: absence is not an answer, so the service does not synthesize a cancellation. A finite positive millisecond value establishes the bound; then elapsing synthesizes `cancel` (outcome `timeout`), server-side, needing no client. Every other explicit value fails at the proposal lifecycle owner and terminalizes an already-written proposal rather than silently choosing an indefinite wait. Indefinite is with respect to the clock alone: the wait ends with its loop. A loop whose signal aborts — its own timeout, `loop.cancel`, worker `KILL` — settles every proposal it is holding through {§proposal-cancel-aborts}, carrying the abort's reason as the outcome, because a cancelled loop is not a loop awaiting a decision.
+- §proposal-timeout-cancels **Timeout is OPT-IN; an empty deadline WAITS** - an empty `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` means a pending proposal - a file edit awaiting review - waits indefinitely for its human: absence is not an answer, so the service does not synthesize a cancellation. A finite positive millisecond value establishes the bound; then elapsing synthesizes `cancel` (outcome `timeout`), server-side, needing no client. Every other explicit value fails at the proposal lifecycle owner and terminalizes an already-written proposal rather than silently choosing an indefinite wait. Indefinite is with respect to the clock alone: the wait ends with its loop. A loop whose signal aborts — its own timeout, `loop.cancel`, worker `KILL` — settles every proposal it is holding through {§proposal-cancel-aborts}, carrying the abort's reason as the outcome, because a cancelled loop is not a loop awaiting a decision.
 
 **The decision drives a one-way state transition** on `log_entries.state` (resolution is idempotent — `WHERE state='proposed'`, so a second resolution 404s):
 
@@ -3249,7 +3249,9 @@ body prefixes.
 | §proposal-reject-fails reject   | `failed` | 400 | `rejected` | none — the action did not occur. |
 | §proposal-cancel-aborts cancel  | `cancelled` | 499 | `loop_aborted` | none — the loop is abandoning. |
 
-§proposal-outcome-terse-error A caller-supplied `outcome` overrides the default. On an **accept** it rides the result as the forensic `outcome` field; a **non-accept** is a Problem that carries the same `outcome` field (`write_failed` / `rejected` / `timeout` — one word) and names it in its detail, because "the action didn't occur" without the mechanical why leaves the model acting on a phantom success (the fan-out dead-park: an ENOENT apply rendered as a mute 400). A settlement the **harness itself** decided — nobody attending, no answer before a deadline, a loop or daemon ending while the proposal waited — also states that condition and an exit in its detail and `recovery`, because a reviewer's outcome is a reviewer's word but these have no author present to explain them; the one-word token stays as the forensic `outcome` either way.
+§proposal-outcome-terse-error A caller-supplied `outcome` overrides the default. On an **accept** it rides the result as the forensic `outcome` field; a **non-accept** is a Problem that carries the same `outcome` field (`write_failed` / `rejected` / `timeout` — one word) and names it in its detail, because "the action didn't occur" without the mechanical why leaves the model acting on a phantom success (the fan-out dead-park: an ENOENT apply rendered as a mute 400).
+
+§proposal-harness-settlement **A settlement the harness itself decided names its condition and its recovery.** Nobody attending, no answer before a deadline, a loop or daemon ending while the proposal waited: each states that condition and an exit in its detail and `recovery`, because a reviewer's outcome is a reviewer's word but these have no author present to explain them; the one-word token stays as the forensic `outcome` either way ({§proposal-outcome-terse-error}).
 
 §proposal-proposed-hidden **A proposed row is invisible until it resolves.** A `state='proposed'` / 202 row is withheld from both packet materialization and `log/entry`; it surfaces exactly once after resolution, carrying its terminal status — models and clients see outcomes, never pending proposals.
 
@@ -3469,9 +3471,9 @@ No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, ex
 | §db-fk-indexes Foreign-key check paths | Every foreign-key column a delete, cascade, or parent replacement can check carries an index (partial where the column is nullable), and no registry statement's plan scans a growing table: `test/intg/schema-query-plans.test.ts` runs `EXPLAIN QUERY PLAN` over every `-- PREP` statement against the baseline and fails on a `SCAN` of a growing table, except statements that read a whole table by design (digest, startup recovery, whole-workspace listings, scheduled-loop claims). An index claim is a plan, never a grep of index names. |
 | §db-index-owners Every index has an owner | An explicit index earns its place one of three ways: a registry statement's plan uses it, its leading column is a foreign key whose check it serves, or it enforces uniqueness. The same test fails on any other index, naming it: an index nobody reads is a write on every insert. Duplicates of a `UNIQUE` constraint's own index and sort-only indexes no plan selects were removed on this rule; a column no statement reads (`symbol_refs.col`, `ambient_events.created_at`) is not stored. |
 | §db-maintenance-optimize Statistics at shutdown | The daemon's last database step before the caller closes SQLite is `PRAGMA optimize` on the writer (`maintenance_optimize`), so `sqlite_stat1` reflects tables the connection planned against, bounded by SQLite's own analysis limit; a failure there is a reported shutdown error, never silent. Retention runs before it under the operator's policy ({§retention-policy}) and ends with a WAL truncation ({§db-space-reclamation}); no periodic `ANALYZE` runs. |
-| §db-space-reclamation The daemon keeps its own file healthy | `PLURNK_SERVICE_AUTO_VACUUM` (`incremental`, the default, or `none`) names the mode the daemon keeps its file in. At start, before any drain, a database in another mode is converted (set the mode, one `VACUUM`, which rewrites the file and needs free disk about its size) and the journal says so with page counts before and after. Under `incremental`, every retention pass ends by stepping `PRAGMA incremental_vacuum` to completion once free pages reach `PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES` (0, the default, = every pass), and reports `reclaimedPages`; below the floor, free pages stay for SQLite to reuse. Under `none` the file never shrinks and freed pages are reused. No operator step is involved beyond the knobs. The WAL stays bounded by SQLite's automatic checkpoint (#764). |
-| §content-store Every body is stored once | `contents` holds each settled body once, addressed by its SHA-256, however many channels, workspaces, forks or derivations carry it; rows are immutable. `entry_channel_rows` points a settled channel at its body and keeps an active stream's body as a private buffer until it settles, when it is interned. Every reader and writer uses the `entry_channels` view, whose `INSTEAD OF` triggers intern bodies, refuse a bound `content_hash` that is not the content's, and write each column group only when it changed, so a search attachment is never a representation write. SQLite counts no changes for a view, so a write that must know whether its channel exists returns the channel's name; an outer join cannot flatten the view, so the two statements that need one read `entry_channel_rows` and `contents` directly. `derivation_fts` is an external-content index over `derivation_texts` (a derivation joined to its body); `derivations.content_id` names the indexed text, and the triggers in `_entry-fts.sql` move the index with it and forget it on delete. A body no channel holds and no derivation indexes is collected by retention under `PLURNK_SERVICE_COLLECT_CONTENTS` (1). Witnesses: `test/intg/retention.test.ts`, `test/intg/entries.test.ts`, `test/intg/fulltext-index.test.ts`. |
-| §retention-policy Retention is the operator's policy; information is kept by default | `Retention` (`src/server/Retention.ts`, statements in `Retention.sql`) reads ten knobs from `.env.defaults` once at daemon construction (the two storage knobs are {§db-space-reclamation}) and runs four set statements in dependency order — on `PLURNK_SERVICE_RETENTION_INTERVAL_MS` cadence while the daemon runs (0 = shutdown only) and once more at shutdown before `PRAGMA optimize`. `PLURNK_SERVICE_RETAIN_PACKET_TURNS` (-1 = every packet) and `PLURNK_SERVICE_RETAIN_PACKET_MS` (thirty days; -1 = no age limit) retire a completed turn's packet composition (`turn_sections`, {§packet-items}) once it is beyond the newest N packet-bearing turns of its loop or older than the age; the turn, its bag, its log rows and its accounting stay, and an open turn is never retired. `PLURNK_SERVICE_COLLECT_PACKET_ITEMS` (1) collects items no composition references. `PLURNK_SERVICE_COLLECT_CONTENTS` (1) collects stored bodies nothing holds ({§content-store}), after the collectors that release them. `PLURNK_SERVICE_COLLECT_DERIVATIONS` (1) collects derivations no channel, turn source, or log row cites — superseded editions — with their symbols (cascade) and their full-text shadow (`derivations_delete_fts`, a process trigger beside the FTS statements, on every delete path). `PLURNK_SERVICE_RETAIN_RESPONSE_TURNS` (-1) and `PLURNK_SERVICE_RETAIN_RESPONSE_MS` (thirty days) retire a settled call's response body (`model_call_responses`) once it is beyond the newest N body-bearing calls of its loop or its turn is older than the age; the call's identity, failure, capacity, admission and accounting stay, and the digest renders such a call request-only. Under the shipped defaults the durable record is kept forever, while packets and response bodies — transient evidence — are collected after thirty days, so a daemon left running for months stops growing (#788). A malformed knob refuses daemon construction. Witness: `test/intg/retention.test.ts`. |
+| §db-space-reclamation The daemon keeps its own file healthy | `PLURNK_SERVICE_AUTO_VACUUM` (`incremental` or `none`) names the mode the daemon keeps its file in. At start, before any drain, a database in another mode is converted (set the mode, one `VACUUM`, which rewrites the file and needs free disk about its size) and the journal says so with page counts before and after. Under `incremental`, every retention pass ends by stepping `PRAGMA incremental_vacuum` to completion once free pages reach `PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES` (0 = every pass), and reports `reclaimedPages`; below the floor, free pages stay for SQLite to reuse. Under `none` the file never shrinks and freed pages are reused. No operator step is involved beyond the knobs. The WAL stays bounded by SQLite's automatic checkpoint (#764). |
+| §content-store Every body is stored once | `contents` holds each settled body once, addressed by its SHA-256, however many channels, workspaces, forks or derivations carry it; rows are immutable. `entry_channel_rows` points a settled channel at its body and keeps an active stream's body as a private buffer until it settles, when it is interned. Every reader and writer uses the `entry_channels` view, whose `INSTEAD OF` triggers intern bodies, refuse a bound `content_hash` that is not the content's, and write each column group only when it changed, so a search attachment is never a representation write. SQLite counts no changes for a view, so a write that must know whether its channel exists returns the channel's name; an outer join cannot flatten the view, so the two statements that need one read `entry_channel_rows` and `contents` directly. `derivation_fts` is an external-content index over `derivation_texts` (a derivation joined to its body); `derivations.content_id` names the indexed text, and the triggers in `_entry-fts.sql` move the index with it and forget it on delete. A body no channel holds and no derivation indexes is collected by retention under `PLURNK_SERVICE_COLLECT_CONTENTS`. Witnesses: `test/intg/retention.test.ts`, `test/intg/entries.test.ts`, `test/intg/fulltext-index.test.ts`. |
+| §retention-policy Retention is the operator's policy; information is kept by default | `Retention` (`src/server/Retention.ts`, statements in `Retention.sql`) reads ten knobs from `.env.defaults` once at daemon construction (the two storage knobs are {§db-space-reclamation}) and runs four set statements in dependency order — on `PLURNK_SERVICE_RETENTION_INTERVAL_MS` cadence while the daemon runs (0 = shutdown only) and once more at shutdown before `PRAGMA optimize`. `PLURNK_SERVICE_RETAIN_PACKET_TURNS` (-1 = every packet) and `PLURNK_SERVICE_RETAIN_PACKET_MS` (-1 = no age limit) retire a completed turn's packet composition (`turn_sections`, {§packet-items}) once it is beyond the newest N packet-bearing turns of its loop or older than the age; the turn, its bag, its log rows and its accounting stay, and an open turn is never retired. `PLURNK_SERVICE_COLLECT_PACKET_ITEMS` collects items no composition references. `PLURNK_SERVICE_COLLECT_CONTENTS` collects stored bodies nothing holds ({§content-store}), after the collectors that release them. `PLURNK_SERVICE_COLLECT_DERIVATIONS` collects derivations no channel, turn source, or log row cites — superseded editions — with their symbols (cascade) and their full-text shadow (`derivations_delete_fts`, a process trigger beside the FTS statements, on every delete path). `PLURNK_SERVICE_RETAIN_RESPONSE_TURNS` and `PLURNK_SERVICE_RETAIN_RESPONSE_MS` retire a settled call's response body (`model_call_responses`) once it is beyond the newest N body-bearing calls of its loop or its turn is older than the age; the call's identity, failure, capacity, admission and accounting stay, and the digest renders such a call request-only. The durable record is kept; packets and response bodies — transient evidence — age out, so a daemon left running for months stops growing (#788). A malformed knob refuses daemon construction. Witness: `test/intg/retention.test.ts`. |
 
 - DDL = storage truth; JSON Schemas = wire truth. They are allowed to differ where ergonomics demand.
 - §entry-identity-no-null **Identity components are never NULL.** `(workspace_id, scheme, authority, pathname)` is a unique key. `workspace_id` references the workspace directly with cascading deletion. Namespace schemes use empty authority; resource schemes retain their canonical authority. File members use nonempty `scheme="file"` and render as bare paths. Registration refuses `storedScheme: null`.
@@ -3688,7 +3690,7 @@ Each knob's value lives on its panel and nowhere else (`plurnk-service config de
 | §operator-config-file-create-scope `PLURNK_SERVICE_FILE_CREATE_SCOPE` | Hard file-creation ceiling: `none < root < namespace`. `none` denies new filesystem files, `root` admits only paths inside `project_root`, and `namespace` also admits canonical outside-root paths. Existing-member writes are unaffected. |
 | `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES` | Byte ceiling in `1..104857600` for one workspace-file snapshot ({§membership-materialization-limit}). |
 | `PLURNK_SERVICE_MAX_TURNS` | Operator model-call **ceiling** — `-1` = no cap; a positive value clamps `runLoop({maxTurns})`. The durable worker-tree budget includes descendant calls, BARE, and park/resume under {§turn-cap-counts-the-tree}; non-model chronology consumes none. |
-| `PLURNK_SERVICE_MAX_COMMANDS` | Per-emission action ceiling; `-1` = no cap (default) — every generated op dispatches. A positive value caps dispatched actions: overflow ops drop with one durable `max-commands-exceeded` error row on the next packet. The final disposition always dispatch. Tightened per workspace via `settings.maxCommands` (min wins). |
+| `PLURNK_SERVICE_MAX_COMMANDS` | Per-emission action ceiling; `-1` = no cap — every generated op dispatches. A positive value caps dispatched actions: overflow ops drop with one durable `max-commands-exceeded` error row on the next packet. The final disposition always dispatch. Tightened per workspace via `settings.maxCommands` (min wins). |
 | §operator-config-loop-timeout `PLURNK_SERVICE_LOOP_TIMEOUT` | Positive ms of cumulative active execution per loop ({§loop-execution-allowance}); excludes parked/queued time. Snapshotted on first execution, retained across wakes. Exhaustion aborts in-flight work and terminates `504 loop_timeout`, including a stuck provider call. |
 | `PLURNK_SERVICE_PROVIDER_RECOVERY` | ms of recovery after the first recoverable provider failure; `0` disables reissue. Expiry parks attended loops, concludes unattended loops, or returns BARE's failure under {§provider-recovery}. |
 | `PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF` | First recovery delay (ms); doubles per failure up to `PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX` ({§provider-recovery}). |
@@ -3715,20 +3717,85 @@ Every core knob listed is enforced at its owning read site; `.env.defaults` is t
 
 **Two override semantics — ceiling vs default.** Which kind a var is determines what "override" means across the cascade:
 
-- **Ceiling** (most-restrictive-wins) — an operator-set hard bound nothing downstream may exceed: not a lower-precedence file, not a per-workspace constraint, not a per-call seam argument. `PLURNK_SERVICE_GIT_ALLOWED` ({§operator-config-git-ceiling}), `PLURNK_SERVICE_FILE_CREATE_SCOPE` ({§operator-config-file-create-scope}), `PLURNK_SERVICE_MAX_COMMANDS`, `PLURNK_SERVICE_MAX_STRIKES`, and `PLURNK_SERVICE_MAX_TURNS` (`-1` ships it off; a positive value caps the per-call request). The sandbox/cost guarantee: the operator caps it; no client widens it.
+- **Ceiling** (most-restrictive-wins) — an operator-set hard bound nothing downstream may exceed: not a lower-precedence file, not a per-workspace constraint, not a per-call seam argument. `PLURNK_SERVICE_GIT_ALLOWED` ({§operator-config-git-ceiling}), `PLURNK_SERVICE_FILE_CREATE_SCOPE` ({§operator-config-file-create-scope}), `PLURNK_SERVICE_MAX_COMMANDS`, `PLURNK_SERVICE_MAX_STRIKES`, and `PLURNK_SERVICE_MAX_TURNS` (`-1` = no cap; a positive value caps the per-call request). The sandbox/cost guarantee: the operator caps it; no client widens it.
 - **Default** (explicit-wins) — a fallback the most-specific setter replaces freely: `PLURNK_MODEL` (a `runLoop({selector})` request overrides it) and the config-time vars (`HOST` / `PORT` / `DB_PATH`).
-
-§operator-config-shipped-defaults **The shipped `.env.defaults` is itself under
-test.** It has no active `PLURNK_MODEL`; no active local GBNF constraint; and
-the policy renders in exactly one packet section. Every other tier runs the
-test cascade, so shipped-default regressions are otherwise invisible by
-construction.
 
 §operator-config-flag-parity The companion **flag-parity** check binds code and
 template both ways: every `PLURNK_SERVICE_*` the service reads has a
 `.env.defaults` line — a floor, a `--flag`, and a legend entry — and every
 declared `PLURNK_SERVICE_*` is read. A half-landed rename therefore fails a test
 instead of a user's boot, and a dead knob cannot ship.
+
+Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
+
+External plugins declare their own env vars in their own `.env.defaults`, assembled at boot ({§operator-config-env-defaults}).
+
+§operator-config-cli-flags **Admin CLI flags derive only from the service package's `.env.defaults`.** Every `PLURNK_*` declared there becomes `--<kebab-cased-name>` (prefix stripped, lowercased, underscores → dashes). A comment immediately above the declaration becomes its `-h` description. Installed plugin defaults join the environment floor and catalog but do not implicitly expand the service executable's flag surface.
+
+### Loop limits
+
+§turn-cap-counts-the-tree **The turn ceiling is the worker tree's budget of model
+calls.** The owner is the current loop of the topmost ancestor-or-self worker that has
+one: for a tree a client started, the root worker's loop current when this loop began (its
+`max_turns`: the client's `maxTurns` clamped by the operator ceiling below); a loop with no
+such ancestor owns its own budget. Every model call on the owner's loop and on any later
+loop of the owner's descendants spends it, emission turns and BARE calls alike, open or
+settled, one per call however many physical requests it took. `LoopDriver` reads the tree's count before each turn and rules the `max-turns` 429
+terminal ({§loop-terminals}) when the ceiling is met; a BARE beyond the budget is refused
+429 `max-turns` before any provider call, so one turn cannot spend past it with a batch. A
+child loop inherits the value and binds the same count.
+
+§operator-config-max-turns-ceiling Enforcement is per-use-site — no central most-restrictive pass; each ceiling is checked where it bites. `PLURNK_SERVICE_MAX_TURNS` at `-1` is no cap; when an operator sets a positive value, the per-call request is `min()`-capped against it. Other termination rules remain independent ({§loop-terminals}).
+
+### Workspace settings
+
+§operator-config-workspace-settings **Client open-context (per workspace).**
+`workspace.create({ settings })` accepts only the following fields, normalizes
+them before creating the workspace, and persists the resulting snapshot on
+`workspaces.settings`. Unknown fields and malformed values fail at that input
+boundary. Operator-arcane knobs stay environment-only.
+
+| Field                  | Admitted value                                 | Composition / owner                                           |
+| ---------------------- | ---------------------------------------------- | ------------------------------------------------------------- |
+| `settings.filesItems`  | Integer `>= -1`                                | Explicit replacement {§operator-config-workspace-files-items} |
+| `settings.maxCommands` | Non-negative integer                           | Tightening ceiling {§operator-config-workspace-max-commands}  |
+| `settings.git`         | Boolean                                        | Tightening denial {§operator-config-workspace-git}            |
+| `settings.fileCreateScope` | `none`, `root`, or `namespace`             | Tightening ceiling {§operator-config-workspace-file-create-scope} |
+| `settings.client`      | Nonempty string                                | Stable self-identification {§client-metadata}                 |
+| `settings.capabilities` | `CapabilityPolicy`                            | Subtractive capability layer {§operator-config-workspace-capabilities} |
+
+The composition families remain distinct so one setting's semantics never
+leak into another.
+
+*Defaults — explicit-wins (the client replaces/merges freely):*
+
+- §operator-config-workspace-files-items `settings.filesItems` (number) **replaces** `PLURNK_SERVICE_FILES_ITEMS` for the workspace: a one-shot opens clean (`0`, no preview), with ordinary markerless pages (`-1`), or with the file list explicitly capped (`N`, other surveys remain markerless). A single scalar — the client value wins outright.
+*Ceilings — most-restrictive-wins (the client may only narrow, never widen):*
+
+- §operator-config-workspace-max-commands `settings.maxCommands` (number)
+  **min()s** the `PLURNK_SERVICE_MAX_COMMANDS` per-emission cap for the
+  workspace: a client tightens the runaway-op guard and never raises it past
+  the operator's.
+- §operator-config-workspace-max-commands-floor The cap bounds *actions* only.
+  The final disposition (`102`, `200`, `202`,
+  `300`, or `499`) are never counted and always dispatch, so `0` is a valid
+  floor — the tightest — admitting a plan and disposition with zero actions.
+- §operator-config-workspace-git `settings.git` (`false`) **denies** git for the workspace (`PLURNK_SERVICE_GIT_ALLOWED` AND workspace) — the client opts its workspace out of git membership and working-tree status; it can never re-enable git past the operator's service-wide lockout.
+- §operator-config-workspace-file-create-scope `settings.fileCreateScope` narrows `PLURNK_SERVICE_FILE_CREATE_SCOPE` by the ordered lattice `none < root < namespace`; a workspace may disable creation or confine a namespace-enabled service to its root, but never widen the operator's ceiling. Unknown service values fail configuration validation and unknown workspace values fail `workspace.create`.
+- `settings.membersModelScope` narrows `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` ({§members-model-scope}).
+- §operator-config-workspace-capabilities `settings.capabilities` is one
+  workspace-stable `CapabilityPolicy` layer in {§capability-admission}. It may
+  narrow any registered operation, scheme, runtime, tool, access class, or
+  trait through the canonical `only`/`deny` selectors; it cannot register a
+  capability or restore one removed by the service layer.
+
+### Gate profiles
+
+§operator-config-shipped-defaults **The shipped `.env.defaults` is itself under
+test.** It has no active `PLURNK_MODEL`; no active local GBNF constraint; and
+the policy renders in exactly one packet section. Every other tier runs the
+test cascade, so shipped-default regressions are otherwise invisible by
+construction.
 
 §operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to gate-wide service posture that is identical on every machine: complete catalog orientation, automatic Git membership when the operator ceiling permits Git, ambient operator-file docs/packet notes cleared, ambient MCP selections and schedules disabled, and `PLURNK_EXECS_QUESTION=0` for unattended runs. The ordinary executor switch removes the question tool and its teaching; an explicit override can opt into an attended drill. Configuration with a narrower or variable owner stays outside it:
 
@@ -3764,65 +3831,6 @@ before assembled package defaults fill unset values:
 The floor reports every removed key. A gate that succeeds only with those pins
 is red because provider capacity did not derive for
 a fresh-user configuration.
-
-§turn-cap-counts-the-tree **The turn ceiling is the worker tree's budget of model
-calls.** The owner is the current loop of the topmost ancestor-or-self worker that has
-one: for a tree a client started, the root worker's loop current when this loop began (its
-`max_turns`: the client's `maxTurns` clamped by the operator ceiling below); a loop with no
-such ancestor owns its own budget. Every model call on the owner's loop and on any later
-loop of the owner's descendants spends it, emission turns and BARE calls alike, open or
-settled, one per call however many physical requests it took. `LoopDriver` reads the tree's count before each turn and rules the `max-turns` 429
-terminal ({§loop-terminals}) when the ceiling is met; a BARE beyond the budget is refused
-429 `max-turns` before any provider call, so one turn cannot spend past it with a batch. A
-child loop inherits the value and binds the same count.
-
-§operator-config-max-turns-ceiling Enforcement is per-use-site — no central most-restrictive pass; each ceiling is checked where it bites. `PLURNK_SERVICE_MAX_TURNS` ships **off** (`-1` = no cap) and, when an operator sets a positive value, the per-call request is `min()`-capped against it. Other termination rules remain independent ({§loop-terminals}).
-
-§operator-config-workspace-settings **Client open-context (per workspace).**
-`workspace.create({ settings })` accepts only the following fields, normalizes
-them before creating the workspace, and persists the resulting snapshot on
-`workspaces.settings`. Unknown fields and malformed values fail at that input
-boundary. Operator-arcane knobs stay environment-only.
-
-| Field                  | Admitted value                                 | Composition / owner                                           |
-| ---------------------- | ---------------------------------------------- | ------------------------------------------------------------- |
-| `settings.filesItems`  | Integer `>= -1`                                | Explicit replacement {§operator-config-workspace-files-items} |
-| `settings.maxCommands` | Non-negative integer                           | Tightening ceiling {§operator-config-workspace-max-commands}  |
-| `settings.git`         | Boolean                                        | Tightening denial {§operator-config-workspace-git}            |
-| `settings.fileCreateScope` | `none`, `root`, or `namespace`             | Tightening ceiling {§operator-config-workspace-file-create-scope} |
-| `settings.client`      | Nonempty string                                | Stable self-identification {§client-metadata}                 |
-| `settings.capabilities` | `CapabilityPolicy`                            | Subtractive capability layer {§operator-config-workspace-capabilities} |
-
-The composition families remain distinct so one setting's semantics never
-leak into another.
-
-*Defaults — explicit-wins (the client replaces/merges freely):*
-
-- §operator-config-workspace-files-items `settings.filesItems` (number) **replaces** `PLURNK_SERVICE_FILES_ITEMS` for the workspace: a one-shot opens clean (`0`, no preview), with ordinary markerless pages (`-1`), or with the file list explicitly capped (`N`, other surveys remain markerless). A single scalar — the client value wins outright.
-*Ceilings — most-restrictive-wins (the client may only narrow, never widen):*
-
-- §operator-config-workspace-max-commands `settings.maxCommands` (number)
-  **min()s** the `PLURNK_SERVICE_MAX_COMMANDS` per-emission cap for the
-  workspace: a client tightens the runaway-op guard and never raises it past
-  the operator's.
-- §operator-config-workspace-max-commands-floor The cap bounds *actions* only.
-  The final disposition (`102`, `200`, `202`,
-  `300`, or `499`) are never counted and always dispatch, so `0` is a valid
-  floor — the tightest — admitting a plan and disposition with zero actions.
-- §operator-config-workspace-git `settings.git` (`false`) **denies** git for the workspace (`PLURNK_SERVICE_GIT_ALLOWED` AND workspace) — the client opts its workspace out of git membership and working-tree status; it can never re-enable git past the operator's service-wide lockout.
-- §operator-config-workspace-file-create-scope `settings.fileCreateScope` narrows `PLURNK_SERVICE_FILE_CREATE_SCOPE` by the ordered lattice `none < root < namespace`; a workspace may disable creation or confine a namespace-enabled service to its root, but never widen the operator's ceiling. Unknown service values fail configuration validation and unknown workspace values fail `workspace.create`.
-- §operator-config-workspace-members-model-scope `settings.membersModelScope` narrows `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` by the same lattice; a workspace may refuse the model's definitions entirely under a permissive service ({§members-model-scope}).
-- §operator-config-workspace-capabilities `settings.capabilities` is one
-  workspace-stable `CapabilityPolicy` layer in {§capability-admission}. It may
-  narrow any registered operation, scheme, runtime, tool, access class, or
-  trait through the canonical `only`/`deny` selectors; it cannot register a
-  capability or restore one removed by the service layer.
-
-Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
-
-External plugins declare their own env vars in their own `.env.defaults`, assembled at boot ({§operator-config-env-defaults}).
-
-§operator-config-cli-flags **Admin CLI flags derive only from the service package's `.env.defaults`.** Every `PLURNK_*` declared there becomes `--<kebab-cased-name>` (prefix stripped, lowercased, underscores → dashes). A comment immediately above the declaration becomes its `-h` description. Installed plugin defaults join the environment floor and catalog but do not implicitly expand the service executable's flag surface.
 
 ---
 
@@ -3982,8 +3990,8 @@ definition for the submitting client or worker.
 capability-aware operations, scoped module actions, and retained provider work
 lease the workspace's Functionality. Boot, workspace or worker creation,
 attachment, listing, naming, idle clients, and parked state alone do not.
-After the last lease releases, `PLURNK_SERVICE_WORKSPACE_WARM_MS` (default
-`900000`) and `PLURNK_SERVICE_WORKSPACE_WARM_MAX` (default `2`) bound idle
+After the last lease releases, `PLURNK_SERVICE_WORKSPACE_WARM_MS` and
+`PLURNK_SERVICE_WORKSPACE_WARM_MAX` bound idle
 residency. `0` disables the respective grace or allowance; `-1` disables that
 bound. Concurrent demand coalesces; cooling never closes a leased connection.
 
@@ -5196,8 +5204,7 @@ or an unknown enabled alias fails the daemon at boot.
 namespace`, narrowed by `settings.membersModelScope` (most restrictive wins). `none`
 refuses every model definition — inclusion or exclusion — as `403
 members/functionality/model-scope`, naming `git add` and the operator's `/members add` as
-the paths that remain; `root` admits patterns inside the root; `namespace`, the shipped
-default, admits `../` too.
+the paths that remain; `root` admits patterns inside the root; `namespace` admits `../` too.
 `auto` loops self-approve proposals, so the ceiling — not the proposal — is the guard
 ({§membership-baseline}). The coordinator hands `admit` the caller (`action` | `operation`)
 so the family bounds the model without a second grammar.
@@ -5237,7 +5244,7 @@ source it rides the definition. The workspace's durable state owns enablement
 model-facing trace.
 
 *Discovery is inert.* `discover {query}` searches the ecosystem registry
-(`PLURNK_SERVICE_SKILLS_REGISTRY_URL`, default `https://skills.sh`; empty disables it
+(`PLURNK_SERVICE_SKILLS_REGISTRY_URL`; empty disables it
 with 501 `registry-not-configured`) and returns one candidate per hit with
 `registry` provenance and the exact `owner/repo` source. `discover {source}`
 lists the skills one standard package reference contains with `source`
@@ -5253,8 +5260,8 @@ names, rather than the coordinator's generic default.
 *Preparation.* For each enabled alias the adapter selects the host-provided
 tree for `service` scope or locates the directory at the filesystem scope;
 a workspace definition whose directory is absent is installed
-through the standard CLI (`PLURNK_SERVICE_SKILLS_CLI`, default `npx --yes skills`:
-`add <source> --agent universal --skill <name> --yes [--global]`, run with
+through the standard CLI (`PLURNK_SERVICE_SKILLS_CLI`, invoked as
+`<cli> add <source> --agent universal --skill <name> --yes [--global]`, run with
 `HOME` set to the service's user home so the installer's `~` is the global
 root) and the installed `SKILL.md` — never the installer's output — is the
 evidence.
@@ -5346,11 +5353,11 @@ section because they are language extensions rather than executable tools.
 
 ### §inject system.inject — the operator injection
 
-§packet-inject When `PLURNK_SERVICE_PACKET_INJECT` names a readable markdown file, its content renders as an `## Operator Notes` section in the system slot (definition → policy → inject). Read per-turn so the operator's edits take effect live; a set-but-unreadable path fails the turn hard (a deliberate setting with a broken path is a misconfig, surfaced not hidden). `~/` expands to home. It's the operator-side complement to the plugin section hook — a pressure valve so reshaping the packet edits operator content, never the core. Unset → no section.
+§packet-inject When `PLURNK_SERVICE_PACKET_INJECT` names a readable markdown file, its content renders as an `## Operator Notes` section in the system slot (definition → policy → inject). Read per-turn so the operator's edits take effect live; a set-but-unreadable path fails the turn hard as {§policy-sections} rules. `~/` expands to home. It's the operator-side complement to the plugin section hook — a pressure valve so reshaping the packet edits operator content, never the core. Unset → no section.
 
 ### §policy system.policy — the client's policy injection
 
-§policy-sections One section rides the system slot **after the definition**: the contents of `PLURNK_SERVICE_POLICY` (default `$XDG_CONFIG_HOME/plurnk/AGENTS.md`, {§host-path-layout}), with no engine-generated heading. The policy document owns its Markdown structure. Policy is the client's authoritative rules promoted into the privileged zone — NOT a log entry; the model cannot READ or KILL it. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. The PROJECT `AGENTS.md` is local guidance, not policy: it rides turn 0 as the foisted `worker:///_plurnk/AGENTS.md` entry ({§turn0-agents-stunt}); references and skills use native discovery ({§skills-functionality}).
+§policy-sections One section rides the system slot **after the definition**: the contents of `PLURNK_SERVICE_POLICY` (unset resolves to the policy member in {§host-path-layout}), with no engine-generated heading. The policy document owns its Markdown structure. Policy is the client's authoritative rules promoted into the privileged zone — NOT a log entry; the model cannot READ or KILL it. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. The PROJECT `AGENTS.md` is local guidance, not policy: it rides turn 0 as the foisted `worker:///_plurnk/AGENTS.md` entry ({§turn0-agents-stunt}); references and skills use native discovery ({§skills-functionality}).
 
 On first run, and only when `$XDG_CONFIG_HOME/plurnk` itself is absent, the service seeds
 `AGENTS.md` from `@plurnk/plurnk-meta/POLICY.md` ({§teaching-corpus}).
@@ -5632,7 +5639,7 @@ Carried from the contract walk; durable.
 
 A KILL with a text-coordinate scope aimed at an entry-bearing scheme deletes exactly that span: core prepares and dispatches it as an EDIT with an empty body over the same marker, so anchors resolve, proposals gate it, and the merge facts and receipt are the EDIT path's — while the log row records the model's KILL. Its packet metadata and canonical log body use {§edit-result-receipt-projection}. ```` ```EDIT (path) <scope> ```` with an empty body remains the same act spelled the other way; the teaching names KILL.
 
-§kill-pattern **A pattern on an entry KILL deletes each matching line.** ```` ```KILL (path) [{"pattern": "beta"}] ```` takes the same EDIT path as a scoped KILL, expanded under {§edit-pattern} in whole lines: the resource is read once, the matcher runs line by line, and every line a match touches becomes one empty-body line splice in one atomic batch guarded by those lines' anchors. A numeric scope bounds the lines the pattern may touch. Zero matches change nothing (204, `matched: 0`); a whole-entry KILL never widens from a pattern that selected nothing. The receipt is the EDIT path's, compacted the same way: `matched` lines, the first deletion's `receipt` with its `removedText` ({§edit-receipt-removed-text}), and `last` for the final one. Node-selecting patterns (`//`, `$`) select whole lines here, as they name nodes with line extents; resource-selecting ones (`~`, `&`) are refused (400 `pattern-dialect-unsupported`). The log stays the exception: a pattern on `log:///` selects rows ({§log-curation-set-selection}), and a stream scheme's KILL is process control, so a pattern there is 400 `kill-pattern-unsupported`.
+§kill-pattern **A pattern on an entry KILL deletes each matching line.** ```` ```KILL (path) [{"pattern": "beta"}] ```` takes the same EDIT path as a scoped KILL, expanded under {§edit-pattern} in whole lines: the resource is read once, the matcher runs line by line, and every line a match touches becomes one empty-body line splice in one atomic batch guarded by those lines' anchors. A numeric scope bounds the lines the pattern may touch. Zero matches change nothing (204, `matched: 0`); a whole-entry KILL never widens from a pattern that selected nothing. The receipt is the EDIT path's, compacted the same way: `matched` lines, the first deletion's `receipt` with its `removedText` ({§edit-receipt-removed-text}), and `last` for the final one. Node-selecting patterns (`//`, `$`) select whole lines here, as they name nodes with line extents; resource-selecting ones (`~`, `&`) are refused (400 `pattern-dialect-unsupported`, {§pattern-dialect-find-only}). The log stays the exception: a pattern on `log:///` selects rows ({§log-curation-set-selection}), and a stream scheme's KILL is process control, so a pattern there is 400 `kill-pattern-unsupported`.
 
 ---
 
@@ -5677,3 +5684,5 @@ marker file or a sweep; an unstamped invocation is not a special case with its o
 simply an unstamped run with its own directory. A stamped run that passes is reclaimed when it
 exits; a failed suite's evidence is never touched and stays exactly where the run reported it. A cross-package test may reuse Core's migration fixture only by passing a path inside the
 caller's own run directory.
+
+§fs-world-state **The world-state harness — coverage that closes the class.** Op-outcome tests check what an op returned; the harness checks the resulting world. `WorldState.check(db)` asserts, pure-db and read-only: identity uniqueness in practice (no tuple holds two rows), the canonical fixpoint on every file-class key, channel orphan-freedom, the closed admission set (every file row's origin is Git or constraint), and sig-coherence. Generated-pick incorporation and lifecycle require filesystem/Git evidence and are covered by the composed creation matrix rather than a false pure-database proxy. The harness runs as a lifecycle-test epilogue and at every soak turn boundary, where the delta half applies: an idle turn grows the entries table by ZERO. A violation names its law and its row.

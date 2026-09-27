@@ -12,7 +12,7 @@ export type WorkspaceOpenContext = {
     maxCommands: number | null; // {§operator-config-workspace-max-commands} — min() with env; null = unset
     git: boolean | null;       // {§operator-config-workspace-git} — env AND workspace; null = unset
     fileCreateScope: FileCreateScope | null; // {§operator-config-workspace-file-create-scope}
-    membersModelScope: FileCreateScope | null; // {§operator-config-workspace-members-model-scope}
+    membersModelScope: FileCreateScope | null; // {§members-model-scope}
     client: string | null;     // {§client-metadata} — workspace-stable frontend id; null = unset
     capabilities: CapabilityPolicy;
 };

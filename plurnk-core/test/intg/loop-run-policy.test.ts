@@ -155,7 +155,7 @@ test("{§proposal-ownership-notification} proposals=reject settles the same admi
             const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; scheme: string; rx: string }>({ loop_id: result.loopId });
             const edit = rows.find((row) => row.op === "EDIT" && row.scheme === "proposing-test");
             assert.equal(edit?.status_rx, 400, "the admitted action was declined, not denied at capability admission");
-            // {§proposal-reject-fails} — the harness decided this rejection, so it owes the reason
+            // {§proposal-harness-settlement} — the harness decided this rejection, so it owes the reason
             // and an exit, not an outcome token alone (#789).
             const refusal = JSON.parse(edit!.rx) as { outcome?: string; problem?: { detail?: string; recovery?: string } };
             const detail = refusal.problem?.detail ?? "";

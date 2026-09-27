@@ -62,10 +62,8 @@ interface ProposalWaiter {
 const abortOutcome = (reason: unknown): string =>
     typeof reason === "string" && reason.length > 0 ? reason : "loop_cancelled";
 
-// {§proposal-reject-fails} — a settlement the harness decided for itself says what it decided and
-// how to avoid it next time. A reviewer's outcome is the reviewer's word and is reported as given;
-// these are the ones where nobody was present to explain, so the harness owes the sentence. An
-// outcome token alone ("no_review_channel") names a condition the reader cannot act on.
+// {§proposal-harness-settlement} — the settlements nobody was present to explain; an outcome token
+// alone ("no_review_channel") names a condition the reader cannot act on.
 const HARNESS_SETTLEMENTS: Readonly<Record<string, { readonly condition: string; readonly recovery: string }>> = {
     // The same fact LoopPolicies already states when composing an impossible policy.
     no_review_channel: {
