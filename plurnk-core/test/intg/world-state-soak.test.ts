@@ -1,7 +1,6 @@
-// {§fs-world-state} the SOAK — the run59 shape in miniature: repeated turn boundaries over
-// ONE rooted workspace with real membership, the invariant harness at every boundary, and
-// the delta law: read-only turns grow the entries table by ZERO. run59's fragmentation
-// (one phantom row per member per turn) trips this on turn two — no benchmark required.
+// {§fs-world-state} the soak: repeated turn boundaries over one rooted workspace with real
+// membership, the invariant harness at every boundary, and the delta law: repeated read-only
+// turns grow the entries table by zero.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -53,13 +52,13 @@ continue
         const loopId = await insertLoop(db, workerId, 1, "soak");
         let baseline: number | null = null;
         for (let turn = 1; turn <= TURNS; turn++) {
-            // the per-turn membership pass — run59 fragmentation vector, now convergent
+            // the per-turn membership pass
             await GitMembership.indexGitMembership(ctx);
             const r = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
             assert.ok(r.status < 500, `turn ${turn} completed (${r.status})`);
             const count = await WorldState.entryCount(db);
             if (baseline === null) baseline = count;
-            else assert.equal(count, baseline, `turn ${turn}: read-only turns grow the entries table by ZERO (run59 grew it every turn)`);
+            else assert.equal(count, baseline, `turn ${turn}: read-only turns grow the entries table by ZERO`);
             const violations = await WorldState.check(db);
             assert.deepEqual(violations, [], `turn ${turn}: the world stays lawful at every boundary`);
         }

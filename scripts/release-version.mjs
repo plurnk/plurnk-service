@@ -23,13 +23,10 @@ for (const dir of root.workspaces) {
     manifests.set(file, pkg);
 }
 
-// A registry version cannot be reused once any platform package has published it.
-// published it (npm immutability) — terraform's independent 1.0.9–1.0.11 line proved a burned
-// number wears the stamp as a lie (a pre-train artifact serving under tonight's number). The stamp
-// is legal only on a number no platform package has ever published; this also makes the external-package
-// sweep's serves-check trustworthy by construction (any leaf serving the stamp mid-train can only
-// have gotten it from this release). Checks workspaces + the external package registry and fails with the
-// full burned list.
+// A stamp is legal only on a number no platform package has published (npm immutability).
+// Checks workspaces and the external package registry and fails with the full burned list; this
+// also makes the external-package sweep's serves-check trustworthy (a leaf serving the stamp
+// mid-train can only have gotten it from this release).
 {
     const reg = JSON.parse(await fs.readFile(path.join("plurnk-meta", "external-packages.json"), "utf8"));
     const names = new Set([...members, ...reg.packages.map((entry) => entry.name)]);

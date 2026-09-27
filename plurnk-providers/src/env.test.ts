@@ -125,7 +125,7 @@ test("the generic prompt-cache-key knob is retired rather than retained as a com
     );
 });
 
-// — per-alias knob scoping (per-alias scoping doctrine, user 2026-07-03) —
+// — per-alias knob scoping ({§provider-configuration}) —
 
 test("scopeEnvToAlias: suffixed knob wins, bare is the fallback, other aliases ignored", async () => {
     const { scopeEnvToAlias } = await import("./env.ts");

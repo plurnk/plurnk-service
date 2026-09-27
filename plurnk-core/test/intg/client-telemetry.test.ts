@@ -1,7 +1,6 @@
 // {§client-metadata} — the workspace's self-identified client id (the originating frontend, e.g.
 // "@plurnk/plurnk-tui/1.4.0") is stored with the workspace and validated on write. It reaches no
-// provider: the retired first-party endpoint was its only consumer (#697). The attribution sibling
-// lives in attribution.test.ts.
+// provider (#697). The attribution sibling lives in attribution.test.ts.
 
 import test from "node:test";
 import assert from "node:assert/strict";

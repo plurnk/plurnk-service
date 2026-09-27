@@ -1,7 +1,7 @@
 // {§fs-world-state} — the harness proves BOTH directions: a lawful world reports zero
 // violations, and a manufactured breach is DETECTED (a detector nobody has seen catch
-// anything is a guard nobody can trust). The soak half runs the run59 shape in miniature:
-// turn boundaries over one workspace, zero entry growth on read-only turns.
+// anything is a guard nobody can trust). The soak half repeats turn boundaries
+// over one workspace: zero entry growth on read-only turns.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";

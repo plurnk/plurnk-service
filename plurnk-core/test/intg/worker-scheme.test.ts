@@ -680,7 +680,7 @@ test("EDIT on the bare worker entity is rejected — WORK spawns, not EDIT (400,
         const namedWorkerId = await insertWorker(db, workspaceId, null, "worker");
 
         // grammar 0.74.41 OP×resource matrix: EDIT is file/entry only — the worker ENTITY (path-absent
-        // worker://<name>) is not editable. The old EDIT-spawn form is gone; WORK(worker://<name>) spawns.
+        // worker://<name>) is not editable. WORK(worker://<name>) spawns.
         const result = await engine.dispatch({
             statement: editStmt(workerPath("worker"), "loop forever"),
             workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",

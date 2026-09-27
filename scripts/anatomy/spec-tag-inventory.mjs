@@ -16,7 +16,7 @@ const perSpec = {}; for (const r of rows) { const k = r.spec; perSpec[k] ??= { t
 console.log("per SPEC (tags / orphans):"); for (const [k, v] of Object.entries(perSpec).sort((a, b) => b[1].tags - a[1].tags)) console.log(`  ${k}: ${v.tags} / ${v.orphan}`);
 console.log("first 25 orphan tags:", orphan.slice(0, 25).map((r) => r.tag).join(", "));
 const undeclaredCites = [...cites.keys()].filter((t) => !decl.has(t)); console.log(`cited but never declared as a block: ${undeclaredCites.length}`, undeclaredCites.slice(0, 12).join(", "));
-// per-SPEC orphan listing (declaration line + text) — consumed by the Phase 2 binning scripts
+// per-SPEC orphan listing (declaration line + text)
 const specText = new Map(specs.map((f) => [relative(root, f), readFileSync(f, "utf8").split("\n")]));
 const grouped = new Map(); for (const r of orphan) (grouped.get(r.spec) ?? grouped.set(r.spec, []).get(r.spec)).push(r);
 for (const [spec, rows] of [...grouped.entries()].sort((a, b) => b[1].length - a[1].length)) { console.log(`\n## ${spec}\n`); for (const r of rows.toSorted((a, b) => a.line - b.line)) console.log(`- ${r.line}: §${r.tag} — ${specText.get(spec)[r.line - 1].trim().slice(0, 160)}`); }

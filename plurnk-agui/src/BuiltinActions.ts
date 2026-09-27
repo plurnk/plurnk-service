@@ -113,8 +113,7 @@ export default class BuiltinActions {
                 }
                 case "workspace.attach": {
                     // A REAL attach: rebind the thread map to the chosen workspace and hand
-                    // back its envelope — the picker does what it says (the unwired kind +
-                    // a nil-masking fallback produced the 2026-07-10 front-door disaster).
+                    // back its envelope — the picker does what it says.
                     if (typeof p.id !== "number") {
                         return actionFailure(
                             "invalid-action-parameters",

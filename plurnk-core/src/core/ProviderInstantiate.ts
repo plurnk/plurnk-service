@@ -172,8 +172,7 @@ export default class ProviderInstantiate {
     ): Promise<Provider> {
         // {§operator-config-precedence} — promote the alias-scoped provider-knob family
         // (PLURNK_PROVIDERS_*_<alias>) to
-        // bare BEFORE construction, so per-alias tuning and generation-envelope pins bind. Without this
-        // the whole per-alias provider surface was silently dropped at construction.
+        // bare BEFORE construction, so per-alias tuning and generation-envelope pins bind.
         env = ProviderInstantiate.#scopedEnv(route, env, effort);
         return ProviderInstantiate.#constructWith(route, env);
     }

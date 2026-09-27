@@ -54,7 +54,7 @@ test("{§native-tool-calls} an unknown invoke or parameter, or markup beside a r
 });
 
 // {§native-tool-calls} — the other popular families read the same way, from recorded emissions where
-// they exist (MiMo v2.6 flash, django-11620, 2026-09-24) and from each vendor's documented shape.
+// they exist and from each vendor's documented shape.
 test("{§native-tool-calls} MiMo's inline <tool_call><function=READ><parameter=file_path> pair is two READs", () => {
     const input = "<tool_call><function=READ><parameter=file_path>/Users/dev/workspace-71d1a807/django/urls/resolvers.py</parameter></function></tool_call><tool_call><function=READ><parameter=file_path>/Users/dev/workspace-71d1a807/django/core/handlers/exception.py</parameter></function></tool_call>";
     assert.deepEqual(read(input).items.filter((item) => item.kind === "error"), []);

@@ -429,8 +429,7 @@ refuses it and names the declaration that would. Native SDKs built on
 openai-compatible (DeepInfra, Together) write `reasoning_effort` from their own
 `reasoningEffort` option after spreading the others, overwriting a raw
 `reasoning_effort`; their shipped declarations therefore point at
-`/reasoningEffort`, with `{"reasoningEffort":"none"}` as the off body the portable
-setting used to send.
+`/reasoningEffort`, with `{"reasoningEffort":"none"}` as the off body.
 
 ## §4 Operator configuration
 
@@ -786,8 +785,7 @@ Settled calls remove their deadline timers and cancellation subscriptions.
 Caller cancellation spans the operation and preserves the caller's reason.
 A 2xx exchange whose body cannot be processed (a provider invalid-response)
 classifies as the non-retryable 502 on the first failure unless an explicit
-`x-should-retry` directive says otherwise (#479 supersedes #446's budgeted
-promotion). Inner deadline failures surface on the first failure; when a
+`x-should-retry` directive says otherwise (#479). Inner deadline failures surface on the first failure; when a
 directive-driven retry sequence exhausts, `attempts` and `retryExhausted`
 are added and the classification is final. Every admitted physical attempt opens
 and settles exactly one ordered {§provider-request-accounting} record, including

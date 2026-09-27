@@ -362,7 +362,7 @@ export const effortFromEnv = (
     return { mode, budget: mode === "off" ? null : resolvedBudget };
 };
 
-// ── Per-alias knob scoping (per-alias scoping doctrine, user 2026-07-03): PLURNK_PROVIDERS_<KNOB>[_<alias>] ──
+// ── Per-alias knob scoping ({§provider-configuration}): PLURNK_PROVIDERS_<KNOB>[_<alias>] ──
 // Every plurnk-owned knob accepts a per-alias override — the suffixed form wins,
 // the bare form is the fallback — so two aliases on one provider name (two boxes,
 // two models) stop sharing one global setting. The knob list is CLOSED and parsed

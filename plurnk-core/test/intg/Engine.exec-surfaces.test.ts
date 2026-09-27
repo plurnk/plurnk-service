@@ -1,11 +1,5 @@
-// Regression guard for the live/demo exec failure: a model workers an execution, the
-// entry is created in the DB — but its result must also surface in the next
-// turn's LOG (the execution log row links its output via stream=<runtime>:///<coord>),
-// or the model is blind to its own output and loops forever. The bug only manifested in the
-// e2e tier (model-in-loop); this reproduces it deterministically with a Mock
-// model driven through the REAL prod loop — loop.run via the daemon, the same
-// packet assembly + doc materialization production runs — so the guard exercises
-// the exact path the live/demo failure took, not a hand-built engine fork.
+// An execution's result surfaces in the next turn's log (the execution log row links its output
+// via stream=<runtime>:///<coord>), driven by a Mock model through the real loop via the daemon.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -80,7 +74,7 @@ test("{§log-coordinate-hierarchy}: rejected executor proposals use the same rec
     });
 });
 
-test("regression: a model's execution result surfaces visibly in the next turn without an explicit READ", async () => {
+test("a model's execution result surfaces visibly in the next turn without an explicit READ", async () => {
     // {§exec-stream}: waiting joins the command; its result is visible before completion.
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````sh\necho plurnk-index-probe\n````\n\n````WAIT\nwaiting\n````", 10),

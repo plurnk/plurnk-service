@@ -252,8 +252,8 @@ export default class AstBuilder {
     }
 
     // {§matcher-option} — a text or log operation's body is never a matcher; it is ignored with one
-    // advisory naming the option form, and the operation still runs (operator, 2026-09-12: warn, never
-    // strike, over a body the model was taught not to write).
+    // advisory naming the option form, and the operation still runs ({§matcher-body-redirect}: warn,
+    // never strike).
     static #adviseBody(op: string, raw: string | null, position: Position): void {
         if (raw === null || raw.trim() === "") return;
         if (AstBuilder.#bareMatcher(raw, op, false) !== null) return;

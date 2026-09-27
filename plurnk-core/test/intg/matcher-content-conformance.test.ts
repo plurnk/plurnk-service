@@ -95,7 +95,7 @@ test("{§scope-slot}: READ <L> slices by line via the marker slot, not the body"
 // --- FIND: body matcher runs against content ------------------------------
 // Each world swaps the token between fields: the entry that matches by CONTENT
 // is NOT the entry that matches by PATHNAME. The impl selects the content-bearing
-// entry — a pathname-matcher (the old divergence) would return the other one.
+// entry — a pathname-matcher would return the other one.
 
 test("{§find-glob-filter-on-content}: FIND regex selects entries by content, not pathname", async () => {
     const { db, workspaceId, workerId } = await setup();

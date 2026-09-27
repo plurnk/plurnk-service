@@ -92,8 +92,7 @@ export interface HandlerInfo {
 }
 
 // Intrinsic presentation declaration exposed without loading handler code.
-// The family retains its historical empty-string normalization for an omitted
-// package glyph; Core translates that sentinel to absence on the shared wire.
+// An omitted package glyph is the empty string; Core translates that sentinel to absence on the shared wire.
 export interface MimetypeDisplayMetadata {
     mimetype: string;
     glyph: string;

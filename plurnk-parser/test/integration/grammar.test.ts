@@ -683,7 +683,7 @@ test("{§unclosed-regex} a /pattern with no closing slash is the whole pattern w
     const advisories = errorsOf(source);
     assert.deepEqual(advisories.map(({ severity }) => severity), ["warning"]);
     assert.match(advisories[0]!.message, /has no closing `\/`; it was read as the whole pattern with no flags/u);
-    // The dogfood and bench case of 2026-09-23: a heading ending in a lone slash has nothing to read.
+    // A heading ending in a lone slash has nothing to read.
     const bare = firstError("````FIND (tests/staticfiles_tests/**) /\n````\n");
     assert.equal(bare.severity, "error");
     assert.match(bare.message, /no pattern follows it/u);

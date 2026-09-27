@@ -442,7 +442,7 @@ test("an overlap receipt carries the whole conflict graph, the clean regions, an
     ]);
     assert.equal(result.status, 409);
     assert.equal(result.problem?.detail, "Two EDIT regions overlap.");
-    assert.deepEqual(result.problem?.conflictingRegions, [[1, 4], [2, 2]], "the first pair keeps its historical field");
+    assert.deepEqual(result.problem?.conflictingRegions, [[1, 4], [2, 2]], "conflictingRegions names the first pair");
     assert.deepEqual(result.problem?.conflicts, [
         { regions: [[1, 4], [2, 2]], relation: "one contains the other" },
         { regions: [[1, 4], [3, 3]], relation: "one contains the other" },
@@ -457,7 +457,7 @@ test("an overlap receipt carries the whole conflict graph, the clean regions, an
 // {§edit-batch-merges} — evidence-gated resolutions, each reported; everything else refused.
 const six = "a\nb\nc\nd\ne\nf\n";
 
-test("an identical twin is applied once and the twin's row says so (#428 phase 3)", () => {
+test("an identical twin is applied once and the twin's row says so (#428)", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2] }, body: "B" },
         { marker: { marks: [2] }, body: "B" },
@@ -469,7 +469,7 @@ test("an identical twin is applied once and the twin's row says so (#428 phase 3
     assert.deepEqual(result.applied?.map(({ marker }) => marker.marks), [[2], [5]], "receipts are built from what was applied");
 });
 
-test("a twin that differs only by trailing whitespace or newlines is still the same edit, and says so (#428 phase 3)", () => {
+test("a twin that differs only by trailing whitespace or newlines is still the same edit, and says so (#428)", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2] }, body: "B" },
         { marker: { marks: [2] }, body: "B  \n\n" },
@@ -479,7 +479,7 @@ test("a twin that differs only by trailing whitespace or newlines is still the s
     assert.deepEqual(result.merges, [{ index: 1, rule: "duplicate-of", of: 0, whitespaceOnly: true }]);
 });
 
-test("two insertions at one point land in authored order (#428 phase 3)", () => {
+test("two insertions at one point land in authored order (#428)", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [3, 1, 3, 1] }, body: "first-" },
         { marker: { marks: [3, 1, 3, 1] }, body: "second-" },
@@ -489,7 +489,7 @@ test("two insertions at one point land in authored order (#428 phase 3)", () => 
     assert.deepEqual(result.merges, [{ index: 1, rule: "same-insertion-point", after: 0 }]);
 });
 
-test("a one-line shared endpoint goes to the body that reproduces the line; the other region shrinks (#428 phase 3, run68 t34)", () => {
+test("a one-line shared endpoint goes to the body that reproduces the line; the other region shrinks (#428)", () => {
     const source = "var x int\n\nfunc requireFn(a int) int {\n\treturn a\n}\n\nfunc other() {}\n";
     // <2,3> carries a new function (meant to end at the blank line 2); <3,5> rewrites requireFn and
     // reproduces its signature line 3 - gemma's shape.
@@ -502,7 +502,7 @@ test("a one-line shared endpoint goes to the body that reproduces the line; the 
     assert.deepEqual(result.merges, [{ index: 0, rule: "shared-endpoint", line: 3, text: "func requireFn(a int) int {", authored: [2, 3], applied: [2, 2], claimedBy: 1 }]);
 });
 
-test("a shared endpoint no body reproduces stays refused, naming the line and the inclusive rule (#428 phase 3)", () => {
+test("a shared endpoint no body reproduces stays refused, naming the line and the inclusive rule (#428)", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2, 3] }, body: "X" },
         { marker: { marks: [3, 5] }, body: "Y" },
@@ -514,7 +514,7 @@ test("a shared endpoint no body reproduces stays refused, naming the line and th
     assert.match(String(result.problem?.recovery), /line 3 \("c"\) is claimed by both <2,3> and <3,5> and neither body reproduces it - end the first at 2 or start the second at 4/);
 });
 
-test("containment stays refused and the receipt says which region to resubmit (#428 phase 3)", () => {
+test("containment stays refused and the receipt says which region to resubmit (#428)", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2, 5] }, body: "outer" },
         { marker: { marks: [3] }, body: "inner" },
@@ -526,7 +526,7 @@ test("containment stays refused and the receipt says which region to resubmit (#
 });
 
 
-test("containment relocates the inner change into the outer body when its original lines occur there once (#428 phase 3)", () => {
+test("containment relocates the inner change into the outer body when its original lines occur there once (#428)", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2, 5] }, body: "B\nc\nd\nE" },
         { marker: { marks: [3] }, body: "C!" },
@@ -537,7 +537,7 @@ test("containment relocates the inner change into the outer body when its origin
     assert.deepEqual(result.applied?.map(({ marker }) => marker.marks), [[2, 5]], "one applied edit: the composed outer");
 });
 
-test("containment drops an inner edit the outer body already carries, and says so (#428 phase 3)", () => {
+test("containment drops an inner edit the outer body already carries, and says so (#428)", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2, 5] }, body: "B\nC!\nd\nE" },
         { marker: { marks: [3] }, body: "C!" },
@@ -547,7 +547,7 @@ test("containment drops an inner edit the outer body already carries, and says s
     assert.deepEqual(result.merges, [{ index: 1, rule: "contained-already-applied", outer: 0 }]);
 });
 
-test("containment whose inner lines occur twice in the outer body stays refused (#428 phase 3)", () => {
+test("containment whose inner lines occur twice in the outer body stays refused (#428)", () => {
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [2, 5] }, body: "c\nc\nd" },
         { marker: { marks: [3] }, body: "C!" },

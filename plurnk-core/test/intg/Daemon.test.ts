@@ -744,7 +744,7 @@ test("workspace.create on an already-attached connection re-binds in place (no r
             const first = await rpcCall(ws, 1, "workspace.create", { name: "first" });
             const second = await rpcCall(ws, 2, "workspace.create", { name: "second" });
             // {§methods-rebind}: re-binding is allowed; the connection switches in place.
-            assert.equal(second.error, undefined, "re-create on a bound connection no longer rejects");
+            assert.equal(second.error, undefined, "re-create on a bound connection does not reject");
             assert.notEqual((second.result as { id: number }).id, (first.result as { id: number }).id, "switched to a fresh workspace");
         } finally { ws.close(); }
     });

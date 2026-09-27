@@ -29,7 +29,7 @@ test("richer path patterns retain native shell-glob semantics", () => {
     assert.equal(pathScopeMatches(scope, "src/deep/a.go"), false);
 });
 
-test("a `**` glued to a name still crosses directories: `**.go` is `**/*.go` (run67)", () => {
+test("a `**` glued to a name still crosses directories: `**.go` is `**/*.go`", () => {
     const glued = pathScope("**.go", true);
     assert.equal(pathScopeMatches(glued, "main.go"), true);
     assert.equal(pathScopeMatches(glued, "terminal/history.go"), true, "the taught rule: `**` crosses directories");

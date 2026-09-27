@@ -14,7 +14,7 @@ const bodies = (source: string, wellFormed?: typeof json) => PlurnkParser.parse(
         return [typeof body === "string" ? body : (body as { raw?: string } | null)?.raw ?? null];
     });
 
-// The dogfood shape (2026-09-26): an MCP call, then prose that later shows a bare block of its own.
+// An MCP call, then prose that later shows a bare block of its own.
 const SOURCE = [
     "So I can invoke:", "", "```gitea (list_issues)", "{\"owner\": \"plurnk\", \"repo\": \"plurnk-service\"}", "```", "",
     "But I need owner/repo first.", "", "```", "git remote -v", "```", "", "Let me check.",

@@ -406,8 +406,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             resourceSource = null;
         }
 
-        // {§exec-lifetime} — the scope slot is text coordinates, and an execution has none: what a
-        // numeric scope used to mean is the metadata's one field.
+        // {§exec-lifetime} — the scope slot is text coordinates, and an execution has none;
+        // execution lifetime is the metadata's lifetime field.
         if (statement.lineMarker !== null) {
             return refuse(
                 "scope-unsupported",

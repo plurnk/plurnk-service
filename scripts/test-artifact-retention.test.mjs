@@ -77,6 +77,6 @@ test("{§test-artifact-retention} no lane keeps a clear-before-suite step or a s
 test("{§test-artifact-retention} no lane writes run output back into the checkout", async () => {
     for (const lane of LANES) {
         const ignore = await readFile(new URL(`${lane}/.gitignore`, root), "utf8").catch(() => "");
-        assert.doesNotMatch(ignore, /test\/intg\/\.tmp/u, `${lane} no longer hides scratch inside the tree`);
+        assert.doesNotMatch(ignore, /test\/intg\/\.tmp/u, `${lane} keeps no scratch inside the tree`);
     }
 });

@@ -14,7 +14,7 @@ test("{§exec-lifetime}: a duration bounds the spawn in seconds, whatever unit i
     assert.deepEqual(parseExecLifetime("2h"), { timeoutSec: 7200 });
 });
 
-test("{§exec-lifetime}: 'turn' and 'detached' are the two named lifetimes the numbers used to carry", () => {
+test("{§exec-lifetime}: 'turn' and 'detached' are the two named lifetimes", () => {
     assert.deepEqual(parseExecLifetime("turn"), { turnScoped: true });
     assert.deepEqual(parseExecLifetime("detached"), { detached: true });
 });

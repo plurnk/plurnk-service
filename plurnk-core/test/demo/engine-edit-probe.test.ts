@@ -45,7 +45,7 @@ test("demo: locate and edit deep in a large source file — coordinate held, no 
         assert.ok(rwpIdx > 0, "resolveWorkerProviderIdentity declaration still present");
         assert.match(editedLines[rwpIdx - 1], /#pragma plurnk-once/, "the marker sits immediately above resolveWorkerProviderIdentity (coordinate landed on the located target)");
 
-        // (2) NO run61-style corruption: exactly one class, key methods intact, no duplication.
+        // (2) No corruption: exactly one class, key methods intact, no duplication.
         assert.equal(edited.split("export default class Engine").length - 1, 1, "exactly one class declaration (no duplicate/self-nested block)");
         for (const marker of ["async runLoop", "async drainDerivations", "async resolveWorkerProviderIdentity", "async loopUsage"]) {
             assert.ok(edited.includes(marker), `method survived the edit: ${marker}`);

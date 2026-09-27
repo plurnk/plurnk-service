@@ -138,11 +138,10 @@ if (import.meta.main) {
 
         if (!(await phase("intg", "test:intg", targets ?? workspaces))) process.exit(1);
         // Sibling client conformance manifests against live discovery — a service
-        // surface change fails this push, not the sibling's next dogfood (#331).
+        // surface change fails this push (#331).
         if (!(await phase("conformance", "test:client-conformance", [rootTarget]))) process.exit(1);
     }
-    // Packet Token Floor — a REPORT, never a gate (operator ruling 2026-08-23:
-    // no floor tripwire). The script always exits 0 and its output IS the
+    // Packet Token Floor — a report, never a gate. The script always exits 0 and its output IS the
     // deliverable, so it runs outside phase() and prints directly.
     console.log((await run(rootTarget.dir, "report:floor")).out.trim());
     console.log(`drill green in ${Math.round((Date.now() - t0) / 1000)}s`);

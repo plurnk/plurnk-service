@@ -1,5 +1,5 @@
 // {§provider-surface-generate}: core supplies the workspace this call serves as ordinary call
-// context. Nothing about it reaches a backend (#697 retired the first-party header channel).
+// context. Nothing about it reaches a backend (#697).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";

@@ -74,7 +74,7 @@ const RETIRED_PROVIDER_NAMES: Readonly<Record<string, string>> = Object.freeze({
     fireworks: "fireworks-ai",
     cloudflare: "cloudflare-workers-ai",
     // `ollama` is NOT retired: it names the built-in local rail, which has no
-    // catalog id — the old alias wrongly conflated it with the ollama-cloud catalog.
+    // catalog id; the cloud catalog is ollama-cloud.
     moonshot: "moonshotai",
     dashscope: "alibaba",
     zhipu: "zai",

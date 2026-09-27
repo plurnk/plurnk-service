@@ -1,5 +1,5 @@
-// Integration coverage for SPEC {§channels} channel-topology contract tags that
-// previously had no test. Each test name carries its §-anchor and exercises
+// Integration coverage for the SPEC {§channels} channel-topology contract tags.
+// Each test name carries its §-anchor and exercises
 // the real path for one tagged sentence in SPEC.md {§channels}.
 
 import test from "node:test";

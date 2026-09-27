@@ -553,9 +553,8 @@ test("{§mcp-summary-derivation} every server-summary tier has one deterministic
     assert.match(serverSummary("search", verbose, undefined), /…$/u);
 });
 
-// A numbered `### EXEC1` under another delimiter is body text (delimiters nest programs), so it
 // The invalid-arguments failure names the form that works, whatever the body was
-// (https://repo.possumtech.com/plurnk/plurnk-bench/issues/6, run52).
+// (https://repo.possumtech.com/plurnk/plurnk-bench/issues/6).
 test("invalid tool arguments carry the one-object recovery", async () => {
     const { connection, executor } = configured();
     try {

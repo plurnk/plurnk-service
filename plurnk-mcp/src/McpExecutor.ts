@@ -158,7 +158,7 @@ const progressNotice = (
 
 export default class McpExecutor extends BaseExecutor {
     // {§mcp-trailing-aside} — an HTML comment after the one JSON object is the writer's aside, not
-    // arguments: read the object, never teach the tolerance (#758, dogfood items 4, 7 and 20).
+    // arguments: read the object, never teach the tolerance (#758).
     static #parseArguments(input: string): unknown {
         try { return JSON.parse(input); }
         catch (cause) {
@@ -369,8 +369,7 @@ export default class McpExecutor extends BaseExecutor {
                 }
                 args = parsed as Record<string, unknown>;
             } catch (cause) {
-                // The diagnostic alone taught models to resend the same body
-                // (https://repo.possumtech.com/plurnk/plurnk-bench/issues/6, run52): name the form that works.
+                // Name the form that works (https://repo.possumtech.com/plurnk/plurnk-bench/issues/6).
                 return fail(
                     "invalid-tool-arguments",
                     400,

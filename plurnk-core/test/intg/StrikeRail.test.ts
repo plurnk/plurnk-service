@@ -42,7 +42,7 @@ test("a non-execution hard failure (500-class status) still strikes normally", a
 });
 
 test("executor evidence never strikes, wherever it surfaces (#425 F1)", async () => {
-    // run14's shape: the engine materializes a failed command as a READ[500] carrying the
+    // The engine materializes a failed command as a READ[500] carrying the
     // executor's problem identity; the model reads a failed stream and gets the same 500.
     const rail = new StrikeRail(db);
     const evidence = (op: StrikeOutcome["op"]): StrikeOutcome => ({ op, status: 500, problemType: "https://problems.plurnk.xyz/executor/subprocess/nonzero-exit" });

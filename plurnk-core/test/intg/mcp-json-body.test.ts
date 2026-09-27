@@ -9,7 +9,7 @@ import StreamMock from "./_stream-mock.ts";
 import { openMigrated } from "./_helpers.ts";
 import { connect, makeMockResponse, makeRawMockResponse, rpcCall, runLoopToTerminal } from "./_rpc.ts";
 
-// {§pairing-objective} — the dogfood shape (2026-09-26): an MCP call closed at once, then prose that later
+// {§pairing-objective} — the shape: an MCP call closed at once, then prose that later
 // shows a bare block. The runtime declares an application/json body, so the call ends at its own closer
 // and the tool receives exactly the object the model wrote.
 for (const [name, source] of [

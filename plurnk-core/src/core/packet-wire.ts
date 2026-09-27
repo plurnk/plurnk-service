@@ -408,7 +408,7 @@ export default class PacketWire {
     static #receiptMeta(value: unknown): Record<string, string | number> {
         const receipt: EditReceipt = assertEditReceipt(value);
         // The durable receipt keeps the full revision for forensics; the model gets no token it
-        // cannot use (operator, 2026-09-13: "ditch rev").
+        // cannot use.
         const head = {
             extent: `${receipt.unit} ${receipt.before}->${receipt.after}`,
             ...(receipt.parseIssues === undefined

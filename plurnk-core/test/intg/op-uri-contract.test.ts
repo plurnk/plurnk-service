@@ -1,13 +1,8 @@
-// Operation Semantics Contract — the coverage matrix (SCRATCH epic "Operation
-// Semantics Contract"). Pins how each entry op resolves a model-typed path and how
-// matchers render, so gemma can TRUST its mental model of the tooling. Tests assert
-// the CORRECT contract behavior; ones that are red here name an exact, verified drift
-// to fix in Stage 2 (centralize normalization + fix matcher rendering), not a guess.
+// Operation semantics coverage matrix: how each entry op resolves a model-typed path and how
+// matchers render.
 //
-// The condition that exposed the drift: a member is stored at its canonical key
-// (`/notes.md`), but the model emits a BARE path (`notes.md`, a LocalPath). Each op
-// must normalize to the canonical key before resolving. READ does (normalize-on-miss);
-// EDIT does (#resolveTarget); FIND does NOT (delegates raw) — that asymmetry is the bug.
+// A member is stored at its canonical key (`/notes.md`), but the model emits a bare path
+// (`notes.md`, a LocalPath). Every op normalizes to the canonical key before resolving.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -71,7 +66,6 @@ const withWorkspaceRoot = async (fn: (root: string, ctx: PlurnkSchemeContext, db
 
 // CELL [FIND × bare local path]. The member is stored `/notes.md`; the model FINDs
 // `notes.md`. FIND must canonicalize and select the member — exactly as READ does.
-// RED until Stage 2 (File.find delegates raw → scope glob `notes.md*` misses `/notes.md`).
 test("contract: FIND(bare path) resolves the canonical-stored member", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
@@ -83,9 +77,8 @@ test("contract: FIND(bare path) resolves the canonical-stored member", async () 
     });
 });
 
-// CONTROL [READ × bare local path]. Same condition, the op that already canonicalizes —
-// proves the harness reproduces the real path and isolates FIND as the drift (this passes today).
-test("contract: READ(bare path) resolves the canonical-stored member (control — already correct)", async () => {
+// CONTROL [READ × bare local path]. Same condition — proves the harness reproduces the real path.
+test("contract: READ(bare path) resolves the canonical-stored member (control)", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
@@ -96,8 +89,8 @@ test("contract: READ(bare path) resolves the canonical-stored member (control �
     });
 });
 
-// CONTROL [EDIT × bare local path]. EDIT already canonicalizes (#resolveTarget) — a bare
-// path resolves to the member and proposes (202). Confirms EDIT is not the drift.
+// CONTROL [EDIT × bare local path]. EDIT canonicalizes (#resolveTarget) — a bare
+// path resolves to the member and proposes (202).
 test("contract: EDIT(bare path) resolves the canonical-stored member and proposes (control)", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");

@@ -176,7 +176,7 @@ test("a host-absolute spelling names its literal namespace path — READ 404s, E
         // {§fs-namespace} — a namespace names, it does not confine: host coordinates have no
         // meaning in it, so nothing is being refused here. The spelling
         // canonicalizes to the nested bare key abs.slice(1) (a legitimate, empty in-namespace path),
-        // NOT to the member — the old exec-echo fold was existence-dependent resolution (run59).
+        // NOT to the member.
         const read = await readFileScheme(readStmt(urlPath("file", abs)), ctx);
         assert.equal(read.status, 404, "a host-absolute spelling is not the member's name — no fold, deterministic 404");
 

@@ -365,8 +365,7 @@ test("File.read: a host-absolute spelling does not exist in the namespace — no
         const absolutePath = resolve(root, "abs.txt");
         await addMember(ctx, "abs.txt");
         // {§fs-namespace} — the host path /tmp/.../abs.txt has no meaning here; it canonicalizes to
-        // the bare key tmp/.../abs.txt, which is not a member. The old exec-echo fold was
-        // run59-class existence-dependent resolution; the model uses the catalog's key.
+        // the bare key tmp/.../abs.txt, which is not a member; the model uses the catalog's key.
         const result = await readFileScheme(readStmt(urlPath("file", absolutePath)), ctx);
         assert.equal(result.status, 404, "host paths are not addresses inside the namespace");
     });
@@ -377,8 +376,7 @@ test("File.read: bare relative path (no leading slash) normalizes to the member 
         await writeFile(join(root, "notes.md"), "Codename: Bluejay\n");
         await addMember(ctx, "notes.md");
         // The member is keyed "/notes.md", but the model naturally types the bare "notes.md"
-        // it copies from the catalog. READ must resolve it the way WRITE does — the regression
-        // that 404'd "read the codename from notes.md" against the live model.
+        // it copies from the catalog. READ must resolve it the way WRITE does.
         const result = await readFileScheme(parseRead("````READ (notes.md)````"), ctx);
         assert.equal(result.status, 200, "bare relative READ resolves to the /notes.md member, not 404");
         assert.equal(result.content, "Codename: Bluejay\n");

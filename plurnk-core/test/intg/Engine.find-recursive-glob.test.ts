@@ -1,6 +1,5 @@
 // #449 — a body FIND over a large member tree survives a member whose content crashes
-// a mimetype handler (run127's exact shape: an unbalanced HTML template partial walked
-// Readability into a null and a 1,916-file FIND died as a blank 500).
+// a mimetype handler (an unbalanced HTML template partial that walks Readability into a null).
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

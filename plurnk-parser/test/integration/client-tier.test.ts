@@ -42,9 +42,8 @@ test("client: LOOK accepts line anchors", () => {
     assert.deepEqual(item.statement.lineMarker, { marks: ["@aZ09b"] });
 });
 
-// BUFF left the language with #625: a retired client op is an ordinary fence name, which the
-// grammar reads as an executor tag, never as a client statement.
-test("client: BUFF is no longer a client op; an unknown tag with a slot opens nothing and says so ({§quotation})", () => {
+// An unregistered fence name is an executor tag, never a client statement (#625).
+test("client: an unregistered tag with a slot opens nothing and says so ({§quotation}, #625)", () => {
     const result = PlurnkParser.parseClient("````BUFF (known://drafts/letter)````");
     assert.deepEqual(result.items.filter((item) => item.kind === "statement"), []);
     assert.deepEqual(result.items.map((item) => item.kind === "error" ? [item.error.severity, item.error.line] : "statement"), [["warning", 1]]);
@@ -89,7 +88,7 @@ test("client: parseStatements (protocol) rejects LOOK", () => {
     assert.equal(stmts.length, 0);
 });
 
-test("client: parseStatements (protocol) reads a retired client op name as prose unless the host names it as an executor", () => {
+test("client: parseStatements (protocol) reads an unregistered tag as prose unless the host names it as an executor", () => {
     const prose = PlurnkParser.parseStatements("````BUFF (p)````");
     assert.deepEqual(prose.items.filter((i) => i.kind === "statement"), []);
     const named = PlurnkParser.parseStatements("````BUFF (p)````", { executors: ["BUFF"] }).items.filter((i) => i.kind === "statement");

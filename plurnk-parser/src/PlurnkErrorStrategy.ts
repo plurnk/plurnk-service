@@ -60,8 +60,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         }
         // Redirect an unambiguous matcher prefix in the slot region into the body. Slash-led
         // regex and XPath redirect only once the heading has closed a `(target)` — before
-        // that, `/` may instead be a target whose `(...)` wrap was omitted. (bench#5 run16/17:
-        // the generic message taught models to avoid regex FIND altogether.)
+        // that, `/` may instead be a target whose `(...)` wrap was omitted.
         // A `<…>` slot that opened after its own space is a scope whose CONTENT is wrong —
         // name the shapes the slot admits instead of the spacing rule (#386). A `<` glued to
         // the previous slot keeps the spacing message below.

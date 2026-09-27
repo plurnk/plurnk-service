@@ -95,7 +95,7 @@ test("live: KILL — delete an entry", async (t) => {
     const s = await liveWorkspace({ name: `live-contract-delete-${crypto.randomUUID()}` });
     try {
         await seedEntry(s.db, s.workspaceId, { pathname: "obsolete.md", content: "no longer needed" });
-        // KILL is the canonical delete (MOVE→/dev/null retired); the model earns
+        // KILL is the canonical delete; the model earns
         // the op from a plain delete request — we verify the entry is gone.
         await liveLoop(s, 2, { prompt: "Delete the entry worker:///obsolete.md." }, { signal: t.signal });
         assert.equal(await readBody(s.db, "obsolete.md"), undefined);

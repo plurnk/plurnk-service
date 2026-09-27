@@ -8,7 +8,7 @@ const task = PlurnkParser.frame("WAIT", "Reported the result.");
 const statements = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 const errors = (result: ParseResult<ClientStatement>) => result.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
 
-// The shape of the dogfood emission of 2026-09-20 (#784): an essay about reasoning streams whose
+// The shape of #784: an essay about reasoning streams whose
 // table mentions a reasoning tag in prose, then a diagram, then a fenced worked example holding a
 // tagged trace and an EDIT. The EDIT ran against a file the answer only imagined.
 const essay = (mention: string) => [

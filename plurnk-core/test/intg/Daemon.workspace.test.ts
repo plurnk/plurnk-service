@@ -58,7 +58,7 @@ test("{§methods-rebind}: a bound connection switches workspaces without reconne
         try {
             const a = await rpcCall(ws, 1, "workspace.create", { name: "first" });
             const aId = (a.result as { id: number }).id;
-            // Re-create on the SAME connection — previously threw "already attached".
+            // Re-create on the SAME connection succeeds and rebinds.
             const b = await rpcCall(ws, 2, "workspace.create", { name: "second" });
             assert.equal(b.error, undefined, "re-create on a bound connection must not throw");
             const bId = (b.result as { id: number }).id;

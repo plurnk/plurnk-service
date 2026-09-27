@@ -22,8 +22,7 @@ test("network query and channel coordinates remain distinct cycle fingerprints",
 });
 
 test("execution bodies that share a long boilerplate prefix remain distinct cycle activities", () => {
-    // run25 (gemini-3.8-flash, 2026-09-03): five consecutive turns paged routing.py with the same
-    // python3 preamble and different line ranges; a 64-character body prefix called that a cycle.
+    // Paging one file with the same python3 preamble and different line ranges is not a cycle.
     const pager = (from: number, to: number): ExecStatement => ({
         runtime: "sh", aside: null,
         metadata: null,

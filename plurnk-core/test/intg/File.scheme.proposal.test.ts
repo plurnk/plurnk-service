@@ -415,7 +415,7 @@ test("{§unscoped-edit-create-only} {§edit-marker-required-on-existing}: marker
         const seeded = await ctx.db.test_seed_entry_workspace.get<{ id: number }>({ attributes: "{}", default_channel: "body", output: 0, workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: target });
         await seedStaticChannel(ctx.db, seeded?.id, { name: "body", content: original, mimetype: "text/plain" });
 
-        // The run126 shape: a marker meant for the target landed inside the body text
+        // A marker meant for the target landed inside the body text
         // instead (a model syntax slip), so the dispatched statement carries no marker at all.
         const stmt = fileEditStmt(target, "<2>:// AUDIT-OK\nline two");
         const result = await ctx.engine.dispatch({

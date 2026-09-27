@@ -3,8 +3,7 @@
 // Every live/demo drill writes each model turn's exact emission beside the digest that
 // recorded what the engine made of it. Those emissions are the only test inputs nobody
 // wrote to pass a test: a fixture encodes what we believe a model emits, a recording
-// encodes what one did. The suites stayed green through #802 and through #809's weak-rail
-// regressions precisely because every fixture was ours.
+// encodes what one did.
 //
 // Volume is not the point — shape coverage is. One real exemplar per distinct parse shape
 // covers the contract surface in ~50 KB, against ~88 MB for every emission ever recorded.

@@ -565,7 +565,7 @@ test("the shipped empty default is indefinite — a stopped world waits for its 
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
-        // Far past the old 300s-scaled window at test speed: the world stays stopped.
+        // No window expires a proposal: the world stays stopped.
         await new Promise((r) => setTimeout(r, 250));
         const pending = await db.test_get_log_entry_by_id.get<{ state: string }>({ id: logEntryId });
         assert.equal(pending?.state, "proposed", "still stopped — no synthetic cancel, however long the human takes");

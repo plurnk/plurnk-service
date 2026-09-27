@@ -120,8 +120,7 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
     // A fire-and-forget exec outlives the loop that spawned it (in_progress keeps
     // turn 1 going, the loop ends on turn 2, the spawn runs on). loop.cancel
     // must ACTUALLY terminate it — proven by the exec stream concluding 499,
-    // not merely cancelled=true. The wall clock used to hide a broken kill
-    // behind a 30s leak (the original assertion never checked the kill).
+    // not merely cancelled=true.
     //
     // `sleep 30` is the long-running job; {§executor-cancellation} requires
     // loop.cancel to process-group-kill it — proven by the 499
@@ -145,7 +144,7 @@ test("loop.cancel terminates a backgrounded exec; the stream concludes 499", asy
             await flush();
             // Wait for the backgrounded exec's subscription to ACTUALLY open before
             // cancelling — a fixed sleep races the spawn (the resource directory + materialized
-            // docs push it past the old 250ms guess). The cancel must land on a live,
+            // docs delay it). The cancel must land on a live,
             // registered exec so it terminates deterministically and the stream concludes
             // 499; otherwise it fires into the spawn gap and asserts on a stream that never
             // opened (the timing race this replaces — the kill path itself is sound).
@@ -217,9 +216,8 @@ test("loop.run: post-cancel, a fresh loop.run starts a new drain", async () => {
             });
             // Wait for the backgrounded exec to ACTUALLY spawn (its entry to exist) before
             // cancelling — a fixed sleep races the spawn (the resource directory + materialized
-            // docs push the spawn later than the old 250ms guess). The cancel must land on a
-            // running exec, deterministically; otherwise it fires into the spawn gap and the
-            // sleep leaks (the failure this replaces).
+            // docs delay it). The cancel must land on a running exec, deterministically;
+            // otherwise it fires into the spawn gap and the sleep leaks.
             await waitForDb(
                 async () => (await db.test_count_entries_by_workspace_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
                 (n) => n > 0,
@@ -292,7 +290,7 @@ test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths i
             await firstPromise;  // resolves at the 100 accept; loop 1 completes asynchronously on turn 2
 
             // Exactly one loop ran for the worker: the second call injected, it did not spin up a
-            // parallel drain. Wait for the single termination (loop.run no longer blocks to it).
+            // parallel drain. Wait for the single termination (loop.run does not block to it).
             const ended = await waitFor(
                 () => terminated() as Array<{ loopId: number; result: { status: number } }>,
                 (t) => t.length >= 1, { timeoutMs: 5000 },

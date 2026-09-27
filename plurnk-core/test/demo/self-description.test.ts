@@ -1,8 +1,7 @@
 // Conversational demos: the user is TALKING TO plurnk about plurnk, not giving it a task. These
 // are the cases benchmarks never cover — a benchmark grades the workspace afterwards, a
 // conversation grades the reply. Showing an operation must never run it ({§quotation}), and an
-// answer must actually arrive (operator, 2026-09-18: "the lack of structure and the arbitrariness
-// of the interaction is a feature, not a bug").
+// answer must actually arrive.
 //
 // Strict by design: an advisory, a strike, an empty turn or a mutation is a failure here, even
 // when the final text happens to be right.

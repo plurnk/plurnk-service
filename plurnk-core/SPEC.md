@@ -92,7 +92,7 @@ Independent axes on entries and channels. Confusion across them is a recurring s
 | Term | Meaning |
 |---|---|
 | **writer** | The identity authoring a write. One of `model \| client \| _plurnk \| plugin`. Carried on `ctx.writer` for schemes; engine enforces `manifest.writableBy`. |
-| **origin** | Synonym for writer in log_entries (`log_entries.origin`). Historical naming; treat as equivalent. |
+| **origin** | Synonym for writer in log_entries (`log_entries.origin`). Synonym for writer. |
 | **writable_by** | The set of writers a scheme accepts. Subset of `{model, client, _plurnk, plugin}`. Engine rejects writes outside the set with 403; the rejection is logged as the action-entry ({§subscriptions} action-entry-as-outcome). |
 
 ### Execution terms
@@ -541,8 +541,7 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
   missing name is 404. The model therefore reads the worker itself for its
   outcome or a wait rather than guessing a scratch path to "check on" it.
 - §worker-loop-result `ops://<name>/<sequence>` selects one worker-local positive safe-integer
-  loop sequence ({§loop-answer}; the retired `loop://` scheme is gone, and one address now serves
-  both what a loop said and how it ended). It is a read-only resource, not an actor control
+  loop sequence ({§loop-answer}; one address serves both what a loop said and how it ended). It is a read-only resource, not an actor control
   address: READ, FIND and COPY use ordinary projections; EDIT, MOVE-source, and KILL cannot change
   it. No query, userinfo, or port is accepted. A coordinate that is not a positive safe integer is
   400; a missing loop 404; a loop that has not answered and has not concluded 425. A concluded
@@ -580,8 +579,7 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
   and `ops://<worker>/L/T` are the model's own and `log:///L/T/*` its rows; a model never infers the
   present from the last row's coordinate, which may or may not be its own turn. The block
   changes every turn, so nothing of it precedes the log, and the packet carries no date, time
-  or zone anywhere (operator, 2026-09-13: no date or time injection, and nothing volatile above
-  the log, which is the cached prefix). The coordinate only; the source addresses stay
+  or zone anywhere. The coordinate only; the source addresses stay
   documented, not taught.
 
 Worker control rides the daemon's inject seam (active→fold, idle→enqueue+drain), so the handler creates/branches the worker and hands off; the daemon owns provider + system prompt. FORK/WORK carry the seed task in the body and are their own ops, dispatched to worker control — never the entry-copy path.
@@ -642,8 +640,7 @@ and never re-fetch a match.
   files by an exact creation record with recorded provenance, and never by `git add`.
   Changing this clause, the register, or the composition is an operator ruling recorded
   on the issue that lands it — never an implementation convenience, never a side effect
-  of making a file visible to solve the problem at hand. The 2026-07-12 – 2026-08-27
-  "untracked-but-not-ignored" ambient admission is retired.
+  of making a file visible to solve the problem at hand.
 - §membership-model-universe **The exception register — files in the model's universe.**
   Admitted by exact creation records (`source: "create"`, origin `constraint`), never
   staged: (1) a file an accepted EDIT creates; (2) a COPY/MOVE destination
@@ -859,8 +856,8 @@ waited 7.5 h, #703) is a number rather than a gap.
 §digest-storage **The digest states the file's health.** Beside the database path it
 reports the file size, the free pages it holds, its `auto_vacuum` mode, and the six
 largest tables and indexes by allocated bytes (`dbstat`), so growth is a number in
-every digest (#764). The digest reads loops as stored, so a database made before a
-lifecycle column was added still digests.
+every digest (#764). The digest reads loops as stored, so it tolerates databases
+missing later lifecycle columns.
 
 §loop-execution-allowance **One task has one execution allowance.** The first
 execution snapshots `PLURNK_SERVICE_LOOP_TIMEOUT` on the loop. Active segments
@@ -1134,9 +1131,8 @@ instead, because parking stops the execution clock and no wake would ever arrive
 ({§operator-config-loop-timeout}), or a non-recoverable provider Problem (refusal,
 authorization, quota, an invalid response) settles a loop on a provider failure.
 
-**Contract Strikes** (operator mandate, 2026-09-01): *Every turn with one or
-more contract violations earns a strike. A turn without any contract violations
-clears the strikes. Three (not four) strikes and you're out, by default.*
+**Contract Strikes**: every turn with one or more contract violations earns a
+strike; a turn without any contract violations clears the strikes.
 The streak counts consecutive violating turns; `MAX_STRIKES` (default 3) is the
 threshold, crossed ON the third strike; the crossing turn terminates at **508
 Loop Detected** when cycle-detected, otherwise **500**.
@@ -1711,8 +1707,7 @@ by size when the operator sets one: a body longer than
 its body is read. It is neither parsed for symbols nor full-text indexed; READ,
 FIND by path, and membership are unaffected. The reason joins the derivation
 identity, so changing the bound re-derives the affected bodies and retention
-collects what they leave. Origin (#729): the dogfood workspaces indexed 29
-tokenizer vocabularies (up to 31 MB each) as full text.
+collects what they leave (#729).
 
 A match produces the `excluded` derivation disposition and suppresses graph
 and FTS while leaving the stored channel and direct READ unchanged. The
@@ -2037,9 +2032,7 @@ READ is the one fan-out core performs ({§read-fan-out}).
   FIND failure is that failure on the authored glob. The FIND's resource page bounds
   the fan-out: when more paths matched than were read, one `read_fanout_bounded`
   notice names both counts. A full-text (`~`) or graph (`&`) matcher selects
-  resources, not lines, so that READ dispatches as the FIND survey. Operator,
-  2026-09-13: "give it what it asked for" — a model that asked to read the pantry
-  looped five turns on the catalog it was handed instead.
+  resources, not lines, so that READ dispatches as the FIND survey.
 - §read-bytes A binary channel, and the `#bytes` view of
   any resource whose scheme supplies bytes, reads as the source bytes one hexadecimal
   octet per line: coordinate = line = byte, so `<a,b>` selects bytes, the markerless
@@ -2556,7 +2549,7 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
 - §find-source-agnostic **The content matcher is source-agnostic** — `Matcher.matchCandidates(body, candidates, mimetypes)` applies a content matcher (regex/jsonpath/xpath/glob) to candidates from ANY source, keyed by the caller's own identity (a pathname for entries, a `loop/turn/seq` coordinate for log). The matcher never cares what table the content came from, so FIND works uniformly across schemes by construction: `EntryFind` and `Log.find` run the one shared primitive rather than re-implementing it per scheme. Log stays its own event stream, but its rows are candidates the shared matcher covers like any entry's content.
 - §find-candidate-containment **One candidate's crash is that candidate's problem** — arbitrary member content can crash a mimetype handler mid-match (an unbalanced template partial crashed Readability and killed a 1,916-file FIND as a blank 500, #449). `Matcher.matchCandidates` contains a per-candidate handler throw: the candidate drops out exactly like unsupported content, the cause goes to daemon stderr, and only a FIND whose every candidate crashed reports a 415 whose Problem names the first crashing member and handler. The operation's other candidates always answer.
 
-- §find-scope-prefix-filter Filters entries within scope. A **bare** path is the exact entry; an explicit **shell glob**, classified once by {§path-glob}, expands to a scope. Path globs use segment semantics: `*` and `?` never cross `/`; `**` does — in every spelling: a `**` glued to a name (`**.go`, `src/**.ts`) is matched as `**/*.go` / `src/**/*.ts`, never demoted to a one-level `*` the way a native matcher reads it (run67, 2026-08-29: a whole-repository search silently confined to the root). Terminal `*` and `**` are structural catalog selectors and include dot-prefixed entries, so a complete map does not hide `.env.defaults` or `.github`; richer patterns retain native shell behavior. SQLite prefix queries may reduce the candidate set but never decide the match. A trailing slash is a recursive FIND scope only for a scheme whose manifest declares `folderScopes: true`; otherwise it is ordinary resource syntax. This is an explicit plugin contract, never inferred from URL punctuation.
+- §find-scope-prefix-filter Filters entries within scope. A **bare** path is the exact entry; an explicit **shell glob**, classified once by {§path-glob}, expands to a scope. Path globs use segment semantics: `*` and `?` never cross `/`; `**` does — in every spelling: a `**` glued to a name (`**.go`, `src/**.ts`) is matched as `**/*.go` / `src/**/*.ts`, never demoted to a one-level `*` the way a native matcher reads it. Terminal `*` and `**` are structural catalog selectors and include dot-prefixed entries, so a complete map does not hide `.env.defaults` or `.github`; richer patterns retain native shell behavior. SQLite prefix queries may reduce the candidate set but never decide the match. A trailing slash is a recursive FIND scope only for a scheme whose manifest declares `folderScopes: true`; otherwise it is ordinary resource syntax. This is an explicit plugin contract, never inferred from URL punctuation.
 
   Resource-authority globs select authorities independently of the path scope.
   Matching resources retain their full addresses through pattern matching,
@@ -2658,7 +2651,7 @@ same durable liveness.
 | Fresh operation/parser failure, without an authored WAIT | Continue before any automatic parking. |
 | Neither an authored WAIT nor an eligible completion request ({§kill-conclusion}) | Continue, regardless of earlier replies or live work. |
 | Live work and either WAIT or an eligible completion request | Park the same loop; message arrival, child or stream settlement, or stream cadence wakes it. No final-answer body is delivered while joining. |
-| WAIT without live work | Continue; never invent a future wake. The first such WAIT is an honest yield and its row says only `Nothing is in flight. Continuing.`; a second in the same loop is the model waiting on a wake nothing can send, so its own row instead names what WAIT is for and what to reach for — `WAIT doesn't wait unless there's a child worker or stream to wait on. Use schedule for specific timing decisions.` The correction rides the operation's own result, which is the surface the model is certain to read (operator, 2026-09-22). |
+| WAIT without live work | Continue; never invent a future wake. The first such WAIT is an honest yield and its row says only `Nothing is in flight. Continuing.`; a second in the same loop is the model waiting on a wake nothing can send, so its own row instead names what WAIT is for and what to reach for — `WAIT doesn't wait unless there's a child worker or stream to wait on. Use schedule for specific timing decisions.` The correction rides the operation's own result, which is the surface the model is certain to read. |
 | Unanswered messages | Continue. |
 | Unobserved operation results, failures, child results or stream conclusions | Continue; the next packet presents them. |
 | Eligible completion request with no outstanding messages, live work or unobserved results | Conclude successfully. |
@@ -2775,8 +2768,8 @@ accounting and model-visible failure evidence remain separately owned by
   empty one. Attachment is owned by the one terminal seam.
 - §metadata-ignored **Options a scheme does not take are dropped, not refused.** A READ, FIND,
   EDIT or KILL carrying `[metadata]` for a scheme whose manifest takes none runs without it,
-  and the packet carries one `metadata_ignored` notice naming the scheme (operator,
-  2026-09-12: a gentle warning, never a refusal). The `pattern` option never reaches this
+  and the packet carries one `metadata_ignored` notice naming the scheme (a warning,
+  never a refusal). The `pattern` option never reaches this
   path; it is lifted into the matcher at parse time ({§matcher-option}). SEND recipients,
   executions, WORK and FORK own their input and receive it whole ({§send-resource-attachments},
   {§env-option}); a key they do not take is their own 400.
@@ -2856,9 +2849,7 @@ the slot contract in its recovery — the resource is the program and the body i
 a command belongs beneath a targetless heading — without guessing which was meant (#425). The started receipt always
 names the working directory only when it is not the project root, and then in the
 model's own project-relative form ({§fs-namespace}: the root is the model's `/`, so it
-is never rendered, and no receipt or Problem carries a host-absolute path — the
-batch of 2026-08-29 showed the absolute `cwd` copied back into the target slot as
-`(cwd: /host/path)`). The `(path)` is a program — a script for an interpreter, a tool name for a tool
+is never rendered, and no receipt or Problem carries a host-absolute path). The `(path)` is a program — a script for an interpreter, a tool name for a tool
 family — and neither a command nor a working directory is ever a target. The default
 shell is written as its own fence, ```` ```sh ````; no runtime-less form exists.
 
@@ -3048,7 +3039,7 @@ two states and no others:
 
 | state | what the model receives |
 |---|---|
-| active | nothing in the Log. The `## Delegation` stream pointer names the stream with each channel's size and its growth since the last packet ({§child-orientation}); the model READs any range it wants, and every READ of a stream channel carries `terminal: false` while it runs and `terminal: true` once it has concluded, so an empty page is never mistaken for a finished command that printed nothing (operator, 2026-09-13). |
+| active | nothing in the Log. The `## Delegation` stream pointer names the stream with each channel's size and its growth since the last packet ({§child-orientation}); the model READs any range it wants, and every READ of a stream channel carries `terminal: false` while it runs and `terminal: true` once it has concluded, so an empty page is never mistaken for a finished command that printed nothing. |
 | terminal | ONE `origin=_plurnk` READ at the execution's channel address, born visible, that is exactly a markerless READ of the channel — its bounded first page ({§read-selection-projection}, the whole channel when it fits, the channel's own mimetype), the `range` or `region`, terminal status and Problem, `terminal: true`, and any producer-supplied integer `exitCode`. The packet writes the read resource as its operand, exactly as an explicit READ does ({§log-address-metadata}). |
 
 §stream-observation-result **One liveness fact.** The durable READ result owns
@@ -3096,9 +3087,7 @@ channel that holds content, and an empty sibling channel is a fact on that row
 (`channels: {"#stderr": 0}`), never a row of its own; only a stream that printed
 nothing on any channel lands one bodyless conclusion row, on its default
 channel, whose terminal fact, causal execution link, and available exit code make
-completion explicit without invented narration (operator, 2026-09-13: the
-per-channel empty row was "a useless packet bomb" — 131 of 298 conclusion rows
-in the candidate4 run). A skipped channel's publication is still marked
+completion explicit without invented narration. A skipped channel's publication is still marked
 terminal, so the stream's termination is delivered and never left pending. KILL may curate
 that log row without rewinding the cursor or publishing the terminal result
 again; the exact terminal result and channel content remain READable at the
@@ -3961,8 +3950,8 @@ documents and its state. Only a family that holds processes prepares
 `runtimes` (MCP servers today); the field is absent for every other family, so
 warming and cooling bound workspaces, never families, and the two-stage rollback
 guards the manager registration of every family alongside the one family's
-processes. There is no per-family residency policy (operator, 2026-09-14:
-residency is MCP-specific and is not a family policy system).
+processes. There is no per-family residency policy: residency is
+MCP-specific.
 
 The version-1 baseline table `workspace_module_state` stores one JSON value
 per `(workspace_id, namespace_owner)`. It is configuration, not an executable
@@ -4704,8 +4693,7 @@ Stream progress remains owned by {§exec-stream}.
 
 ## §packet Packet shape
 
-§packet-markdown **The packet's Markdown projection, owned here since the packet
-projection package retired (#626).** Core renders the transformed section list
+§packet-markdown **The packet's Markdown projection (#626).** Core renders the transformed section list
 into one system string and one user string. Within each slot, list order is
 preserved. A nonempty section with a header renders as an H2 immediately followed
 by its JSON object/array content; non-JSON content has one blank line after the
@@ -4909,11 +4897,9 @@ producers notify the same settlement path after durable execution; reply wake-up
 shows in Open Messages and in an arrival row's `resource`. A client's own identity for the same
 message — an AG-UI message UUID, an A2A address — stays the durable `path` that correlation,
 delivery and reply accounting use, and remains addressable in its own scheme; the short form is an
-additional alias. Answering either reaches the same message. Origin (operator, 2026-09-18): the
-packet showed a 77-character `agui://anonymous/threads/…/messages/<uuid>` twice per open message,
-while the docs taught the short form.
+additional alias. Answering either reaches the same message.
 
-§message-causal-source **Message authorship and delivery are distinct facts.** The harness publishes every arrival row; the row's `source` carries the canonical address of the causal actor. Native WORK, FORK, and directed worker SEND derive `worker://<sender>` from the authenticated sender worker ID. A trusted exterior adapter supplies its own canonical actor address through {§methods-loop-run}: the AG-UI bridge names the client's message under `agui://` ({§agui-run-source}), the inbound A2A adapter under `a2a://`. An absent source is the operator. Attribution persists with the message through the inbox, parking, orphan recovery, restart, and later log projection; model syntax cannot author it. The wire renders the row's `source` in place of its `origin`, which is constant for every arrival, except where the source is the transport that minted this very message, which says nothing the address does not ({§message-short-identity}). The operator's message is then the one arrival with no sender to show, so it renders `"origin": "user"`: left bare, it read as the model's own SEND, and a model that had finished the work could no longer find the request it was answering (operator, 2026-09-22). The Open Messages pointer carries the same attribution ({§message-arrival}).
+§message-causal-source **Message authorship and delivery are distinct facts.** The harness publishes every arrival row; the row's `source` carries the canonical address of the causal actor. Native WORK, FORK, and directed worker SEND derive `worker://<sender>` from the authenticated sender worker ID. A trusted exterior adapter supplies its own canonical actor address through {§methods-loop-run}: the AG-UI bridge names the client's message under `agui://` ({§agui-run-source}), the inbound A2A adapter under `a2a://`. An absent source is the operator. Attribution persists with the message through the inbox, parking, orphan recovery, restart, and later log projection; model syntax cannot author it. The wire renders the row's `source` in place of its `origin`, which is constant for every arrival, except where the source is the transport that minted this very message, which says nothing the address does not ({§message-short-identity}). The operator's message is then the one arrival with no sender to show, so it renders `"origin": "user"`; a bare arrival would read as the model's own SEND and hide the request it answers. The Open Messages pointer carries the same attribution ({§message-arrival}).
 
 §message-projection **Message storage is unbounded by model context; automatic materialization is not.** Core persists every accepted message completely before packet assembly. The selected provider's derived `inputCapacity` and the alias-resolved percentage from `PLURNK_SERVICE_PROMPT_PROJECTION` derive one aggregate curation-weight allowance for the visible bodies of arrivals other than a peer worker's — every `source` that is not a `worker://` address, the loop's own assignment included. Complete bodies render when their aggregate weight fits. Otherwise all such visible rows share the allowance: full bodies consume only their required share, unused shares are redistributed, and partial bodies render the largest leading complete-line region that fits their share or an exact character-bound prefix when the first physical line alone is larger. The sum of their rendered body weights never exceeds the allowance. Every partial body carries `preview` under {§packet-extent-metadata}. The row remains complete and READable by coordinate; its `log:///` body additionally obeys deliberate curation under {§log-readable-projection}. A peer worker's message takes the ordinary bounds. When provider input capacity is unknown the percentage is underivable, so arrival rows retain the ordinary bounded projection rather than inventing capacity. This policy never rejects, summarizes, or discards a message because it exceeds a context window.
 
@@ -5019,7 +5005,7 @@ retain distinct contracts and lifetimes.
 
 §digest-cost-kind **Cost basis named.** A rendered Cost line carries the basis of its dollar figure: `(charged)` only when every settled request's cost is provider-charged; `(estimated — catalog rates)` when any settled request's cost is an estimate, because a mixed sum is no more trustworthy than its weakest term. A dollar figure without its basis reads as billed truth, and an estimate must never impersonate a charge.
 
-§output-allowance-notice **The output allowance is not disclosed; a ceiling cut names its cause.** The packet's budget section carries the curation state and no response allowance: a model does not plan in tokens and no harness tells it its output ceiling, so the number was a fact without a use — across 9,124 recorded model turns none was cut at the allowance, while 45 emissions or reasonings spent tokens interpreting it (#826, operator, 2026-09-24). Overflow tolerance (#482) is likewise never advertised; a cut's notice names the true per-call grant from the response's own capacity record. When a provider finish is `length`, the engine emits an `output_truncated` notice (source `engine:capacity`) naming the allowance — the fact alone, never advice on what to do about it — on every path — railed or not — and the rails verdict never blames the model's grammar for a cut the engine's own ceiling made. The same precedence governs a cut so deep no operation parses: the rejection notice names the truncation as the cause, not the parser's symptom, overriding {§invalid-emission-attempts}'s parser diagnostic for `length` finishes.
+§output-allowance-notice **The output allowance is not disclosed; a ceiling cut names its cause.** The packet's budget section carries the curation state and no response allowance: a model does not plan in tokens and no harness tells it its output ceiling, so the number is a fact without a use (#826). Overflow tolerance (#482) is likewise never advertised; a cut's notice names the true per-call grant from the response's own capacity record. When a provider finish is `length`, the engine emits an `output_truncated` notice (source `engine:capacity`) naming the allowance — the fact alone, never advice on what to do about it — on every path — railed or not — and the rails verdict never blames the model's grammar for a cut the engine's own ceiling made. The same precedence governs a cut so deep no operation parses: the rejection notice names the truncation as the cause, not the parser's symptom, overriding {§invalid-emission-attempts}'s parser diagnostic for `length` finishes.
 
 §digest-wire-line **Wire health aggregated.** Each worker summary renders a `Wire:` line — total physical provider requests, error-outcome count, and the error percentage when nonzero. Provider-level failures are absorbed by retries below the packet stream, so without this aggregate a rate-limit storm is invisible in every summary while the model's experience stays clean.
 

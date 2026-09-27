@@ -496,8 +496,7 @@ inside it, not the memory. The JS-side cost of a derivation returns to V8's floo
 about thirty seconds of idle. `npm run memory:probe` measures both (#650). Rationale: web-tree-sitter 0.27's `Parser.init()` is `Module ??= await
 create()`, so concurrent first callers instantiate two runtimes whose pointers cross,
 surfacing as `function signature mismatch`, `Incompatible language version 0`, or
-`memory access out of bounds` at teardown. Observed as the boa derivation crash under
-four concurrent derivation workers (#536); one worker never showed it.
+`memory access out of bounds` at teardown under concurrent derivation workers (#536).
 
 ### §mimetype-backend-selection 9.1 Backend selection hierarchy
 

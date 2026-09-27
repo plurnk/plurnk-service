@@ -87,9 +87,8 @@ test("streaming exec: chunks land in the channel as they arrive (not buffered un
         const t0 = await sampleStdout();
         assert.equal(t0.state, "active", "channel starts in 'active' state during spawn");
 
-        // T+~1.1s: expect 2-3 lines have landed (5, 4 — possibly 3 if
-        // we got lucky with timing). We assert lower bound only — at
-        // least one line — to keep the test robust against scheduler jitter.
+        // T+~1.1s: expect 2-3 lines have landed (5, 4 — fewer under scheduler
+        // jitter). We assert lower bound only — at least one line.
         await new Promise((r) => setTimeout(r, 1100));
         const t1 = await sampleStdout();
         assert.ok(t1.content.length > 0, `at T+~1s, stdout should have some content; got ${JSON.stringify(t1.content)}`);

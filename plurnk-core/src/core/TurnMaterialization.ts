@@ -172,8 +172,7 @@ export default class TurnMaterialization {
         const entryIds: number[] = [];
         // {§exec-stream} — a concluded stream lands one row per channel that has content; an empty
         // sibling channel is a fact on that row (`channels`), never a row of its own, and only a
-        // stream that printed nothing at all lands one bodyless row on its default channel
-        // (operator, 2026-09-13: the empty ambient row was a packet bomb).
+        // stream that printed nothing at all lands one bodyless row on its default channel.
         const closedBySubscription = new Map<number, typeof channels>();
         for (const ch of channels) {
             if (ch.state !== "closed" && ch.state !== "errored") continue;

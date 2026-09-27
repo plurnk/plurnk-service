@@ -23,7 +23,7 @@ const KNOBS: Readonly<Record<Effect, string>> = Object.freeze({
     pure: "PLURNK_SERVICE_EFFECT_PURE",
 });
 
-// The composite list this replaced held its unlisted effects in code.
+// Refuses the retired composite knob, naming its successors.
 const shedRetiredComposite = (): void => {
     const composite = "PLURNK_SERVICE_EFFECT_POLICY";
     const stale = process.env[composite];

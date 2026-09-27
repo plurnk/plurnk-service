@@ -317,7 +317,7 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
         assert.equal(callerLog.filter((row) => row.op === "SEND" && row.scheme === "a2a" && row.hostname === "remote").length, 2, "both delegations are exact a2a SENDs");
         const terminalReads = callerLog.filter((row) => row.op === "READ" && row.scheme === "a2a" && typeof row.pathname === "string" && row.pathname.startsWith("/tasks/"));
         // {§http-outbound-proposes} — a proposed SEND settles at 200 ({§proposal-accept-applies}), so
-        // the Task's first snapshot no longer rides the SEND row: it arrives by ordinary observation
+        // the Task's first snapshot does not ride the SEND row: it arrives by ordinary observation
         // of the resource, whose channels are both newly publishable. The conclusion is still an
         // exact terminal READ of each Task, which is what this asserts.
         const terminalTasks = new Set(terminalReads.map((row) => row.pathname));

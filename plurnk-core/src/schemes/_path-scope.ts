@@ -28,9 +28,8 @@ export const pathScope = (pathname: string, folderScopes: boolean): PathScope =>
 };
 
 // {§find-scope-prefix-filter} — `**` crosses directories in every spelling. Node's matcher
-// reads a `**` glued to a name (`**.go`, `src/**.ts`) as a single-segment `*`, which
-// silently confined a model's whole-repository search to the root (run67, 2026-08-29);
-// the taught rule holds, so the glued form is matched as `**/*<rest>`.
+// reads a `**` glued to a name (`**.go`, `src/**.ts`) as a single-segment `*`; the taught
+// rule holds, so the glued form is matched as `**/*<rest>`.
 const crossingDoubleStar = (pattern: string): string => pattern.replace(/(^|\/)\*\*(?=[^/*])/g, "$1**/*");
 
 export const pathScopeMatches = (scope: PathScope, pathname: string): boolean => {

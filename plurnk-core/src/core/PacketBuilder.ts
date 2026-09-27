@@ -321,7 +321,7 @@ export default class PacketBuilder {
 
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
             // The append-mostly log leads the user slot; nothing volatile precedes it
-            // ({§packet-cache-monotone}; operator, 2026-09-13: no date or time in a packet, ever).
+            // ({§packet-cache-monotone}).
             {
                 name: "log",
                 slot: "user",

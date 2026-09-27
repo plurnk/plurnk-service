@@ -21,8 +21,8 @@ test("teardownReason: a bounded housekeeping reap carrying the consumer's grace"
     assert.equal(typeof r.graceMs, "number");
 });
 
-// {§operator-config-only-home} — the panel owns the value. This reader used to answer 2000 of its
-// own accord when the key was unset; an unset key is a broken floor and crashes by name.
+// {§operator-config-only-home} — the panel owns the value. An unset key is a broken floor and
+// crashes by name.
 test("graceMs: the panel's value, read live; an unset or invalid key crashes by name", () => {
     const prior = process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS;
     try {

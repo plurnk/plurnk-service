@@ -214,7 +214,7 @@ export default class SeamSocket {
             }
             case "op.edit": case "op.send": case "op.read": case "op.find":
             case "op.copy": case "op.move": case "op.exec": {
-                // Structured params → the Dsl builder family — the exact edge the retired op_* handlers ran.
+                // Structured params → the Dsl builder family.
                 const s = this.#attached();
                 const build: Record<string, (q: never) => PlurnkStatement> = {
                     "op.edit": Dsl.buildEdit, "op.read": Dsl.buildRead, "op.find": Dsl.buildFind,

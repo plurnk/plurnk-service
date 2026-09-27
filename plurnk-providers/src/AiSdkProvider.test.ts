@@ -322,7 +322,7 @@ test("(#482) conformance judges the grant: tolerated overflow is accepted, past-
         contextWindow: 48_000,
         outputBudget: 8_000,
     });
-    // 9,648 > the 8,000 floor but inside the 47,644 grant: run7's loop-death shape, now tolerated.
+    // 9,648 > the 8,000 floor but inside the 47,644 grant: tolerated.
     const ok = await provider.generate({ workerId: "flex", messages: [{ role: "user", content: "small" }] });
     assert.equal(ok.assistant.content, "ok", "output between floor and grant is the tolerance working");
 
@@ -1654,7 +1654,7 @@ test("template reasoning preserves an empty grammar-required channel as exact ev
 });
 
 test("channel-escape detector: billed completion tokens vastly beyond visible channels attach grammar_unenforced", async () => {
-    // The run105 shape: tiny visible content, no reasoning, thousands billed — the decode
+    // Tiny visible content, no reasoning, thousands billed — the decode
     // escaped into a discarded reasoning block, unconstrained.
     const chunks = [
         { choices: [{ delta: { content: "x" }, finish_reason: "length" }] },

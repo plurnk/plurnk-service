@@ -1,8 +1,7 @@
 // {§recorded-emissions} — the corpus is every distinct parse shape 2,170 real model turns
 // produced across the live and demo drills, one exemplar each. These are the only inputs in
 // the suite nobody authored to pass a test: a fixture encodes what we believe a model emits,
-// a recording encodes what one did. Both #802 and #809 shipped regressions through a green
-// suite because every fixture in it was ours.
+// a recording encodes what one did.
 //
 // Regenerate with `node --conditions=plurnk-dev scriptify/extract-emission-corpus.ts --write`
 // after a drill. A change here is never a failure to paper over: it is the contract moving,
@@ -47,7 +46,7 @@ test("{§recorded-emissions}: the corpus spans the contract, not one corner of i
     assert.ok(records.some(({ outsideText }) => outsideText), "no outside text");
     assert.ok(records.some(({ bareKills }) => bareKills > 0), "no parameterless KILL: the conclusion path is uncovered");
     assert.ok(records.some(({ recordedStatus, bareKills }) => recordedStatus === 200 && bareKills === 0),
-        "no pre-KILL conclusion retained: the corpus has forgotten that the contract used to differ");
+        "no recorded conclusion without a parameterless KILL: the corpus holds no turn the current contract would reject");
 });
 
 test("{§recorded-emissions}: the corpus carries no identifier of the machine that recorded or runs it", () => {

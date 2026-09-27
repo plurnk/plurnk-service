@@ -121,7 +121,7 @@ test("an oversized deliverable renders the universal preview and log recovery ad
 
 test("a single-line body is constrained by the independent character bound", () => {
     const countTokens = (s: string): number => Math.ceil(s.length / 4);
-    const bomb = "x".repeat(20_000); // one line, run111-scale
+    const bomb = "x".repeat(20_000); // one 20k-character line
     const row = {
         coordinate: "1/2/1", origin: "_plurnk", op: "SEND", source: "worker://oneliner",
         target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/oneliner", query: null, fragment: null },

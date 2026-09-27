@@ -1850,7 +1850,7 @@ test("the official AG-UI client reattaches to and resumes a durable proposal int
     }
 });
 
-test("PLURNK PARADIGM: the name IS the identity — no prefix, no forging, attach is real", async () => {
+test("a workspace name is its identity; attach rebinds", async () => {
     const created: Array<{ name?: string }> = [];
     const attached: number[] = [];
     const { seam } = mockSeam();
@@ -2227,10 +2227,7 @@ test("NO workspace prop is a 400 Problem - a worker has no world to forge from t
     } finally { await mod.close(); }
 });
 
-// {§agui-thread-binding} — only a conversation Run brings a world into being. The 2026-09-11 dogfood:
-// a client inject aimed at a worker name reached the module as a workspace name, and the module
-// minted a second world named after it and answered the injection there, while the parked loop
-// it was meant for slept on.
+// {§agui-thread-binding} — only a conversation Run brings a world into being.
 test("an action naming an unknown workspace is a 404 Problem and creates nothing", async () => {
     let created = 0;
     const { seam } = mockSeam();
@@ -2441,7 +2438,7 @@ test("{§discovery} discover returns the exact public action and notification me
     } finally { await mod.close(); }
 });
 
-test("workspace.create WITH a name is worldless and does NOT demand a pre-bound workspace (regression)", async () => {
+test("workspace.create WITH a name is worldless and does NOT demand a pre-bound workspace", async () => {
     const { seam } = mockSeam();
     seam.listWorkspaces = async () => [];
     seam.createWorkspace = async (a) => ({ workspaceId: 12, workspaceName: a.name ?? "auto", projectRoot: null, workerId: 3, workerName: "client-1" });

@@ -75,7 +75,7 @@ const assertAgentName = (name: string, variable: string): void => {
     }
 };
 
-// {§http-host} — the exposure rides the service listener, so its own address knobs retired (#641).
+// {§http-host} — the exposure rides the service listener, so it has no address knobs (#641).
 // A still-set one fails hard naming the successor; it never silently binds nothing, and it never
 // case-folds into an alias definition. Spelled out only here, as the refusal's own evidence.
 const shedRetiredListener = (environ: NodeJS.ProcessEnv): void => {

@@ -75,7 +75,7 @@ const measure = async (db: Db): Promise<{ floor: number; expanded: number }> => 
 };
 
 // 0 — the fattener actually fattens. If this fails every recovery story below is
-// vacuous, so it is pinned first (caught the EDIT-is-free trap during the port).
+// vacuous, so it is pinned first.
 test("budget: a READ result renders into the log and weighs on the next turn's packet", async () => {
     const db = await openMigrated();
     try {

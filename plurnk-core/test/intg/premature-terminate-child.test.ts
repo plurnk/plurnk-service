@@ -131,8 +131,8 @@ test("{§completion-defers-to-results}: READ + completed inventory in the same t
         assert.equal(result.status, 102, "the turn stays a continue — the loop never went terminal");
         const rows = await db.test_log_sequencees_by_turn.all<{ status_rx: number; op: string }>({ turn_id: result.turnId });
         assert.equal(rows.find((r) => r.op === "SEND")?.status_rx, 200, "successful delivery is not rewritten to describe loop continuation");
-        // The STORED record agrees with the return (run20's T3 bug: the close persists the
-        // provisional status pre-dispatch; the refusal must demote the row too, not just the return).
+        // The STORED record agrees with the return: the close persists the provisional status
+        // pre-dispatch, and the refusal demotes the stored row too.
         const storedTurn = await db.test_get_turn.get<{ status: number }>({ id: result.turnId });
         assert.equal(storedTurn?.status, 102, "the persisted turns.status is demoted — the digest surface never lies");
     } finally { await db.close(); }

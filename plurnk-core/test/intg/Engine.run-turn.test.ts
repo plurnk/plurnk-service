@@ -51,7 +51,7 @@ const response = (ops: PlurnkStatement[], content: string = "", completion: numb
 });
 
 // The deterministic HARD-failure (403 writableBy) generator for the strike/notice tests:
-// a scheme the model can't write. Log no longer serves this role — {§turn-ops-log-curation}
+// a scheme the model can't write. Log does not serve this role — {§turn-ops-log-curation}
 // admits the model through its gate for the KILL curation lever (other ops 501, a SOFT failure).
 class Sealed {
     static manifest = {
@@ -771,7 +771,7 @@ test("Engine.runTurn: the durable failure projection shows once, then ages out",
                 .map((e) => e.status);
         };
         // The errors section is a recency window (current + immediately-prior turn), so a failure
-        // surfaces once and ages out — same observable as the old drain, now log-derived.
+        // surfaces once and ages out.
         // T1's packet: the 403 hasn't surfaced yet (it happens during T1's dispatch).
         assert.deepEqual(await get403s(t1.turnId), []);
         // T2's packet: the prior-turn 403 surfaces as a log-coordinate pointer.

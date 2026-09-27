@@ -18,11 +18,9 @@ test("{§observability-genai-conventions} provider identity is independent of it
     assert.equal(ProviderInstantiate.providerIdOf(foreign), undefined, "an alias alone does not identify a provider");
 });
 
-// Regression: a per-alias baseUrl (PLURNK_BASEURL_<alias>) MUST reach the standard
-// provider's endpoint resolution. When it was dropped, every openai-compat alias
-// silently collapsed to an ambient OPENAI_BASE_URL, so a multi-endpoint setup ran
-// the wrong box with no error. Here alias.baseUrl and OPENAI_BASE_URL point at
-// different ports; the construction probe must hit the alias's port, never the env's.
+// A per-alias baseUrl (PLURNK_BASEURL_<alias>) reaches endpoint resolution ahead of
+// OPENAI_BASE_URL. Here alias.baseUrl and OPENAI_BASE_URL point at different ports;
+// the construction probe must hit the alias's port, never the env's.
 test("instantiateProvider threads alias.baseUrl past an ambient OPENAI_BASE_URL", async () => {
     const hit: string[] = [];
     const realFetch = globalThis.fetch;

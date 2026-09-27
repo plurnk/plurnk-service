@@ -36,9 +36,8 @@ const BANNED: Array<{ label: string; re: RegExp; canon: string; exempt?: RegExp 
     { label: "thinking (our-voice)", re: /\bthinking\b/i, canon: "reasoning ({§lexicon})", exempt: WIRE_THINKING },
     { label: "contextSize", re: /\bcontextSize\b/, canon: "contextWindow — the provider window ({§model-fact-resolution})" },
     { label: "retired providers knob", re: /PLURNK_PROVIDERS_(THINKING|LOGPROB\b|CONTEXT_SIZE\b)/, canon: "PLURNK_PROVIDERS_{REASONING,TOP_LOGPROBS,CONTEXT_WINDOW} ({§provider-configuration}) — only the shed may name these" },
-    // Catch the retired run/session noun in the wire-header form too (a
-    // quoted string, not an identifier — the hole the old `Plurnk-Run-Id` hid in),
-    // alongside the coordinate identifiers.
+    // Catch the retired run/session noun in the wire-header form (quoted
+    // wire strings are checked too), alongside the coordinate identifiers.
     { label: "run/session (retired noun — coordinate or wire header)", re: /\b(sessionId|runId)\b|Plurnk-(Run|Session)-Id/, canon: "workerId/workspaceId, Plurnk-Worker-Id/Plurnk-Workspace-Id ({§lifecycle-terms})" },
 ];
 

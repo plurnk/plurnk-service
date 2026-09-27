@@ -217,10 +217,8 @@ export function testExecutors(): Promise<ExecutorRegistry> {
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const MIGRATIONS_DIR = resolve(PROJECT_ROOT, "migrations");
-// File-backed per-test DB so on-disk consumers (digest tool, future
-// forensics) exercise the same artifacts the suite produces. `:memory:`
-// hid a column-rename regression in the digest tool for an unknown number
-// of PRs. Per-test UUID filenames eliminate parallel collisions.
+// File-backed per-test DB so on-disk consumers (the digest tool) exercise the suite's real
+// artifacts. Per-test UUID filenames eliminate parallel collisions.
 //
 // {§test-artifact-retention} — the run's directory lives under PLURNK_BENCHMARKS beside every
 // other harness's artifacts, so a database is born where it lives: nothing is written into the

@@ -112,7 +112,7 @@ test("the pre-push gate drills the pushed commit in a throwaway worktree, never 
     const drill = hook.indexOf("\nnpm test\n");
     assert.ok(add !== -1 && enter !== -1 && add < enter && enter < drill, "the worktree at the pushed sha is entered before the drill runs");
     assert.match(hook, /trap cleanup EXIT INT TERM HUP/u, "the worktree is removed however the drill ends");
-    assert.doesNotMatch(hook, /git status --porcelain/u, "a dirty working tree no longer blocks a push: it is not what the drill tests");
+    assert.doesNotMatch(hook, /git status --porcelain/u, "a dirty working tree does not block a push: it is not what the drill tests");
 });
 
 test("the repository root exposes the service's basic operator lifecycle", () => {

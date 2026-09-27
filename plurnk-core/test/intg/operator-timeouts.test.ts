@@ -31,7 +31,7 @@ test("execution exhaustion rules a legible 504 loop_timeout terminal", async (t)
     t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
     t.mock.method(performance, "now", () => Date.now());
     // Restored, never deleted: the panel's value is what every later test in this file runs under,
-    // and a code-side default no longer papers over a knob this test removed.
+    // and no code-side default papers over a knob this test removed.
     const panelTimeout = process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
     process.env.PLURNK_SERVICE_LOOP_TIMEOUT = String(loopTimeoutMs);
     const db = await openMigrated();

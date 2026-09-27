@@ -1,9 +1,6 @@
-// Assembled-packet regression coverage — the backbone the invisible-catalog bug
-// exposed as missing. Isolated render-fn tests (packet-wire.test.ts) green while
-// the ASSEMBLED packet shipped a query with no results, because nothing asserted
-// the full system+user message a real turn produces. These tests run a real turn
-// (Mock provider), read the stored turns.packet, and assert section content —
-// catching section-level + assembly regressions the unit tests can't.
+// Asserts the assembled system+user packet of a real turn: run a turn (Mock provider), read the
+// stored turns.packet, and assert section content — assembly the isolated render-fn tests
+// (packet-wire.test.ts) cannot see.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -209,9 +206,9 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const packet = await getPacket(db, result.turnId);
         const log = packetSection(packet, "log");
 
-        // THE REGRESSION GUARD: the foisted FIND(worker:///*) renders its RESULT into the
-        // log ({§render-rule-find-renders-result}) — the model SEES the catalog groups, not just
-        // its own echoed query. The invisible-catalog bug rendered only `### FIND_ (...)`.
+        // The foisted FIND(worker:///*) renders its RESULT into the log
+        // ({§render-rule-find-renders-result}) — the model sees the catalog groups, not just its own
+        // echoed query.
         assert.match(log, /worker:\/\/\/note\.md/, "the foisted catalog FIND renders a direct entry into the packet's log");
         assert.match(log, /worker:\/\/\/\.env\.defaults/, "the one-level page includes direct dot entries");
         assert.match(log, /"path":"worker:\/\/\/\.github\/\*\*","items":1,"tokens":\d+/, "a dot directory renders as an actionable recursive summary");

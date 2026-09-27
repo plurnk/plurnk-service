@@ -44,7 +44,7 @@ test("live: model answers an HTML heading question (xpath extraction)", async (t
 });
 
 test("live: model picks the first item out of a JSON array (extract then pick first)", async (t) => {
-    // The natural form of the old compose-chain: the answer requires extracting the user names and
+    // The answer requires extracting the user names and
     // taking the first — however the model chooses to get there. No scripted ops, no log coordinates.
     const s = await liveWorkspace({ name: `live-xpjp-compose-first-${crypto.randomUUID()}` });
     try {

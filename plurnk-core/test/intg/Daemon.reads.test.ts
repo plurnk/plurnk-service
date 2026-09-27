@@ -1,4 +1,4 @@
-// Tests for daemon Phase 4: entry.read and log.read.
+// entry.read and log.read.
 
 import test from "node:test";
 import assert from "node:assert/strict";

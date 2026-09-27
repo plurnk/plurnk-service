@@ -3,7 +3,7 @@
 // scheme (dispatch → run/accept → spawn → read
 // the captured output channel), not sh alone.
 //
-// Two axes the suite gets right because the gap hid them: each runtime's output lands on its OWN
+// Two axes: each runtime's output lands on its OWN
 // declared channel (subprocess -> stdout; jq/sqlite -> a JSON `results` channel), and host-effecting
 // runtimes PROPOSE (accept) while pure/read ones are automatically accepted. The census requires
 // every available self-contained tag to be covered and fails when a default tag is undiscovered

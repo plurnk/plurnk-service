@@ -49,9 +49,8 @@ test("live web: a discovered http:// READ atomically materializes a real URL (no
             assert.equal(r.status, 200, "finite HTTP READ settles only after canonical materialization");
             assert.match(String(r.content), /User-agent|Disallow/i, "READ returns the actual robots.txt content");
             // Entries split authority from pathname, and the origin decides its
-            // protocol: historically http→https redirected (canonicalizing to
-            // https); since 2026-08 Google serves the http URL 200 directly.
-            // Accept the scheme actually served; the identity is the authority.
+            // protocol: it may redirect http→https or serve the http URL 200
+            // directly. Accept the scheme actually served; the identity is the authority.
             const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number; authority: string }>({ scheme: "https", pathname: "/robots.txt" })
                 ?? await db.test_get_entry_by_pathname_scheme.get<{ id: number; authority: string }>({ scheme: "http", pathname: "/robots.txt" });
             assert.ok(entry, "the READ atomically materialized one canonical entry under the served scheme");

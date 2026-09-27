@@ -1531,7 +1531,7 @@ test("{§body-projection}: scoped program READs bypass previews, not curation or
         const suppressed = parseLogRecords(PacketWire.renderLog([{ ...entry, initial_folded: [[1, -1]] }], tok))[0]!;
         assert.equal(suppressed.body, undefined);
         assert.equal(suppressed.preview, undefined);
-        assert.ok(Number(suppressed.logTokens) < Number(complete.logTokens), "suppression no longer charges the absent program body");
+        assert.ok(Number(suppressed.logTokens) < Number(complete.logTokens), "suppression does not charge the absent program body");
         const withheld = parseLogRecords(PacketWire.renderLog([{ ...entry, output_withheld: true }], tok))[0]!;
         assert.equal(withheld.body, undefined);
         assert.equal(withheld.overflow, `${lines.length} output lines not shown; the log exceeded logTokensMax when this row was withheld`);

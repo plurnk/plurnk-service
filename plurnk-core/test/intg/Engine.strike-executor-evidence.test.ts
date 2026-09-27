@@ -1,5 +1,4 @@
-// {§engine-rails} #425 F1 — a red test suite is evidence, never a strike. run14's shape:
-// every turn runs a command that exits 1; the engine materializes each failure as a
+// {§engine-rails} #425 F1 — a red test suite is evidence, never a strike. Every turn runs a command that exits 1; the engine materializes each failure as a
 // completion READ[500] carrying executor identity. Under the shipped MAX_STRIKES the
 // loop must run through all of them and conclude on the model's own completed inventory.
 import test from "node:test";

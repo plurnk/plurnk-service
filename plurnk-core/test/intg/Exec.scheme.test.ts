@@ -414,7 +414,7 @@ test("{§exec-target-near-miss} a directory target with a body runs there; with 
             const row = await ctx.db.test_get_log_entry_by_id.get<{ attrs: string }>({ id });
             const attrs = JSON.parse(row?.attrs ?? "{}") as { cwd: string | null; target: string | null; body: string };
             assert.equal(attrs.cwd, join(root, "sub"), "the directory is the working directory");
-            assert.equal(attrs.target, null, "and no longer a program target");
+            assert.equal(attrs.target, null, "and not a program target");
             assert.equal(attrs.body, "pwd");
             ctx.engine.resolveProposal(id, { decision: "reject" });
             await asCwd.catch(() => {});

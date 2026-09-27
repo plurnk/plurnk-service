@@ -119,9 +119,8 @@ them read-only; the rest of the vendor catalog is not admitted.
 (stdio) pins `@modelcontextprotocol/sdk@1.29.0`, whose latest protocol
 revision is `2025-11-25` and which does not implement `server/discover`. The
 host negotiates-and-degrades ({§mcp-authority}), so the fixture connects at
-`2025-11-25` with the standard tool surface — verified live: the demo story
-`{§web-search-retrieval}` researched through the real Brave MCP tool and
-answered from it.
+`2025-11-25` with the standard tool surface. Covered live by the demo story
+`{§web-search-retrieval}`, which researches through the real Brave MCP tool.
 
 ## Service defaults
 

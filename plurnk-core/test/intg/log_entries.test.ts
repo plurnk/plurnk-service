@@ -184,8 +184,7 @@ test("{§rejected-emission-entry}: only rejected model attempts use actionless l
     } finally { await db.close(); }
 });
 
-// (No "op enum" test: log_entries.op no longer CHECK-enumerates the grammar op set — that was a
-// hand-copy of grammar's contract that went stale on every new verb. Op validity lives at the parse
+// (No "op enum" test: log_entries.op does not CHECK-enumerate the grammar op set. Op validity lives at the parse
 // (grammar) + type (PlurnkOp) layer; the column stores what the typed engine writes.)
 
 test("log_entries: status_rx range 100..599", async () => {

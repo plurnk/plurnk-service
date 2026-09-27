@@ -122,17 +122,15 @@ for (const { dir, name, release, owner, platformDependencies, pushable } of regi
     else if (state.compatible) console.log(`  align   ${tag} — local compatibility/provenance is not published at ${manifest.version}`);
 
     // The release workflow updates an incompatible managed plugin.
-    // A leaf whose registry latest exceeds the stamp has run an independent version line:
-    // ran an independent version line that burned numbers ahead of the platform — align/publish cannot
-    // succeed and a silent downgrade-align lies about lineage. Halt naming the leaf at the FIRST
-    // window, not the third. (The serves-equality check below is trustworthy by construction: the
-    // the version gate proved the number unpublished across platform packages, so a package serving
-    // it now can only have gotten it from THIS train.)
+    // A leaf whose registry latest exceeds the stamp ran an independent version line, so
+    // align/publish cannot succeed and a downgrade-align would misstate its lineage: halt naming the
+    // leaf. The serves-equality check below holds because the version gate proved the number
+    // unpublished across platform packages, so a package serving it now got it from this release.
     const latest = await served(name);
     if (latest !== null && latest !== version) {
         const cmp = latest.split(".").map(Number); const stamp = version.split(".").map(Number);
         const ahead = cmp[0] > stamp[0] || (cmp[0] === stamp[0] && (cmp[1] > stamp[1] || (cmp[1] === stamp[1] && cmp[2] > stamp[2])));
-        if (ahead) throw new Error(`${tag}: VERSION-LINE COLLISION — registry latest ${latest} is ahead of the stamp ${version}; this managed leaf ran an independent line (the terraform class). Do not overwrite its lineage — rule the next release on the board.`);
+        if (ahead) throw new Error(`${tag}: VERSION-LINE COLLISION — registry latest ${latest} is ahead of the stamp ${version}; this managed leaf has its own version line; do not overwrite it. Choose the next release number explicitly.`);
     }
     if (latest === version) {
         throw new Error(`${tag}: ${version} is already immutable on npm with a different compatibility/provenance contract; adopt this reform at the next stamp`);

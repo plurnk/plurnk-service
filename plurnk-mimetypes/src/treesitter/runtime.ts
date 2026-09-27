@@ -2,7 +2,7 @@
 // handler, and its 0.27 `Parser.init()` is `Module ??= await create()`: two concurrent first
 // callers instantiate two runtimes and the survivor's parsers hold the loser's pointers
 // ("function signature mismatch", "Incompatible language version 0", "memory access out of
-// bounds" at teardown — the boa derivation crash, run88). Runtime initialization happens
+// bounds" at teardown). Runtime initialization happens
 // once, and dynamic grammar loads (Emscripten side-module linking into that runtime) run
 // one at a time. Parsing itself is synchronous and needs no gate.
 export interface TreeSitterRuntime {

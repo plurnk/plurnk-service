@@ -311,9 +311,8 @@ back ({§closer-fallback}). It runs, and one warning-severity receipt follows it
 operation: a naked `WAIT` parks, a naked `NOTE` takes its text, a naked `READ` meets the ordinary
 missing-target refusal. Only the bare name qualifies; a name with anything else on its line is
 the unfenced form and still refuses ({§unfenced-operation}), executors are runtimes rather than
-operations, and reasoning is never read this way. Measured before it was accepted (2026-09-22):
-48 naked `KILL` lines in 9,196 recorded emissions, every one followed by the deliverable, and
-three loops lost to the refusal at the strike threshold.
+operations, and reasoning is never read this way. In 9,196 recorded emissions, all 48 naked
+`KILL` lines were followed by the deliverable.
 
 §fence-heading-in-body Outside a complete nested block ({§balanced-fences}), a fence
 line of three or more backticks and a name that is a native operation or a known executor
@@ -358,7 +357,7 @@ the cheapest.
 
 §pairing-need **Why a pass ahead of the grammar.** Whether a bare fence closes a block or opens a
 nested one depends on every fence after it, unboundedly. Measured on 10,486 distinct recorded
-emissions before this pass existed:
+emissions:
 
 | Alternative | Result |
 |---|---|
@@ -429,7 +428,6 @@ and never runs a command the report only shows.
 | The generated matrix: six operations × widths 3–5 × twelve body shapes × four tails | 864 of 864 (`fence-matrix.test.ts`) |
 | 10,486 recorded emissions | All parse; 0.9 ms mean, 267 ms at most (3,501 fence lines). The work is polynomial in fence lines, cubic at worst, so no step bound is needed |
 | The same, against the single-order objective | 10,466 identical; 19 read more operations, where headings follow unclosed blocks or a closer is glued to the next opener; 1 echoed transcript reads a different operation; none reads fewer |
-| The same, against origin/main 461fa136f | 10,257 identical. Of 229 changed: 112 bodies kept whole, 51 with only outside text or diagnostics moved, 30 with a closer glued to the next opener (neither reading splits the run), 16 quoted under {§quotation} with its warning, 19 read with more, fewer or other operations on degenerate fences, 1 degenerate EDIT whose body was two stray fences now empty |
 
 §indented-fences **CommonMark's indentation, everywhere.** A fence line may follow at most three
 spaces; four or more, or a tab, make it indented code. That one rule reads every fence purpose the
@@ -437,9 +435,8 @@ same way: an opener within three spaces opens, a closer within three closes, a h
 three ends an unclosed block, and a body keeps its own lines' indentation. A fence indented
 further is literal wherever it stands — prose outside a block, body inside one — and draws no
 advisory: `plurnk.md` shows its own examples offset, so an offset fence is the page's own form
-and there is no mistake to report (operator, 2026-09-21). The parser presumes nothing about why a fence is offset. This one
-rule replaces the column-zero opener (operator, 2026-09-18) and the lenient closer beside it
-(operator, 2026-09-23). Outside an operation, offset text is response text under
+and there is no mistake to report. The parser presumes nothing about why a fence is offset.
+Outside an operation, offset text is response text under
 {§response-text}; inside a body, it stays literal body content.
 
 §inline-chain A closer on a heading line, or on a body's closing line, may be
@@ -457,15 +454,13 @@ The closer is still a closer: the block ends with that physical line and never r
 the next operation, which is what a bare heading carrying a matcher would do. A closer followed
 by the next opener is {§inline-chain}, and by nothing is the ordinary {§fence-closer}. There is
 no ambiguity to resolve: a slot begins with `<` or `[` and an opener with a backtick run, so the
-shapes are disjoint (operator, 2026-09-13: "If there is no risk of ambiguity, then we add
-tolerance. Turning model soup into operations instead of errors is a cardinal imperative").
+shapes are disjoint.
 
 §executor-case **An executor tag in any case.** A fence tag that matches a
 registered executor's name case-insensitively opens that executor (`SH` opens
 `sh`), and the statement's `executor` is the registered spelling, so a lookup
 by that name never misses. Operation names stay uppercase by teaching and were
-never written otherwise in 12,000 fences; one `SH` in 1,300 `sh` fences was
-(2026-09-13 census). An unregistered name without an accepted spelling
+never written otherwise in 12,000 fences; one `SH` in 1,300 `sh` fences was. An unregistered name without an accepted spelling
 ({§executor-js-spelling}) is still prose ({§interstitial-fence}).
 
 §executor-js-spelling When `node` is registered and `js` is not, `js` names
@@ -529,14 +524,13 @@ teaching, so honouring it protects an example the model already believed was saf
 ({§response-text-note} places the scale). The offset is the one form that survives every
 fence style.
 
-§interstitial-fence Superseded by {§quotation}: an unlabeled fence no longer opens nothing, it
-quotes. (It in turn replaced the retired unlabeled-fence SEND of the fences chapter, whose
-unlabeled fences turned displaced headings into silent messages.)
+§interstitial-fence Only a native operation or a known executor opens a block. A fence naming
+anything else, or nothing at all, opens no operation: outside a block it quotes under
+{§quotation}, inside a body it is body.
 
 §closer-aside A closing fence followed on its line by one aside and nothing else
 is the closer; the aside is outside text. Read as body, that line would be written
-into the edited resource (#758: a recorded EDIT deleting a line wrote
-```` ```` <!-- remove duplicated Result import --> ```` into a Python file). A
+into the edited resource (#758). A
 closing fence followed by any other text is still body.
 
 §heading-slot-order A heading near-miss with exactly one reading is read as that
@@ -821,9 +815,9 @@ accounting, and observation timing belong to the consuming service.
 §read-find-normalization An authored READ is never rewritten into a FIND. A
 glob target on READ keeps its glob, and the runtime fans it out into one exact
 READ per matching path, with the authored scope and matcher ({§read-fan-out}
-in the core SPEC; operator, 2026-09-13: "give it what it asked for" — a model
+in the core SPEC). A model
 that asks to read every file under a glob gets those files, bounded by the
-FIND page and the preview scope, not a catalog it did not ask for). A matcher
+FIND page and the preview scope, not a catalog it did not ask for. A matcher
 never changes the operation either: READ with a `pattern` on an exact target
 stays READ and renders the selected lines ({§read-pattern}). The survey of
 paths is FIND, and only FIND.
@@ -1017,7 +1011,7 @@ statements remain recoverable when their boundaries are trustworthy.
 
 ## §scope-slot 7. Scope markers
 
-The model-facing slot is `<scope>`; the AST field remains the historical
+The model-facing slot is `<scope>`; the AST field is
 `lineMarker`. Numeric scopes preserve ordered components in `LineMarker`;
 text-coordinate operations use `TextLineMarker`, whose line positions may also
 carry rendered anchors. The operation owner assigns every component's role.
@@ -1196,33 +1190,28 @@ intent.
 so.** An outside-text line that opens at column zero with an operation's name and anything else
 — `KILL The answer…`, `READ (a.md)`, `KILL (notes.md)` — draws one warning: `` `KILL` has no
 fence, so it did not run. `` The line is not response text ({§response-text}): it is neither filed as
-a NOTE nor echoed into the next packet, and the exact emission remains at `ops://` (operator,
-2026-09-23); the bare name alone
+a NOTE nor echoed into the next packet, and the exact emission remains at `ops://`; the bare name alone
 opens the operation instead ({§naked-operation}). A registered executor's name followed by an
 operand slot — `gitea (list_issues)`, `sh(build.sh)` — draws the same warning under the executor's
 own spelling; quoted blocks, offset lines and names inside a sentence draw nothing, since `sh`,
-`env` and `members` are ordinary words. The model that wrote it believes it ran: while the line was
-still filed as a NOTE ({§response-text-note}), an unfenced KILL read back as an answer already given,
-and the model repeated it until the cycle detector ended the loop (`demo-overflow-recovery-AC4Ul4`;
-the same shape defeated SEND recovery and a count of invalid characters; operator, 2026-09-22). The
-warning and the exclusion together end that echo.
+`env` and `members` are ordinary words. The model that wrote it believes it ran: filed as a
+NOTE ({§response-text-note}), an unfenced KILL would read back as an answer already given, and
+the model would repeat it. The warning and the exclusion together prevent that echo.
 
 §recorded-emissions **The parser is regressed against emissions models actually produced,
 not fixtures we wrote.** `test/fixtures/recorded-emissions.jsonl` holds one real exemplar
 of every distinct parse shape observed across the live and demo drills — the operations
 authored, whether outside text appeared, how many parameterless KILLs appeared, and
 the status the engine recorded at the time. A fixture encodes what we believe a model
-emits; a recording encodes what one did, and the difference is not academic: the
-regressions in #802 and #809 both shipped through a fully green suite, because every
-fixture in it was ours.
+emits; a recording encodes what one did, so only recordings test the shapes models actually
+produce (#802, #809).
 Shape coverage, not volume, is the point — 120 exemplars are ~60 KB against ~88 MB for
 every emission ever recorded. The recorded status is **provenance, never an assertion**:
 the contract has changed under these turns and will again, so the replay asserts only that
 today's parser still reads each emission the way the corpus says it does. Regenerate with
 `scriptify/extract-emission-corpus.ts --write` after a drill; a changed shape is the
 contract moving and the diff names every shape that moved with it. The extractor also
-reports how many recorded turns concluded under a contract that no longer would, which is
-the drift between what the harness once accepted and what it accepts now.
+reports how many recorded turns concluded in a way the current contract would reject.
 
 ## 12. Public API
 
@@ -1668,7 +1657,7 @@ diagnostics are:
   dialect without slashes or flags: the whole text is the pattern, so
   `READ (notes.md) ^Decision:.*` selects lines beginning with `Decision:`.
   `^` is deliberately absent from `plurnk.md`'s dialect table and belongs here instead
-  (operator, 2026-09-21, #804). It is carried because `^` meaning "anchor" is among the
+  (#804). It is carried because `^` meaning "anchor" is among the
   strongest instincts a model arrives with: it will write `^Decision:.*` whether or not it
   was taught to, and the engine honours what it will reach for anyway. Teaching it would
   spend hot-path weight on a line that changes no behaviour. The omission is therefore not
@@ -1697,14 +1686,12 @@ diagnostics are:
   keeps the statement without it and raises one warning-severity advisory (`READ
   takes no body; the body was ignored. A pattern belongs on the opening fence line
   after the path.`), delivered like {§misplaced-aside-advisory} as a
-  `parse_advisory` notice (operator, 2026-09-12: a gentle warning, never an error
-  the model must recover from). One sigil line beneath the heading is the bare form
+  `parse_advisory` notice (a warning, never an error). One sigil line beneath the heading is the bare form
   written a line low and still lifts; nothing else is promoted into a matcher from
   below the heading, and the advisory never echoes the body.
 - §combined-anchor-tolerance **Combined anchor and line number in a scope.** A
   text-coordinate scope position written `@hash:L` or `@hash L` is the displayed
-  `@abcde 42:` prefix copied whole (a koota-entity turn refused nine of them in a
-  row, 2026-09-12): the position is the anchor, the number is dropped, and one
+  `@abcde 42:` prefix copied whole: the position is the anchor, the number is dropped, and one
   warning-severity advisory names the anchor-only form. The scope lexes as one
   ordinary marker at any text-coordinate operation, either COPY/MOVE operand
   included; nothing cascades.

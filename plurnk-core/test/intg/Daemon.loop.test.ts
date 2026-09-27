@@ -96,7 +96,7 @@ test("loop.inject speaks into an existing worker; errors when there's none", asy
             assert.equal(noWorkerResult.problem.detail, "No model worker exists for prompt injection.");
 
             // Start a worker; completed inventory ends its loop, leaving the worker idle. Wait for the terminal
-            // (loop.run no longer blocks) so the worker is genuinely idle before we inject.
+            // (loop.run does not block) so the worker is genuinely idle before we inject.
             await runLoopToTerminal(ws, 3, { prompt: "first", policy: { proposals: "accept" } });
 
             // Inject into the idle worker → enqueues a fresh loop, returns immediately.
@@ -297,7 +297,7 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
         } finally { ws.close(); }
     });
     console.error = realErr;
-    // Contract Strikes: the loop no longer throws for provider garbage — it
+    // Contract Strikes: the loop does not throw for provider garbage — it
     // terminates cleanly through the rail, so no drain error is (or should be)
     // logged; the durable per-turn failure rows carry the diagnostics instead.
     assert.equal(logged.some((l) => /drain error/.test(l)), false, "a rail termination is clean — no swallowed-throw diagnostics needed");

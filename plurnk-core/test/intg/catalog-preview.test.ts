@@ -59,8 +59,7 @@ test("PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the files cap governs 
 });
 
 // The catalog is FIND-served — there is no materialized manifest entry. With the preview
-// off, the worker opens with no foisted catalog; the model FINDs each scheme on demand (the
-// "always a single directory to READ" invariant retired with the manifest.json entry).
+// off, the worker opens with no foisted catalog; the model FINDs each scheme on demand.
 test("no manifest.json entry — the catalog is FIND-served; preview-off foists no FIND", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "0"; // preview OFF
@@ -137,9 +136,8 @@ test("workspace.create rejects malformed settings — fail hard, no silent accep
 });
 
 // {§actor-boundary-catalog-preview} — turn-0 once-per-worker foists fire on the worker's first
-// loop only; later loops in the same worker already carry them in the persistent log, so re-foisting
-// each loop spammed the log + burned tokens. Two loops in one worker: the manifest READ is in loop 1's
-// log, absent from loop 2's.
+// loop only; later loops in the same worker already carry them in the persistent log. Two loops in
+// one worker: the manifest READ is in loop 1's log, absent from loop 2's.
 test("turn-0 once-per-worker foists fire on the worker's first loop only, not every loop", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // preview ON

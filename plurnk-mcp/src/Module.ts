@@ -710,7 +710,7 @@ export default class Module {
                     // {§mcp-catalog-refresh-in-place} — only the catalog is dirty: the executor is
                     // rebuilt on the connection the alias already holds. No second process is
                     // spawned, so neither abort nor commit has anything of this alias to close
-                    // (#429: the committed server was being closed beneath an aborted attempt).
+                    // (#429).
                     try {
                         attachment = await this.#prepareAttachment(workspaceId, definition, heldConnection);
                     } catch (cause) {

@@ -1,5 +1,4 @@
-// {§kill-scope-entry} — KILL on an entry deletes it (or one #channel); the untaught KILL
-// delete idiom is gone with the signal slot. Engine regression coverage.
+// {§kill-scope-entry} — KILL on an entry deletes it (or one #channel). Engine coverage.
 
 import test from "node:test";
 import assert from "node:assert/strict";

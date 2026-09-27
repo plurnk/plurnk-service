@@ -576,6 +576,6 @@ test("runtime protocol and family dependencies are declared explicitly", async (
     assert.ok(deps.includes("@ag-ui/core"), "the standard wire types and schemas are a direct runtime dependency");
     // Vacuous-pass guard: contracts is a runtime import (Module's op.parse) — it must
     // live in dependencies, not devDependencies (npm --save-exact updates an existing
-    // devDep in place; this caught a 0.6.0 packaging bug).
+    // devDep in place).
     assert.ok(deps.includes("@plurnk/plurnk-contracts"), "the contracts and grammar runtime import is declared in dependencies");
 });

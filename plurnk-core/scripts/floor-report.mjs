@@ -1,7 +1,6 @@
 // Packet Token Floor report — a measurement INSTRUMENT, never a gate.
-// Operator ruling (2026-08-23): no floor tripwire — "those kinds of tripwires
-// can interfere with complex jobs." This script therefore ALWAYS exits 0; a
-// broken measurement prints loudly and yields nothing else.
+// A report, never a gate: always exits 0; a broken measurement prints loudly
+// and yields nothing else.
 //
 // The metric: input weight of the FIRST model call for a fresh worker in an
 // empty project under the selected config — the price of existing, before any work.

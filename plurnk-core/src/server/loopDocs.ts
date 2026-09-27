@@ -92,7 +92,7 @@ export default class LoopDocs {
             id: workspaceId,
         });
         // {§membership-model-universe} entry (3): the standard admits the content; it never overrides
-        // `.gitignore` or a `hide` constraint (operator ruling, #400).
+        // `.gitignore` or a `hide` constraint (#400).
         const agentsContent = workspace?.project_root === null || workspace?.project_root === undefined
             || await GitMembership.excludesInstruction(db, workspaceId, "AGENTS.md")
             ? null

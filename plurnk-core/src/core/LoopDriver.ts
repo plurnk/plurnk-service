@@ -15,9 +15,7 @@ import { observed } from "../observe/spans.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 import type { AcquireWorkspaceTurn, WorkspaceTurnStarting } from "./Engine.ts";
 
-// {§operator-config-only-home} — the rails' values live on the panel. These readers used to return
-// a constant of their own when a key was unset OR invalid, so `PLURNK_SERVICE_LOOP_TIMEOUT=banana`
-// silently meant twenty-four hours.
+// {§operator-config-only-home} — the rails' values live on the panel.
 // {§operator-config-loop-timeout}
 const readLoopTimeoutMs = (): number => Knob.integer("PLURNK_SERVICE_LOOP_TIMEOUT", 1);
 

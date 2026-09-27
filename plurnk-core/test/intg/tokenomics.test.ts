@@ -48,7 +48,7 @@ test("EDIT stores entry_channels.weight from the model-agnostic ruler", async ()
         const ch = await db.tok_channel_weight.get<{ weight: number }>({ entry_id: result.entryId, name: "body" });
         // The write-time stamp is the model-agnostic ruler ({§tokenomics-agnostic-ruler}): ceil(len/2).
         assert.equal(ch?.weight, Math.ceil(content.length / 2));
-        assert.ok((ch?.weight ?? 0) > 0, "weight is populated at write, not left at the old hardcoded 0");
+        assert.ok((ch?.weight ?? 0) > 0, "weight is populated at write");
     } finally { await db.close(); }
 });
 

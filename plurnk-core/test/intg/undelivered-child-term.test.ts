@@ -42,8 +42,8 @@ test("{§worker-lifecycle-child-matrix} waiting on a just-concluded child contin
 });
 
 // A branch batch that fails git-preflight finishes the child's loop before the child ever had a
-// turn. The termination trigger used to require a turn, so the parent was never told and waited
-// on a ghost (DeepSWE benchlet run104, 2026-08-26; #385).
+// turn. Its termination still announces to the parent, which never waits on a child that cannot
+// report (#385).
 test("a child refused before its first turn still announces its death to the parent", async () => {
     const db = await openMigrated();
     try {

@@ -171,7 +171,7 @@ test("Engine.move keeps an ordinary source region regional when it covers the cu
     } finally { await db.close(); }
 });
 
-test("{§move-dev-null-not-special} Engine.move to /dev/null no longer deletes — source survives", async () => {
+test("{§move-dev-null-not-special} Engine.move to /dev/null is not a delete — source survives", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/obsolete"), "stale"), makeSchemeCtx({ db, workspaceId, workerId }));
@@ -182,7 +182,7 @@ test("{§move-dev-null-not-special} Engine.move to /dev/null no longer deletes �
         assert.notEqual(r.status, 200, "not a successful delete");
 
         const remaining = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/obsolete" });
-        assert.notEqual(remaining, undefined, "source survives — /dev/null no longer deletes");
+        assert.notEqual(remaining, undefined, "source survives — /dev/null is not a delete");
     } finally { await db.close(); }
 });
 

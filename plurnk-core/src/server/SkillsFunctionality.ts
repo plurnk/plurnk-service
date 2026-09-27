@@ -67,7 +67,7 @@ export interface RegistrySkill {
     readonly source: string;
     readonly installs: number | null;
     // Where the registry that answered the search describes this skill — the configured registry,
-    // never a fixed one: provenance used to cite skills.sh whatever the operator had configured.
+    // never a fixed one.
     readonly reference: string;
 }
 

@@ -355,8 +355,7 @@ export default class Module {
         } else if (options.create === false) {
             // {§agui-thread-binding} — only a conversation Run may bring a world into being. An
             // action addresses a world that exists; a name that does not is the client's error,
-            // never a workspace minted on its behalf (the 2026-09-11 dogfood: an inject aimed at a
-            // worker name created a second world named after it and answered there).
+            // never a workspace minted on its behalf.
             throw new HttpProblemError(httpProblem(
                 "workspace-not-found",
                 404,

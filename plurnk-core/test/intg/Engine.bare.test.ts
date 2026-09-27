@@ -380,7 +380,7 @@ for (const [target, status, problem] of [
             assert.equal(child.calls.length, 0);
             if (target === null) {
                 // The refusal teaches where a prompt goes: a model that put its question in the aside
-                // (dogfood and bench evidence, 2026-09-23) reads the shape from the receipt itself.
+                // reads the shape from the receipt itself.
                 const [row] = (await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: result.turnId })).filter(({ op }) => op === "BARE");
                 assert.match(JSON.parse(row!.rx).problem.detail, /fence body.*aside is not a prompt/);
             }

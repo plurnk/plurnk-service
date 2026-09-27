@@ -32,8 +32,7 @@ const BANNED: Array<{ label: string; re: RegExp; canon: string }> = [
     { label: "decodeBudget", re: /decodeBudget/, canon: "maxTokensFor — the standard max_tokens concept ({§lexicon})" },
     { label: "usage_context_size", re: /usage_context_size/, canon: "usage_curation_budget or physical context capacity, as applicable ({§lexicon})" },
     { label: "retired partition knobs", re: /PLURNK_SERVICE_(CTX|ASSISTANT|CONTEXT_WINDOW|REASONING(?!_)|COMPLETION)/, canon: "PLURNK_PROVIDERS_{CONTEXT_WINDOW,OUTPUT_BUDGET,REASONING_BUDGET} ({§tokenomics-window-partition}) — only the shed may name these" },
-    // {§lexicon} — quoted wire strings are lexicon too: the endpoint agent caught `Plurnk-Run-Id` shipping
-    // a workerId under the retired noun, invisible to identifier-shaped bans. Exact-string bans only
+    // {§lexicon} — quoted wire strings are lexicon too, invisible to identifier-shaped bans. Exact-string bans only
     // (the run noun is unguardable as a word — verbs are legal); extend per retired wire name.
     { label: "retired wire header", re: /Plurnk-Run-Id/, canon: "Plurnk-Worker-Id ({§lexicon})" },
 ];

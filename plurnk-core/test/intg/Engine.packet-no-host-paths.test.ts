@@ -1,6 +1,4 @@
-// {§fs-namespace} — host paths do not exist in the namespace. The 2026-08-29 benchlet showed the
-// execution receipt's absolute `cwd` (and the target-not-found Problem's `root`) in every packet, and
-// the model pasting it back as `### EXEC_ (cwd: /host/path)`. This witness renders a real loop's
+// {§fs-namespace} — host paths do not exist in the namespace. This witness renders a real loop's
 // packets and asserts the workspace's host root never appears in them.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -28,7 +26,7 @@ test("{§fs-namespace} no packet carries the workspace's host-absolute root: exe
         await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env });
 
         // A targetless command (its receipt names the root — the default), a command whose
-        // target does not resolve (the Problem used to carry the host root), then a conclusion.
+        // target does not resolve, then a conclusion.
         const mock = new Mock({ contextWindow: 32768, responses: [
             makeMockResponse("````sh\nprintf ok\n````\n\n````sh (cwd: /nowhere)\nprintf never\n````\n\n````NOTE\nran\n````", 50),
             makeMockResponse("````KILL\ndone\n````", 50),

@@ -2,7 +2,7 @@
 // A fetched html page stores the handler's readable projection as the decisive `body`
 // (text/markdown — what READ serves and every price reports) with the raw page under `html`
 // (xpath + archive). An AUTHORED/workspace html file is DATA — written verbatim, attributes intact,
-// so a default READ still sees a `<user email=…>` roster (the regression the email story caught).
+// so a default READ still sees a `<user email=…>` roster.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -22,7 +22,7 @@ const readStmt = (pathname: string, body: ReadStatement["body"] = null): ReadSta
     lineMarker: null, body, matcher: null, position: { line: 1, column: 1 },
 });
 
-test("an AUTHORED html write is verbatim — attribute data survives a default READ (the email regression)", async () => {
+test("an AUTHORED html write is verbatim — attribute data survives a default READ", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `authored-${crypto.randomUUID()}`);
