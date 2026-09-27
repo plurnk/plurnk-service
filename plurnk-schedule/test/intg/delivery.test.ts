@@ -23,8 +23,8 @@ const assertDelivery = async (workerName: string): Promise<void> => {
     await import(join(SERVICE, "test/setup.ts"));
     const [{ default: Daemon }, { makeMockResponse }, { openMigrated, insertWorkspace, insertWorker, rootWorkspace }] = await Promise.all([
         import(join(SERVICE, "src/server/Daemon.ts")),
-        import(join(SERVICE, "test/intg/_rpc.ts")),
-        import(join(SERVICE, "test/intg/_helpers.ts")),
+        import(join(SERVICE, "test/intg/_mock.ts")),
+        import(join(SERVICE, "test/intg/_db.ts")),
     ]);
     const provider = new Mock({
         contextWindow: 32768,

@@ -175,7 +175,7 @@ test("{§agui-run-source}: a collaborator's exact reply reaches the assigned con
     await import(join(SERVICE, "test/setup.ts"));
     const [{ default: Daemon }, { makeMockResponse }] = await Promise.all([
         import(join(SERVICE, "src/server/Daemon.ts")),
-        import(join(SERVICE, "test/intg/_rpc.ts")),
+        import(join(SERVICE, "test/intg/_mock.ts")),
     ]);
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
@@ -242,7 +242,7 @@ test("{§agui-run-source}: a curated arrival remains readable, copyable and repl
     await import(join(SERVICE, "test/setup.ts"));
     const [{ default: Daemon }, { makeMockResponse }] = await Promise.all([
         import(join(SERVICE, "src/server/Daemon.ts")),
-        import(join(SERVICE, "test/intg/_rpc.ts")),
+        import(join(SERVICE, "test/intg/_mock.ts")),
     ]);
     const expected = "agui://anonymous/threads/run-source/messages/message%201";
     const provider = new Mock({

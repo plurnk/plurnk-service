@@ -65,7 +65,7 @@ test("a child proposal traverses its controlling conversation without losing eit
     await import(join(SERVICE, "test/setup.ts"));
     const [{ default: Daemon }, { makeMockResponse }] = await Promise.all([
         import(join(SERVICE, "src/server/Daemon.ts")),
-        import(join(SERVICE, "test/intg/_rpc.ts")),
+        import(join(SERVICE, "test/intg/_mock.ts")),
     ]);
     const provider = new Mock({
         contextWindow: 32768,
