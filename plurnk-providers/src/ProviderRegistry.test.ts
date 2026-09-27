@@ -1,7 +1,14 @@
 import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
 import { instantiateProvider, loadActiveProvider, resetDiscoveryCache } from "./ProviderRegistry.ts";
-import { resolveModel } from "@plurnk/plurnk-models";
+import { catalogSnapshot, resolveModel } from "@plurnk/plurnk-models";
+
+// Fireworks fixtures derive from the catalog: Models.dev retires ids, and a literal rots.
+const fireworksIds = Object.keys(catalogSnapshot()["fireworks-ai"]!);
+const fireworksNative = fireworksIds.find((id) => id.startsWith("accounts/fireworks/models/")
+    && fireworksIds.filter((other) => other.endsWith(`/${id.split("/").at(-1)}`)).length === 1)!;
+const fireworksSuffix = fireworksNative.split("/").at(-1)!;
+const fireworksRouter = fireworksIds.find((id) => id.startsWith("accounts/fireworks/routers/"))!;
 import { calculateCostUsdDecimal } from "./usage.ts";
 
 // A rate literal breaks at every catalog refresh (the 1.17.0 stamp moved DeepSeek's rates); the
@@ -225,11 +232,11 @@ test("public construction applies the package floor to a sparse consumer environ
     const provider = await instantiateProvider(
         "fireworks-ai",
         { FIREWORKS_API_KEY: "fw" },
-        "deepseek-v4-pro-0813",
+        fireworksSuffix,
         async () => ({}),
         mapOf({}),
     );
-    assert.equal(provider.model, "accounts/fireworks/models/deepseek-v4-pro-0813");
+    assert.equal(provider.model, fireworksNative);
 });
 
 test("{§deepseek-reasoning-request} #157: direct DeepSeek composes catalog facts, credential, reasoning control, and cached cost", async () => {
@@ -312,7 +319,7 @@ test("an explicit malformed cache-affinity override still fails at its owning co
                 FIREWORKS_API_KEY: "fw",
                 PLURNK_PROVIDERS_CACHE_AFFINITY: "malformed",
             },
-            "deepseek-v4-pro-0813",
+            fireworksSuffix,
             async () => ({}),
             mapOf({}),
         ),
@@ -449,8 +456,8 @@ test("two Fireworks aliases independently select default and priority service ti
     };
     const imports = async () => ({});
     const discover = async () => ({ registry: new Map(), skipped: new Map(), grammarStyles: new Map() });
-    const fast = await instantiateProvider("fireworks-ai", env, "accounts/fireworks/routers/glm-5p2-fast", imports, discover, undefined, "fast");
-    const standard = await instantiateProvider("fireworks-ai", env, "deepseek-v4-pro-0813", imports, discover, undefined, "standard");
+    const fast = await instantiateProvider("fireworks-ai", env, fireworksRouter, imports, discover, undefined, "fast");
+    const standard = await instantiateProvider("fireworks-ai", env, fireworksSuffix, imports, discover, undefined, "standard");
     await fast.generate({ workerId: "fast-worker", messages: [] });
     await standard.generate({ workerId: "standard-worker", messages: [] });
     assert.deepEqual(bodies.map((body) => body.service_tier), ["priority", "default"]);
@@ -459,8 +466,8 @@ test("two Fireworks aliases independently select default and priority service ti
     assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["none", "none"]);
     assert.deepEqual(bodies.map((body) => body.top_logprobs), [2, 2]);
     assert.deepEqual(bodies.map((body) => body.model), [
-        "accounts/fireworks/routers/glm-5p2-fast",
-        "accounts/fireworks/models/deepseek-v4-pro-0813",
+        fireworksRouter,
+        fireworksNative,
     ]);
     mock.restoreAll();
 });

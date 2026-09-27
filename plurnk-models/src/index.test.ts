@@ -56,8 +56,12 @@ test("lookup: an unknown/local model is a miss (null) — the probe owns that ca
 });
 
 test("resolveModel: a unique provider-native suffix resolves without a PLURNK vendor table", () => {
-    const resolved = resolveModel("fireworks-ai", "deepseek-v4-pro-0813");
-    assert.equal(resolved?.id, "accounts/fireworks/models/deepseek-v4-pro-0813");
+    // The fixture derives from the catalog: Models.dev retires ids, and a literal rots.
+    const fireworks = Object.keys(catalogSnapshot()["fireworks-ai"]!);
+    const native = fireworks.find((id) => id.startsWith("accounts/fireworks/models/")
+        && fireworks.filter((other) => other.endsWith(`/${id.split("/").at(-1)}`)).length === 1)!;
+    const resolved = resolveModel("fireworks-ai", native.split("/").at(-1)!);
+    assert.equal(resolved?.id, native);
 });
 
 test("provider catalog carries Models.dev's AI SDK construction facts", () => {
