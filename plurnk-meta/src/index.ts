@@ -1,6 +1,9 @@
 // The metaproject layer's membership slice — the mechanics every discovery
 // surface shares ({§plugin-discovery} / {§operator-config-env-defaults}):
 //   - declaresKind:      the ONE package → capability-family representation.
+//   - readManifest:       the ONE package.json read: a family's manifest, or null for
+//                         anything that is not a package of that family. Field
+//                         validation past the family claim is the caller's.
 //   - isTrusted:          THE trust rule. One implementation; a second definition
 //                         of membership trust anywhere in the family is a bug.
 //   - normalizeAttribution:
@@ -17,7 +20,7 @@
 //                         land on the monorepo root's. Null when nothing is found;
 //                         the fallback is the caller's policy.
 
-import { readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { parseEnv } from "node:util";
 import path from "node:path";
@@ -29,6 +32,14 @@ export interface PackageCandidate {
 }
 
 export type PluginKind = "exec" | "mimetype" | "provider" | "scheme" | "http-materializer" | "module";
+
+// {§plugin-manifest-read} — a package's family claim as read from its package.json.
+export interface PluginManifest {
+    readonly manifestPath: string;
+    // `name` when it is a non-empty string; the caller decides what an unnamed package is.
+    readonly packageName: string | null;
+    readonly plurnk: Record<string, unknown>;
+}
 
 // Authored package.json shape retained only where a published family descriptor
 // requires that projection. Discovery and consumers exchange PluginAttribution.
@@ -81,6 +92,32 @@ export default class Meta {
     static declaresKind(manifest: unknown, kind: PluginKind): boolean {
         if (typeof manifest !== "object" || manifest === null) return false;
         return (manifest as { kind?: unknown }).kind === kind;
+    }
+
+    // {§plugin-manifest-read} — null for a missing or malformed package.json, a non-object,
+    // no `plurnk` object, or another family: none of those is a package of this family, and
+    // discovery skips them without a word. An abort is the caller's contract and surfaces.
+    static async readManifest(dir: string, kind: PluginKind, { signal }: { signal?: AbortSignal } = {}): Promise<PluginManifest | null> {
+        const manifestPath = path.join(dir, "package.json");
+        let raw: string;
+        try {
+            raw = await readFile(manifestPath, { encoding: "utf8", signal });
+        } catch (err) {
+            if (err instanceof Error && err.name === "AbortError") throw err;
+            return null;
+        }
+        let pkg: unknown;
+        try {
+            pkg = JSON.parse(raw);
+        } catch {
+            return null;
+        }
+        if (typeof pkg !== "object" || pkg === null) return null;
+        const record = pkg as Record<string, unknown>;
+        const plurnk = record.plurnk;
+        if (typeof plurnk !== "object" || plurnk === null || !Meta.declaresKind(plurnk, kind)) return null;
+        const packageName = typeof record.name === "string" && record.name.length > 0 ? record.name : null;
+        return { manifestPath, packageName, plurnk: plurnk as Record<string, unknown> };
     }
 
     // {§operator-config-only-home} — the trust gate is asked while the floor is still being

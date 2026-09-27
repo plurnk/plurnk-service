@@ -93,6 +93,20 @@ Coordinated capabilities spanning families use explicit daemon-module
 composition ({§module-lifecycle}); a multi-kind manifest is not a parallel
 module mechanism.
 
+### §plugin-manifest-read One package.json read
+
+`Meta.readManifest(dir, kind)` is the one read of a package's family claim:
+its `package.json`, parsed, with a `plurnk` object declaring exactly that
+`kind` ({§plugin-family-kind}). It answers `null` for a missing or
+malformed manifest, a non-object, no `plurnk` object, or another family —
+none of those is a package of that family, and a scanner skips them without
+evidence. The result carries the manifest path, the package name when
+`name` is a non-empty string (otherwise `null`; what an unnamed package is
+remains the family's decision), and the `plurnk` object untouched: family
+fields are validated by the family, after the trust gate. A scanner that
+passes an `AbortSignal` receives the abort; it is never masked as an
+unreadable directory. No family reads a manifest any other way.
+
 ### §plugin-attribution Plugin-authored attribution tags
 
 | Surface                 | Contract                                                                                                                                                                                                                                  |

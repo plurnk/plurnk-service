@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import Meta from "@plurnk/plurnk-meta";
 import type {
@@ -118,29 +117,13 @@ export default class SchemeDiscovery {
         return (await Meta.packageDirs(nm)).map((c) => c.dir).toSorted();
     }
 
-    // An aborted readFile surfaces, never masked as an unreadable dir —
-    // cancellation is a caller contract, not a scan boundary (locality of error).
-    static #isAbort(err: unknown): boolean {
-        return err instanceof Error && err.name === "AbortError";
-    }
-
-    // The inert manifest for a package declaring plurnk.kind:"scheme"; null for
-    // anything else (non-package dir, non-scheme, no declaration). Family field
-    // validation happens only after the package trust gate.
+    // The inert manifest for a package declaring plurnk.kind:"scheme" ({§plugin-manifest-read});
+    // null for anything else, including an unnamed package. Family field validation happens
+    // only after the package trust gate. An abort surfaces (locality of error).
     static async #readSchemeManifest(dir: string, signal?: AbortSignal): Promise<SchemePackage | null> {
-        let raw: string;
-        try { raw = await fs.readFile(path.join(dir, "package.json"), { encoding: "utf-8", signal }); }
-        catch (err) { if (SchemeDiscovery.#isAbort(err)) throw err; return null; }
-        let pkg: unknown;
-        try { pkg = JSON.parse(raw); } catch { return null; }
-        if (typeof pkg !== "object" || pkg === null) return null;
-        const record = pkg as Record<string, unknown>;
-        const plurnk = record.plurnk;
-        if (typeof plurnk !== "object" || plurnk === null) return null;
-        const plurnkRec = plurnk as Record<string, unknown>;
-        if (!Meta.declaresKind(plurnkRec, "scheme")) return null;
-        if (typeof record.name !== "string" || record.name === "") return null;
-        return { packageName: record.name, plurnk: plurnkRec };
+        const manifest = await Meta.readManifest(dir, "scheme", { signal });
+        if (manifest === null || manifest.packageName === null) return null;
+        return { packageName: manifest.packageName, plurnk: manifest.plurnk };
     }
 
     // The SchemeInfo(s) for an admitted package. A package

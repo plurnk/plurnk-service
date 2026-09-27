@@ -1,6 +1,5 @@
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import fs from "node:fs/promises";
 import Meta from "@plurnk/plurnk-meta";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import type { DaemonModule } from "./DaemonModule.ts";
@@ -49,25 +48,11 @@ const assertDaemonModule = (
 };
 
 const readManifest = async (dir: string): Promise<ModuleManifest | null> => {
-    let raw: string;
-    try {
-        raw = await fs.readFile(join(dir, "package.json"), "utf8");
-    } catch {
-        return null;
-    }
-    let pkg: Record<string, unknown>;
-    try {
-        pkg = JSON.parse(raw) as Record<string, unknown>;
-    } catch {
-        return null;
-    }
-    const plurnk = pkg.plurnk;
-    if (!Meta.declaresKind(plurnk, "module")) return null;
-    const moduleSubpath = (plurnk as { module?: unknown }).module;
+    const manifest = await Meta.readManifest(dir, "module");
+    if (manifest === null || manifest.packageName === null) return null;
+    const moduleSubpath = manifest.plurnk.module;
     if (typeof moduleSubpath !== "string" || moduleSubpath.length === 0) return null;
-    const packageName = typeof pkg.name === "string" && pkg.name.length > 0 ? pkg.name : null;
-    if (packageName === null) return null;
-    return { packageName, module: moduleSubpath };
+    return { packageName: manifest.packageName, module: moduleSubpath };
 };
 
 export const discoverDaemonModules = async (

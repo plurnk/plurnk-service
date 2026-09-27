@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import Meta from "@plurnk/plurnk-meta";
@@ -134,21 +133,9 @@ export default class MaterializerRegistry {
     }
 
     static async #readManifest(dir: string): Promise<Manifest | null> {
-        let raw: string;
-        try {
-            raw = await fs.readFile(path.join(dir, "package.json"), "utf8");
-        } catch {
-            return null;
-        }
-        let pkg: Record<string, unknown>;
-        try {
-            pkg = JSON.parse(raw) as Record<string, unknown>;
-        } catch {
-            return null;
-        }
-        const plurnk = pkg.plurnk;
-        if (!Meta.declaresKind(plurnk, "http-materializer")) return null;
-        const declared = (plurnk as { materializers?: unknown }).materializers;
+        const manifest = await Meta.readManifest(dir, "http-materializer");
+        if (manifest === null) return null;
+        const declared = manifest.plurnk.materializers;
         if (!Array.isArray(declared) || declared.length === 0) return null;
         const materializers: Manifest["materializers"] = [];
         for (const entry of declared) {
@@ -159,6 +146,6 @@ export default class MaterializerRegistry {
             materializers.push({ id, module });
         }
         if (materializers.length === 0) return null;
-        return { packageName: String(pkg.name ?? path.basename(dir)), materializers };
+        return { packageName: manifest.packageName ?? path.basename(dir), materializers };
     }
 }

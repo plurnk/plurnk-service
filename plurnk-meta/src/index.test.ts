@@ -197,6 +197,39 @@ test("packageDirs: merges npm's nested peer graph with ancestor packages, neares
     }
 });
 
+// {§plugin-manifest-read}
+test("readManifest: the family claim of one package.json, or null for anything that is not one", async () => {
+    const root = await mkdtemp(join(tmpdir(), "plugins-manifest-"));
+    try {
+        const pkg = async (name: string, content: string): Promise<string> => {
+            await mkdir(join(root, name), { recursive: true });
+            await writeFile(join(root, name, "package.json"), content);
+            return join(root, name);
+        };
+        const exec = await pkg("exec", JSON.stringify({ name: "@acme/exec", plurnk: { kind: "exec", runtimes: [] } }));
+        assert.deepEqual(await Meta.readManifest(exec, "exec"), {
+            manifestPath: join(exec, "package.json"),
+            packageName: "@acme/exec",
+            plurnk: { kind: "exec", runtimes: [] },
+        });
+        assert.equal(await Meta.readManifest(exec, "scheme"), null, "another family");
+        const unnamed = await pkg("unnamed", JSON.stringify({ plurnk: { kind: "scheme" } }));
+        assert.deepEqual(await Meta.readManifest(unnamed, "scheme"), {
+            manifestPath: join(unnamed, "package.json"), packageName: null, plurnk: { kind: "scheme" },
+        }, "an unnamed package is the family's decision");
+        assert.equal(await Meta.readManifest(join(root, "absent"), "exec"), null, "no package.json");
+        assert.equal(await Meta.readManifest(await pkg("broken", "{"), "exec"), null, "malformed JSON");
+        assert.equal(await Meta.readManifest(await pkg("scalar", "42"), "exec"), null, "not an object");
+        assert.equal(await Meta.readManifest(await pkg("plain", JSON.stringify({ name: "plain" })), "exec"), null, "no plurnk object");
+        assert.equal(await Meta.readManifest(await pkg("array", JSON.stringify({ plurnk: { kind: ["exec"] } })), "exec"), null, "a kind array claims no family");
+        const controller = new AbortController();
+        controller.abort();
+        await assert.rejects(Meta.readManifest(exec, "exec", { signal: controller.signal }), { name: "AbortError" }, "an abort surfaces");
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});
+
 test("nearestNodeModules: finds the ancestor holding @plurnk; null when absent", async () => {
     const root = await mkdtemp(join(tmpdir(), "plugins-walk-"));
     try {

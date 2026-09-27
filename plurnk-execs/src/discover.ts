@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -88,34 +87,11 @@ export default class Discover {
         return (await Meta.packageDirs(nm)).map((c) => c.dir).toSorted();
     }
 
-    // Read a package's `package.json` and return its manifest iff it declares
-    // the exact `plurnk.kind === "exec"` family identity.
-    // Returns null for non-executor packages, a missing or malformed
-    // `package.json` — discover() silently skips those (they are not "skipped by
-    // trust", just not exec packages).
+    // The manifest of a declared executor package ({§plugin-manifest-read}); discover() silently
+    // skips everything else (not "skipped by trust", just not an exec package).
     static async #readExecManifest(dir: string): Promise<ExecManifest | null> {
-        let raw: string;
-        try {
-            raw = await fs.readFile(path.join(dir, "package.json"), "utf-8");
-        } catch {
-            return null;
-        }
-
-        let pkg: unknown;
-        try {
-            pkg = JSON.parse(raw);
-        } catch {
-            return null;
-        }
-
-        if (typeof pkg !== "object" || pkg === null) return null;
-        const record = pkg as Record<string, unknown>;
-        const plurnk = record.plurnk;
-        if (typeof plurnk !== "object" || plurnk === null) return null;
-        const plurnkRec = plurnk as Record<string, unknown>;
-        if (!Meta.declaresKind(plurnkRec, "exec")) return null;
-
-        return { packageName: typeof record.name === "string" ? record.name : "", plurnk: plurnkRec };
+        const manifest = await Meta.readManifest(dir, "exec");
+        return manifest === null ? null : { packageName: manifest.packageName ?? "", plurnk: manifest.plurnk };
     }
 
     // Produce one ExecInfo per static or dynamic runtime declaration.

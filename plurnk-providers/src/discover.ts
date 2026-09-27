@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import Meta from "@plurnk/plurnk-meta";
 import type {
@@ -87,35 +86,19 @@ const defaultPackageDirs = async (cwd: string): Promise<string[]> => {
 type ProviderInfo = { name: string; packageName: string; attribution: unknown; grammarStyle: GrammarStyle };
 
 const readProviderInfo = async (dir: string): Promise<ProviderInfo | null> => {
-    let raw: string;
-    try {
-        raw = await fs.readFile(path.join(dir, "package.json"), "utf-8");
-    } catch {
-        return null;
-    }
-    let pkg: unknown;
-    try {
-        pkg = JSON.parse(raw);
-    } catch {
-        return null;
-    }
-    if (typeof pkg !== "object" || pkg === null) return null;
-    const record = pkg as Record<string, unknown>;
-    const plurnk = record.plurnk;
-    if (typeof plurnk !== "object" || plurnk === null) return null;
-    const plurnkRec = plurnk as Record<string, unknown>;
-    if (!Meta.declaresKind(plurnkRec, "provider")) return null;
+    const manifest = await Meta.readManifest(dir, "provider");
+    if (manifest === null || manifest.packageName === null) return null;
+    const { packageName, plurnk: plurnkRec } = manifest;
     if (typeof plurnkRec.name !== "string" || plurnkRec.name === "") return null;
-    if (typeof record.name !== "string" || record.name === "") return null;
     const grammarStyle = plurnkRec.grammarStyle;
     if (grammarStyle !== undefined && grammarStyle !== "none" && grammarStyle !== "llamacpp") {
         throw new Error(
-            `${record.name}: plurnk.grammarStyle must be "none" or "llamacpp", got ${JSON.stringify(grammarStyle)}.`,
+            `${packageName}: plurnk.grammarStyle must be "none" or "llamacpp", got ${JSON.stringify(grammarStyle)}.`,
         );
     }
     return {
         name: plurnkRec.name,
-        packageName: record.name,
+        packageName,
         attribution: plurnkRec.attribution,
         grammarStyle: grammarStyle === undefined ? "none" : grammarStyle,
     };

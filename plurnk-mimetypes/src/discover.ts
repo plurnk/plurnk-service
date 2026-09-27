@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import Meta from "@plurnk/plurnk-meta";
 import type {
@@ -157,35 +156,17 @@ function isPackageName(value: unknown): value is string {
 // Establish a family claim without interpreting executable declaration fields.
 // Non-packages and packages outside this family remain out of domain.
 async function readMimetypeManifest(dir: string): Promise<MimetypeManifest | null> {
-    const pkgPath = path.join(dir, "package.json");
-    let raw: string;
-    try {
-        raw = await fs.readFile(pkgPath, "utf-8");
-    } catch {
-        return null;
-    }
-
-    let pkg: unknown;
-    try {
-        pkg = JSON.parse(raw);
-    } catch {
-        return null;
-    }
-
-    if (typeof pkg !== "object" || pkg === null) return null;
-    const record = pkg as Record<string, unknown>;
-    const plurnk = record.plurnk;
-    if (typeof plurnk !== "object" || plurnk === null) return null;
-    const plurnkRec = plurnk as Record<string, unknown>;
-    if (!Meta.declaresKind(plurnkRec, "mimetype")) return null;
-    if (!isPackageName(record.name)) {
+    const manifest = await Meta.readManifest(dir, "mimetype");
+    if (manifest === null) return null;
+    const { manifestPath, packageName, plurnk } = manifest;
+    if (!isPackageName(packageName)) {
         throw new MimetypePluginError({
             reason: "package name must be a current npm package name",
-            packageName: typeof record.name === "string" ? record.name : null,
-            manifestPath: pkgPath,
+            packageName,
+            manifestPath,
         });
     }
-    return { manifestPath: pkgPath, packageName: record.name, plurnk: plurnkRec };
+    return { manifestPath, packageName, plurnk };
 }
 
 // Produce one HandlerInfo per valid entry from one trusted family claim.
