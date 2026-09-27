@@ -14,6 +14,8 @@ const APP_DIRECTORY = "plurnk";
 // remain owned by ../Paths.ts; this class owns only user and runtime locations.
 export default class HostPaths {
     readonly home: string;
+    // {§state-root} — a private daemon's root for everything it writes; null is the XDG layout.
+    readonly stateRoot: string | null;
     readonly configHome: string;
     readonly dataHome: string;
     readonly stateHome: string;
@@ -44,18 +46,40 @@ export default class HostPaths {
             return resolve(this.home, fallback);
         };
 
-        this.configHome = base("XDG_CONFIG_HOME", ".config");
-        this.dataHome = base("XDG_DATA_HOME", join(".local", "share"));
-        this.stateHome = base("XDG_STATE_HOME", join(".local", "state"));
-        this.cacheHome = base("XDG_CACHE_HOME", ".cache");
-        const runtime = env.XDG_RUNTIME_DIR;
-        if (runtime === undefined || runtime.length === 0) {
-            this.runtimeHome = null;
-        } else if (isAbsolute(runtime)) {
-            this.runtimeHome = resolve(runtime);
+        const root = env.PLURNK_SERVICE_STATE_ROOT;
+        if (root === undefined || root.length === 0) {
+            this.stateRoot = null;
         } else {
-            invalid.push("XDG_RUNTIME_DIR");
-            this.runtimeHome = null;
+            const expanded = this.expandUserPath(root);
+            if (!isAbsolute(expanded)) {
+                throw new Error(`PLURNK_SERVICE_STATE_ROOT must be an absolute path (a leading ~/ expands); got ${JSON.stringify(root)}`);
+            }
+            this.stateRoot = resolve(expanded);
+        }
+
+        // Configuration is operator input and is never moved under a state root.
+        this.configHome = base("XDG_CONFIG_HOME", ".config");
+        let xdgStateHome: string;
+        if (this.stateRoot === null) {
+            this.dataHome = base("XDG_DATA_HOME", join(".local", "share"));
+            this.stateHome = base("XDG_STATE_HOME", join(".local", "state"));
+            xdgStateHome = this.stateHome;
+            this.cacheHome = base("XDG_CACHE_HOME", ".cache");
+            const runtime = env.XDG_RUNTIME_DIR;
+            if (runtime === undefined || runtime.length === 0) {
+                this.runtimeHome = null;
+            } else if (isAbsolute(runtime)) {
+                this.runtimeHome = resolve(runtime);
+            } else {
+                invalid.push("XDG_RUNTIME_DIR");
+                this.runtimeHome = null;
+            }
+        } else {
+            xdgStateHome = base("XDG_STATE_HOME", join(".local", "state"));
+            this.dataHome = join(this.stateRoot, "data");
+            this.stateHome = join(this.stateRoot, "state");
+            this.cacheHome = join(this.stateRoot, "cache");
+            this.runtimeHome = join(this.stateRoot, "runtime");
         }
         this.invalidXdg = Object.freeze(invalid);
 
@@ -68,10 +92,11 @@ export default class HostPaths {
         this.policyFile = join(this.configDir, "AGENTS.md");
         this.databaseFile = join(this.dataDir, "plurnk.db");
         // The upstream `skills` CLI's universal global target is deliberately
-        // shared across agents and is rooted independently of application config.
+        // shared across agents and is rooted independently of application config
+        // and of any state root: a private daemon still reads the user's skills.
         this.globalSkillsDir = join(this.home, ".agents", "skills");
         this.globalSkillsLockFile = env.XDG_STATE_HOME
-            ? join(this.stateHome, "skills", ".skill-lock.json")
+            ? join(xdgStateHome, "skills", ".skill-lock.json")
             : join(this.home, ".agents", ".skill-lock.json");
         this.legacyDir = join(this.home, ".plurnk");
     }

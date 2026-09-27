@@ -224,6 +224,25 @@ before provider or capability initialization can perform external work. Every
 later startup failure closes resources in reverse ownership order while
 preserving the originating failure: daemon, observability, database, listener.
 
+§startup-readiness-line **Readiness is one stdout line.** After the client interface is mounted
+the service prints exactly one line, `plurnk-service agui=http://<host>:<port> db=<path> <route>`,
+where `<route>` is the active model route or `no model`; nothing else the service prints on stdout
+before it has that prefix. Before the line the listener answers `503 service-starting`; after it,
+`discover` is the identity check a launcher uses to tell this daemon from any other listener. A bind
+failure is an exit with the originating address error and means *occupied*, not *foreign* — another
+plurnk-service may be starting there, and only `discover` says which.
+
+§daemon-launch **The service ships its own launcher; launchers own policy.** `@plurnk/plurnk-service/launch`
+spawns a daemon argv with the caller's environment, an optional {§state-root}, host and port, and
+resolves on the readiness line with the published address, database path, route and a `stop()` that
+is SIGTERM, a stated grace, then SIGKILL, resolving when the process has ended. It holds no timing of
+its own: the caller states the readiness timeout and the stop grace. A start that fails — spawn error,
+exit before readiness, or timeout — is stopped and awaited before the failure is thrown with its kind
+and both output streams; the helper never creates, keeps or removes state. A shared daemon survives
+the launcher that started it (scheduled deliveries, other clients and inbound A2A depend on it); a
+private daemon is its launcher's child and ends with it under managed shutdown. Shell and container
+launchers consume the same contract by reading the line themselves.
+
 ## §actor-boundary Workers and workspace boundaries
 
 ```mermaid
@@ -3641,6 +3660,14 @@ and is ignored rather than resolved against the working directory.
 | Persistent operational state | `$XDG_STATE_HOME` (default `~/.local/state`) | On-demand workspace/module directories ({§module-workspace-directory}). |
 | Reproducible cache | `$XDG_CACHE_HOME` (default `~/.cache`) | Reserved; no directory is created without an owned artifact. |
 | Shared global Agent Skills | User home | `.agents/skills/<name>/SKILL.md` |
+
+§state-root **A private daemon has one root.** `PLURNK_SERVICE_STATE_ROOT` (absolute; a leading
+`~/` expands; a relative value fails hard by name) replaces the data, state, cache and runtime homes
+with `<root>/data`, `<root>/state`, `<root>/cache` and `<root>/runtime`, the database with them
+(`PLURNK_SERVICE_DB_PATH` still names the database exactly). Configuration stays where the cascade
+reads it and the shared Agent Skills root stays under the user's home: a state root separates what
+the daemon *writes*, not what the operator supplies, and is no execution sandbox. What a launcher
+keeps or removes under a root after the daemon stops is that launcher's retention decision.
 
 The service creates only a directory required by the current command. A newly
 created configuration or data directory uses mode `0700`; a newly seeded

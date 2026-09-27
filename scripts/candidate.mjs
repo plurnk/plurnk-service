@@ -5,6 +5,7 @@ import { candidateDaemonArgs } from "./candidate-daemon.mjs";
 import { pinRuntime } from "./candidate-runtime.mjs";
 import { resolveCandidateTopology } from "./project-topology.mjs";
 import { parseCandidateClientEnv } from "./candidate-env.mjs";
+import { pathToFileURL } from "node:url";
 
 const root = resolve(import.meta.dirname, "..");
 const { clientRoot, benchmarks, candidateDir } = resolveCandidateTopology(root, process.env);
@@ -31,22 +32,12 @@ if (process.env.PLURNK_CANDIDATE_SKIP_BUILD !== "1") {
 }
 // {§candidate-pinned-runtime} — the daemon and the digest run from this copy, never the shared checkout.
 const runtime = pinRuntime(root, resolve(stateDir, "runtime"));
+// {§candidate-pinned-runtime} — the launcher is the pinned service's own, never the checkout's.
+const { default: Launch } = await import(pathToFileURL(resolve(runtime, "plurnk-core", "dist", "launch", "Launch.js")).href);
 
-const daemon = spawn(
-    process.execPath,
-    candidateDaemonArgs(root, runtime),
-    {
-        cwd: root,
-        env: {
-            ...process.env,
-            PLURNK_SERVICE_DB_PATH: dbPath,
-            PLURNK_HOST: "127.0.0.1",
-            PLURNK_PORT: "0",
-        },
-        stdio: ["ignore", "pipe", "inherit"],
-    },
-);
-
+// {§daemon-launch} — the pinned runtime through the service's own launcher; the database stays
+// exactly where this driver retains its evidence.
+let daemon;
 let client;
 let finalizing;
 let requestedStatus;
@@ -64,7 +55,7 @@ const stop = async (child) => {
 const finalize = () => {
     if (finalizing !== undefined) return finalizing;
     finalizing = (async () => {
-        await Promise.all([stop(client), stop(daemon)]);
+        await Promise.all([stop(client), daemon?.stop()]);
         run(process.execPath, [
             resolve(root, "scripts", "candidate-digest.mjs"),
             runtime,
@@ -91,22 +82,15 @@ let deadlineTimer;
 let status;
 let candidateError;
 try {
-    const address = await new Promise((accept, reject) => {
-        let output = "";
-        const timeout = setTimeout(() => reject(new Error("daemon did not publish its AG-UI address within 30 seconds")), 30_000);
-        daemon.once("exit", (code) => {
-            if (requestedStatus === undefined) reject(new Error(`daemon exited before startup (status ${code})`));
-        });
-        daemon.stdout.setEncoding("utf8");
-        daemon.stdout.on("data", (chunk) => {
-            process.stderr.write(chunk);
-            output += chunk;
-            const match = output.match(/agui=http:\/\/([^:]+):(\d+)/);
-            if (match === null) return;
-            clearTimeout(timeout);
-            accept({ host: match[1], port: match[2] });
-        });
+    daemon = await Launch.start({
+        command: [process.execPath, ...candidateDaemonArgs(root, runtime)],
+        cwd: root,
+        env: { ...process.env, PLURNK_SERVICE_DB_PATH: dbPath },
+        host: "127.0.0.1", port: 0,
+        readyTimeoutMs: 30_000, stopGraceMs: 5_000,
+        onOutput: (stream, chunk) => process.stderr.write(chunk),
     });
+    const address = { host: daemon.host, port: String(daemon.port) };
 
     // bench#18 deadline snapshot: at the official budget, photograph the project
     // root and let the run play on — the harness grades both states afterwards.

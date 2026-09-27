@@ -62,6 +62,25 @@ test("{§host-path-layout} empty XDG homes use the same defaults as unset homes"
     } }), new HostPaths({ home: "/home/ada", env: {} }));
 });
 
+test("{§state-root} an absolute state root moves data, state, cache and runtime — never configuration or the shared skills", () => {
+    const paths = new HostPaths({ env: { PLURNK_SERVICE_STATE_ROOT: "/tmp/private-daemon", XDG_CONFIG_HOME: "/cfg", XDG_DATA_HOME: "/ignored-data" }, home: "/home/example" });
+    assert.equal(paths.stateRoot, "/tmp/private-daemon");
+    assert.equal(paths.dataDir, "/tmp/private-daemon/data/plurnk");
+    assert.equal(paths.stateDir, "/tmp/private-daemon/state/plurnk");
+    assert.equal(paths.cacheDir, "/tmp/private-daemon/cache/plurnk");
+    assert.equal(paths.runtimeDir, "/tmp/private-daemon/runtime/plurnk");
+    assert.equal(paths.databaseFile, "/tmp/private-daemon/data/plurnk/plurnk.db");
+    assert.equal(paths.configDir, "/cfg/plurnk", "configuration is operator input and stays under XDG");
+    assert.equal(paths.globalSkillsDir, "/home/example/.agents/skills", "the shared skills root stays under the home");
+    assert.deepEqual(paths.invalidXdg, [], "XDG homes the root replaces are not consulted");
+});
+
+test("{§state-root} a leading ~/ expands and a relative root fails hard by name", () => {
+    assert.equal(new HostPaths({ env: { PLURNK_SERVICE_STATE_ROOT: "~/runs/one" }, home: "/home/example" }).stateRoot, "/home/example/runs/one");
+    assert.throws(() => new HostPaths({ env: { PLURNK_SERVICE_STATE_ROOT: "runs/one" }, home: "/home/example" }), /PLURNK_SERVICE_STATE_ROOT must be an absolute path/u);
+    assert.equal(new HostPaths({ env: { PLURNK_SERVICE_STATE_ROOT: "" }, home: "/home/example" }).stateRoot, null, "empty is the XDG layout");
+});
+
 test("{§host-path-layout} expands only explicit Plurnk ~/ overrides", () => {
     const paths = new HostPaths({ env: {}, home: "/home/ada" });
     assert.equal(paths.expandUserPath("~"), "/home/ada");

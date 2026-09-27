@@ -31,6 +31,7 @@ test("MCP package projection retains the runtime watchdog loaded beside client.j
 test("core package projection retains runtime-loaded modules and rejects test helpers", () => {
     assert.deepEqual(packageArtifactViolations("plurnk-core", [
         "dist/core/content_weight.js",
+        "dist/launch/Launch.js",
         "INSTALL.md",
         "docs/copy-move.md",
         "dist/index.js",
@@ -41,6 +42,7 @@ test("core package projection retains runtime-loaded modules and rejects test he
         "dist/core/zero-pin.d.ts",
     ]), [
         "plurnk-core: required runtime artifact is absent: dist/core/content_weight.js",
+        "plurnk-core: required runtime artifact is absent: dist/launch/Launch.js",
         "plurnk-core: required runtime artifact is absent: INSTALL.md",
         "plurnk-core: required runtime artifact is absent: docs/copy-move.md",
         "plurnk-core: test-only artifact leaked into package: dist/core/world-state.js",

@@ -12,6 +12,8 @@ const projections = new Map([
     ["plurnk-core", {
         required: [
             "dist/core/content_weight.js",
+            // {§daemon-launch} — the candidate driver loads the pinned runtime's launcher by exact path.
+            "dist/launch/Launch.js",
             "INSTALL.md",
             "docs/copy-move.md",
         ],

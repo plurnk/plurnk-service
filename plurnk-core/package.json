@@ -32,6 +32,11 @@
             "types": "./dist/share/Share.d.ts",
             "default": "./dist/share/Share.js"
         },
+        "./launch": {
+            "plurnk-dev": "./src/launch/Launch.ts",
+            "types": "./dist/launch/Launch.d.ts",
+            "default": "./dist/launch/Launch.js"
+        },
         "./package.json": "./package.json"
     },
     "bin": {

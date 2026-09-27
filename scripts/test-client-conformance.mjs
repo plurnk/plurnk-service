@@ -13,6 +13,7 @@ import { projectTarball } from "./package-projection.mjs";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { startClientJourneyModel } from "./fixtures/client-journey-model.mjs";
+import Launch from "@plurnk/plurnk-service/launch";
 import { resolveClientCheckout } from "./project-topology.mjs";
 
 const run = promisify(execFile);
@@ -64,15 +65,6 @@ const freePort = () => new Promise((accept, reject) => {
         server.close(() => accept(address.port));
     });
 });
-
-const stop = async (child) => {
-    if (child === undefined || child.exitCode !== null) return;
-    const exited = new Promise((accept) => child.once("exit", accept));
-    child.kill("SIGTERM");
-    await Promise.race([exited, new Promise((accept) => setTimeout(accept, 5_000))]);
-    if (child.exitCode === null) child.kill("SIGKILL");
-    await exited;
-};
 
 const runClient = (file, args, options) => new Promise((accept, reject) => {
     const child = spawn(file, args, {
@@ -232,40 +224,20 @@ try {
         PLURNK_MCP_ENABLED: "[]",
         ...fixture.env,
     };
+    // {§daemon-launch} — the installed executable through the service's own launcher; the port is
+    // the one the fixture chose, so the readiness line must name it.
     const boot = async () => {
-        const child = spawn(daemonBin, ["start"], {
-            cwd: install,
-            env: daemonEnv,
-            stdio: ["ignore", "pipe", "pipe"],
+        daemonOutput = { stdout: "", stderr: "" };
+        const launched = await Launch.start({
+            command: [daemonBin, "start"], cwd: install, env: daemonEnv,
+            readyTimeoutMs: 30_000, stopGraceMs: 5_000,
+            onOutput: (stream, chunk) => { daemonOutput[stream] += chunk; },
+        }).catch((error) => {
+            daemonOutput = { stdout: error.stdout ?? "", stderr: error.stderr ?? "" };
+            throw new Error(`installed service ${error.kind}: ${error.message}`, { cause: error });
         });
-        let stdout = "";
-        let stderr = "";
-        daemonOutput = { stdout, stderr };
-        child.stdout.setEncoding("utf8");
-        child.stderr.setEncoding("utf8");
-        child.stdout.on("data", (chunk) => {
-            stdout += chunk;
-            daemonOutput.stdout = stdout;
-        });
-        child.stderr.on("data", (chunk) => {
-            stderr += chunk;
-            daemonOutput.stderr = stderr;
-        });
-        await new Promise((accept, reject) => {
-            const timer = setTimeout(() => reject(new Error(
-                `installed service boot timeout\n${stdout}\n${stderr}`,
-            )), 30_000);
-            child.stdout.on("data", () => {
-                if (!stdout.includes(`agui=http://127.0.0.1:${port}`)) return;
-                clearTimeout(timer);
-                accept();
-            });
-            child.once("exit", (code) => {
-                clearTimeout(timer);
-                reject(new Error(`installed service exited ${code}\n${stdout}\n${stderr}`));
-            });
-        });
-        return child;
+        if (launched.port !== port) throw new Error(`installed service published port ${launched.port}, expected ${port}`);
+        return launched;
     };
     daemon = await boot();
 
@@ -435,7 +407,7 @@ try {
         throw new Error(`terminal did not observe the other connection's durable mutation: ${JSON.stringify(members)}`);
     }
 
-    await stop(daemon);
+    await daemon.stop();
     daemon = await boot();
     const afterRestart = new BridgeTransport(
         { bridgeUrl: `http://127.0.0.1:${port}`, token: bridgeToken },
@@ -461,7 +433,7 @@ try {
     );
 } finally {
     tui?.kill();
-    await stop(daemon);
+    await daemon?.stop();
     if (fixture !== undefined) await fixture.close();
     if (passed) await rm(temp, { recursive: true, force: true });
     else process.stderr.write(`cross-client conformance evidence preserved at ${temp}\n`);
