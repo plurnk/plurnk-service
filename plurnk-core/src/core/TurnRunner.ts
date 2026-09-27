@@ -12,7 +12,7 @@ import type { BareStatement, PlurnkStatement, ReadStatement, UrlPath, FindStatem
 // Internal-only — collected from PlurnkParser output, then translated to
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
 // before being pushed to the loop's notices buffer.
-export type ParseErrorInfo = Pick<PlurnkParseError, "message" | "line" | "column"> & { source: string };
+export type ParseErrorInfo = Pick<PlurnkParseError, "message" | "line" | "column"> & { source: string; recovery?: string };
 const comparePosition = (
     a: { line: number; column: number },
     b: { line: number; column: number },
@@ -1899,7 +1899,7 @@ export default class TurnRunner {
                                 parserSource: err.source,
                             });
                         } else {
-                            parseErrors.push({ message: err.message, line: err.line, column: err.column, source: err.source });
+                            parseErrors.push({ message: err.message, line: err.line, column: err.column, source: err.source, ...(err.recovery === undefined ? {} : { recovery: err.recovery }) });
                         }
                     } else {
                         const msg = (err as { message?: string } | undefined)?.message ?? "parse error";

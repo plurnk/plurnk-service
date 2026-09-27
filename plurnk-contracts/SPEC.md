@@ -609,6 +609,17 @@ the aside, and `body`/`content`/`command`/`text`/`input` or plain text inside th
 call the body; plurnk slots written after the name are kept, a trailing scope's own
 bracket may close the tag. A block keeps its line count where its lines allow, so
 statement positions name the source line; an inline block grows to its fences.
+DeepSeek writes the whole heading into the invoke's name — `<｜｜DSML｜｜ invoke name="FIND (docs/**)
+/Http404/ <!-- docs mentions -->">`, or `name="sh` with no closing quote and the script on the lines
+below — and the element's content is the body: the first word of the name is the operation, the rest
+its slots, and `parameter` tags around the content are debris, as are a copied facts line
+(`{"lines":6}`) under the heading, a `comment` attribute (the aside), and `<｜｜DSML｜｜tool_calls>`
+spelled without spaces. An executor's unknown parameter is one of its options, `[{"maxTokens":
+"2500"}]`, for its owner to accept or refuse; `bash` names `sh` when `sh` is the registered shell.
+Of 69 distinct recorded emissions carrying DSML markup (the 11,500 distinct emissions recorded
+through run429), 60 read this way and 9 draw the {§native-tool-call-receipt}: a bare
+`<｜｜DSML｜｜ calls>` with nothing inside, and calls whose native operation carries a parameter
+plurnk has no slot for.
 Qwen's own shapes read the same way: a flat JSON call whose operation is the value
 of an `op`, `action` or `cmd` key in any case (`{"op": "READ", "path": …, "range": …}`),
 an XML element named by the operation (`<NOTE>…</NOTE>`, `<FIND (path) <1,3></FIND>`,
@@ -1654,8 +1665,21 @@ class PlurnkParseError extends Error {
     readonly column: number;
     readonly source: ErrorSource;
     readonly severity: Severity;
+    readonly recovery: string | undefined;
 }
 ```
+
+§parse-recovery **Every hard diagnostic carries its working form.** A `severity: "error"`
+diagnostic names, in `recovery`, the form that runs, in the model's terms: a refused heading
+carries the operation's canonical line (`` `READ (path) <L,M>? pattern? <!-- aside -->?` on the
+opening fence line; READ takes no body. ``), a refused matcher the dialect's form with an example,
+and a refused regex the regex that matches the words the model wrote — `` A pattern is a regex:
+write `/url/` to match lines containing url; `*` repeats what precedes it. To select files by
+name, put the glob in the target: `FIND (tests/*url*)`. `` — where the glob suggestion is derived
+from the pattern only when it is glob-shaped, and the regex sentence stands alone otherwise. The
+runtime projects `recovery` as the Problem's `recovery` beside the verbatim `message`; an advisory
+carries none, since its statement ran. Before this, a refused regex (`/*url*/`, DeepSeek run429)
+reported `Nothing to repeat` with no way forward and the turn was spent.
 
 §parser-position Parser source locations are points, not text regions. An AST
 statement's `position` identifies the first backtick of its header; a diagnostic
@@ -1879,7 +1903,7 @@ author the tail's reason.
 |--------------------|----------------------------------------------------------------------------------------------------------------|
 | Diagnostic text    | Project `message` verbatim; do not strip prefixes, restate coordinates, or synthesize generic syntax recovery. |
 | Structured context | Preserve `line`, `column`, `source`, and `severity` as separate fields.                                        |
-| Runtime recovery   | Attach only a separately owned fact, such as Core knowing that bounded sibling operations were retained.       |
+| Runtime recovery   | Project the parser's `recovery` ({§parse-recovery}) and attach only a separately owned fact, such as Core knowing that bounded sibling operations were retained. |
 | Durable projection | Map bounded hard errors to failed operation results; warnings may become Notices with `level: "warn"`.         |
 | Presentation       | Normalize or bound the diagnostic only when the surface requires it, without changing its meaning.             |
 

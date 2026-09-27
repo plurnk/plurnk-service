@@ -175,6 +175,8 @@ export default class AdmittedTurnExecutor {
                             source: error.source,
                             stage: "parse",
                             siblingsRetained: true,
+                            // {§parse-recovery}: the parser's working form rides as the Problem's recovery.
+                            ...(error.recovery === undefined ? {} : { recovery: error.recovery }),
                             retryable: false,
                         },
                     ),

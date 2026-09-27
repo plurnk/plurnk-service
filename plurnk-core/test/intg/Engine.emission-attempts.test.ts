@@ -727,7 +727,9 @@ test("{§operation-result-no-error-scheme} a syntactically legal $fC matcher fai
         assert.equal(syntaxFailure.problem?.line, 2);
         assert.equal(syntaxFailure.problem?.source, "visitor");
         assert.equal(syntaxFailure.problem?.siblingsRetained, true);
-        assert.equal("recovery" in (syntaxFailure.problem ?? {}), false);
+        // {§parse-recovery}: the parser's working form rides as the Problem's recovery.
+        assert.equal((syntaxFailure.problem as { recovery?: string } | undefined)?.recovery,
+            "Write an RFC 9535 JSONPath after `$`, such as `$.items[?(@.price>500)]`; a text search is a regex, `/needle/`.");
 
         const recovery = await engine.runTurn({
             provider,

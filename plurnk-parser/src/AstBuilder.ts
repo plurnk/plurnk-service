@@ -223,7 +223,8 @@ export default class AstBuilder {
         const word = text.split(/\s/u, 1)[0]!;
         const rest = text.slice(word.length).trim();
         throw new PlurnkParseError(position.line, position.column, "visitor",
-            `\`${op}\` has no target: \`${word}\` stands where the target goes. Write the target in parentheses: \`${op} (${word})${rest === "" ? "" : ` ${rest}`}\`.`);
+            `\`${op}\` has no target: \`${word}\` stands where the target goes.`, "error",
+            `Write the target in parentheses: \`${op} (${word})${rest === "" ? "" : ` ${rest}`}\`.`);
     }
 
     static #isJsonArrayOfObjects(inner: string): boolean {
@@ -288,14 +289,14 @@ export default class AstBuilder {
         return { inline: text.slice(0, eol), below: below === "" ? null : below };
     }
 
-    static #liftMatcher(op: string, metadata: SchemeMetadata, position: Position, raw: string | null = null, inline = false, carriedScope = false): { matcher: MatcherBody | null; metadata: SchemeMetadata; aside: string | null; scope: string | null } {
+    static #liftMatcher(op: string, metadata: SchemeMetadata, position: Position, raw: string | null = null, inline = false, carriedScope = false, target: ParsedPath | null = null): { matcher: MatcherBody | null; metadata: SchemeMetadata; aside: string | null; scope: string | null } {
         const options = AstBuilder.metadataOptions(metadata);
         if (options === null || !Object.hasOwn(options, "pattern")) {
             const bare = AstBuilder.#bareMatcher(raw, op, inline, position, { scope: carriedScope, metadata: metadata !== null });
             return bare === null
                 ? { matcher: null, metadata, aside: null, scope: null }
                 : {
-                    matcher: AstBuilder.#parseMatcherBody(bare.text, position),
+                    matcher: AstBuilder.#parseMatcherBody(bare.text, position, target),
                     metadata: metadata ?? (bare.metadata === null ? null : [bare.metadata]),
                     aside: bare.aside,
                     scope: bare.scope,
@@ -303,9 +304,10 @@ export default class AstBuilder {
         }
         const pattern = options.pattern;
         if (typeof pattern !== "string") {
-            throw new PlurnkParseError(position.line, position.column, "visitor", `${op} "pattern" must be a string matcher, e.g. [{"pattern": "/needle/i"}].`);
+            throw new PlurnkParseError(position.line, position.column, "visitor", `${op} "pattern" must be a string matcher.`, "error",
+                `Write the matcher as a string, \`[{"pattern": "/needle/i"}]\`, or bare on the opening fence line after the path.`);
         }
-        const matcher = AstBuilder.#parseMatcherBody(pattern, position);
+        const matcher = AstBuilder.#parseMatcherBody(pattern, position, target);
         const others = Object.keys(options).filter((key) => key !== "pattern");
         return { matcher, metadata: others.length === 0 ? null : metadata, aside: null, scope: null };
     }
@@ -387,7 +389,7 @@ export default class AstBuilder {
         const slots = AstBuilder.#extractSlots(ctx.slotModifiers(), position);
         AstBuilder.#bareTarget("FIND", slots.target, inline, position);
         AstBuilder.#adviseBody("FIND", below, position);
-        const lifted = AstBuilder.#liftMatcher("FIND", slots.metadata, position, inline ?? below, inline !== null, slots.lineMarker !== null);
+        const lifted = AstBuilder.#liftMatcher("FIND", slots.metadata, position, inline ?? below, inline !== null, slots.lineMarker !== null, slots.target);
         return {
             op: "FIND",
             aside: aside ?? lifted.aside,
@@ -432,7 +434,7 @@ export default class AstBuilder {
         AstBuilder.#bareTarget("READ", slots.target, split.inline, position);
         const bodied = AstBuilder.#asideBody("READ", AstBuilder.#asideOf(ctx), split.below, position);
         AstBuilder.#adviseBody("READ", bodied.raw, position);
-        const lifted = AstBuilder.#liftMatcher("READ", slots.metadata, position, split.inline ?? bodied.raw, split.inline !== null, slots.lineMarker !== null);
+        const lifted = AstBuilder.#liftMatcher("READ", slots.metadata, position, split.inline ?? bodied.raw, split.inline !== null, slots.lineMarker !== null, slots.target);
         const aside = bodied.aside ?? lifted.aside;
         // {§read-find-normalization} — a READ is never rewritten: a glob target is the runtime's
         // fan-out over every matching path, with or without a matcher (core {§read-fan-out}).
@@ -455,7 +457,7 @@ export default class AstBuilder {
         // replacement (none deletes each match). Any other heading-line text is the body it always was.
         const split = AstBuilder.#splitInlineBody(ctx, position);
         AstBuilder.#bareTarget("EDIT", slots.target, split.inline, position);
-        const lifted = AstBuilder.#liftMatcher("EDIT", slots.metadata, position, split.inline, true, slots.lineMarker !== null);
+        const lifted = AstBuilder.#liftMatcher("EDIT", slots.metadata, position, split.inline, true, slots.lineMarker !== null, slots.target);
         return {
             op: "EDIT",
             aside: AstBuilder.#asideOf(ctx) ?? lifted.aside,
@@ -595,7 +597,7 @@ export default class AstBuilder {
             };
         }
         AstBuilder.#adviseBody("KILL", split.below, position);
-        const lifted = AstBuilder.#liftMatcher("KILL", slots.metadata, position, split.inline ?? split.below, split.inline !== null, slots.lineMarker !== null);
+        const lifted = AstBuilder.#liftMatcher("KILL", slots.metadata, position, split.inline ?? split.below, split.inline !== null, slots.lineMarker !== null, slots.target);
         return {
             op: "KILL",
             aside: AstBuilder.#asideOf(ctx) ?? lifted.aside,
@@ -652,7 +654,8 @@ export default class AstBuilder {
         if (found.length > 1) {
             const written = found.map((marker) => `\`${marker.getText()}\``);
             throw new PlurnkParseError(pos.line, pos.column, "visitor",
-                `A resource selection takes one scope, and ${written.join(" and ")} both stand here; write one, such as ${written.at(-1)}.`);
+                `A resource selection takes one scope, and ${written.join(" and ")} both stand here.`, "error",
+                `Write one scope, such as ${written.at(-1)}.`);
         }
         return found[0] ?? null;
     }
@@ -691,7 +694,8 @@ export default class AstBuilder {
         const once = <T extends ParserRuleContext>(type: Ctor<T>, slot: string): T | null => {
             const found = AstBuilder.#findAll(modCtx, type);
             if (found.length > 1) {
-                throw new PlurnkParseError(pos.line, pos.column, "visitor", `${executor} accepts ${slot} at most once`);
+                throw new PlurnkParseError(pos.line, pos.column, "visitor", `${executor} accepts ${slot} at most once`, "error",
+                    `Write ${slot} on the \`${executor}\` heading, and the rest below it as the input.`);
             }
             return found[0] ?? null;
         };
@@ -751,7 +755,7 @@ export default class AstBuilder {
     static #resourceSelectionFromCtx(ctx: ResourceSelectionContext, pos: Position): ResourceSelection {
         const target = AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), pos);
         if (target === null) throw new Error("resource selection grammar did not produce a target");
-        const lifted = AstBuilder.#liftMatcher("COPY/MOVE", AstBuilder.#metadataFromCtx(ctx), pos);
+        const lifted = AstBuilder.#liftMatcher("COPY/MOVE", AstBuilder.#metadataFromCtx(ctx), pos, null, false, false, target);
         return {
             target,
             metadata: lifted.metadata,
@@ -777,7 +781,7 @@ export default class AstBuilder {
             // {§anchor-offset} — a bare `+N` counts only from an anchor (#749).
             if (/[<,] ?\+/u.test(text)) {
                 throw new PlurnkParseError(position?.line ?? 0, position?.column ?? 0, "visitor",
-                    `invalid scope ${JSON.stringify(text)}; use numeric coordinates or \`@hash\` line anchors`);
+                    `invalid scope ${JSON.stringify(text)}; use numeric coordinates or \`@hash\` line anchors`, "error", AstBuilder.#OFFSET_RECOVERY);
             }
             return AstBuilder.#parseLineMarker(text);
         }
@@ -810,7 +814,7 @@ export default class AstBuilder {
             const base = /^(@[0-9A-Za-z]{5})([+-][0-9]+)?$/u.exec(String(marks[index - 1] ?? ""));
             if (base === null) {
                 throw new PlurnkParseError(position?.line ?? 0, position?.column ?? 0, "visitor",
-                    `invalid scope ${JSON.stringify(text)}; use numeric coordinates or \`@hash\` line anchors`);
+                    `invalid scope ${JSON.stringify(text)}; use numeric coordinates or \`@hash\` line anchors`, "error", AstBuilder.#OFFSET_RECOVERY);
             }
             const offset = Number(base[2] ?? 0) + Number(component.slice(1));
             marks[index] = offset === 0 ? base[1]! : `${base[1]!}${offset > 0 ? "+" : ""}${offset}`;
@@ -903,7 +907,8 @@ export default class AstBuilder {
         try {
             url = new URL(protectedTarget.value);
         } catch {
-            throw new PlurnkParseError(pos.line, pos.column, "visitor", "invalid URI in path");
+            throw new PlurnkParseError(pos.line, pos.column, "visitor", "invalid URI in path", "error",
+                "Write a local path, `(src/a.py)`, or a complete URL, `scheme://host/path`.");
         }
         // Uniform WHATWG decomposition — no per-scheme authority allowlist. `://`
         // introduces an authority for every scheme; an authority-less reference
@@ -964,7 +969,24 @@ export default class AstBuilder {
 
     // The leading prefix claims its dialect; failed claimed syntax never falls back
     // to glob. XPath's `//` is classified before regex `/`. {§matcher-prefix-claims}
-    static #parseMatcherBody(body: string, pos: Position): MatcherBody {
+    static readonly #OFFSET_RECOVERY = "Count from an anchor, `<@abcde,+1>`, or write line numbers, `<L,M>`.";
+
+    // {§parse-recovery} — the working forms for a refused regex, in the model's terms: the regex that matches the
+    // words it wrote, and, when the pattern is glob-shaped, the target glob that selects files by name.
+    static #regexRecovery(inner: string, target: ParsedPath | null): string {
+        const globShaped = /^[\w*?./ -]+$/u.test(inner) && /[*?]/u.test(inner);
+        if (!globShaped) return "A pattern is a regex written `/pattern/flags`; escape a literal `*`, `+`, `?`, `(`, `[` or `.` with `\\`.";
+        const words = inner.replace(/^[*?]+|[*?]+$/gu, "").trim();
+        const core = words.replace(/[.+^${}()|[\]\\]/gu, "\\$&");
+        const repeats = inner.includes("?") ? "`*` and `?` repeat what precedes them" : "`*` repeats what precedes it";
+        const regex = words === "" ? "A pattern is a regex: write `/needle/` to match lines containing needle" : `A pattern is a regex: write \`/${core}/\` to match lines containing ${words}`;
+        const raw = target?.raw ?? "";
+        const last = raw.split("/").at(-1) ?? "";
+        const dir = raw === "" ? "" : /[*?[{]/u.test(last) || last.includes(".") ? raw.slice(0, raw.length - last.length) : `${raw}/`;
+        return `${regex}; ${repeats}. To select files by name, put the glob in the target: \`FIND (${dir}${inner})\`.`;
+    }
+
+    static #parseMatcherBody(body: string, pos: Position, target: ParsedPath | null = null): MatcherBody {
         // At statement EOF ANTLR retains one ordinary terminating line ending in
         // BODY_TEXT; before a following heading the lexer consumes that same EOL as
         // SECTION_END. Normalize the equivalent surfaces before enforcing one line.
@@ -976,13 +998,16 @@ export default class AstBuilder {
                 pos.column,
                 "visitor",
                 `Matcher has ${lineCount} lines; expected 1.`,
+                "error",
+                "Write the pattern on one line, on the opening fence line after the path.",
             );
         }
         if (raw.startsWith("//")) {
             try { xpath.parse(raw); }
             catch (e) {
                 throw new PlurnkParseError(pos.line, pos.column, "visitor",
-                    `pattern leads with \`//\` but is not a valid xpath selector - ${AstBuilder.#detail(e)}`);
+                    `pattern leads with \`//\` but is not a valid xpath selector - ${AstBuilder.#detail(e)}`, "error",
+                    "Write an XPath 1.0 selector after `//`, such as `//dependencies/*`; a text search is a regex, `/needle/`.");
             }
             return { dialect: "xpath", raw };
         }
@@ -993,7 +1018,8 @@ export default class AstBuilder {
             try { new RegExp(pattern, inline.flags); }
             catch (e) {
                 throw new PlurnkParseError(pos.line, pos.column, "visitor",
-                    `pattern leads with \`^\` but is not a valid regex - ${AstBuilder.#detail(e)}`);
+                    `pattern leads with \`^\` but is not a valid regex - ${AstBuilder.#detail(e)}`, "error",
+                    AstBuilder.#regexRecovery(raw.slice(1), target));
             }
             return { dialect: "regex", raw, pattern, flags: inline.flags };
         }
@@ -1001,13 +1027,15 @@ export default class AstBuilder {
             const regex = AstBuilder.#tryParseSlashRegex(raw, pos);
             if (regex.ok) return { dialect: "regex", raw, pattern: regex.pattern, flags: regex.flags };
             const range = AstBuilder.#sedRange(raw);
-            if (range !== null) throw new PlurnkParseError(pos.line, pos.column, "visitor", range);
+            if (range !== null) throw new PlurnkParseError(pos.line, pos.column, "visitor", range, "error", range.slice(range.indexOf("Match ")));
             if (regex.reason === "trailing") {
                 throw new PlurnkParseError(
                     pos.line,
                     pos.column,
                     "visitor",
                     "Regex matcher has trailing text after `/pattern/flags`.",
+                    "error",
+                    "Write the flags directly after the closing `/`, as `/pattern/i`, and a note as `<!-- … -->`.",
                 );
             }
             const slashRecovery = regex.reason === "invalid"
@@ -1021,14 +1049,17 @@ export default class AstBuilder {
             throw new PlurnkParseError(pos.line, pos.column, "visitor",
                 regex.reason === "empty"
                     ? "`/` opens a regex matcher but no pattern follows it; write `/pattern/flags`, flags optional."
-                    : `pattern leads with \`/\` but is not a valid \`/pattern/flags\` regex - ${regex.detail}${slashRecovery}: \`${excerpt}\``);
+                    : `pattern leads with \`/\` but is not a valid \`/pattern/flags\` regex - ${regex.detail}${slashRecovery}: \`${excerpt}\``,
+                "error",
+                regex.reason === "empty" ? "Write `/pattern/flags`, flags optional, such as `/timeout/i`." : AstBuilder.#regexRecovery(raw.slice(1, raw.lastIndexOf("/") > 0 ? raw.lastIndexOf("/") : undefined), target));
         }
         if (raw.startsWith("$")) {
             // Compile-only RFC 9535 admission through the shared json-p3 engine.
             try { AstBuilder.#JSONPATH.compile(raw); }
             catch (e) {
                 throw new PlurnkParseError(pos.line, pos.column, "visitor",
-                    `pattern leads with \`$\` but is not a valid jsonpath - ${AstBuilder.#detail(e)}`);
+                    `pattern leads with \`$\` but is not a valid jsonpath - ${AstBuilder.#detail(e)}`, "error",
+                    "Write an RFC 9535 JSONPath after `$`, such as `$.items[?(@.price>500)]`; a text search is a regex, `/needle/`.");
             }
             return { dialect: "jsonpath", raw };
         }
@@ -1040,6 +1071,8 @@ export default class AstBuilder {
                     pos.column,
                     "visitor",
                     "Malformed graph matcher; expected `&symbol`, `&<symbol`, or `&>symbol`.",
+                    "error",
+                    "Write `&symbol` for a symbol, `&<symbol` for what calls it, or `&>symbol` for what it calls.",
                 );
             }
             return { dialect: "graph", raw };

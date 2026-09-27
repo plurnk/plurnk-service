@@ -9,6 +9,8 @@ const statements = (input: string) => parse(input).items.flatMap((item) => item.
 const warnings = (input: string) => parse(input).items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
 const errors = (input: string) => parse(input).items.flatMap((item) => item.kind === "error" && item.error.severity === "error" ? [item.error.message] : []);
 const heading = (input: string) => PlurnkParser.heading(statements(input)[0]!);
+// {§parse-recovery} — a refusal with the working form it carries.
+const refusal = (input: string) => parse(input).items.flatMap((item) => item.kind === "error" && item.error.severity === "error" && item.error.message !== PlurnkParser.NO_VALID_OPERATION ? [`${item.error.message} ${item.error.recovery}`] : []);
 
 test("{§log-heading-notation} `READ → path <scope>` reads the arrow's path as the target and writes the parenthesized line", () => {
     const input = "```READ → sh:///verify-pytest#stdout <1,50>\n```";
@@ -66,13 +68,16 @@ test("{§log-heading-notation} ` · words` after the slots or a closed regex is 
 
 test("{§bare-target} a target written without parentheses is refused with the line that runs (recorded headings)", () => {
     assert.deepEqual(errors("```READ sphinx/ext/autodoc/__init__.py <682,695>\n```"), [
-        "`READ` has no target: `sphinx/ext/autodoc/__init__.py` stands where the target goes. Write the target in parentheses: `READ (sphinx/ext/autodoc/__init__.py) <682,695>`.",
+        "`READ` has no target: `sphinx/ext/autodoc/__init__.py` stands where the target goes.",
         PlurnkParser.NO_VALID_OPERATION,
     ]);
-    assert.equal(errors("```FIND tests/migrations/test_writer.py /gettext_lazy|^import|^from/\n```")[0],
-        "`FIND` has no target: `tests/migrations/test_writer.py` stands where the target goes. Write the target in parentheses: `FIND (tests/migrations/test_writer.py) /gettext_lazy|^import|^from/`.");
-    assert.equal(errors("```EDIT a.py <1,4>\nnew\n```")[0],
-        "`EDIT` has no target: `a.py` stands where the target goes. Write the target in parentheses: `EDIT (a.py) <1,4>`.");
+    // {§parse-recovery} — the corrected line is the recovery.
+    assert.deepEqual(refusal("```READ sphinx/ext/autodoc/__init__.py <682,695>\n```"),
+        ["`READ` has no target: `sphinx/ext/autodoc/__init__.py` stands where the target goes. Write the target in parentheses: `READ (sphinx/ext/autodoc/__init__.py) <682,695>`."]);
+    assert.deepEqual(refusal("```FIND tests/migrations/test_writer.py /gettext_lazy|^import|^from/\n```"),
+        ["`FIND` has no target: `tests/migrations/test_writer.py` stands where the target goes. Write the target in parentheses: `FIND (tests/migrations/test_writer.py) /gettext_lazy|^import|^from/`."]);
+    assert.deepEqual(refusal("```EDIT a.py <1,4>\nnew\n```"),
+        ["`EDIT` has no target: `a.py` stands where the target goes. Write the target in parentheses: `EDIT (a.py) <1,4>`."]);
     const [kill] = statements("```KILL The answer is 42.\n```");
     assert.equal(kill?.op === "KILL" ? kill.body : null, "The answer is 42.", "a targetless KILL's heading text stays its deliverable");
 });
@@ -88,6 +93,6 @@ test("{§bare-anchor-scope} an EDIT's bare `@hash` or `@start,@end` is its scope
     assert.equal(range?.aside, "widen");
     const read = statements("```READ (tests/test_mock.py) @patch\n```")[0];
     assert.equal(read?.op === "READ" ? read.matcher?.raw : null, "@patch", "on READ it stays the literal search");
-    assert.deepEqual(errors("```EDIT (requests/sessions.py) <91> @HecMB\nx\n```").slice(0, 1),
-        ["A resource selection takes one scope, and `<91>` and `<@HecMB>` both stand here; write one, such as `<@HecMB>`."]);
+    assert.deepEqual(refusal("```EDIT (requests/sessions.py) <91> @HecMB\nx\n```"),
+        ["A resource selection takes one scope, and `<91>` and `<@HecMB>` both stand here. Write one scope, such as `<@HecMB>`."]);
 });

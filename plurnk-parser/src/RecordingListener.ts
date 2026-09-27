@@ -1,5 +1,6 @@
 import {
     BaseErrorListener,
+    type Parser,
     type RecognitionException,
     type Recognizer,
     type Token,
@@ -29,6 +30,11 @@ export default class RecordingListener extends BaseErrorListener {
         const translated = this.source === "lexer"
             ? PlurnkErrorStrategy.translateLexerMessage(recognizer as plurnkLexer, msg)
             : msg;
-        this.errors.push(new PlurnkParseError(line, column, this.source, translated, "error"));
+        // {§parse-recovery}: a refused heading names the operation's working form.
+        const open = this.source === "lexer"
+            ? { op: (recognizer as plurnkLexer).getOpenOp(), exec: (recognizer as plurnkLexer).isExecFence() }
+            : PlurnkErrorStrategy.parserOpenOp(recognizer as Parser);
+        const recovery = open === null || open.op === "" ? undefined : PlurnkErrorStrategy.canonicalForm(open.op, open.exec);
+        this.errors.push(new PlurnkParseError(line, column, this.source, translated, "error", recovery));
     }
 }
