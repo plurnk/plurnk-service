@@ -107,6 +107,8 @@ export default class SeamSocket {
                     ...(p.openPaths !== undefined ? { openPaths: p.openPaths as string[] } : {}),
                     ...(p.selector !== undefined ? { selector: p.selector as string } : {}),
                     ...(p.childSelector !== undefined ? { childSelector: p.childSelector as string | null } : {}),
+                    ...(p.source !== undefined ? { source: p.source as string } : {}),
+                    ...(p.messageAddress !== undefined ? { messageAddress: p.messageAddress as string } : {}),
                 });
                 return { ...loop, modelWorkerId };
             }
@@ -199,7 +201,7 @@ export default class SeamSocket {
             case "workspace.workers": { const sid = ((p.workspaceId ?? p.id) as number | undefined) ?? this.#attached().workspaceId; return { workers: await daemon.listWorkers(sid) }; }
             case "workspace.prompts": {
                 const sid = ((p.workspaceId ?? p.id) as number | undefined) ?? this.#attached().workspaceId;
-                return { prompts: await daemon.listPrompts(sid, p.limit as number | undefined) };
+                return { prompts: await daemon.listPrompts(sid, p.limit as number | undefined, p.workerId as number | undefined) };
             }
             case "workspace.share": return daemon.shareWorkspace({ workspaceId: this.#attached().workspaceId, folder: p.folder as string });
             case "providers.list": return daemon.listProviders();

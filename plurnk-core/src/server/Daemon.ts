@@ -1185,10 +1185,11 @@ export default class Daemon implements ApplicationPort {
         return await Share.write({ dbPath: this.#dbPath, folder: checkedFolder, workspaceId: checkedWorkspaceId });
     }
 
-    listPrompts(workspaceId: number, limit?: number) {
+    listPrompts(workspaceId: number, limit?: number, workerId?: number) {
         const checkedWorkspaceId = ClientInput.assertId("workspace.prompts", "workspaceId", workspaceId);
         const checkedLimit = ClientInput.assertLimit("workspace.prompts", limit);
-        return Envelope.listPromptsForWorkspace(this.#db, checkedWorkspaceId, checkedLimit ?? Knob.integer("PLURNK_SERVICE_PROMPTS_PAGE", 1));
+        const checkedWorkerId = workerId === undefined ? null : ClientInput.assertId("workspace.prompts", "workerId", workerId);
+        return Envelope.listPromptsForWorkspace(this.#db, checkedWorkspaceId, checkedLimit ?? Knob.integer("PLURNK_SERVICE_PROMPTS_PAGE", 1), checkedWorkerId);
     }
     workspaceDerivationStatus(workspaceId: number) {
         return this.#engine.workspaceDerivationStatus(

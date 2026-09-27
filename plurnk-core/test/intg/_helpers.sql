@@ -108,6 +108,10 @@ FROM loops WHERE id = $id;
 SELECT id, ordinal, source, body, open_paths, log_entry_id FROM loop_messages
 WHERE loop_id = $loop_id ORDER BY ordinal;
 
+-- PREP: test_loop_seed_message
+-- {§message-arrival}: the loop's initial message, with the address a client gave it.
+SELECT source, address FROM loop_messages WHERE loop_id = $loop_id AND ordinal = 1;
+
 -- PREP: test_messages_by_worker
 SELECT m.id, m.loop_id, m.ordinal, m.source, m.body, m.open_paths, m.log_entry_id
 FROM loop_messages m JOIN loops l ON l.id = m.loop_id

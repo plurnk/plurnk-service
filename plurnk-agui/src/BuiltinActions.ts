@@ -171,12 +171,14 @@ export default class BuiltinActions {
                     conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                     typeof p.reason === "string" ? p.reason : undefined,
                 ) } };
+                // Default worker: the conversation; p.workerId pins another — the log.read shape.
                 case "workspace.prompts": return {
                     ok: true,
                     result: {
                         prompts: await this.#seam().listPrompts(
                             world.workspaceId,
                             Object.hasOwn(p, "limit") ? p.limit as number : undefined,
+                            typeof p.workerId === "number" ? p.workerId : conversationWorkerId ?? await this.#seam().ensureModelWorker(world.workspaceId),
                         ),
                     },
                 };

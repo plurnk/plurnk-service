@@ -117,15 +117,18 @@ WHERE id = $id
   );
 
 -- PREP: envelope_list_workspace_prompts
--- {§methods-workspace-prompts}: nonempty model-root loop seeds, newest-first;
--- spawned and forked children are not workspace-level user prompt history.
+-- {§methods-workspace-prompts}: nonempty loop seeds a client addressed to a model worker,
+-- newest-first, optionally one worker's. Authorship is the seed message's address: a worker-issued
+-- seed (WORK, FORK, SEND to a worker) carries none, so the model's own task prompts are not history
+-- whichever worker they seeded, and a human prompt at a forked conversation is.
 SELECT l.prompt
 FROM loops l
 JOIN workers r ON r.id = l.worker_id
 WHERE r.workspace_id = $workspace_id
   AND r.origin = 'model'
-  AND r.parent_worker_id IS NULL
+  AND ($worker_id IS NULL OR l.worker_id = $worker_id)
   AND length(l.prompt) > 0
+  AND EXISTS (SELECT 1 FROM loop_messages m WHERE m.loop_id = l.id AND m.ordinal = 1 AND m.address IS NOT NULL)
 ORDER BY l.id DESC
 LIMIT $limit;
 

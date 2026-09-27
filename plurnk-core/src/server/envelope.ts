@@ -231,8 +231,8 @@ export default class Envelope {
 
     // {§methods-workspace-prompts}: expose root-conversation loop seeds directly,
     // without forcing clients to reconstruct prompt history from log rows.
-    static async listPromptsForWorkspace(db: Db, workspaceId: number, limit: number): Promise<string[]> {
-        const rows = await db.envelope_list_workspace_prompts.all<{ prompt: string }>({ workspace_id: workspaceId, limit });
+    static async listPromptsForWorkspace(db: Db, workspaceId: number, limit: number, workerId: number | null): Promise<string[]> {
+        const rows = await db.envelope_list_workspace_prompts.all<{ prompt: string }>({ workspace_id: workspaceId, limit, worker_id: workerId });
         return rows.map((r) => r.prompt);
     }
 
