@@ -1,6 +1,6 @@
 # @plurnk/plurnk-meta
 
-The plurnk metaproject layer, published — what the family shares that no single member owns.
+What plurnk's packages share that no single package owns: plugin discovery and trust, and the teaching material the service gives models.
 
 **Membership primitives** (`import Meta from "@plurnk/plurnk-meta"`): the shared implementation of exact family identity, trust, attribution normalization, enumeration, and root resolution consumed by the four family-owned scanners (schemes, mimetypes, providers, execs). [SPEC.md](./SPEC.md) owns the complete contract ({§plugin-discovery}).
 
