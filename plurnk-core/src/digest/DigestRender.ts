@@ -248,13 +248,15 @@ export default class DigestRender {
                 const turn = turnsById.get(request.turn_id);
                 if (turn === undefined) throw new TypeError(`digest: provider request ${request.id} has no turn in scope`);
                 const text = promptOf(turn);
-                const cacheableTokens = text === null
+                // The prefix share is ruler-agnostic; applied to the provider's own input count it sits in
+                // the same units as the reported cache read.
+                const cacheableTokens = text === null || request.usage_input === null
                     ? null
                     : previousText === undefined
                         ? 0
                         : previousText === null
                             ? null
-                            : contentWeight(text.slice(0, DigestRender.#commonPrefixLength(previousText, text)));
+                            : Math.round(request.usage_input * contentWeight(text.slice(0, DigestRender.#commonPrefixLength(previousText, text))) / contentWeight(text));
                 ledger.set(request.id, {
                     cacheableTokens,
                     cachedTokens: request.usage_input_cache_read,

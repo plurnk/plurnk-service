@@ -92,8 +92,9 @@ test("{§digest-cache-ledger}: consecutive requests of a loop carry their shared
 
     // Turn N+1's prompt extends turn N's, so the shared prefix is turn N's whole prompt.
     assert.ok(prompt(2).startsWith(prompt(1)) && prompt(3).startsWith(prompt(2)), "the fixture prompts grow by extension");
-    const cacheable = [0, contentWeight(prompt(1)), contentWeight(prompt(2))];
-    assert.ok(cacheable[1]! > 0 && cacheable[2]! > cacheable[1]!, "the fixture prefixes are nonzero and growing");
+    // The prefix's share of the packet estimate, applied to the reported input of 100 tokens.
+    const cacheable = [0, Math.round((100 * contentWeight(prompt(1))) / contentWeight(prompt(2))), Math.round((100 * contentWeight(prompt(2))) / contentWeight(prompt(3)))];
+    assert.ok(cacheable[1]! > 0 && cacheable[1]! < 100 && cacheable[2]! > 0 && cacheable[2]! < 100, "the fixture prefixes are proper shares of the reported input");
 
     const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
         provider_requests: Array<{ id: number; cacheableTokens: number | null; cachedTokens: number | null; inputTokens: number | null }>;
