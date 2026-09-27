@@ -22,8 +22,6 @@ body?
 * MOVE: (path) <scope>? (path) <scope>? - Move files, entries, streams, or text regions.
 * KILL: End things — delete an entry, stop a process, retire log items, or end the loop.
 * WORK: Deploy a child worker (fresh log).
-* FORK: Deploy a forked worker (forked log).
-* BARE: Deploy an isolated inference on the fence body (no log or tools).
 * WAIT: Yield until the next wake: a child worker's result or a stream's end.
 * SEND: Message endpoints or workers.
 
@@ -117,10 +115,6 @@ When representing markdown, `~~~` notation can disambiguate nested content.
 
 ```WORK (worker://exampleWorkerName) <!-- the child's result lands in your log -->
 The child's complete task.
-```
-
-```BARE
-A self-contained prompt.
 ```
 
 ```KILL (sh:///ab3d5678) <!-- stops a running command -->

@@ -6,6 +6,8 @@ import { PlurnkParser } from "../../src/index.ts";
 import { PLURNK_OPS } from "@plurnk/plurnk-contracts";
 
 const teaching = readFileSync(new URL("./plurnk.md", import.meta.resolve("@plurnk/plurnk-contracts/package.json")), "utf8");
+// FORK and BARE are taught on the worker reference page, not the card (#893).
+const workerReference = readFileSync(new URL(import.meta.resolve("@plurnk/plurnk-meta/docs/worker.md")), "utf8");
 
 test("concrete core-operation examples in plurnk.md parse verbatim as one clean operation", () => {
     const examples = [...teaching.matchAll(/^([ \t]*(`{3,})([A-Z]+)\b[^\n]*\n[\s\S]*?^[ \t]*\2[ \t]*$)/gm)]
@@ -22,8 +24,8 @@ test("concrete core-operation examples in plurnk.md parse verbatim as one clean 
     }
 });
 
-test("plurnk.md retains broad operation coverage without pinning prose", () => {
+test("every operation is taught on the card or on the worker reference page, without pinning prose", () => {
     for (const op of PLURNK_OPS) {
-        assert.match(teaching, new RegExp("^(?:`{3,}" + op + "(?: |$)|[*-] " + op + "(?: \\([^)]*\\)(?: <[^>]+>\\??)?)*:)", "m"), `operation reference is missing ${op}`);
+        assert.match(`${teaching}\n${workerReference}`, new RegExp("^(?:`{3,}" + op + "(?: |$)|[*-] " + op + "(?: \\([^)]*\\)(?: <[^>]+>\\??)?)*:)", "m"), `operation reference is missing ${op}`);
     }
 });

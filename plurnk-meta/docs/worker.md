@@ -2,7 +2,7 @@
 
 ## Summary
 
-Coordinate workers, request isolated BARE inference, and manage workspace entries.
+Coordinate workers (WORK, FORK), request isolated BARE inference, and manage workspace entries.
 
 Workers inhabit one workspace. The authority selects a worker; a path selects
 an entry rather than controlling that worker.
@@ -42,6 +42,10 @@ an existing worker, even after it finishes. Names match
 `[A-Za-z0-9][A-Za-z0-9_-]{0,62}` and are case-sensitive. SEND to an existing
 worker gives it a follow-up task. `[{"env": {...}}]` on WORK or FORK is the
 child's starting environment (`env.md`).
+
+```FORK (worker://exampleWorkerName) <!-- a sibling that begins with your history -->
+The child's task, continuing from what you already know.
+```
 
 Parents observe a direct child's mutations, messages, executor invocations, and
 worker launches, including failed actions, as rows in their own log.
@@ -100,11 +104,16 @@ ordinary message from `schedule://<alias>`.
 
 ## BARE inference
 
-BARE makes one isolated call to the child model, not a persistent worker. It
-receives no parent history or tools. Its prompt is the fence body.
+BARE makes one isolated call to the model, not a persistent worker. Nothing
+reaches it but the fence body: no log, no files, no web, no tools, no memory of
+this loop. It answers from the body and the model's own knowledge alone, so it
+cannot look anything up, and what it does not know it will guess. Use it to
+isolate a sub-problem whose complete inputs fit in the body — a long text to
+judge, a tangle to reason through without the log in view — never to search,
+recall, or fetch.
 
 ```BARE
-A self-contained prompt.
+A self-contained prompt, with everything it needs pasted in.
 ```
 
 The prompt is not truncated to fit; provider capacity still applies.

@@ -67,6 +67,7 @@
         "xpath": "^0.0.34"
     },
     "devDependencies": {
+        "@plurnk/plurnk-meta": "1.22.0",
         "antlr-ng": "^1.0.10",
         "esbuild": "^0.28.1"
     }
