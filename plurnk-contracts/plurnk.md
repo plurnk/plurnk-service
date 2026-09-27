@@ -63,6 +63,19 @@ This is an example of the complete, final user response.
 * FIND results hold one inner array per path: its channels, default first; append `#channel` to select another.
 * Percent-encode in paths `(` as `%28` and `)` as `%29`.
 
+## `<scope|range>`
+
+> [!TIP]
+> Text scopes use 1-based lines and Unicode code-point columns across textual mimetypes:
+
+| form            | endpoint rule                  |
+|-----------------|--------------------------------|
+| `<L>`, `<@hash>` | one line |
+| `<SL,EL>`, `<@start,@end>` | lines SL through EL, inclusive |
+| `<SL,SC,EL,EC>` | start included, end excluded — `<2,3,3,6>` is line 2 column 3 through line 3 column 5 |
+| `<L,1,L,1>`, `<@hash,1,@hash,1>` | insert before that line |
+| `<0>`, `<-1>`  | prepend / append on mutations; as an end line, `-1` is the last line |
+
 ## File Editing
 
 ```EDIT (example.md) <@abcde> <!-- READ showed @abcde  42:foo; the body replaces line 42 -->
@@ -88,19 +101,6 @@ When representing markdown, `~~~` notation can disambiguate nested content.
 
 > [!TIP]
 > The EDIT body is literal text; it may hold more or fewer lines than the scope. YOU SHOULD address lines by `<@hash>` or `<@start,@end>`; stale targets are rejected.
-
-## `<scope|range>`
-
-> [!TIP]
-> Text scopes use 1-based lines and Unicode code-point columns across textual mimetypes:
-
-| form            | endpoint rule                  |
-|-----------------|--------------------------------|
-| `<L>`, `<@hash>` | one line |
-| `<SL,EL>`, `<@start,@end>` | lines SL through EL, inclusive |
-| `<SL,SC,EL,EC>` | start included, end excluded — `<2,3,3,6>` is line 2 column 3 through line 3 column 5 |
-| `<L,1,L,1>`, `<@hash,1,@hash,1>` | insert before that line |
-| `<0>`, `<-1>`  | prepend / append on mutations; as an end line, `-1` is the last line |
 
 ## Context Curation
 
