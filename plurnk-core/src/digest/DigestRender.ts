@@ -24,6 +24,7 @@ import type {
     ProviderRequestRow,
     LogRow,
     DigestModel,
+    CacheLedgerEntry,
 } from "./digest-rows.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
@@ -210,6 +211,97 @@ export default class DigestRender {
         return `Claimed: ${loop.claimed_at} · first model turn +${seconds.toFixed(1)} s`;
     }
 
+    // {§digest-cache-ledger} — the prompt a turn's request carried: the packet's system text followed by
+    // its user text, the bytes `.system.md` and `.user.md` hold; null when no valid packet is stored.
+    static #promptText(turn: TurnRow, m: DigestModel): string | null {
+        const { packet } = m.evidence.packet(turn);
+        if (packet === null) return null;
+        return `${PacketWire.renderSlot(packet.sections, "system")}${PacketWire.renderSlot(packet.sections, "user")}`;
+    }
+
+    static #commonPrefixLength(left: string, right: string): number {
+        const bound = Math.min(left.length, right.length);
+        let n = 0;
+        while (n < bound && left.charCodeAt(n) === right.charCodeAt(n)) n += 1;
+        return n;
+    }
+
+    // {§digest-cache-ledger} — per provider request, keyed by request id: the character prefix it shares
+    // with the previous request of its loop, in the packet's own token estimate, beside the provider's
+    // reported cache read. Walked loop by loop so at most two prompts are held at once.
+    static #cacheLedgerCache = new WeakMap<DigestModel, Map<number, CacheLedgerEntry>>();
+
+    static cacheLedger(m: DigestModel): Map<number, CacheLedgerEntry> {
+        const cached = DigestRender.#cacheLedgerCache.get(m);
+        if (cached !== undefined) return cached;
+        const turnsById = new Map(m.turns.map((turn) => [turn.id, turn]));
+        const ledger = new Map<number, CacheLedgerEntry>();
+        for (const loop of m.loops) {
+            let memo: { turnId: number; text: string | null } | undefined;
+            const promptOf = (turn: TurnRow): string | null => {
+                if (memo?.turnId !== turn.id) memo = { turnId: turn.id, text: DigestRender.#promptText(turn, m) };
+                return memo.text;
+            };
+            // undefined: no previous request in this loop; null: the previous request's packet is not valid.
+            let previousText: string | null | undefined;
+            for (const request of m.requestsByLoop.get(loop.id) ?? []) {
+                const turn = turnsById.get(request.turn_id);
+                if (turn === undefined) throw new TypeError(`digest: provider request ${request.id} has no turn in scope`);
+                const text = promptOf(turn);
+                const cacheableTokens = text === null
+                    ? null
+                    : previousText === undefined
+                        ? 0
+                        : previousText === null
+                            ? null
+                            : contentWeight(text.slice(0, DigestRender.#commonPrefixLength(previousText, text)));
+                ledger.set(request.id, {
+                    cacheableTokens,
+                    cachedTokens: request.usage_input_cache_read,
+                    inputTokens: request.usage_input,
+                });
+                previousText = text;
+            }
+        }
+        for (const request of m.providerRequests) {
+            if (!ledger.has(request.id)) throw new TypeError(`digest: provider request ${request.id} has no loop in scope`);
+        }
+        DigestRender.#cacheLedgerCache.set(m, ledger);
+        return ledger;
+    }
+
+    static #cacheEntries(requests: readonly ProviderRequestRow[], m: DigestModel): CacheLedgerEntry[] {
+        const ledger = DigestRender.cacheLedger(m);
+        return requests.map((request) => ledger.get(request.id)!);
+    }
+
+    // {§digest-cache-ledger} — the turn's requests summed: `?` when any request reported no cache field.
+    static #cacheBadge(turn: TurnRow, m: DigestModel): string {
+        const entries = DigestRender.#cacheEntries(m.requestsByTurn.get(turn.id) ?? [], m);
+        if (entries.length === 0) return "";
+        const sum = (values: Array<number | null>): string => values.some((value) => value === null)
+            ? "?"
+            : String(values.reduce<number>((total, value) => total + (value as number), 0));
+        return ` cache=${sum(entries.map((entry) => entry.cachedTokens))}/${sum(entries.map((entry) => entry.cacheableTokens))}`;
+    }
+
+    // {§digest-cache-ledger} — one workspace line; unreported requests are named and left out of the percentage.
+    static #cacheLine(requests: readonly ProviderRequestRow[], m: DigestModel): string {
+        const entries = DigestRender.#cacheEntries(requests, m).filter((entry) => entry.cacheableTokens !== null);
+        const withoutPacket = requests.length - entries.length;
+        const reported = entries.filter((entry) => entry.cachedTokens !== null);
+        const unreported = entries.length - reported.length;
+        const cached = reported.reduce((total, entry) => total + (entry.cachedTokens as number), 0);
+        const cacheable = reported.reduce((total, entry) => total + (entry.cacheableTokens as number), 0);
+        const pct = cacheable === 0 ? "n/a" : `${Math.round((100 * cached) / cacheable)}%`;
+        const plural = (n: number): string => n === 1 ? "request" : "requests";
+        return [
+            `Cache: ${cached} of ${cacheable} cacheable tokens reported (${pct}) over ${reported.length} ${plural(reported.length)}`,
+            unreported > 0 ? `${unreported} unreported (cached=?)` : null,
+            withoutPacket > 0 ? `${withoutPacket} without a stored packet (excluded)` : null,
+        ].filter((part) => part !== null).join(" · ");
+    }
+
     static #loopHealth(loop: LoopRow, m: DigestModel): { errors: number; errorItems: number; verdict: string } {
         let errors = 0;
         let errorItems = 0;
@@ -267,7 +359,7 @@ export default class DigestRender {
         const provenance = [modelTurn === null ? null : `model turn ${modelTurn}`, stem].filter((part) => part !== null).join(" · ");
         const lifecycle = `T${turn.sequence}${provenance === "" ? "" : ` (${provenance})`}: producer=${turn.producer} kind=${turn.kind} status=${turn.status}${turn.completed_at === null ? " state=open" : ""}`;
         const head = turn.kind === "inference"
-            ? `${lifecycle} finish=${finishReason}${rails} model=${model} ${tokens}${cost}${outside}${errBadge}${attemptBadge}${packetBadge}`
+            ? `${lifecycle} finish=${finishReason}${rails} model=${model} ${tokens}${cost}${DigestRender.#cacheBadge(turn, m)}${outside}${errBadge}${attemptBadge}${packetBadge}`
             : `${lifecycle}${errBadge}${packetBadge}`;
         const summary = packetFailure !== null
             ? `  ↳ provider packet: invalid stored evidence (${packetFailure.error.message})`
@@ -392,6 +484,8 @@ export default class DigestRender {
         for (const workspace of m.workspaces) {
             lines.push("");
             lines.push(`## Workspace #${workspace.id} — ${workspace.name}`);
+            lines.push("");
+            lines.push(DigestRender.#cacheLine(m.requestsByWorkspace.get(workspace.id) ?? [], m));
             const workspaceWorkers = m.workersByWorkspace.get(workspace.id) ?? [];
             for (const worker of workspaceWorkers) {
                 lines.push("");
@@ -720,6 +814,7 @@ export default class DigestRender {
                 accounting: request.state === "settled"
                     ? DigestRender.#requestAccounting(request)
                     : null,
+                ...DigestRender.cacheLedger(m).get(request.id)!,
                 started_at: request.started_at,
                 completed_at: request.completed_at,
             })),

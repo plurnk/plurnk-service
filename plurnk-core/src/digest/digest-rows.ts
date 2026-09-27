@@ -213,6 +213,15 @@ export interface DigestModel {
     };
 }
 
+// {§digest-cache-ledger} — one provider request's cacheable prefix beside what its provider reported.
+// `cacheableTokens` is null only when the request's turn stores no valid packet; `cachedTokens` is
+// null when the provider reported no cache field at all.
+export interface CacheLedgerEntry {
+    cacheableTokens: number | null;
+    cachedTokens: number | null;
+    inputTokens: number | null;
+}
+
 // Programmatic entry options ({§digest-programmatic-surface}).
 // dbPath is required; digestDir defaults to the bin's test/digest; an optional
 // workerId/workspaceId narrows the digest to one scope instead of the whole DB.
