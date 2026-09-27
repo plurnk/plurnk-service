@@ -81,12 +81,17 @@ export default class WorkerControlHandler {
             workerId = await this.#createWorker(statement, ctx, name);
         } catch (error) {
             if (!(error instanceof WorkerNameConflictError)) throw error;
+            // {§worker-scheme-spawn}: a live name is addressed, not re-spawned.
             return this.#failure(
                 "worker-name-conflict",
                 409,
                 error.message,
                 {},
-                { worker: error.workerName, retryable: false },
+                {
+                    worker: error.workerName,
+                    recovery: `To give '${error.workerName}' more work, write \`SEND (worker://${error.workerName})\` with the task as the body; to start another worker, choose a name no worker holds.`,
+                    retryable: false,
+                },
             );
         }
         const worker = await this.#db.worker_get.get<{ name: string }>({ id: workerId });

@@ -461,6 +461,7 @@ test("WORK-spawning a name a LIVE sister holds is refused 409 — legible, never
         });
         assert.equal(result.status, 409, "a live name-collision is a legible 409, not a 500");
         assert.match(result.problem?.detail ?? "", /already exists in this workspace/, "the message names the live worker");
+        assert.equal(result.problem?.recovery, "To give 'worker' more work, write `SEND (worker://worker)` with the task as the body; to start another worker, choose a name no worker holds.", "the receipt names the working form");
         assert.equal(calls.length, 0, "no inject on a refused spawn");
     } finally { await db.close(); }
 });
