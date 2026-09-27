@@ -5,7 +5,7 @@ import { readDefinition, DefinitionError, type ScheduleDefinition } from "./defi
 
 const PREFIX = "PLURNK_SCHEDULE_";
 export const ENABLED = `${PREFIX}ENABLED`;
-export const PREVIEW_OCCURRENCES = `${PREFIX}PREVIEW_OCCURRENCES`;
+const PREVIEW_OCCURRENCES = `${PREFIX}PREVIEW_OCCURRENCES`;
 // The family's own knobs; every other key under the prefix declares a rule.
 const CONTROLS: ReadonlySet<string> = new Set([ENABLED, PREVIEW_OCCURRENCES]);
 const ALIAS = /^[a-z][a-z0-9-]*$/u;

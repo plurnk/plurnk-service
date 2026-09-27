@@ -99,7 +99,7 @@ const wireUsageOf = (
 // {§provider-usage-refusal} — the provider's bookkeeping is not the exchange.
 // invalid details do not erase valid aggregates; contradictory aggregates remain unknown.
 // The original counters ride beside the refusal, never clamped or replaced.
-export type UsageRefusal = { readonly reason: string; readonly usage: unknown };
+type UsageRefusal = { readonly reason: string; readonly usage: unknown };
 
 const settledUsage = (
     values: readonly unknown[],
@@ -203,7 +203,7 @@ export type AiSdkTransportRequest = {
 };
 
 // {§provider-wire-emission} — what the wire carried, every channel, kept on every response.
-export type WireEmission = {
+type WireEmission = {
     // Raw chunks seen (one for an unstreamed body).
     readonly chunks: number;
     // Chunks whose choice carried no field at all beyond a role: output the wire billed but never showed.
@@ -727,7 +727,7 @@ const RETAINED_FIELDS = new Set(["content", "reasoning_content", "reasoning", "t
 // {§provider-wire-emission} — the emission as the wire carried it: field counts, chunks that
 // carried nothing, merged tool calls, and the verbatim text of every channel the normalized record
 // does not already hold. A blank emission is then readable instead of guessed at.
-export const wireEmissionOf = (values: readonly unknown[]): WireEmission => {
+const wireEmissionOf = (values: readonly unknown[]): WireEmission => {
     let chunks = 0;
     let emptyChunks = 0;
     const fields: Record<string, number> = {};

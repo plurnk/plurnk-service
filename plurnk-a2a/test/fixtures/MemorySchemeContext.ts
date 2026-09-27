@@ -9,6 +9,7 @@ import {
     type StreamSubscription,
     type SubscriptionHandle,
 } from "@plurnk/plurnk-schemes";
+import { schemeCtx } from "../../../plurnk-schemes/test/scheme-ctx.ts";
 
 export interface MemorySubscriptionClose {
     readonly result: ChannelProducerResult;
@@ -61,19 +62,8 @@ export default class MemorySchemeContext {
                 return { status: 200 };
             },
         };
-        this.ctx = {
-            workspaceId: 1,
-            workerId: 1,
-            loopId: 1,
-            turnId: 1,
-            writer: "model",
-            signal: undefined,
+        this.ctx = schemeCtx({
             entries,
-            messages: {
-                async prepare() { throw new Error("Hosted messages are outside the outbound memory scheme specimen."); },
-                async reply() { throw new Error("Hosted replies are outside the outbound memory scheme specimen."); },
-            },
-            resources: { async capture() { throw new Error("resource capture is outside the memory scheme specimen"); } },
             channels: {
                 append: async (pathname, channel, content) => {
                     const entry = this.#entry(pathname);
@@ -99,15 +89,12 @@ export default class MemorySchemeContext {
                 async isBinary() { return false; },
                 async parseIssues() { return undefined; },
             },
-            interactions: {
-                async request() { throw new Error("interaction is outside the A2A specimen"); },
-            },
             subscriptions: {
                 open: async (pathname, handle) => this.#open(pathname, handle),
                 async notifyChunk() { throw new Error("retain the returned subscription"); },
                 async close() { throw new Error("retain the returned subscription"); },
             },
-        };
+        });
     }
 
     entry(pathname: string): StoredEntryData {

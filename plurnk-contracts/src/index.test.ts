@@ -46,6 +46,7 @@ test("{§root-value-api} the package root exposes exactly the supported runtime 
         "InvalidRangeExtentError",
         "InvalidSkillDefinitionError",
         "InvalidTextRegionError",
+        "MAX_TIMER_MS",
         "PLURNK_FENCE",
         "PLURNK_OPS",
         "PROPOSAL_POLICIES",

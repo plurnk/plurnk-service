@@ -1,5 +1,5 @@
 import { Validator, type PlurnkStatement } from "@plurnk/plurnk-contracts";
-import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
+import { PacketSections, type PacketSectionDraft } from "@plurnk/plurnk-schemes";
 import { ATTACHMENT_KINDS, type AttachmentKind } from "./attachments.ts";
 
 export interface StoredPacketSection extends PacketSectionDraft {
@@ -185,22 +185,16 @@ export default class StoredPacket {
         if (own(section, "items") && (!Array.isArray(section.items) || !section.items.every((item) => typeof item === "string"))) {
             throw new TypeError(`${subject}.items must be an array of strings`);
         }
-        if (typeof section.name !== "string" || section.name.length === 0) {
-            throw new TypeError(`${subject}.name must be a non-empty string`);
-        }
-        if (section.slot !== "system" && section.slot !== "user") {
-            throw new TypeError(`${subject}.slot must be system or user`);
-        }
-        if (section.header !== null && typeof section.header !== "string") {
-            throw new TypeError(`${subject}.header must be a string or null`);
-        }
-        if (typeof section.content !== "string") throw new TypeError(`${subject}.content must be a string`);
+        const { name, slot, header, content } = PacketSections.assertDraft(
+            { name: section.name, slot: section.slot, header: section.header, content: section.content },
+            subject,
+        );
         StoredPacket.#nonnegativeInteger(section.weight, `${subject}.weight`);
         return {
-            name: section.name,
-            slot: section.slot,
-            header: section.header,
-            content: section.content,
+            name,
+            slot,
+            header,
+            content,
             weight: section.weight as number,
             ...(own(section, "items") ? { items: section.items as string[] } : {}),
         };

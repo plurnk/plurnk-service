@@ -8,7 +8,7 @@ import type {
 import MimetypePluginError from "./MimetypePluginError.ts";
 import { TREE_SITTER_REGISTRY } from "./treesitter/registry.ts";
 import type {
-    DiscoveryResult,
+    Discovery,
     DiscoverOptions,
     HandlerInfo,
     Registry,
@@ -32,7 +32,7 @@ import type {
 // last-loaded wins, and `@plurnk` is scanned LAST so a first-party (floor)
 // handler wins a collision — a third party can ADD a new mimetype but cannot
 // silently shadow a floor handler by claiming its name.
-export async function discover(options: DiscoverOptions = {}): Promise<DiscoveryResult> {
+export async function discover(options: DiscoverOptions = {}): Promise<Discovery> {
     const dirs = options.packageDirs ?? await defaultPackageDirs(options.cwd ?? process.cwd());
     const env = options.env ?? process.env;
     const isTrusted = (name: string): boolean => Meta.isTrusted(name, env);

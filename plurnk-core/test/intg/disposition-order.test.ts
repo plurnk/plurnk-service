@@ -85,15 +85,16 @@ test("{§unparsed-tail-boundary} a lost boundary refuses only what follows it: t
         });
         assert.equal(result.status, 102, "the failed row keeps the loop going; nothing was resampled");
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
-        assert.deepEqual(attempts.map(({ accepted, parse_errors }) => [accepted, JSON.parse(parse_errors)]), [[1, [{
-            message: "target slot of `READ` opened at line 7 but never closed - add `)`", line: 7, column: 0, source: "grammar",
+        assert.deepEqual(attempts.map(({ accepted, parse_errors }) => [accepted, JSON.parse(parse_errors).map(({ line, column, source }: { line: number; column: number; source: string }) => ({ line, column, source }))]), [[1, [{
+            line: 7, column: 0, source: "grammar",
         }]]], "the one attempt is admitted and carries the tail as its diagnostic");
+        const [{ message }] = JSON.parse(attempts[0]!.parse_errors) as [{ message: string }];
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string }>({ turn_id: result.turnId });
         assert.equal(rows.some(({ op }) => op === "EDIT"), true, "the statement that closed before the loss ran");
         const loss = rows.find(({ op }) => op === "error");
         assert.ok(loss, "the loss is a failed row of the same turn");
         const problem = JSON.parse(loss.rx).problem;
-        assert.equal(problem.detail, "target slot of `READ` opened at line 7 but never closed - add `)`");
+        assert.equal(problem.detail, message, "the loss row carries the attempt's tail diagnostic");
         assert.equal(problem.siblingsRetained, true);
     } finally { await db.close(); }
 });

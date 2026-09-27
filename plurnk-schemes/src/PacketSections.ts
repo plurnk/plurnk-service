@@ -9,7 +9,7 @@ export default class PacketSections {
 
         const names = new Set<string>();
         for (let index = 0; index < value.length; index += 1) {
-            const section = PacketSections.#assertDraft(value[index], `${subject}[${index}]`);
+            const section = PacketSections.assertDraft(value[index], `${subject}[${index}]`);
             if (names.has(section.name)) {
                 throw new TypeError(`${subject} has duplicate section name '${section.name}'`);
             }
@@ -18,7 +18,7 @@ export default class PacketSections {
         return value as PacketSectionDraft[];
     }
 
-    static #assertDraft(value: unknown, subject: string): PacketSectionDraft {
+    static assertDraft(value: unknown, subject: string): PacketSectionDraft {
         if (value === null || typeof value !== "object" || Array.isArray(value)) {
             throw new TypeError(`${subject} must be an object`);
         }

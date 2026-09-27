@@ -100,7 +100,7 @@ export const toolResultBody = async (result: ToolResultShape, runtime: string, e
 // the tool's default page, is a full page: the receipt says so, and nothing more.
 const PAGE_ARGUMENTS = Object.freeze(["per_page", "page_size", "pageSize", "limit"]);
 
-export const pageReceipt = (
+const pageReceipt = (
     args: Readonly<Record<string, unknown>>,
     tool: Tool,
     body: { readonly content: string; readonly mimetype: string },

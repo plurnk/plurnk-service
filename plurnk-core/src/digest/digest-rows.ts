@@ -28,7 +28,7 @@ export interface ErrorEvidence {
     message: string;
     cause?: ErrorEvidence;
 }
-export interface PacketFailure {
+interface PacketFailure {
     raw: string;
     error: ErrorEvidence;
 }

@@ -42,7 +42,7 @@ const mimetypes = (
     const discovery: Discovery = {
         registry,
         handlers: new Map([[handlerInfo.mimetype, handlerInfo]]),
-        skipped: [],
+        packageAttributions: new Map(), skipped: [],
     };
     return new Mimetypes({
         discovery,
@@ -104,7 +104,7 @@ describe("mimetype projection identity", () => {
             discovery: {
                 registry: { byExtension: new Map(), byFilename: new Map() },
                 handlers: new Map(),
-                skipped: [],
+                packageAttributions: new Map(), skipped: [],
             },
             loader: async () => {
                 loads++;

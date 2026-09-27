@@ -80,6 +80,7 @@ export {
     queryRegex,
     queryXpathString,
     regionsForLineSpans,
+    serializeXpathNode,
 } from "./query.ts";
 export { projectJsonToXml } from "./projectJsonToXml.ts";
 export {
@@ -113,7 +114,6 @@ export type { CompileOptions } from "./compile.ts";
 export type {
     DetectInput,
     Discovery,
-    DiscoveryResult,
     DiscoverOptions,
     ExtractionVisitor,
     HandlerInfo,

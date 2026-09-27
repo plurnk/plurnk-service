@@ -37,7 +37,7 @@ function makeDiscovery(handlers: HandlerInfo[]): Discovery {
         }
     }
     const registry: Registry = { byExtension, byFilename };
-    return { registry, handlers: handlerMap, skipped: [] };
+    return { registry, handlers: handlerMap, packageAttributions: new Map(), skipped: [] };
 }
 
 const FAKE_INFO: HandlerInfo = {

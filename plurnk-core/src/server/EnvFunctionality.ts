@@ -14,7 +14,7 @@ import ExecEnv from "../schemes/exec-env.ts";
 import Paths from "../Paths.ts";
 import type { Db } from "../core/Db.ts";
 
-export const ENV_FAMILY = "env";
+const ENV_FAMILY = "env";
 // The family's namespace owner — also the key a spawn reads its Worker's state under.
 export const ENV_OWNER = "@plurnk/plurnk-service";
 

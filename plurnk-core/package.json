@@ -153,13 +153,14 @@
         "@plurnk/plurnk-schemes-http": "1.21.1",
         "@plurnk/plurnk-schemes-http-tavily": "^1.19.1",
         "@possumtech/sqlrite": "^6.5.3",
-        "diff": "^9.0.0",
-        "yaml": "^2.9.0"
+        "diff": "^9.0.0"
     },
     "devDependencies": {
+        "@a2a-js/sdk": "1.2.1",
         "@modelcontextprotocol/server": "2.0.0",
         "@opentelemetry/core": "^2.11.0",
-        "@types/diff": "^7.0.2"
+        "marked": "^18.0.14",
+        "zod": "4.6.5"
     },
     "homepage": "https://github.com/plurnk/plurnk-service/tree/main/plurnk-core#readme",
     "bugs": {

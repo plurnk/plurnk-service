@@ -5,23 +5,14 @@
 export { default as MimetypeBinary } from "./mimetype-binary.ts";
 
 export { default as LineMarkerOps } from "./line-marker.ts";
-export type { EditResult as LineEditResult, SliceResult } from "./line-marker.ts";
 export { default as LineAnchors } from "./line-anchors.ts";
 export { default as EditCollision } from "./edit-collision.ts";
 export type {
     LineAnchorCheck,
-    LineAnchorFailure,
     LineAnchorPrecondition,
-    LineAnchorResolution,
 } from "./line-anchors.ts";
 
 export { default as PathMimetype } from "./path-mimetype.ts";
-
-export { default as Matcher } from "./matcher.ts";
-export type { MatchResult } from "./matcher.ts";
-
-export { default as ReadResolve } from "./read-resolve.ts";
-export type { ReadSliceResult } from "./read-resolve.ts";
 
 export { default as ReadProjector } from "./read-projector.ts";
 
@@ -37,14 +28,8 @@ export {
     withEditReceiptParseIssues,
 } from "./edit-receipt.ts";
 export type {
-    AppliedEditBatchReceipt,
     EditBatchReceipt,
-    EditEffectReceipt,
     EditReceipt,
-    EditReceiptUnit,
-    ParseIssueTransition,
-    ReviewerReplacementEditBatchReceipt,
-    ReceiptEdit,
     ResourceEffect,
     ResourceEffectAction,
 } from "./edit-receipt.ts";

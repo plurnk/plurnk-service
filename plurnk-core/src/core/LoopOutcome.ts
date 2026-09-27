@@ -14,7 +14,7 @@ export interface LoopOutcome {
     readonly terminatedBy: string | null;
 }
 
-export const loopAddress = (worker: string, sequence: number): string => `ops://${worker}/${sequence}`;
+const loopAddress = (worker: string, sequence: number): string => `ops://${worker}/${sequence}`;
 
 // `null` means no such loop; every other state is a result the caller can publish.
 export const loopOutcome = async (

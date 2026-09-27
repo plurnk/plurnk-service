@@ -14,8 +14,6 @@ export interface TemporalRuntime extends TemporalImplementation<TemporalZonedDat
 const runtime = (globalThis as unknown as { Temporal?: TemporalRuntime }).Temporal;
 if (runtime === undefined) throw new Error("@plurnk/plurnk-schedule requires a runtime with Temporal (Node 26 or later).");
 
-export default runtime;
-
 // One instant read in one IANA zone; an unknown zone is the runtime's RangeError.
 export const zoned = (epochMilliseconds: number, zone: string): TemporalZonedDateTime =>
     runtime.Instant.fromEpochMilliseconds(epochMilliseconds).toZonedDateTimeISO(zone);

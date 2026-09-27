@@ -80,7 +80,6 @@
         "@ai-sdk/mistral": "^4.0.0",
         "@ai-sdk/openai": "^4.0.0",
         "@ai-sdk/openai-compatible": "^3.0.14",
-        "@ai-sdk/provider": "^4.0.17",
         "@ai-sdk/togetherai": "^3.0.0",
         "@ai-sdk/xai": "^5.0.10",
         "@openrouter/ai-sdk-provider": "^3.0.0",

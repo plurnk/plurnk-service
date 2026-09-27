@@ -114,16 +114,13 @@ test("discover: node_modules entries with no package.json or malformed JSON are 
     assert.deepEqual([...registry.keys()], ["native"]); // only the well-formed provider survives
 });
 
-test("discover: normalizes attribution per package and preserves the published provider projection", async (t) => {
+test("discover: normalizes attribution per package", async (t) => {
     const root = await buildModules(t, {
         "@acme/provider-solo": { name: "@acme/provider-solo", plurnk: { kind: "provider", name: "solo", attribution: "@acme/solo" } },
         "@acme/provider-multi": { name: "@acme/provider-multi", plurnk: { kind: "provider", name: "multi", attribution: ["@acme/a", "@acme/b"] } },
         "@acme/provider-none": { name: "@acme/provider-none", plurnk: { kind: "provider", name: "none" } },
     });
-    const { attributions, packageAttributions } = await discover({ cwd: root });
-    assert.equal(attributions.get("solo"), "@acme/solo");
-    assert.deepEqual(attributions.get("multi"), ["@acme/a", "@acme/b"]);
-    assert.equal(attributions.has("none"), false);
+    const { packageAttributions } = await discover({ cwd: root });
     assert.deepEqual([...packageAttributions], [
         ["@acme/provider-multi", ["@acme/a", "@acme/b"]],
         ["@acme/provider-solo", ["@acme/solo"]],

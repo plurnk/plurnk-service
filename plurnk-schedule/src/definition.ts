@@ -10,7 +10,7 @@ export interface ScheduleDefinition {
     readonly policy?: LoopPolicyRequest;
 }
 
-export const TARGET = new RegExp(`^worker://(${WORKER_NAME.source.slice(1, -1)})$`, "u");
+const TARGET = new RegExp(`^worker://(${WORKER_NAME.source.slice(1, -1)})$`, "u");
 
 export const DEFINITION_SCHEMA = Object.freeze({
     type: "object",

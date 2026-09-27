@@ -297,7 +297,7 @@ function pkAttr(el: Element | null, name: string): number | undefined {
     return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
-function serializeXpathNode(node: Node): string {
+export function serializeXpathNode(node: Node): string {
     const nt = node.nodeType;
     if (nt === ATTRIBUTE_NODE) return (node as Attr).value;
     if (nt === TEXT_NODE || nt === CDATA_SECTION_NODE) return (node as Text).data;

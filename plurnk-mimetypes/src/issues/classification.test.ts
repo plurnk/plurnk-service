@@ -9,7 +9,7 @@ import type { Discovery, HandlerInfo, Registry } from "../types.ts";
 function mk(handlers: HandlerInfo[]): Mimetypes {
     const registry: Registry = { byExtension: new Map(), byFilename: new Map() };
     return new Mimetypes({
-        discovery: { registry, handlers: new Map(handlers.map((h) => [h.mimetype, h])), skipped: [] } satisfies Discovery,
+        discovery: { registry, handlers: new Map(handlers.map((h) => [h.mimetype, h])), packageAttributions: new Map(), skipped: [] } satisfies Discovery,
         loader: async () => ({}),
     });
 }

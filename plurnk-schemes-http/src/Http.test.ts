@@ -42,6 +42,7 @@ import {
 } from "@plurnk/plurnk-schemes";
 import Http from "./Http.ts";
 import Guard from "./Guard.ts";
+import { schemeCtx } from "../../plurnk-schemes/test/scheme-ctx.ts";
 import WebFetcher, {
     CACHE_VARIANT_HEADER,
     MATERIALIZER_ENV,
@@ -180,17 +181,11 @@ const makeCtx = (priorEntry: StoredEntryData | null = null, overrides: CtxOverri
             await current.close(result, summary, channelResults);
         },
     };
-    const ctx: SchemeCtx = {
-        workspaceId: 1, workerId: 1, loopId: 1, turnId: 1, writer: "model", signal: overrides.signal,
-        entries, channels, notify, projection,
-        resources: { capture: async () => { throw new Error("HTTP metadata must not acquire message attachments."); } },
-        messages: {
-            prepare: async () => { throw new Error("HTTP does not prepare accepted messages."); },
-            reply: async () => { throw new Error("HTTP does not answer accepted messages."); },
-        },
+    const ctx = schemeCtx({
+        signal: overrides.signal,
+        entries, channels, notify, projection, subscriptions,
         interactions: { request: async () => ({ status: "cancelled" }) },
-        subscriptions,
-    };
+    });
     return {
         ctx,
         inspect: () => ({ chunks, opened, closed, deleted, wrote, storedEntry, observedStorageRead, seq }),

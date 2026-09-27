@@ -48,7 +48,7 @@ export type Pairing = {
     readonly lines: readonly string[];
 };
 
-export type PairingOptions = {
+type PairingOptions = {
     readonly operations: ReadonlySet<string>;
     readonly executors: ReadonlySet<string>;
     /** {§reasoning-notes} — reasoning opens only NOTE; everything else quotes. */

@@ -7,7 +7,7 @@
 // expression; 203 = source unparseable for its mimetype → raw bytes as text so the model
 // can fall back to regex/visual parsing (SPEC {§matcher-dispatch}).
 
-import type { MatcherBody } from "@plurnk/plurnk-contracts";
+import { Problems, type MatcherBody } from "@plurnk/plurnk-contracts";
 import { TextCoordinates, type Mimetypes } from "@plurnk/plurnk-mimetypes";
 import {
     Matcher as SchemeMatcher,
@@ -63,13 +63,15 @@ export default class Matcher {
                 match = await Matcher.matchAgainstContent(lineBody, cand.content, cand.mimetype, mimetypes);
             } catch (cause) {
                 console.error(`FIND candidate ${cand.key} (${cand.mimetype}) content handler crashed:`, cause);
-                unsupported ??= {
-                    type: "https://problems.plurnk.xyz/mimetypes/handler-crashed",
-                    title: "Content handler crashed",
-                    status: 415,
-                    detail: `The ${cand.mimetype} content handler failed on ${cand.key}: `
+                unsupported ??= Problems.create(
+                    "mimetypes",
+                    "handler-crashed",
+                    415,
+                    `The ${cand.mimetype} content handler failed on ${cand.key}: `
                         + (cause instanceof Error ? cause.message : String(cause)),
-                };
+                    {},
+                    { title: "Content handler crashed" },
+                );
                 continue;
             }
             if (match.status === 415) {

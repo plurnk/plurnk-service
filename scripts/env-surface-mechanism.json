@@ -1,7 +1,7 @@
 {
     "plurnk-a2a/src/PlurnkTaskStore.ts:UNSPECIFIED_PAGE": "the A2A protocol's own page size for a ListTasks request that names none",
-    "plurnk-agui/src/config.ts:MAX_TIMER_MS": "the platform's setTimeout ceiling (2^31-1 ms); a bound on what a heartbeat knob may say",
     "plurnk-agui/src/observe.ts:MAX_STRING_LENGTH": "telemetry attribute truncation: bounds a span attribute, changes no behaviour",
+    "plurnk-contracts/src/types.ts:MAX_TIMER_MS": "the platform's setTimeout ceiling (2^31-1 ms); the bound on any delay a knob may name, and a farther schedule occurrence arms in hops",
     "plurnk-core/src/core/attachments.ts:AUDIO_TOKENS_PER_SECOND": "a stable curation unit by design: persisted weights depend on it, and calibration adjusts capacity instead",
     "plurnk-core/src/core/attachments.ts:PDF_BYTES_PER_TOKEN": "a stable curation unit by design: persisted weights depend on it, and calibration adjusts capacity instead",
     "plurnk-core/src/core/attachments.ts:PDF_TOKENS_PER_PAGE": "a stable curation unit by design: persisted weights depend on it, and calibration adjusts capacity instead",
@@ -23,9 +23,7 @@
     "plurnk-providers/src/AiSdkProvider.ts:OPERATION_DEADLINE_UNWIND_GRACE_MS": "unwind slack after a deadline already fired; the deadlines themselves are provider knobs",
     "plurnk-providers/src/AiSdkRequestBody.ts:MANUAL_REASONING_MINIMUM": "the provider protocol's own minimum reasoning allowance",
     "plurnk-providers/src/capacity.ts:WIRE_FLEX_MARGIN": "safety margin of the flexed-allowance arithmetic; the budgets it protects are provider knobs",
-    "plurnk-providers/src/env.ts:MAX_PROVIDER_TIMEOUT_MS": "the platform's setTimeout ceiling (2^31-1 ms); a bound on what a timeout knob may say",
     "plurnk-schedule/src/Scheduler.ts:DIAGNOSTIC_LIMIT": "length of a diagnostic excerpt inside a delivery Problem",
-    "plurnk-schedule/src/Scheduler.ts:MAX_DELAY_MS": "the platform's setTimeout ceiling (2^31-1 ms); a farther occurrence arms in hops",
     "plurnk-schemes-http/src/Http.ts:DELTA_SECONDS_LIMIT": "RFC 9111's delta-seconds ceiling (2^31)",
     "plurnk-schemes-http/src/HttpGet.ts:LLMS_TEXT_ATTEMPT_TTL_MS": "negative cache of an origin's llms.txt probe; courtesy pacing, not acquisition policy"
 }

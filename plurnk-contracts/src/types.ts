@@ -79,6 +79,9 @@ export const SKILL_NAME = new RegExp(skillDefinitionSchema.properties.name.patte
 // Structurally synthesized statements have no parsed source point. {§parser-position}
 export const UNKNOWN_POSITION: Readonly<Position> = Object.freeze({ line: 0, column: 0 });
 
+// The platform's setTimeout ceiling (2^31-1 ms): the bound on any delay a knob may name.
+export const MAX_TIMER_MS = 2_147_483_647;
+
 // Client-tier-only ops (parseClient). Kept distinct from PlurnkOp so the protocol op set
 // stays closed and client ops never widen the model-facing type.
 export type ClientOp = "LOOK";

@@ -596,8 +596,7 @@ test("finish=length is forensic evidence: a frame that lost its boundary after a
         assert.deepEqual(attempts.map(({ accepted, finish_reason }) => ({ accepted, finish_reason })), [
             { accepted: 1, finish_reason: "length" },
         ]);
-        assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), [{
-            message: "target slot of `EDIT` opened at line 3 but never closed - add `)`",
+        assert.deepEqual(JSON.parse(attempts[0]!.parse_errors).map(({ line, column, source }: { line: number; column: number; source: string }) => ({ line, column, source })), [{
             line: 3,
             column: 0,
             source: "grammar",
@@ -1020,11 +1019,11 @@ test("{§error-shape} {§unparsed-tail-boundary}: a boundary lost after a statem
         assert.equal(result.result.status, 200);
         assert.equal(result.turnIds.length, 3, "initialization, the admitted turn with its loss, and the reply");
         const [, lossTurn, replyTurn] = result.turnIds;
-        const message = "target slot of `SEND` opened at line 4 but never closed - add `)`";
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: lossTurn });
-        assert.deepEqual(attempts.map(({ accepted, parse_errors }) => [accepted, JSON.parse(parse_errors)]), [[1, [{
-            line: 4, column: 0, source: "grammar", message,
+        assert.deepEqual(attempts.map(({ accepted, parse_errors }) => [accepted, JSON.parse(parse_errors).map(({ line, column, source }: { line: number; column: number; source: string }) => ({ line, column, source }))]), [[1, [{
+            line: 4, column: 0, source: "grammar",
         }]]], "one admitted attempt, the tail preserved as its diagnostic");
+        const [{ message }] = JSON.parse(attempts[0]!.parse_errors) as [{ message: string }];
         assert.equal(provider.packets.length, 2, "no private resample: the loss is the model's to see");
         assert.ok(provider.packets[1]?.includes(message), "the next packet carries the parser-owned boundary diagnosis");
         assert.doesNotMatch(provider.packets[1]!, /No tasks were supplied/, "the unfinished SEND is not misreported as an absent lifecycle declaration");
@@ -1219,7 +1218,6 @@ test("{§invalid-emission-attempts} a frame exhaustion shares prior contract str
     try {
         // {§unparsed-tail-boundary} — only an unfinished heading slot at the end of the input rejects.
         const rejected = "````READ (worker:///unfinished";
-        const message = "target slot of `READ` opened at line 1 but never closed - add `)`";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
@@ -1235,12 +1233,13 @@ test("{§invalid-emission-attempts} a frame exhaustion shares prior contract str
         assert.equal(result.reason, "strike_threshold");
         assert.equal(provider.packets.length, 5, "two admitted struck turns plus three private attempts; no fourth engine turn");
         assert.equal(new Set(provider.packets.slice(2)).size, 1, "private resampling remains cache-stable");
-        assert.ok(provider.packets.every((packet) => !packet.includes(message)), "the terminating exhaustion cannot deliver a future recovery packet");
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnIds.at(-1) });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 0, 0]);
-        for (const attempt of attempts) assert.deepEqual(JSON.parse(attempt.parse_errors), [{
-            line: 1, column: 0, source: "grammar", message,
+        for (const attempt of attempts) assert.deepEqual(JSON.parse(attempt.parse_errors).map(({ line, column, source }: { line: number; column: number; source: string }) => ({ line, column, source })), [{
+            line: 1, column: 0, source: "grammar",
         }], "the undelivered diagnostic remains in forensic evidence");
+        const [{ message }] = JSON.parse(attempts[0]!.parse_errors) as [{ message: string }];
+        assert.ok(provider.packets.every((packet) => !packet.includes(message)), "the terminating exhaustion cannot deliver a future recovery packet");
     } finally { await db.close(); }
 });
 

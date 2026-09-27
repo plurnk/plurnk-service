@@ -42,7 +42,7 @@ function discovery(handler: HandlerInfo = info): Discovery {
             byFilename: new Map(),
         },
         handlers: new Map([[handler.mimetype, handler]]),
-        skipped: [],
+        packageAttributions: new Map(), skipped: [],
     };
 }
 

@@ -4,7 +4,7 @@ import { emptyRegistry, Mimetypes } from "@plurnk/plurnk-mimetypes";
 import MimetypeBinary from "./mimetype-binary.ts";
 
 const mimetypes = new Mimetypes({
-    discovery: { registry: emptyRegistry(), handlers: new Map(), skipped: [] },
+    discovery: { registry: emptyRegistry(), handlers: new Map(), packageAttributions: new Map(), skipped: [] },
 });
 
 const classifications: ReadonlyArray<readonly [string, boolean, readonly string[]]> = [

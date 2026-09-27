@@ -3,7 +3,7 @@
 // the source `schedule://<alias>`, joining the worker's live loop or starting one. Then the next
 // occurrence arms from now: a late fire delivers once and skips what it missed, never a backlog.
 // A delivery failure disarms the rule and holds its Problem for the outcome; `enable` retries.
-import { Problems, type LoopPolicyRequest, type ProblemDetails } from "@plurnk/plurnk-contracts";
+import { MAX_TIMER_MS, Problems, type LoopPolicyRequest, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { createHash } from "node:crypto";
 import type { SchemeResult } from "@plurnk/plurnk-schemes";
 import { targetWorkerName, type ScheduleDefinition } from "./definition.ts";
@@ -63,8 +63,7 @@ export class ScheduleDeliveryError extends Error {
     }
 }
 
-// setTimeout's ceiling; a farther occurrence arms in hops.
-const MAX_DELAY_MS = 2_147_483_647;
+// A farther occurrence than setTimeout's ceiling arms in hops.
 const DIAGNOSTIC_LIMIT = 512;
 const key = (workspaceId: number, alias: string): string => `${workspaceId}:${alias}`;
 
@@ -200,7 +199,7 @@ export default class Scheduler {
     }
 
     #setTimer(armed: Armed): void {
-        armed.handle = this.#timers.set(() => { this.#fire(armed); }, Math.max(0, Math.min(armed.dueMs - this.#clock(), MAX_DELAY_MS)));
+        armed.handle = this.#timers.set(() => { this.#fire(armed); }, Math.max(0, Math.min(armed.dueMs - this.#clock(), MAX_TIMER_MS)));
     }
 
     #fire(armed: Armed): void {

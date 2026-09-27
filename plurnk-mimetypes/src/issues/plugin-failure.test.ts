@@ -32,7 +32,7 @@ const discovery: Discovery = {
         byFilename: new Map(),
     },
     handlers: new Map([[info.mimetype, info]]),
-    skipped: [],
+    packageAttributions: new Map(), skipped: [],
 };
 
 const orchestrator = (loader: () => Promise<unknown>): Mimetypes => new Mimetypes({

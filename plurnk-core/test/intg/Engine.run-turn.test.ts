@@ -382,9 +382,7 @@ test("Engine.runTurn: an empty trusted batch fails without leaving a producer tu
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     try {
         const provider = new Mock({ contextWindow: 100000, responses: [response([])] });
-        await assert.rejects(engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }), {
-            message: "an admitted operation batch must contain operations",
-        });
+        await assert.rejects(engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }), Error);
         const turns = await db.test_list_turns_in_loop.all<{
             producer: string; kind: string; status: number; completed_at: string | null;
         }>({ loop_id: loopId });

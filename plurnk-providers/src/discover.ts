@@ -4,7 +4,6 @@ import Meta from "@plurnk/plurnk-meta";
 import type {
     PackageAttributions,
     PluginAttribution,
-    PluginAttributionDeclaration,
 } from "@plurnk/plurnk-meta";
 import type { GrammarStyle } from "./AiSdkProvider.ts";
 
@@ -38,8 +37,6 @@ export type DiscoverOptions = {
 export type Discovery = {
     registry: Map<string, string>; // trusted providers, eligible to instantiate
     skipped: Map<string, string>;  // declined by the trust gate (untrusted)
-    // Published name-keyed projection retained for 1.x consumers.
-    attributions: Map<string, string | string[]>;
     packageAttributions: PackageAttributions;
     // {§provider-grammar-transport} — plugin-declared constrained-decoding
     // capability per provider name; "none" unless the manifest declares one.
@@ -53,7 +50,6 @@ export const discover = async (options: DiscoverOptions = {}): Promise<Discovery
 
     const registry = new Map<string, string>();
     const skipped = new Map<string, string>();
-    const attributions = new Map<string, PluginAttributionDeclaration>();
     const packageAttributions = new Map<string, PluginAttribution>();
     const grammarStyles = new Map<string, GrammarStyle>();
     for (const dir of dirs) {
@@ -73,11 +69,9 @@ export const discover = async (options: DiscoverOptions = {}): Promise<Discovery
         const tags = Meta.normalizeAttribution(info.attribution, info.packageName);
         registry.set(info.name, info.packageName);
         grammarStyles.set(info.name, info.grammarStyle);
-        const attribution = attributionProjection(info.attribution, tags);
-        if (attribution !== undefined) attributions.set(info.name, attribution);
         if (tags.length > 0) packageAttributions.set(info.packageName, tags);
     }
-    return { registry, skipped, attributions, packageAttributions, grammarStyles };
+    return { registry, skipped, packageAttributions, grammarStyles };
 };
 
 // Enumerate every installed package directory — scoped and unscoped — under
@@ -125,12 +119,4 @@ const readProviderInfo = async (dir: string): Promise<ProviderInfo | null> => {
         attribution: plurnkRec.attribution,
         grammarStyle: grammarStyle === undefined ? "none" : grammarStyle,
     };
-};
-
-const attributionProjection = (
-    raw: unknown,
-    tags: PluginAttribution,
-): PluginAttributionDeclaration | undefined => {
-    if (raw === undefined || raw === null) return undefined;
-    return typeof raw === "string" ? raw : [...tags];
 };

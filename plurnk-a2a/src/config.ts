@@ -64,7 +64,7 @@ export interface HostedAgentConfiguration {
 }
 
 // A2A carries no review channel, so an inbound loop settles its own proposals.
-export const HOSTED_PROPOSALS = ["accept", "reject"] as const;
+const HOSTED_PROPOSALS = ["accept", "reject"] as const;
 export type HostedProposals = typeof HOSTED_PROPOSALS[number];
 
 const assertAgentName = (name: string, variable: string): void => {

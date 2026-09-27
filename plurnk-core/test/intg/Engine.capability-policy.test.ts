@@ -19,7 +19,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperatio
 import { urlPath, localPath, editStmt, readStmt, copyStmt, moveStmt, execStmt, sendStmt } from "./_dsl.ts";
 
 const makeMimetypes = (): Mimetypes => new Mimetypes({
-    discovery: { registry: emptyRegistry(), handlers: new Map(), skipped: [] },
+    discovery: { registry: emptyRegistry(), handlers: new Map(), packageAttributions: new Map(), skipped: [] },
 });
 
 class WritableScheme {

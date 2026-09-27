@@ -602,8 +602,7 @@ PLURNK `Provider`, read PLURNK tuning knobs, or reproduce transport policy.
 Discovery is scope-agnostic and memoized per process. Duplicate names fail hard.
 The common plugin trust gate applies before import ({§plugin-trust-boundary}). A plugin absent from
 Models.dev requires an explicit context-window pin because PLURNK will not guess
-model physics. `Discovery.packageAttributions` carries the canonical package map;
-the published name-keyed `Discovery.attributions` remains its 1.x projection.
+model physics. `Discovery.packageAttributions` carries the canonical package map.
 
 ## §7 Local capabilities
 

@@ -101,17 +101,10 @@ export interface MimetypeDisplayMetadata {
 export interface Discovery {
     registry: Registry;
     handlers: ReadonlyMap<string, HandlerInfo>;
-    // Optional only for compatibility with pre-attribution programmatic
-    // registries accepted by MimetypesOptions.discovery.
-    packageAttributions?: PackageAttributions;
+    packageAttributions: PackageAttributions;
     // Package names withheld by the shared trust predicate before handler code
     // can be imported. The consumer owns how this evidence is presented.
     skipped: readonly string[];
-}
-
-// Filesystem discovery always supplies the canonical package map.
-export interface DiscoveryResult extends Discovery {
-    packageAttributions: PackageAttributions;
 }
 
 export interface DiscoverOptions {

@@ -40,7 +40,7 @@ type MembersProvenance = {
     readonly kind: "service-configuration" | "client-action" | "model-proposal";
     readonly source?: string;
 };
-export type MembersDefinition = {
+type MembersDefinition = {
     readonly glob: string;
     readonly provenance?: MembersProvenance;
 };

@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setImmediate as nextTick } from "node:timers/promises";
+import { MAX_TIMER_MS } from "@plurnk/plurnk-contracts";
 import ScheduleFunctionality, { ScheduleFunctionalityError, type FunctionalityFamilyHandle } from "../../src/Functionality.ts";
 import type { DeliveryPort, SchedulerTimers } from "../../src/Scheduler.ts";
 
@@ -13,7 +14,6 @@ const NOW = Date.UTC(2026, 8, 16, 12, 30, 15, 250);
 const SECOND = 1000;
 const HOUR = 3_600_000;
 const FIRST = Date.UTC(2026, 8, 16, 12, 30, 16);
-const MAX_DELAY_MS = 2_147_483_647;
 
 interface Timer {
     readonly id: number;
@@ -313,8 +313,8 @@ test("{§schedule-delivery} a late fire delivers once and skips what it missed; 
     assert.deepEqual(time.delays(), [HOUR - SECOND], "armed for the first occurrence after now");
     const far = { rule: "DTSTART;TZID=UTC:20270101T000000\nRRULE:FREQ=YEARLY;COUNT=1", target: "worker://bot", prompt: "Happy new year." };
     await (await adapter.prepare(preparation(2, { far }))).commit();
-    assert.deepEqual(time.delays().filter((delay) => delay === MAX_DELAY_MS), [MAX_DELAY_MS], "setTimeout's ceiling is one hop");
-    await time.advance(time.now + MAX_DELAY_MS);
+    assert.deepEqual(time.delays().filter((delay) => delay === MAX_TIMER_MS), [MAX_TIMER_MS], "setTimeout's ceiling is one hop");
+    await time.advance(time.now + MAX_TIMER_MS);
     assert.equal(port.deliveries.length, 2, "the hourly rule fired again in the hop; the far one did not");
     assert.deepEqual(adapter.scheduler.armed(2), ["far"], "the far rule re-armed without delivering");
     await adapter.scheduler.close();

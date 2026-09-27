@@ -26,6 +26,7 @@ import {
     type SubscriptionCaps,
     type StreamSubscription,
 } from "@plurnk/plurnk-schemes";
+import { schemeCtx } from "../../plurnk-schemes/test/scheme-ctx.ts";
 
 const PUB = "wss://93.184.216.34/feed"; // public IP literal - skips DNS
 
@@ -181,17 +182,11 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
             await current.close(result, summary);
         },
     };
-    const ctx: SchemeCtx = {
-        workspaceId: overrides.workspaceId ?? 1, workerId: overrides.workerId ?? 1, loopId: 1, turnId: 1, writer: "model", signal: undefined,
-        entries, channels, notify, projection,
-        resources: { capture: async () => { throw new Error("WebSocket metadata must not acquire message attachments."); } },
-        messages: {
-            prepare: async () => { throw new Error("WebSocket does not prepare accepted messages."); },
-            reply: async () => { throw new Error("WebSocket does not answer accepted messages."); },
-        },
+    const ctx = schemeCtx({
+        workspaceId: overrides.workspaceId ?? 1, workerId: overrides.workerId ?? 1,
+        entries, channels, notify, projection, subscriptions,
         interactions: { request: async () => ({ status: "cancelled" }) },
-        subscriptions,
-    };
+    });
     return {
         ctx,
         localAbort,

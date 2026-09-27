@@ -25,7 +25,6 @@ import type {
     DetectInput,
     DiscoverOptions,
     Discovery,
-    DiscoveryResult,
     HandlerInfo,
     MimetypeDisplayMetadata,
     HandlerMetadata,
@@ -158,11 +157,11 @@ export default class Mimetypes {
     readonly #defaultMimetype: string | null;
     readonly #handlerInstances = new Map<string, Promise<BaseHandler>>();
     readonly #grammarFingerprints = new Map<string, Promise<string>>();
-    #discovery: DiscoveryResult | null = null;
+    #discovery: Discovery | null = null;
 
     // Every consumer of discovery runs after ready(); a call that reaches here first is a
     // lifecycle violation, named as such instead of a property read on null.
-    get #discovered(): DiscoveryResult {
+    get #discovered(): Discovery {
         if (this.#discovery === null) throw new Error("Mimetypes: ready() has not completed");
         return this.#discovery;
     }
@@ -173,12 +172,7 @@ export default class Mimetypes {
         this.#discoverOptions = options.discoverOptions ?? {};
         this.#loader = options.loader ?? defaultLoader(this.#discoverOptions.cwd ?? process.cwd());
         this.#defaultMimetype = options.defaultMimetype ?? null;
-        if (options.discovery !== undefined) {
-            this.#discovery = {
-                ...options.discovery,
-                packageAttributions: options.discovery.packageAttributions ?? new Map(),
-            };
-        }
+        if (options.discovery !== undefined) this.#discovery = options.discovery;
     }
 
     // Eagerly run discovery. Safe to call multiple times — subsequent calls

@@ -125,7 +125,7 @@ test("{§manifest-client-display} {§mimetype-client-display} Daemon composes de
                     source: "package" as const,
                 }],
             ]),
-            skipped: [],
+            packageAttributions: new Map(), skipped: [],
         },
     });
     const daemon = new Daemon({ db, provider: null, mimetypes });
@@ -181,6 +181,7 @@ test("Daemon boot reports mimetype packages withheld by the shared trust gate", 
     const discovery = {
         registry: { byExtension: new Map<string, string>(), byFilename: new Map<string, string>() },
         handlers: new Map(),
+        packageAttributions: new Map(),
         skipped: ["@acme/acme-mime-private"],
     };
     const daemon = new Daemon({
@@ -1619,7 +1620,7 @@ test("Daemon.stop leaves constructor-injected mimetypes caller-owned", async () 
         discovery: {
             registry: { byExtension: new Map(), byFilename: new Map() },
             handlers: new Map(),
-            skipped: [],
+            packageAttributions: new Map(), skipped: [],
         },
     });
     let disposals = 0;

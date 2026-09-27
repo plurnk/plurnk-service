@@ -3,6 +3,7 @@ import {
     InvalidExpressionError,
     QueryParseFailureError,
     regionsForLineSpans,
+    serializeXpathNode,
 } from "@plurnk/plurnk-mimetypes";
 import type {
     HandlerContent,
@@ -34,11 +35,8 @@ import * as xpath from "xpath";
 //     framework's pipeline
 //   - regex/glob inherit the BaseHandler defaults (against raw text)
 const TEXT_NODE = 3;
-const ATTRIBUTE_NODE = 2;
 const ELEMENT_NODE = 1;
 const CDATA_SECTION_NODE = 4;
-const PROCESSING_INSTRUCTION_NODE = 7;
-const COMMENT_NODE = 8;
 
 export default class ApplicationXml extends BaseHandler {
     override extractRaw(content: HandlerContent): MimeSymbol[] {
@@ -210,7 +208,7 @@ function shapeXpathResult(
                 ? undefined
                 : regionsForLineSpans(content, [{ line, endLine: endLine ?? line }]);
             return {
-                matched: serializeNode(node),
+                matched: serializeXpathNode(node),
                 matching: result.length > 1 ? `(${pattern})[${i + 1}]` : pattern,
                 ...(regions === undefined ? {} : { regions }),
             };
@@ -234,13 +232,4 @@ function nodeLine(node: Node): number | undefined {
         ?? (node as { parentNode?: Node | null }).parentNode ?? null;
     const ln = (owner as { lineNumber?: number } | null)?.lineNumber;
     return typeof ln === "number" && ln > 0 ? ln : undefined;
-}
-
-function serializeNode(node: Node): string {
-    const nt = node.nodeType;
-    if (nt === ATTRIBUTE_NODE) return (node as Attr).value;
-    if (nt === TEXT_NODE || nt === CDATA_SECTION_NODE) return (node as Text).data;
-    if (nt === COMMENT_NODE) return (node as Comment).data;
-    if (nt === PROCESSING_INSTRUCTION_NODE) return (node as ProcessingInstruction).data;
-    return (node as unknown as { toString: () => string }).toString();
 }

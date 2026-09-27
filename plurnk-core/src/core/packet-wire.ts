@@ -132,7 +132,6 @@ export interface RenderedLog {
 // {§packet-attachment-parts} — the attachment kinds and their readout weights live in one table.
 import { audioWeight, imageWeight, pdfWeight } from "./attachments.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
-export { imageWeight, pdfWeight };
 
 interface RenderedLogRow {
     readonly content: string;

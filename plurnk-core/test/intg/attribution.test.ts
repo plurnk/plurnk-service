@@ -37,7 +37,7 @@ test("each emission attempt composes opaque family hooks and records exactly wha
         const executors = new ExecutorRegistry(new Map());
         executors.attributions = ({ attempt }) => ["shared", `executor:${attempt}`];
         const mimetypes = new Mimetypes({
-            discovery: { registry: emptyRegistry(), handlers: new Map(), skipped: [] },
+            discovery: { registry: emptyRegistry(), handlers: new Map(), packageAttributions: new Map(), skipped: [] },
         });
         mimetypes.attributions = async ({ attempt }) => ["shared", `mimetype:${attempt}`];
 

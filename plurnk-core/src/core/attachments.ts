@@ -20,13 +20,13 @@ export const imageWeight = (width: number, height: number): number => Math.ceil(
 
 // Stable curation weight by pages; calibration adjusts capacity, never this cost. A document whose
 // page tree is unreadable (a compressed object stream) weighs by its bytes instead.
-export const PDF_TOKENS_PER_PAGE = 1500;
-export const PDF_BYTES_PER_TOKEN = 4;
+const PDF_TOKENS_PER_PAGE = 1500;
+const PDF_BYTES_PER_TOKEN = 4;
 export const pdfWeight = (pages: number | null, bytes: number): number =>
     pages === null ? Math.ceil(bytes / PDF_BYTES_PER_TOKEN) : pages * PDF_TOKENS_PER_PAGE;
 
 // Stable curation units, not codec- or provider-specific token usage.
-export const AUDIO_TOKENS_PER_SECOND = 32;
+const AUDIO_TOKENS_PER_SECOND = 32;
 export const audioWeight = (duration: number | null, bytes: number): number =>
     duration === null ? Math.ceil(bytes / 4) : Math.ceil(duration * AUDIO_TOKENS_PER_SECOND);
 

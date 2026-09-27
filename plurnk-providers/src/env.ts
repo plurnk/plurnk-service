@@ -1,7 +1,7 @@
 // Env-parsing helpers shared by provider construction. `label` keeps failures
 // local to the selected provider.
 
-import { EFFORTS, Validator, type Effort } from "@plurnk/plurnk-contracts";
+import { EFFORTS, MAX_TIMER_MS, Validator, type Effort } from "@plurnk/plurnk-contracts";
 import RequestFields from "./RequestFields.ts";
 import type { CacheAffinity } from "./AiSdkProvider.ts";
 import { providerSetting } from "./provider-env.ts";
@@ -21,12 +21,10 @@ export const parseRequiredInt = (raw: string | undefined, name: string, label: s
     return n;
 };
 
-export const MAX_PROVIDER_TIMEOUT_MS = 2_147_483_647;
-
 export const parseTimeoutMs = (raw: string | undefined, name: string, label: string): number => {
     const timeoutMs = parseRequiredInt(raw, name, label);
-    if (timeoutMs > MAX_PROVIDER_TIMEOUT_MS) {
-        throw new Error(`${label} provider: ${name} must be at most ${MAX_PROVIDER_TIMEOUT_MS} milliseconds (got "${raw}")`);
+    if (timeoutMs > MAX_TIMER_MS) {
+        throw new Error(`${label} provider: ${name} must be at most ${MAX_TIMER_MS} milliseconds (got "${raw}")`);
     }
     return timeoutMs;
 };

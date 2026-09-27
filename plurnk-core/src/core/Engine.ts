@@ -288,7 +288,7 @@ export default class Engine {
         // raw-content fitContent fallback. Daemon-managed Engine receives a
         // production-configured Mimetypes via the constructor arg.
         this.#mimetypes = mimetypes ?? new Mimetypes({
-            discovery: { registry: emptyRegistry(), handlers: new Map(), skipped: [] } });
+            discovery: { registry: emptyRegistry(), handlers: new Map(), packageAttributions: new Map(), skipped: [] } });
         // {§tokenomics-agnostic-ruler} — standalone construction and the daemon
         // use the same default; provider request counting remains confined to
         // provider-owned capacity assessment.

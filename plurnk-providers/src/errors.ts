@@ -80,9 +80,9 @@ const preview = (value: unknown, limit: number | undefined): string => {
         : text;
 };
 
-export type ProviderFailureCauseKind = "transport_terminated" | "invalid_json" | "schema_invalid" | "invalid_response_data" | "internal";
+type ProviderFailureCauseKind = "transport_terminated" | "invalid_json" | "schema_invalid" | "invalid_response_data" | "internal";
 
-export interface ProviderFailureCause {
+interface ProviderFailureCause {
     readonly causeKind: ProviderFailureCauseKind;
     readonly causeName: string;
     readonly causeMessage: string;

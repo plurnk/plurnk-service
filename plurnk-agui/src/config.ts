@@ -1,3 +1,5 @@
+import { MAX_TIMER_MS } from "@plurnk/plurnk-contracts";
+
 export interface ModuleOptions {
     readonly host: string;
     readonly port: number;
@@ -16,8 +18,6 @@ export interface ResolvedModuleOptions {
     readonly maxTurns?: number;
     readonly heartbeatMs: number;
 }
-
-const MAX_TIMER_MS = 2_147_483_647;
 
 const safeInteger = (
     raw: unknown,

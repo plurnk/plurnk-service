@@ -35,7 +35,7 @@ function makeDiscovery(): Discovery {
         byExtension: new Map([[".tst", "text/x-test"], [".tst2", "text/x-test2"]]),
         byFilename: new Map(),
     };
-    return { registry, handlers: new Map([["text/x-test", INFO], ["text/x-test2", INFO2]]), skipped: [] };
+    return { registry, handlers: new Map([["text/x-test", INFO], ["text/x-test2", INFO2]]), packageAttributions: new Map(), skipped: [] };
 }
 
 function lifecycleMimetypes({
