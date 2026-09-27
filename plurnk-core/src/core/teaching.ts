@@ -1,4 +1,4 @@
-import Knob from "./Knob.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 
 // {§schemes-directory} — PLURNK_SERVICE_DOCS_EXCLUDE is a comma list of scheme
 // names omitted from materialized references. Tool

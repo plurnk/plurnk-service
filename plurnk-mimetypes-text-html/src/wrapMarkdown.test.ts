@@ -62,7 +62,7 @@ describe("markdownWrapColumns", () => {
             assert.equal(markdownWrapColumns(), 0);
             for (const invalid of ["-1", "1.5", "wide"]) {
                 process.env.PLURNK_MIMETYPES_HTML_WRAP_COLUMNS = invalid;
-                assert.throws(markdownWrapColumns, /must be 0 or a positive integer/);
+                assert.throws(markdownWrapColumns, /PLURNK_MIMETYPES_HTML_WRAP_COLUMNS must be a safe integer of at least 0/);
             }
         } finally {
             if (prior === undefined) delete process.env.PLURNK_MIMETYPES_HTML_WRAP_COLUMNS;

@@ -216,7 +216,6 @@ export default class Http implements SchemeHandler {
         traits: ["web"],
     };
 
-    readonly #errorDetailLimit: number;
     readonly #webFetcher: WebFetcher;
     // {§web-materialization-contract}: published for the entry sink; reached through the registry.
     readonly webMaterializer: WebMaterializer;
@@ -227,11 +226,10 @@ export default class Http implements SchemeHandler {
     readonly #requester: HttpRequester;
     readonly #live = new LiveAcquisitions();
     constructor() {
-        this.#errorDetailLimit = ErrorDetail.configuredLimit();
         this.#webFetcher = new WebFetcher();
         this.webMaterializer = this.#webFetcher;
-        this.#get = new HttpGet({ live: this.#live, errorDetailLimit: this.#errorDetailLimit, webFetcher: this.#webFetcher, address: Http.#address, requestHeaders: Http.#requestHeaders, passthrough: Http.#passthrough, requestMethod: Http.#requestMethod, reusableGetRepresentation: Http.#reusableGetRepresentation, materializerIdentity: Http.#materializerIdentity, validators: Http.#validators, materializationFailure: Http.#materializationFailure, sourceMimetype: Http.#sourceMimetype, fresh: Http.#fresh, cancelled: Http.#cancelled, bad: Http.#bad, revalidationCorresponds: Http.#revalidationCorresponds, refreshAfter304: Http.#refreshAfter304, seedEntry: Http.#seedEntry, settleEventStream: Http.#settleEventStream });
-        this.#requester = new HttpRequester({ live: this.#live, manifest: Http.manifest, errorDetailLimit: this.#errorDetailLimit, address: Http.#address, requestHeaders: Http.#requestHeaders, bad: Http.#bad, seedEntry: Http.#seedEntry, passthrough: Http.#passthrough, responseHeader: Http.#responseHeader, writeProjectionIdentity: Http.#writeProjectionIdentity, cancelled: Http.#cancelled, materializationFailure: Http.#materializationFailure });
+        this.#get = new HttpGet({ live: this.#live, webFetcher: this.#webFetcher, address: Http.#address, requestHeaders: Http.#requestHeaders, passthrough: Http.#passthrough, requestMethod: Http.#requestMethod, reusableGetRepresentation: Http.#reusableGetRepresentation, materializerIdentity: Http.#materializerIdentity, validators: Http.#validators, materializationFailure: Http.#materializationFailure, sourceMimetype: Http.#sourceMimetype, fresh: Http.#fresh, cancelled: Http.#cancelled, bad: Http.#bad, revalidationCorresponds: Http.#revalidationCorresponds, refreshAfter304: Http.#refreshAfter304, seedEntry: Http.#seedEntry, settleEventStream: Http.#settleEventStream });
+        this.#requester = new HttpRequester({ live: this.#live, manifest: Http.manifest, address: Http.#address, requestHeaders: Http.#requestHeaders, bad: Http.#bad, seedEntry: Http.#seedEntry, passthrough: Http.#passthrough, responseHeader: Http.#responseHeader, writeProjectionIdentity: Http.#writeProjectionIdentity, cancelled: Http.#cancelled, materializationFailure: Http.#materializationFailure });
     }
 
     async ready(): Promise<void> {
@@ -448,7 +446,7 @@ export default class Http implements SchemeHandler {
     static async #settleEventStream(
         subscription: StreamSubscription,
         response: Response,
-        options: { url: string; method: string; signal: AbortSignal; errorDetailLimit: number },
+        options: { url: string; method: string; signal: AbortSignal },
     ): Promise<void> {
         try {
             const events = await Http.#streamEvents(subscription, response);
@@ -465,7 +463,7 @@ export default class Http implements SchemeHandler {
                 return;
             }
             console.error("HTTP SSE stream failed", { method: options.method, url: options.url, error });
-            const cause = ErrorDetail.preview(error, options.errorDetailLimit);
+            const cause = ErrorDetail.preview(error);
             const reason = `HTTP ${options.method} ${options.url} failed: ${cause}`;
             const result = Http.#bad(
                 502,

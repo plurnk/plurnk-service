@@ -9,7 +9,7 @@ import { stat } from "node:fs/promises";
 import { matchesGlob, resolve } from "node:path";
 import { Validator, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type JsonSchema } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
-import Knob from "../core/Knob.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 import type Engine from "../core/Engine.ts";
 import FileCreationPolicy, { type FileCreateScope } from "../core/file-creation-policy.ts";
 import GitMembership, { type OverlayResolution, type OverlayRow } from "../core/git-membership.ts";

@@ -93,6 +93,27 @@ Coordinated capabilities spanning families use explicit daemon-module
 composition ({§module-lifecycle}); a multi-kind manifest is not a parallel
 module mechanism.
 
+### §env-knob One environment reader
+
+`Knob` reads a declared key from the system environment by name and nothing
+else: `text`, `list`, `flag` (exactly `0` or `1`), `choice` (one of a
+vocabulary), `percent` (`80%` is 0.8) and `integer(name, floor)` (a safe
+integer of at least the floor, which bounds what the operator may say and is
+never a value used in the operator's place). An unset key is a broken floor
+and an invalid value is the operator's mistake; both crash naming the key.
+No reader accepts a fallback: a signature that could carry one is a second
+home for a choice. Every package reads its knobs through it, so the failure
+wording has one home.
+
+### §error-detail-bound One diagnostic-preview bound
+
+`new ErrorDetail(knob)` binds a package's model-facing diagnostic preview to
+that package's `*_ERROR_DETAIL_LIMIT` knob, read through {§env-knob}:
+`preview(value)` keeps at most that many characters of an error's message
+(or a value's string form) and marks the cut with `...`. The bound is read at
+each preview; an unset or invalid bound crashes by name at the first
+diagnostic, never degrades into an unbounded one.
+
 ### §plugin-manifest-read One package.json read
 
 `Meta.readManifest(dir, kind)` is the one read of a package's family claim:

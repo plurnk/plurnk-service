@@ -12,15 +12,11 @@
 import type { Db } from "../core/Db.ts";
 import type { MimeSymbol, MimeRef } from "@plurnk/plurnk-mimetypes";
 import type { SearchCandidate } from "./_search-candidate.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 
 export default class EntryGraph {
     static storeBatch(): number {
-        const raw = process.env.PLURNK_SERVICE_DERIVE_STORE_BATCH;
-        const value = Number(raw);
-        if (!Number.isSafeInteger(value) || value < 1) {
-            throw new RangeError(`PLURNK_SERVICE_DERIVE_STORE_BATCH must be a positive safe integer; got ${JSON.stringify(raw)}`);
-        }
-        return value;
+        return Knob.integer("PLURNK_SERVICE_DERIVE_STORE_BATCH", 1);
     }
 
     // Replace an entry's graph rows with the given extracted symbols/references

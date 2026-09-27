@@ -1,11 +1,7 @@
 import { RETRYABLE_PROVIDER_KINDS, type ProviderErrorKind } from "@plurnk/plurnk-providers";
+import { Knob } from "@plurnk/plurnk-meta";
 
-const readMilliseconds = (key: string): number => {
-    const raw = process.env[key];
-    const value = Number.parseInt(raw ?? "", 10);
-    if (!Number.isInteger(value) || value < 0) throw new Error(`${key} must be a non-negative integer of milliseconds; got ${raw}`);
-    return value;
-};
+const readMilliseconds = (key: string): number => Knob.integer(key, 0);
 
 // {§provider-recovery} — the one owner of what a recoverable provider failure is and how long a
 // call keeps being re-issued: the loop's own inference and BARE's isolated calls both read it here.

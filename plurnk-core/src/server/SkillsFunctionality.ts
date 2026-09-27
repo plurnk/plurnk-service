@@ -22,7 +22,7 @@ import {
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import HostPaths from "../core/HostPaths.ts";
-import Knob from "../core/Knob.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 import Paths from "../Paths.ts";
 import type {
     FunctionalityDefinitionSource,

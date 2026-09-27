@@ -20,7 +20,7 @@ const comparePosition = (
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, type BaseHandler } from "@plurnk/plurnk-mimetypes";
 import FabricatedLog from "./FabricatedLog.ts";
-import Meta, { type PluginAttributionContext } from "@plurnk/plurnk-meta";
+import Meta, { Knob, type PluginAttributionContext } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
 import GitMembership from "./git-membership.ts";
 import { acceptedKinds } from "./attachments.ts";
@@ -230,14 +230,7 @@ const allowanceCutMessage = (
     ? null
     : `emission truncated at the output allowance${grant === null ? "" : ` (${grant} tokens)`}`;
 
-const readEmissionAttempts = (): number => {
-    const raw = process.env.PLURNK_SERVICE_EMISSION_ATTEMPTS;
-    const value = Number.parseInt(raw ?? "", 10);
-    if (!Number.isInteger(value) || value < 1) {
-        throw new Error(`PLURNK_SERVICE_EMISSION_ATTEMPTS must be a positive integer; got ${raw}`);
-    }
-    return value;
-};
+const readEmissionAttempts = (): number => Knob.integer("PLURNK_SERVICE_EMISSION_ATTEMPTS", 1);
 
 
 // The wall's abort reason — runLoop branches a mid-turn teardown to the 504 terminal on it.

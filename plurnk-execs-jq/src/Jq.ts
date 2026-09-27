@@ -58,11 +58,6 @@ export default class Jq extends BaseExecutor {
             return Results.failure("executor:input", "input-unsupported", 501,
                 "This executor consumer does not provide live input.", {}, { retryable: false });
         }
-        const detailLimit = ErrorDetail.configuredLimit();
-        if (detailLimit === null) {
-            setState("results", "errored");
-            return ErrorDetail.invalidConfiguration("executor:jq");
-        }
         const program = body.trim() || ".";
         // target = the data-source file; spawn resolves a relative one against cwd
         // (the workspace). Absent → -n, the program stands alone
@@ -111,7 +106,7 @@ export default class Jq extends BaseExecutor {
                     "executor:jq",
                     "spawn-failed",
                     500,
-                    `Could not start jq: ${ErrorDetail.preview(e, detailLimit)}`,
+                    `Could not start jq: ${ErrorDetail.preview(e)}`,
                     {},
                     {
                         stage: "spawn",
@@ -142,7 +137,7 @@ export default class Jq extends BaseExecutor {
                     500,
                     err.trim() === ""
                         ? `jq exited with code ${code ?? -1}.`
-                        : ErrorDetail.preview(err.trim(), detailLimit),
+                        : ErrorDetail.preview(err.trim()),
                     { exitCode: code ?? -1 },
                     {
                         stage: "execution",

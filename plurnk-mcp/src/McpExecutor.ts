@@ -1,7 +1,6 @@
 import {
     BaseExecutor,
     ErrorDetail,
-    ERROR_DETAIL_LIMIT,
     Results,
     RuntimeInvocation,
 } from "@plurnk/plurnk-execs";
@@ -256,27 +255,17 @@ export default class McpExecutor extends BaseExecutor {
     }
 
     override async probe(signal?: AbortSignal): Promise<RuntimeAvailability> {
-        const detailLimit = ErrorDetail.configuredLimit();
-        if (detailLimit === null) {
-            return {
-                available: false,
-                detail: `${ERROR_DETAIL_LIMIT} must be set to a non-negative integer.`,
-            };
-        }
         try {
             return await this.requireAvailable(signal);
         } catch (error) {
             return {
                 available: false,
-                detail: ErrorDetail.preview(message(error), detailLimit),
+                detail: ErrorDetail.preview(message(error)),
             };
         }
     }
 
     async requireAvailable(signal?: AbortSignal): Promise<RuntimeAvailability> {
-        if (ErrorDetail.configuredLimit() === null) {
-            throw new Error(`${ERROR_DETAIL_LIMIT} must be set to a non-negative integer.`);
-        }
         const catalog = await this.#connection.catalog(signal);
         const selected = this.#selectTools(catalog.tools);
         this.#registry = RuntimeInvocation.assertToolRegistry(
@@ -330,11 +319,6 @@ export default class McpExecutor extends BaseExecutor {
                 },
             );
         };
-        const detailLimit = ErrorDetail.configuredLimit();
-        if (detailLimit === null) {
-            setState(CHANNEL, "errored");
-            return ErrorDetail.invalidConfiguration("executor:mcp");
-        }
         const input = body.trim();
         if (target === null || target.length === 0) {
             return fail(
@@ -377,7 +361,7 @@ export default class McpExecutor extends BaseExecutor {
                     {
                         tool: target,
                         retryable: false,
-                        diagnostic: ErrorDetail.preview(message(cause), detailLimit),
+                        diagnostic: ErrorDetail.preview(message(cause)),
                         recovery: "One JSON object per MCP tool call; a second call is a second fence.",
                     },
                 );
@@ -425,7 +409,7 @@ export default class McpExecutor extends BaseExecutor {
                     : "The MCP tool call failed.",
                 {
                     tool: target,
-                    ...(signal.aborted ? {} : { diagnostic: ErrorDetail.preview(message(error), detailLimit) }),
+                    ...(signal.aborted ? {} : { diagnostic: ErrorDetail.preview(message(error)) }),
                     retryable: false,
                 },
             );

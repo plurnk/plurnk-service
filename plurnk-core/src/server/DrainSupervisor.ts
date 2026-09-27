@@ -9,7 +9,7 @@ import type { Db } from "../core/Db.ts";
 import type { LoopUsage } from "../core/Engine.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
-import Knob from "../core/Knob.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 import LoopPolicies from "../core/LoopPolicies.ts";
 import type { LoopPolicy, LoopPolicyRequest } from "../core/types.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";

@@ -114,7 +114,7 @@ export default class WebFetcher implements WebMaterializer {
     }
 
     static unavailable(url: string, cause: unknown, allowConfiguredMaterializer: boolean): WebFetchResult {
-        const detail = ErrorDetail.preview(cause, ErrorDetail.configuredLimit());
+        const detail = ErrorDetail.preview(cause);
         const originFailure = {
             status: 502,
             code: "fetch-failed",

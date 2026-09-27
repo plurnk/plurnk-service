@@ -1,5 +1,5 @@
 import { PROPOSAL_POLICIES, Validator, type LoopPolicy, type LoopPolicyRequest } from "@plurnk/plurnk-contracts";
-import Knob from "./Knob.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 import Results, { OperationFailureError } from "./results.ts";
 
 // {§loop-policy-composition} — a loop's policy is what its creator stated over what the panel

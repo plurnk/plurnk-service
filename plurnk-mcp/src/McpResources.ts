@@ -11,7 +11,7 @@ import {
     type SchemeCtx,
     type SchemeResult,
 } from "@plurnk/plurnk-schemes";
-import { ErrorDetail, ERROR_DETAIL_LIMIT } from "@plurnk/plurnk-execs";
+import { ErrorDetail } from "@plurnk/plurnk-execs";
 import ServerConnection, { type ServerCatalog } from "./client.ts";
 import ResourceContent from "./ResourceContent.ts";
 import ContentProjection from "./ContentProjection.ts";
@@ -25,11 +25,7 @@ const RESOURCE_KIND = "mcp-resource";
 const CATALOG_KIND = "mcp-resource-catalog";
 const PROMPT_KIND = "mcp-prompt";
 
-const diagnostic = (error: unknown): string => {
-    const limit = ErrorDetail.configuredLimit();
-    if (limit === null) throw new Error(`${ERROR_DETAIL_LIMIT} must be set to a non-negative integer.`);
-    return ErrorDetail.preview(error, limit);
-};
+const diagnostic = (error: unknown): string => ErrorDetail.preview(error);
 
 class ResourceAddressError extends Error {}
 

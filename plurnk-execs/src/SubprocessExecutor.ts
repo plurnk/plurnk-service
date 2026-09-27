@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { Results } from "@plurnk/plurnk-schemes";
 import BaseExecutor from "./BaseExecutor.ts";
-import ErrorDetail, { ERROR_DETAIL_LIMIT } from "./ErrorDetail.ts";
+import ErrorDetail from "./ErrorDetail.ts";
 import Runtime from "./runtime.ts";
 import InvocationMetadata from "./InvocationMetadata.ts";
 import SubprocessInput from "./SubprocessInput.ts";
@@ -53,10 +53,6 @@ export default class SubprocessExecutor extends BaseExecutor {
         const bin = this.binary;
         if (bin === null) return { available: true };
         if (signal?.aborted) return { available: false };
-        const detailLimit = ErrorDetail.configuredLimit();
-        if (detailLimit === null) {
-            return { available: false, detail: `${ERROR_DETAIL_LIMIT} must be set to a non-negative integer.` };
-        }
         // No internal deadline — the per-probe timeout is the consumer's
         // ({§executor-probe}), handed in as `signal`. We pass it to spawn so a
         // resolved or
@@ -73,7 +69,7 @@ export default class SubprocessExecutor extends BaseExecutor {
                 ? { available: false }
                 : { available: false, detail: `${bin} not found on PATH` }));
             child.on("close", (code) => done(code === 0
-                ? { available: true, detail: ErrorDetail.preview(out.trim().split("\n")[0], detailLimit) || undefined }
+                ? { available: true, detail: ErrorDetail.preview(out.trim().split("\n")[0]) || undefined }
                 : { available: false, detail: `${bin} --version exited ${code}` }));
         });
     }
@@ -100,12 +96,6 @@ export default class SubprocessExecutor extends BaseExecutor {
             setState("stderr", "errored");
             return Promise.resolve(parsed.failure);
         }
-        const detailLimit = ErrorDetail.configuredLimit();
-        if (detailLimit === null) {
-            setState("stdout", "errored");
-            setState("stderr", "errored");
-            return Promise.resolve(ErrorDetail.invalidConfiguration("executor:subprocess"));
-        }
         let spawnArgs: SpawnArgs;
         try {
             spawnArgs = this.spawnArgs(runtime, body, target);
@@ -117,7 +107,7 @@ export default class SubprocessExecutor extends BaseExecutor {
                 "executor:subprocess",
                 "invalid-command",
                 400,
-                `Could not parse the '${runtime}' command: ${ErrorDetail.preview(cause, detailLimit)}.`,
+                `Could not parse the '${runtime}' command: ${ErrorDetail.preview(cause)}.`,
                 { exitCode: -1 },
                 {
                     runtime,
@@ -236,7 +226,7 @@ export default class SubprocessExecutor extends BaseExecutor {
                     "executor:subprocess",
                     "spawn-failed",
                     500,
-                    `Could not start '${runtime}': ${ErrorDetail.preview(err, detailLimit)}`,
+                    `Could not start '${runtime}': ${ErrorDetail.preview(err)}`,
                     { exitCode: -1 },
                     {
                         runtime,

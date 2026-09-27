@@ -149,14 +149,10 @@ test("the configured error preview bounds rejected SQL facts", async () => {
     assert.equal(result.problem?.rejectedTail, "SECOND...");
 });
 
-test("an invalid error preview is an exact configuration Problem", async () => {
+// {§error-detail-bound} — an invalid bound crashes by name at the first diagnostic; nothing degrades.
+test("an invalid error preview bound crashes by name", async () => {
     process.env[ERROR_DETAIL_LIMIT] = "-2";
-    const { result } = await run("SELECT 1");
-
-    assert.equal(result.status, 500);
-    assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/sqlite/invalid-configuration");
-    assert.equal(result.problem?.configuration, ERROR_DETAIL_LIMIT);
-    assert.equal(result.problem?.stage, "configuration");
+    await assert.rejects(run("SELECT 1; SECOND"), /PLURNK_EXECS_ERROR_DETAIL_LIMIT must be a safe integer of at least 0/);
 });
 
 test("a trailing semicolon and trailing comments are NOT a second statement", async () => {

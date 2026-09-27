@@ -1,5 +1,5 @@
 import type { Effect } from "@plurnk/plurnk-execs";
-import Knob from "../core/Knob.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 
 export type ExecPolicy = "propose" | "auto";
 

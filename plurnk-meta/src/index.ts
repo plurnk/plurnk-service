@@ -4,6 +4,10 @@
 //   - readManifest:       the ONE package.json read: a family's manifest, or null for
 //                         anything that is not a package of that family. Field
 //                         validation past the family claim is the caller's.
+//   - Knob:               the ONE environment reader: the panel's value by name, or a
+//                         crash by name ({§env-knob}).
+//   - ErrorDetail:        the ONE diagnostic-preview bound, per package knob
+//                         ({§error-detail-bound}).
 //   - isTrusted:          THE trust rule. One implementation; a second definition
 //                         of membership trust anywhere in the family is a bug.
 //   - normalizeAttribution:
@@ -25,6 +29,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { parseEnv } from "node:util";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+export { default as Knob } from "./Knob.ts";
+export { default as ErrorDetail } from "./ErrorDetail.ts";
 
 export interface PackageCandidate {
     dir: string;

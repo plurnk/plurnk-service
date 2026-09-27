@@ -42,7 +42,7 @@ import WorkspaceStorage from "./WorkspaceStorage.ts";
 import Fork from "../core/fork.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
-import Knob from "../core/Knob.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 import LoopPolicies from "../core/LoopPolicies.ts";
 import LoopPolicyReader from "../core/LoopPolicyReader.ts";
 import { contentWeight } from "../core/content-weight.ts";

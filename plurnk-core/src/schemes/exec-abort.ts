@@ -1,4 +1,4 @@
-import Knob from "../core/Knob.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 // The abort-reason protocol @plurnk/plurnk-execs' SubprocessExecutor reads off `signal.reason`:
 //   { signal }                       → deliver exactly that Unix signal, once, no escalation.
 //   { housekeeping: true, graceMs }  → loop/worker teardown: the polite signal, then SIGKILL after graceMs.

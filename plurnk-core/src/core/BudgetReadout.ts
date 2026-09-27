@@ -1,4 +1,4 @@
-import Knob from "./Knob.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 const TOKENS_ACTIVE_TOTAL_PLACEHOLDER = "{{logTokensTotal}}";
 const MAX_WIDTH_PASSES = 64;
 

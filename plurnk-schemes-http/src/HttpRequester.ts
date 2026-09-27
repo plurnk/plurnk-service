@@ -10,7 +10,6 @@ import HostPolicy from "./HostPolicy.ts";
 
 export default class HttpRequester {
     readonly #manifest: SchemeManifest;
-    readonly #errorDetailLimit: number;
     readonly #address: (target: UrlPath) => NetworkAddress | PassthroughResult;
     readonly #requestHeaders: (metadata: readonly string[] | null) => Array<[string, string]> | (PassthroughResult & ChannelProducerResult);
     readonly #bad: (status: number, scheme: string, kind: string, message: string, extensions?: Readonly<Record<string, unknown>>) => PassthroughResult & ChannelProducerResult;
@@ -22,9 +21,8 @@ export default class HttpRequester {
     readonly #materializationFailure: (url: string, method: string, error: WebMaterializationError) => PassthroughResult & ChannelProducerResult;
 
     readonly #live: LiveAcquisitions;
-    constructor({ live, manifest, errorDetailLimit, address, requestHeaders, bad, seedEntry, passthrough, responseHeader, writeProjectionIdentity, cancelled, materializationFailure }: {
+    constructor({ live, manifest, address, requestHeaders, bad, seedEntry, passthrough, responseHeader, writeProjectionIdentity, cancelled, materializationFailure }: {
         manifest: SchemeManifest;
-        errorDetailLimit: number;
         address: (target: UrlPath) => NetworkAddress | PassthroughResult;
         requestHeaders: (metadata: readonly string[] | null) => Array<[string, string]> | (PassthroughResult & ChannelProducerResult);
         bad: (status: number, scheme: string, kind: string, message: string, extensions?: Readonly<Record<string, unknown>>) => PassthroughResult & ChannelProducerResult;
@@ -38,7 +36,6 @@ export default class HttpRequester {
     }) {
         this.#live = live;
         this.#manifest = manifest;
-        this.#errorDetailLimit = errorDetailLimit;
         this.#address = address;
         this.#requestHeaders = requestHeaders;
         this.#bad = bad;
@@ -200,7 +197,7 @@ export default class HttpRequester {
                 return result;
             }
             console.error("HTTP acquisition failed", { method, url, err });
-            const cause = ErrorDetail.preview(err, this.#errorDetailLimit);
+            const cause = ErrorDetail.preview(err);
             const reason = `HTTP ${method} ${url} failed: ${cause}`;
             // The remaining catch owns acquisition failure; cancellation and
             // typed materialization failures settled above.

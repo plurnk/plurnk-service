@@ -41,8 +41,12 @@ test("{§a2a-environment-projection} environment definitions are the service bas
     ]);
 });
 
-test("{§a2a-problem-detail} A2A Problems bound caught diagnostics and keep request facts out of prose", async () => {
-    const family = new A2aFunctionality({ [ERROR_DETAIL_LIMIT]: "4" });
+test("{§a2a-problem-detail} A2A Problems bound caught diagnostics and keep request facts out of prose", async (t) => {
+    // {§error-detail-bound}: the bound is the system environment's, not the offered configuration's.
+    const prior = process.env[ERROR_DETAIL_LIMIT];
+    process.env[ERROR_DETAIL_LIMIT] = "4";
+    t.after(() => { if (prior === undefined) delete process.env[ERROR_DETAIL_LIMIT]; else process.env[ERROR_DETAIL_LIMIT] = prior; });
+    const family = new A2aFunctionality(diagnosticEnv);
     const invalidSource = await problemOf(() => family.discover({ source: "ftp://sensitive.example" }));
     assert.equal(invalidSource.detail, "A2A discovery requires an absolute HTTP(S) agent URL.");
     assert.doesNotMatch(invalidSource.detail, /sensitive/u);

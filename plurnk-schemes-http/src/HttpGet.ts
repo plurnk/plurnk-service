@@ -9,7 +9,6 @@ import { requireFlagEnv } from "./Config.ts";
 const LLMS_TEXT_ATTEMPT_TTL_MS = 3_600_000;
 
 export default class HttpGet {
-    readonly #errorDetailLimit: number;
     readonly #webFetcher: WebFetcher;
     readonly #address: (target: UrlPath) => NetworkAddress | PassthroughResult;
     readonly #requestHeaders: (metadata: readonly string[] | null) => Array<[string, string]> | (PassthroughResult & ChannelProducerResult);
@@ -26,12 +25,11 @@ export default class HttpGet {
     readonly #revalidationCorresponds: (priorHeader: string, responseHeaders: Headers) => boolean;
     readonly #refreshAfter304: (header: string, responseHeaders: ReadonlyArray<readonly [string, string]>, requestHeaders: ReadonlyArray<readonly [string, string]>) => string;
     readonly #seedEntry: () => EntryData;
-    readonly #settleEventStream: (subscription: StreamSubscription, response: Response, options: { url: string; method: string; signal: AbortSignal; errorDetailLimit: number }) => Promise<void>;
+    readonly #settleEventStream: (subscription: StreamSubscription, response: Response, options: { url: string; method: string; signal: AbortSignal }) => Promise<void>;
     readonly #llmsTextAttempts = new Map<string, number>();
 
     readonly #live: LiveAcquisitions;
-    constructor({ live, errorDetailLimit, webFetcher, address, requestHeaders, passthrough, requestMethod, reusableGetRepresentation, materializerIdentity, validators, materializationFailure, sourceMimetype, fresh, cancelled, bad, revalidationCorresponds, refreshAfter304, seedEntry, settleEventStream }: {
-        errorDetailLimit: number;
+    constructor({ live, webFetcher, address, requestHeaders, passthrough, requestMethod, reusableGetRepresentation, materializerIdentity, validators, materializationFailure, sourceMimetype, fresh, cancelled, bad, revalidationCorresponds, refreshAfter304, seedEntry, settleEventStream }: {
         webFetcher: WebFetcher;
         address: (target: UrlPath) => NetworkAddress | PassthroughResult;
         requestHeaders: (metadata: readonly string[] | null) => Array<[string, string]> | (PassthroughResult & ChannelProducerResult);
@@ -48,11 +46,10 @@ export default class HttpGet {
         revalidationCorresponds: (priorHeader: string, responseHeaders: Headers) => boolean;
         refreshAfter304: (header: string, responseHeaders: ReadonlyArray<readonly [string, string]>, requestHeaders: ReadonlyArray<readonly [string, string]>) => string;
         seedEntry: () => EntryData;
-        settleEventStream: (subscription: StreamSubscription, response: Response, options: { url: string; method: string; signal: AbortSignal; errorDetailLimit: number }) => Promise<void>;
+        settleEventStream: (subscription: StreamSubscription, response: Response, options: { url: string; method: string; signal: AbortSignal }) => Promise<void>;
         live: LiveAcquisitions;
     }) {
         this.#live = live;
-        this.#errorDetailLimit = errorDetailLimit;
         this.#webFetcher = webFetcher;
         this.#address = address;
         this.#requestHeaders = requestHeaders;
@@ -285,7 +282,6 @@ export default class HttpGet {
             url: address.url,
             method: "GET",
             signal: local.signal,
-            errorDetailLimit: this.#errorDetailLimit,
         }).catch((error: unknown) => {
             console.error("HTTP SSE terminal cleanup failed", { url: address.url, error });
         }).finally(() => releaseStream());

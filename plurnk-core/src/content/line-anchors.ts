@@ -1,3 +1,4 @@
+import { Knob } from "@plurnk/plurnk-meta";
 import { createHash } from "node:crypto";
 import type { LineMarker, TextLineMarker } from "@plurnk/plurnk-contracts";
 import type { EditStatement } from "@plurnk/plurnk-contracts";
@@ -87,14 +88,7 @@ export default class LineAnchors {
     }
 
     static #contextLines(): number {
-        const raw = process.env.PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES;
-        const value = Number(raw);
-        if (!Number.isSafeInteger(value) || value < 0) {
-            throw new RangeError(
-                `PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES must be a non-negative safe integer, got ${JSON.stringify(raw)}`,
-            );
-        }
-        return value;
+        return Knob.integer("PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES", 0);
     }
 
     static #digest(value: string | readonly unknown[]): string {

@@ -1,14 +1,11 @@
 import type { ExecInputReceiver } from "@plurnk/plurnk-execs";
 import Results, { type SchemeResult } from "../core/results.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 
 // {§exec-input} Input belongs to the existing invocation.
 export default class ExecutionInput {
     static configuredTimeout(): number {
-        const timeout = Number(process.env.PLURNK_SERVICE_EXEC_INPUT_TIMEOUT_MS);
-        if (!Number.isSafeInteger(timeout) || timeout < 1) {
-            throw new RangeError("PLURNK_SERVICE_EXEC_INPUT_TIMEOUT_MS must be a positive safe integer.");
-        }
-        return timeout;
+        return Knob.integer("PLURNK_SERVICE_EXEC_INPUT_TIMEOUT_MS", 1);
     }
 
     readonly #lifetime: AbortSignal;

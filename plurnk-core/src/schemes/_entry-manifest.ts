@@ -12,7 +12,7 @@ import type {
     EntryStreamLifecycle,
 } from "@plurnk/plurnk-schemes";
 import { renderAddress } from "../core/plurnk-uri.ts";
-import Knob from "../core/Knob.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 
 type ManifestRow = {
     entry_id: number;

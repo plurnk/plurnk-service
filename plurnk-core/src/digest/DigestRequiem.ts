@@ -1,3 +1,4 @@
+import { Knob } from "@plurnk/plurnk-meta";
 // The requiem ({§digest-requiem}): an out-of-band forensic interview of a completed worker history.
 import {
     closeSync,
@@ -57,15 +58,7 @@ const requiemResponseEvidence = (response: unknown): unknown => {
     const { rawBody: _nestedRawBody, ...assistantRaw } = withoutRawBody.assistantRaw;
     return { ...withoutRawBody, assistantRaw };
 };
-const readPositiveInt = (name: string): number => {
-    const raw = process.env[name];
-    if (raw === undefined) throw new Error(`${name} is unset; the .env.defaults floor must declare it`);
-    const value = Number(raw);
-    if (!Number.isSafeInteger(value) || value <= 0) {
-        throw new Error(`${name} must be a positive integer; got ${JSON.stringify(raw)}`);
-    }
-    return value;
-};
+const readPositiveInt = (name: string): number => Knob.integer(name, 1);
 
 const writeJsonDurably = (path: string, value: unknown): void => {
     const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;

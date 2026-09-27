@@ -19,9 +19,8 @@ const readPolicy = async (path: string, explicit: boolean): Promise<string | nul
     catch (err) { if (explicit) throw err; return null; }
 };
 
-// System Policy: PLURNK_SERVICE_POLICY (~-expanded) or the XDG config policy. An EXPLICITLY-empty
-// PLURNK_SERVICE_POLICY disables it (undefined → default; "" → off; a path → that file). The Mock
-// fixture clears the ambient default; each real-model harness names its exact higher-precedence policy.
+// {§policy-sections}: the panel's PLURNK_SERVICE_POLICY (~-expanded), or when unset the policy member
+// of {§host-path-layout}; an explicitly empty value is off.
 export const readSystemPolicy = async (): Promise<string | null> => {
     const raw = process.env.PLURNK_SERVICE_POLICY;
     if (raw !== undefined && raw.trim() === "") return null; // explicit empty → off (test isolation)

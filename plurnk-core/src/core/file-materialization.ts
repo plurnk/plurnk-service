@@ -1,3 +1,4 @@
+import { Knob } from "@plurnk/plurnk-meta";
 import { FileByteSource, type ByteSource, type ChannelProducerResult } from "@plurnk/plurnk-schemes";
 import Results from "./results.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -33,9 +34,9 @@ export default class FileMaterialization {
     }
 
     static maximumBytes(): number {
-        const value = Number(process.env[CONFIG_NAME]);
-        if (!Number.isSafeInteger(value) || value < 1 || value > STORAGE_MAXIMUM_BYTES) {
-            throw new RangeError(`${CONFIG_NAME} must be a safe integer byte count between 1 and ${STORAGE_MAXIMUM_BYTES}, got ${JSON.stringify(process.env[CONFIG_NAME])}.`);
+        const value = Knob.integer(CONFIG_NAME, 1);
+        if (value > STORAGE_MAXIMUM_BYTES) {
+            throw new RangeError(`${CONFIG_NAME} must be a safe integer byte count between 1 and ${STORAGE_MAXIMUM_BYTES}, got ${value}.`);
         }
         return value;
     }

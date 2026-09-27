@@ -1,3 +1,4 @@
+import { Knob } from "@plurnk/plurnk-meta";
 // Search-index materialization for every readable workspace channel. Entry
 // channels and logs attach to the same immutable, content-addressed derivation
 // artifacts; FTS and graph relationships consume them uniformly.
@@ -186,11 +187,7 @@ export default class SearchIndex {
     }
 
     static progressHeartbeatMs(): number {
-        const progressHeartbeatMs = Number(process.env.PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS);
-        if (!Number.isInteger(progressHeartbeatMs) || progressHeartbeatMs <= 0) {
-            throw new RangeError(`PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS must be a positive integer; got ${JSON.stringify(process.env.PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS)}`);
-        }
-        return progressHeartbeatMs;
+        return Knob.integer("PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS", 1);
     }
 
     static producerConcurrency(): number {

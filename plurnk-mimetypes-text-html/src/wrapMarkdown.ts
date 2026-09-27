@@ -1,15 +1,9 @@
+import { Knob } from "@plurnk/plurnk-meta";
+
 const knob = "PLURNK_MIMETYPES_HTML_WRAP_COLUMNS";
 
 export function markdownWrapColumns(): number {
-    const raw = process.env[knob];
-    if (raw === undefined || raw === "") {
-        throw new Error(`${knob} is required`);
-    }
-    const columns = Number(raw);
-    if (!Number.isSafeInteger(columns) || columns < 0) {
-        throw new Error(`${knob} must be 0 or a positive integer`);
-    }
-    return columns;
+    return Knob.integer(knob, 0);
 }
 
 export function wrapMarkdown(markdown: string, columns = markdownWrapColumns()): string {

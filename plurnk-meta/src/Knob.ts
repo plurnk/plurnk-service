@@ -1,7 +1,8 @@
-// {§operator-config-only-home} — a knob is read from the system environment, and its value lives on
-// the panel and nowhere else. The floor guarantees every declared key, so an unset key is a broken
-// deployment and an invalid one is the operator's mistake: both crash by name, never degrade. No
-// reader here accepts a value, because a signature that could carry one is a second home for a choice.
+// {§env-knob} — a knob is read from the system environment, and its value lives on the panel and
+// nowhere else ({§operator-config-only-home}). The floor guarantees every declared key, so an unset
+// key is a broken deployment and an invalid one is the operator's mistake: both crash by name, never
+// degrade. No reader here accepts a value, because a signature that could carry one is a second home
+// for a choice. This is the one reader; a package that spells its own has a second home for the rule.
 export default class Knob {
     static text(name: string): string {
         const raw = process.env[name];

@@ -12,7 +12,7 @@ const withEnv = (name: string, value: string | undefined, body: () => void): voi
     }
 };
 
-test("{§operator-config-only-home} a knob is the panel's value, read from the system environment", () => {
+test("{§env-knob} a knob is the panel's value, read from the system environment", () => {
     withEnv("PLURNK_TEST_KNOB", "7", () => assert.equal(Knob.integer("PLURNK_TEST_KNOB", 0), 7));
     withEnv("PLURNK_TEST_KNOB", "-1", () => assert.equal(Knob.integer("PLURNK_TEST_KNOB", -1), -1, "a sentinel the floor admits is a value"));
     withEnv("PLURNK_TEST_KNOB", " a, b ,,c ", () => assert.deepEqual(Knob.list("PLURNK_TEST_KNOB"), ["a", "b", "c"]));
@@ -24,7 +24,7 @@ test("{§operator-config-only-home} a knob is the panel's value, read from the s
     withEnv("PLURNK_TEST_KNOB", "12.5%", () => assert.equal(Knob.percent("PLURNK_TEST_KNOB"), 0.125));
 });
 
-test("{§operator-config-only-home} an unset key is a broken floor and an invalid one is the operator's mistake: both crash by name", () => {
+test("{§env-knob} an unset key is a broken floor and an invalid one is the operator's mistake: both crash by name", () => {
     withEnv("PLURNK_TEST_KNOB", undefined, () => {
         assert.throws(() => Knob.text("PLURNK_TEST_KNOB"), /PLURNK_TEST_KNOB is missing from the assembled environment floor/);
         assert.throws(() => Knob.integer("PLURNK_TEST_KNOB", 0), /missing from the assembled environment floor/);
@@ -46,7 +46,7 @@ test("{§operator-config-only-home} an unset key is a broken floor and an invali
     ));
 });
 
-test("{§operator-config-only-home} no reader accepts a value: a default cannot be written at a read", () => {
+test("{§env-knob} no reader accepts a value: a default cannot be written at a read", () => {
     assert.equal(Knob.text.length, 1);
     assert.equal(Knob.list.length, 1);
     assert.equal(Knob.integer.length, 2, "a name and a bound, and nothing that could stand in for the panel");

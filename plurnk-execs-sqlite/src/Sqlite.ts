@@ -73,7 +73,6 @@ export default class Sqlite extends BaseExecutor {
         }
         const path = dbPath(cwd, target);
         const sql = body.trim();
-        const errorPreview = ErrorDetail.configuredLimit();
         const fail = (
             kind: string,
             message: string,
@@ -93,10 +92,6 @@ export default class Sqlite extends BaseExecutor {
                 },
             );
         };
-        if (errorPreview === null) {
-            setState("results", "errored");
-            return ErrorDetail.invalidConfiguration("executor:sqlite");
-        }
 
         let db: DatabaseSync;
         try {
@@ -104,7 +99,7 @@ export default class Sqlite extends BaseExecutor {
         } catch (err) {
             return fail(
                 "sqlite-open-failed",
-                `SQLite could not open '${path}': ${ErrorDetail.preview(err, errorPreview)}`,
+                `SQLite could not open '${path}': ${ErrorDetail.preview(err)}`,
                 500,
                 {
                     stage: "open",
@@ -119,7 +114,7 @@ export default class Sqlite extends BaseExecutor {
             db.close();
             return fail(
                 "sqlite-invalid-statement",
-                `SQLite could not prepare the statement: ${ErrorDetail.preview(err, errorPreview)}`,
+                `SQLite could not prepare the statement: ${ErrorDetail.preview(err)}`,
                 400,
                 {
                     stage: "prepare",
@@ -142,7 +137,7 @@ export default class Sqlite extends BaseExecutor {
                     400,
                     {
                         stage: "prepare",
-                        rejectedTail: ErrorDetail.preview(tail, errorPreview),
+                        rejectedTail: ErrorDetail.preview(tail),
                         recovery: "Run each SQL statement in a separate operation.",
                         retryable: false,
                     });
@@ -155,7 +150,7 @@ export default class Sqlite extends BaseExecutor {
         } catch (err) {
             return fail(
                 "sqlite-error",
-                `SQLite could not execute the statement: ${ErrorDetail.preview(err, errorPreview)}`,
+                `SQLite could not execute the statement: ${ErrorDetail.preview(err)}`,
                 500,
                 {
                     stage: "execution",

@@ -14,7 +14,7 @@ import type {
 import LineMarkerOps from "./line-marker.ts";
 import ScopeFormat from "./scope-format.ts";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
-import Knob from "../core/Knob.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 
 export interface ReceiptEdit {
     readonly marker: LineMarker;
@@ -428,16 +428,7 @@ const codePointEffects = (
     });
 };
 
-const contextRadius = (): number => {
-    const raw = process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;
-    const value = Number(raw);
-    if (!Number.isSafeInteger(value) || value < 0) {
-        throw new Error(
-            `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES must be a non-negative safe integer, got ${JSON.stringify(raw)}`,
-        );
-    }
-    return value;
-};
+const contextRadius = (): number => Knob.integer("PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES", 0);
 
 // {§edit-receipt-anchored-context} — with the resource's anchor identity, the resulting context
 // renders exactly as a READ does (`@xxxxx L:text`), so the next batch can cite the landed

@@ -1,3 +1,4 @@
+import { Knob } from "@plurnk/plurnk-meta";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -46,10 +47,4 @@ export const declaredFilterProgram = async (repository: string, signal?: AbortSi
     }
 };
 
-export const gitOutputMaxBytes = (): number => {
-    const value = Number(process.env.PLURNK_SERVICE_GIT_OUTPUT_MAX_BYTES);
-    if (!Number.isSafeInteger(value) || value < 1) {
-        throw new Error("PLURNK_SERVICE_GIT_OUTPUT_MAX_BYTES must be a positive safe integer");
-    }
-    return value;
-};
+export const gitOutputMaxBytes = (): number => Knob.integer("PLURNK_SERVICE_GIT_OUTPUT_MAX_BYTES", 1);

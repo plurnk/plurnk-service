@@ -11,7 +11,7 @@ import {
     providerNameFromCatalogId,
 } from "@plurnk/plurnk-models";
 import { catalogEfforts, providerReadiness } from "@plurnk/plurnk-providers";
-import Knob from "../core/Knob.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 
 const compareText = (left: string, right: string): number => left < right ? -1 : left > right ? 1 : 0;
 

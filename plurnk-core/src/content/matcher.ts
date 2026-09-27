@@ -31,7 +31,7 @@ export default class Matcher {
         // evidence through FIND's persistent index, never through this content
         // matcher. Reaching here with a relation dialect is a routing bug.
         if (body.dialect === "fts" || body.dialect === "graph") throw new Error(`matchAgainstContent is content-only; ${body.dialect} must resolve through FIND`);
-        return SchemeMatcher.matchAgainstContent(body, content, mimetype, mimetypes, ErrorDetail.preview);
+        return SchemeMatcher.matchAgainstContent(body, content, mimetype, mimetypes, (value) => ErrorDetail.preview(value));
     }
 
     // {§find-source-agnostic} — apply a content matcher to a list of candidates from ANY source

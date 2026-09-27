@@ -364,7 +364,7 @@ test("{§http-config} ready validates the fetch ceiling without making a provide
             throw new Error("readiness must not call the materializer");
         }) as typeof fetch, async () => {
             process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT = "0";
-            await assert.rejects(new Http().ready(), /must be a positive integer/);
+            await assert.rejects(new Http().ready(), /PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT must be a safe integer of at least 1/);
         });
         assert.equal(calls, 0);
     } finally {
@@ -2893,7 +2893,7 @@ test("exact FIND preparation cache policy: an unset operator ceiling fails at co
                 findStmt(urlTarget("https://example.com/find-policy", "/find-policy")),
                 ctx,
             ),
-            /PLURNK_SCHEMES_HTTP_TTL_MS is unset/,
+            /PLURNK_SCHEMES_HTTP_TTL_MS is missing from the assembled environment floor/,
         );
     });
 });
@@ -3224,7 +3224,7 @@ test("{§http-config} TTL: unset crashes naming the var (floor-set knob, no sile
     await withTtl(undefined, async () => {
         await assert.rejects(
             prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/p", "/p")), ctx),
-            /PLURNK_SCHEMES_HTTP_TTL_MS is unset/,
+            /PLURNK_SCHEMES_HTTP_TTL_MS is missing from the assembled environment floor/,
         );
     });
 });

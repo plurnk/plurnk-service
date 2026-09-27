@@ -179,7 +179,7 @@ export default class A2aFunctionality {
                 definitions = outboundDefinitions(overlay);
             } catch (cause) {
                 throw failure("configuration-invalid", 400, "The offered A2A configuration is invalid.", {
-                    diagnostic: ErrorDetail.preview(cause, this.#env),
+                    diagnostic: ErrorDetail.preview(cause),
                     retryable: false,
                 }, cause);
             }
@@ -200,7 +200,7 @@ export default class A2aFunctionality {
             } catch (cause) {
                 throw failure("card-unreachable", 502, "Agent Card discovery failed.", {
                     source,
-                    diagnostic: ErrorDetail.preview(cause, this.#env),
+                    diagnostic: ErrorDetail.preview(cause),
                     retryable: true,
                 }, cause);
             }
@@ -248,7 +248,7 @@ export default class A2aFunctionality {
             throw failure("card-unreachable", 502, "Agent Card discovery failed for the A2A agent.", {
                 agent: alias,
                 url: definition.url,
-                diagnostic: ErrorDetail.preview(cause, this.#env),
+                diagnostic: ErrorDetail.preview(cause),
                 retryable: true,
             }, cause);
         }
@@ -260,7 +260,7 @@ export default class A2aFunctionality {
                 agent: alias,
                 url: definition.url,
                 interfaces: card.supportedInterfaces.map(({ protocolBinding, protocolVersion }) => `${protocolBinding} ${protocolVersion}`),
-                diagnostic: ErrorDetail.preview(cause, this.#env),
+                diagnostic: ErrorDetail.preview(cause),
                 retryable: false,
             }, cause);
         }

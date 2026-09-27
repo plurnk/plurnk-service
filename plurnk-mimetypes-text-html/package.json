@@ -62,6 +62,7 @@
     },
     "dependencies": {
         "@mozilla/readability": "^0.6.0",
+        "@plurnk/plurnk-meta": "1.22.0",
         "@xmldom/xmldom": "^0.9.10",
         "linkedom": "^0.18.12",
         "parse5": "^8.0.1",

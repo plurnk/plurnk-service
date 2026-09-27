@@ -1,6 +1,6 @@
 import type { LineMarker } from "@plurnk/plurnk-contracts";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
-import Knob from "../core/Knob.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 
 // {§body-projection} — one selector for ordinary packet previews and implicit
 // text acquisition. Explicit operation scopes never pass through this policy.

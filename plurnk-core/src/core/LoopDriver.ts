@@ -6,7 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import Results, { type SchemeResult } from "./results.ts";
 import NoticeChannel from "./NoticeChannel.ts";
 import StrikeRail from "./StrikeRail.ts";
-import Knob from "./Knob.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
 import { type ChatMessage } from "./PacketBuilder.ts";
 import TurnRunner, { LOOP_TIMEOUT_REASON } from "./TurnRunner.ts";

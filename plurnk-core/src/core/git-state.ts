@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import type { Db } from "./Db.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import Namespace from "./namespace.ts";
-import Knob from "./Knob.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 
 interface GitFileStatus {
     path: string;

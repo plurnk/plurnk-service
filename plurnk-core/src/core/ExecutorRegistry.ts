@@ -18,7 +18,7 @@ import Meta, {
     type PluginAttributionContext,
 } from "@plurnk/plurnk-meta";
 import type { SchemeManifest } from "./types.ts";
-import Knob from "./Knob.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 
 // The executor contract surface we consume (a BaseExecutor subclass). We bind
 // to the contract, not the framework's class identity. Under {§executor-scheme-output}, the executor is also
