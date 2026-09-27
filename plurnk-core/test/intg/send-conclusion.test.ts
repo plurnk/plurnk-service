@@ -187,7 +187,7 @@ for (const response of ["200", "````markdown\nFour.\n````", "````md\nFour.\n````
     });
 }
 
-test("{§response-text-note}: outside fragments become NOTEs in source order, never delivered, and siblings run without a strike", async () => {
+test("{§response-text-note}: outside fragments become one NOTE at the first, in source order, never delivered, and siblings run without a strike", async () => {
     const source = `Before.\n\n${PlurnkParser.frame("NOTE", "remember")}\n\nBetween.\n\n${send("Four.")}\n\nAfter.`;
     const { db, engine, provider, ids, notices } = await setup([said(source), said(conclude())]);
     try {
@@ -197,9 +197,23 @@ test("{§response-text-note}: outside fragments become NOTEs in source order, ne
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string; rx: string }>({ turn_id: result.turnIds.at(-2)! });
         const operations = rows.filter(({ origin, op }) => origin === "model" && ["SEND", "NOTE"].includes(op));
         assert.deepEqual(operations.map(({ op, tx }) => [op, op === "SEND" ? JSON.parse(tx).body.raw : JSON.parse(tx).body]),
-            [["NOTE", "Before."], ["NOTE", "remember"], ["NOTE", "Between."], ["SEND", "Four."], ["NOTE", "After."]]);
+            [["NOTE", "Before.\n\nBetween.\n\nAfter."], ["NOTE", "remember"], ["SEND", "Four."]]);
         assert.equal(rows.some(({ op }) => op === "error"), false, "stray text is not a failed operation");
         assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error"), [], "and draws no complaint");
+    } finally { await db.close(); }
+});
+
+// The recorded shape (#853, run286 pytest-5103): a length-cut response repeating `Proceeding.` beside a
+// fence minted 2,858 NOTE rows in one turn, one per fragment.
+test("{§response-text-note}: a repetitive response files its outside text as one NOTE, however many fragments", async () => {
+    const fragments = Array.from({ length: 400 }, () => `Proceeding.\n\n${PlurnkParser.frame("NOTE", "waiting")}`).join("\n\n");
+    const { db, engine, provider, ids } = await setup([said(`${fragments}\n\n${send("Four.")}\n\nProceeding`), said(conclude())]);
+    try {
+        const result = await engine.runLoop({ ...ids, provider, maxTurns: 4, maxStrikes: 1, messages: [] });
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: result.turnIds.at(-2)! });
+        const outside = rows.filter(({ origin, op, tx }) => origin === "model" && op === "NOTE" && JSON.parse(tx).body !== "waiting");
+        assert.equal(outside.length, 1, "one NOTE carries the response's outside text");
+        assert.equal(JSON.parse(outside[0]!.tx).body, [...Array.from({ length: 400 }, () => "Proceeding."), "Proceeding"].join("\n\n"));
     } finally { await db.close(); }
 });
 

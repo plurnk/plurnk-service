@@ -248,7 +248,7 @@ test("separator-free provider preamble does not reject a complete model turn", a
     }
 });
 
-test("{§response-text-note}: interstitial text becomes NOTEs, never delivered, and survives exactly in turnOps", async () => {
+test("{§response-text-note}: interstitial text becomes one NOTE, never delivered, and survives exactly in turnOps", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
         const source = [
@@ -269,9 +269,10 @@ test("{§response-text-note}: interstitial text becomes NOTEs, never delivered, 
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [1]);
         assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), [], "commentary is not a parser error");
-        const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string | null; origin: string; attrs: string; rx: string }>({ turn_id: result.turnId });
+        const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string | null; origin: string; attrs: string; tx: string; rx: string }>({ turn_id: result.turnId });
         const modelRows = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(modelRows.map(({ op }) => op), ["NOTE", "EDIT", "NOTE", "SEND", "NOTE"], "the text is noted in source order; only the authored SEND delivers");
+        assert.deepEqual(modelRows.map(({ op }) => op), ["NOTE", "EDIT", "SEND"], "the text is one NOTE at its first span; only the authored SEND delivers");
+        assert.equal(JSON.parse(modelRows[0]!.tx).body, "Prelude: preparing the edit.\n\n3 — invented result, not a receipt.\n\nPostscript: not a second message.");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "ops")?.content, source,
             "the complete submitted emission is retained verbatim");

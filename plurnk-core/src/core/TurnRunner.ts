@@ -164,6 +164,7 @@ type EngineTurnResult = {
     turnId: number;
     status: number;
     outcomes: StrikeOutcome[];
+    progressed: boolean;
     fingerprint: string;
     capacityHardStop: boolean;
     // {§provider-recovery} — the recovery budget is spent: the loop parks instead of failing.
@@ -195,6 +196,7 @@ export type BareExecution = {
 export type AdmittedTurnResult = {
     readonly status: number;
     readonly outcomes: StrikeOutcome[];
+    readonly progressed: boolean;
     readonly fingerprint: string;
     readonly emptyTurn: boolean;
 };
@@ -368,6 +370,7 @@ const turnResult = (
     kind: "inference",
     status,
     outcomes: [],
+    progressed: false,
     fingerprint: "",
     capacityHardStop: false,
     providerParked: false,
@@ -1736,6 +1739,7 @@ export default class TurnRunner {
         if (executed.emptyTurn) await this.#readEmptyTurnReasoning(args, request, split.packetAssistant);
         return turnResult(request, executed.status, {
             outcomes: executed.outcomes,
+            progressed: executed.progressed,
             fingerprint: executed.fingerprint,
             emptyTurn: executed.emptyTurn,
             emissionAttempts: emission.emissionAttempts,
@@ -1832,7 +1836,10 @@ export default class TurnRunner {
                 span.setAttribute("statements", result.items.filter((item) => item.kind === "statement").length);
                 return result;
             });
-            // {§response-text-note}: retain prose in source order without counting it as authored.
+            // {§response-text-note}: retain prose in source order without counting it as authored — one
+            // NOTE per response, at its first span, so a repetitive response cannot mint a row per fragment.
+            const outside: string[] = [];
+            let outsidePosition: number | undefined;
             for (const item of parsed.items) {
                 if (item.kind === "statement") {
                     ops.push(item.statement);
@@ -1849,10 +1856,8 @@ export default class TurnRunner {
                         continue;
                     }
                     if (!KnownToxins.retains(item.content)) continue;
-                    ops.push({
-                        op: "NOTE", aside: null, target: null, metadata: null, lineMarker: null,
-                        body: item.content.trim(), position: UNKNOWN_POSITION,
-                    });
+                    outsidePosition ??= ops.length;
+                    outside.push(item.content.trim());
                 }
                 else if (item.kind === "error") {
                     const err = (item as { error?: PlurnkParseError }).error;
@@ -1879,6 +1884,10 @@ export default class TurnRunner {
                     }
                 }
             }
+            if (outsidePosition !== undefined) ops.splice(outsidePosition, 0, {
+                op: "NOTE", aside: null, target: null, metadata: null, lineMarker: null,
+                body: outside.join("\n\n"), position: UNKNOWN_POSITION,
+            });
             // {§unparsed-tail-boundary} — the lexer's one boundary fact: from `unparsedTail.from` on,
             // nothing was read. The statements that closed before it are ordinary facts and run; the
             // loss itself is one more hard diagnostic, a failed row the model sees. An emission that

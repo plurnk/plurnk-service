@@ -8,7 +8,7 @@ import Results, { OperationFailureError } from "./results.ts";
 import Turn from "./Turn.ts";
 import NoticeChannel from "./NoticeChannel.ts";
 import ProblemLog from "./ProblemLog.ts";
-import StrikeRail, { type StrikeOutcome } from "./StrikeRail.ts";
+import StrikeRail, { isProgress, type StrikeOutcome } from "./StrikeRail.ts";
 import Dispatcher from "./Dispatcher.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 import { observed } from "../observe/spans.ts";
@@ -122,7 +122,7 @@ export default class AdmittedTurnExecutor {
             if (source !== null) await Turn.recordSource(this.#db, turnId, "ops", source, { modelCallId: sourceModelCallId });
             await recordEngineProblem("no_operation", fromSequence, emptyTurnExtensions);
             await Turn.complete(this.#db, turnId, TURN_STATUS_IMPLICIT_CONTINUE);
-            return { status: TURN_STATUS_IMPLICIT_CONTINUE, outcomes: [], fingerprint: StrikeRail.fingerprintEmptyTurn(source ?? ""), emptyTurn: true };
+            return { status: TURN_STATUS_IMPLICIT_CONTINUE, outcomes: [], progressed: false, fingerprint: StrikeRail.fingerprintEmptyTurn(source ?? ""), emptyTurn: true };
         }
         let wait = false;
         const pendingEngineErrors: EngineProblemKind[] = [];
@@ -143,6 +143,7 @@ export default class AdmittedTurnExecutor {
         const completionEligible = finalResponse && droppedCount === 0;
         let bareResults: ReadonlyMap<BareStatement, BareBatchResult> = new Map();
         const outcomes: StrikeOutcome[] = [];
+        let progressed = false;
         const results: DispatchResult[] = [];
         let rowSequence = fromSequence;
         if (source !== null) {
@@ -291,6 +292,7 @@ export default class AdmittedTurnExecutor {
                 },
             );
             outcomes.push({ op: writtenOp(statement), status: result.status, problemType: result.problem?.type ?? null });
+            progressed ||= isProgress(statement, result.status);
             results.push(result);
             rowSequence += (result.rowsWritten as number | undefined) ?? 1;
             if (failOnOperationError && result.status >= 400) {
@@ -334,6 +336,7 @@ export default class AdmittedTurnExecutor {
         return {
             status: turnStatus,
             outcomes,
+            progressed,
             fingerprint: emptyTurn ? StrikeRail.fingerprintEmptyTurn(source ?? "") : StrikeRail.fingerprintTurn(scheduled, results),
             emptyTurn,
         };

@@ -14,6 +14,7 @@ export type ProviderErrorKind =
     | "grammar_invalid"
     | "capacity_exceeded"
     | "resource_interrupted"
+    | "output_dropped"
     | "repetition";
 
 const defaultStatus = (kind: ProviderErrorKind): number => {
@@ -26,31 +27,24 @@ const defaultStatus = (kind: ProviderErrorKind): number => {
         case "model_refused":
         case "grammar_invalid":
         case "repetition": return 422;
-        case "invalid_response": return 502;
+        case "invalid_response":
+        case "output_dropped": return 502;
         case "deadline_exceeded": return 504;
         case "network_failure":
         case "resource_interrupted": return 503;
     }
 };
 
-const retryable = (kind: ProviderErrorKind): boolean => {
-    switch (kind) {
-        case "rate_limit":
-        case "network_failure":
-            return true;
-        case "deadline_exceeded":
-        case "invalid_response":
-        case "request_rejected":
-        case "grammar_invalid":
-        case "capacity_exceeded":
-        case "resource_interrupted":
-        case "repetition":
-        case "model_refused":
-        case "unauthorized":
-        case "quota_exceeded":
-            return false;
-    }
-};
+// {§provider-retryable-truth} The kinds whose identical request the consumer re-issues. The Problem's
+// `retryable` is exactly membership here, and the consumer's recovery reads this same set, so the
+// flag can never disagree with what happens next.
+export const RETRYABLE_PROVIDER_KINDS: ReadonlySet<ProviderErrorKind> = new Set<ProviderErrorKind>([
+    "rate_limit",
+    "network_failure",
+    "deadline_exceeded",
+    "resource_interrupted",
+    "output_dropped",
+]);
 
 const buildProblem = (
     source: string,
@@ -58,7 +52,6 @@ const buildProblem = (
     message: string,
     status: number,
     extensions: Readonly<Record<string, unknown>>,
-    retryableOverride: boolean | undefined,
 ): ProblemDetails => {
     const code: Record<ProviderErrorKind, string> = {
         rate_limit: "rate-limit",
@@ -72,12 +65,13 @@ const buildProblem = (
         grammar_invalid: "grammar-invalid",
         capacity_exceeded: "capacity-exceeded",
         resource_interrupted: "resource-interrupted",
+        output_dropped: "output-dropped",
         repetition: "repetition",
     };
     return Problems.create(source, code[kind], status, message, {
         providerKind: kind,
         stage: "provider-request",
-        retryable: retryableOverride ?? retryable(kind),
+        retryable: RETRYABLE_PROVIDER_KINDS.has(kind),
         ...extensions,
     });
 };
@@ -101,7 +95,6 @@ export class ProviderError extends Error {
         options: {
             status?: number | null;
             cause?: unknown;
-            retryable?: boolean;
             extensions?: Readonly<Record<string, unknown>>;
             attempt?: ProviderAttempt;
             accounting?: readonly ProviderRequestAccounting[];
@@ -125,7 +118,6 @@ export class ProviderError extends Error {
             message,
             status,
             options.extensions ?? {},
-            options.retryable,
         );
     }
 

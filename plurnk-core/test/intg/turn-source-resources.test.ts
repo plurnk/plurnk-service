@@ -158,6 +158,7 @@ test("{§turn-source-resources}: FIND uses ordinary folder, page and indexed-con
         for (let index = 1; index <= 3; index++) {
             const turn = await Turn.open(db, { loopId, producer: "client", kind: "operation" });
             await Turn.recordSource(db, turn.id, "ops", program(`Finding needle ${index}.`));
+            await Turn.recordSource(db, turn.id, "reasoning", `Weighing turn ${index}.\nSecond thought ${index}.`);
             await Turn.complete(db, turn.id, 200);
         }
         const query = async (source: string): Promise<FindResult> => {
@@ -171,6 +172,7 @@ test("{§turn-source-resources}: FIND uses ordinary folder, page and indexed-con
         assert.deepEqual(resourcePaths(await query("````FIND (ops://analyst/1/) <1,-1>````")), ["ops://analyst/1/1", "ops://analyst/1/2", "ops://analyst/1/3"]);
         assert.deepEqual(resourcePaths(await query("````FIND (ops://analyst/*/*) <2,2>````")), ["ops://analyst/1/2"]);
         assert.deepEqual(resourcePaths(await query("````FIND (ops://analyst/1/*) <1,-1> [{\"pattern\":\"~needle\"}]````")), ["ops://analyst/1/1", "ops://analyst/1/2", "ops://analyst/1/3"]);
+        assert.deepEqual(resourcePaths(await query("````FIND (reasoning://analyst/1/*) /^Second thought/````")), ["reasoning://analyst/1/1", "reasoning://analyst/1/2", "reasoning://analyst/1/3"], "{§find-line-anchors}: `^` anchors each line of a turn source");
         const indexed = await db.test_turn_sources.all<{ deep_hash: string | null }>({ worker_id: workerId });
         assert.ok(indexed.every(({ deep_hash }) => deep_hash !== null), "history uses the persistent shared derivation index");
     } finally { await db.close(); }

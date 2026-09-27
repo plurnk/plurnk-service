@@ -21,6 +21,21 @@ export default class PatternEdits {
         return { ...matcher, flags: `${matcher.flags}m` };
     }
 
+    // {§pattern-dialect-find-only} — `~` and `&` locate across resources and only FIND takes them; the
+    // refusal says so and gives both working forms: the FIND with the model's own matcher, and the
+    // same operation with a text pattern for the words or symbol it named.
+    static findOnly(matcher: MatcherBody & { dialect: "fts" | "graph" }, operation: string, target: string): { detail: string; recovery: string } {
+        const words = matcher.dialect === "graph"
+            ? [matcher.raw.replace(/^&[<>]?/u, "").trim()]
+            : matcher.raw.slice(1).trim().split(/\s+/u).filter((word) => word !== "");
+        const text = `/${words.map((word) => word.replace(/[.*+?^${}()|[\]\\/]/gu, "\\$&")).join("|")}/`;
+        const kind = matcher.dialect === "graph" ? "&graph" : "~full-text";
+        return {
+            detail: `\`${matcher.raw}\` is a ${kind} matcher, and only FIND takes one: it locates across resources, not lines within one.`,
+            recovery: `Locate it with \`FIND (${target}) ${matcher.raw}\`, or select lines with a text pattern: \`${operation} (${target}) ${text}\`.`,
+        };
+    }
+
     // The whole lines a matcher's evidence touches, in source order, within an inclusive line bound.
     static lines(evidence: ReadonlyArray<MatchEvidence>, bounds: { from: number; to: number } | null): number[] {
         const lines = new Set<number>();

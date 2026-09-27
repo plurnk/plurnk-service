@@ -88,7 +88,10 @@ A self-contained prompt.
 > [!CAUTION]
 > logTokensTotal must not exceed logTokensMax. Successful log KILL receipts are not shown.
 
-```KILL (log:///1/[1-7]/*/{NOTE,READ}) <17, -1> <!-- trims matching log items, recovering context -->
+```KILL (log:///1/[1-7]/*/{NOTE,READ}) <!-- retires matching log items whole -->
+```
+
+```KILL (log:///1/[8-9]/*/READ) <17,-1> <!-- keeps lines 1–16 of each, trims the rest -->
 ```
 
 ## `<scope|range>`
@@ -101,6 +104,7 @@ A self-contained prompt.
 | `<L>`, `<@hash>` | one line |
 | `<SL,EL>`, `<@start,@end>` | lines SL through EL, inclusive |
 | `<SL,SC,EL,EC>` | start included, end excluded — `<2,3,3,6>` is line 2 column 3 through line 3 column 5 |
+| `<L,1,L,1>`, `<@hash,1,@hash,1>` | insert before that line |
 | `<0>`, `<-1>`  | prepend / append on mutations; as an end line, `-1` is the last line |
 
 ## `pattern`

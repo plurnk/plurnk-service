@@ -54,7 +54,7 @@ test("test entrypoints exclude personal XDG policy while daily driving and expli
     const demo = await demoInvocation();
     const policyLoader = new URL("../plurnk-core/src/core/packet-inject.ts", import.meta.url).href;
     const gatePolicy = readFileSync(resolve(root, "plurnk-meta", "POLICY.md"), "utf8").trim() || null;
-    const profileArgs = candidateDaemonArgs(root).slice(0, 1);
+    const profileArgs = candidateDaemonArgs(root, root).slice(0, 1);
     const cases = [
         { name: "daily driving", args: [], expected: personalPolicy },
         { name: "unit/integration", args: ["--import=./test/setup.ts"], expected: null },
@@ -185,7 +185,7 @@ test("live, demo, and benchlet launch through the operator environment", async (
 });
 
 test("the candidate daemon loads the same profile below direct benchmark overrides", () => {
-    const [profileArg, servicePath, command] = candidateDaemonArgs(root);
+    const [profileArg, servicePath, command] = candidateDaemonArgs(root, root);
     assert.deepEqual(
         [profileArg, servicePath, command],
         [

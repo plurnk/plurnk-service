@@ -269,9 +269,6 @@ const transportTimeout = (
     if (typeof current !== "object" || current === null) return null;
 
     const message = String((current as { message?: unknown }).message ?? "");
-    if (/first chunk timeout/i.test(message)) {
-        return new ProviderTimeoutError("first_content", request.firstContentTimeoutMs ?? 0, cause);
-    }
     if (/chunk timeout/i.test(message)) {
         return new ProviderTimeoutError("stream_idle", request.streamIdleTimeoutMs ?? 0, cause);
     }
@@ -446,10 +443,25 @@ const executeModelOnce = async (
         () => attemptDeadline.abort(new ProviderTimeoutError("attempt", request.fetchTimeoutMs)),
         request.fetchTimeoutMs,
     );
-    const liftAttemptDeadline = (): void => { if (attemptTimer !== null) clearTimeout(attemptTimer); };
-    const abortSignal = attemptDeadline === null
-        ? request.signal
-        : request.signal === undefined ? attemptDeadline.signal : AbortSignal.any([request.signal, attemptDeadline.signal]);
+    // {§provider-first-content-at-dispatch} The first-content deadline is armed here, at dispatch —
+    // after admission, before response headers — because an endpoint that never answers headers
+    // otherwise holds the attempt for the whole attempt deadline (#853).
+    const firstContentDeadline = request.streaming
+        && request.firstContentTimeoutMs !== undefined
+        && request.firstContentTimeoutMs > 0
+        ? new AbortController()
+        : null;
+    const firstContentTimer = firstContentDeadline === null ? null : setTimeout(
+        () => firstContentDeadline.abort(new ProviderTimeoutError("first_content", request.firstContentTimeoutMs ?? 0)),
+        request.firstContentTimeoutMs,
+    );
+    const liftAttemptDeadline = (): void => {
+        if (attemptTimer !== null) clearTimeout(attemptTimer);
+        if (firstContentTimer !== null) clearTimeout(firstContentTimer);
+    };
+    const signals = [request.signal, attemptDeadline?.signal, firstContentDeadline?.signal]
+        .filter((signal): signal is AbortSignal => signal !== undefined);
+    const abortSignal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
     const common = {
         model,
         ...(instructions.length === 0 ? {} : { instructions }),
@@ -463,11 +475,6 @@ const executeModelOnce = async (
         headers: request.headers,
         timeout: {
             ...(request.fetchTimeoutMs > 0 && !request.streaming ? { totalMs: request.fetchTimeoutMs } : {}),
-            ...(request.streaming
-                && request.firstContentTimeoutMs !== undefined
-                && request.firstContentTimeoutMs > 0
-                ? { firstChunkMs: request.firstContentTimeoutMs }
-                : {}),
             ...(request.streaming
                 && request.streamIdleTimeoutMs !== undefined
                 && request.streamIdleTimeoutMs > 0

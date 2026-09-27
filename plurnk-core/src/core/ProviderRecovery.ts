@@ -1,4 +1,4 @@
-import type { ProviderErrorKind } from "@plurnk/plurnk-providers";
+import { RETRYABLE_PROVIDER_KINDS, type ProviderErrorKind } from "@plurnk/plurnk-providers";
 
 const readMilliseconds = (key: string): number => {
     const raw = process.env[key];
@@ -10,7 +10,8 @@ const readMilliseconds = (key: string): number => {
 // {§provider-recovery} — the one owner of what a recoverable provider failure is and how long a
 // call keeps being re-issued: the loop's own inference and BARE's isolated calls both read it here.
 export default class ProviderRecovery {
-    static readonly RECOVERABLE: ReadonlySet<ProviderErrorKind> = new Set(["rate_limit", "network_failure", "deadline_exceeded", "resource_interrupted"]);
+    // {§provider-retryable-truth} — the provider owns the set, so its Problems' `retryable` is what happens here.
+    static readonly RECOVERABLE: ReadonlySet<ProviderErrorKind> = RETRYABLE_PROVIDER_KINDS;
 
     // How long one call keeps being re-issued after its first recoverable failure (0: none).
     static budget(): number { return readMilliseconds("PLURNK_SERVICE_PROVIDER_RECOVERY"); }

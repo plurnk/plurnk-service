@@ -6,7 +6,7 @@ tokens {
     OPEN_EXEC, OPEN_BARE, OPEN_WORK, OPEN_FORK, OPEN_KILL,
     OPEN_LOOK,
     LPAREN, RPAREN, LBRACKET, RBRACKET, L_MARKER, BODY_OPEN, SECTION_END,
-    TARGET_TEXT, METADATA_TEXT, BODY_TEXT, TEXT, ASIDE
+    TARGET_TEXT, METADATA_TEXT, BODY_TEXT, TEXT, ASIDE, ARROW_TARGET
 }
 
 @lexer::header {
@@ -113,6 +113,45 @@ private asideClosesOnLine(): boolean {
         if (c === 0x2D && this.inputStream.LA(cursor + 1) === 0x2D && this.inputStream.LA(cursor + 2) === 0x3E) return true;
         cursor++;
     }
+}
+// {§log-heading-notation} - the log's receipt heading copied as syntax: the arrow target, the token charge, a
+// middle-dot note, and an EDIT's anchor written without its angle brackets. Each is read, and noted once.
+private headingNotations: Array<{ line: number; column: number; kind: string; text: string }> = [];
+private noteNotation(kind: string): void {
+    this.headingNotations.push({ line: (this as any).currentTokenStartLine, column: (this as any).currentTokenColumn, kind, text: this.text });
+}
+public takeHeadingNotations(): Array<{ line: number; column: number; kind: string; text: string }> {
+    const taken = this.headingNotations;
+    this.headingNotations = [];
+    return taken;
+}
+// The offset past horizontal whitespace, digits and a following "tokens" word after the middle dot at LA(1).
+private afterCharge(): { offset: number; digits: boolean } {
+    let cursor = this.skipHorizontal(2);
+    const start = cursor;
+    while (this.inputStream.LA(cursor) >= 0x30 && this.inputStream.LA(cursor) <= 0x39) cursor++;
+    const digits = cursor > start;
+    if (digits) {
+        const word = this.skipHorizontal(cursor);
+        if (word > cursor && [0x74, 0x6F, 0x6B, 0x65, 0x6E, 0x73].every((code, index) => this.inputStream.LA(word + index) === code)) cursor = word + 6;
+    }
+    return { offset: this.skipHorizontal(cursor), digits };
+}
+// The charge ends the heading, or stands before a slot, a closer, or (with no number) a matcher sigil.
+private chargeAhead(): boolean {
+    const { offset, digits } = this.afterCharge();
+    const c = this.inputStream.LA(offset);
+    if (c <= 0 || c === 0x0A || c === 0x0D || c === 0x3C || c === 0x5B || c === 0x60) return true;
+    return !digits && [0x2F, 0x24, 0x7E, 0x26, 0x5E].includes(c);
+}
+// An anchor alone where the scope goes: nothing but an aside, a closer or the line end follows it.
+private bareAnchorAhead(): boolean {
+    let cursor = 1;
+    while (this.inputStream.LA(cursor) > 0 && this.inputStream.LA(cursor) !== 0x20 && this.inputStream.LA(cursor) !== 0x09 && this.inputStream.LA(cursor) !== 0x0A && this.inputStream.LA(cursor) !== 0x0D && this.inputStream.LA(cursor) !== 0x60) cursor++;
+    cursor = this.skipHorizontal(cursor);
+    const c = this.inputStream.LA(cursor);
+    if (c <= 0 || c === 0x0A || c === 0x0D || c === 0x60) return true;
+    return c === 0x3C && this.inputStream.LA(cursor + 1) === 0x21 && this.inputStream.LA(cursor + 2) === 0x2D && this.inputStream.LA(cursor + 3) === 0x2D;
 }
 // {§fence-heading-in-body} - tags that end an open block from inside it; the host adds executors.
 public knownExecutors: Set<string> = new Set(["sh"]);
@@ -617,6 +656,14 @@ SLOTS_ASIDE_OPEN : { this.slotReady && !this.asideClosesOnLine() }? '<!--' ~[\r\
 // "If there's no risk of ambiguity, then we add tolerance").
 SLOTS_INLINE_CLOSER : { this.slotReady && this.closerWithHeadingAhead() }? FENCE [ \t]* { this.inlineCloserSeen = true; } -> skip ;
 SLOTS_END : { this.closingAt(1) }? FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
+// {§log-heading-notation} - `→ path`, an address as the log's receipt heading shows it, is the target slot.
+SLOTS_ARROW_TARGET : { this.slotReady && this.openOp !== "NOTE" }? '\u2192' [ \t]* ~[ \t\r\n<[(`\u00B7] ~[ \t\r\n<[`]* { this.slotReady = true; this.metadataReady = true; this.noteNotation("arrow"); } -> type(ARROW_TARGET) ;
+// {§log-heading-notation} - ` · N`, the token charge the log's heading shows, is no slot: skipped.
+SLOTS_CHARGE : { this.slotReady && this.chargeAhead() }? '\u00B7' [ \t]* ([0-9]+ ([ \t]+ 'tokens')?)? { this.noteNotation("charge"); } -> skip ;
+// {§log-heading-notation} - ` · words` after the slots is a note on the operation: the aside.
+SLOTS_DOT_ASIDE : { this.slotReady && !this.chargeAhead() }? '\u00B7' [ \t]* ~[ \t\r\n`] ~[\r\n`]* { this.noteNotation("aside"); } -> type(ASIDE) ;
+// {§bare-anchor-scope} - an EDIT's `@abcde` (or `@abcde,@fghij`) alone where the scope goes is that scope.
+SLOTS_BARE_ANCHOR : { this.slotReady && this.openOp === "EDIT" && this.bareAnchorAhead() }? LINE_ANCHOR (',' ' '? LINE_ANCHOR)? { this.noteNotation("anchor"); this.text = "<" + this.text + ">"; } -> type(L_MARKER) ;
 SLOTS_INLINE_BODY : { this.slotReady && this.inlineBodyAhead() }? ~[ \t\r\n[(<`] { this.noteInlineBody(); } -> type(BODY_TEXT), mode(BODY) ;
 // {§heading-slot-order} — a single backtick before a matcher sigil quotes that matcher, never a fence (#758).
 SLOTS_TICK_TEXT : { this.slotReady && this.inlineBodyAhead() && [0x2F, 0x24, 0x7E, 0x26, 0x5E].includes(this.inputStream.LA(2)) }? '`' { this.noteInlineBody(); } -> type(BODY_TEXT), mode(BODY) ;

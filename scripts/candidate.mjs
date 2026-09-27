@@ -1,7 +1,8 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { candidateDaemonArgs } from "./candidate-daemon.mjs";
+import { pinRuntime } from "./candidate-runtime.mjs";
 import { resolveCandidateTopology } from "./project-topology.mjs";
 import { parseCandidateClientEnv } from "./candidate-env.mjs";
 
@@ -28,10 +29,12 @@ if (process.env.PLURNK_CANDIDATE_SKIP_BUILD !== "1") {
     run("npm", ["run", "build"], root);
     run("npm", ["run", "build"], clientRoot);
 }
+// {§candidate-pinned-runtime} — the daemon and the digest run from this copy, never the shared checkout.
+const runtime = pinRuntime(root, resolve(stateDir, "runtime"));
 
 const daemon = spawn(
     process.execPath,
-    candidateDaemonArgs(root),
+    candidateDaemonArgs(root, runtime),
     {
         cwd: root,
         env: {
@@ -64,9 +67,11 @@ const finalize = () => {
         await Promise.all([stop(client), stop(daemon)]);
         run(process.execPath, [
             resolve(root, "scripts", "candidate-digest.mjs"),
+            runtime,
             dbPath,
             resolve(stateDir, "digest"),
         ], root);
+        rmSync(runtime, { recursive: true });
         process.stderr.write(`candidate artifact: ${stateDir}\n`);
     })();
     return finalizing;

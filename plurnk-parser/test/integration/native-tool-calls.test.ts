@@ -113,3 +113,68 @@ test("{§native-tool-calls} start/end and offset/limit parameters are one scope;
     assert.deepEqual(withoutPosition(ops(inline)), canonical("````READ (sh:///9c471159#stdout) <100,-1>\n````"));
     assert.deepEqual(ops("<tool_call>\n{\"name\": \"READ\", \"arguments\": {\"path\": \"a.md\", \"limit\": 5}}\n</tool_call>"), [], "a count without a first line names no scope");
 });
+
+// {§native-tool-calls} — Qwen's own shapes, verbatim from recorded qflash no-operation turns (#853).
+test("{§native-tool-calls} a flat JSON call names its operation with an `op`, `OP`, `action` or `cmd` key, trailing closers being noise", () => {
+    for (const [input, fence] of [
+        ["<tool_call>\n{\"op\": \"READ\", \"path\": \"django/forms/widgets.py\", \"range\": \"<170,245>\"}\n</parameter>", "````READ (django/forms/widgets.py) <170,245>\n````"],
+        ["<tool_call>\n{\"OP\":\"READ\",\"path\":\"sympy/printing/pretty/pretty.py\",\"scope\":\"<1456,1520>\"}\n", "````READ (sympy/printing/pretty/pretty.py) <1456,1520>\n````"],
+        ["<tool_call>\n{\"cmd\":\"read\",\"path\":\"sphinx/ext/autodoc/__init__.py\",\"range\":\"<640,700>\"}\n</>", "````READ (sphinx/ext/autodoc/__init__.py) <640,700>\n````"],
+        ["<tool_call>\n{\"op\": \"READ\", \"path\": \"tests/runtests.py\", \"scope\": \"<49,128>\", \"aside\": \"get_test_modules and setup logic\"}\n</parameter>\n</op>", "````READ (tests/runtests.py) <49,128> <!-- get_test_modules and setup logic -->\n````"],
+        ["<tool_call>\n{\"op\": \"read\", \"path\": \"django/forms/widgets.py\", \"scope\": {\"start\": 55, \"end\": 85}}", "````READ (django/forms/widgets.py) <55,85>\n````"],
+        ["<tool_call>\n{\"op\": \"NOTE\", \"content\": \"Turn 80: re-apply the fix.\"}\n</parameter>\n</invoke>", "````NOTE\nTurn 80: re-apply the fix.\n````"],
+    ] as const) {
+        assert.deepEqual(read(input).items.filter((item) => item.kind === "error"), [], input);
+        assert.deepEqual(withoutPosition(ops(input)), canonical(fence), input);
+    }
+    const kills = "<tool_call>\n{\"action\": \"KILL\", \"path\": \"log:///1/[1-16]/*/{NOTE,READ,FIND}\", \"scope\": \"<3,-1>\"}\n<tool_call>\n{\"action\": \"KILL\", \"path\": \"log:///1/[17-38]/*/{NOTE,READ,FIND}\", \"scope\": \"<5,-1>\"}";
+    assert.deepEqual(withoutPosition(ops(kills)), canonical("````KILL (log:///1/[1-16]/*/{NOTE,READ,FIND}) <3,-1>\n````\n\n````KILL (log:///1/[17-38]/*/{NOTE,READ,FIND}) <5,-1>\n````"));
+});
+
+test("{§native-tool-calls} `<function=READ>` with a JSON body, `<function=OP>` around a call or a heading, and a JSON-array scope", () => {
+    for (const [input, fence] of [
+        ["<tool_call>\n<function=READ>\n{\"path\":\"django/urls/exceptions.py\"}\n</parameter>\n</function>\n</tool_call>", "````READ (django/urls/exceptions.py)\n````"],
+        ["<tool_call>\n<function=OP>\nREAD (sympy/printing/ccode.py) <50,100>\n</parameter>\n</function>\n</tool_call>", "````READ (sympy/printing/ccode.py) <50,100>\n````"],
+        ["<tool_call>\n<function=OP>\n{\"op\":\"READ\",\"path\":\"sklearn/model_selection/_split.py\",\"range\":[1217,1222]}\n</parameter>\n</function>\n</tool_call>", "````READ (sklearn/model_selection/_split.py) <1217,1222>\n````"],
+        ["<tool_call>\n<function=OP name=\"READ\" path=\"sphinx/ext/autodoc/__init__.py\" range=\"[700,760]\">\n</function>\n</tool_call>", "````READ (sphinx/ext/autodoc/__init__.py) <700,760>\n````"],
+        ["<tool_call>\n<function=READ>\n(sphinx/ext/autodoc/directive.py) <1,30>\n</parameter>\n</function>\n</tool_call>", "````READ (sphinx/ext/autodoc/directive.py) <1,30>\n````"],
+    ] as const) {
+        assert.deepEqual(withoutPosition(ops(input)), canonical(fence), input);
+    }
+});
+
+test("{§native-tool-calls} `<NOTE>`, `<FIND (…)>`, `<op op=…>`, `<ops><op verb=…/></ops>`, `<op=READ …>` and a bare heading in the call", () => {
+    for (const [input, fence] of [
+        ["<tool_call>\n<NOTE>\nRoot cause confirmed in _scan_iterable_shape.\n</NOTE>", "````NOTE\nRoot cause confirmed in _scan_iterable_shape.\n````"],
+        ["<tool_call>\n<FIND (sphinx/ext/autodoc/__init__.py) <1,3>\n</FIND>", "````FIND (sphinx/ext/autodoc/__init__.py) <1,3>\n````"],
+        ["<tool_call>\n<ops>\n<op verb=\"READ\" path=\"sphinx/ext/autodoc/__init__.py\" scope=\"<686,695>\"/>\n</ops>", "````READ (sphinx/ext/autodoc/__init__.py) <686,695>\n````"],
+        ["<tool_call>\n<op=READ (sympy/simplify/tests/test_powsimp.py) /^def test/ <!-- list all test function names -->\n</op>", "````READ (sympy/simplify/tests/test_powsimp.py) /^def test/ <!-- list all test function names -->\n````"],
+        ["<tool_call>\nREAD (sympy/printing/codeprinter.py) <60,120>\n</READ>", "````READ (sympy/printing/codeprinter.py) <60,120>\n````"],
+        ["<tool_call>\n=READ (sympy/printing/codeprinter.py) <1,50> <!-- examine CodePrinter -->\n```", "````READ (sympy/printing/codeprinter.py) <1,50> <!-- examine CodePrinter -->\n````"],
+    ] as const) {
+        assert.deepEqual(withoutPosition(ops(input)), canonical(fence), input);
+    }
+    const pair = "<tool_call>\n<op op=\"READ\" path=\"django/urls/resolvers.py\" scope=\"1,30\">\n</op>\n<tool_call>\n<op op=\"READ\" path=\"django/views/debug.py\" scope=\"483,498\">\n</op>";
+    assert.deepEqual(withoutPosition(ops(pair)), canonical("````READ (django/urls/resolvers.py) <1,30>\n````\n\n````READ (django/views/debug.py) <483,498>\n````"));
+});
+
+test("{§native-tool-calls} a targeted operation that names no target is not read, and an EDIT's content never supplies one", () => {
+    assert.deepEqual(ops("<tool_call>\n<function=READ>\n<scope>@L4XSj</scope>\n</function>\n</tool_call>"), []);
+    assert.deepEqual(ops("<tool_call>\n<EDIT>\n(django/forms/widgets.py) <9,9>\n{\"lines\":1,\"resource\":\"edit://20af9b7e/1/45/1\"}\n</EDIT>"), [], "an echoed receipt is never written into a file");
+});
+
+test("{§native-tool-call-receipt} markup that was not read is named with the fenced form that runs", () => {
+    const receipt = (input: string) => read(input).items.flatMap((item) => item.kind === "error" && item.error.severity === "error" ? [item.error.message] : []);
+    assert.deepEqual(receipt("<tool_call>\n<EDIT>\n(django/forms/widgets.py) <9,9>\n{\"lines\":1}\n</EDIT>"), [
+        "`<tool_call>` is tool-call markup, which plurnk does not run, so nothing ran. An operation is a fenced block: three backticks and `EDIT (django/forms/widgets.py)` on the opening line.",
+        PlurnkParser.NO_VALID_OPERATION,
+    ]);
+    assert.equal(receipt("<tool_call>\n{\"name\":\"Bash\",\"input\":{\"command\":\"cd /workspace && git status\"}}\n</tool_call>")[0],
+        "`<tool_call>` is tool-call markup, which plurnk does not run, so nothing ran. An operation is a fenced block: three backticks and `sh` on the opening line, the command on the lines below it, and three backticks to close.");
+    assert.equal(receipt("<tool_call>\n{\"text\": \"Let me fix the `_css` property.\", \"type\": \"note\"}\n</tool_call>")[0],
+        "`<tool_call>` is tool-call markup, which plurnk does not run, so nothing ran. An operation is a fenced block: three backticks and `NOTE` on the opening line, the note on the lines below it, and three backticks to close.");
+    assert.equal(receipt("<tool_call>\n<tool_call>\n<tool_call>")[0],
+        "`<tool_call>` is tool-call markup, which plurnk does not run, so nothing ran. An operation is a fenced block: three backticks and the operation with its target, such as `READ (path)`, on the opening line.");
+    const beside = read("````READ (a.md)\n````\n\n<tool_call>\n<tool_call>");
+    assert.ok(beside.items.every((item) => item.kind !== "error" || !item.error.message.includes("tool-call markup")), "an emission that ran an operation draws no receipt");
+});

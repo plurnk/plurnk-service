@@ -422,6 +422,24 @@ region of four coordinates has no meaning over a window and is refused.
 | `<SL,SC,EL,EC>` | exact exclusive-end region using 1-based Unicode code-point columns |
 | `<0>` / `<-1>` | mutation anchors before the first / after the final line |
 
+Every replacement inserts its body verbatim. `Slicer.wholeLineBody(content, marker, body)` is
+the pure helper core applies where a fenced EDIT body becomes inserted content
+({§zero-width-column-one-insert}): it appends the content's separator only for a non-empty body
+without a trailing newline at a zero-width column-1 region, and returns every other body unchanged.
+
+§range-starts-at-one A two-coordinate range starts at 1. `<0>` is a single-position
+prepend anchor, never a range start: `<0,M>` — including `<0,-1>`, which is not a
+whole-content alias — is refused 416 by `lines()`, `linesRaw()`, `textReplacement()`,
+`lineMarkerEdit[Batch]()`, `window()` and `page()`, on empty content and empty result sets
+too, and never clamped to `<1,M>`. The refusal's `recovery` names the forms the author may
+have meant, in the range's unit:
+
+| Unit | `recovery` |
+|---|---|
+| line, `M ≥ 1` | the whole-line insert `<M,1,M,1>` ({§zero-width-column-one-insert}), `<0>` / `<-1>`, and `<1,M>` |
+| line, `M < 1` | `<1,-1>` for every line, `<0>` / `<-1>` |
+| byte, result, resource | `<1,M>` |
+
 As an unadvertised ingestion tolerance, `Slicer` accepts
 `<startLine,startColumn,endLine>` and immediately lowers it to the complete
 four-coordinate region ending after the final code point of `endLine`.
@@ -639,3 +657,9 @@ scheme for ordinary READ/FIND/COPY and delivers exact-address SEND replies under
 of message body or reply state. The protocol module owns URI identity; Core owns durable
 admission and correlation. Message representations reject mutation while remaining SEND
 recipients. Scratch entries and protocol artifacts retain their own existing write contracts.
+
+§message-immutable-recovery An EDIT, COPY or MOVE onto, or KILL of, a message address is
+refused 405 `message-immutable`; its detail names the address as a received message that
+answering settles, and its `recovery` gives the working form with that address:
+`` Answer it with `SEND (message://tester/bde40185)` and your reply as the body, or finish your
+work with a parameterless KILL whose body is the answer. ``

@@ -317,7 +317,7 @@ export default class ResourceSelector {
         identity: string | undefined,
     ): Promise<{ lines: number[]; precondition: LineAnchorPrecondition | null } | { result: DispatchResult }> {
         const { selection } = resolvedMarker;
-        const dialect = PatternSelection.refuseDialect(matcher, selection.scheme, operation);
+        const dialect = PatternSelection.refuseDialect(matcher, selection.scheme, operation, selection.target.raw);
         if (dialect !== null) return { result: dialect };
         const matched = await PatternSelection.match({
             matcher, content: selected.content, mimetype: selected.mimetype,

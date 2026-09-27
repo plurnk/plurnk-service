@@ -422,7 +422,7 @@ test("lineMarkerEditBatch rejects a whole-resource replacement mixed with anothe
 });
 
 test("an empty result set satisfies any well-formed page — zero matches is a 200, not a 416 (#425 F9)", () => {
-    for (const marks of [[1, 100], [1, 16], [1, -1], [17, 29], [5], [0, -1]] as const) {
+    for (const marks of [[1, 100], [1, 16], [1, -1], [17, 29], [5]] as const) {
         const page = Slicer.page([], { marks: [...marks] as [number, ...number[]] }, { unit: "resource" });
         assert.equal(page.status, 200, `<${marks.join(",")}>`);
         assert.deepEqual(page.items, []);
@@ -561,4 +561,63 @@ test("{§slicer-window} an empty byte source returns no coordinates, never the i
             status: 200, start: null, end: null, range: { unit: "byte", total: 0, requested: marks.length === 1 ? [marks[0], marks[0]] : marks },
         });
     }
+});
+
+// {§range-starts-at-one} Recorded destructive shapes (#853): rtx `EDIT (tests/test_ext_autodoc.py) <0,795>` /
+// `<0,@xb6i9>` (anchor resolved to 795) meant "insert here" and replaced the file head; `<0,-1>` replaced the file.
+const HEAD = Array.from({ length: 800 }, (_, i) => `line ${i + 1}`).join("\n") + "\n";
+test("{§range-starts-at-one} EDIT <0,795> is refused 416 and names the zero-width insert <795,1,795,1>; the file is untouched", () => {
+    const result = Slicer.lineMarkerEdit(HEAD, { marks: [0, 795] }, "def test_new():\n    pass");
+    assert.equal(result.status, 416);
+    assert.equal(result.result, undefined, "no content is produced");
+    assert.equal(result.problem?.detail, "Range <0,795> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the <0> prepend position.");
+    assert.equal(
+        result.problem?.recovery,
+        "To insert before line 795, write <795,1,795,1>; <0> prepends and <-1> appends; to select lines 1 through 795, write <1,795>.",
+    );
+    assert.deepEqual(result.problem?.range, { unit: "line", total: 800, requested: [0, 795] });
+});
+
+test("{§zero-width-column-one-insert} wholeLineBody appends the content's separator only for a non-empty body at a zero-width column-1 region; the Slicer itself stays verbatim", () => {
+    assert.equal(Slicer.wholeLineBody("a\nb", { marks: [2, 1, 2, 1] }, "X"), "X\n");
+    assert.equal(Slicer.wholeLineBody("a\r\nb", { marks: [2, 1, 2, 1] }, "X"), "X\r\n", "the content's own separator");
+    assert.equal(Slicer.wholeLineBody("a\nb", { marks: [2, 1, 2, 1] }, "X\n"), "X\n", "a trailing newline gains nothing");
+    assert.equal(Slicer.wholeLineBody("a\nb", { marks: [2, 1, 2, 1] }, ""), "", "an empty body inserts nothing");
+    assert.equal(Slicer.wholeLineBody("a\nb", { marks: [2, 2, 2, 2] }, "X"), "X", "off column 1 is byte-exact");
+    assert.equal(Slicer.wholeLineBody("a\nb", { marks: [2, 1, 2, 2] }, "X"), "X", "a non-empty region is a replacement");
+    assert.equal(Slicer.wholeLineBody("a\nb", { marks: [2] }, "X"), "X", "line shorthand is the Slicer's own newline-aware algebra");
+    assert.equal(Slicer.lineMarkerEdit("a\nb", { marks: [2, 1, 2, 1] }, "X").result, "a\nXb", "verbatim: the Slicer appends nothing itself");
+    assert.equal(Slicer.lineMarkerEdit("a\nb", { marks: [2, 1, 2, 1] }, Slicer.wholeLineBody("a\nb", { marks: [2, 1, 2, 1] }, "X")).result, "a\nX\nb");
+});
+
+test("{§range-starts-at-one} <0,-1> is not a whole-file alias: EDIT, READ and COPY refuse it and name <1,-1>, on empty content too", () => {
+    const recovery = "Write <1,-1> to select every line; <0> prepends and <-1> appends without replacing anything.";
+    for (const content of [HEAD, ""]) {
+        const edit = Slicer.lineMarkerEdit(content, { marks: [0, -1] }, "replacement");
+        assert.equal(edit.status, 416, `EDIT on ${content.length} chars`);
+        assert.equal(edit.problem?.detail, "Range <0,-1> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the <0> prepend position.");
+        assert.equal(edit.problem?.recovery, recovery);
+        assert.equal(Slicer.lines(content, { marks: [0, -1] }).problem?.recovery, recovery);
+        assert.equal(Slicer.linesRaw(content, { marks: [0, -1] }).problem?.recovery, recovery);
+    }
+    assert.equal(Slicer.lineMarkerEdit("", { marks: [1, -1] }, "all").result, "all", "the documented whole-content form still writes empty content");
+});
+
+test("{§range-starts-at-one} READ <0,30> refuses rather than clamping to <1,30>", () => {
+    const result = Slicer.lines(HEAD, { marks: [0, 30] });
+    assert.equal(result.status, 416);
+    assert.equal(result.text, undefined);
+    assert.match(result.problem?.recovery as string, /write <1,30>\.$/);
+});
+
+test("{§range-starts-at-one} pages and byte windows refuse a zero start in their own unit", () => {
+    const page = Slicer.page(["a", "b"], { marks: [0, -1] }, { unit: "resource" });
+    assert.equal(page.status, 416);
+    assert.equal(page.problem?.detail, "Range <0,-1> starts at 0; resource positions are numbered from 1.");
+    assert.equal(page.problem?.recovery, "Write <1,-1> to start at the first resource.");
+    assert.equal(Slicer.page([], { marks: [0, 5] }, { unit: "resource" }).status, 416, "an empty result set does not excuse a zero start");
+    const window = Slicer.window({ marks: [0, 16] }, 40, "byte");
+    assert.equal(window.status, 416);
+    assert.equal(window.problem?.recovery, "Write <1,16> to start at the first byte.");
+    assert.equal(Slicer.window({ marks: [0] }, 40, "byte").start, null, "the single <0> position stays a sentinel");
 });

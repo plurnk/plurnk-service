@@ -378,13 +378,13 @@ export default class EditMutations {
         const refuse = (code: string, status: number, detail: string): { result: DispatchResult } => ({
             result: PatternSelection.refuse(code, status, detail, schemeName, operation),
         });
-        const dialect = PatternSelection.refuseDialect(matcher, schemeName, operation);
+        const target = resolved.target;
+        if (target === null) return refuse("edit-target-required", 400, `A pattern ${operation} requires a target resource.`);
+        const dialect = PatternSelection.refuseDialect(matcher, schemeName, operation, target.raw);
         if (dialect !== null) return { result: dialect };
         if (manifest.textEditScopes !== true) {
             return refuse("pattern-unsupported", 400, `Scheme '${schemeName}' has no textual lines for a pattern to select.`);
         }
-        const target = resolved.target;
-        if (target === null) return refuse("edit-target-required", 400, `A pattern ${operation} requires a target resource.`);
         const current = await this.#run(schemeName, {
             op: "READ", aside: null, target, metadata: resolved.metadata, lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: resolved.position,
         }, ctx);

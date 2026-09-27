@@ -113,7 +113,7 @@ export default class DataStatementRunner {
                 400,
                 `${writtenOp(statement)} requires a target path.`,
                 DataStatementRunner.#emptyFields(writtenOp(statement)),
-                { operation: writtenOp(statement), retryable: false },
+                { operation: writtenOp(statement), recovery: `Write the target in parentheses on the opening fence line: \`${writtenOp(statement)} (path)\`.`, retryable: false },
             );
         }
         const resourceRead = statement.op === "READ" || statement.op === "FIND";

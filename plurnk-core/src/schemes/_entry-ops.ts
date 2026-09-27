@@ -226,15 +226,16 @@ export default class EntryOps {
                 "EDIT of an existing entry requires a line marker.",
                 { entryId: existingEntryId, channel: targetChannel },
                 {
-                    recovery: "Use <1,-1> to replace the whole entry or select a narrower range.",
+                    recovery: "Name the lines to replace with `<@hash>` or `<@start,@end>` from a READ of the entry; `<L,1,L,1>` inserts before line L, and `<1,-1>` replaces the whole entry.",
                     retryable: false,
                 },
             );
         }
         if (channelExists) {
+            // {§zero-width-column-one-insert}
             const edits = statements.map((candidate) => ({
                 marker: candidate.lineMarker!,
-                body: candidate.body ?? "",
+                body: LineMarkerOps.wholeLineBody(originalContent, candidate.lineMarker!, candidate.body ?? ""),
             }));
             const result = LineMarkerOps.applyLineMarkerEditBatch(originalContent, edits);
             if (result.status !== 200) {

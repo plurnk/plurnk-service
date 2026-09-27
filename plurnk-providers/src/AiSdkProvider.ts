@@ -82,6 +82,7 @@ export type AiSdkProviderConfig = {
     firstContentTimeoutMs: number;             // first semantic streamed content; zero disables
     streamIdleTimeoutMs?: number;             // semantic streamed-content idle deadline; zero/unset disables
     repeatedLineLimit?: number;               // {§repetition-stop} a line repeated this many times stops the stream; zero/unset disables
+    droppedOutputTokens?: number;             // {§provider-output-dropped} billed output tokens beyond streamed characters that void a response; zero/unset disables
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
     fetch?: ProviderFetch;                    // per-instance request executor; default globalThis.fetch
     contextWindow?: number | null;              // default null; caller resolves-or-fails, narrows to required with the interface
@@ -244,6 +245,7 @@ export default class AiSdkProvider implements Provider {
     #firstContentTimeoutMs: number;
     #streamIdleTimeoutMs: number | undefined;
     #repeatedLineLimit: number;
+    #droppedOutputTokens: number;
     #headers: Record<string, string>;
     #fetch: ProviderFetch;
     #hasApiKey = false;
@@ -320,6 +322,7 @@ export default class AiSdkProvider implements Provider {
         this.#firstContentTimeoutMs = config.firstContentTimeoutMs;
         this.#streamIdleTimeoutMs = config.streamIdleTimeoutMs;
         this.#repeatedLineLimit = config.repeatedLineLimit ?? 0;
+        this.#droppedOutputTokens = config.droppedOutputTokens ?? 0;
         this.#headers = config.headers ?? {};
         this.#fetch = config.fetch ?? ((input, init) => globalThis.fetch(input, init));
         this.#contextWindow = config.contextWindow ?? null;
@@ -872,7 +875,6 @@ export default class AiSdkProvider implements Provider {
                 throw new ProviderError(this.#source, "deadline_exceeded", timeout.message, {
                     status: 504,
                     cause: timeout,
-                    retryable: false,
                     extensions: {
                         timeoutPhase: timeout.phase,
                         timeoutMs: timeout.timeoutMs,
@@ -903,6 +905,8 @@ export default class AiSdkProvider implements Provider {
         if (this.#eosText !== undefined) raw.content = stripTrailingSpecial(raw.content, this.#eosText);
 
         const grammarInput = raw.content;
+        // {§provider-output-dropped} — what the wire carried, every channel, before projection moves any of it.
+        const streamedCharacters = [...raw.content].length + [...raw.reasoning].length;
         const projectedReasoning = LeadingReasoning.project(raw.content, raw.reasoning,
             preserveGrammarSentence && !raw.reasoningProjected ? LeadingReasoning.TEMPLATE
                 : this.#reasoningResponseStyle === "think-tags" ? LeadingReasoning.THINK : []);
@@ -1087,10 +1091,53 @@ export default class AiSdkProvider implements Provider {
                 },
             );
         }
+        const dropped = this.#droppedOutput(raw, streamedCharacters);
+        if (dropped !== null) {
+            const attempt: ProviderAttempt = {
+                assistant: { ...assistant, finishReason: raw.finishReason },
+                ...evidence,
+            };
+            throw new ProviderError(this.#source, "output_dropped", dropped.message, {
+                attempt,
+                accounting,
+                extensions: {
+                    stage: "provider-response",
+                    finishReason: raw.finishReason,
+                    ...(raw.rawFinishReason === undefined ? {} : { rawFinishReason: raw.rawFinishReason }),
+                    ...dropped.facts,
+                },
+            });
+        }
         return {
             assistant: { ...assistant, finishReason: raw.finishReason },
             ...evidence,
         };
     }
 
+    // {§provider-output-dropped} A completed exchange whose own evidence proves its output never arrived:
+    // a tool-call finish on a request that declares no tools, or billed output tokens exceeding every
+    // streamed character (text and reasoning together) by the configured margin — an output token decodes
+    // to at least one character. Reasoning billed but streamed nowhere is hidden reasoning, not a drop.
+    #droppedOutput(
+        raw: { finishReason: string | null; usage?: ProviderUsage; reasoning: string; wire: { toolCalls: readonly unknown[] } },
+        streamedCharacters: number,
+    ): { message: string; facts: Record<string, number> } | null {
+        if (raw.finishReason === "tool_calls") {
+            const toolCallCount = raw.wire.toolCalls.length;
+            return {
+                message: `The provider ended the response with tool calls although no tools were declared (${toolCallCount} native tool call${toolCallCount === 1 ? "" : "s"}); the response text was not delivered as text.`,
+                facts: { toolCallCount },
+            };
+        }
+        const billedOutputTokens = raw.usage?.outputTokens;
+        if (this.#droppedOutputTokens === 0 || billedOutputTokens === undefined) return null;
+        const billedReasoningTokens = raw.usage?.outputTokenDetails?.reasoningTokens ?? 0;
+        if (billedReasoningTokens > 0 && raw.reasoning.length === 0) return null;
+        const missing = billedOutputTokens - streamedCharacters;
+        if (missing < this.#droppedOutputTokens) return null;
+        return {
+            message: `The provider billed ${billedOutputTokens} output tokens but streamed ${streamedCharacters} characters of text and reasoning; at least ${missing} tokens of output never arrived.`,
+            facts: { billedOutputTokens, streamedCharacters, droppedOutputTokens: this.#droppedOutputTokens },
+        };
+    }
 }

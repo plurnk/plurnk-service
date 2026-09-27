@@ -137,6 +137,37 @@ test("malformed native FTS5 queries return their parser diagnostic without guess
     } finally { await db.close(); }
 });
 
+// The recorded shape (#853): `FIND (doc/**) ~inherited-members` leaked "no such column: members".
+test("{§fts-word-phrase}: a word with inner punctuation searches its tokens as a phrase", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `fts-phrase-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const worker = new Worker();
+        for (const [path, body] of [
+            ["autodoc.rst", "The :inherited-members: option documents inherited members."],
+            ["other.rst", "members inherited from a base, in the other order"],
+            ["cpp.rst", "Parsers for c++ and x.y paths under a/b."],
+        ]) assert.equal((await worker.edit(edit(path, body), ctx)).status, 201);
+        await SearchIndex.maintain(ctx);
+        for (const [query, paths] of [
+            ["inherited-members", ["autodoc.rst"]],
+            ["inherited-members AND option", ["autodoc.rst"]],
+            ["c++", ["cpp.rst"]],
+            ["x.y OR a/b", ["cpp.rst"]],
+            ["^parsers-for*", ["cpp.rst"]],
+        ] as const) {
+            const result = await worker.find(find("*", query), ctx);
+            assert.equal(result.status, 200, `${query}: ${JSON.stringify(result.problem)}`);
+            assert.deepEqual(resourcePaths(result).sort(), paths.map((path) => `worker:///${path}`), query);
+        }
+        const excluded = await worker.find(find("*", "inherited -members"), ctx);
+        assert.equal(excluded.status, 400, "a leading `-` stays FTS5's column exclusion");
+        assert.equal(excluded.problem?.recovery, "`members:` and `-members` are FTS5 column filters, and the index has one column; to search for a word write it bare, as `~members`, and to exclude one write `NOT` between terms, as `~a NOT members`.");
+    } finally { await db.close(); }
+});
+
 test("FTS5 uses native BM25 relevance before the identity tie-breaker", async () => {
     const db = await openMigrated();
     try {

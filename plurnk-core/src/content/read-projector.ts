@@ -358,13 +358,8 @@ export default class ReadProjector {
         let visibleLines = opts.visibleLines?.[selected];
         if (statement.matcher !== null) {
             if (statement.matcher.dialect === "fts" || statement.matcher.dialect === "graph") {
-                return failure(
-                    "pattern-dialect-unsupported",
-                    400,
-                    `READ selects lines with a text matcher; a ${statement.matcher.dialect === "fts" ? "~full-text" : "&graph"} pattern selects resources through FIND.`,
-                    {},
-                    { target, retryable: false },
-                );
+                const { detail, recovery } = PatternEdits.findOnly({ ...statement.matcher, dialect: statement.matcher.dialect }, "READ", target);
+                return failure("pattern-dialect-unsupported", 400, detail, {}, { target, recovery, retryable: false });
             }
             if (mimetypes === undefined) throw new Error("ReadProjector: a READ pattern requires the mimetypes capability");
             const match = await Matcher.matchAgainstContent(PatternEdits.lineLimited(statement.matcher), selectedRepresentation.content, selectedRepresentation.mimetype, mimetypes);

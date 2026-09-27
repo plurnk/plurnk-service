@@ -135,12 +135,22 @@ export default class PlurnkParser {
         // {§native-tool-calls} — an emission with no operation may be native tool-call markup that
         // names plurnk operations; read it as those operations, silently (#760).
         const executors = options.executors ?? [];
-        const rewritten = NativeToolCalls.rewrite(input, executors, PlurnkParser.#quotedMarkup(input, executors));
-        if (rewritten === null) return direct;
-        const native = PlurnkParser.#parseTurn(rewritten, options);
-        return native.items.some((item) => item.kind === "statement") && !native.items.some((item) => item.kind === "error" && item.error.severity === "error")
-            ? native
-            : direct;
+        const quoted = PlurnkParser.#quotedMarkup(input, executors);
+        const rewritten = NativeToolCalls.rewrite(input, executors, quoted);
+        if (rewritten !== null) {
+            const native = PlurnkParser.#parseTurn(rewritten, options);
+            if (native.items.some((item) => item.kind === "statement") && !native.items.some((item) => item.kind === "error" && item.error.severity === "error")) return native;
+        }
+        // {§native-tool-call-receipt} — markup that could not be read is named, with the form that runs.
+        const unread = NativeToolCalls.unread(input, executors, quoted);
+        if (unread === null) return direct;
+        const absence = (item: ParseItem<PlurnkStatement>): boolean => item.kind === "error" && item.error.message === PlurnkParser.NO_VALID_OPERATION;
+        const receipt: ParseItem<PlurnkStatement> = {
+            kind: "error",
+            error: new PlurnkParseError(unread.line, unread.column, "parser",
+                `\`${unread.markup}\` is tool-call markup, which plurnk does not run, so nothing ran. An operation is a fenced block: ${unread.form}.`),
+        };
+        return { ...direct, items: [...direct.items.filter((item) => !absence(item)), receipt, ...direct.items.filter(absence)] };
     }
 
     static #parseTurn(input: string, options: ParseOptions): ParseResult {
@@ -278,6 +288,25 @@ export default class PlurnkParser {
             };
             const at = items.findIndex((item) => item.kind === "statement" && (item.statement as { position?: { line: number } }).position?.line === note.line);
             if (at !== -1) items.splice(at + 1, 0, advisory);
+        }
+
+        // {§log-heading-notation} — the log's heading notation was read as the slot it stands for; each reading is
+        // named once, right after its statement, with the form to write. A statement that was not built draws none.
+        const named = new Set<string>();
+        for (const note of lexer.takeHeadingNotations()) {
+            const at = items.findIndex((item) => item.kind === "statement" && item.statement.position.line === note.line);
+            if (at === -1) continue;
+            const statement = (items[at] as { statement: S }).statement;
+            const message = note.kind === "arrow"
+                ? `\`${note.text}\` is how the log shows an address; it was read as the target. Write the target in parentheses: \`${PlurnkParser.heading(statement)}\`.`
+                : note.kind === "charge" ? AstBuilder.chargeAdvisory(note.text)
+                    : note.kind === "aside" ? AstBuilder.dotAsideAdvisory(note.text.replace(/^\u00B7[ \t]*/u, "").trim())
+                        : `\`${note.text}\` was read as the scope \`<${note.text}>\`; a scope is written in angle brackets.`;
+            // COPY and MOVE show both operands in one corrected line: say it once.
+            const key = `${note.line}|${note.kind === "arrow" ? note.kind : message}`;
+            if (named.has(key)) continue;
+            named.add(key);
+            items.splice(at + 1, 0, { kind: "error", error: new PlurnkParseError(note.line, note.column, "parser", message, "warning") });
         }
 
         for (const err of errors) {

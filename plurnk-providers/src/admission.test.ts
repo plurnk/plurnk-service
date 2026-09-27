@@ -304,3 +304,50 @@ for (const value of ["0", "-2", "1.5", "NaN", "Infinity", "9007199254740992"]) {
         assert.deepEqual(wire.opened, []);
     });
 }
+
+// {§provider-first-content-at-dispatch} Recorded shape (#853): Z.ai accepted the request and never answered
+// headers; the 180 s first-content deadline never fired and the attempt held its full 600 s twice.
+for (const [name, route] of [
+    ["native SDK", "openai/gpt-4.1-mini"],
+    ["catalog compatible", "fireworks-ai/accounts/fireworks/models/kimi-k3"],
+    ["local compatible", "openai/local"],
+    ["Ollama SDK", "ollama/local"],
+] as const) {
+    test(`{§provider-first-content-at-dispatch} ${name}: an endpoint that never sends headers fails at the first-content deadline, not the attempt deadline`, { timeout: 10000 }, async (t) => {
+        const received = Promise.withResolvers<void>();
+        const server = createServer(async (request, response) => {
+            if (request.url === "/v1/models") return void response.end(JSON.stringify({ data: [{ id: "local", meta: { n_ctx: 8192 } }] }));
+            if (request.url === "/props") return void response.end(JSON.stringify({ total_slots: 1 }));
+            if (request.url === "/api/show") return void response.end(JSON.stringify({ model_info: { "fixture.context_length": 8192 } }));
+            if (request.url === "/v1/chat/completions/input_tokens") return void response.end(JSON.stringify({ input_tokens: 2 }));
+            request.resume();
+            await once(request, "end");
+            received.resolve();
+        });
+        server.listen(0, "127.0.0.1");
+        await once(server, "listening");
+        t.after(async () => {
+            server.closeAllConnections();
+            await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+        });
+        const address = server.address();
+        assert.ok(address && typeof address === "object");
+        const p = await provider(`http://127.0.0.1:${address.port}/v1`, route, {
+            FIREWORKS_API_KEY: "test-key",
+            PLURNK_PROVIDERS_OPERATION_TIMEOUT: "8000",
+            PLURNK_PROVIDERS_FETCH_TIMEOUT: "6000",
+            PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT: "150",
+        });
+        const started = performance.now();
+        await assert.rejects(generate(p, "headerless"), (error) => {
+            assert.ok(error instanceof ProviderError);
+            assert.equal(error.kind, "network_failure");
+            assert.equal(error.problem.timeoutPhase, "first_content");
+            assert.equal(error.problem.timeoutMs, 150);
+            assert.equal(error.accounting.length, 1, "the dispatched request is one settled physical attempt");
+            return true;
+        });
+        await received.promise;
+        assert.ok(performance.now() - started < 3000, "the attempt deadline (6000 ms) did not decide the failure");
+    });
+}

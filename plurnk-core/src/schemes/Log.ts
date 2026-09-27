@@ -764,13 +764,13 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     return {
                         result: Results.failure(
                             "scheme:log",
-                            "curation-scope-invalid",
-                            400,
+                            scope.code,
+                            scope.status,
                             scope.detail,
                             {},
                             {
                                 target: identity,
-                                recovery: "Use one log-body line or an inclusive two-line range.",
+                                recovery: scope.recovery,
                                 retryable: false,
                             },
                         ) as OpenFoldResult,

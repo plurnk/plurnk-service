@@ -236,3 +236,17 @@ test("{§log-readable-projection}: trimming invalidates search and a racing deri
     assert.match(wire, /1:apple/);
     assert.doesNotMatch(wire, /secret|pear/);
 });
+
+// {§log-scope-recovery} — the recorded emission replayed through the parser and the engine.
+test("{§log-scope-recovery} {§range-starts-at-one}: `KILL (log:///…/READ) <0, -1>` is refused 416 with the whole-row and 1-based forms, which then work", async (t) => {
+    const { dispatch } = await runtime(t);
+    await dispatch("````EDIT (worker:///source.txt)\none\ntwo\n````");
+    await dispatch("````READ (worker:///source.txt) <1,-1>````");
+    const refused = await dispatch("````KILL (log:///1/1/2/READ) <0, -1>````");
+    assert.equal(refused.status, 416);
+    assert.match(refused.problem.type, /\/range-not-satisfiable$/);
+    assert.equal(refused.problem.detail, "Range <0,-1> starts at 0, which is not a line; lines are numbered from 1.");
+    assert.equal(refused.problem.recovery, "Write <1,-1> to trim every line of the body; KILL (log:///1/1/2/READ) with no scope retires the whole row.");
+    assert.equal((await dispatch("````KILL (log:///1/1/2/READ) <1,-1>````")).status, 200);
+    assert.equal((await dispatch("````KILL (log:///1/1/2/READ)````")).status, 200);
+});

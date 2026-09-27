@@ -22,7 +22,7 @@ import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
 import EnvFunctionality, { type EnvRecord } from "../server/EnvFunctionality.ts";
 import ExecAbort from "./exec-abort.ts";
 import { LIFETIME_SYNTAX, formatLifetime, parseExecLifetime } from "./exec-lifetime.ts";
-import { entryCoordinateOf, generatedPathname, renderAddress } from "../core/plurnk-uri.ts";
+import { entryCoordinateOf, generatedPathname, isGeneratedPathname, renderAddress } from "../core/plurnk-uri.ts";
 import { writeFile, unlink, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, isAbsolute, join, resolve } from "node:path";
@@ -404,6 +404,21 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         if (resourceSource !== null && hasBody && execTarget?.kind === "url" && execTarget.scheme === runtime
             && !/^\/[0-9a-f]{8}(?:[/#]|$)/u.test(execTarget.pathname ?? "")) {
             resourceSource = null;
+        }
+
+        // {§exec-target-documentation} — the generated reference under worker:///_plurnk/ describes a
+        // runtime; it is never a program. Realizing it as a temporary script fails where the runtime
+        // cannot see the host's temporary directory, and runs markdown where it can.
+        if (resourceSource !== null && execTarget?.kind === "url" && execTarget.scheme === "worker"
+            && isGeneratedPathname(PathSyntax.decodeParens(execTarget.pathname ?? ""))) {
+            return refuse(
+                "target-is-documentation",
+                `\`${execTarget.raw}\` is reference documentation the harness generated, not a program; ${runtime} cannot run it.`,
+                hasBody
+                    ? `Drop the target and keep the command: the opening fence line is ${runtime} alone, with the command lines beneath it.`
+                    : `READ it to learn the ${runtime} executor; to run a program, target the program's own path, or put the command beneath a ${runtime} heading with no target.`,
+                { target: execTarget.raw },
+            );
         }
 
         // {§exec-lifetime} — the scope slot is text coordinates, and an execution has none;

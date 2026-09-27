@@ -26,6 +26,13 @@ export type StrikeSource = "repetition" | "operation" | "no_operation";
 const isExecutorEvidence = ({ problemType }: StrikeOutcome): boolean =>
     typeof problemType === "string" && problemType.startsWith(EXECUTOR_EVIDENCE_PREFIX);
 
+// {§strike-progress-immunity} — only an operation that acts on the task and succeeds is progress;
+// NOTE, WAIT, a parameterless KILL and a targetless SEND steer the loop instead.
+export const isProgress = (statement: PlurnkStatement, status: number): boolean => status < 400
+    && statement.op !== "NOTE"
+    && statement.op !== "WAIT"
+    && !((statement.op === "KILL" || statement.op === "SEND") && statement.target === null);
+
 const SOURCE_DECORATION = new Set(["aside", "position"]);
 
 const observedResult = (result: OperationResult | undefined): unknown => result?.problem === undefined
@@ -117,6 +124,8 @@ export default class StrikeRail {
         waitRevision: number;
         fingerprint: string;
         outcomes: ReadonlyArray<StrikeOutcome>;
+        // {§strike-progress-immunity} — at least one operation acted on the task and succeeded.
+        progressed: boolean;
         emptyTurn?: boolean;
         minCycles: number;
         maxCyclePeriod: number;
@@ -134,7 +143,7 @@ export default class StrikeRail {
         const window = turn.minCycles * turn.maxCyclePeriod;
         if (history.length > window) history.splice(0, history.length - window);
         const cycle = StrikeRail.detectCycle(history, turn.minCycles, turn.maxCyclePeriod);
-        const recordedFailed = turn.outcomes.some(
+        const recordedFailed = !turn.progressed && turn.outcomes.some(
             (outcome) => !isExecutionOp(outcome.op)
                 && outcome.status >= 400
                 && !SOFT_FAILURE_STATUSES.has(outcome.status)

@@ -6,15 +6,19 @@
 // executor and every parameter is one of plurnk's slots; then the block is rewritten to canonical
 // fences and never taught. Any call this cannot map exactly leaves the whole input as it was.
 
+// The operations that cannot run without a target ({§op-shapes}).
+const TARGETED = new Set(["FIND", "READ", "EDIT", "COPY", "MOVE"]);
+// The operations that take no body ({§matcher-body-redirect}, {§transfer-resource-selections}).
+const BODILESS = new Set(["FIND", "READ", "COPY", "MOVE"]);
 const OPERATIONS = new Set(["FIND", "READ", "EDIT", "COPY", "MOVE", "KILL", "SEND", "NOTE", "WAIT", "BARE", "WORK", "FORK"]);
 const SLOT_OF: Readonly<Record<string, "path" | "scope" | "pattern" | "aside" | "body" | "start" | "end" | "limit">> = Object.freeze({
     path: "path", target: "path", file_path: "path", filepath: "path", file: "path", filename: "path", resource: "path", uri: "path", url: "path",
     scope: "scope", range: "scope", lines: "scope",
-    start: "start", start_line: "start", from: "start", offset: "start",
-    end: "end", end_line: "end", to: "end",
+    start: "start", start_line: "start", startLine: "start", from: "start", offset: "start",
+    end: "end", end_line: "end", endLine: "end", to: "end",
     limit: "limit",
     pattern: "pattern", regex: "pattern", query: "pattern",
-    aside: "aside",
+    aside: "aside", reason: "aside", description: "aside",
     body: "body", content: "body", command: "body", text: "body", input: "body",
 });
 
@@ -24,6 +28,10 @@ const INVOKE_CLOSE = new RegExp(`^\\s*</${DSML}invoke>\\s*$`);
 const PARAMETER = new RegExp(`^\\s*<${DSML}parameter\\s+name="([^"]+)"[^>]*>(.*?)</${DSML}parameter>\\s*$`);
 const STRAY_PARAMETER_CLOSE = new RegExp(`^\\s*</${DSML}parameter>\\s*$`);
 const FENCE_LINE = /^\s*`{3,}\s*$/;
+// A key that names the operation inside a flat JSON call, `{"op": "READ", "path": …}`, in any case.
+const OP_KEYS = new Set(["op", "action", "cmd"]);
+// Closing tags left over from another family's shape, `</parameter>`, `</invoke>`, `</>`: markup noise after a call.
+const STRAY_CLOSERS = /^(?:\s*<\/[A-Za-z_｜ ]*>)*\s*$/u;
 const MARKERS = ["DSML", "<function_calls>", "<invoke ", "<tool_call", "<function=", "[TOOL_CALLS]", "<|python_tag|>", "<|tool_call"];
 
 type Slots = { path?: string; scope?: string; pattern?: string; aside?: string; start?: string; end?: string; limit?: string; body: string[]; extra: string };
@@ -72,6 +80,35 @@ export default class NativeToolCalls {
         return out;
     }
 
+    // {§native-tool-call-receipt} — the first block that was not read, for the receipt that names it: its opening markup,
+    // its line and column, and the fenced form of the operation it names where the markup says which.
+    static unread(input: string, executors: readonly string[], quotedLines: ReadonlySet<number> = new Set()): { line: number; column: number; markup: string; form: string } | null {
+        if (!MARKERS.some((marker) => input.includes(marker))) return null;
+        const block = NativeToolCalls.#blocks(input, executors).find((candidate) => !quotedLines.has(candidate.startLine));
+        if (block === undefined) return null;
+        const text = input.slice(block.from, block.to);
+        const markup = /^(?:\[TOOL_CALLS\]|<\|[a-z_]+\|>|<[^\n>]{0,40}>?)/u.exec(text)![0];
+        const lineStart = input.lastIndexOf("\n", block.from - 1) + 1;
+        return { line: block.startLine + 1, column: [...input.slice(lineStart, block.from)].length, markup, form: NativeToolCalls.#form(text, executors) };
+    }
+
+    // The fenced form of what a block of markup asks for, as the receipt teaches it.
+    static #form(text: string, executors: readonly string[]): string {
+        const named = /\b(FIND|READ|EDIT|COPY|MOVE|KILL|SEND|NOTE|WAIT|BARE|WORK|FORK)\b/u.exec(text)?.[1]
+            ?? /["=](find|read|edit|kill|send|note|wait|work|fork)["\s>]/iu.exec(text)?.[1]?.toUpperCase();
+        const path = /"(?:path|file_path|filepath|file|target)"\s*:\s*"([^"]+)"/u.exec(text)?.[1]
+            ?? /\b(?:path|file)="([^"]+)"/u.exec(text)?.[1]
+            ?? /\b(?:FIND|READ|EDIT|COPY|MOVE|KILL)\b`?[>\s]*\(([^()\s]+)\)/u.exec(text)?.[1];
+        const executor = path !== undefined && executors.some((name) => name.toLowerCase() === path.toLowerCase());
+        const shell = named === undefined && (executor || /"command"|<parameter=command>|\b[Bb]ash\b/u.test(text) || executors.some((name) => text.includes(`<${name}>`)));
+        if (shell) return "three backticks and `sh` on the opening line, the command on the lines below it, and three backticks to close";
+        if (named === "NOTE" || named === undefined && /"(?:content|text|output|raw|note)"\s*:/u.test(text)) {
+            return "three backticks and `NOTE` on the opening line, the note on the lines below it, and three backticks to close";
+        }
+        if (named === undefined) return "three backticks and the operation with its target, such as `READ (path)`, on the opening line";
+        return `three backticks and \`${named} (${path ?? "path"})\` on the opening line`;
+    }
+
     // Every block of every family, in source order, with the calls it names.
     static #blocks(input: string, executors: readonly string[]): Block[] {
         const known = new Set(executors.map((name) => name.toLowerCase()));
@@ -81,7 +118,7 @@ export default class NativeToolCalls {
         while (position < input.length) {
             const found = NativeToolCalls.#next(input, position, known);
             if (found === null) break;
-            if (found.calls !== null && found.calls.some((call) => !NativeToolCalls.#coherent(call.slots))) found.calls = null;
+            if (found.calls !== null && found.calls.some((call) => !NativeToolCalls.#coherent(call))) found.calls = null;
             // A block ends on the line its last character sits on; a block that ends on an empty line ends there.
             blocks.push({ ...found, startLine: lineOf(found.from), endLine: lineOf(found.to) });
             position = found.to;
@@ -193,12 +230,13 @@ export default class NativeToolCalls {
         const content = input.slice(contentStart, contentEnd);
         const line = input.slice(0, from).split("\n").length - 1;
         const trimmed = content.trim();
-        let call: Call | null;
-        if (trimmed.startsWith("<function=")) call = NativeToolCalls.#functionElement(trimmed, line, known);
-        else if (trimmed.startsWith("{") || trimmed.startsWith("[")) call = NativeToolCalls.#jsonCall(trimmed, line, known);
-        else if (trimmed.includes("<arg_key>")) call = NativeToolCalls.#keyValueCall(trimmed, line, known);
-        else call = null;
-        return { from, to, calls: call === null ? null : [call] };
+        let calls: Call[] | null;
+        if (trimmed.startsWith("<function=")) calls = NativeToolCalls.#one(NativeToolCalls.#functionElement(trimmed, line, known));
+        else if (trimmed.startsWith("{") || trimmed.startsWith("[")) calls = NativeToolCalls.#one(NativeToolCalls.#jsonCall(trimmed, line, known));
+        else if (trimmed.includes("<arg_key>")) calls = NativeToolCalls.#one(NativeToolCalls.#keyValueCall(trimmed, line, known));
+        else if (trimmed.startsWith("<")) calls = NativeToolCalls.#elementCalls(trimmed, line, known);
+        else calls = NativeToolCalls.#one(NativeToolCalls.#headingCall(trimmed, line, known));
+        return { from, to, calls };
     }
 
     // A `<function=NAME …>…</function>` outside any `<tool_call>` (Llama 3.1 and kin).
@@ -222,37 +260,45 @@ export default class NativeToolCalls {
         const heading = (unclosed ? `${rawHeading}>` : rawHeading).trim();
         const nameEnd = heading.search(/[\s(<[]/);
         const rawName = nameEnd === -1 ? heading : heading.slice(0, nameEnd);
-        const name = NativeToolCalls.#operation(rawName, known);
-        const slots = NativeToolCalls.#headingSlots(nameEnd === -1 ? "" : ` ${heading.slice(nameEnd)}`, false);
-        if (name === null || slots === null) return null;
         let inner = text.slice(headingEnd + 1);
         const closeAt = inner.lastIndexOf("</function>");
         if (closeAt !== -1) inner = inner.slice(0, closeAt);
+        // `<function=OP>`: the function is the generic operation; its attributes or its content name which one.
+        if (rawName.toLowerCase() === "op") return NativeToolCalls.#genericCall(nameEnd === -1 ? "" : heading.slice(nameEnd), inner, line, known);
+        const name = NativeToolCalls.#operation(rawName, known);
+        const slots = NativeToolCalls.#headingSlots(nameEnd === -1 ? "" : ` ${heading.slice(nameEnd)}`, false);
+        if (name === null || slots === null) return null;
         const parameters = [...inner.matchAll(/<parameter=([^>]+)>([\s\S]*?)<\/parameter>/g)];
         if (parameters.length > 0) {
             for (const [, key, value] of parameters) {
                 if (!NativeToolCalls.#assign(slots, key!.trim(), NativeToolCalls.#trimLines(value!))) return null;
             }
-            const leftover = inner.replace(/<parameter=([^>]+)>([\s\S]*?)<\/parameter>/g, "").trim();
-            if (leftover.length > 0) slots.body.push(...leftover.split("\n"));
+            const leftover = NativeToolCalls.#withoutStrayClosers(inner.replace(/<parameter=([^>]+)>([\s\S]*?)<\/parameter>/g, ""));
+            // A JSON object beside the parameters carries more of them.
+            const object = leftover.startsWith("{") ? NativeToolCalls.#jsonPrefix(leftover) : null;
+            if (object !== null && typeof object === "object" && !Array.isArray(object)) {
+                for (const [key, value] of Object.entries(object as Record<string, unknown>)) {
+                    if (!NativeToolCalls.#assign(slots, key, NativeToolCalls.#stringOf(value))) return null;
+                }
+            } else if (leftover.length > 0) slots.body.push(...leftover.split("\n"));
             return { name, slots, line };
         }
-        const trimmed = inner.trim();
+        const trimmed = NativeToolCalls.#withoutStrayClosers(inner);
         if (trimmed.startsWith("{")) {
-            const parsed = NativeToolCalls.#json(trimmed);
+            const parsed = NativeToolCalls.#jsonPrefix(trimmed);
             if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
             for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
                 if (!NativeToolCalls.#assign(slots, key, NativeToolCalls.#stringOf(value))) return null;
             }
             return { name, slots, line };
         }
-        if (trimmed.length > 0) slots.body.push(...trimmed.split("\n"));
+        NativeToolCalls.#content(name, slots, trimmed);
         return { name, slots, line };
     }
 
     // `{"name": "READ", "arguments": {…}}`, arguments also accepted as `parameters`, `input`, or a JSON string.
     static #jsonCall(text: string, line: number, known: ReadonlySet<string>): Call | null {
-        const parsed = NativeToolCalls.#json(text);
+        const parsed = NativeToolCalls.#jsonPrefix(text);
         const record = Array.isArray(parsed) ? parsed[0] : parsed;
         if (record === null || typeof record !== "object") return null;
         return NativeToolCalls.#callFromRecord(record as Record<string, unknown>, line, known);
@@ -262,10 +308,23 @@ export default class NativeToolCalls {
         const inner = record.function !== undefined && typeof record.function === "object" && record.function !== null
             ? record.function as Record<string, unknown>
             : record;
+        // `{"op": "READ", "path": …}`: the operation named by a key of its own, its slots beside it.
+        const opKey = typeof inner.name === "string" ? undefined : Object.keys(inner).find((key) => OP_KEYS.has(key.toLowerCase()) && typeof inner[key] === "string");
+        if (opKey !== undefined) {
+            const name = NativeToolCalls.#operation(inner[opKey] as string, known);
+            if (name === null) return null;
+            const slots: Slots = { body: [], extra: "" };
+            for (const [key, value] of Object.entries(inner)) {
+                if (key !== opKey && !NativeToolCalls.#assign(slots, key, NativeToolCalls.#stringOf(value))) return null;
+            }
+            return { name, slots, line };
+        }
         if (typeof inner.name !== "string") return null;
         const name = NativeToolCalls.#operation(inner.name, known);
         if (name === null) return null;
         let args: unknown = inner.arguments ?? inner.parameters ?? inner.input ?? {};
+        // An executor's input written as a plain string is its program.
+        if (typeof args === "string" && NativeToolCalls.#json(args) === null && known.has(name.toLowerCase())) args = { body: args };
         if (typeof args === "string") args = NativeToolCalls.#json(args);
         if (args === null || typeof args !== "object" || Array.isArray(args)) return null;
         const slots: Slots = { body: [], extra: "" };
@@ -333,6 +392,107 @@ export default class NativeToolCalls {
         return { from, to, calls: calls.length === 0 ? null : calls };
     }
 
+    // A call's text: the body, except that an operation which takes no body and names no target yet reads a
+    // first line of plurnk slots, `(path) <scope>`, as its heading (`<function=READ>(a.py) <1,30></function>`).
+    static #content(name: string, slots: Slots, text: string): void {
+        if (text.length === 0) return;
+        const lines = text.split("\n");
+        if (BODILESS.has(name) && slots.path === undefined && slots.extra === "" && /^\s*\(/u.test(lines[0]!)) {
+            slots.extra = lines.shift()!.trim();
+            if (lines.every((entry) => entry.trim() === "")) return;
+        }
+        slots.body.push(...lines);
+    }
+
+    static #one(call: Call | null): Call[] | null {
+        return call === null ? null : [call];
+    }
+
+    // A JSON value at the start of `text`, followed by nothing but stray closing tags.
+    static #jsonPrefix(text: string): unknown | null {
+        const end = NativeToolCalls.#balancedEnd(text, 0);
+        if (end === null || !STRAY_CLOSERS.test(text.slice(end))) return null;
+        return NativeToolCalls.#json(text.slice(0, end));
+    }
+
+    static #withoutStrayClosers(text: string): string {
+        return text.replace(/(?:\s*<\/(?:[A-Za-z_｜ ]*)>)+\s*$/u, "").trim();
+    }
+
+    // `<function=OP …>`: the operation named by a `name`/`op`/`verb` attribute, or by the content — a flat JSON
+    // call with an operation key, or a plurnk heading written as text.
+    static #genericCall(attributes: string, inner: string, line: number, known: ReadonlySet<string>): Call | null {
+        const named = /\s(?:name|op|verb)="([^"]*)"/u.exec(attributes);
+        const content = NativeToolCalls.#withoutStrayClosers(inner);
+        if (named !== null) {
+            const name = NativeToolCalls.#operation(named[1]!, known);
+            const slots = NativeToolCalls.#headingSlots(attributes.replace(named[0], ""), false);
+            if (name === null || slots === null) return null;
+            if (content.length > 0) slots.body.push(...content.split("\n"));
+            return { name, slots, line };
+        }
+        if (attributes.trim().length > 0) return null;
+        if (content.startsWith("{")) return NativeToolCalls.#jsonCall(content, line, known);
+        return NativeToolCalls.#headingCall(content, line, known);
+    }
+
+    // A plurnk heading written as the call's text, `READ (a.py) <1,50>`, with an optional `=` before it (Qwen's
+    // `<tool_call>=READ (…)`): the heading is the fence's, the lines after it the body.
+    static #headingCall(text: string, line: number, known: ReadonlySet<string>): Call | null {
+        const lines = NativeToolCalls.#withoutStrayClosers(text).split("\n");
+        const heading = /^=?([A-Za-z][A-Za-z0-9_.+-]*)(?=$|[\s(<[])(.*)$/u.exec(lines[0]!.trim());
+        if (heading === null) return null;
+        const name = NativeToolCalls.#operation(heading[1]!, known);
+        if (name === null) return null;
+        const slots: Slots = { body: [], extra: heading[2]!.trim() };
+        const body = lines.slice(1).filter((entry) => !FENCE_LINE.test(entry));
+        if (body.some((entry) => entry.trim().length > 0)) slots.body.push(...body);
+        return { name, slots, line };
+    }
+
+    // XML elements naming operations: `<NOTE>…</NOTE>`, `<FIND (path) <1,3></FIND>`, `<read path="…"/>`, and the
+    // generic `<op op="READ" …>`, `<op=READ (…)>` and `<OP name="READ" …>`, one or several (`<ops>…</ops>`).
+    static #elementCalls(text: string, line: number, known: ReadonlySet<string>): Call[] | null {
+        let rest = text.replace(/^<ops>/u, "").replace(/<\/ops>\s*$/u, "").trim();
+        const calls: Call[] = [];
+        while (rest.length > 0) {
+            const tag = /^<([A-Za-z]+)/u.exec(rest);
+            if (tag === null) return null;
+            // The tag ends on its own line; when a scope written last closed it, the scope keeps its bracket.
+            const firstLine = rest.split("\n", 1)[0]!;
+            const headingEnd = NativeToolCalls.#tagEnd(firstLine, tag[0].length);
+            if (headingEnd === null) return null;
+            const rawHeading = rest.slice(tag[0].length, headingEnd);
+            const heading = (rawHeading.match(/</gu) ?? []).length > (rawHeading.match(/>/gu) ?? []).length ? `${rawHeading}>` : rawHeading;
+            const selfClosed = heading.endsWith("/");
+            const attributes = selfClosed ? heading.slice(0, -1) : heading;
+            let inner = "";
+            rest = rest.slice(headingEnd + 1);
+            if (!selfClosed) {
+                const close = new RegExp(`</${tag[1]}>`, "iu").exec(rest);
+                inner = close === null ? rest : rest.slice(0, close.index);
+                rest = close === null ? "" : rest.slice(close.index + close[0].length);
+            }
+            rest = rest.trim();
+            let call: Call | null;
+            if (tag[1]!.toLowerCase() === "op") {
+                const assigned = /^=([A-Za-z]+)(.*)$/su.exec(attributes);
+                call = assigned === null
+                    ? NativeToolCalls.#genericCall(attributes, inner, line, known)
+                    : NativeToolCalls.#headingCall(`${assigned[1]}${assigned[2]}\n${inner}`, line, known);
+            } else {
+                const name = NativeToolCalls.#operation(tag[1]!, known);
+                const slots = name === null ? null : NativeToolCalls.#headingSlots(attributes, false);
+                const content = NativeToolCalls.#trimLines(NativeToolCalls.#withoutStrayClosers(inner));
+                if (slots !== null && name !== null) NativeToolCalls.#content(name, slots, content);
+                call = name === null || slots === null ? null : { name, slots, line };
+            }
+            if (call === null) return null;
+            calls.push(call);
+        }
+        return calls.length === 0 ? null : calls;
+    }
+
     // A plurnk operation name, case-insensitively, or a known executor by its own spelling.
     static #operation(raw: string, known: ReadonlySet<string>): string | null {
         const name = raw.trim();
@@ -376,6 +536,19 @@ export default class NativeToolCalls {
         return `<${start}>`;
     }
 
+    // A scope as tool schemas spell it: a JSON array `[500,530]`, a `{"start", "end"}` object, or plurnk's own.
+    static #scopeText(written: string): string {
+        const scope = written.trim();
+        const array = /^\[\s*(-?\d+(?:\s*,\s*-?\d+)*)\s*\]$/u.exec(scope);
+        if (array !== null) return `<${array[1]!.replace(/\s+/gu, "")}>`;
+        const object = NativeToolCalls.#json(scope);
+        if (object !== null && typeof object === "object" && !Array.isArray(object)) {
+            const { start, end } = object as { start?: unknown; end?: unknown };
+            if (typeof start === "number" && typeof end === "number") return `<${start},${end}>`;
+        }
+        return scope;
+    }
+
     static #stringOf(value: unknown): string {
         return typeof value === "string" ? value : JSON.stringify(value);
     }
@@ -416,13 +589,15 @@ export default class NativeToolCalls {
         return slots;
     }
 
-    // A call whose scope came as `end` or `limit` without a `start` names no scope; it is unmappable.
-    static #coherent(slots: Slots): boolean {
+    // A call whose scope came as `end` or `limit` without a `start` names no scope, and one that cannot run
+    // without a target names none: either is unmappable.
+    static #coherent({ name, slots }: Call): boolean {
+        if (TARGETED.has(name) && slots.path === undefined && !slots.extra.startsWith("(")) return false;
         return slots.start !== undefined || (slots.end === undefined && slots.limit === undefined);
     }
 
     static #fence(name: string, slots: Slots): string[] {
-        const scope = slots.scope !== undefined ? slots.scope.trim() : NativeToolCalls.#scopeOf(slots);
+        const scope = slots.scope !== undefined ? NativeToolCalls.#scopeText(slots.scope) : NativeToolCalls.#scopeOf(slots);
         const heading = [
             name,
             slots.path === undefined ? "" : `(${slots.path.trim()})`,

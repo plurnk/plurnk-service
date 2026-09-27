@@ -309,7 +309,10 @@ naming nothing known is body; the block expects no closer, so its body is never 
 back ({§closer-fallback}). It runs, and one warning-severity receipt follows its statement —
 `` `KILL` opened with no fence; the taught form is three backticks. `` One rule for every native
 operation: a naked `WAIT` parks, a naked `NOTE` takes its text, a naked `READ` meets the ordinary
-missing-target refusal. Only the bare name qualifies; a name with anything else on its line is
+missing-target refusal. A closer the author wrote anyway is still not body: when the body's last line is
+a bare backtick fence that no other fence line in the body pairs with (an odd count of fence lines), that
+line is the block's closer and leaves the body, so `KILL`, then the answer, then a closing fence delivers
+the answer alone. Only the bare name qualifies; a name with anything else on its line is
 the unfenced form and still refuses ({§unfenced-operation}), executors are runtimes rather than
 operations, and reasoning is never read this way. In 9,196 recorded emissions, all 48 naked
 `KILL` lines were followed by the deliverable.
@@ -395,8 +398,8 @@ repaired reading: a complete nested interpretation takes precedence. Each class 
 | Counted | Complete readings | Repaired readings | Why |
 |---|---|---|---|
 | Hidden operations: a heading that will not run, written at its block's width or wider | 1, together with the next row | 1 | Every operation the author wrote should run |
-| Repairs: a supplied closer, a fence read as a stray, a narrower closer accepted, a body under an operation that takes none (FIND, READ, COPY, MOVE, targeted KILL), a body not well-formed in the media type its runtime declares ({§executor-invocation}) | none by definition | 2 | The least-errors distance |
-| Literal by declaration: a heading narrower than its block, or no wider than the labeled block or example holding it, or inside a quotation or a KILL; a labeled fence in a body read as text | 1, together with the row above | 3 | Every code block the author declared should stand |
+| Repairs: a supplied closer (except a message's run to the end of the input, {§message-run-on}), a fence read as a stray, a narrower closer accepted, a body under an operation that takes none (FIND, READ, COPY, MOVE, targeted KILL), a body not well-formed in the media type its runtime declares ({§executor-invocation}) | none by definition | 2 | The least-errors distance |
+| Literal by declaration: a heading narrower than its block, or no wider than the labeled block or example holding it, or inside a quotation or a KILL, or an executor heading inside a SEND, WORK, FORK or BARE body ({§prose-code-blocks}); a labeled fence in a body read as text | 1, together with the row above | 3 | Every code block the author declared should stand |
 | Supplied closers | 2 | 4 | A block the author opened should end at a fence the author wrote |
 | Other fences read as text | 3 | 5 | The least departure from the fences as written |
 
@@ -419,6 +422,25 @@ heading is a literal example or text and never ends the block; the block ends at
 the end of the input. Of 796 recorded parameterless KILLs, 9 were followed by any other
 operation, while 62 of 120 SENDs were, so the rule is KILL's alone. It keeps a final report whole
 and never runs a command the report only shows.
+
+§prose-code-blocks **A message or a prompt shows code.** Inside a `SEND`, `WORK`, `FORK` or `BARE`
+body, at any depth, a heading that names an executor (` ```sh `, ` ```python3 `) is a code block the
+text shows, exactly as under {§terminal-kill}: it never ends the block and never runs. A native
+operation's heading still ends such a block, since a message is often followed by the author's next
+operation. In the distinct recorded benchmark emissions an executor heading ended an unclosed
+`WORK` body 14 times, a `BARE` body 9 times and a `SEND` body twice; every one inspected (qflash
+run218, run114 and run118, deepdumb run44) was the child's task, the prompt's code or code quoted in
+a report, and reading it as an operation truncated the task and ran the example in the parent.
+
+§message-run-on **A message runs to the end of the turn.** A parameterless `KILL`, or a `SEND`,
+`WORK`, `FORK` or `BARE`, whose block reaches the end of the input without its closer takes it
+there with no repair: the text after its last inner block is still the deliverable, the message
+or the task, never outside text. The run counts as a supplied closer, so a reading that closes at
+a real fence still wins, and it never costs an operation: when the reading that runs on hides more
+operations the author wrote than the best repaired reading, the repaired reading stands. Across the
+11,235 distinct recorded benchmark emissions this changes 26 readings: bodies that had ended at an
+inner fence keep what followed it (the qflash run192, run90 and run210 deliverables regain their last
+sections), one echoed transcript (glm run155) runs one more operation, and none loses one.
 
 §pairing-witness **Witnesses.**
 
@@ -561,9 +583,31 @@ the aside, and `body`/`content`/`command`/`text`/`input` or plain text inside th
 call the body; plurnk slots written after the name are kept, a trailing scope's own
 bracket may close the tag. A block keeps its line count where its lines allow, so
 statement positions name the source line; an inline block grows to its fences.
-A call with an unknown name or parameter leaves the whole emission as it was. An
-emission that already yields an operation is never rewritten. No diagnostic, notice
-or teaching mentions the reading (#760).
+Qwen's own shapes read the same way: a flat JSON call whose operation is the value
+of an `op`, `action` or `cmd` key in any case (`{"op": "READ", "path": …, "range": …}`),
+an XML element named by the operation (`<NOTE>…</NOTE>`, `<FIND (path) <1,3></FIND>`,
+`<read path="…"/>`) or by a generic `op` element or function (`<op op="READ" …>`,
+`<op verb="READ" …/>` in `<ops>`, `<op=READ (path) …>`, `<function=OP name="READ" …>`,
+`<function=OP>` around such a JSON call or a plurnk heading), and a plurnk heading written
+as the call's text (`<tool_call>READ (a.py) <60,120>`, `=READ (…)`). Closing tags left over
+from another family (`</parameter>`, `</invoke>`, `</>`) after a call are markup noise;
+`reason` and `description` are the aside; a scope may be a JSON array (`[500,530]`) or a
+`{"start", "end"}` object; an executor's string `input` is its program. A call with an
+unknown name or parameter, or a FIND, READ, EDIT, COPY or MOVE naming no target, leaves the
+whole emission as it was. An emission that already yields an operation is never
+rewritten. No diagnostic, notice or teaching mentions a successful reading (#760).
+
+§native-tool-call-receipt **Markup that was not read is named.** When an emission yields no
+operation and carries native tool-call markup that could not be read, the parse reports one
+hard diagnostic at the markup, naming it and the fenced form that runs — `` `<tool_call>` is
+tool-call markup, which plurnk does not run, so nothing ran. An operation is a fenced block:
+three backticks and `READ (django/forms/widgets.py)` on the opening line. `` The form names
+the operation and target the markup itself names where it names them (`sh` for a shell
+command, `NOTE` for a note or narration), and otherwise the generic "the operation with its target,
+such as `READ (path)`". The model believes it
+acted; silence would let it wait on a result that never comes. Of 107 distinct recorded
+no-operation qflash emissions carrying call-like markup, 63 read under {§native-tool-calls}, 42 draw
+this receipt, and 2, a bare JSON object of narration with no tool-call marker, draw neither.
 
 §empty-section Both the compact bodyless form and an empty multiline block
 normalize optional bodies to null. Closing fences are conventional, never required
@@ -1630,6 +1674,11 @@ diagnostics are:
   diagnostic, with or without flags, without assuming what the extra text was
   intended to represent. Invalid patterns or flags retain the native
   regex failure; no branch silently removes or executes trailing content.
+- §regex-sed-range **A sed line range is named as one.** A regex matcher written as a sed
+  address range — `/a/,/b/` or `/a/,+N` — is refused as a range, never as invalid flags: the
+  diagnostic says a matcher selects only the lines it matches, gives the one regex that
+  locates the ends (`/a|b/`, or `/a/`) and the scope that then addresses the span
+  (`<first,last>`, or `<N,M>` with M being N plus the range's count).
 - §unclosed-regex **A regex that never closes.** A `/pattern` matcher with no closing
   `/` is read as the whole pattern with no flags, with one warning-severity advisory
   naming the closing slash and the flag position. The reading is deterministic because
@@ -1681,6 +1730,34 @@ diagnostics are:
   unambiguous, so only their sequence differs from the taught form, and nothing is
   invented to read it. The advisory names the canonical order rather than refusing,
   because the operation the model meant is never in doubt.
+- §log-heading-notation **The log's heading notation, copied as syntax, is read as the slot it
+  stands for.** A packet's log row heading is `### log:///L/T/S/OP → path pattern · N`
+  ({§log-wire-format} in the core SPEC); models copy its notation onto their own headings. Each
+  piece has one reading, so each is read and named with one warning-severity advisory after its
+  statement:
+
+  | Written | Read as | Advisory |
+  |---|---|---|
+  | `READ → sh:///x#stdout <1,50>` | the target, `READ (sh:///x#stdout) <1,50>`; COPY/MOVE take one arrow per operand | `` `→ sh:///x#stdout` is how the log shows an address; it was read as the target. Write the target in parentheses: `READ (sh:///x#stdout) <1,50>`. `` |
+  | `READ (a.py) <1,50> · 900`, `· 320 tokens`, a bare `·` | nothing: the token charge is dropped, on the heading or after a matcher | `` `· 900` is the token charge the log shows on a heading; it is not part of an operation and was ignored. `` |
+  | `FIND (x) /re/ · locate the sign handling` | the aside | `` `· locate the sign handling` was read as the aside; a note on an operation is written `<!-- locate the sign handling -->`. `` |
+
+  The arrow's path runs to the next space, `<` or `[`; a `·` never begins a heading matcher. In
+  distinct recorded benchmark emissions the arrow form opened 40 headings and the charge ended 52,
+  where they drew a missing-target 400 or a false-empty glob match.
+- §bare-target **A target written without its parentheses is refused with the line that runs.**
+  A FIND, READ or EDIT heading with no target whose heading text opens with a word that is no
+  matcher sigil, `READ a.py <1,4>`, cannot run: the word stands where the target goes, but on FIND it
+  could as well be a pattern. The statement is one hard diagnostic that writes the corrected line —
+  `` `READ` has no target: `a.py` stands where the target goes. Write the target in parentheses:
+  `READ (a.py) <1,4>`. `` A targetless KILL's heading text remains its inline deliverable.
+- §bare-anchor-scope **An EDIT's anchor without its angle brackets is its scope.** On an EDIT
+  heading, `@abcde` or `@abcde,@fghij` standing alone where the scope goes — nothing but an aside, a
+  closer or the line end after it — is the scope `<@abcde>`, with one warning-severity advisory:
+  `` `@abcde` was read as the scope `<@abcde>`; a scope is written in angle brackets. `` Read as
+  body instead, the anchor would be written into the file, or the EDIT refused for want of a line
+  marker (14 distinct recorded headings). On READ and KILL the same text stays a literal matcher,
+  since `@patch` is a search a model means.
 - §matcher-body-redirect **A body beneath those headings.** Text below the heading
   of a FIND, READ or targeted KILL is a body, and those operations take none: the builder
   keeps the statement without it and raises one warning-severity advisory (`READ

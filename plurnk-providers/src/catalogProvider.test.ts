@@ -48,6 +48,7 @@ const env = withProviderDefaults({
     PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT: "1000",
     PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT: "0",
     PLURNK_PROVIDERS_REPEATED_LINE_LIMIT: "0",
+    PLURNK_PROVIDERS_DROPPED_OUTPUT_TOKENS: "0",
     PLURNK_PROVIDERS_EFFORT: "off",
     PLURNK_PROVIDERS_TEMPERATURE: "0.2",
     PLURNK_PROVIDERS_REPEAT_PENALTY: "1.15",
@@ -1118,3 +1119,30 @@ test("{§provider-wire-declaration} alibaba: DashScope's inclusive cap, effort, 
         { max_completion_tokens: 4096, max_tokens: undefined, reasoning_effort: undefined, thinking_budget: undefined, enable_thinking: false },
     ]);
 });
+
+// {§provider-monetary-evidence} Recorded native Z.ai usage (#853 zai sweep, run137 turns 1 and 3), which the sweep's
+// service (38f585914, before #856 landed) reported as cost unknown on every trial.
+for (const [name, usage, expected] of [
+    ["uncached turn", { prompt_tokens: 4118, completion_tokens: 89, total_tokens: 4207, prompt_tokens_details: { cached_tokens: 0 }, completion_tokens_details: { reasoning_tokens: 20 } }, "0.0006622"],
+    ["implicit-cache turn", { prompt_tokens: 6359, completion_tokens: 7188, total_tokens: 13547, prompt_tokens_details: { cached_tokens: 1216 }, completion_tokens_details: { reasoning_tokens: 6191 } }, "0.00440193"],
+] as const) {
+    test(`{§provider-monetary-evidence} Z.ai glm-5.3-flash ${name} resolves to an exact catalog estimate, never unknown`, async () => {
+        mock.method(globalThis, "fetch", async () => new Response([
+            `data: ${JSON.stringify({ id: "zai", model: "glm-5.3-flash", choices: [{ index: 0, delta: { reasoning_content: "Read the widgets module." }, finish_reason: null }] })}`,
+            `data: ${JSON.stringify({ id: "zai", model: "glm-5.3-flash", choices: [{ index: 0, delta: { content: "```READ (django/forms/widgets.py) /class Media/\n```" }, finish_reason: "stop" }], usage })}`,
+            "data: [DONE]",
+        ].join("\n\n"), { headers: { "content-type": "text/event-stream" } }));
+        const info = lookupProvider("zai")!;
+        const provider = catalogProviderFromEnv("zai", {
+            ...env, ...Object.fromEntries(info.env.map((key) => [key, "test-key"])),
+            PLURNK_PROVIDERS_EFFORT: "adaptive",
+        }, "glm-5.3-flash");
+        assert.ok(provider);
+        const response = await provider.generate({ workerId: "zai-cost", messages: [] });
+        // ((input − cached) × 0.15 + cached × 0.03 + output × 0.50) / 1e6 at the Models.dev zai rates.
+        assert.deepEqual(response.accounting[0]?.cost, {
+            kind: "estimated", amount: { amount: expected, currency: "USD" }, source: "Models.dev catalog rates",
+        });
+        mock.restoreAll();
+    });
+}

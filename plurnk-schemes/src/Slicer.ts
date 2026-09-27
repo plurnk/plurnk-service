@@ -20,6 +20,10 @@ import type { LineMarker, RangeExtent, TextRegion } from "@plurnk/plurnk-contrac
 import { TextCoordinates, type TextLine } from "@plurnk/plurnk-mimetypes";
 import Results, { type SchemeResult, type ScopeNormalization } from "./Results.ts";
 
+export interface ScopeError {
+    readonly error: string;
+    readonly recovery?: string;
+}
 interface NormalizedMarker {
     kind: "range" | "before-first" | "after-last";
     start: number;
@@ -83,6 +87,7 @@ export default class Slicer {
     static #rangeFailure<T extends SchemeResult>(
         detail: string,
         range: RangeExtent,
+        recovery = "Choose a range within the available extent.",
     ): T {
         return Slicer.#failure(
             "range-not-satisfiable",
@@ -92,7 +97,7 @@ export default class Slicer {
             {
                 range,
                 stage: "projection",
-                recovery: "Choose a range within the available extent.",
+                recovery,
                 retryable: false,
             },
         );
@@ -150,9 +155,9 @@ export default class Slicer {
                 marker,
             );
         }
-        const norm = Slicer.#normalize(marker, total);
+        const norm = Slicer.#normalize(marker, total, unit);
         const extent = Slicer.#extent(marker, total, unit);
-        if ("error" in norm) return Slicer.#rangeFailure<WindowResult>(norm.error, extent);
+        if ("error" in norm) return Slicer.#rangeFailure<WindowResult>(norm.error, extent, norm.recovery);
         if (norm.kind !== "range" || norm.start > norm.end) {
             return { status: 200, start: null, end: null, range: Slicer.#projectedExtent(extent, null, null) };
         }
@@ -199,6 +204,17 @@ export default class Slicer {
         return { start, end, body, startLine, endLine: resolvedEndLine };
     }
 
+    // {§zero-width-column-one-insert} — the fence artifact repaired where a fenced EDIT body becomes
+    // inserted content: a zero-width region at column 1 inserts whole lines, so a non-empty body that
+    // does not end in a newline gains the content's separator. Every other body is returned verbatim.
+    static wholeLineBody(content: string, marker: LineMarker, body: string): string {
+        const [startLine, startColumn, endLine, endColumn] = marker.marks;
+        const zeroWidthAtColumnOne = marker.marks.length === 4
+            && startLine === endLine && startColumn === 1 && endColumn === 1;
+        if (!zeroWidthAtColumnOne || body.length === 0 || /[\r\n]$/.test(body)) return body;
+        return `${body}${Slicer.#preferredSeparator(content, TextCoordinates.lines(content))}`;
+    }
+
     static #preferredSeparator(content: string, lines: readonly TextLine[]): string {
         return lines.find(({ separator }) => separator.length > 0)?.separator
             ?? (content.includes("\r\n") ? "\r\n" : content.includes("\r") ? "\r" : "\n");
@@ -208,13 +224,13 @@ export default class Slicer {
         content: string,
         marker: LineMarker,
         body: string,
-    ): TextReplacement | { error: string } {
+    ): TextReplacement | ScopeError {
         const lines = TextCoordinates.logicalLines(content);
         // {§empty-mutation-scope}: position 1 is writable without inventing a readable line.
         if (lines.length === 0 && marker.marks.length === 1 && marker.marks[0] === 1) {
             return { start: 0, end: 0, body, startLine: 1, endLine: 1 };
         }
-        const norm = Slicer.#normalize(marker, lines.length);
+        const norm = Slicer.#normalize(marker, lines.length, "line");
         if ("error" in norm) return norm;
         const separator = Slicer.#preferredSeparator(content, lines);
         if (norm.kind === "before-first") {
@@ -262,7 +278,7 @@ export default class Slicer {
         content: string,
         marker: LineMarker,
         body: string,
-    ): TextReplacement | { error: string } {
+    ): TextReplacement | ScopeError {
         if (marker.marks.length === 3) {
             const expanded = Slicer.#expandRegion3(content, marker);
             if ("error" in expanded) return expanded;
@@ -308,7 +324,29 @@ export default class Slicer {
         };
     }
 
-    static #normalize(marker: LineMarker, totalLines: number): NormalizedMarker | { error: string } {
+    // {§range-starts-at-one} A two-coordinate range never starts at 0; the refusal names the
+    // zero-width insertion and the 1-based range the author may have meant.
+    static #zeroStart(last: number, unit: RangeUnit): ScopeError {
+        if (unit !== "line") {
+            return {
+                error: `Range <0,${last}> starts at 0; ${unit} positions are numbered from 1.`,
+                recovery: `Write <1,${last}> to start at the first ${unit}.`,
+            };
+        }
+        const error = `Range <0,${last}> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the <0> prepend position.`;
+        if (last < 1) {
+            return {
+                error,
+                recovery: `Write <1,-1> to select every line; <0> prepends and <-1> appends without replacing anything.`,
+            };
+        }
+        return {
+            error,
+            recovery: `To insert before line ${last}, write <${last},1,${last},1>; <0> prepends and <-1> appends; to select lines 1 through ${last}, write <1,${last}>.`,
+        };
+    }
+
+    static #normalize(marker: LineMarker, totalLines: number, unit: RangeUnit): NormalizedMarker | ScopeError {
         // {§slicer-text-algebra} The parser carries raw `marks: [number, ...]`;
         // this owner assigns roles: marks[0] = first/position, marks[1] = last
         // (range end). A single mark is a position/sentinel; two is a range.
@@ -330,20 +368,18 @@ export default class Slicer {
                     : `Line ${first} is outside the available line range 1..${totalLines}.`,
             };
         }
-        // Whole-content `<1,-1>` (and its `<0,-1>` alias) is valid even on
-        // empty content — it selects the entire, possibly-empty range. Without
-        // this, an EDIT that replaces-everything on a freshly-created empty
-        // entry would 416. start>end here yields an empty slice for READ and a
-        // full replacement for EDIT.
+        if (first === 0) return Slicer.#zeroStart(last, unit);
+        // Whole-content `<1,-1>` is valid even on empty content — it selects the entire,
+        // possibly-empty range ({§empty-mutation-scope}). start>end here yields an empty
+        // slice for READ and a full replacement for EDIT.
         if (totalLines === 0) {
-            if ((first === 0 || first === 1) && (last === -1 || last > 0)) {
+            if (first === 1 && (last === -1 || last > 0)) {
                 return { kind: "range", start: 1, end: 0 };
             }
             return { error: `Range ${first},${last} cannot select from empty content.` };
         }
-        let n = first;
+        const n = first;
         let m = last;
-        if (n === 0) n = 1;
         if (m === -1 || m > totalLines) m = totalLines;
         if (n < 1 || n > totalLines) return { error: `Range start ${first} is outside the available line range 1..${totalLines}.` };
         if (m < 1) return { error: `Range end ${last} is outside the available line range 1..${totalLines}.` };
@@ -395,9 +431,9 @@ export default class Slicer {
             );
         }
         const lines = TextCoordinates.logicalLines(content);
-        const norm = Slicer.#normalize(marker, lines.length);
+        const norm = Slicer.#normalize(marker, lines.length, "line");
         if ("error" in norm) {
-            return Slicer.#rangeFailure(norm.error, Slicer.#extent(marker, lines.length, "line"));
+            return Slicer.#rangeFailure(norm.error, Slicer.#extent(marker, lines.length, "line"), norm.recovery);
         }
         const extent = Slicer.#extent(marker, lines.length, "line");
         if (norm.kind !== "range") {
@@ -490,10 +526,14 @@ export default class Slicer {
                 extent,
             );
         }
+        if (first === 0) {
+            const zero = Slicer.#zeroStart(last, options.unit ?? "result");
+            return Slicer.#rangeFailure(zero.error, extent, zero.recovery);
+        }
         if (total === 0) {
             // Any well-formed range over an empty result set selects nothing: the answer is
             // "no matches", a 200 with zero items. Only an inverted range is unsatisfiable.
-            if (first >= 0 && (last === -1 || last >= first)) {
+            if (first >= 1 && (last === -1 || last >= first)) {
                 return { status: 200, items: [], range: Slicer.#projectedExtent(extent, null, null) };
             }
             return Slicer.#rangeFailure(
@@ -501,7 +541,7 @@ export default class Slicer {
                 extent,
             );
         }
-        const n = first === 0 ? 1 : first;
+        const n = first;
         const m = last === -1 ? total : Math.min(last, total);
         if (n < 1 || n > total) return Slicer.#rangeFailure(
             `Result range start ${first} is out of range; available positions are 1..${total} — this scope pages ${extent.unit} items, not text lines.`,
@@ -536,6 +576,7 @@ export default class Slicer {
                 : Slicer.#rangeFailure(
                     selected.error,
                     Slicer.#extent(marker, TextCoordinates.logicalLines(content).length, "line"),
+                    selected.recovery,
                 );
         }
         return {
@@ -570,6 +611,7 @@ export default class Slicer {
                     : Slicer.#rangeFailure(
                         replacement.error,
                         Slicer.#extent(edit.marker, TextCoordinates.logicalLines(content).length, "line"),
+                        replacement.recovery,
                     );
             }
             replacements.push({ ...replacement, marker: edit.marker });

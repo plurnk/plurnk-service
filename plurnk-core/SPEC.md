@@ -1078,7 +1078,7 @@ These are the complete strike sources:
 
 | Strike source       | Exact trigger                                                                                                    | Model-visible occurrence                                      |
 |---------------------|------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------|
-| Hard result         | An admitted non-execution operation or bounded parse-error status is `>= 400`, except the soft set `404`, `409`, `416`, `425`, `501`. | The originating failure row.                                  |
+| Hard result         | An admitted non-execution operation or bounded parse-error status is `>= 400`, except the soft set `404`, `409`, `416`, `425`, `501`, in a turn where no operation succeeded ({§strike-progress-immunity}). | The originating failure row.                                  |
 | Cycle               | The executed operations and their observed results repeat under {§engine-cycle-evidence}.                         | None; cycle detection itself is private engine accounting.    |
 | Empty turn          | An admitted turn with no authored response operation ({§empty-turn}).                                            | The turn's `422` error row, and its reasoning read back ({§reasoning-empty-turn-read}). |
 
@@ -1111,8 +1111,8 @@ effects. Ordinary contract strikes and operator budgets remain independent.
 call ({§bare-inference}) takes the same recovery as the loop's own inference: each re-issue
 is its own model call on the ledger, and a spent window leaves the operation's result as the
 provider's exact failure. When a model
-call fails with a network failure, rate limit, deadline, or interrupted resource after
-the provider's own retries, the turn records the exact Problem as a `_plurnk` row,
+call fails with a kind the provider marks `retryable` ({§provider-retryable-truth}: network
+failure, rate limit, deadline, interrupted resource, dropped output) after the provider's own retries, the turn records the exact Problem as a `_plurnk` row,
 notices the client (`engine:provider` / `provider_unavailable`), waits with
 exponential backoff (`PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF`, doubling up to
 `PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX`), and re-issues the same call against the exact frozen model
@@ -1133,6 +1133,17 @@ authorization, quota, an invalid response) settles a loop on a provider failure.
 
 **Contract Strikes**: every turn with one or more contract violations earns a
 strike; a turn without any contract violations clears the strikes.
+
+§strike-progress-immunity **A turn in which at least one operation succeeded is
+immune to the hard-result source** (operator ruling, 2026-09-26, #853): its hard
+failures keep their exact rows, but the turn counts as progress — it earns no strike
+and clears the streak. A successful operation is any admitted operation that acts on the
+task — executions included — whose result status is `< 400`. Operations that steer the
+loop never qualify: NOTE (it cannot fail, and outside text and reasoning are filed as
+NOTEs, {§response-text-note}), WAIT, a parameterless KILL and a targetless SEND; a turn
+of failures beside a WAIT still strikes. The cycle source is not exempted: a repeating
+turn's operations succeed by construction, and the backstop exists to catch exactly
+that ({§engine-cycle-evidence}).
 The streak counts consecutive violating turns; `MAX_STRIKES` (default 3) is the
 threshold, crossed ON the third strike; the crossing turn terminates at **508
 Loop Detected** when cycle-detected, otherwise **500**.
@@ -1141,7 +1152,7 @@ The contracts, and the violation of each that strikes:
 
 | Contract | Violation that strikes |
 |---|---|
-| operation contract | a hard operation failure (status ≥ 400) in an admitted turn — soft statuses below excluded |
+| operation contract | a hard operation failure (status ≥ 400) in an admitted turn where no operation succeeded ({§strike-progress-immunity}) — soft statuses below excluded |
 | review contract | none: an eligible final response joins live obligations ({§completion-joins-live-work}) or continues to observe results ({§completion-defers-to-results}) |
 | progress contract | a detected operation cycle (`MIN_CYCLES` × period), or an admitted turn with no operation ({§empty-turn}) |
 | frame contract | emission attempts exhausted with no admissible turn |
@@ -1475,6 +1486,8 @@ model's spelling. These classes let a caller distinguish a wrong address, an
 invalid range, read-only authority, and occupied hidden state without guessing.
 
 §membership-read-refusal **A file miss speaks of membership, never of the disk.** A file is read only as a member, so every `file` miss — READ, FIND of an exact path, KILL, a COPY or MOVE source — is 404 `entry-not-found`, `No member of this workspace is at '<key>'.` Recovery treats path correction with FIND, creation with EDIT, and admission with `members (add)` as alternatives; it must not presume a missing READ requires creation or admission. Admission takes a `{"glob": "<path>"}` body. The sentence is about the address and is true whether or not a file is there: it neither claims absence nor hints at presence. Beyond the root the engine does not look at the disk at all, so two reads of `../` paths differ only in the name they echo. Inside the root occupancy is not secret ({§fs-write-nonmember}), so an exact-path READ of a path that exists on disk but is not a member says so instead — 404 `entry-not-member`, `'<key>' exists on disk but is not a member of this workspace.`, with admission-only recovery. Occupancy may surface there; content never does ({§membership}).
+
+§file-directory-target **A directory is named as a directory.** Inside the root, a READ (or other exact-path read), KILL or EDIT whose target is a directory on disk — with or without a trailing slash — is refused `path-is-directory`, never as a missing or non-member file, since admitting it is not what the model needs: READ and KILL answer 404, EDIT 403. The detail is `'<key>' is a directory, not a file; <OP> reads/removes/writes one file.` and the recovery names the listing that reaches its files, `` List its files with `FIND (<key>/)`, then READ one by its path. `` (KILL: `then KILL each by its path`; EDIT: `` Name a file inside it, as `EDIT (<key>/<file>)`; list its files with `FIND (<key>/)`. ``). Beyond the root the disk stays dark and {§membership-read-refusal} holds unchanged.
 
 §fs-world-state **The world-state harness — coverage that closes the class.** Op-outcome tests check what an op returned; the harness checks the resulting world. `WorldState.check(db)` asserts, pure-db and read-only: identity uniqueness in practice (no tuple holds two rows), the canonical fixpoint on every file-class key, channel orphan-freedom, the closed admission set (every file row's origin is Git or constraint), and sig-coherence. Generated-pick incorporation and lifecycle require filesystem/Git evidence and are covered by the composed creation matrix rather than a false pure-database proxy. The harness runs as a lifecycle-test epilogue and at every soak turn boundary, where the delta half applies: an idle turn grows the entries table by ZERO. A violation names its law and its row.
 
@@ -2013,6 +2026,13 @@ READ is the one fan-out core performs ({§read-fan-out}).
   (`~`) or graph (`&`) pattern selects resources, not lines: 400
   `pattern-dialect-unsupported`; a matcher its mimetype cannot run answers the
   matcher's own 415/400 ({§matcher-dispatch}).
+- §pattern-dialect-find-only **A `~` or `&` matcher outside FIND is refused as FIND's alone.** Every
+  400 `pattern-dialect-unsupported` — READ, EDIT, KILL, COPY, MOVE, SEND — names the model's
+  matcher and says only FIND takes it, and its recovery gives both working forms with the
+  model's own target: the FIND carrying that matcher, and the same operation with a text
+  pattern built from the symbol or words it named (regex metacharacters escaped, words joined
+  by `|`): `` Locate it with `FIND (django/urls/resolvers.py) &RoutePattern`, or select lines
+  with a text pattern: `READ (django/urls/resolvers.py) /RoutePattern/`. ``
 - §read-fan-out **A READ over a glob reads every matching path.** `READ (pets_*.md)`
   and `READ (pets_*.md) /dogs/i` keep their glob ({§read-find-normalization} in the
   contracts SPEC) and dispatch fans them out: the ordinary FIND over the same
@@ -2141,6 +2161,8 @@ the strike and its error row are unchanged.
 AST: `{ op: "KILL", target, matcher: MatcherBody | null, lineMarker: TextLineMarker | null, body: null }` ({§kill-scope} and {§matcher-option} in the contracts SPEC own the grammar).
 
 KILL deletes context from the **log** (`log:///`, {§packet}). Without a scope it retires the selected rows from the active projection ({§log-history-projection}). With a one-line or inclusive two-line scope it removes only that body's intersecting body-relative physical lines from the readable projection, and the row stays active. An anchor may be one published on that body or one returned by READing its `log:///` coordinate ({§line-anchors}); an anchor absent from the current body selects no line, as with an out-of-bounds numeric line. Scoped KILL is one-way: intervals accumulate, the durable body is untouched, and subsequent access follows {§log-readable-projection}. A scoped KILL on a bodyless row is a friendly 200 no-op with `matched` reported. A KILL that addresses no row is 404 on an exact coordinate and 204 on a sweep ({§log-curation-folder-idiom}). Selection composes target/glob with an optional heading pattern ({§log-curation-set-selection}). Parameterless KILL instead requests completion ({§kill-conclusion}).
+
+§log-scope-recovery A log-body scope follows the file slicer's range rule ({§range-starts-at-one} in the schemes SPEC): a range starting at 0 — `<0,-1>` included — is refused 416 `range-not-satisfiable` on every body, empty ones too, and never clamped; its detail is the slicer's own sentence, `Range <0,-1> starts at 0, which is not a line; lines are numbered from 1.`, and its recovery names the forms a log body takes — `Write <1,-1> to trim every line of the body; KILL (log:///1/9/2/READ) with no scope retires the whole row.`, or `To trim lines 1 through M, write <1,M>; …` — never the insert and append positions a body cannot take. Every other scope that names no line is 400 `curation-scope-invalid` and likewise names the model's mistake in its coordinates and the forms that work on that row: `<0>` offers `<1>`; an end below 1 offers `<L,-1>`; a backward `<5,3>` offers `<3,5>`; anything else offers `<L>`, `<L,M>` and the unscoped row KILL.
 
 A READ carrying active native media is atomic: any KILL scope is ignored and the entire observation is retired, including its native context contribution ({§packet-attachment-parts}). For a model turn, native activity is the attachment selection in its actual input packet; without a model packet, a native observation is atomic by default. Text-only observations in the same selection retain ordinary scoped behavior. Neither form deletes source data or forensic evidence.
 
@@ -2547,6 +2569,7 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
 
 - §log-uniform-query **Log speaks the universal query contract** — ```` ```FIND (log://…) ```` works like every scheme's FIND. Candidates are worker rows scoped by the coordinate hierarchy ({§log-coordinate-hierarchy}) and projected exactly as READ shows them. Content dialects use `Matcher.matchCandidates`; `~` full-text and `&graph` use the same persistent derivation artifacts and candidate rankers as entries. Broad results are one-channel catalog groups whose `[0].path` is `log:///loop/turn/seq/OP`; exact matcher results are flat locations ({§find-result-projection}). Log remains the core event ledger rather than duplicating rows into `entries`; its core-private storage adapter supplies one complete channel representation to the same READ projector. That adapter is not a plugin seam and grants no protocol scheme an alternate READ path.
 - §find-source-agnostic **The content matcher is source-agnostic** — `Matcher.matchCandidates(body, candidates, mimetypes)` applies a content matcher (regex/jsonpath/xpath/glob) to candidates from ANY source, keyed by the caller's own identity (a pathname for entries, a `loop/turn/seq` coordinate for log). The matcher never cares what table the content came from, so FIND works uniformly across schemes by construction: `EntryFind` and `Log.find` run the one shared primitive rather than re-implementing it per scheme. Log stays its own event stream, but its rows are candidates the shared matcher covers like any entry's content.
+- §find-line-anchors **A FIND regex anchors each line**, as READ, EDIT and KILL do ({§read-pattern}, {§edit-pattern}): `^` and `$` are a line's ends in every FIND content match — over entries, log rows, turn sources and a binary channel's bytes — so ```` ```FIND (django/urls/resolvers.py) /^from|^import/ ```` locates the same import lines a READ with that pattern shows, never a false 204.
 - §find-candidate-containment **One candidate's crash is that candidate's problem** — arbitrary member content can crash a mimetype handler mid-match (an unbalanced template partial crashed Readability and killed a 1,916-file FIND as a blank 500, #449). `Matcher.matchCandidates` contains a per-candidate handler throw: the candidate drops out exactly like unsupported content, the cause goes to daemon stderr, and only a FIND whose every candidate crashed reports a 415 whose Problem names the first crashing member and handler. The operation's other candidates always answer.
 
 - §find-scope-prefix-filter Filters entries within scope. A **bare** path is the exact entry; an explicit **shell glob**, classified once by {§path-glob}, expands to a scope. Path globs use segment semantics: `*` and `?` never cross `/`; `**` does — in every spelling: a `**` glued to a name (`**.go`, `src/**.ts`) is matched as `**/*.go` / `src/**/*.ts`, never demoted to a one-level `*` the way a native matcher reads it. Terminal `*` and `**` are structural catalog selectors and include dot-prefixed entries, so a complete map does not hide `.env.defaults` or `.github`; richer patterns retain native shell behavior. SQLite prefix queries may reduce the candidate set but never decide the match. A trailing slash is a recursive FIND scope only for a scheme whose manifest declares `folderScopes: true`; otherwise it is ordinary resource syntax. This is an explicit plugin contract, never inferred from URL punctuation.
@@ -2564,6 +2587,7 @@ Log history preserved — `log_entries` stores path tuple as text, not FK to `en
   matches the selected channel's content or derivation; path globs select
   resources through `(target)` ({§path-glob}).
 - §find-fulltext-selection Every matcher operates only over the candidate set selected by `(target)`; indexed matchers do not bypass that selection. `~query` passes the native FTS5 expression to SQLite and ranks matching candidates by ascending BM25, with resource identity breaking ties. Native BM25 uses the shared index's term statistics; candidate visibility, owner, channel and target filters determine which resources can be returned. The ordinary FIND pager selects resources for broad targets or match locations for exact targets: markerless search uses {§markerless-first-page}, `<N>` selects position N and `<N,M>` selects an inclusive range. Fractions are invalid result coordinates, not similarity thresholds. Results expose addressable matched text regions; neither cosine scores nor percentage similarity is invented. Native query-syntax failures return 400 with SQLite's diagnostic; database and implementation failures propagate.
+- §fts-word-phrase **A word with inner punctuation is the phrase of its tokens.** FTS5 barewords hold only letters, digits, `_` and non-ASCII, so before the query reaches SQLite each word outside a quoted string or `NEAR(…)` group that is not a bareword (with optional leading `^` and trailing `*`) is quoted as a phrase: `~inherited-members` searches `"inherited-members"` — the adjacent tokens `inherited members` — instead of failing as `no such column: members`, and `c++`, `x.y`, `a/b` likewise. FTS5's own syntax passes untouched: `AND`/`OR`/`NOT`/`NEAR`, `+`, quoted phrases, parentheses, and column filters (a word containing `:`, `{` or `}`, or opening with `-`). A column-filter failure keeps SQLite's diagnostic and its recovery says what the filter is and gives the bare-word and `NOT` forms: `` `members:` and `-members` are FTS5 column filters, and the index has one column; to search for a word write it bare, as `~members`, and to exclude one write `NOT` between terms, as `~a NOT members`. ``
 - §find-scoped-isolation Workspace + scheme scoped — no cross-workspace/cross-scheme leakage.
 - §find-result-projection **The authored target shape determines the result unit; result cardinality never changes it** ({§find-result-unit}). Returns `FindResult { status, content, mimetype, results, range, matchingPathCount, matchLocationCount, itemsWeightTotal, returnedItemsWeightTotal }`:
 
@@ -2719,9 +2743,11 @@ accounting and model-visible failure evidence remain separately owned by
   completion. New arrivals still guard the terminal transition atomically
   ({§completion-defers-to-messages}); an arrival concurrent with an accepted reply
   remains unanswered and keeps the loop running. No implicit successful exit exists.
-- §response-text-note **Text outside the operations is the model's NOTE, never delivered.** Each
-  span {§response-text} supplies becomes an ordinary NOTE in source order, unmarked, so the
-  model's log retains its text even on a prose-only turn. It is not an authored operation:
+- §response-text-note **Text outside the operations is the model's NOTE, never delivered.** The
+  spans {§response-text} supplies become one ordinary NOTE per response, unmarked, placed at
+  the first span and holding every retained span in source order joined by a blank line, so the
+  model's log retains its text even on a prose-only turn and a repetitive or length-cut response
+  cannot mint a row per fragment. It is not an authored operation:
   {§empty-turn} still strikes a turn that holds only text, with unchanged reasoning recovery
   ({§reasoning-empty-turn-read}), reply accounting and completion rules. A NOTE neither
   delivers nor concludes. Spans carrying known foreign tool-call grammar or leaked template
@@ -2861,6 +2887,10 @@ executor's own scheme whose path can never be a stream (`sh:///daemon-env`;
 streams are eight hex digits) is the writer's name for the run: with a body, the
 body runs as if targetless; without one, the source read refuses as before. A
 real stream id is always the program source.
+
+§exec-target-documentation **Generated reference is never a program.** A resource target under
+`worker:///_plurnk/` — the executor and scheme documentation the harness generates — is refused
+at admission, 400 `target-is-documentation`, before any source is realized or run: `` `worker:///_plurnk/plurnk/sh.md` is reference documentation the harness generated, not a program; sh cannot run it. `` With a body the recovery is `Drop the target and keep the command: the opening fence line is sh alone, with the command lines beneath it.`; without one it points to READ for the documentation and to the program's own path or a targetless heading to run something. Admitting it realized the markdown as a host temporary file that a sandboxed runtime could not open (`cannot open /tmp/plurnk-exec-….md`), and ran markdown where it could.
 
 §exec-tool-fall-through **A tool run as a shell command is named at the failure
 site.** A bare shell command whose program is the name of a tool published by
@@ -4998,7 +5028,7 @@ retain distinct contracts and lifetimes.
 | `run({ dbPath })`                      | Reads the required database and writes a complete digest to `./test/digest` relative to the caller's working directory.                             |
 | `digestDir`                            | Selects a nonempty output path. `run` refuses a folder that exists and is not empty, and `requiem` refuses an existing `requiem.json` or `requiem.md`, before database or provider I/O; neither deletes ({§share}). Concurrent callers use distinct folders. |
 | Reader lifetime                       | `run` reads heavy evidence on demand while rendering, then closes its reader on success or failure. `requiem` closes its reader before awaiting witness inference. |
-| Candidate runtime                     | Candidate export uses the same built artifact as its daemon, without development-source imports. Source edits after launch do not change the exporter. |
+| §candidate-pinned-runtime Candidate runtime | At launch, after its optional build, the candidate copies every workspace's package projection (`files`) into `<state>/runtime`, links third-party dependencies, and resolves `@plurnk/*` to those copies. Its daemon and its digest export both run from that copy, never the shared checkout, so neither source edits nor a concurrent candidate's or developer's rebuild after launch changes the code a run finishes on. The copy is removed once the digest is written. |
 | Export completion                     | Packet and response bodies are read and serialized one record at a time, without discarding evidence. `digest.json` is promoted from a partial file only after every artifact is written; its absence identifies an incomplete export. |
 | `workerId`                             | Narrows workers and every dependent loop, turn, turn-attached logical inference, specialization, physical request, and log row to that one worker. |
 | `workspaceId`                          | Narrows workers plus every logical inference and dependent evidence owned by one workspace, when both selectors are present they intersect. |
@@ -5460,6 +5490,17 @@ READ/EDIT/COPY/MOVE scopes use the same physical text:
 One/two-coordinate line shorthand is newline-aware so deleting a line does not
 leave an empty line. A terminal position after a final newline is an exact
 insertion anchor, not an additional whole line. `<1,-1>` selects all content.
+
+§zero-width-column-one-insert **A zero-width region at column 1 inserts whole lines.** The
+schemes region algebra ({§slicer-text-algebra}) inserts every body verbatim; the missing
+newline is a fence artifact, so core repairs it where a fenced EDIT body becomes inserted
+content, through the one schemes helper `wholeLineBody`, at the mutation and again in the
+receipt and anchor-continuity recomputation so every site sees one body. At `<L,1,L,1>`,
+an anchored `<@hash,1,@hash,1>`, or `L` = final line + 1 when the content ends with a
+newline, a non-empty body that does not end in a newline is inserted with the content's
+line separator appended, so `X` at `<2,1,2,1>` into `a\nb` yields `a\nX\nb`. An empty
+body inserts nothing. A zero-width region at any other column stays a byte-exact insert with
+nothing appended. COPY and MOVE transfer source bytes, not a fenced body, and are untouched.
 The runtime also tolerates an authored three-coordinate
 `<startLine,startColumn,endLine>` scope, immediately lowers it to the complete
 four-coordinate region ending after the final code point of `endLine`, and

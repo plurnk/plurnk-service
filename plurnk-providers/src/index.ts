@@ -83,7 +83,7 @@ export {
     validateProviderRequestAccounting,
 } from "./accounting.ts";
 export type { RawUsage, TokenRates } from "./usage.ts";
-export { ProviderError, classifyProviderError, toProviderError } from "./errors.ts";
+export { ProviderError, RETRYABLE_PROVIDER_KINDS, classifyProviderError, toProviderError } from "./errors.ts";
 export { providerSource } from "./notices.ts";
 export type { ProviderErrorKind } from "./errors.ts";
 export type { ProviderNotice, ProviderNoticeKind } from "./notices.ts";

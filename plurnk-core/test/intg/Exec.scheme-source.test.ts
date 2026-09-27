@@ -507,3 +507,23 @@ test("{§exec-target-near-miss} an own-scheme target that can never be a stream 
         await ctx.close();
     }
 });
+
+// {§exec-target-documentation} — the recorded shape (#853, run99 qflash): ```sh (worker:///_plurnk/plurnk/sh.md)```
+// over `git checkout -- …` was accepted, realized as a host temporary the containerized runtime never saw,
+// and failed as `cannot open /tmp/plurnk-exec-….md`.
+test("{§exec-target-documentation} a generated reference target is refused at admission with the targetless form", async () => {
+    const ctx = await wire();
+    try {
+        const withBody = await ctx.dispatch(ctx.root, "worker:///_plurnk/plurnk/tool.md", "git checkout -- src/_pytest/assertion/util.py");
+        assert.equal(withBody.status, 400);
+        assert.match(String(withBody.problem?.type), /\/target-is-documentation$/);
+        assert.equal(withBody.problem?.detail, "`worker:///_plurnk/plurnk/tool.md` is reference documentation the harness generated, not a program; tool cannot run it.");
+        assert.equal(withBody.problem?.recovery, "Drop the target and keep the command: the opening fence line is tool alone, with the command lines beneath it.");
+        const bodiless = await ctx.dispatch(ctx.root, "worker:///_plurnk/tools/tool.md");
+        assert.equal(bodiless.status, 400);
+        assert.equal(bodiless.problem?.recovery, "READ it to learn the tool executor; to run a program, target the program's own path, or put the command beneath a tool heading with no target.");
+        assert.equal(ctx.runs.length, 0, "nothing was realized or run");
+    } finally {
+        await ctx.close();
+    }
+});

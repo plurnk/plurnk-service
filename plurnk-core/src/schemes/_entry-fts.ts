@@ -16,6 +16,32 @@ export default class EntryFts {
         await db.fts_attach.run({ derivation_id: derivationId, hash });
     }
 
+    // {§fts-word-phrase} — FTS5 barewords hold only letters, digits and `_`, so a word with inner
+    // punctuation (`inherited-members`, `x.y`, `c++`) parses as a column filter or a syntax error.
+    // Each such word becomes the phrase its tokens already are; FTS5's own syntax passes untouched.
+    static nativeQuery(query: string): string {
+        let near = 0;
+        let pendingNear = false;
+        return query.replace(/"(?:[^"]|"")*"?|[()]|[^\s()"]+/gu, (token) => {
+            if (token === "(") {
+                if (pendingNear || near > 0) near += 1;
+                pendingNear = false;
+                return token;
+            }
+            if (token === ")") {
+                if (near > 0) near -= 1;
+                return token;
+            }
+            pendingNear = token === "NEAR";
+            if (near > 0 || token.startsWith("\"") || EntryFts.#NATIVE_WORD.test(token)) return token;
+            const [, caret, body, star] = /^(\^?)(.*?)(\*?)$/su.exec(token)!;
+            return `${caret}"${body}"${star}`;
+        });
+    }
+
+    // Operators, column filters (`col:`, `{…}`, `-col`), `+` and barewords with `^`/`*` are FTS5's own.
+    static readonly #NATIVE_WORD = /^(?:AND|OR|NOT|NEAR|\+|.*[:{}].*|-.*|\^?(?:[A-Za-z0-9_]|[\u0080-\u{10FFFF}])+\*?)$/su;
+
     // SQLite owns parsing, tokenization and matching; highlight only locates its matches.
     static async rankCandidates(
         db: Db,
@@ -32,16 +58,21 @@ export default class EntryFts {
             const open = `${marker}[`, close = `${marker}]`;
             let rows: RankedRow[];
             try {
-                rows = await db.fts_rank_candidates.all<RankedRow>({ candidates: encoded, query, open, close });
+                rows = await db.fts_rank_candidates.all<RankedRow>({ candidates: encoded, query: EntryFts.nativeQuery(query), open, close });
             } catch (cause) {
                 // SQL is prepared at database startup. These are FTS5 MATCH-parser errors
                 // at execution, not arbitrary SQLite failures or guesses about intent.
                 if (!(cause instanceof Error) || !/^(?:fts5: syntax error|unterminated string$|no such column:|expected integer, got )/.test(cause.message)) throw cause;
+                // {§fts-word-phrase} — what remains of "no such column" is FTS5's own column syntax.
+                const column = /^no such column: (.*)$/su.exec(cause.message)?.[1];
+                const recovery = column === undefined
+                    ? "Use a valid FTS5 query expression."
+                    : `\`${column}:\` and \`-${column}\` are FTS5 column filters, and the index has one column; to search for a word write it bare, as \`~${column}\`, and to exclude one write \`NOT\` between terms, as \`~a NOT ${column}\`.`;
                 const failure = Results.failure(
                     "schemes:matcher", "invalid-expression", 400,
                     "The full-text matcher expression is invalid.",
                     {},
-                    { stage: "matcher", dialect: "fts", diagnostic: cause.message, recovery: "Use a valid FTS5 query expression.", retryable: false },
+                    { stage: "matcher", dialect: "fts", diagnostic: cause.message, recovery, retryable: false },
                 );
                 return { ...failure, matches: [] };
             }

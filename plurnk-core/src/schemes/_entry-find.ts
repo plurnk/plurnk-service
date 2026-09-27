@@ -19,6 +19,7 @@ import ByteView, { type ByteSource } from "../content/byte-view.ts";
 import { binaryInputMaximum } from "@plurnk/plurnk-mimetypes";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
+import PatternEdits from "../content/pattern-edits.ts";
 import type { SourceCandidateMatch } from "../content/matcher.ts";
 import { entryCoordinateOf, missDetail } from "../core/plurnk-uri.ts";
 import EntryGraph from "./_entry-graph.ts";
@@ -608,7 +609,7 @@ export default class EntryFind {
             }
             const bytes = total === 0 ? new Uint8Array() : await source.read(1, total);
             const latin1 = ByteView.latin1(bytes);
-            const match = await Matcher.matchAgainstContent(body, latin1, MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE, mimetypes);
+            const match = await Matcher.matchAgainstContent(PatternEdits.lineLimited(body), latin1, MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE, mimetypes);
             if (match.status >= 400) return { status: match.status, matches: [], problem: match.problem };
             if (match.status !== 200 || match.matches === undefined) continue;
             matches.push({ pathname, matches: ByteView.byteEvidence(latin1, bytes, match.matches).map((evidence) => ({ channel: channelOf(pathname), ...evidence })) });

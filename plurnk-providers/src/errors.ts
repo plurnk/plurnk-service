@@ -3,13 +3,12 @@ import { ProviderError } from "./providerError.ts";
 import type { ProviderErrorKind } from "./providerError.ts";
 import type { ProviderRequestCapacity } from "./types.ts";
 
-export { ProviderError } from "./providerError.ts";
+export { ProviderError, RETRYABLE_PROVIDER_KINDS } from "./providerError.ts";
 export type { ProviderErrorKind } from "./providerError.ts";
 
 export interface ClassifiedProviderError {
     kind: ProviderErrorKind;
     message: string;
-    retryable?: boolean;
     attempts?: number;
     retryExhausted?: boolean;
     extensions?: Readonly<Record<string, unknown>>;
@@ -116,7 +115,6 @@ export const classifyProviderError = (
     if (RetryError.isInstance(err)) {
         return {
             ...classifyProviderError(err.lastError, detailLimit),
-            retryable: false,
             attempts: err.errors.length,
             retryExhausted: err.reason === "maxRetriesExceeded",
         };
@@ -169,19 +167,16 @@ const classifyApiCallError = (err: APICallError, detailLimit: number | undefined
         // as a processing failure, but the KIND must stay engine-recoverable
         // (#479). Walk the cause chain for the termination signature.
         if (peerTerminated(err)) {
-            return { kind: "network_failure", message, retryable: err.isRetryable };
+            return { kind: "network_failure", message };
         }
         if (status === 401 || status === 403) return { kind: "unauthorized", message };
         if (status === 402) return { kind: "quota_exceeded", message };
-        if (status === 429) return { kind: "rate_limit", message, retryable: err.isRetryable };
-        if (status === 408 || status === 409) {
-            return { kind: "network_failure", message, retryable: err.isRetryable };
-        }
-        // Status 0 is a transport-level failure (no HTTP exchange settled); its
-        // KIND stays network_failure regardless of the transport's retry policy
-        // (#479) — the engine's recovery keys on kind, never the retryable flag.
-        if (status === 0) return { kind: "network_failure", message, retryable: err.isRetryable };
-        if (status >= 500) return { kind: "network_failure", message, retryable: err.isRetryable };
+        if (status === 429) return { kind: "rate_limit", message };
+        if (status === 408 || status === 409) return { kind: "network_failure", message };
+        // Status 0 is a transport-level failure (no HTTP exchange settled); its KIND stays
+        // network_failure whatever the transport's own retry policy was (#479).
+        if (status === 0) return { kind: "network_failure", message };
+        if (status >= 500) return { kind: "network_failure", message };
         if (status === 413 || (
             (status === 400 || status === 422)
             && (
@@ -219,7 +214,6 @@ export const toProviderError = (
     return new ProviderError(source, kind, message, {
         status,
         cause: err,
-        retryable: classified.retryable,
         extensions: {
             ...(classified.extensions ?? {}),
             ...(kind === "capacity_exceeded" ? { capacityStage: "upstream" } : {}),

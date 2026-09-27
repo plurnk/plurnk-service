@@ -126,6 +126,20 @@ export default class AstBuilder {
         let metadataFree = !carried.metadata;
         const scopeTail = op === "FIND" ? AstBuilder.#TAIL_POSITIONS : AstBuilder.#TAIL_TEXT_SCOPE;
         for (;;) {
+            // {§log-heading-notation} — a trailing ` · N` is the log's token charge, never part of the matcher.
+            const charge = /\s+(\u00B7[ \t]*(?:[0-9]+(?:[ \t]+tokens)?)?)\s*$/u.exec(text);
+            if (charge !== null && charge.index > 0) {
+                text = text.slice(0, charge.index).trim();
+                AstBuilder.#adviseTrailing(position, AstBuilder.chargeAdvisory(charge[1]!));
+                continue;
+            }
+            const note: { matcher: string; aside: string } | null = aside === null ? AstBuilder.#dotNote(text) : null;
+            if (note !== null) {
+                aside = note.aside;
+                text = note.matcher;
+                AstBuilder.#adviseTrailing(position, AstBuilder.dotAsideAdvisory(note.aside));
+                continue;
+            }
             const trailingAside = /\s*<!--([\s\S]*?)-->\s*$/u.exec(text);
             if (trailingAside !== null && aside === null) {
                 aside = (trailingAside[1] ?? "").trim();
@@ -165,6 +179,51 @@ export default class AstBuilder {
     static #adviseTrailing(position: Position | undefined, message: string): void {
         if (position === undefined) return;
         AstBuilder.#advisories.push(new PlurnkParseError(position.line, position.column, "parser", message, "warning"));
+    }
+
+    // {§log-heading-notation} — the receipts that name the log's heading notation where a model wrote it.
+    static chargeAdvisory(written: string): string {
+        return written.trim() === "\u00B7"
+            ? "`\u00B7` is how the log separates a heading from its token charge; it is not part of an operation and was ignored."
+            : `\`${written.trim()}\` is the token charge the log shows on a heading; it is not part of an operation and was ignored.`;
+    }
+
+    static dotAsideAdvisory(aside: string): string {
+        return `\`\u00B7 ${aside}\` was read as the aside; a note on an operation is written \`<!-- ${aside} -->\`.`;
+    }
+
+    // `/pattern/flags · words`: a closed regex, then a middle-dot note, which is the aside.
+    static #dotNote(text: string): { matcher: string; aside: string } | null {
+        if (!text.startsWith("/") || text.startsWith("//")) return null;
+        const close = AstBuilder.#regexClose(text);
+        if (close === -1) return null;
+        const note = /^([A-Za-z]*)\s+\u00B7[ \t]*(\S.*)$/u.exec(text.slice(close + 1));
+        if (note === null) return null;
+        return { matcher: text.slice(0, close + 1 + note[1]!.length), aside: note[2]!.trim() };
+    }
+
+    // The index of the slash that closes a `/pattern/` regex, or -1: escapes and character classes hold slashes.
+    static #regexClose(raw: string): number {
+        let inClass = false;
+        for (let i = 1; i < raw.length; i++) {
+            if (raw[i] === "\\") { i++; continue; }
+            if (raw[i] === "[") inClass = true;
+            else if (raw[i] === "]" && inClass) inClass = false;
+            else if (raw[i] === "/" && !inClass) return i;
+        }
+        return -1;
+    }
+
+    // {§bare-target} — a target written without its parentheses, `READ a.py <1,4>`, stands where the
+    // target goes. FIND, READ and EDIT cannot run without one, so the refusal writes the line that does.
+    static #bareTarget(op: string, target: ParsedPath | null, inline: string | null, position: Position): void {
+        if (target !== null || inline === null) return;
+        const text = inline.trim();
+        if (text === "" || AstBuilder.#SIGIL.test(text) || /^[<[`{\u00B7]/u.test(text)) return;
+        const word = text.split(/\s/u, 1)[0]!;
+        const rest = text.slice(word.length).trim();
+        throw new PlurnkParseError(position.line, position.column, "visitor",
+            `\`${op}\` has no target: \`${word}\` stands where the target goes. Write the target in parentheses: \`${op} (${word})${rest === "" ? "" : ` ${rest}`}\`.`);
     }
 
     static #isJsonArrayOfObjects(inner: string): boolean {
@@ -275,8 +334,23 @@ export default class AstBuilder {
         const opener = ctx.start?.text ?? "";
         if (opener.length > 0 && !opener.startsWith("`")) {
             AstBuilder.#advisories.push(new PlurnkParseError(ctx.start!.line, ctx.start!.column, "parser", `\`${opener}\` opened with no fence; the taught form is three backticks.`, "warning"));
+            return AstBuilder.#withoutNakedCloser(statement);
         }
         return statement;
+    }
+
+    // {§naked-operation} — a naked block expects no closer, so a closer the author wrote anyway is still its last
+    // line: a final bare fence that no fence in the body opened is that closer, not part of the body.
+    static #withoutNakedCloser(statement: PlurnkStatement): PlurnkStatement {
+        if (!("body" in statement) || statement.body === null) return statement;
+        const raw = typeof statement.body === "string" ? statement.body : statement.body.raw;
+        const lines = raw.split("\n");
+        const fences = lines.filter((line) => /^ {0,3}`{3,}/u.test(line)).length;
+        if (fences % 2 === 0 || !/^ {0,3}`{3,}[ \t\r]*$/u.test(lines.at(-1)!)) return statement;
+        const kept = lines.slice(0, -1).join("\n").replace(/\r?\n$/u, "");
+        const body = kept === "" ? null : kept;
+        if (statement.op === "SEND") return { ...statement, body: body === null ? null : AstBuilder.#parseSendBody(body) };
+        return { ...statement, body } as PlurnkStatement;
     }
 
     static #buildAny(ctx: StatementContext | MidStatementContext | DispositionStatementContext | SendStatementContext): PlurnkStatement {
@@ -311,6 +385,7 @@ export default class AstBuilder {
     static #buildFindFrom(ctx: FindStatementContext, aside: string | null, inline: string | null, below: string | null): FindStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractSlots(ctx.slotModifiers(), position);
+        AstBuilder.#bareTarget("FIND", slots.target, inline, position);
         AstBuilder.#adviseBody("FIND", below, position);
         const lifted = AstBuilder.#liftMatcher("FIND", slots.metadata, position, inline ?? below, inline !== null, slots.lineMarker !== null);
         return {
@@ -354,6 +429,7 @@ export default class AstBuilder {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
         const split = AstBuilder.#splitInlineBody(ctx, position);
+        AstBuilder.#bareTarget("READ", slots.target, split.inline, position);
         const bodied = AstBuilder.#asideBody("READ", AstBuilder.#asideOf(ctx), split.below, position);
         AstBuilder.#adviseBody("READ", bodied.raw, position);
         const lifted = AstBuilder.#liftMatcher("READ", slots.metadata, position, split.inline ?? bodied.raw, split.inline !== null, slots.lineMarker !== null);
@@ -378,6 +454,7 @@ export default class AstBuilder {
         // {§naked-pattern} — a sigil on the heading line is the matcher; the lines beneath are the
         // replacement (none deletes each match). Any other heading-line text is the body it always was.
         const split = AstBuilder.#splitInlineBody(ctx, position);
+        AstBuilder.#bareTarget("EDIT", slots.target, split.inline, position);
         const lifted = AstBuilder.#liftMatcher("EDIT", slots.metadata, position, split.inline, true, slots.lineMarker !== null);
         return {
             op: "EDIT",
@@ -572,7 +649,11 @@ export default class AstBuilder {
 
     static #singleMarker(ctx: ParserRuleContext | null, pos: Position): LineMarkerContext | null {
         const found = AstBuilder.#findAll(ctx, LineMarkerContext);
-        if (found.length > 1) throw new PlurnkParseError(pos.line, pos.column, "visitor", "A resource selection takes at most one scope.");
+        if (found.length > 1) {
+            const written = found.map((marker) => `\`${marker.getText()}\``);
+            throw new PlurnkParseError(pos.line, pos.column, "visitor",
+                `A resource selection takes one scope, and ${written.join(" and ")} both stand here; write one, such as ${written.at(-1)}.`);
+        }
         return found[0] ?? null;
     }
 
@@ -654,7 +735,9 @@ export default class AstBuilder {
                 "warning",
             ));
         }
-        const text = ctx.TARGET_TEXT().map((token) => token.getText()).join("");
+        // {§log-heading-notation} — `→ path` names the target as the log's heading shows it.
+        const arrow = ctx.ARROW_TARGET();
+        const text = arrow !== null ? arrow.getText().replace(/^\u2192[ \t]*/u, "") : ctx.TARGET_TEXT().map((token) => token.getText()).join("");
         return AstBuilder.parsePath(text, pos);
     }
 
@@ -743,6 +826,8 @@ export default class AstBuilder {
     static #asideOf(ctx: ParserRuleContext): string | null {
         const token = AstBuilder.#findToken(ctx, plurnkLexer.ASIDE);
         if (token === null) return null;
+        // {§log-heading-notation} — ` · words` after the slots is the aside.
+        if (token.startsWith("\u00B7")) return token.slice(1).trim();
         const inner = token.endsWith("-->") ? token.slice("<!--".length, -"-->".length) : token.slice("<!--".length);
         return inner.trim();
     }
@@ -915,6 +1000,8 @@ export default class AstBuilder {
         if (raw.startsWith("/")) {
             const regex = AstBuilder.#tryParseSlashRegex(raw, pos);
             if (regex.ok) return { dialect: "regex", raw, pattern: regex.pattern, flags: regex.flags };
+            const range = AstBuilder.#sedRange(raw);
+            if (range !== null) throw new PlurnkParseError(pos.line, pos.column, "visitor", range);
             if (regex.reason === "trailing") {
                 throw new PlurnkParseError(
                     pos.line,
@@ -977,6 +1064,17 @@ export default class AstBuilder {
         AstBuilder.#advisories.push(new PlurnkParseError(pos.line, pos.column, "parser",
             `\`${inline[0]}\` was read as the \`${inline[1]}\` flag; an ECMAScript regex takes its flags after the closing \`/\`.`, "warning"));
         return { pattern: pattern.slice(inline[0].length), flags: lifted };
+    }
+
+    // {§regex-sed-range} — `/a/,/b/` and `/a/,+N` are sed line ranges, not flags; say what they are
+    // and give the two-step form that addresses the same lines.
+    static #sedRange(raw: string): string | null {
+        const range = /^\/((?:\\.|[^\\/])+)\/\s*,\s*(?:\/((?:\\.|[^\\/])+)\/|\+(\d+))?\s*$/u.exec(raw);
+        if (range === null) return null;
+        const [, first, last, count] = range;
+        const locate = last === undefined ? `/${first}/` : `/${first}|${last}/`;
+        const scope = count === undefined ? "`<first,last>`" : `\`<N,M>\`, M being N + ${count}`;
+        return `\`${raw}\` is a sed line range; a matcher is one regex and selects only the lines it matches, never the lines between matches. Match ${last === undefined ? "the start" : "both ends"} with \`${locate}\` to learn ${last === undefined ? "its line number" : "their line numbers"}, then address the span by scope: ${scope}.`;
     }
 
     static #tryParseSlashRegex(raw: string, pos: Position):

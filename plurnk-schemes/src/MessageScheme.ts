@@ -17,9 +17,12 @@ export default class MessageScheme implements SchemeHandler {
     }
 
     async resolveEntryAddress(target: ParsedPath, _ctx: SchemeAddressCtx, access: "read" | "write" = "read") {
+        // {§message-immutable-recovery} — a KILL here is an attempt to acknowledge or dismiss; answering is how.
         if (access === "write") return Results.failure(
             `scheme:${this.manifest.name}`, "message-immutable", 405,
-            "Accepted messages are immutable.", {}, { retryable: false },
+            `\`${target.raw}\` is a received message; it cannot be edited, moved or killed, and answering it is what settles it.`,
+            {},
+            { retryable: false, recovery: `Answer it with \`SEND (${target.raw})\` and your reply as the body, or finish your work with a parameterless KILL whose body is the answer.` },
         );
         if (target.kind !== "url") return null;
         return {

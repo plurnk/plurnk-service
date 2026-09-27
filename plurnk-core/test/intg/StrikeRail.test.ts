@@ -15,7 +15,7 @@ test.beforeEach(async () => {
 });
 test.afterEach(async () => { await db.close(); });
 
-const base = { waitRevision: 0, fingerprint: "READ(x)", minCycles: 3, maxCyclePeriod: 4, maxStrikes: 3 };
+const base = { waitRevision: 0, fingerprint: "READ(x)", progressed: false, minCycles: 3, maxCyclePeriod: 4, maxStrikes: 3 };
 const outcome = (op: StrikeOutcome["op"], status: number): StrikeOutcome => ({ op, status });
 
 test("a 409 status alone is soft; no completion claim strikes ({§completion-joins-live-work}, {§completion-defers-to-results})", async () => {
@@ -82,6 +82,44 @@ test("multiple sources still count once per turn, and a clean turn resets the st
     assert.equal(await rail.streak(loopId), 1, "one admitted turn contributes at most one strike");
     await rail.assess(loopId, { ...base, fingerprint: "clean", outcomes: [] });
     assert.equal(await rail.streak(loopId), 0);
+});
+
+test("{§strike-progress-immunity}: a hard 400 beside a successful operation is progress and clears the streak", async () => {
+    const rail = new StrikeRail(db);
+    await rail.assess(loopId, { ...base, fingerprint: "failed", outcomes: [outcome("EDIT", 400)] });
+    assert.equal(await rail.streak(loopId), 1);
+    const productive = await rail.assess(loopId, {
+        ...base,
+        fingerprint: "productive",
+        outcomes: [outcome("READ", 200), outcome(null, 400), outcome("EDIT", 400), outcome("NOTE", 201)],
+        progressed: true,
+        maxStrikes: 2,
+    });
+    assert.equal(productive.thresholdCrossed, false, "the turn that read successfully does not cross on its hard 400");
+    assert.equal(productive.crossedBy, null, "the productive turn is not struck at all");
+    assert.equal(await rail.streak(loopId), 0, "a productive turn counts as progress: the streak clears");
+});
+
+test("{§strike-progress-immunity}: turns without progress strike on their hard failures", async () => {
+    const rail = new StrikeRail(db);
+    const turns = [
+        [outcome("NOTE", 201), outcome(null, 400)],
+        [outcome("EDIT", 400), outcome("WAIT", 202)],
+        [outcome("NOTE", 201), outcome("READ", 404), outcome("SEND", 200), outcome("KILL", 405)],
+    ];
+    const verdicts = [];
+    for (const [index, outcomes] of turns.entries()) verdicts.push(await rail.assess(loopId, { ...base, fingerprint: `failed-${index}`, outcomes }));
+    assert.deepEqual(verdicts.map(({ crossedBy }) => crossedBy), ["operation", "operation", "operation"]);
+    assert.equal(verdicts.at(-1)?.thresholdCrossed, true, "three turns with no successful operation cross the threshold");
+});
+
+test("{§strike-progress-immunity}: a successful operation does not exempt a repeating turn from the cycle backstop", async () => {
+    const rail = new StrikeRail(db);
+    let crossed = null;
+    for (let i = 0; i < base.minCycles * 3; i++) crossed = await rail.assess(loopId, { ...base, fingerprint: "READ(same)+EDIT(bad)", progressed: true, outcomes: [outcome("READ", 200), outcome("EDIT", 400)] });
+    assert.equal(crossed?.cycleDetected, true);
+    assert.equal(crossed?.crossedBy, "repetition");
+    assert.equal(crossed?.thresholdCrossed, true);
 });
 
 test("{§loop-rail-continuity}: clean recovery after a park resets only this loop's streak", async () => {

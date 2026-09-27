@@ -20,8 +20,16 @@ test("{§provider-wire-emission}: blank emissions retain their wire channels thr
         contextWindow: 100000, outputBudget: 1000,
         effort: { mode: "off", budget: null }, temperature: null, repeatPenalty: null, retryAttempts: 0,
         rawBody: false,
+        // {§provider-output-dropped}: a tool-call finish is re-issued; the second attempt answers in text.
         fetch: async () => {
             requests += 1;
+            if (requests > 1) {
+                return new Response(`data: ${JSON.stringify({
+                    id: "text", model: "wire-evidence",
+                    choices: [{ index: 0, delta: { content: "````KILL\nInspected.\n````" }, finish_reason: "stop" }],
+                    usage: { prompt_tokens: 10, completion_tokens: 8, total_tokens: 18 },
+                })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
+            }
             return new Response(`data: ${JSON.stringify({
                 id: "blank-tools", model: "wire-evidence",
                 choices: [{ index: 0, delta: {
@@ -42,17 +50,18 @@ test("{§provider-wire-emission}: blank emissions retain their wire channels thr
     } finally {
         await db.close();
     }
-    assert.equal(requests, 1);
+    assert.equal(requests, 2, "the tool-call finish is re-issued once and the text attempt concludes");
     Digest.run({ dbPath, digestDir });
     const stems = await digestStems(digestDir);
-    const raw = JSON.parse(await readFile(join(digestDir, `${stems[1]}.assistantRaw.json`), "utf8"));
-    assert.equal(await readFile(join(digestDir, `${stems[1]}.assistant.md`), "utf8"), "");
-    assert.equal(raw.rawBody, undefined);
-    assert.deepEqual(raw.wire.toolCalls, [
+    // The rejected attempt keeps its wire channels as evidence; the retried attempt is the turn's emission.
+    const rejected = JSON.parse(await readFile(join(digestDir, `${stems[1]}.attempt001.rejected.response.json`), "utf8"));
+    assert.equal(rejected.assistantRaw.rawBody, undefined);
+    assert.deepEqual(rejected.assistantRaw.wire.toolCalls, [
         { index: 0, id: "call-1", type: "function", name: "READ", arguments: '{"path":"example.txt"}' },
     ]);
-    assert.deepEqual(raw.wire.channels, { refusal: "retained vendor text" });
+    assert.deepEqual(rejected.assistantRaw.wire.channels, { refusal: "retained vendor text" });
+    assert.equal(await readFile(join(digestDir, `${stems[1]}.assistant.md`), "utf8"), "````KILL\nInspected.\n````");
     const report = await readFile(join(digestDir, "digest.md"), "utf8");
-    assert.match(report, /wire: .*tool call READ\(/);
-    assert.match(report, /refusal: retained vendor text/);
+    assert.match(report, /rejected-emissions=1\/2/);
+    assert.match(report, /ended the response with tool calls although no tools were declared/);
 });

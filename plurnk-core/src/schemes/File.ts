@@ -1,4 +1,5 @@
 import { lstat, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import type { Stats } from "node:fs";
 import Namespace from "../core/namespace.ts";
 import { missDetail } from "../core/plurnk-uri.ts";
 import { basename, dirname, relative, isAbsolute, join } from "node:path";
@@ -228,7 +229,12 @@ export default class File extends CoreSchemeAdapterBase {
         if (root === null) return null;
         const key = Namespace.canonicalize(pathname, root);
         if (key === null) return null;
-        const occupied = !key.startsWith("../") && await lstat(join(root, key)).then(() => true, () => false);
+        const occupant = key.startsWith("../") ? null : await File.#occupant(root, key);
+        if (occupant?.isDirectory() === true) {
+            const { code, detail, extensions } = File.#directoryFacts(key, "READ");
+            return Results.failure("scheme:file", code, 404, detail, fields, extensions) as SchemeResultBase;
+        }
+        const occupied = occupant !== null;
         return Results.failure(
             "scheme:file",
             occupied ? "entry-not-member" : "entry-not-found",
@@ -245,6 +251,26 @@ export default class File extends CoreSchemeAdapterBase {
                 retryable: false,
             },
         ) as SchemeResultBase;
+    }
+
+    static async #occupant(root: string, key: string): Promise<Stats | null> {
+        try { return await lstat(join(root, key)); }
+        catch (cause) {
+            if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+            return null;
+        }
+    }
+
+    // {§file-directory-target} — a directory inside the root is named as one, with the listing form
+    // that reaches its files, never as a missing or non-member file.
+    static #directoryFacts(key: string, op: "READ" | "EDIT" | "KILL"): { code: "path-is-directory"; detail: string; extensions: { target: string; recovery: string; retryable: false } } {
+        const listing = `\`FIND (${key}/)\``;
+        const { detail, recovery } = {
+            READ: { detail: `'${key}' is a directory, not a file; READ reads one file.`, recovery: `List its files with ${listing}, then READ one by its path.` },
+            EDIT: { detail: `'${key}' is a directory, not a file; EDIT writes one file.`, recovery: `Name a file inside it, as \`EDIT (${key}/<file>)\`; list its files with ${listing}.` },
+            KILL: { detail: `'${key}' is a directory, not a file; KILL removes one file.`, recovery: `List its files with ${listing}, then KILL each by its path.` },
+        }[op];
+        return { code: "path-is-directory", detail, extensions: { target: key, recovery, retryable: false } };
     }
 
     // {§membership} disk-write gate, shared by edit() and writeEntry() (the COPY/MOVE
@@ -343,6 +369,9 @@ export default class File extends CoreSchemeAdapterBase {
             const member = await ctx.db.crud_get_member_sig.get<{ id: number; synced_sig: string | null; membership_origin: string | null; attributes: string }>({ workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: rel });
             // {§fs-errno} — the occupancy fact (POSIX O_EXCL precedent): something invisible
             // occupies the path; existence leaks, content stays dark. The model picks another name.
+            if (member === undefined && !isMount && (await lstat(requested)).isDirectory()) {
+                return { ok: false, status: 403, ...File.#directoryFacts(rel, "EDIT") };
+            }
             if (member === undefined) {
                 return {
                     ok: false,
@@ -475,12 +504,13 @@ export default class File extends CoreSchemeAdapterBase {
                     400,
                     "EDIT of an existing file requires a line marker.",
                     {
-                        recovery: "Use <1,-1> to replace the whole file or select a narrower range.",
+                        recovery: "Name the lines to replace with `<@hash>` or `<@start,@end>` from a READ of the file; `<L,1,L,1>` inserts before line L, and `<1,-1>` replaces the whole file.",
                         retryable: false,
                     },
                 );
             }
-            const edits = statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" }));
+            // {§zero-width-column-one-insert}
+            const edits = statements.map((candidate) => ({ marker: candidate.lineMarker!, body: LineMarkerOps.wholeLineBody(original, candidate.lineMarker!, candidate.body ?? "") }));
             const result = LineMarkerOps.applyLineMarkerEditBatch(original, edits);
             if (result.status !== 200) return Results.assert(result) as EditResult;
             patched = result.result ?? "";
@@ -873,6 +903,10 @@ export default class File extends CoreSchemeAdapterBase {
         const rel = Namespace.canonicalize(pathname, root);
         if (rel === null) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", pathname), {}, { target: pathname }) as DeleteEntryResult;
         const member = await core.db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: core.workspaceId, scheme: "file", authority: "", pathname: rel });
+        if (member === undefined && !rel.startsWith("../") && (await File.#occupant(root, rel))?.isDirectory() === true) {
+            const { code, detail, extensions } = File.#directoryFacts(rel, "KILL");
+            return Results.failure("scheme:file", code, 404, detail, {}, extensions) as DeleteEntryResult;
+        }
         if (member === undefined) return Results.failure("scheme:file", "entry-not-found", 404, missDetail("file", rel), {}, { target: rel }) as DeleteEntryResult;
         return { status: 202, attrs: { deletePath: rel } };
     }

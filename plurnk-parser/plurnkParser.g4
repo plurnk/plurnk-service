@@ -130,7 +130,8 @@ execSlot
     | lineMarker
     ;
 
-target      : LPAREN TARGET_TEXT* lineMarker? RPAREN ;
+// {§log-heading-notation} — `→ path`, as the log's receipt heading shows an address, is the target.
+target      : LPAREN TARGET_TEXT* lineMarker? RPAREN | ARROW_TARGET ;
 targetWithMetadata : target metadata* ;
 metadata    : LBRACKET METADATA_TEXT* RBRACKET ;
 lineMarker  : L_MARKER ;

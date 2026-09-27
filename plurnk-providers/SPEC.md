@@ -700,8 +700,15 @@ into an empty model turn or reduced to a message plus a generic status.
 Upstream diagnostic text is bounded by
 `PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT`; the committed `.env.defaults` owns its
 normal value. Retry exhaustion is preserved as `attempts` and
-`retryExhausted`, and the resulting Problem is not marked retryable after the
-provider has consumed its automatic retry budget.
+`retryExhausted`; it does not change the Problem's `retryable`.
+
+§provider-retryable-truth **`retryable` states what happens next.** A Problem's
+`retryable` is exactly membership of its kind in the exported
+`RETRYABLE_PROVIDER_KINDS` — `rate_limit`, `network_failure`, `deadline_exceeded`,
+`resource_interrupted`, `output_dropped` — and Core's provider recovery re-issues
+exactly those kinds by reading the same set. It never copies the transport's own
+retry policy: a 502 or 524 that the transport will not replay is still re-issued by
+the consumer, so it reports `retryable: true`. Every other kind reports `false`.
 
 §provider-failure-cause **The wrapper's cause is evidence, bounded.** The SDK
 reports every processing failure of a 2xx body with one message ("Failed to
@@ -776,9 +783,15 @@ deadline:
 | --- | --- | --- | --- |
 | Operation | `PLURNK_PROVIDERS_OPERATION_TIMEOUT` | Complete logical call, including admission queueing, every attempt and retry delay. | Final `deadline_exceeded` Problem at 504 with `timeoutPhase=operation`; not retried inside this operation. Consumer recovery is separate. Enforced as a race, not only the advisory signal, so a wedged transport that never observes the abort cannot hang the loop past the deadline (#505); a well-behaved transport unwinds within a short grace and settles its own attempt evidence first. |
 | Attempt | `PLURNK_PROVIDERS_FETCH_TIMEOUT` | One physical generation request. A non-streamed request is bounded through response consumption; a streamed one only until its first semantic content. After content begins, stream-idle bounds silence and the operation deadline still bounds the whole call. | Surfaced `network_failure` with `timeoutPhase=attempt`; never transport-retried (#479) — the consumer's recovery owns re-issue. |
-| First content | `PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT` | Response-stream start through first semantic model content; metadata, empty deltas, and transport activity do not satisfy it. | Surfaced `network_failure` with `timeoutPhase=first_content`; never transport-retried (#479). |
+| First content | `PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT` | Dispatch through first semantic model content ({§provider-first-content-at-dispatch}); metadata, empty deltas, and transport activity do not satisfy it. | Surfaced `network_failure` with `timeoutPhase=first_content`; never transport-retried (#479). |
 | Stream idle | `PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT` | Silence between semantic content chunks after content begins. | Surfaced `network_failure` with `timeoutPhase=stream_idle`; never transport-retried (#479). |
 | Repeated line | `PLURNK_PROVIDERS_REPEATED_LINE_LIMIT` | A streamed line of 16 or more characters repeated this many times; `0` disables. | Stopped as `repetition` ({§repetition-stop}); never transport-retried. |
+
+§provider-first-content-at-dispatch The first-content deadline is armed when the
+admitted attempt is dispatched, before response headers, so an endpoint that accepts
+the request and never answers fails at `timeoutPhase=first_content` instead of holding
+the attempt for the whole attempt deadline. It still begins only after admission
+({§provider-inference-admission}).
 
 Settled calls remove their deadline timers and cancellation subscriptions.
 
@@ -809,6 +822,21 @@ ordinary 5xx surface on the first failure as consumer-recoverable kinds; one
 retry authority — the consumer's own provider-recovery machinery — owns
 re-issue, backoff, and park above the transport.
 
+§provider-output-dropped **A completed exchange whose own evidence proves its
+text never arrived is `output_dropped`**, a 502 carrying the complete response as
+`error.attempt` and `stage: "provider-response"`; it is never admitted as an empty or
+truncated turn, and the consumer re-issues it ({§provider-retryable-truth}):
+
+| Evidence | Detail | Facts |
+| --- | --- | --- |
+| `finish_reason` `tool_calls` (Plurnk never declares tools) | `The provider ended the response with tool calls although no tools were declared (N native tool call(s)); the response text was not delivered as text.` | `toolCallCount` |
+| Billed output tokens exceed the code points streamed across every channel — text and reasoning, before projection — by at least `PLURNK_PROVIDERS_DROPPED_OUTPUT_TOKENS` (`0` disables; an output token decodes to at least one character) | `The provider billed T output tokens but streamed C characters of text and reasoning; at least T−C tokens of output never arrived.` | `billedOutputTokens`, `streamedCharacters`, `droppedOutputTokens` |
+
+The token rule needs a billed output count, and it does not apply when the response bills
+reasoning tokens but streamed no reasoning in any channel: that is hidden or summarized
+reasoning, which the characters cannot account for. Text-only comparisons are not made —
+a route may bill reasoning inside its text count.
+
 §provider-request-rejection An HTTP 4xx rejection not classified as authorization,
 quota, capacity, grammar, rate limit, or transient transport failure is
 `request_rejected`: preserve the upstream status and detail, with `retryable: false`.
@@ -827,7 +855,7 @@ completed exchange.
 | Normalized finish reason   | Exact `insufficient_system_resource` becomes `resource_interrupted`; the raw value remains in `assistantRaw`.                |
 | `generate` outcome         | Throw `ProviderError(kind="resource_interrupted")` at local status 503 with the normalized attempt on `error.attempt` and the same accounting on `error.accounting`. |
 | Partial response           | Preserve content, reasoning, usage, model, metadata, optional raw body, and other evidence without admitting it as success.  |
-| Automatic replay           | None; the Problem has `retryable: false`, and AI SDK retry scheduling has already completed at the successful transport.     |
+| Automatic replay           | None inside the provider; AI SDK retry scheduling has already completed. The Problem has `retryable: true`: the consumer re-issues it ({§provider-retryable-truth}). |
 | Capacity-pool overflow     | None under the existing routing policy; when other overflow-eligible failures do reach a sibling, the pool concatenates their request accounting. |
 | Consumer admission         | Persist the evidence as an unaccepted attempt; never parse it into executable work, even when its frame looks complete.      |
 

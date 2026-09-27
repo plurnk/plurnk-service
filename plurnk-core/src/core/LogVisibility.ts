@@ -8,7 +8,7 @@ export type LogFoldRanges = readonly LogFoldRange[];
 
 export type LogVisibilityScopeResolution =
     | { readonly ok: true; readonly range: LogFoldRange | null }
-    | { readonly ok: false; readonly detail: string };
+    | { readonly ok: false; readonly status: 400 | 416; readonly code: string; readonly detail: string; readonly recovery: string };
 
 const INFINITY = Number.POSITIVE_INFINITY;
 
@@ -76,15 +76,16 @@ export default class LogVisibility {
         content: string,
         publishedAnchors: readonly string[] = [],
     ): LogVisibilityScopeResolution {
+        // {§log-scope-recovery} — every refusal ends in the forms that work on this row.
+        const retire = `KILL (${identity}) with no scope retires the whole row`;
+        const refuse = (detail: string, recovery = `Trim one line with <L> or lines L through M with <L,M>; ${retire}.`) =>
+            ({ ok: false, status: 400, code: "curation-scope-invalid", detail, recovery }) as const;
         const total = LogVisibility.lineCount(content);
         if (marker === null) {
             return { ok: true, range: total === 0 ? null : [1, -1] };
         }
         if (marker.marks.length !== 1 && marker.marks.length !== 2) {
-            return {
-                ok: false,
-                detail: `Log-body scopes require one line or an inclusive two-line range; received ${marker.marks.length} coordinates.`,
-            };
+            return refuse(`Log-body scopes require one line or an inclusive two-line range; received ${marker.marks.length} coordinates.`);
         }
 
         let marks: readonly (number | string)[] = marker.marks;
@@ -98,7 +99,7 @@ export default class LogVisibility {
             for (const [index, mark] of marker.marks.entries()) {
                 if (typeof mark !== "string") continue;
                 if (!LineAnchors.isAnchor(mark)) {
-                    return { ok: false, detail: "A log-body anchor is malformed." };
+                    return refuse("A log-body anchor is malformed.");
                 }
                 const matches = new Set(anchorSets.flatMap((anchors) =>
                     anchors.flatMap((anchor, line) => anchor === mark ? [line + 1] : [])));
@@ -111,22 +112,38 @@ export default class LogVisibility {
             marks = resolved;
         }
         if (!marks.every((mark) => typeof mark === "number" && Number.isSafeInteger(mark))) {
-            return { ok: false, detail: "Log-body line scopes require integer coordinates." };
+            return refuse("Log-body line scopes require integer coordinates.");
         }
-        if (total === 0) return { ok: true, range: null };
-
         const first = marks[0] as number;
         if (marks.length === 1) {
             if (first < 1) {
-                return { ok: false, detail: "A log-body line scope must use a positive line coordinate." };
+                return refuse(`<${first}> is not a line of a log body; lines are numbered from 1.`, `Write <1> to trim the first line; ${retire}.`);
             }
-            return { ok: true, range: first >= 1 && first <= total ? [first, first] : null };
+            return { ok: true, range: first <= total ? [first, first] : null };
         }
 
         const rawEnd = marks[1] as number;
-        if (first < 1 || (rawEnd !== -1 && (rawEnd < 1 || rawEnd < first))) {
-            return { ok: false, detail: "A log-body range requires positive, ordered line coordinates or -1 as its end." };
+        const written = `<${first},${rawEnd}>`;
+        // {§range-starts-at-one} — one rule with the file slicer: a range never starts at 0 and is
+        // never clamped; the refusal is its 416 in its words, naming the forms a log body takes.
+        if (first < 1) {
+            return {
+                ok: false,
+                status: 416,
+                code: "range-not-satisfiable",
+                detail: `Range ${written} starts at ${first}, which is not a line; lines are numbered from 1.`,
+                recovery: rawEnd < 1
+                    ? `Write <1,-1> to trim every line of the body; ${retire}.`
+                    : `To trim lines 1 through ${rawEnd}, write <1,${rawEnd}>; ${retire}.`,
+            };
         }
+        if (rawEnd !== -1 && rawEnd < 1) {
+            return refuse(`Range ${written} ends at ${rawEnd}, which is not a line; a range ends at a line from 1, or at -1 for the last line.`, `Write <${first},-1> to trim through the last line; ${retire}.`);
+        }
+        if (rawEnd !== -1 && rawEnd < first) {
+            return refuse(`Range ${written} runs backward; a range names its first line first.`, `Write <${rawEnd},${first}>; ${retire}.`);
+        }
+        if (total === 0) return { ok: true, range: null };
         const start = first;
         const end = rawEnd === -1 ? total : Math.min(rawEnd, total);
         if (start > total || end < 1 || start > end) {

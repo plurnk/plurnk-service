@@ -85,9 +85,10 @@ test("{§balanced-fences}: reasoning quotations cannot promote nested NOTE examp
 
 test("{§balanced-fences}: equal totals with incompatible widths or labels do not establish nesting", () => {
     for (const closer of ["```", "````9"]) {
-        const result = PlurnkParser.parse(`\`\`\`\`SEND\nPrefix.\n\`\`\`\`sh\necho actual-command\n${closer}\n\`\`\`\``);
+        // {§prose-code-blocks} keeps an executor block inside a SEND; an EDIT body has no such rule.
+        const result = PlurnkParser.parse(`\`\`\`\`EDIT (notes.md)\nPrefix.\n\`\`\`\`sh\necho actual-command\n${closer}\n\`\`\`\``);
         clean(result);
-        assert.deepEqual(statements(result).map(writtenOp), ["SEND", "sh"]);
+        assert.deepEqual(statements(result).map(writtenOp), ["EDIT", "sh"]);
     }
 });
 

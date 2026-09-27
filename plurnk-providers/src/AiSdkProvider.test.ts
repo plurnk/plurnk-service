@@ -431,14 +431,14 @@ const flush = () => new Promise<void>((r) => setImmediate(r));
 import { resetEmittedWarnings } from "./warnings.ts";
 test.afterEach(() => { mock.restoreAll(); resetEmittedWarnings(); });
 
-test("a 524 Cloudflare edge timeout fails fast - not retried despite retryAttempts", async () => {
+test("{§provider-retryable-truth} a 524 Cloudflare edge timeout fails fast - not transport-retried, and flagged for the consumer's re-issue", async () => {
     const calls = installFetchScript([{ status: 524, retryAfter: 120 }]);
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 3 });
     await assert.rejects(
         p.generate({ workerId: "r", messages: [] }),
         (error: ProviderError) => error.kind === "network_failure"
             && error.status === 524
-            && error.problem.retryable === false,
+            && error.problem.retryable === true,
     );
     await flush();
     assert.equal(calls.length, 1); // edge code: one attempt, no retry despite retryAttempts: 3
@@ -1028,7 +1028,7 @@ test("#161: a streamed resource interruption is a failed exchange with complete 
             assert.equal(error.kind, "resource_interrupted");
             assert.equal(error.status, 503);
             assert.equal(error.problem.stage, "provider-response");
-            assert.equal(error.problem.retryable, false);
+            assert.equal(error.problem.retryable, true, "the consumer re-issues an interrupted attempt");
             assert.equal(error.problem.finishReason, "resource_interrupted");
             assert.equal(error.problem.rawFinishReason, "insufficient_system_resource");
             assert.equal(error.attempt?.assistant.content, "partial answer");
@@ -2304,7 +2304,7 @@ test("first-content silence surfaces independently of the stream-idle deadline (
     mock.restoreAll();
 });
 
-test("operation-deadline exhaustion is a distinct non-retryable failure", async () => {
+test("{§provider-retryable-truth} operation-deadline exhaustion is a distinct failure the consumer re-issues", async () => {
     let calls = 0;
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
         calls++;
@@ -2330,7 +2330,7 @@ test("operation-deadline exhaustion is a distinct non-retryable failure", async 
         p.generate({ workerId: "r", messages: [] }),
         (error: ProviderError) => error.kind === "deadline_exceeded"
             && error.status === 504
-            && error.problem.retryable === false
+            && error.problem.retryable === true
             && error.problem.timeoutPhase === "operation"
             && error.problem.timeoutMs === 10
             && error.accounting.length === 1
@@ -2972,4 +2972,98 @@ test("{§provider-connectivity} a stream still producing content outlives the at
     } finally {
         mock.restoreAll();
     }
+});
+
+// {§provider-output-dropped} Recorded shapes (#853): Fireworks GLM run133 turn 1 ended `tool_calls` with the
+// operation carried as a native tool-call name; run134 billed 187 output tokens and streamed 115 characters of
+// reasoning and no text; run121 turn 26 billed 7,007 output tokens and streamed a 328-character first sentence
+// over 1,554 characters of reasoning. Granite over OpenRouter bills reasoning inside its text count and must
+// not trip: 8,855 output tokens against 29,123 streamed characters.
+const droppedFetch = (chunks: unknown[]): typeof globalThis.fetch => async () => new Response(sseStream(chunks), { status: 200 });
+const glmUsage = (completion: number, reasoning: number, prompt = 4138) => ({
+    prompt_tokens: prompt,
+    completion_tokens: completion,
+    total_tokens: prompt + completion,
+    completion_tokens_details: { reasoning_tokens: reasoning },
+});
+const droppedGenerate = (chunks: unknown[], droppedOutputTokens = 32) => testProvider({
+    ...injectedBase,
+    source: "provider:fireworks-ai",
+    droppedOutputTokens,
+    fetch: droppedFetch(chunks),
+}).generate({ workerId: "glm", messages: [{ role: "user", content: "task" }] });
+const assertDropped = async (generated: Promise<unknown>, detail: string, facts: Record<string, unknown>) => {
+    await assert.rejects(generated, (error: unknown) => {
+        assert.ok(error instanceof ProviderError);
+        assert.equal(error.kind, "output_dropped");
+        assert.equal(error.status, 502);
+        assert.equal(error.problem.type, "https://problems.plurnk.xyz/provider/fireworks-ai/output-dropped");
+        assert.equal(error.problem.detail, detail);
+        assert.equal(error.problem.retryable, true, "the consumer re-issues the emission");
+        assert.equal(error.problem.stage, "provider-response");
+        for (const [key, value] of Object.entries(facts)) assert.equal(error.problem[key], value, key);
+        assert.ok(error.attempt !== undefined, "the dropped response stays durable evidence");
+        assert.equal(error.accounting.length, 1);
+        return true;
+    });
+};
+
+test("{§provider-output-dropped} run133: a tool_calls finish on a request that declares no tools is output_dropped, not an empty turn", async () => {
+    await assertDropped(droppedGenerate([
+        { choices: [{ index: 0, delta: { role: "assistant", reasoning_content: "Look at widgets.py Media merge logic." }, finish_reason: null }] },
+        { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "chatcmpl-tool-af6fe7b410a1d7c5", type: "function", function: { name: "READ (django/forms/widgets.py) /def merge/<tool_call>READ (django/forms/widgets.py) /MediaOrderConflictWarning/</arg_value>", arguments: "{}" } }] }, finish_reason: null }] },
+        { choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }], usage: glmUsage(39, 8) },
+    ], 0), "The provider ended the response with tool calls although no tools were declared (1 native tool call); the response text was not delivered as text.", { finishReason: "tool_calls", rawFinishReason: "tool_calls", toolCallCount: 1 });
+});
+
+test("{§provider-output-dropped} run134: 187 billed output tokens against 115 streamed characters and no text is output_dropped", async () => {
+    const reasoning = "Find the WCS wrapper that returns empty arrays for empty inputs instead of raising in transform.".padEnd(115, ".");
+    assert.equal([...reasoning].length, 115);
+    await assertDropped(droppedGenerate([
+        { choices: [{ index: 0, delta: { role: "assistant", reasoning_content: reasoning }, finish_reason: null }] },
+        { choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: glmUsage(187, 29, 4454) },
+    ]), "The provider billed 187 output tokens but streamed 115 characters of text and reasoning; at least 72 tokens of output never arrived.", { billedOutputTokens: 187, streamedCharacters: 115, droppedOutputTokens: 32, finishReason: "stop" });
+});
+
+test("{§provider-output-dropped} run121: a first sentence under 7,007 billed output tokens is output_dropped", async () => {
+    const reasoning = "r".repeat(1554);
+    const sentence = "I need to reassess: the current working tree has only a comment in `resolvers.py` (no functional change), the regression test still expects `Resolver404`, and the end-to-end check showed raw `Http404` — so the fix is not in place. I must apply the actual change and re-run both checks before declaring anything done here.".padEnd(328, ".");
+    assert.equal([...sentence].length, 328);
+    await assertDropped(droppedGenerate([
+        { choices: [{ index: 0, delta: { role: "assistant", reasoning_content: reasoning }, finish_reason: null }] },
+        { choices: [{ index: 0, delta: { content: sentence }, finish_reason: null }] },
+        { choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: glmUsage(7007, 393, 40354) },
+    ]), "The provider billed 7007 output tokens but streamed 1882 characters of text and reasoning; at least 5125 tokens of output never arrived.", { billedOutputTokens: 7007, streamedCharacters: 1882 });
+});
+
+test("{§provider-output-dropped} granite: reasoning billed inside the text count is not a drop when the characters account for the output", async () => {
+    const content = "```\n````EDIT (Engine.ts) <452,453>\n    // worker has none.\n````\n```";
+    const admitted = await droppedGenerate([
+        { choices: [{ index: 0, delta: { role: "assistant", reasoning_content: "t".repeat(28921) }, finish_reason: null }] },
+        { choices: [{ index: 0, delta: { content }, finish_reason: "stop" }], usage: glmUsage(8855, 7422, 23050) },
+    ]);
+    assert.equal(admitted.assistant.content, content, "8,855 tokens over 28,921 + 66 characters is an ordinary response");
+});
+
+test("{§provider-output-dropped} hidden reasoning is exempt: billed reasoning tokens streamed in no channel do not count as dropped output", async () => {
+    const content = "```READ (django/forms/widgets.py) /class Media/\n```";
+    const admitted = await droppedGenerate([
+        { choices: [{ index: 0, delta: { role: "assistant", content }, finish_reason: "stop" }], usage: glmUsage(2000, 1950) },
+    ]);
+    assert.equal(admitted.assistant.content, content);
+    assert.equal(admitted.assistant.reasoning, null);
+});
+
+test("{§provider-output-dropped} the margin is the knob: 31 unmatched tokens are admitted at 32, and 0 turns the token rule off", async () => {
+    const content = "```READ (django/forms/widgets.py) /class Media/\n```";
+    const within = await droppedGenerate([
+        { choices: [{ index: 0, delta: { role: "assistant", reasoning_content: "thinking" }, finish_reason: null }] },
+        { choices: [{ index: 0, delta: { content }, finish_reason: "stop" }], usage: glmUsage([...content].length + 8 + 31, 7) },
+    ]);
+    assert.equal(within.assistant.content, content);
+    const off = await droppedGenerate([
+        { choices: [{ index: 0, delta: { role: "assistant", reasoning_content: "thinking" }, finish_reason: null }] },
+        { choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: glmUsage(187, 29) },
+    ], 0);
+    assert.equal(off.assistant.content, "");
 });

@@ -297,9 +297,9 @@ const sourceLineRange = (
     const first = marker.marks[0];
     const last = marker.marks[1];
     if (last !== undefined) {
-        const start = first === 0 ? 1 : first;
+        if (first < 1) throw new Error(`EDIT receipt range <${first},${last}> reached settlement; the slicer refuses a range starting below 1 ({§range-starts-at-one}).`);
         const end = last === -1 ? total : last;
-        return { start, end, removed: Math.max(0, end - start + 1) };
+        return { start: first, end, removed: Math.max(0, end - first + 1) };
     }
     if (first === 0) return { start: 1, end: 0, removed: 0 };
     if (first === -1) return { start: total + 1, end: total, removed: 0 };
@@ -386,7 +386,7 @@ const codePointEffects = (
             const replacement = LineMarkerOps.textReplacement(
                 original,
                 edit.marker,
-                edit.body,
+                LineMarkerOps.wholeLineBody(original, edit.marker, edit.body), // {§zero-width-column-one-insert}
             );
             if ("error" in replacement) {
                 throw new Error(`EDIT receipt could not resolve ${ScopeFormat.marker(edit.marker)}: ${replacement.error}`);

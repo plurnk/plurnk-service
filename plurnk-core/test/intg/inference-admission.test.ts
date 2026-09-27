@@ -39,7 +39,7 @@ for (const delegated of ["WORK", "BARE"] as const) {
             response.end(`data: ${JSON.stringify({
                 id: String(requests.length), object: "chat.completion.chunk", created: 1, model,
                 choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
-                usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+                usage: { prompt_tokens: 100, completion_tokens: Math.ceil(content.length / 4), total_tokens: 100 + Math.ceil(content.length / 4) },
             })}\n\ndata: [DONE]\n\n`);
         });
         server.listen(0, "127.0.0.1");

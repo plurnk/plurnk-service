@@ -1,7 +1,7 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import { APICallError, JSONParseError, RetryError, TypeValidationError } from "ai";
-import { ProviderError, ProviderTimeoutError, classifyProviderError, toProviderError } from "./errors.ts";
+import { ProviderError, ProviderTimeoutError, RETRYABLE_PROVIDER_KINDS, classifyProviderError, toProviderError } from "./errors.ts";
 import type { ProviderAttempt } from "./types.ts";
 import { providerSource } from "./notices.ts";
 
@@ -72,7 +72,7 @@ test("{§provider-capacity-failure} capacity normalization prefers structured pr
     }))).kind, "request_rejected");
 });
 
-test("provider retry directives survive HTTP failure normalization", () => {
+test("{§provider-retryable-truth} a transport's no-replay directive does not change the consumer-recoverable flag", () => {
     const final = new APICallError({
         message: "edge router says not to replay",
         url: "https://example.test/v1/chat/completions",
@@ -82,7 +82,16 @@ test("provider retry directives survive HTTP failure normalization", () => {
     });
     const error = toProviderError(final, "provider:test");
     assert.equal(error.kind, "network_failure");
-    assert.equal(error.problem.retryable, false);
+    assert.equal(error.problem.retryable, true, "the consumer re-issues every network_failure, so the flag says so");
+});
+
+test("{§provider-retryable-truth} retryable is exactly the consumer-recoverable kind set", () => {
+    const kinds = ["rate_limit", "network_failure", "deadline_exceeded", "model_refused", "request_rejected", "invalid_response", "unauthorized", "quota_exceeded", "grammar_invalid", "capacity_exceeded", "resource_interrupted", "output_dropped", "repetition"] as const;
+    assert.deepEqual(
+        kinds.filter((kind) => new ProviderError("provider:test", kind, "fixture").problem.retryable === true),
+        ["rate_limit", "network_failure", "deadline_exceeded", "resource_interrupted", "output_dropped"],
+    );
+    assert.deepEqual([...RETRYABLE_PROVIDER_KINDS], ["rate_limit", "network_failure", "deadline_exceeded", "resource_interrupted", "output_dropped"]);
 });
 
 test("classifyProviderError: a 422 flagged grammar_invalid is distinct from other request rejections", () => {
@@ -175,7 +184,7 @@ test("#161: ProviderError carries resource-interrupted attempt evidence outside 
         detail: "The provider interrupted generation because inference resources were unavailable.",
         providerKind: "resource_interrupted",
         stage: "provider-response",
-        retryable: false,
+        retryable: true,
         finishReason: "resource_interrupted",
         rawFinishReason: "insufficient_system_resource",
     });
@@ -205,7 +214,7 @@ test("provider diagnostics are bounded without losing structured failure facts",
     assert.equal(error.cause, cause);
 });
 
-test("retry exhaustion is explicit and does not recommend another automatic replay", () => {
+test("{§provider-retryable-truth} transport retry exhaustion is explicit and stays consumer-recoverable", () => {
     const failures = [apiError(429), apiError(429), apiError(429)];
     const cause = new RetryError({
         message: "Failed after 3 attempts.",
@@ -213,7 +222,7 @@ test("retry exhaustion is explicit and does not recommend another automatic repl
         errors: failures,
     });
     const error = toProviderError(cause, "provider:test");
-    assert.equal(error.problem.retryable, false);
+    assert.equal(error.problem.retryable, true);
     assert.equal(error.problem.attempts, 3);
     assert.equal(error.problem.retryExhausted, true);
     assert.equal(error.cause, cause);
@@ -235,7 +244,7 @@ test("retry exhaustion retains the exact inner deadline phase", () => {
     const error = toProviderError(cause, "provider:test");
     assert.equal(error.kind, "network_failure");
     assert.equal(error.status, 503);
-    assert.equal(error.problem.retryable, false);
+    assert.equal(error.problem.retryable, true);
     assert.equal(error.problem.attempts, 2);
     assert.equal(error.problem.retryExhausted, true);
     assert.equal(error.problem.timeoutPhase, "attempt");

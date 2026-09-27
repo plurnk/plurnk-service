@@ -20,11 +20,10 @@ export default class PatternSelection {
     }
 
     // A resource-selecting dialect never names text inside one resource.
-    static refuseDialect(matcher: MatcherBody, scheme: string, operation: PatternOperation): DispatchResult | null {
-        if (matcher.dialect === "fts" || matcher.dialect === "graph") {
-            return PatternSelection.refuse("pattern-dialect-unsupported", 400, `${operation} takes a text pattern; a ${matcher.dialect === "fts" ? "~full-text" : "&graph"} pattern selects resources through FIND.`, scheme, operation);
-        }
-        return null;
+    static refuseDialect(matcher: MatcherBody, scheme: string, operation: PatternOperation, target: string): DispatchResult | null {
+        if (matcher.dialect !== "fts" && matcher.dialect !== "graph") return null;
+        const { detail, recovery } = PatternEdits.findOnly({ ...matcher, dialect: matcher.dialect }, operation, target);
+        return MutationEffects.failure("pattern-dialect-unsupported", 400, detail, {}, { scheme, operation, recovery, retryable: false });
     }
 
     // Match the content the operation already holds; the numeric scope bounds the evidence.

@@ -3,11 +3,12 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 const root = resolve(import.meta.dirname, "..");
 
-test("candidate SIGTERM stops its client and daemon, exports from the frozen build, and preserves the signal status", { timeout: 30_000 }, async (t) => {
+test("candidate SIGTERM stops its client and daemon, runs and exports from its pinned runtime, and preserves the signal status", { timeout: 30_000 }, async (t) => {
     const fixture = mkdtempSync(resolve(tmpdir(), "plurnk-candidate-signal-"));
     const clientRoot = resolve(fixture, "client");
     const candidateDir = resolve(fixture, "candidate");
@@ -22,6 +23,8 @@ test("candidate SIGTERM stops its client and daemon, exports from the frozen bui
         'import { registerHooks } from "node:module";',
         "registerHooks({ load(url, context, nextLoad) {",
         '    if (url.endsWith(".ts")) throw new Error("Candidate imported unbuilt source: " + url);',
+        // {§candidate-pinned-runtime} — no service module may load from the shared checkout.
+        `    if (url.startsWith(${JSON.stringify(pathToFileURL(root).href + "/plurnk-")}) && !url.includes("/node_modules/")) throw new Error("Candidate imported the live checkout: " + url);`,
         "    return nextLoad(url, context);",
         "} });",
         "",
@@ -76,6 +79,8 @@ test("candidate SIGTERM stops its client and daemon, exports from the frozen bui
     assert.deepEqual(result, { code: 143, signal: null }, `SIGTERM is finalized by the launcher\n${stderr}`);
     assert.match(stderr, /candidate artifact:/, "the launcher reports the preserved artifact");
     assert.equal(existsSync(resolve(candidateDir, "digest", "digest.json")), true, "SIGTERM still produces the supported digest");
+    assert.ok(stderr.includes(` dist ${resolve(candidateDir, "runtime", "plurnk-core")}`), `the daemon ran from the pinned runtime\n${stderr}`);
+    assert.equal(existsSync(resolve(candidateDir, "runtime")), false, "the pinned runtime is removed once the digest is written");
 });
 
 test("candidate reaps its daemon when the client is terminated by a signal", { timeout: 30_000 }, async (t) => {

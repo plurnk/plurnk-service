@@ -16,6 +16,7 @@ import {
     type ProblemDetails,
 } from "@plurnk/plurnk-schemes";
 import ErrorDetail from "../core/ErrorDetail.ts";
+import PatternEdits from "./pattern-edits.ts";
 
 export type { MatchResult };
 
@@ -40,12 +41,13 @@ export default class Matcher {
     // the shared primitive both EntryFind and Log.find run, so every dialect works uniformly by
     // construction rather than being re-implemented per scheme. A 4xx matcher
     // failure ends the whole operation; 204 no-match and 203 unlocated-match
-    // candidates simply drop out.
+    // candidates simply drop out. A regex anchors each line ({§find-line-anchors}).
     static async matchCandidates(
         body: MatcherBody,
         candidates: ReadonlyArray<{ key: string; content: string; mimetype: string }>,
         mimetypes: Mimetypes,
     ): Promise<{ status: number; matches: CandidateMatch[]; problem?: ProblemDetails }> {
+        const lineBody = PatternEdits.lineLimited(body);
         const matches: CandidateMatch[] = [];
         let queryable = 0;
         let unsupported: ProblemDetails | undefined;
@@ -58,7 +60,7 @@ export default class Matcher {
             // reports the 415.
             let match;
             try {
-                match = await Matcher.matchAgainstContent(body, cand.content, cand.mimetype, mimetypes);
+                match = await Matcher.matchAgainstContent(lineBody, cand.content, cand.mimetype, mimetypes);
             } catch (cause) {
                 console.error(`FIND candidate ${cand.key} (${cand.mimetype}) content handler crashed:`, cause);
                 unsupported ??= {
