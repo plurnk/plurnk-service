@@ -11,6 +11,7 @@ import { type ExecStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
+import ExecScratch from "../../src/schemes/ExecScratch.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors, rootWorkspace, seedEntryWithChannel } from "./_helpers.ts";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -155,7 +156,7 @@ test("one canonical target derives one preserved effect fact (#107)", async () =
                 body,
                 cwd,
                 target,
-                ...(target?.startsWith(tmpdir()) === true
+                ...(target?.startsWith(ExecScratch.directory()) === true
                     ? { materialized: await readFile(target, "utf8") }
                     : {}),
             });
@@ -241,7 +242,7 @@ test("one canonical target derives one preserved effect fact (#107)", async () =
         assert.deepEqual(runs.map(({ body, cwd, target, materialized }) => ({
             body,
             cwd: cwd === join(root, "work") ? "<directory>" : cwd,
-            target: target?.startsWith(tmpdir()) === true ? "<materialized>" : target,
+            target: target?.startsWith(ExecScratch.directory()) === true ? "<materialized>" : target,
             ...(materialized === undefined ? {} : { materialized }),
         })), [
             { body: "inline", cwd: root, target: null },

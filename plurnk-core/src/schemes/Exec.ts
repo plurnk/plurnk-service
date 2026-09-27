@@ -24,8 +24,7 @@ import ExecAbort from "./exec-abort.ts";
 import { LIFETIME_SYNTAX, formatLifetime, parseExecLifetime } from "./exec-lifetime.ts";
 import { entryCoordinateOf, generatedPathname, isGeneratedPathname, renderAddress } from "../core/plurnk-uri.ts";
 import { writeFile, unlink, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { extname, isAbsolute, join, resolve } from "node:path";
+import { extname, isAbsolute, resolve } from "node:path";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
@@ -48,6 +47,7 @@ import LogBody from "../core/LogBody.ts";
 import ToolResources from "../core/ToolResources.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import ExecScheduler from "./ExecScheduler.ts";
+import ExecScratch from "./ExecScratch.ts";
 import ExecutionInput from "./ExecutionInput.ts";
 import { execRouteOf } from "./exec-runtime.ts";
 import { type RuntimeTag } from "@plurnk/plurnk-contracts";
@@ -132,10 +132,12 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     // Default = schemes-http's checked WebFetcher; injectable for tests.
     readonly #fetchWeb: WebFetch;
     readonly #scheduler: ExecScheduler;
+    readonly #scratch: ExecScratch;
     readonly #inputTimeoutMs: number;
     constructor(fetchWeb?: WebFetch) {
         super();
         this.#scheduler = new ExecScheduler();
+        this.#scratch = new ExecScratch();
         this.#inputTimeoutMs = ExecutionInput.configuredTimeout();
         if (fetchWeb === undefined) {
             const webFetcher = new WebFetcher();
@@ -421,6 +423,21 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             );
         }
 
+        // {§exec-scratch-directory} — a standalone source is realized under the scratch directory,
+        // where its executor must be able to read it; a directory the daemon cannot create or
+        // write refuses here, never mid-run.
+        if (resourceSource !== null && execTarget !== null) {
+            const unavailable = await this.#scratch.unavailable();
+            if (unavailable !== null) {
+                return refuse(
+                    "scratch-unavailable",
+                    `The execution scratch directory \`${this.#scratch.directory}\` named by ${ExecScratch.KNOB} cannot be created or written (${unavailable}), so the ${runtime} source \`${execTarget.raw}\` cannot be realized.`,
+                    `The operator points ${ExecScratch.KNOB} at a writable absolute directory the ${runtime} executor can also read; meanwhile, target a program file the executor can reach, or put the command beneath a ${runtime} heading with no target.`,
+                    { target: execTarget.raw, scratch: this.#scratch.directory, configuration: ExecScratch.KNOB },
+                );
+            }
+        }
+
         // {§exec-lifetime} — the scope slot is text coordinates, and an execution has none;
         // execution lifetime is the metadata's lifetime field.
         if (statement.lineMarker !== null) {
@@ -681,7 +698,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             if (source.nativePath !== null) {
                 target = source.nativePath;
             } else {
-                tempPath = join(tmpdir(), `plurnk-exec-${crypto.randomUUID()}${extname(sourceTarget.pathname)}`);
+                tempPath = this.#scratch.path(extname(sourceTarget.pathname)); // {§exec-scratch-directory}
                 await writeFile(tempPath, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
                 target = tempPath;
             }

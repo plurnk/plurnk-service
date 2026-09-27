@@ -1,7 +1,9 @@
 import WorkerName from "../../src/core/WorkerName.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, dirname, join } from "node:path";
 import { parsePath } from "@plurnk/plurnk-parser";
 import type { ExecStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type { Effect } from "@plurnk/plurnk-execs";
@@ -525,5 +527,73 @@ test("{§exec-target-documentation} a generated reference target is refused at a
         assert.equal(ctx.runs.length, 0, "nothing was realized or run");
     } finally {
         await ctx.close();
+    }
+});
+
+// {§exec-scratch-directory} — the recorded shape (#882): ```sh (log:///…)``` was realized under host
+// /tmp, which the bench's containerized runtime never mounts, and failed mid-run.
+test("{§exec-scratch-directory} a standalone source is realized under the knob's directory and removed afterwards", async () => {
+    const previous = process.env.PLURNK_SERVICE_EXEC_SCRATCH;
+    const scratch = join(tmpdir(), `plurnk-scratch-${crypto.randomUUID()}`, "nested");
+    process.env.PLURNK_SERVICE_EXEC_SCRATCH = scratch;
+    let ctx: Awaited<ReturnType<typeof wire>> | null = null;
+    try {
+        ctx = await wire();
+        ctx.schemes.register("source", {
+            manifest: schemeManifest("source"),
+            async prepareRepresentation(request, schemeCtx) {
+                return materializeSource(request, schemeCtx, "program");
+            },
+        } satisfies SchemeHandler);
+        const result = await ctx.dispatch(ctx.root, "source:///script.py");
+        assert.equal(result.status, 200, JSON.stringify(result));
+        const target = ctx.runs[0]?.target;
+        assert.ok(target !== null && target !== undefined);
+        assert.equal(dirname(target), scratch, "the executor saw a path under the scratch directory");
+        assert.match(basename(target), /^plurnk-exec-[0-9a-f-]{36}\.py$/u);
+        assert.equal(ctx.runs[0]?.materialized, "program");
+        assert.equal((await stat(scratch)).mode & 0o777, 0o700, "created on first use, private to the daemon");
+        await assert.rejects(stat(target), { code: "ENOENT" }, "the source is removed after the run settles");
+    } finally {
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_EXEC_SCRATCH;
+        else process.env.PLURNK_SERVICE_EXEC_SCRATCH = previous;
+        await ctx?.close();
+        await rm(dirname(scratch), { recursive: true, force: true });
+    }
+});
+
+test("{§exec-scratch-directory} an unusable scratch directory refuses the execution at admission", async () => {
+    const previous = process.env.PLURNK_SERVICE_EXEC_SCRATCH;
+    const occupied = join(tmpdir(), `plurnk-scratch-${crypto.randomUUID()}`);
+    await writeFile(occupied, "not a directory");
+    process.env.PLURNK_SERVICE_EXEC_SCRATCH = occupied;
+    let ctx: Awaited<ReturnType<typeof wire>> | null = null;
+    try {
+        ctx = await wire();
+        ctx.schemes.register("source", {
+            manifest: schemeManifest("source"),
+            async prepareRepresentation() {
+                throw new Error("admission refused before any source was read");
+            },
+        } satisfies SchemeHandler);
+        const refused = await ctx.dispatch(ctx.root, "source:///script");
+        assert.equal(refused.status, 400);
+        assert.match(String(refused.problem?.type), /\/scratch-unavailable$/u);
+        assert.equal(
+            refused.problem?.detail,
+            `The execution scratch directory \`${occupied}\` named by PLURNK_SERVICE_EXEC_SCRATCH cannot be created or written (EEXIST), so the tool source \`source:///script\` cannot be realized.`,
+        );
+        assert.equal(
+            refused.problem?.recovery,
+            "The operator points PLURNK_SERVICE_EXEC_SCRATCH at a writable absolute directory the tool executor can also read; meanwhile, target a program file the executor can reach, or put the command beneath a tool heading with no target.",
+        );
+        assert.equal(refused.problem?.scratch, occupied);
+        assert.equal(refused.problem?.configuration, "PLURNK_SERVICE_EXEC_SCRATCH");
+        assert.equal(ctx.runs.length, 0, "nothing was realized or run");
+    } finally {
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_EXEC_SCRATCH;
+        else process.env.PLURNK_SERVICE_EXEC_SCRATCH = previous;
+        await ctx?.close();
+        await rm(occupied, { force: true });
     }
 });

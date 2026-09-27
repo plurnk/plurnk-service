@@ -12,6 +12,7 @@ import ExecutorRegistry, { type Executor } from "../../src/core/ExecutorRegistry
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { SchemeManifest } from "../../src/core/types.ts";
 import Exec from "../../src/schemes/Exec.ts";
+import ExecScratch from "../../src/schemes/ExecScratch.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, rootWorkspace, schemeManifest, seedEntryWithChannel } from "./_helpers.ts";
 import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
@@ -308,7 +309,7 @@ test("{§exec-source-temporary} a resource target is always a target, including 
         assert.equal(result.status, 200);
         const [run] = ctx.runs.get("resourcetool") ?? [];
         assert.equal(run?.body, "");
-        assert.ok(run?.target?.startsWith(tmpdir()));
+        assert.ok(run?.target?.startsWith(ExecScratch.directory()), "the source is realized under the scratch directory ({§exec-scratch-directory})");
         assert.equal(run?.materialized, "resource bytes");
         assert.deepEqual(ctx.effects.get("resourcetool"), ["worker:///source#body"]);
     } finally {

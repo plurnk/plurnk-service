@@ -2937,13 +2937,28 @@ its filename, extension, sibling imports, and source-relative assets remain
 intact. This neither bypasses admission nor changes the executor's working
 directory. A disappeared native source fails; it never runs a stale projection.
 Other resources and derived channels supply standalone source, not a filesystem:
-Core creates one temporary file, preserving the source extension, with an exclusive,
-process- and database-coordinate-independent identity. No sibling tree is copied
-and no relative-resource filesystem is emulated. The temporary file lives through
+Core creates one file under the scratch directory ({§exec-scratch-directory}), preserving the
+source extension, with an exclusive, process- and database-coordinate-independent identity. No
+sibling tree is copied and no relative-resource filesystem is emulated. The file lives through
 the executor run and core removes it after the subscription's terminal result
 has settled. A removal failure is reported to daemon diagnostics with its
 complete cause; it cannot rewrite the execution result, stream state, or
 completion wake.
+
+§exec-scratch-directory **A realized source is readable by its executor for the execution's
+lifetime.** The standalone file is written under the one scratch directory
+`PLURNK_SERVICE_EXEC_SCRATCH` names: empty, it is `$XDG_RUNTIME_DIR/plurnk` when
+`XDG_RUNTIME_DIR` is set and the platform temporary directory otherwise; an explicit value is
+an absolute directory (`~` expands), and a relative one fails at boot by name. The directory
+is created on first use with mode `0700`; each file is created exclusively with mode `0600`
+under a unique name. An executor that runs in another filesystem namespace — a container that
+mounts only the repository — is given a directory both sides can see by pointing the knob at
+it. Admission ensures the directory: one the daemon cannot create or write refuses the
+execution, 400 `scratch-unavailable`, whose detail names the directory, the knob and the
+failure code, and whose recovery has the operator point the knob at a writable absolute
+directory the executor can also read and, meanwhile, has the writer target a program file the
+executor can reach or run the command beneath a targetless heading. An execution never fails
+mid-run for this reason.
 
 Loop-flag authority follows the selected runtime's declaration:
 
@@ -3691,6 +3706,7 @@ Each knob's value lives on its panel and nowhere else (`plurnk-service config de
 | `PLURNK_SERVICE_FILES_ITEMS` | Turn-0 catalog preview. Folder-capable schemes render a one-level `*` map with `dir/**` rollups; kernel docs remain recursive and explicitly complete. `-1` = markerless first pages; positive `N` explicitly caps only file-map rows; `0` / unset = off ({§actor-boundary-catalog-preview}). |
 | `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` | Ceiling for a model's `members` definitions in the lattice `none < root < namespace`; `none` refuses every model definition ({§members-model-scope}). |
 | `PLURNK_SERVICE_EXEC_CONCURRENCY` | Executions admitted at once per workspace; the rest queue FIFO with `202 queued` receipts; `-1` unbounded ({§exec-concurrency}). |
+| `PLURNK_SERVICE_EXEC_SCRATCH` | Directory a standalone execution source is written to for its run; empty derives `$XDG_RUNTIME_DIR/plurnk`, else the platform temporary directory ({§exec-scratch-directory}). |
 | `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` | Finite positive milliseconds before cancellation with outcome `timeout`; empty waits, and every other explicit value fails ({§proposal-timeout-cancels}). |
 | §operator-config-worker-warm `PLURNK_SERVICE_WORKSPACE_WARM_MS` | Milliseconds a lease-free workspace Functionality snapshot remains warm; `0` cools without grace and `-1` disables time-based cooling ({§module-workspace-residency}). |
 | `PLURNK_SERVICE_WORKSPACE_WARM_MAX` | Maximum lease-free workspace Functionality snapshots retained process-wide; `0` retains none and `-1` disables the idle-LRU bound ({§module-workspace-residency}). |
