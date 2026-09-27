@@ -181,18 +181,21 @@ for (const [header, body] of [
 }
 
 test("parser: a 3-backtick block stays literal in a 4-backtick body ({§fence-closer})", () => {
-    const body = "quoted section:\n````EDIT (worker:///inner)\nhello\n````";
+    const body = "quoted section:\n```EDIT (worker:///inner)\nhello\n```";
     const stmts = parseAll(`\`\`\`\`EDIT (worker:///demo)\n${body}\n\`\`\`\``);
     assert.equal(stmts.length, 1, "a shorter inner fence never closes the body");
     assert.equal(stmts[0]?.op, "EDIT");
     assert.equal((stmts[0] as EditStatement).body, body);
 });
 
-test("parser: a balanced 4-backtick example inside a 4-backtick body stays literal ({§balanced-fences})", () => {
+// {§unclosed-mutation-yields}: an example inside an EDIT is written with a wider fence; at the
+// EDIT's own width a native heading is an operation, closed or not.
+test("parser: an equal-width EDIT heading inside an EDIT body runs; a wider fence holds it as body ({§unclosed-mutation-yields})", () => {
     const body = "quoted section:\n````EDIT (worker:///inner)\nhello\n````";
     const bare = parseAll("````EDIT (worker:///demo)\n" + body + "\n````");
-    assert.deepEqual(bare.map(({ op }) => op), ["EDIT"], "a quoted edit does not become a real mutation");
-    assert.equal((bare[0] as EditStatement).body, body);
+    assert.deepEqual(bare.map(({ op }) => op), ["EDIT", "EDIT"], "at equal width the inner heading is a second mutation");
+    assert.equal((bare[0] as EditStatement).body, "quoted section:");
+    assert.equal((bare[1] as EditStatement).body, "hello");
     const wider = parseAll("`````EDIT (worker:///demo)\n" + body + "\n`````");
     assert.equal(wider.length, 1, "a wider fence holds the quoted heading as body");
     assert.equal((wider[0] as EditStatement).body, body);
