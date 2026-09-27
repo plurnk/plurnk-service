@@ -27,7 +27,7 @@ test("commit validation retains generated merge and revert subjects", () => {
 
 test("commit validation enforces conventional, bounded, subject-only messages", () => {
     assert.match(validateCommitMessage("Update lifecycle\n")[0], /type\(scope\): summary/);
-    assert.match(validateCommitMessage(`fix: ${"x".repeat(80)}\n`)[0], /exceeds 80 characters/);
+    assert.match(validateCommitMessage(`fix: ${"x".repeat(100)}\n`)[0], /exceeds 100 characters/);
     assert.match(validateCommitMessage("fix: lifecycle\n\nExplanation.\n")[0], /one-liner doctrine/);
     assert.match(validateCommitMessage("fix: lifecycle\n\nCo-Authored-By: someone\n")[0], /one-liner doctrine/);
 });

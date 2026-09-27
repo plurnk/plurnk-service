@@ -50,7 +50,7 @@ Where things are, for an agent that has to act before it has read everything:
   or `plurnk-contracts` change. On green, fast-forward local `main`, delete
   the branch with `git branch -d`, mirror with
   `git push --no-verify github origin/main:refs/heads/main`. Commit subjects are one
-  lowercase-led line citing `(#N)`, no body.
+  line of at most 100 characters citing `(#N)`, no body.
 - **Release train** (`scripts/release-*.mjs`): `npm run release:version -- <service-version>`
   stamps the platform; land the stamp through the normal gate. Then, from a clean `main` with
   `PLURNK_CLIENT_CHECKOUT=<client checkout>` and `PLURNK_EXTERNAL_REPOS_ROOT=<directory holding

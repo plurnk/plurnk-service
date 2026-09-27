@@ -32,8 +32,8 @@ export const validateCommitMessage = (source) => {
     if (!generated && !subjectPattern.test(subject)) {
         violations.push("subject must be conventional — type(scope): summary");
     }
-    if (Array.from(subject).length > 80) {
-        violations.push("subject exceeds 80 characters — cite an issue, commit hash, or SPEC tag instead");
+    if (Array.from(subject).length > 100) {
+        violations.push("subject exceeds 100 characters — cite an issue, commit hash, or SPEC tag instead");
     }
     if (lines.slice(1).some((line) => line.trim() !== "" && !line.startsWith("#"))) {
         violations.push("one-liner doctrine — no body; rationale belongs in SPEC.md or an issue");
