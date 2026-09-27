@@ -12,7 +12,8 @@ import type { FindStatement, LineMarker, MatcherBody, UrlPath } from "@plurnk/pl
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES, mimetypesFixture } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { makeSchemeCtx, DEFAULT_MIMETYPES, mimetypesFixture } from "./_scheme.ts";
 import { resourceGroups, resourcePaths } from "./_find.ts";
 
 const url = (pathname: string): UrlPath => ({

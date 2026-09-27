@@ -8,7 +8,7 @@ import { parsePath, PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import EnvDefaults from "../../src/core/env-defaults.ts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
-import { insertWorker } from "./_helpers.ts";
+import { insertWorker } from "./_db.ts";
 import { copyStmt, editStmt, findStmt, readStmt, regex } from "./_dsl.ts";
 
 test("{§plurnk-skill} the discoverable COPY/MOVE chapter provides executable operand examples", async (t) => {

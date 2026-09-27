@@ -5,8 +5,9 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, viableWindow } from "./_helpers.ts";
-import { makeMockResponse } from "./_rpc.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { viableWindow } from "./_provider.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 class CoordMock extends Mock {
     seen: { workspaceId?: string; workerId?: string; callKind?: string } = {};

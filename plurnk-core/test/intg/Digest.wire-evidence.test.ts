@@ -7,7 +7,8 @@ import { testArtifactDirectory } from "../../../scripts/test-artifacts.ts";
 import Digest from "../../src/digest/Digest.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, digestStems } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { digestStems } from "./_packet.ts";
 
 test("{§provider-wire-emission}: blank emissions retain their wire channels through persistence and digest", async () => {
     const dir = await mkdtemp(join(await testArtifactDirectory("core"), "wire-evidence-"));

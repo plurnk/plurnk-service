@@ -7,8 +7,8 @@ import { Module as A2aModule, connectHttpJsonAgent } from "@plurnk/plurnk-a2a";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
 import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl } from "./_a2a.ts";
-import { openMigrated } from "./_helpers.ts";
-import { makeMockResponse } from "./_rpc.ts";
+import { openMigrated } from "./_db.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 const completed = (content: string) => makeMockResponse([
     "````KILL", content, "````",

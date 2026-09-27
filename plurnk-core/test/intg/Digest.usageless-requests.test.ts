@@ -9,7 +9,8 @@ import type { ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import Digest from "../../src/digest/Digest.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertPacketTurn, testDeferredProviderCapacity } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertPacketTurn } from "./_db.ts";
+import { testDeferredProviderCapacity } from "./_provider.ts";
 import type { DurablePacket } from "../../src/core/StoredPacket.ts";
 
 const MODEL_PACKET: DurablePacket = {

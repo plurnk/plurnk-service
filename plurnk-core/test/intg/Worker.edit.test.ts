@@ -4,7 +4,8 @@ import type { LineMarker, ParsedPath, ReadStatement } from "@plurnk/plurnk-contr
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
-import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx, seedStaticChannel, seedEntryWithChannel } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
+import { lookThroughScheme, makeSchemeCtx, seedStaticChannel } from "./_scheme.ts";
 import { urlPath, fullReplace } from "./_dsl.ts";
 
 const editStatement = (opts: {

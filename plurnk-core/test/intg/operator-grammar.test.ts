@@ -14,7 +14,8 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { InputModality, Provider, ProviderResponse } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, testProviderCapacity } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { testProviderCapacity } from "./_provider.ts";
 
 const MESSAGES = [{ role: "system" as const, content: "SD" }, { role: "user" as const, content: "go" }];
 const usage = {

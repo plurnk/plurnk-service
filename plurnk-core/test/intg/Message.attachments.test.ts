@@ -6,7 +6,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { startDemoAgent } from "../../../plurnk-a2a/test/fixtures/DemoAgent.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { openMigrated } from "./_helpers.ts";
+import { openMigrated } from "./_db.ts";
 import { waitForDb } from "./_rpc.ts";
 
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });

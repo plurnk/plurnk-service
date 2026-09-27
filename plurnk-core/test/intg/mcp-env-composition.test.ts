@@ -10,7 +10,9 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { FunctionalityDiscoverResult, FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { awaitExecOutcome, fixtureExecutors, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { awaitExecOutcome } from "./_execs.ts";
+import { fixtureExecutors } from "./_mock.ts";
+import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { waitFor } from "./_rpc.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 

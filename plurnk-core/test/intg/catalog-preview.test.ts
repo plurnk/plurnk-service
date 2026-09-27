@@ -11,7 +11,8 @@ import assert from "node:assert/strict";
 import { chatMessageText, Mock } from "@plurnk/plurnk-providers";
 import WorkerName from "../../src/core/WorkerName.ts";
 import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
-import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, rpcProblem, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 type LogRow = { op: string | null; pathname: string; scheme: string | null; hostname: string | null; sequence: number; turn_id: number; signal: string | null; status_rx: number; tx: string; rx: string; attrs: string; folded: string; origin: string };
 const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```KILL\ndone\n```", 50)] });

@@ -4,7 +4,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, waitForDb } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal, waitForDb } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 test("{§env-option} WORK hands the child an environment of its own, seen by its first command", async () => {
     const mock = new Mock({ contextWindow: 32768, responses: [

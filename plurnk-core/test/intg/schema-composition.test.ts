@@ -9,7 +9,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 // eslint-disable-next-line no-restricted-imports -- this witness reads sqlite_master; no persistence happens outside SqlRite.
 import { DatabaseSync } from "node:sqlite";
-import { openMigrated } from "./_helpers.ts";
+import { openMigrated } from "./_db.ts";
 
 const PROJECT_ROOT = resolve(import.meta.dirname, "../..");
 const TRIGGER = /CREATE TRIGGER(?: IF NOT EXISTS)? (\w+)\s+(BEFORE|AFTER|INSTEAD OF)\s+(INSERT|UPDATE|DELETE)(?:\s+OF\s+[\w,\s]+?)?\s+ON (\w+)[\s\S]*?\nEND;/g;

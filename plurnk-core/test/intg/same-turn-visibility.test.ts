@@ -3,7 +3,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import LineAnchors from "../../src/content/line-anchors.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal, flush } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 test("{§turn-ops-selection-snapshot}: log KILL selects the pre-program snapshot, not rows emitted earlier by its own program", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [

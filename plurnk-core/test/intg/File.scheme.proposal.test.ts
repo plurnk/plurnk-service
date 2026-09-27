@@ -19,7 +19,8 @@ import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
-import { DEFAULT_MIMETYPES, openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, seedStaticChannel } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, makeSchemeCtx, seedStaticChannel } from "./_scheme.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 
 // {§edit-marker-required-on-existing}: a marker is required on an existing
 // file; `fullReplace` (marks:[1,-1]) states a deliberate whole-content rewrite

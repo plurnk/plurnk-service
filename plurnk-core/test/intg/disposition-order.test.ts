@@ -4,7 +4,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import TurnOps from "../../src/core/TurnOps.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 const response = (content: string) => ({ assistant: { content, reasoning: null } });
 

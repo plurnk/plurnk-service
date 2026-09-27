@@ -3,7 +3,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "../intg/_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "../intg/_db.ts";
 import { mountMemoryTracing } from "../intg/_observe-memory.ts";
 
 // Emitted by the engine, not hand-authored convention samples. No provider network calls.

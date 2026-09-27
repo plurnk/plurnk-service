@@ -12,7 +12,8 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Log from "../../src/schemes/Log.ts";
 import LineAnchors from "../../src/content/line-anchors.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { urlPath, killStmt, findStmt, regex } from "./_dsl.ts";
 
 const WHOLE: TextLineMarker = { marks: [1, -1] };

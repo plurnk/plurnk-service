@@ -5,9 +5,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
-import { DEFAULT_MIMETYPES, logEntries, makeSchemeCtx, readLog } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, makeSchemeCtx, readLog } from "./_scheme.ts";
+import { logEntries } from "./_packet.ts";
 import { readStmt, urlPath } from "./_dsl.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";

@@ -8,7 +8,7 @@ import { mkdtemp, mkdir, readdir, rm, symlink, writeFile } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import Daemon from "../../src/server/Daemon.ts";
-import { openMigrated } from "./_helpers.ts";
+import { openMigrated } from "./_db.ts";
 
 // A third-party module is exactly what this file composes, so it states the operator who admitted it
 // ({§plugin-trust-boundary}); the shipped panel admits only `@plurnk/*`.

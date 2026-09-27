@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 type LogRow = { op: string | null; pathname: string; scheme: string | null; origin: string; status_rx: number };
 const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("````KILL\ndone\n````", 50)] });

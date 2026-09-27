@@ -7,7 +7,8 @@ import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
 import PacketWire from "../../src/core/packet-wire.ts";
 import type { StoredPacketSection } from "../../src/core/StoredPacket.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { packetSection } from "./_packet.ts";
 import { concludeStmt, } from "./_dsl.ts";
 
 // Plugin packet control: a trusted scheme rewrites the engine's default section

@@ -13,7 +13,8 @@ import { Mock, ProviderError, validateProviderRequestAccounting } from "@plurnk/
 import type { ChatMessage, MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, logEntries } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { packetSection, logEntries } from "./_packet.ts";
 import { concludeStmt, noteStmt } from "./_dsl.ts";
 const response = (ops: PlurnkStatement[]): MockResponse => ({
     assistant: { content: "", ops, reasoning: null },

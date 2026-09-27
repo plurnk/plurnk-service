@@ -5,7 +5,9 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, testDeferredProviderCapacity, digestStems } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { testDeferredProviderCapacity } from "./_provider.ts";
+import { digestStems } from "./_packet.ts";
 import Turn from "../../src/core/Turn.ts";
 import StoredPacket from "../../src/core/StoredPacket.ts";
 

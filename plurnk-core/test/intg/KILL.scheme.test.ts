@@ -5,7 +5,7 @@ import { Http, Ws } from "@plurnk/plurnk-schemes-http";
 import type { SchemeHandler } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, seedEnvelope, seedEntryWithChannel } from "./_helpers.ts";
+import { openMigrated, seedEnvelope, seedEntryWithChannel } from "./_db.ts";
 
 const statement = (header: string) => {
     const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(header, null));

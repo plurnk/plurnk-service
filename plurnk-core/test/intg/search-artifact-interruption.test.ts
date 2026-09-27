@@ -12,7 +12,9 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { concludeStmt, } from "./_dsl.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, makeSchemeCtx, mimetypesFixture, packetSection, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { makeSchemeCtx, mimetypesFixture, DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { packetSection } from "./_packet.ts";
 
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<unknown> => {
     const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });

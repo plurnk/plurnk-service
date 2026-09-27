@@ -6,7 +6,8 @@ import type { ChatMessage, InputModality, Provider, ProviderRequestAccounting, P
 import type { SchemeHandler } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, testProviderCapacity } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { testProviderCapacity } from "./_provider.ts";
 
 const mainResponse = (operations: string): ConstructorParameters<typeof Mock>[0]["responses"][number] => ({
     assistant: {

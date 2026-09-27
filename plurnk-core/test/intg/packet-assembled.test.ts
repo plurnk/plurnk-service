@@ -17,7 +17,10 @@ import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { InvalidLoopPolicyError, Validator } from "@plurnk/plurnk-contracts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, packetSection, logEntries, DEFAULT_MIMETYPES, fixtureExecutors } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_db.ts";
+import { packetSection, logEntries } from "./_packet.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { fixtureExecutors } from "./_mock.ts";
 import { concludeStmt, copyStmt, editStmt, readStmt, findStmt, regex, urlPath, noteStmt } from "./_dsl.ts";
 
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string; header: string | null; content: string; weight: number }> }> =>

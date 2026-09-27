@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
 
 const seedWorker = async (db: Db, label: string): Promise<number> => {
     const workspaceId = await insertWorkspace(db, label);

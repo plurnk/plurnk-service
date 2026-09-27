@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { openMigrated, insertWorkspace } from "./_helpers.ts";
+import { openMigrated, insertWorkspace } from "./_db.ts";
 import Envelope from "../../src/server/envelope.ts";
 import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 import { WorkerNameError } from "../../src/core/WorkerName.ts";

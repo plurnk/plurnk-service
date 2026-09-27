@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock, ProviderError, type InputModality, type MockResponse } from "@plurnk/plurnk-providers";
-import { viableWindow } from "./_helpers.ts";
+import { viableWindow } from "./_provider.ts";
 import { rpcCall, connect, withDaemon, waitForDb } from "./_rpc.ts";
 import type { Db } from "../../src/core/Db.ts";
 import Fork from "../../src/core/fork.ts";

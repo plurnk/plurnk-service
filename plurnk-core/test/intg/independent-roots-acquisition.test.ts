@@ -5,7 +5,9 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { FindStatement, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, fixtureExecutors } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { fixtureExecutors } from "./_mock.ts";
 
 const parseOne = (input: string): PlurnkStatement => {
     const parsed = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });

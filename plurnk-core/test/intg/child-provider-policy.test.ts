@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { Mock, type ProviderAlias, type ProviderSpec } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import type { Db } from "../../src/core/Db.ts";
-import { connect, flush, makeMockResponse, rpcCall, runLoopToTerminal, subscribeNotifications, withDaemon } from "./_rpc.ts";
+import { connect, flush, rpcCall, runLoopToTerminal, subscribeNotifications, withDaemon } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 const declaredProviderEnv = new Map<string, string | undefined>();
 test.afterEach(() => {

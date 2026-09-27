@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import EnvFunctionality from "../../src/server/EnvFunctionality.ts";
-import { insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 test("{§workspace-env} workspace defaults, worker overrides and masks share the env verbs without copying workspace state", async () => {
     const db = await openMigrated();

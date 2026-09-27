@@ -8,8 +8,9 @@ import TurnOps from "../../src/core/TurnOps.ts";
 import Turn from "../../src/core/Turn.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import LineAnchors from "../../src/content/line-anchors.ts";
-import { openMigrated, seedEnvelope } from "./_helpers.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { openMigrated, seedEnvelope } from "./_db.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 const target = "worker:///ordered.md";
 const content = "one\ntwo\nthree\nfour\nfive\nsix";

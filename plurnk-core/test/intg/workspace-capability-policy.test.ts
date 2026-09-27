@@ -12,7 +12,9 @@ import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import WorkerName from "../../src/core/WorkerName.ts";
 import { concludeStmt, copyStmt, editStmt, killStmt, moveStmt, readStmt, urlPath, noteStmt } from "./_dsl.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn } from "./_db.ts";
+import { testExecutors } from "./_execs.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 const execStmt = (runtime: string): ExecStatement => ({

@@ -3,10 +3,11 @@
 // Own file: real subprocess + timing, process-isolated.
 
 import test from "node:test";
-import { viableWindow } from "./_helpers.ts";
+import { viableWindow } from "./_provider.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications, flush } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal, subscribeNotifications, flush } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 test("{§exec-lifetime} a bounded lifetime kills the spawn at its deadline and closes the stream 504", { timeout: 150_000 }, async () => {
     // `sleep 120` under a 1-minute lifetime: the spawn MUST be killed near 60s, never run to completion.

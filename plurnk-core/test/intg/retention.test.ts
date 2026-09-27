@@ -8,7 +8,8 @@ import { join } from "node:path";
 import Retention, { retentionPolicy } from "../../src/server/Retention.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { DurablePacket } from "../../src/core/StoredPacket.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertPacketTurn, insertWorker, insertWorkspace, makeSchemeCtx, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
+import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 
 const counts = ({ reclaimedPages: _reclaimed, collectedContents: _contents, ...rest }: Awaited<ReturnType<Retention["run"]>>) => rest;
 const DEFAULTS = { PLURNK_SERVICE_RETAIN_PACKET_TURNS: "-1", PLURNK_SERVICE_RETAIN_PACKET_MS: "-1", PLURNK_SERVICE_RETAIN_RESPONSE_TURNS: "-1", PLURNK_SERVICE_RETAIN_RESPONSE_MS: "-1", PLURNK_SERVICE_COLLECT_PACKET_ITEMS: "1", PLURNK_SERVICE_COLLECT_DERIVATIONS: "1", PLURNK_SERVICE_COLLECT_CONTENTS: "1", PLURNK_SERVICE_RETENTION_INTERVAL_MS: "3600000", PLURNK_SERVICE_AUTO_VACUUM: "incremental", PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES: "0" };

@@ -8,7 +8,8 @@ import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import EntryFts from "../../src/schemes/_entry-fts.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, mimetypesFixture, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { makeSchemeCtx, mimetypesFixture, DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 
 const url = (pathname: string): UrlPath => ({

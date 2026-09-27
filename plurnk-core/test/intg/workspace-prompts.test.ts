@@ -4,7 +4,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, rpcProblem, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 const send = () => makeMockResponse("````KILL\nok\n````", 50);
 const addressed = (thread: string, id: string) => {

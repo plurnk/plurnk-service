@@ -1,8 +1,9 @@
-import { lastReply } from "./_helpers.ts";
+import { lastReply } from "./_packet.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 for (const curate of [false, true]) {
     test(`{§completion-defers-to-results}: mutation receipts require observation, including when curated=${curate}`, async () => {

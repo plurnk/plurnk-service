@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace } from "./_helpers.ts";
+import { openMigrated, insertWorkspace } from "./_db.ts";
 
 const insertWorkspaceEntry = async (db: Db, workspaceId: number, scheme: string, pathname: string): Promise<number> => {
     const row = await db.test_entries_insert_workspace.get<{ id: number }>({ workspace_id: workspaceId, scheme, pathname });

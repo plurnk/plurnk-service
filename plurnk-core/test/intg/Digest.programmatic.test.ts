@@ -11,7 +11,8 @@ import type { ProviderAccounting, ProviderRequestAccounting } from "@plurnk/plur
 import type { Db } from "../../src/core/Db.ts";
 import Turn from "../../src/core/Turn.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, testDeferredProviderCapacity } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { testDeferredProviderCapacity } from "./_provider.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 
 const execFileP = promisify(execFile);

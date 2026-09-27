@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { openMigrated } from "./_helpers.ts";
+import { openMigrated } from "./_db.ts";
 
 test("workspaces: table is STRICT", async () => {
     const db = await openMigrated();

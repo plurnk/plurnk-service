@@ -3,7 +3,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import SchemeCtxImpl from "../../src/core/caps/SchemeCtxImpl.ts";
-import { openMigrated, insertWorkspace, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
+import { openMigrated, insertWorkspace } from "./_db.ts";
+import { makeSchemeCtx, schemeManifest } from "./_scheme.ts";
 import LiveSubscriptions from "../../src/core/LiveSubscriptions.ts";
 
 test("{§capability-ctx}: public identity and working capabilities exclude private service state", async () => {

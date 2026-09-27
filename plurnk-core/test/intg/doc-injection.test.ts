@@ -10,7 +10,8 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 test("{§turn0-agents-stunt}: the project AGENTS.md is materialized in the Worker + READ into turn 0", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-agents-"));

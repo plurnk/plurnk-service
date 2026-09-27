@@ -4,7 +4,8 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { lastReply, openMigrated, seedEnvelope } from "./_helpers.ts";
+import { lastReply } from "./_packet.ts";
+import { openMigrated, seedEnvelope } from "./_db.ts";
 import { concludeStmt, noteStmt, sendStmt, urlPath } from "./_dsl.ts";
 
 const setup = async () => {

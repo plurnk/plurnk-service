@@ -9,7 +9,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ClientInteractions from "../../src/core/ClientInteractions.ts";
 import CapabilityPolicies from "../../src/core/CapabilityPolicies.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { waitForDb, withDaemon } from "./_rpc.ts";
 
 const downProvider = (): Mock => {

@@ -10,7 +10,9 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import { Mock, ProviderError } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection, seedEntryWithChannel, testProviderCapacity, logEntries } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_db.ts";
+import { packetSection, logEntries } from "./_packet.ts";
+import { testProviderCapacity } from "./_provider.ts";
 import { concludeStmt, editStmt, readStmt, urlPath, noteStmt } from "./_dsl.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 

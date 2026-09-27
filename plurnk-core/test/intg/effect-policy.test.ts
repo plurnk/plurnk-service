@@ -9,7 +9,8 @@ import type { ExecStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { testExecutors } from "./_execs.ts";
 import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 process.env.PLURNK_EXECS_JQ = "1";

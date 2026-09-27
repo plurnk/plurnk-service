@@ -7,7 +7,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Digest from "../../src/digest/Digest.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 
 test("{§digest-executor-evidence}: executor completion rows never count toward health or errs", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-digest-executor-"));

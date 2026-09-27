@@ -5,7 +5,8 @@ import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
-import { insertLoop, insertOperationTurn, insertTurn, insertWorker, insertWorkspace, openMigrated, fixtureExecutors } from "./_helpers.ts";
+import { insertLoop, insertOperationTurn, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { fixtureExecutors } from "./_mock.ts";
 
 for (const origin of ["model", "client", "plugin", "_plurnk"] as const) {
     test(`{§worker-write-scoping}: ${origin} composes operations across explicit Worker namespaces`, async () => {

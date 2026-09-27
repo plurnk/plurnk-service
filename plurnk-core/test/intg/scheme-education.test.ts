@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, packetSection } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { packetSection } from "./_packet.ts";
 import { concludeStmt, } from "./_dsl.ts";
 
 test("{§manifest-client-display} {§schemes-directory}: stored packets carry language and policy without an injected resource catalogue", async () => {

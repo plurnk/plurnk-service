@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import type { LineMarker, MatcherBody, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
-import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { lookThroughScheme, makeSchemeCtx } from "./_scheme.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({

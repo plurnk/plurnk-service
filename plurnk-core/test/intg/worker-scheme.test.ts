@@ -29,7 +29,9 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import Fork from "../../src/core/fork.ts";
 import WorkerName from "../../src/core/WorkerName.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn, lookThroughScheme, makeSchemeCtx, fixtureExecutors } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn } from "./_db.ts";
+import { lookThroughScheme, makeSchemeCtx } from "./_scheme.ts";
+import { fixtureExecutors } from "./_mock.ts";
 import { resourcePaths } from "./_find.ts";
 import { copyStmt, editStmt, sendStmt, dispositionStmt, readStmt, fullReplace, noteStmt } from "./_dsl.ts";
 

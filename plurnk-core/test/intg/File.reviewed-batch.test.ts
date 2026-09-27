@@ -7,14 +7,8 @@ import test from "node:test";
 import { promisify } from "node:util";
 import { Mock } from "@plurnk/plurnk-providers";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
-import {
-    connect,
-    makeMockResponse,
-    rpcCall,
-    subscribeNotifications,
-    waitFor,
-    withDaemon,
-} from "./_rpc.ts";
+import { connect, rpcCall, subscribeNotifications, waitFor, withDaemon } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 const execFileP = promisify(execFile);
 

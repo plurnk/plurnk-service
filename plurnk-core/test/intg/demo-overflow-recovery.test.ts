@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
-import { connect, makeMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
+import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 import { assertOverflowEvidence, seedOverflowFixture } from "../demo/_overflow.ts";
 
 test("{§methods-loop-run-open-paths}: one oversized attachment is previewed without forcing overflow", async () => {

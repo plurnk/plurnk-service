@@ -8,7 +8,8 @@ import { OutboundModule } from "@plurnk/plurnk-a2a";
 import Daemon from "../../src/server/Daemon.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { startDemoAgent } from "../../../plurnk-a2a/test/fixtures/DemoAgent.ts";
-import { insertWorkspace, insertWorker, openMigrated, dispatchSettled } from "./_helpers.ts";
+import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
+import { dispatchSettled } from "./_scheme.ts";
 import { sendStmt } from "./_dsl.ts";
 import type { Db } from "../../src/core/Db.ts";
 

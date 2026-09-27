@@ -5,8 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { readStmt, urlPath } from "./_dsl.ts";
-import { logEntries, packetSection } from "./_helpers.ts";
-import { connect, makeRawMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
+import { logEntries, packetSection } from "./_packet.ts";
+import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
+import { makeRawMockResponse } from "./_mock.ts";
 
 for (const width of [3, 4]) for (const admission of ["accept", "reject", "deny"] as const) {
     test(`{§executor-js-spelling}: the daemon routes ${width}-backtick js through node with ${admission} admission`, async (t) => {

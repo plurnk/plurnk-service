@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 import { concludeStmt, } from "./_dsl.ts";
 
 // {§tokenomics-client-gauge}: cardinal request totals are billing evidence; the
@@ -224,7 +224,8 @@ test("runTurn stores provider-derived curation and request-shaped physical capac
 });
 
 test("providers.list advertises resolved physical input capacity", async () => {
-    const { rpcCall, connect, withDaemon, makeMockResponse } = await import("./_rpc.ts");
+    const { rpcCall, connect, withDaemon } = await import("./_rpc.ts");
+    const { makeMockResponse } = await import("./_mock.ts");
     const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````KILL\ndone\n````", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);

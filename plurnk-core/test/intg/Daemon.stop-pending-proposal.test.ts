@@ -3,7 +3,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, subscribeNotifications, waitFor } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 test("{§worker-lifecycle-total-reap}: Daemon.stop terminates with a pending proposal", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [

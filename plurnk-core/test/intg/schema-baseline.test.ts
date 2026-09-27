@@ -9,7 +9,7 @@ import { DatabaseSync } from "node:sqlite";
 import SqlRiteCore from "@possumtech/sqlrite/core";
 import { SqlRiteSync } from "@possumtech/sqlrite";
 import sha256 from "../../src/core/sha256.ts";
-import { MIGRATIONS_DIR, openMigrated } from "./_helpers.ts";
+import { MIGRATIONS_DIR, openMigrated } from "./_db.ts";
 
 // {§db-migrations} — the released schema versions and the fingerprints of their shapes: every
 // release freezes what it shipped, and the previous release is the path an existing database takes.

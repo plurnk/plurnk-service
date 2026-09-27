@@ -4,7 +4,7 @@ import { AiSdkProvider } from "@plurnk/plurnk-providers";
 import { Translator } from "@plurnk/plurnk-agui";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { waitFor } from "./_rpc.ts";
 
 test("{§notifications-reasoning-event}: provider SSE reaches standard AG-UI before the reasoning copy exists", async () => {

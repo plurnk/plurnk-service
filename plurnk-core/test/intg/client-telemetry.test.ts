@@ -5,7 +5,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { connect, withDaemon, rpcCall, rpcProblem, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { connect, withDaemon, rpcCall, rpcProblem, runLoopToTerminal } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 // Run a loop against a provider whose generate() is shadowed, with the workspace created carrying
 // settings.client, and report whether any `client` field reached the provider call.

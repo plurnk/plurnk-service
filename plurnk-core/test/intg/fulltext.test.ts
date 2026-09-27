@@ -5,7 +5,8 @@ import type { FindStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contract
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { makeSchemeCtx } from "./_scheme.ts";
 import { matchLocations, resourceGroups, resourcePaths } from "./_find.ts";
 
 const url = (pathname: string): UrlPath => ({

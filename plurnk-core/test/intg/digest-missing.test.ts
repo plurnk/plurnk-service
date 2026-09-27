@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { missingDigestDirs, recoverDigest } from "../../bin/digest-missing.ts";
-import { openMigrated } from "./_helpers.ts";
+import { openMigrated } from "./_db.ts";
 
 test("digest:missing selects only interrupted benchmark specimens", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-digest-missing-"));

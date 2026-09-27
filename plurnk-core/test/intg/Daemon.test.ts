@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor, makeMockResponse } from "./_rpc.ts";
-import { insertWorkspace, insertWorker, insertLoop, insertTurn, openMigrated, viableWindow } from "./_helpers.ts";
+import { rpcCall, subscribeNotifications, flush, connect, withDaemon, waitFor } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
+import { insertWorkspace, insertWorker, insertLoop, insertTurn, openMigrated } from "./_db.ts";
+import { viableWindow } from "./_provider.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import type { ModuleSetupSeam, RuntimeRegistration } from "../../src/server/DaemonModule.ts";
 import Dsl from "./dsl.ts";

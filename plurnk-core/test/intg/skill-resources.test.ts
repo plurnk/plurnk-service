@@ -7,7 +7,8 @@ import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { parsePath, PlurnkParser } from "@plurnk/plurnk-parser";
 import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
-import { insertWorker, fixtureExecutors } from "./_helpers.ts";
+import { insertWorker } from "./_db.ts";
+import { fixtureExecutors } from "./_mock.ts";
 import { copyStmt, findStmt, readStmt, regex } from "./_dsl.ts";
 
 class CapturingMock extends Mock {

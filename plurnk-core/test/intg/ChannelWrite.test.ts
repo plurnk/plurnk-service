@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import type { StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import { Results } from "@plurnk/plurnk-schemes";
-import { openMigrated, insertWorkspace, insertWorker } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 
 const seedEntryWithChannel = async (channelName: string, channelMime: string, initialContent: string, channelState: "static" | "active" | "closed" | "errored" = "active") => {

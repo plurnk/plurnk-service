@@ -15,7 +15,9 @@ import type { AnchoredReadResult } from "../../src/content/read-projector.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import { editStmt } from "./_dsl.ts";
-import { DEFAULT_MIMETYPES, insertOperationTurn, insertWorker, makeSchemeCtx, openMigrated, rootWorkspace, seedEntryWithChannel, seedEnvelope, fixtureExecutors } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
+import { insertOperationTurn, insertWorker, openMigrated, rootWorkspace, seedEntryWithChannel, seedEnvelope } from "./_db.ts";
+import { fixtureExecutors } from "./_mock.ts";
 
 const source = "first\nsecond\nthird";
 const runtime = async (t: TestContext) => {

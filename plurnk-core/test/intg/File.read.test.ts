@@ -10,7 +10,9 @@ import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { MimetypeBinary } from "../../src/content/index.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, lookThroughScheme, fixtureExecutors } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
+import { fixtureExecutors } from "./_mock.ts";
 import { resourcePaths } from "./_find.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({

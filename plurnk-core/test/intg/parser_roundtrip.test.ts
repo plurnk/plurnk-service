@@ -4,7 +4,8 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { EditStatement, PlurnkStatement, ReadStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, seedEnvelope, fixtureExecutors } from "./_helpers.ts";
+import { openMigrated, seedEnvelope } from "./_db.ts";
+import { fixtureExecutors } from "./_mock.ts";
 
 const parseOne = (input: string): PlurnkStatement => {
     const result = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });

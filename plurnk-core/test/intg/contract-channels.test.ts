@@ -15,7 +15,9 @@ import { contentHash } from "../../src/core/content-hash.ts";
 import type { Db } from "../../src/core/Db.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { lookThroughScheme, mimetypesFixture, openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, schemeManifest, seedEntryWithChannel, testExecutors } from "./_helpers.ts";
+import { lookThroughScheme, mimetypesFixture, makeSchemeCtx, schemeManifest } from "./_scheme.ts";
+import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
+import { testExecutors } from "./_execs.ts";
 import { urlPath, editStmt, findStmt, fullReplace, readStmt, regex } from "./_dsl.ts";
 import { resourcePaths } from "./_find.ts";
 

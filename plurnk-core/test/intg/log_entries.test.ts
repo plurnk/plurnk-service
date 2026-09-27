@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, seedEnvelope, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, seedEnvelope, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import LogEntry from "../../src/server/logEntry.ts";
 import Turn from "../../src/core/Turn.ts";
 

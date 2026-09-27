@@ -5,7 +5,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, seedStaticChannel, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
+import { makeSchemeCtx, seedStaticChannel, DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 const seedHashedEntry = async (db: Db, workspaceId: number, pathname: string, content: string): Promise<number> => {
     const entry = await db.test_seed_entry_workspace.get<{ id: number }>({

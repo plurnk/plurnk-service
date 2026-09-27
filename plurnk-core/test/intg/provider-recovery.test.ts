@@ -5,8 +5,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock, ProviderError } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { insertWorkspace, insertWorker, openMigrated, viableWindow } from "./_helpers.ts";
-import { makeMockResponse } from "./_rpc.ts";
+import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
+import { viableWindow } from "./_provider.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 // A provider whose next `failures` calls drop with a transient network failure.
 class Flaky extends Mock {

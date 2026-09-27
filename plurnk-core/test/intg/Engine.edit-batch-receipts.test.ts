@@ -9,7 +9,8 @@ import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import LineAnchors from "../../src/content/line-anchors.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 const execFileP = promisify(execFile);
 const V1 = "one\ntwo\nthree\nfour\nfive\nsix\n";

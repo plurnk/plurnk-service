@@ -5,7 +5,10 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import ExecutorRegistry, { type Executor } from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, logEntries, openMigrated, quiesceExecs, schemeManifest } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, schemeManifest } from "./_scheme.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { logEntries } from "./_packet.ts";
+import { quiesceExecs } from "./_execs.ts";
 
 // {§exec-stream-page} {§log-readable-projection}: the executor is the fixture;
 // parsing, dispatch, source storage, automatic observations and packet assembly are real.

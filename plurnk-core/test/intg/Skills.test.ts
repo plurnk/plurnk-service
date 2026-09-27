@@ -14,7 +14,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import HostPaths from "../../src/core/HostPaths.ts";
 import { StandardSkillsToolchain } from "../../src/server/SkillsFunctionality.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { insertWorkspace, insertWorker, openMigrated } from "./_helpers.ts";
+import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
 import type { Db } from "../../src/core/Db.ts";
 
 const FIXTURE_CLI = resolve(import.meta.dirname, "_skills-cli.mjs");

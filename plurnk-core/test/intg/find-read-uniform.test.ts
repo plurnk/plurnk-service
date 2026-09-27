@@ -15,7 +15,9 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, lookThroughScheme, makeSchemeCtx, fixtureExecutors } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { lookThroughScheme, makeSchemeCtx } from "./_scheme.ts";
+import { fixtureExecutors } from "./_mock.ts";
 import { matchLocations, resourceGroups, resourcePaths } from "./_find.ts";
 
 const parseOp = <T extends PlurnkStatement>(dsl: string, op: T["op"]): T => {

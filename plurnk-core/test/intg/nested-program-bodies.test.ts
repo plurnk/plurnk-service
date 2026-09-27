@@ -4,7 +4,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 
 for (const header of ["SEND", "EDIT (worker:///example.md)"]) {
     test(`{§statement-rendering}: a framed ${header} preserves quoted examples, original source, and the real task disposition`, async () => {

@@ -6,18 +6,9 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { EditStatement, LoopPolicy } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
-import { viableWindow } from "./_helpers.ts";
-import {
-    rpcCall,
-    rpcProblem,
-    subscribeNotifications,
-    connect,
-    withDaemon,
-    makeMockResponse,
-    runLoopToTerminal,
-    waitFor,
-    flush,
-} from "./_rpc.ts";
+import { viableWindow } from "./_provider.ts";
+import { rpcCall, rpcProblem, subscribeNotifications, connect, withDaemon, runLoopToTerminal, waitFor, flush } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 class ProposingTest {
     readonly batches: number[] = [];

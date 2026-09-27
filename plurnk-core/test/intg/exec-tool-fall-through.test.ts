@@ -7,8 +7,9 @@ import { fileURLToPath } from "node:url";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import Daemon from "../../src/server/Daemon.ts";
-import { openMigrated } from "./_helpers.ts";
-import { connect, makeMockResponse, rpcCall, runLoopToTerminal } from "./_rpc.ts";
+import { openMigrated } from "./_db.ts";
+import { connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 const fixture = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures/echo-server.mjs", import.meta.url));
 

@@ -7,7 +7,8 @@ import type { InputModality, Provider, ProviderResponse } from "@plurnk/plurnk-p
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { concludeStmt, } from "./_dsl.ts";
 
 // Mock can't return `meta`; wrap it so the turn still concludes but the

@@ -3,7 +3,9 @@ import test from "node:test";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, logEntries } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { logEntries } from "./_packet.ts";
 import { providerWithCapacity, statement, type Read, type Resource } from "./reasoning-fixture.ts";
 
 const task = PlurnkParser.frame("NOTE", "Review the result.");

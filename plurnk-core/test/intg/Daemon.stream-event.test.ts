@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import ChannelWrite, { type StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
-import { seedEntryWithChannel } from "./_helpers.ts";
+import { seedEntryWithChannel } from "./_db.ts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon } from "./_rpc.ts";
 test("notifyStreamEvent broadcasts to a workspace's clients, envelope stamped with the scope", async () => {
     await withDaemon(null, async (db, daemon, addr) => {

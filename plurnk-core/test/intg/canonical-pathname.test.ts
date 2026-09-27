@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseDsl } from "./_rpc.ts";
+import { parseDsl } from "./_mock.ts";
 
 // RFC 3986 parse — the root of the live xpath/jsonpath 404: a seed must store the pathname the READ's
 // reference resolves to. worker:///x is empty-authority + path-abempty "/x"; worker:///x puts x in the

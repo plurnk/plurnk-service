@@ -7,7 +7,7 @@ import StrikeRail from "../../src/core/StrikeRail.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_db.ts";
 
 const response = (operation: string, op: string, timing = "") => ({
     assistant: { content: [

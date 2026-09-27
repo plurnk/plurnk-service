@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { openMigrated } from "./_helpers.ts";
+import { openMigrated } from "./_db.ts";
 import { connect, rpcCall } from "./_rpc.ts";
 
 // {§share} — the client names an absolute folder; the daemon shares its own database, scoped to the workspace.

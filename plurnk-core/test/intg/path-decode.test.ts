@@ -7,7 +7,8 @@ import type { ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
 import Worker from "../../src/schemes/Worker.ts";
-import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { lookThroughScheme, makeSchemeCtx } from "./_scheme.ts";
 
 test("decodePathParens decodes only %28/%29 — other percent-sequences + literal % pass through", () => {
     assert.equal(PathSyntax.decodeParens("/dir/file%28v1%29.txt"), "/dir/file(v1).txt");

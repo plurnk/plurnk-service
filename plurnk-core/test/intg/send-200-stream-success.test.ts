@@ -1,11 +1,12 @@
-import { lastReply } from "./_helpers.ts";
+import { lastReply } from "./_packet.ts";
 // {§send-premature-terminate} {§loop-response-messages}
 
 import assert from "node:assert/strict";
 import test from "node:test";
 import { hostname } from "node:os";
 import { Mock } from "@plurnk/plurnk-providers";
-import { connect, makeMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
+import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 const withSettlement = async (ms: string, fn: () => Promise<void>): Promise<void> => {

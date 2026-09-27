@@ -6,7 +6,8 @@ import EntryFind from "../../src/schemes/_entry-find.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { type FindStatement } from "@plurnk/plurnk-contracts";
-import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
+import { makeSchemeCtx } from "./_scheme.ts";
 
 const findAll = (marks: [number, ...number[]] | null = null): FindStatement => ({
     metadata: null,

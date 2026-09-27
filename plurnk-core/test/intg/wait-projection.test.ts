@@ -6,7 +6,7 @@ import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import LogBody from "../../src/core/LogBody.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 for (const header of ["WAIT", "WAIT (sh:///missing) <60,60> [{\"timeout\":42}]"]) {
     test(`{§park-202-only} {§wait-obligation-matrix} ${header} parks on the actual live child, not the decoration`, async (t) => {

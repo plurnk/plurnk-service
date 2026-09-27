@@ -7,8 +7,8 @@ import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { McpServer, ResourceTemplate, completable, createMcpHandler } from "@modelcontextprotocol/server";
 import { z } from "zod/v4";
 import Daemon from "../../src/server/Daemon.ts";
-import { openMigrated } from "./_helpers.ts";
-import { makeMockResponse } from "./_rpc.ts";
+import { openMigrated } from "./_db.ts";
+import { makeMockResponse } from "./_mock.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { taskHandler } from "../../../plurnk-mcp/test/task-fixture.ts";
 

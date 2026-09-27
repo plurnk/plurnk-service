@@ -12,17 +12,9 @@ import type {
 } from "@plurnk/plurnk-providers";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { InputModality } from "@plurnk/plurnk-providers";
-import {
-    connect,
-    makeMockResponse,
-    rpcCall,
-    runLoopToTerminal,
-    subscribeNotifications,
-    waitFor,
-    waitForDb,
-    withDaemon,
-} from "./_rpc.ts";
-import { testProviderCapacity } from "./_helpers.ts";
+import { connect, rpcCall, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, withDaemon } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
+import { testProviderCapacity } from "./_provider.ts";
 
 const requestAccounting = {
     provider: "provider:controlled-settlement",

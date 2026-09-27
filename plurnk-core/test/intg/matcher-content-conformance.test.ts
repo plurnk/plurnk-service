@@ -10,7 +10,8 @@ import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { lookThroughScheme, makeSchemeCtx } from "./_scheme.ts";
 import { resourcePaths } from "./_find.ts";
 
 const url = (pathname: string): UrlPath => ({

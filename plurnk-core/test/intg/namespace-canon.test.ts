@@ -10,7 +10,8 @@ import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import File from "../../src/schemes/File.ts";
 import Namespace from "../../src/core/namespace.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES, rootWorkspace, lookThroughScheme } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, rootWorkspace } from "./_db.ts";
+import { makeSchemeCtx, DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
 
 const fileUrl = (pathname: string): UrlPath => ({
     kind: "url", raw: `file://${pathname}`, scheme: "file",
@@ -98,7 +99,7 @@ test("the log row: address columns speak canon while tx retains non-sensitive au
 
         const Engine = (await import("../../src/core/Engine.ts")).default;
         const SchemeRegistry = (await import("../../src/core/SchemeRegistry.ts")).default;
-        const { insertLoop, insertTurn } = await import("./_helpers.ts");
+        const { insertLoop, insertTurn } = await import("./_db.ts");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const loopId = await insertLoop(db, ctx.workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);

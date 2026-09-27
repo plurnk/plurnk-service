@@ -3,10 +3,11 @@
 // log coordinate.
 
 import test from "node:test";
-import { viableWindow } from "./_helpers.ts";
+import { viableWindow } from "./_provider.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 type LogRow = { origin: string; op: string; pathname: string; scheme: string; folded: string; turn_id: number };
 const mock = () => new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````KILL\ndone\n````", 50)] });

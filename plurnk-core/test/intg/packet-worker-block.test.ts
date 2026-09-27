@@ -5,7 +5,8 @@ import test from "node:test";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { packetSection } from "./_packet.ts";
 import { provider } from "./reasoning-fixture.ts";
 
 test("{§packet-current-turn}: the Worker block follows the log with path, parent, loop and turn, and nothing dated", async () => {

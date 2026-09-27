@@ -18,7 +18,9 @@ import File from "../../src/schemes/File.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, logEntries, rootWorkspace, lookThroughScheme } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, rootWorkspace } from "./_db.ts";
+import { DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
+import { logEntries } from "./_packet.ts";
 
 const execFileP = promisify(execFile);
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>

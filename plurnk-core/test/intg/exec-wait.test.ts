@@ -11,7 +11,9 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import { Results } from "@plurnk/plurnk-schemes";
 import { concludeStmt, execStmt, dispositionStmt, sendStmt } from "./_dsl.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, testExecutors } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { testExecutors } from "./_execs.ts";
 
 let runtimeSequence = 0;
 

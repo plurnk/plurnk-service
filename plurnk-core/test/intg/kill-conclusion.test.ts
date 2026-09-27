@@ -4,7 +4,8 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock, type MockResponse } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 const frame = PlurnkParser.frame;
 const setup = async (responses: MockResponse[]) => {

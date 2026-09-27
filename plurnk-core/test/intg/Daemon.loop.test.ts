@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
-import { rpcCall, subscribeNotifications, flush, connect, withDaemon, makeMockResponse, runLoopToTerminal, waitFor } from "./_rpc.ts";
+import { rpcCall, subscribeNotifications, flush, connect, withDaemon, runLoopToTerminal, waitFor } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 
 test("loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {

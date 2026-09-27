@@ -11,8 +11,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
-import { logEntries, packetSection } from "./_helpers.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal, flush } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
+import { logEntries, packetSection } from "./_packet.ts";
 
 const execFileP = promisify(execFile);
 

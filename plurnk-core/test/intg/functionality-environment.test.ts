@@ -6,7 +6,7 @@ import { OutboundModule as A2aModule } from "@plurnk/plurnk-a2a";
 import { Module as ScheduleModule } from "@plurnk/plurnk-schedule";
 import Daemon from "../../src/server/Daemon.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertWorkspace, openMigrated } from "./_db.ts";
 
 test("{§operator-config-precedence} empty environment definitions stay absent through workspace discovery, listing and enablement", async () => {
     const db = await openMigrated();

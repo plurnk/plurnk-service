@@ -1,12 +1,13 @@
 import test from "node:test";
-import { holdChild } from "./_helpers.ts";
+import { holdChild } from "./_db.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import LoopDriver from "../../src/core/LoopDriver.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import WorkerCap from "../../src/core/worker-cap.ts";
 import Daemon from "../../src/server/Daemon.ts";
-import { makeMockResponse, waitForDb, withDaemon } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
+import { waitForDb, withDaemon } from "./_rpc.ts";
 
 for (const op of ["WORK", "FORK"]) {
     test(`{§worker-lifecycle-no-resurrection}: ${op} cannot admit a child after its source task is cancelled`, async (t) => {

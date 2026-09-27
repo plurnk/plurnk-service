@@ -9,7 +9,9 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { testExecutors } from "./_execs.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { concludeStmt, dispositionStmt, noteStmt } from "./_dsl.ts";
 import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 

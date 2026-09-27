@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { Mock } from "@plurnk/plurnk-providers";
-import { viableWindow } from "./_helpers.ts";
+import { viableWindow } from "./_provider.ts";
 import { rpcCall, subscribeNotifications, connect, withDaemon, waitForDb } from "./_rpc.ts";
 
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";

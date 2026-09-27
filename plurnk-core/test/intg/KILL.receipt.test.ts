@@ -6,7 +6,8 @@ import test from "node:test";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { chatMessageText, Mock } from "@plurnk/plurnk-providers";
 import { parseLogRecords } from "../LogRecords.ts";
-import { connect, makeMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
+import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 const source = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join("\n");
 

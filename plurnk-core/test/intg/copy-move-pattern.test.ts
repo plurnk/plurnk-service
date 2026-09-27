@@ -6,7 +6,8 @@ import type { CopyStatement, MatcherBody, MoveStatement } from "@plurnk/plurnk-c
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
-import { openMigrated, seedEnvelope, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, seedEnvelope } from "./_db.ts";
+import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { urlPath, editStmt, copyStmt, moveStmt } from "./_dsl.ts";
 
 const setup = async () => {

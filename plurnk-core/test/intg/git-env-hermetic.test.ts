@@ -11,7 +11,8 @@ import { join } from "node:path";
 import GitMembership from "../../src/core/git-membership.ts";
 import GitState from "../../src/core/git-state.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
-import { openMigrated, insertWorkspace, rootWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, rootWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { initializeDemoRepository } from "../demo/_git.ts";
 

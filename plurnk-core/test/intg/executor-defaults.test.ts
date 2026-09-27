@@ -2,8 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
-import { packetSection } from "./_helpers.ts";
-import { connect, makeMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
+import { packetSection } from "./_packet.ts";
+import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 const OPTIONAL = ["perl", "ruby", "lua", "deno", "bun", "tcl", "bc", "awk", "jq", "sqlite"];
 

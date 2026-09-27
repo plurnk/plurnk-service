@@ -7,8 +7,9 @@ import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { openMigrated } from "./_helpers.ts";
-import { makeMockResponse, waitForDb } from "./_rpc.ts";
+import { openMigrated } from "./_db.ts";
+import { makeMockResponse } from "./_mock.ts";
+import { waitForDb } from "./_rpc.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { taskHandler, taskId, wireRequest } from "../../../plurnk-mcp/test/task-fixture.ts";
 

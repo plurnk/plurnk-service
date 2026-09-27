@@ -9,7 +9,7 @@ import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PluginAttributionContext } from "@plurnk/plurnk-meta";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 
 const response = (content: string): MockResponse => ({
     assistant: {

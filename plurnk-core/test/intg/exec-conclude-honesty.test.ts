@@ -13,7 +13,9 @@ import Results from "../../src/core/results.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
 import { concludeStmt, execStmt, dispositionStmt } from "./_dsl.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { testExecutors } from "./_execs.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { waitFor } from "./_rpc.ts";
 
 let wireN = 0;

@@ -9,7 +9,8 @@ import Turn from "../../src/core/Turn.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { concludeStmt, dispositionStmt } from "./_dsl.ts";
 
 async function raceScenario(db: Awaited<ReturnType<typeof openMigrated>>) {

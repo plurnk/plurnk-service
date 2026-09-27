@@ -10,7 +10,8 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Turn from "../../src/core/Turn.ts";
 import StoredPacket from "../../src/core/StoredPacket.ts";
-import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated, digestStems } from "./_helpers.ts";
+import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { digestStems } from "./_packet.ts";
 import { urlPath } from "./_dsl.ts";
 
 test("{§digest-forensic-fidelity}: unknown actionless rows remain evidence without hiding turn programs", async () => {

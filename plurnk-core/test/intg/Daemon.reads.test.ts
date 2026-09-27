@@ -6,7 +6,7 @@ import Dsl from "./dsl.ts";
 import type { Db } from "../../src/core/Db.ts";
 import SeamSocket from "./_seam.ts";
 import Daemon from "../../src/server/Daemon.ts";
-import { openMigrated } from "./_helpers.ts";
+import { openMigrated } from "./_db.ts";
 import { rpcProblem } from "./_rpc.ts";
 import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
 

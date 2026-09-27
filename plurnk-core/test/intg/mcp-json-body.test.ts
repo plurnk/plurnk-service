@@ -6,8 +6,9 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import StreamMock from "./_stream-mock.ts";
-import { openMigrated } from "./_helpers.ts";
-import { connect, makeMockResponse, makeRawMockResponse, rpcCall, runLoopToTerminal } from "./_rpc.ts";
+import { openMigrated } from "./_db.ts";
+import { connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
+import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
 
 // {§pairing-objective} — the shape: an MCP call closed at once, then prose that later
 // shows a bare block. The runtime declares an application/json body, so the call ends at its own closer

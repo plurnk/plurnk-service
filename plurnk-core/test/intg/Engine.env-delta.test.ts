@@ -21,7 +21,9 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, logEntries, makeSchemeCtx, rootWorkspace } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, rootWorkspace } from "./_db.ts";
+import { logEntries } from "./_packet.ts";
+import { makeSchemeCtx } from "./_scheme.ts";
 import { killStmt, noteStmt } from "./_dsl.ts";
 
 const execFileP = promisify(execFile);

@@ -24,7 +24,8 @@ import SearchIndex from "../../src/schemes/_search-index.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEnvelope, makeSchemeCtx, DEFAULT_MIMETYPES, rootWorkspace, lookThroughScheme } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEnvelope, rootWorkspace } from "./_db.ts";
+import { makeSchemeCtx, DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
 import { urlPath, editStmt, readStmt, findStmt, killStmt } from "./_dsl.ts";
 
 const execFileP = promisify(execFile);

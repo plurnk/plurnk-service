@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { holdChild } from "./_helpers.ts";
+import { holdChild } from "./_db.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { withDaemon } from "./_rpc.ts";

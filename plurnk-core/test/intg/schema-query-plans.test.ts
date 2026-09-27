@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 // eslint-disable-next-line no-restricted-imports -- {§db-fk-indexes}: this test only plans the registry's SQL; no persistence happens outside SqlRite.
 import { DatabaseSync } from "node:sqlite";
-import { openMigrated } from "./_helpers.ts";
+import { openMigrated } from "./_db.ts";
 
 const PROJECT_ROOT = resolve(import.meta.dirname, "../..");
 // Tables that grow with use and are never pruned ({§db-schema-baseline} has no retention today).

@@ -7,7 +7,9 @@ import Engine from "../../src/core/Engine.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { DEFAULT_MIMETYPES, holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection, seedEntryWithChannel } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { packetSection } from "./_packet.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { statement } from "./reasoning-fixture.ts";
 

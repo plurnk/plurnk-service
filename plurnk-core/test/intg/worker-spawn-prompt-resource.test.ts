@@ -8,7 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { Db } from "../../src/core/Db.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal, flush } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 // The brief is created by the parent in the same turn (a creation is a member), then handed to the child by path.
 const parentThenChild = (brief: string, work: string) => new Mock({ contextWindow: 16384, responses: [

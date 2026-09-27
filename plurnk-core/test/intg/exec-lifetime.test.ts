@@ -5,7 +5,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
-import { connect, makeRawMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
+import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
+import { makeRawMockResponse } from "./_mock.ts";
 
 const refusal = async (fence: string, name: string): Promise<{ status: number; problem: { type: string; detail: string; recovery?: string } }> => {
     const mock = new Mock({ contextWindow: 100_000, responses: [

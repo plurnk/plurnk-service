@@ -5,7 +5,8 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Http from "@plurnk/plurnk-schemes-http";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, seedEnvelope, fixtureExecutors } from "./_helpers.ts";
+import { openMigrated, seedEnvelope } from "./_db.ts";
+import { fixtureExecutors } from "./_mock.ts";
 
 test("{§http-json-presentation}: READ, FIND, COPY and previews share formatted JSON coordinates", async (t) => {
     const db = await openMigrated();

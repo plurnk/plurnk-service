@@ -13,7 +13,8 @@ import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { CatalogResource, FindResult } from "../../src/schemes/_entry-find.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, readLog, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { makeSchemeCtx, readLog, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { urlPath, findStmt } from "./_dsl.ts";
 import { matchLocations } from "./_find.ts";
 

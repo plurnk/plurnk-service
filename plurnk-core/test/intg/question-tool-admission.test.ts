@@ -12,7 +12,8 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import QuestionTool, { questionRuntimeDecl } from "../../src/schemes/QuestionTool.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 const findStatement = (): FindStatement => ({
     metadata: null,

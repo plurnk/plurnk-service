@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { withDaemon, makeMockResponse, waitForDb } from "./_rpc.ts";
+import { withDaemon, waitForDb } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { lastReply } from "./_helpers.ts";
+import { lastReply } from "./_packet.ts";
 
 for (const cancel of [false, true]) {
     test(`{§completion-defers-to-results}: a failed operation is observed before ${cancel ? "scope cancellation" : "explicit completion"}`, async () => {

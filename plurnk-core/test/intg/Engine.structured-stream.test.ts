@@ -6,7 +6,7 @@ import { Results } from "@plurnk/plurnk-schemes";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { sendStmt, urlPath, noteStmt } from "./_dsl.ts";
 
 class StructuredFixture {

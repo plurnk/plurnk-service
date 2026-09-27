@@ -6,7 +6,8 @@ import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import StrikeRail from "../../src/core/StrikeRail.ts";
-import { lastReply, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { lastReply } from "./_packet.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 const frame = PlurnkParser.frame;
 const response = (content: string, reasoning: string | null = null) => ({

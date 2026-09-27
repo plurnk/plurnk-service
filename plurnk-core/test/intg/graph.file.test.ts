@@ -9,7 +9,8 @@ import type { FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-contrac
 import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { makeSchemeCtx } from "./_scheme.ts";
 import { resourcePaths } from "./_find.ts";
 
 const fileUrl = (pathname: string): UrlPath => ({

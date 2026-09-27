@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { WORKER_NAME } from "@plurnk/plurnk-contracts";
 import Fork from "../../src/core/fork.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 
 const TERMINAL = new Set([200, 413, 429, 499, 500, 508]);
 

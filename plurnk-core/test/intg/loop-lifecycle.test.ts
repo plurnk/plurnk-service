@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results from "../../src/core/results.ts";
 import Turn from "../../src/core/Turn.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 test("loop transitions are guarded and terminal state is immutable", async () => {
     const db = await openMigrated();

@@ -17,7 +17,9 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Digest from "../../src/digest/Digest.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import Envelope from "../../src/server/envelope.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertTurn, insertWorkspace, openMigrated, fixtureExecutors } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { insertLoop, insertTurn, insertWorkspace, openMigrated } from "./_db.ts";
+import { fixtureExecutors } from "./_mock.ts";
 import { concludeStmt, } from "./_dsl.ts";
 
 const REDACTED = "__redacted__";

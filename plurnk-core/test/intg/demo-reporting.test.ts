@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { openMigrated, insertWorkspace, insertWorker } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
 import { readWorkerTopology } from "../WorkerTopology.ts";
 
 test("{§methods-worker-list} topology reporting counts children and grandchildren, not independent roots", async () => {

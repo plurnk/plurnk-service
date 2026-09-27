@@ -4,9 +4,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { holdChild } from "./_helpers.ts";
+import { holdChild } from "./_db.ts";
 import Engine from "../../src/core/Engine.ts";
-import { withDaemon, makeMockResponse, waitForDb } from "./_rpc.ts";
+import { withDaemon, waitForDb } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 test("{§loop-wake-identity}: a message's reported and actual receiving loop agree with several parked loops", async (t) => {
     // The waits park on live work the fixture holds; the message is what wakes one of them.

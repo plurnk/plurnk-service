@@ -10,7 +10,8 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Fork from "../../src/core/fork.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import Turn from "../../src/core/Turn.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel, testDeferredProviderCapacity } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel } from "./_db.ts";
+import { testDeferredProviderCapacity } from "./_provider.ts";
 import { findStmt, killStmt, readStmt } from "./_dsl.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({

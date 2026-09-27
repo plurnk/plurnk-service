@@ -7,7 +7,7 @@ import { wav } from "../../../plurnk-mimetypes-audio/test/wav.ts";
 import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/src/buildPdf.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { openMigrated } from "./_helpers.ts";
+import { openMigrated } from "./_db.ts";
 import { waitForDb } from "./_rpc.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 

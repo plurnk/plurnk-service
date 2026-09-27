@@ -3,7 +3,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import StreamMock from "./_stream-mock.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal, flush } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 test("FIND over an exec stream channel answers the match instead of throwing on the default channel", async () => {
     const mock = new StreamMock({ contextWindow: 16384, responses: [

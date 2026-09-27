@@ -9,7 +9,9 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { FunctionalityDiscoverResult, FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import HostPaths from "../../src/core/HostPaths.ts";
-import { awaitExecOutcome, fixtureExecutors, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { awaitExecOutcome } from "./_execs.ts";
+import { fixtureExecutors } from "./_mock.ts";
+import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/storage-mcp.mjs", import.meta.url));
 const nodeModulesPath = fileURLToPath(new URL("../../../node_modules", import.meta.url));

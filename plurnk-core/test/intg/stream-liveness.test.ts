@@ -7,7 +7,10 @@ import Engine from "../../src/core/Engine.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
-import { DEFAULT_MIMETYPES, logEntries, openMigrated, seedEntryWithChannel, seedEnvelope, testExecutors } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { logEntries } from "./_packet.ts";
+import { openMigrated, seedEntryWithChannel, seedEnvelope } from "./_db.ts";
+import { testExecutors } from "./_execs.ts";
 import { readStmt, urlPath } from "./_dsl.ts";
 
 test("{§exec-stream}: a stream READ carries terminal: false while the command runs and terminal: true once it concluded", async () => {

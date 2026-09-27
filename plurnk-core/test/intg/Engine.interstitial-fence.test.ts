@@ -4,7 +4,9 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection, seedEntryWithChannel, testExecutors } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { packetSection } from "./_packet.ts";
+import { testExecutors } from "./_execs.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 const FENCE = "`".repeat(4);
 

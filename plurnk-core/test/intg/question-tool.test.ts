@@ -10,10 +10,12 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import QuestionTool, { questionRuntimeDecl } from "../../src/schemes/QuestionTool.ts";
 import StreamMock from "./_stream-mock.ts";
-import { makeMockResponse, waitForDb, withDaemon } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
+import { waitForDb, withDaemon } from "./_rpc.ts";
 import { localPath } from "./_dsl.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
-import { executionAddress, openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
+import { executionAddress } from "./_execs.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 
 const execStmt = (body: string): ExecStatement => ({
     metadata: null,

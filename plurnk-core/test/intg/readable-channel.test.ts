@@ -12,7 +12,8 @@ import { promisify } from "node:util";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
-import { openMigrated, seedEnvelope, makeSchemeCtx, insertWorkspace, insertWorker, rootWorkspace, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, seedEnvelope, insertWorkspace, insertWorker, rootWorkspace } from "./_db.ts";
+import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 const execFileP = promisify(execFile);
 import { urlPath, editStmt, readStmt, findStmt, copyStmt, moveStmt } from "./_dsl.ts";

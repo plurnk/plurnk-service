@@ -6,7 +6,9 @@ import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { executionAddress, openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, makeSchemeCtx, readLog, testExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { executionAddress, testExecutors } from "./_execs.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { makeSchemeCtx, readLog, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { matchLocations } from "./_find.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({

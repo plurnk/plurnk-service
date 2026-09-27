@@ -8,7 +8,8 @@ import assert from "node:assert/strict";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
 import DbSubscriptionCaps from "../../src/core/caps/DbSubscriptionCaps.ts";
 import type { WakeWorkerPayload, StreamEventPayload } from "../../src/core/ChannelWrite.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { makeSchemeCtx, schemeManifest } from "./_scheme.ts";
 import LiveSubscriptions from "../../src/core/LiveSubscriptions.ts";
 import { Results } from "@plurnk/plurnk-schemes";
 

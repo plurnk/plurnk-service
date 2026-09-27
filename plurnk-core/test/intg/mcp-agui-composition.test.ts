@@ -14,8 +14,9 @@ import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { awaitExecOutcome, openMigrated } from "./_helpers.ts";
-import { makeMockResponse } from "./_rpc.ts";
+import { awaitExecOutcome } from "./_execs.ts";
+import { openMigrated } from "./_db.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 type Event = Readonly<Record<string, unknown>>;
 

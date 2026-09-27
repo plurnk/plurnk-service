@@ -8,7 +8,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryScheme from "./_entry-scheme.ts";
 import LineAnchors from "../../src/content/line-anchors.ts";
-import { insertOperationTurn, openMigrated, seedEnvelope } from "./_helpers.ts";
+import { insertOperationTurn, openMigrated, seedEnvelope } from "./_db.ts";
 import type { ResolvedEditStatement, SchemeCtx } from "@plurnk/plurnk-schemes";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({

@@ -9,7 +9,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import WorldState from "./world-state.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES, rootWorkspace } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, rootWorkspace } from "./_db.ts";
+import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 test("a lawful world reports ZERO violations after real lifecycle traffic", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-ws-"));

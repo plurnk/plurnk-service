@@ -14,7 +14,8 @@ import Engine from "../../src/core/Engine.ts";
 import Fork from "../../src/core/fork.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { copyStmt, editStmt, fullReplace, moveStmt } from "./_dsl.ts";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, logEntries, openMigrated } from "./_helpers.ts";
+import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { logEntries } from "./_packet.ts";
 
 const messages = [
     { role: "system" as const, content: "You are an agent." },

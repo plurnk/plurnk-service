@@ -7,7 +7,7 @@ import { Validator } from "@plurnk/plurnk-contracts";
 import ProblemLog from "../../src/core/ProblemLog.ts";
 import Results from "../../src/core/results.ts";
 import Digest from "../../src/digest/Digest.ts";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 test("ProblemLog persists one self-identifying RFC 9457 operation failure", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-problem-log-"));

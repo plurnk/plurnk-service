@@ -1,14 +1,12 @@
 // Shared Daemon test helpers over the in-process ApplicationPort. {§rpc}
 
-import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { OperationResult, ProblemDetails } from "@plurnk/plurnk-contracts";
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import SeamSocket from "./_seam.ts";
-import type { MockResponse, Provider } from "@plurnk/plurnk-providers";
+import type { Provider } from "@plurnk/plurnk-providers";
 import type { Db } from "../../src/core/Db.ts";
 import type { LoopUsage } from "../../src/core/Engine.ts";
-import { openMigrated, fixtureExecutors } from "./_helpers.ts";
+import { openMigrated } from "./_db.ts";
 
 export interface RpcResponse {
     jsonrpc: "2.0";
@@ -161,40 +159,4 @@ export const withDaemon = async <T>(
     await daemon.start(); // listenerless — the harness rides the seam, not a socket
     try { return await fn(db, daemon, { daemon }); }
     finally { await daemon.stop(); await db.close(); }
-};
-
-// Parse plurnk DSL into statement ops. Used to build mock provider responses.
-export const parseDsl = (text: string): PlurnkStatement[] => {
-    const result = PlurnkParser.parse(text, { executors: fixtureExecutors(text) });
-    const statements = result.items
-        .filter((i) => i.kind === "statement")
-        .map((i) => (i as { kind: "statement"; statement: PlurnkStatement }).statement);
-    // Recovery fixtures may omit a disposition, but must contain an executable operation.
-    if (statements.length === 0 && result.items.some((i) => i.kind === "error")) {
-        throw new Error(`parseDsl: DSL produced no statements: ${JSON.stringify(text)}`);
-    }
-    return statements;
-};
-
-// A response the parser admits nothing from (prose, bare headings): ops stay empty by design.
-export const makeRawMockResponse = (text: string, completion: number = 0): MockResponse => ({
-    ...makeMockResponse("````NOTE\n````", completion),
-    // No pre-parsed ops: the engine parses the content itself and rejects it on its own terms.
-    assistant: { content: text, reasoning: null } as MockResponse["assistant"],
-});
-
-export const makeMockResponse = (dsl: string, completion: number = 0): MockResponse => {
-    return {
-        assistant: {
-            content: dsl, ops: parseDsl(dsl), reasoning: null,
-        },
-        usage: {
-            inputTokens: 0,
-            outputTokens: completion,
-            totalTokens: completion,
-            inputTokenDetails: { noCacheTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
-            outputTokenDetails: { textTokens: completion, reasoningTokens: 0 },
-        },
-        assistantRaw: null,
-    };
 };

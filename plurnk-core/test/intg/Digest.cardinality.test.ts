@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Digest from "../../src/digest/Digest.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 
 test("digest Markdown exposes amplification as exact aggregates while JSON preserves every row", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-digest-cardinality-"));

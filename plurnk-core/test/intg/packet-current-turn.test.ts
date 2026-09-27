@@ -6,7 +6,9 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Engine from "../../src/core/Engine.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, packetSection } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { packetSection } from "./_packet.ts";
 import { provider, statement } from "./reasoning-fixture.ts";
 
 test("{§packet-current-turn}: the Worker block carries the loop and turn sequence the packet opens, placed right after the log", async () => {

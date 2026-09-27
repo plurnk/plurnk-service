@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import HostPaths from "../../src/core/HostPaths.ts";
 import WorkspaceStorage from "../../src/server/WorkspaceStorage.ts";
-import { insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertWorkspace, openMigrated } from "./_db.ts";
 
 test("{§module-workspace-directory} lazy allocation is atomic, rename-stable, durable, and distinct across databases", async (t) => {
     const scratch = await mkdtemp(join(tmpdir(), "plurnk-workspace-storage-"));

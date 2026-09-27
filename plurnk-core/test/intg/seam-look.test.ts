@@ -2,7 +2,8 @@
 // observation segment that remains invisible to the model.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { rpcCall, connect, withDaemon, parseDsl } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon } from "./_rpc.ts";
+import { parseDsl } from "./_mock.ts";
 
 test("{§op-look}: seam look resolves a READ in one closed, rowless observation segment", async () => {
     await withDaemon(null, async (db, daemon, addr) => {

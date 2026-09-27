@@ -9,7 +9,8 @@ import type { LineMarker, ReadStatement, UrlPath } from "@plurnk/plurnk-contract
 import File from "../../src/schemes/File.ts";
 import ByteView from "../../src/content/byte-view.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, DEFAULT_MIMETYPES, rootWorkspace, lookThroughScheme } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, rootWorkspace } from "./_db.ts";
+import { makeSchemeCtx, DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
 
 process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES ??= "104857600";
 

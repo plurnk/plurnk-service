@@ -9,7 +9,9 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import Log from "../../src/schemes/Log.ts";
-import { DEFAULT_MIMETYPES, makeSchemeCtx, openMigrated, readLog, seedEntryWithChannel, seedEnvelope, fixtureExecutors } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES, makeSchemeCtx, readLog } from "./_scheme.ts";
+import { openMigrated, seedEntryWithChannel, seedEnvelope } from "./_db.ts";
+import { fixtureExecutors } from "./_mock.ts";
 import { findStmt, readStmt, urlPath } from "./_dsl.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 

@@ -18,10 +18,12 @@ import type {
 } from "../../src/server/DaemonModule.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
-import { awaitExecOutcome, insertWorkspace, insertWorker, openMigrated, fixtureExecutors } from "./_helpers.ts";
+import { awaitExecOutcome } from "./_execs.ts";
+import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
+import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
 import type { Db } from "../../src/core/Db.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
-import { connect, makeMockResponse, rpcCall, runLoopToTerminal } from "./_rpc.ts";
+import { connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
 
 const OWNER = "fx fixture adapter";
 

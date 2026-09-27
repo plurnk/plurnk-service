@@ -5,10 +5,11 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { concludeStmt, } from "./_dsl.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { makeMockResponse } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 import WorkspaceGate from "../../src/core/WorkspaceGate.ts";
 
 class AbortBlockingMock extends Mock {

@@ -7,7 +7,9 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Fork from "../../src/core/fork.ts";
 import { resourcePaths } from "./_find.ts";
 import type { FindResult } from "../../src/schemes/_entry-find.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, logEntries } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { logEntries } from "./_packet.ts";
 import { statement } from "./reasoning-fixture.ts";
 
 const frame = PlurnkParser.frame;

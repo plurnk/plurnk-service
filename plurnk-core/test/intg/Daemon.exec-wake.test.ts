@@ -12,7 +12,8 @@ import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { insertWorker, openMigrated, fixtureExecutors } from "./_helpers.ts";
+import { insertWorker, openMigrated } from "./_db.ts";
+import { fixtureExecutors } from "./_mock.ts";
 
 // These fixtures exercise the lifecycle after a stream genuinely becomes
 // monitored. Optimistic settlement has its own matrix; disable it here so the

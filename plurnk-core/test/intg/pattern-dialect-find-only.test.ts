@@ -4,7 +4,9 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { DEFAULT_MIMETYPES, openMigrated, seedEntryWithChannel, seedEnvelope, fixtureExecutors } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { openMigrated, seedEntryWithChannel, seedEnvelope } from "./_db.ts";
+import { fixtureExecutors } from "./_mock.ts";
 
 const RESOLVERS = [
     "class RoutePattern(CheckURLMixin):",

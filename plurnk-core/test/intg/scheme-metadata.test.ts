@@ -5,7 +5,9 @@ import { type ReadStatement } from "@plurnk/plurnk-contracts";
 import type { SchemeHandler } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, seedEntryWithChannel, seedEnvelope, fixtureExecutors, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, seedEntryWithChannel, seedEnvelope } from "./_db.ts";
+import { fixtureExecutors } from "./_mock.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 const read = (source: string): ReadStatement => {
     const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });

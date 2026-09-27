@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { liveLoop } from "../_live-harness.ts";
-import { connect, makeMockResponse, rpcCall, withDaemon } from "./_rpc.ts";
+import { connect, rpcCall, withDaemon } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 for (const cancelled of [false, true]) {
     test(`{§loop-response-messages} the live harness retains the last SEND across ${cancelled ? "cancellation" : "completion"}`, async () => {

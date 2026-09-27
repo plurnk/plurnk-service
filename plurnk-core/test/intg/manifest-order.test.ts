@@ -10,7 +10,8 @@ import type { LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { makeSchemeCtx } from "./_scheme.ts";
 
 const url = (p: string): UrlPath => ({ kind: "url", raw: `worker:///${p}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${p}`, query: null, fragment: null });
 const fullReplace: LineMarker = { marks: [1, -1] };

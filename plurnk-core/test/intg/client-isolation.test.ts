@@ -12,8 +12,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, runLoopToTerminal } from "./_rpc.ts";
-import { insertWorkspace, insertWorker } from "./_helpers.ts";
+import { rpcCall, rpcProblem, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
+import { insertWorkspace, insertWorker } from "./_db.ts";
 import WorkerName from "../../src/core/WorkerName.ts";
 
 test("a client worker cannot self-SEND into model inference", async () => {

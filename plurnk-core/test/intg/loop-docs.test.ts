@@ -11,7 +11,10 @@ import Results from "../../src/core/results.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import { concludeStmt, } from "./_dsl.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated, testExecutors, fixtureExecutors } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { testExecutors } from "./_execs.ts";
+import { fixtureExecutors } from "./_mock.ts";
 import { isExecution } from "@plurnk/plurnk-contracts";
 
 process.env.PLURNK_EXECS_JQ = "1";

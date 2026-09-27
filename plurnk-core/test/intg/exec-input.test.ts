@@ -7,7 +7,9 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ExecutorRegistry, { type Executor } from "../../src/core/ExecutorRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import Common from "@plurnk/plurnk-execs-common";
-import { executionAddress, insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, fixtureExecutors } from "./_helpers.ts";
+import { executionAddress } from "./_execs.ts";
+import { fixtureExecutors } from "./_mock.ts";
+import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 class Dialogue extends BaseExecutor {
     readonly received: Array<{ body: string; metadata: readonly string[] | null }> = [];

@@ -6,7 +6,8 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import StrikeRail from "../../src/core/StrikeRail.ts";
 import TerminalResult from "../../src/core/TerminalResult.ts";
-import { lastReply, holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { lastReply } from "./_packet.ts";
+import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { waitForDb, withDaemon } from "./_rpc.ts";
 
 const response = (content: string) => ({

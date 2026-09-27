@@ -4,7 +4,7 @@
 // `{ housekeeping, graceMs }` on teardown, not a bare abort the executor can't escalate past SIGHUP.
 
 import test from "node:test";
-import { viableWindow } from "./_helpers.ts";
+import { viableWindow } from "./_provider.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, subscribeNotifications, connect, withDaemon, waitFor, waitForDb } from "./_rpc.ts";

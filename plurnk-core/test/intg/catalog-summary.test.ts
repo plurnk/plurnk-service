@@ -7,7 +7,8 @@ import type { UrlPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, seedEntryWithChannel } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
+import { makeSchemeCtx } from "./_scheme.ts";
 
 const url = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}:///${pathname}`, scheme,

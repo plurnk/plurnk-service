@@ -15,7 +15,8 @@ import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperationTurn, schemeManifest } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperationTurn } from "./_db.ts";
+import { schemeManifest } from "./_scheme.ts";
 import { urlPath, localPath, editStmt, readStmt, copyStmt, moveStmt, execStmt, sendStmt } from "./_dsl.ts";
 
 const makeMimetypes = (): Mimetypes => new Mimetypes({

@@ -8,7 +8,9 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import StrikeRail from "../../src/core/StrikeRail.ts";
-import { lastReply, openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { lastReply } from "./_packet.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_db.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 const frame = PlurnkParser.frame;
 const response = (...program: string[]) => ({ assistant: { content: program.join("\n\n"), reasoning: null } });

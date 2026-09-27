@@ -5,7 +5,8 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, waitForDb } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal, waitForDb } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 test("{§send-idle-turn} NOTE-only turns continue with or without a stream; only waiting parks", async () => {
     const releaseDir = await mkdtemp(join(tmpdir(), "plurnk-idle-park-"));

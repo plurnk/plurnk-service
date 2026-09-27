@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Daemon from "../../src/server/Daemon.ts";
-import { openMigrated } from "./_helpers.ts";
+import { openMigrated } from "./_db.ts";
 import { connect, rpcCall, withDaemon } from "./_rpc.ts";
 import { editStmt, readStmt, urlPath } from "./_dsl.ts";
 

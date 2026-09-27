@@ -1,4 +1,4 @@
-import { fixtureExecutors } from "./_helpers.ts";
+import { fixtureExecutors } from "./_mock.ts";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { type PlurnkStatement } from "@plurnk/plurnk-contracts";

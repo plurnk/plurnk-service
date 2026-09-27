@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { Db } from "../../src/core/Db.ts";
 import Turn from "../../src/core/Turn.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 
 // {§packet-items} — the stored bag carries no sections; they are rows.
 const MIN_PACKET = JSON.stringify({

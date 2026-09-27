@@ -3,7 +3,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Worker from "../../src/schemes/Worker.ts";
-import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { lookThroughScheme, makeSchemeCtx } from "./_scheme.ts";
 import { urlPath, editStmt, readStmt } from "./_dsl.ts";
 
 const setup = async () => {

@@ -8,7 +8,8 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { type FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import Daemon from "../../src/server/Daemon.ts";
-import { insertWorker, openMigrated, fixtureExecutors } from "./_helpers.ts";
+import { insertWorker, openMigrated } from "./_db.ts";
+import { fixtureExecutors } from "./_mock.ts";
 
 test("{§workspace-environment-sharing}: MCP definitions belong to the workspace without any conversation worker", async (t) => {
     const server = await serveMcpHttp(t, createMcpHandler(() => {

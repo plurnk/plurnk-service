@@ -4,7 +4,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 
 const turn = (operation: string, op: string | null = "NOTE") => ({
     assistant: { content: op === null ? operation : `${operation}

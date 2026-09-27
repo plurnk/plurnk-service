@@ -3,8 +3,8 @@ import { Module as A2aModule } from "@plurnk/plurnk-a2a";
 import { Mock, type Provider } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
 import { A2A_EXPOSURE, a2aCard, bindListener, serviceUrl } from "../intg/_a2a.ts";
-import { openMigrated } from "../intg/_helpers.ts";
-import { makeMockResponse } from "../intg/_rpc.ts";
+import { openMigrated } from "../intg/_db.ts";
+import { makeMockResponse } from "../intg/_mock.ts";
 
 const WORKSPACE = "a2a-tck";
 

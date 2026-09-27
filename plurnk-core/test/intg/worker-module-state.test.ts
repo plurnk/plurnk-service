@@ -9,7 +9,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { openMigrated, insertWorkspace, insertWorker } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
 
 const OWNER = "@plurnk/plurnk-service";
 

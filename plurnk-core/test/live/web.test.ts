@@ -21,7 +21,9 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, DEFAULT_MIMETYPES, fixtureExecutors } from "../intg/_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "../intg/_db.ts";
+import { DEFAULT_MIMETYPES } from "../intg/_scheme.ts";
+import { fixtureExecutors } from "../intg/_mock.ts";
 
 // A stable NON-HTML URL: text/plain uses raw fetch (an HTML target routes through the
 // HTTP scheme's generic acquisition path, which is exercised separately).

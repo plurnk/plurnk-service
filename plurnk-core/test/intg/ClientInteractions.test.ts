@@ -6,7 +6,7 @@ import type {
 import ClientInteractions from "../../src/core/ClientInteractions.ts";
 import MessageResources from "../../src/core/MessageResources.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { openMigrated, seedEnvelope } from "./_helpers.ts";
+import { openMigrated, seedEnvelope } from "./_db.ts";
 
 const request = {
     toolName: "choose_repository",

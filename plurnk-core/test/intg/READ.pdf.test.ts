@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock, type InputModality } from "@plurnk/plurnk-providers";
 import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/src/buildPdf.ts";
-import { viableWindow } from "./_helpers.ts";
+import { viableWindow } from "./_provider.ts";
 import { rpcCall, connect, withDaemon, waitForDb } from "./_rpc.ts";
 
 process.env.PLURNK_MEMBERS_TASK = "**";

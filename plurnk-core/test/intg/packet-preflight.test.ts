@@ -5,7 +5,7 @@ import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import Engine from "../../src/core/Engine.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { provider } from "./reasoning-fixture.ts";
 
 test("{§reasoning-initial-read}: packet preflight preserves stream growth until an actual provider request", async () => {

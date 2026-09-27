@@ -6,8 +6,10 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import StreamMock from "./_stream-mock.ts";
-import { logEntries, openMigrated } from "./_helpers.ts";
-import { connect, makeMockResponse, rpcCall, runLoopToTerminal } from "./_rpc.ts";
+import { logEntries } from "./_packet.ts";
+import { openMigrated } from "./_db.ts";
+import { connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 // {§exec-stream-page} {§stream-observation-result} — the complete MCP transport →
 // execution → invocation receipt → automatic observation → explicit recovery path.

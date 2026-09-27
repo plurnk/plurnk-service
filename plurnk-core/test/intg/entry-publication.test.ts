@@ -3,7 +3,8 @@ import test from "node:test";
 import type { EntryData } from "@plurnk/plurnk-schemes";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { insertWorker, insertWorkspace, makeSchemeCtx, openMigrated } from "./_helpers.ts";
+import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { makeSchemeCtx } from "./_scheme.ts";
 
 const coordinate = { authority: "", pathname: "/shared.md" };
 const version = (name: string): EntryData => ({

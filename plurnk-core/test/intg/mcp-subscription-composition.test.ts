@@ -9,8 +9,9 @@ import { resourcePath } from "../../../plurnk-mcp/src/McpResources.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { insertWorker, openMigrated, fixtureExecutors } from "./_helpers.ts";
-import { makeMockResponse, waitForDb } from "./_rpc.ts";
+import { insertWorker, openMigrated } from "./_db.ts";
+import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
+import { waitForDb } from "./_rpc.ts";
 
 process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
 process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "60000";

@@ -3,8 +3,9 @@ import test from "node:test";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { SchemeResult } from "../../src/core/results.ts";
-import { holdChild } from "./_helpers.ts";
-import { makeMockResponse, waitForDb, withDaemon } from "./_rpc.ts";
+import { holdChild } from "./_db.ts";
+import { makeMockResponse } from "./_mock.ts";
+import { waitForDb, withDaemon } from "./_rpc.ts";
 
 // Exercise reply delivery with a bounded coalescing window; sibling tests cover
 // quiescence, deadlines, and mixed reply/stream/child settlement.

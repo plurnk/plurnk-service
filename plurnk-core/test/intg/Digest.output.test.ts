@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import Digest from "@plurnk/plurnk-service/digest";
 import { Mock } from "@plurnk/plurnk-providers";
-import { openMigrated } from "./_helpers.ts";
+import { openMigrated } from "./_db.ts";
 
 const execFileP = promisify(execFile);
 

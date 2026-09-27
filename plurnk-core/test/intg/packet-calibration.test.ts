@@ -8,7 +8,9 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import TokenCalibration from "../../src/core/TokenCalibration.ts";
 import StoredPacket, { type RequestPacket } from "../../src/core/StoredPacket.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertTurn, insertWorker, insertWorkspace, logEntries, openMigrated, packetSection } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { logEntries, packetSection } from "./_packet.ts";
 import { concludeStmt, editStmt, findStmt, killStmt, readStmt, urlPath } from "./_dsl.ts";
 
 const messages = [{ role: "system" as const, content: "S" }, { role: "user" as const, content: "review" }];

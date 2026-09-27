@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import StoredPacket, { type DurablePacket } from "../../src/core/StoredPacket.ts";
 import Turn from "../../src/core/Turn.ts";
-import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
 const RECORDS = ["### log:///1/1/1/FIND\n{\"status\":200}\n1:[]", "### log:///1/1/2/READ\n{\"status\":200}\n1:alpha\n2:beta"];

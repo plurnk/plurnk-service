@@ -6,7 +6,8 @@ import type { FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-contrac
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import Worker from "../../src/schemes/Worker.ts";
 import type { CatalogResource, FindResult } from "../../src/schemes/_entry-find.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, seedEntryWithChannel } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
+import { makeSchemeCtx } from "./_scheme.ts";
 
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `worker:///${pathname}`, scheme: "worker",

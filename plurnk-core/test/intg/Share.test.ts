@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Digest from "../../src/digest/Digest.ts";
 import Share from "../../src/share/Share.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 test("{§share} {§share-scope}: a scoped share holds one workspace, from a copy of the database", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-share-"));

@@ -17,7 +17,9 @@ import Daemon from "../../src/server/Daemon.ts";
 import MembersFunctionality from "../../src/server/MembersFunctionality.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { awaitExecOutcome, insertWorkspace, insertWorker, openMigrated, rootWorkspace, fixtureExecutors } from "./_helpers.ts";
+import { awaitExecOutcome } from "./_execs.ts";
+import { fixtureExecutors } from "./_mock.ts";
+import { insertWorkspace, insertWorker, openMigrated, rootWorkspace } from "./_db.ts";
 import type { Db } from "../../src/core/Db.ts";
 
 const execFileP = promisify(execFile);

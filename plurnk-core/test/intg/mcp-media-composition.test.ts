@@ -9,7 +9,7 @@ import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { wav } from "../../../plurnk-mimetypes-audio/test/wav.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { openMigrated } from "./_helpers.ts";
+import { openMigrated } from "./_db.ts";
 import { waitForDb } from "./_rpc.ts";
 
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";

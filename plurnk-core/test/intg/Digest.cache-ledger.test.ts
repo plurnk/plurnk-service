@@ -12,7 +12,8 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import type { DurablePacket } from "../../src/core/StoredPacket.ts";
-import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated, testDeferredProviderCapacity } from "./_helpers.ts";
+import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { testDeferredProviderCapacity } from "./_provider.ts";
 
 const TMP_DIR = testArtifactPath("core");
 const SYSTEM = "You are the analyst. Keep the system prompt byte-identical across turns.";

@@ -3,7 +3,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { makeMockResponse, waitForDb, withDaemon } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
+import { waitForDb, withDaemon } from "./_rpc.ts";
 
 test("{§send-directed-scope}: a scoped worker SEND is refused and admits no task", async () => {
     const provider = new Mock({ contextWindow: 100000, responses: [

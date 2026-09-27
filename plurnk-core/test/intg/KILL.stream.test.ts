@@ -13,7 +13,7 @@ import {
     type SchemeCtx,
     type StreamSubscription,
 } from "@plurnk/plurnk-schemes";
-import { openMigrated, seedEnvelope } from "./_helpers.ts";
+import { openMigrated, seedEnvelope } from "./_db.ts";
 
 const url = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,

@@ -16,8 +16,10 @@ import { join } from "node:path";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { Db } from "../../src/core/Db.ts";
 import Envelope from "../../src/server/envelope.ts";
-import { openMigrated, viableWindow } from "./_helpers.ts";
-import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, subscribeNotifications, flush, runLoopToTerminal } from "./_rpc.ts";
+import { openMigrated } from "./_db.ts";
+import { viableWindow } from "./_provider.ts";
+import { rpcCall, rpcProblem, connect, withDaemon, subscribeNotifications, flush, runLoopToTerminal } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 const execFileP = promisify(execFile);
 

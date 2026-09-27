@@ -13,7 +13,8 @@ import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
 import DbNotifyCaps from "../../src/core/caps/DbNotifyCaps.ts";
 import type { StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { makeSchemeCtx, schemeManifest } from "./_scheme.ts";
 
 const tick = (): Promise<void> => new Promise((r) => setImmediate(r));
 // Wall-clock wait for a condition — the emit's entryId lookup goes through the shared

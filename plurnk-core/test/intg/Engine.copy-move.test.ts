@@ -7,7 +7,8 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryScheme from "./_entry-scheme.ts";
 import Worker from "../../src/schemes/Worker.ts";
-import { openMigrated, seedEnvelope, makeSchemeCtx } from "./_helpers.ts";
+import { openMigrated, seedEnvelope } from "./_db.ts";
+import { makeSchemeCtx } from "./_scheme.ts";
 import { urlPath, localPath, editStmt, copyStmt, moveStmt, fullReplace } from "./_dsl.ts";
 
 const setup = async () => {

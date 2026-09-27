@@ -12,7 +12,9 @@ import type { FunctionalityDiscoverResult, FunctionalityListResult, Functionalit
 import Daemon from "../../src/server/Daemon.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { awaitExecOutcome, fixtureExecutors, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { awaitExecOutcome } from "./_execs.ts";
+import { fixtureExecutors } from "./_mock.ts";
+import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { waitFor, waitForDb } from "./_rpc.ts";
 
 const VERBS = ["add", "disable", "discover", "enable", "list", "remove"];

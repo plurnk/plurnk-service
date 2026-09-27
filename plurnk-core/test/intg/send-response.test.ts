@@ -2,8 +2,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, makeMockResponse, makeRawMockResponse, runLoopToTerminal, flush } from "./_rpc.ts";
-import { lastReply, logEntries } from "./_helpers.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal, flush } from "./_rpc.ts";
+import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
+import { lastReply, logEntries } from "./_packet.ts";
 
 // Every operation is on the line after its fence.
 const MISFENCED = [

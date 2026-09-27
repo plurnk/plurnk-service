@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { seedDemoFixture } from "../demo/_fixture.ts";
-import { insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertWorkspace, openMigrated } from "./_db.ts";
 
 test("the demo fixture registers every project member under the non-null file identity", async () => {
     const fixture = await seedDemoFixture(`identity-${crypto.randomUUID()}`);

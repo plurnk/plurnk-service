@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import StreamMock from "./_stream-mock.ts";
-import { connect, makeMockResponse, makeRawMockResponse, rpcCall, runLoopToTerminal, waitForDb, withDaemon } from "./_rpc.ts";
-import { executionAddress, packetSection } from "./_helpers.ts";
+import { connect, rpcCall, runLoopToTerminal, waitForDb, withDaemon } from "./_rpc.ts";
+import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
+import { executionAddress } from "./_execs.ts";
+import { packetSection } from "./_packet.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 
 test("{§exec-input}: the production loop sends stdin, waits for EOF completion, and observes the real result", async () => {

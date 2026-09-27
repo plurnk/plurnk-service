@@ -7,7 +7,9 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, logEntries, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { logEntries } from "./_packet.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { statement } from "./reasoning-fixture.ts";
 
 const said = (content: string): MockResponse => ({ assistant: { content, reasoning: null }, assistantRaw: null });

@@ -9,7 +9,9 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES, packetSection } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { packetSection } from "./_packet.ts";
 import { concludeStmt, } from "./_dsl.ts";
 
 const shippedEnv = async (): Promise<Map<string, string>> => {

@@ -7,8 +7,9 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, logEntries, openMigrated, packetSection } from "./_helpers.ts";
-import { makeRawMockResponse } from "./_rpc.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { logEntries, packetSection } from "./_packet.ts";
+import { makeRawMockResponse } from "./_mock.ts";
 
 const frame = PlurnkParser.frame;
 

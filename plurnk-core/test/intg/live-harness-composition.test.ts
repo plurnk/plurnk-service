@@ -9,8 +9,9 @@ import { Module as ScheduleModule } from "@plurnk/plurnk-schedule";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import { liveWorkspace } from "../_live-harness.ts";
 import { readStmt } from "./_dsl.ts";
-import { lastReply } from "./_helpers.ts";
-import { makeMockResponse, waitFor, waitForDb } from "./_rpc.ts";
+import { lastReply } from "./_packet.ts";
+import { makeMockResponse } from "./_mock.ts";
+import { waitFor, waitForDb } from "./_rpc.ts";
 
 test("{§service-worker-composition} live workspaces expose the default worker references and management families", async (t) => {
     const provider = new Mock({ contextWindow: 100_000, responses: [] });

@@ -5,8 +5,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import StreamMock from "./_stream-mock.ts";
-import { connect, makeMockResponse, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
-import { logEntries, packetSection } from "./_helpers.ts";
+import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
+import { logEntries, packetSection } from "./_packet.ts";
 
 const withSettlement = async (ms: string, fn: () => Promise<void>): Promise<void> => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;

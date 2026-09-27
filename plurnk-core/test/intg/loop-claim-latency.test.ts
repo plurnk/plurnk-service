@@ -1,7 +1,7 @@
 // {§loop-claim-latency} — a loop's first claim is a durable fact, so wake-to-first-turn latency is measurable (#703).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 test("{§loop-claim-latency}: a queued loop is stamped when first claimed; a running insert at insertion; later claims never move it", async () => {
     const db = await openMigrated();

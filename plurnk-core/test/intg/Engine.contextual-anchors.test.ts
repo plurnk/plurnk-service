@@ -5,7 +5,7 @@ import { Results } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { AnchoredReadResult } from "../../src/content/read-projector.ts";
-import { openMigrated, seedEnvelope } from "./_helpers.ts";
+import { openMigrated, seedEnvelope } from "./_db.ts";
 
 const statements = (program: string) => PlurnkParser.parse(program).items.map((item) => {
     assert.equal(item.kind, "statement", program);

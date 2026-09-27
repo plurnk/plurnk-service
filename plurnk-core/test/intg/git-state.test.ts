@@ -14,7 +14,7 @@ import { join } from "node:path";
 import GitState from "../../src/core/git-state.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
-import { openMigrated, insertWorkspace, rootWorkspace } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, rootWorkspace } from "./_db.ts";
 
 const execFileP = promisify(execFile);
 

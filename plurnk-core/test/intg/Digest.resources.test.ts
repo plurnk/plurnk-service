@@ -9,7 +9,7 @@ import SqlRiteSync from "@possumtech/sqlrite/sync";
 import { Mock } from "@plurnk/plurnk-providers";
 import Digest from "@plurnk/plurnk-service/digest";
 import DigestRender from "../../src/digest/DigestRender.ts";
-import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 test("{§digest-programmatic-surface}: artifact failure closes the reader and cannot publish a complete digest", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-digest-interrupted-"));

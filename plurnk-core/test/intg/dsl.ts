@@ -1,4 +1,4 @@
-import { fixtureExecutors } from "./_helpers.ts";
+import { fixtureExecutors } from "./_mock.ts";
 // Test fixture builders route clean parameters through the contracts-owned
 // statement parser so Core receives production AST shapes. {§tier-entrypoints}
 // {§methods-op-mirror}

@@ -9,8 +9,9 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
-import { makeMockResponse } from "./_rpc.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 test("null window + no per-alias knob → NO-CAP: the turn builds unbounded and the gauge omits its headline", async () => {
     const db = await openMigrated();

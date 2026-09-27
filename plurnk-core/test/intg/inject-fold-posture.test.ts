@@ -3,7 +3,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { InvalidLoopPolicyError } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, rpcProblem, connect, withDaemon, makeMockResponse, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
+import { rpcCall, rpcProblem, connect, withDaemon, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 const heldLoopMock = () => new Mock({ contextWindow: 16384, responses: [
     // A non-auto execution proposal holds loop 1 live (paused at the review) while injects arrive.

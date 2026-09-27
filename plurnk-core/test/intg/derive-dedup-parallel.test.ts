@@ -3,7 +3,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
+import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { waitForDb } from "./_rpc.ts";
 
 const runPump = async (concurrency: string): Promise<{ stamped: number; maxActive: number }> => {

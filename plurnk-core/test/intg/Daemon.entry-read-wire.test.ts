@@ -12,7 +12,7 @@ import { Validator, type ClientEntry, type EntryReadResult as EntryReadWire } fr
 import Daemon from "../../src/server/Daemon.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
-import { openMigrated } from "./_helpers.ts";
+import { openMigrated } from "./_db.ts";
 import Dsl from "./dsl.ts";
 
 class Notes implements SchemeHandler {

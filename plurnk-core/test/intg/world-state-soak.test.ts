@@ -15,7 +15,9 @@ import GitMembership from "../../src/core/git-membership.ts";
 import WorldState from "./world-state.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, rootWorkspace, makeSchemeCtx, DEFAULT_MIMETYPES, viableWindow } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, rootWorkspace } from "./_db.ts";
+import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { viableWindow } from "./_provider.ts";
 
 const execFileP = promisify(execFile);
 

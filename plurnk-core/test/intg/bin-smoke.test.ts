@@ -14,7 +14,7 @@ import { access, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:f
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import { insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertWorkspace, openMigrated } from "./_db.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BIN_PATH = resolve(here, "../../src/service.ts");

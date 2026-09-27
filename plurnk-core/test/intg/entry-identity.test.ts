@@ -1,7 +1,7 @@
 // {§entry-identity-no-null} — repeated registration converges and NULL cannot fragment identity.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { openMigrated, insertWorkspace } from "./_helpers.ts";
+import { openMigrated, insertWorkspace } from "./_db.ts";
 
 test("{§entry-identity-no-null}: repeated membership registration converges to one row", async () => {
     const db = await openMigrated();

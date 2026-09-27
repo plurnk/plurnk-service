@@ -13,7 +13,8 @@ import { providerRequestSettlementParams } from "../../src/core/provider-account
 import type { Db } from "../../src/core/Db.ts";
 import Turn from "../../src/core/Turn.ts";
 import ModelCall from "../../src/core/ModelCall.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, testDeferredProviderCapacity } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { testDeferredProviderCapacity } from "./_provider.ts";
 
 test("{§inference-ledger} model evidence cannot be orphaned or replaced by a fabricated terminal state", async () => {
     const db = await openMigrated();

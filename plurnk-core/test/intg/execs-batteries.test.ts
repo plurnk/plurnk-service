@@ -19,7 +19,8 @@ import type { Effect } from "@plurnk/plurnk-execs";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, testExecutors } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { testExecutors } from "./_execs.ts";
 import { localPath } from "./_dsl.ts";
 import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 

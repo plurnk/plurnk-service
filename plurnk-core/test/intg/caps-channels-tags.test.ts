@@ -6,7 +6,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
 import DbChannelCaps from "../../src/core/caps/DbChannelCaps.ts";
-import { openMigrated, insertWorkspace, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
+import { openMigrated, insertWorkspace } from "./_db.ts";
+import { makeSchemeCtx, schemeManifest } from "./_scheme.ts";
 
 test("DbChannelCaps: append grows, replace swaps + re-tokenizes, setState transitions; absent → 404", async () => {
     const db = await openMigrated();

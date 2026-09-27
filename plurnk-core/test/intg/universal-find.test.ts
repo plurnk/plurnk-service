@@ -15,7 +15,9 @@ import type {
 } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, fixtureExecutors } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { fixtureExecutors } from "./_mock.ts";
 
 class PreparedDataScheme implements SchemeHandler {
     static manifest: SchemeManifest = {

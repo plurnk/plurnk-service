@@ -11,7 +11,8 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { teachingCorpusReader } from "../../src/core/teaching-corpus.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
-import { DEFAULT_MIMETYPES, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 const corpusRoot = async (): Promise<string> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-teaching-"));

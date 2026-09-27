@@ -4,7 +4,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { Module, type SchedulerTimers } from "@plurnk/plurnk-schedule";
 import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { openMigrated } from "./_helpers.ts";
+import { openMigrated } from "./_db.ts";
 import { waitForDb } from "./_rpc.ts";
 
 const INITIAL = Date.UTC(2026, 8, 17, 12, 0, 0, 250);

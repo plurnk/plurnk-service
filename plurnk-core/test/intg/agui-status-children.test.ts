@@ -6,8 +6,8 @@ import assert from "node:assert/strict";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { openMigrated } from "./_helpers.ts";
-import { makeMockResponse } from "./_rpc.ts";
+import { openMigrated } from "./_db.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 type Event = Readonly<Record<string, unknown>>;
 type Delta = { readonly op: string; readonly path: string; readonly value: unknown };

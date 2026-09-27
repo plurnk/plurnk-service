@@ -13,8 +13,8 @@ import type { ProposalResolution } from "@plurnk/plurnk-contracts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
-import { parseDsl } from "./_rpc.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { parseDsl } from "./_mock.ts";
 import { sendStmt, urlPath } from "./_dsl.ts";
 
 // Minimal proposing scheme. `edit` returns 202 with attrs the test asserts on.

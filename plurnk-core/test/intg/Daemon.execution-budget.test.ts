@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { holdChild } from "./_helpers.ts";
+import { holdChild } from "./_db.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import Daemon from "../../src/server/Daemon.ts";
-import { makeMockResponse, withDaemon } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
+import { withDaemon } from "./_rpc.ts";
 
 for (const wake of ["message", "same-drain", "restart"] as const) {
     test(`{§loop-execution-allowance}: ${wake} wake retains the task's remaining execution allowance`, async (t) => {

@@ -20,7 +20,8 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Worker from "../../src/schemes/Worker.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, makeSchemeCtx, seedEntryWithChannel } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_db.ts";
+import { makeSchemeCtx } from "./_scheme.ts";
 
 const weigh = (text: string): number => Math.ceil(text.length / 4);
 

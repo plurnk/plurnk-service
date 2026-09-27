@@ -7,7 +7,8 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Daemon from "../../src/server/Daemon.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { provider, statement } from "./reasoning-fixture.ts";
 
 const stat1 = (path: string): number => {

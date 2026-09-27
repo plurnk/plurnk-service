@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Mock, chatMessageText, type InputModality } from "@plurnk/plurnk-providers";
 import { wav } from "../../../plurnk-mimetypes-audio/test/wav.ts";
-import { viableWindow } from "./_helpers.ts";
+import { viableWindow } from "./_provider.ts";
 import { connect, rpcCall, waitForDb, withDaemon } from "./_rpc.ts";
 import Fork from "../../src/core/fork.ts";
 import NativeContent from "../../src/core/NativeContent.ts";

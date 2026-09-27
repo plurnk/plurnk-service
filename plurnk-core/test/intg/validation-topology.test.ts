@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { InvalidOperationResultError, Results, type ChannelProducerResult, type ProblemDetails } from "@plurnk/plurnk-schemes";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import type { Db } from "../../src/core/Db.ts";
-import { insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 const problem = (status: number, overrides: Partial<Record<keyof ProblemDetails, string | undefined>> = {}): Record<string, unknown> => {
     const complete: Record<string, unknown> = {

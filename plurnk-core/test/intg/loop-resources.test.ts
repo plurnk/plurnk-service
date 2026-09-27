@@ -10,7 +10,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Fork from "../../src/core/fork.ts";
 import Results from "../../src/core/results.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { readStmt, findStmt, editStmt, copyStmt, moveStmt, killStmt } from "./_dsl.ts";
 
 test("{§worker-loop-result}: exact outcomes compose with READ, FIND, COPY and immutable source boundaries", async (t) => {

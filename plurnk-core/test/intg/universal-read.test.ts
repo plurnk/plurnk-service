@@ -15,7 +15,9 @@ import Http from "@plurnk/plurnk-schemes-http";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { copyStmt, urlPath } from "./_dsl.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel, fixtureExecutors } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { fixtureExecutors } from "./_mock.ts";
 
 type DataSchemeManifest = Extract<SchemeManifest, { category: "data" }>;
 

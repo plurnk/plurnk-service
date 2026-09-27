@@ -13,7 +13,8 @@ import type { MockResponse } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Digest from "../../src/digest/Digest.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { concludeStmt, } from "./_dsl.ts";
 
 for (const [label, reasoning, reasoningLine] of [

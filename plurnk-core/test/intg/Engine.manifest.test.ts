@@ -12,7 +12,8 @@ import type { CatalogEntry } from "../../src/schemes/_entry-manifest.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Results } from "@plurnk/plurnk-schemes";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_db.ts";
+import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 const indexingTurn = {
     assistant: {

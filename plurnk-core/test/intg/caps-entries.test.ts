@@ -5,7 +5,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
-import { openMigrated, insertWorkspace, insertWorker, lookThroughScheme, makeSchemeCtx, schemeManifest } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { lookThroughScheme, makeSchemeCtx, schemeManifest } from "./_scheme.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { readStmt } from "./_dsl.ts";
 

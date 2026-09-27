@@ -3,7 +3,7 @@
 // read the same view; a detached spawn is nobody's obligation from the row, not from process memory.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 
 test("{§worker-obligations}: open non-detached streams and live children are obligations; detached streams and settled children are not", async () => {
     const db = await openMigrated();

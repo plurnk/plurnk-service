@@ -12,7 +12,8 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Fork from "../../src/core/fork.ts";
 import Digest from "../../src/digest/Digest.ts";
 import LogEntry from "../../src/server/logEntry.ts";
-import { DEFAULT_MIMETYPES, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 import { statement, original, provider, type Resource, type Read } from "./reasoning-fixture.ts";
 

@@ -3,7 +3,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse, waitFor } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, waitFor } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 test("{§methods-worker-name-admission} {§methods-conversation-worker}: fresh named conversation — empty log, runLoop accepts, stable door unaffected", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````KILL\nhello from thread-2\n````", 10)] });

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import type Daemon from "../../src/server/Daemon.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { readStmt, urlPath } from "../intg/_dsl.ts";
-import { logEntries, packetSection } from "../intg/_helpers.ts";
+import { logEntries, packetSection } from "../intg/_packet.ts";
 import { initializeDemoRepository } from "./_git.ts";
 
 export const seedOverflowFixture = async () => {

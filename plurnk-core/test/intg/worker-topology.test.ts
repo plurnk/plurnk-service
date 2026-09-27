@@ -4,7 +4,8 @@
 
 import test from "node:test";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { holdChild, viableWindow } from "./_helpers.ts";
+import { holdChild } from "./_db.ts";
+import { viableWindow } from "./_provider.ts";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
@@ -14,7 +15,8 @@ import Results from "../../src/core/results.ts";
 import LoopDriver from "../../src/core/LoopDriver.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
-import { rpcCall, connect, withDaemon, makeMockResponse, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, flush } from "./_rpc.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal, subscribeNotifications, waitFor, waitForDb, flush } from "./_rpc.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 test("{§worker-lifecycle-child-matrix} a child worker concluding wakes a parent parked at 202", async () => {
     // Response order is forced by causality: the parent can't resume until the child concludes,

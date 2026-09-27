@@ -7,7 +7,8 @@ import type { FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import { resourcePath } from "../../../plurnk-mcp/src/McpResources.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import Daemon from "../../src/server/Daemon.ts";
-import { insertWorker, openMigrated, fixtureExecutors } from "./_helpers.ts";
+import { insertWorker, openMigrated } from "./_db.ts";
+import { fixtureExecutors } from "./_mock.ts";
 
 process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "60000";
 const uri = "fixture://private-document";

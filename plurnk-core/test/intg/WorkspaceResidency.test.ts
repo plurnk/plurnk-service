@@ -10,7 +10,7 @@ import type Engine from "../../src/core/Engine.ts";
 import WorkspaceGate from "../../src/core/WorkspaceGate.ts";
 import WorkspaceResidency from "../../src/server/WorkspaceResidency.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { insertWorkspace, openMigrated } from "./_helpers.ts";
+import { insertWorkspace, openMigrated } from "./_db.ts";
 import type { Db } from "../../src/core/Db.ts";
 
 const problemOf = async (run: () => Promise<unknown>): Promise<ProblemDetails> => {

@@ -13,7 +13,8 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { SchemeManifest } from "../../src/core/types.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import ExecScratch from "../../src/schemes/ExecScratch.ts";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, rootWorkspace, schemeManifest, seedEntryWithChannel } from "./_helpers.ts";
+import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, rootWorkspace, seedEntryWithChannel } from "./_db.ts";
+import { schemeManifest } from "./_scheme.ts";
 import type { RuntimeTag } from "@plurnk/plurnk-contracts";
 
 interface Run {

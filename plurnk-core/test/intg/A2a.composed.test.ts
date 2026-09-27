@@ -12,8 +12,8 @@ import {
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
 import { A2A_EXPOSURE, a2aCard, a2aFace, bindListener, serviceUrl } from "./_a2a.ts";
-import { openMigrated } from "./_helpers.ts";
-import { makeMockResponse } from "./_rpc.ts";
+import { openMigrated } from "./_db.ts";
+import { makeMockResponse } from "./_mock.ts";
 
 class WorkspaceRoutedMock extends Mock {
     readonly #routes = new Map<string, Mock>();

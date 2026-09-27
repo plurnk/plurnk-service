@@ -9,7 +9,9 @@ import type { ChatMessage, ProviderAccounting, ProviderRequestAccounting } from 
 import Digest from "../../src/digest/Digest.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertPacketTurn, testDeferredProviderCapacity, digestStems } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertPacketTurn } from "./_db.ts";
+import { testDeferredProviderCapacity } from "./_provider.ts";
+import { digestStems } from "./_packet.ts";
 import type { DurablePacket } from "../../src/core/StoredPacket.ts";
 
 // A witness that records the identity of every generate() call the requiem makes.

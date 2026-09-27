@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { BaseHandler, Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { DEFAULT_MIMETYPES, openMigrated, seedEnvelope, seedEntryWithChannel } from "./_helpers.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { openMigrated, seedEnvelope, seedEntryWithChannel } from "./_db.ts";
 import { copyStmt, moveStmt, urlPath } from "./_dsl.ts";
 
 const content = '## Finding\n- `a<b` & "quoted"\n\tcafé → 東京\n';

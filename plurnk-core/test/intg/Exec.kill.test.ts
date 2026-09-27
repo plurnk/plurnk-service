@@ -11,7 +11,8 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { Results } from "@plurnk/plurnk-schemes";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel, testExecutors } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel } from "./_db.ts";
+import { testExecutors } from "./_execs.ts";
 import { killStmt, urlPath } from "./_dsl.ts";
 
 const execStmt = (command: string): ExecStatement => ({

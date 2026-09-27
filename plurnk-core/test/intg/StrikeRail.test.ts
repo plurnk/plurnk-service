@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import StrikeRail, { type StrikeOutcome } from "../../src/core/StrikeRail.ts";
 import type { Db } from "../../src/core/Db.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_helpers.ts";
+import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 
 let db: Db;
 let loopId: number;

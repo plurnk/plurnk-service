@@ -7,8 +7,9 @@ import Turn from "../../src/core/Turn.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import { routeForSpec } from "../../src/server/model-route.ts";
-import { insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_helpers.ts";
-import { makeMockResponse, waitForDb } from "./_rpc.ts";
+import { insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { makeMockResponse } from "./_mock.ts";
+import { waitForDb } from "./_rpc.ts";
 
 const providerSpec = {
     alias: "recovery",
