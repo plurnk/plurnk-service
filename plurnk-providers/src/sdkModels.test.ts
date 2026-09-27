@@ -2,7 +2,7 @@ import test from "node:test";
 import { strict as assert } from "node:assert";
 import { configuredProviderInfo, createSdkModel, providerReadiness } from "./sdkModels.ts";
 import { withProviderDefaults } from "./defaults.ts";
-import { OPERATOR_MODEL_OPTIONS } from "./operator-model-options.fixture.ts";
+import { OPERATOR_MODEL_OPTIONS } from "../test/operator-model-options.ts";
 
 test("{§provider-fact-authority} one env declaration holds one credential name", () => {
     assert.deepEqual(configuredProviderInfo("acme-cloud", {

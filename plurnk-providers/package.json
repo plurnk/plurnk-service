@@ -50,7 +50,6 @@
         "./package.json": "./package.json"
     },
     "files": [
-        "src/**/*",
         "dist/**/*",
         "README.md",
         "SPEC.md",

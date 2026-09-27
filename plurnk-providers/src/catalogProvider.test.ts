@@ -37,7 +37,7 @@ import { withProviderDefaults } from "./defaults.ts";
 import type { LanguageModel } from "ai";
 import { resetEmittedWarnings } from "./warnings.ts";
 import { UnsupportedEffortError } from "./types.ts";
-import { OPERATOR_MODEL_OPTIONS } from "./operator-model-options.fixture.ts";
+import { OPERATOR_MODEL_OPTIONS } from "../test/operator-model-options.ts";
 
 const env = withProviderDefaults({
     ...OPERATOR_MODEL_OPTIONS,
