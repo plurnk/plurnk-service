@@ -36,6 +36,20 @@ body?
 This is an example of the complete, final user response.
 ```
 
+## `pattern`
+
+> [!TIP]
+> All member files and entries are mapped, indexed, and universally pattern searchable.
+
+| prefix | dialect                     | example                         |
+|--------|-----------------------------|---------------------------------|
+| `/`    | regex (ECMAScript)          | `/\btimeout\b/i`                |
+| `//`   | xpath (1.0)                 | `//dependencies/*`              |
+| `$`    | jsonpath (RFC 9535)         | `$.items[?(@.price>500)]`       |
+| `~`    | full-text (SQLite FTS5)     | `~retry`                        |
+| `&`    | graph (treesitter symbols)  | `&sym`, `&<sym`, `&>sym`        |
+| none   | literal or glob/extglob     | `?(export )?(async )function *` |
+
 ## Workspace Navigation
 
 ```FIND (src/**/*.ts) /TODO/ <!-- paths with matches -->
@@ -51,8 +65,16 @@ This is an example of the complete, final user response.
 
 ## File Editing
 
-```EDIT (example.md) <@abcde>
-literal replacement text
+```EDIT (example.md) <@abcde> <!-- READ showed @abcde  42:foo; the body replaces line 42 -->
+bar
+```
+
+```EDIT (example.md) <@abcde,1,@abcde,1> <!-- insert before line 42; line 42 stays -->
+baz
+```
+
+```EDIT (src/**/*.js) /\bfoo\b/ <!-- every match in every file becomes the body -->
+bar
 ```
 
 ```EDIT (books.xml) //book[price > 35.00] <!-- an empty body removes each match -->
@@ -65,7 +87,31 @@ When representing markdown, `~~~` notation can disambiguate nested content.
 ````
 
 > [!TIP]
-> The EDIT body is literal text. YOU SHOULD address lines by `<@hash>` or `<@start,@end>`; stale targets are rejected.
+> The EDIT body is literal text; it may hold more or fewer lines than the scope. YOU SHOULD address lines by `<@hash>` or `<@start,@end>`; stale targets are rejected.
+
+## `<scope|range>`
+
+> [!TIP]
+> Text scopes use 1-based lines and Unicode code-point columns across textual mimetypes:
+
+| form            | endpoint rule                  |
+|-----------------|--------------------------------|
+| `<L>`, `<@hash>` | one line |
+| `<SL,EL>`, `<@start,@end>` | lines SL through EL, inclusive |
+| `<SL,SC,EL,EC>` | start included, end excluded — `<2,3,3,6>` is line 2 column 3 through line 3 column 5 |
+| `<L,1,L,1>`, `<@hash,1,@hash,1>` | insert before that line |
+| `<0>`, `<-1>`  | prepend / append on mutations; as an end line, `-1` is the last line |
+
+## Context Curation
+
+> [!CAUTION]
+> logTokensTotal must not exceed logTokensMax. Successful log KILL receipts are not shown.
+
+```KILL (log:///1/[1-7]/*/{NOTE,READ}) <!-- retires matching log items whole -->
+```
+
+```KILL (log:///1/[8-9]/*/READ) <17,-1> <!-- keeps lines 1–16 of each, trims the rest -->
+```
 
 ## Delegation
 
@@ -83,40 +129,3 @@ A self-contained prompt.
 > [!TIP]
 > `SEND (worker://name)` messages a live worker.
 
-## Context Curation
-
-> [!CAUTION]
-> logTokensTotal must not exceed logTokensMax. Successful log KILL receipts are not shown.
-
-```KILL (log:///1/[1-7]/*/{NOTE,READ}) <!-- retires matching log items whole -->
-```
-
-```KILL (log:///1/[8-9]/*/READ) <17,-1> <!-- keeps lines 1–16 of each, trims the rest -->
-```
-
-## `<scope|range>`
-
-> [!TIP]
-> Text scopes use 1-based lines and Unicode code-point columns across textual mimetypes:
-
-| form            | endpoint rule                  |
-|-----------------|--------------------------------|
-| `<L>`, `<@hash>` | one line |
-| `<SL,EL>`, `<@start,@end>` | lines SL through EL, inclusive |
-| `<SL,SC,EL,EC>` | start included, end excluded — `<2,3,3,6>` is line 2 column 3 through line 3 column 5 |
-| `<L,1,L,1>`, `<@hash,1,@hash,1>` | insert before that line |
-| `<0>`, `<-1>`  | prepend / append on mutations; as an end line, `-1` is the last line |
-
-## `pattern`
-
-> [!TIP]
-> All member files and entries are mapped, indexed, and universally pattern searchable.
-
-| prefix | dialect                     | example                         |
-|--------|-----------------------------|---------------------------------|
-| `/`    | regex (ECMAScript)          | `/\btimeout\b/i`                |
-| `//`   | xpath (1.0)                 | `//dependencies/*`              |
-| `$`    | jsonpath (RFC 9535)         | `$.items[?(@.price>500)]`       |
-| `~`    | full-text (SQLite FTS5)     | `~retry`                        |
-| `&`    | graph (treesitter symbols)  | `&sym`, `&<sym`, `&>sym`        |
-| none   | literal or glob/extglob     | `?(export )?(async )function *` |
