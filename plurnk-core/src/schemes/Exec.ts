@@ -4,11 +4,11 @@ import type { ExecStatement, FindStatement, KillStatement, SendStatement } from 
 import type { ChannelState } from "@plurnk/plurnk-execs";
 import type { ExecResult as ExecutorResult } from "@plurnk/plurnk-execs";
 import {
-    WebFetcher,
     WebMaterializationError,
     type WebFetchResult,
     type WebMaterializedResult,
-} from "@plurnk/plurnk-schemes-http";
+    type WebMaterializer,
+} from "@plurnk/plurnk-schemes";
 import { isWorkerBound, type Executor } from "../core/ExecutorRegistry.ts";
 import EffectPolicy from "./EffectPolicy.ts";
 import type { Effect } from "@plurnk/plurnk-execs";
@@ -93,9 +93,9 @@ const resourceSourceOf = (target: ExecStatement["target"]): string | null => {
     return target.raw;
 };
 
-// {§exec-entry-sink}: the web-fetch the sink calls when the executor hands content:null:
-// schemes-http's WebFetcher (checked byte acquisition, dead-as-null; caller
-// cancellation rejects per {§prefetch}).
+// {§exec-entry-sink}: the web-fetch the sink calls when the executor hands content:null —
+// the registry's web materializer ({§web-materialization-contract}: checked byte acquisition,
+// dead-as-null; caller cancellation rejects per {§prefetch}).
 // Injectable because automatic acquisition refuses localhost.
 export type WebFetch = (url: string, opts?: { signal?: AbortSignal }) => Promise<WebFetchResult | null>;
 
@@ -128,23 +128,21 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         documentation: "The opening fence names a registered executor or MCP service; its target, body, metadata, and timing follow that tool's invocation contract. Output streams into the workspace's `<executor>:///<id>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. While it runs, the packet's `## Delegation` streams list reports channel size and growth and READ can inspect any range; when it finishes, one terminal READ becomes visible automatically.",
     };
 
-    // The web-fetch the entry sink calls on content:null ({§exec-entry-sink}).
-    // Default = schemes-http's checked WebFetcher; injectable for tests.
+    // The web-fetch the entry sink calls on content:null ({§exec-entry-sink}); default = the
+    // registry's web materializer, injectable for tests. Materialization always goes through
+    // the registry ({§web-materialization-contract}): core names no leaf package.
     readonly #fetchWeb: WebFetch;
+    readonly #materializer: () => WebMaterializer;
     readonly #scheduler: ExecScheduler;
     readonly #scratch: ExecScratch;
     readonly #inputTimeoutMs: number;
-    constructor(fetchWeb?: WebFetch) {
+    constructor(fetchWeb: WebFetch | undefined, materializer: () => WebMaterializer) {
         super();
         this.#scheduler = new ExecScheduler();
         this.#scratch = new ExecScratch();
         this.#inputTimeoutMs = ExecutionInput.configuredTimeout();
-        if (fetchWeb === undefined) {
-            const webFetcher = new WebFetcher();
-            this.#fetchWeb = (url, opts) => webFetcher.fetch(url, opts);
-        } else {
-            this.#fetchWeb = fetchWeb;
-        }
+        this.#materializer = materializer;
+        this.#fetchWeb = fetchWeb ?? ((url, opts) => materializer().fetch(url, opts));
     }
 
     #activeAborts = new Map<number, { workspaceId: number; workerId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; unlink: () => void; detached: boolean; input: ExecutionInput; invocation: ExecStatement; executor: Executor }>();
@@ -982,14 +980,14 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                     if (fetched === null) throw new Error(`entry(): '${path.slice(0, 80)}' is dead`);
                     let web: WebMaterializedResult;
                     try {
-                        web = await WebFetcher.materialize(fetched, new DbProjectionCaps(ctx));
+                        web = await this.#materializer().materialize(fetched, new DbProjectionCaps(ctx));
                     } catch (error) {
                         if (!signal.aborted && error instanceof WebMaterializationError) {
                             console.error("entry() web materialization failed", { path, error });
                         }
                         throw error;
                     }
-                    channels = WebFetcher.materializedChannels(
+                    channels = this.#materializer().materializedChannels(
                         web,
                         content === null && fetchAddress !== null ? { url: fetchAddress.url, method: "GET" } : undefined,
                     );

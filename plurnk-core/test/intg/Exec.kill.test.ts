@@ -109,7 +109,7 @@ test("{§stream-control}: a KILL error answers in the model's runtime-tag scheme
         const workspaceId = await insertWorkspace(db, `exec-kill-canon-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = { db, workspaceId, workerId, loopId: 0, turnId: 0, writer: "model" as const, signal: undefined, mimetypes: undefined, weigh: (t: string) => t.length };
-        const exec = new Exec();
+        const exec = new Exec(undefined, () => { throw new Error("this test materializes nothing"); });
         // {§scheme-operation-dispatch} The authored target names the runtime, not its adapter.
         const notRunning = await exec.kill(killStmt(urlPath("sh", "/3/1/4")), ctx);
         assert.equal(notRunning.status, 404);
@@ -126,7 +126,7 @@ test("KILL rejects streams whose terminal state is already durable", async () =>
         const workspaceId = await insertWorkspace(db, `exec-kill-terminal-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const ctx = { db, workspaceId, workerId, loopId: 0, turnId: 0, writer: "model" as const, signal: undefined, mimetypes: undefined, weigh: (t: string) => t.length };
-        const exec = new Exec();
+        const exec = new Exec(undefined, () => { throw new Error("this test materializes nothing"); });
         const close = async (pathname: string, result: { status: number; problem?: never } | ReturnType<typeof Results.failure>): Promise<void> => {
             const entryId = await seedEntryWithChannel(db, {
                 workspaceId,

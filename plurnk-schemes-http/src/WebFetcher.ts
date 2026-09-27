@@ -6,6 +6,13 @@ import {
     type ProjectedText,
     type ProjectedBinary,
     type ProjectionCaps,
+    type WebChannelOutcome,
+    type WebFetchResult,
+    type WebMaterializationSource,
+    type WebMaterializedResult,
+    type WebMaterializer,
+    type WebResponseBody,
+    WebMaterializationError,
 } from "@plurnk/plurnk-schemes";
 import { formatJsonDocument } from "@plurnk/plurnk-contracts";
 import Guard, { GuardBlockedError } from "./Guard.ts";
@@ -50,59 +57,9 @@ const rewriteAcquisitionTarget = (url: string): string => {
         : `https://raw.githubusercontent.com/${gh[1]}/${gh[2]}/${gh[3]}`;
 };
 
-export interface WebResponseBody {
-    readonly chunks: AsyncIterable<Uint8Array>;
-    text(): Promise<string>;
-    cancel(): Promise<void>;
-}
-
-interface WebChannelFailure {
-    readonly status: number;
-    readonly code: string;
-    readonly detail: string;
-    readonly retryable: boolean;
-    readonly facts?: Readonly<Record<string, unknown>>;
-}
-
-export interface WebChannelOutcome {
-    readonly status: number;
-    readonly failure?: WebChannelFailure;
-}
-
-export interface WebFetchResult {
-    readonly url: string;
-    readonly body: string | WebResponseBody;
-    readonly mimetype: string;
-    readonly status?: number;
-    readonly statusText?: string;
-    readonly responseHeaders?: ReadonlyArray<readonly [string, string]>;
-    readonly response?: Response;
-    readonly header?: string;
-    readonly requestHeaders?: ReadonlyArray<readonly [string, string]>;
-    readonly originFailure?: WebChannelFailure;
-    readonly allowConfiguredMaterializer?: boolean;
-    readonly originUnavailable?: boolean;
-}
-
-export interface WebMaterializedResult {
-    readonly body: EntryData["channels"][string];
-    readonly readable?: { content: string; mimetype: string };
-    readonly header?: string;
-    readonly bodyOutcome: WebChannelOutcome;
-    readonly readableOutcome?: WebChannelOutcome;
-    readonly projection?: { sourceMimetype: string; identity: string };
-}
-
-export class WebMaterializationError extends Error {
-    readonly stage = "projection";
-    readonly mimetype: string;
-
-    constructor(mimetype: string, cause: unknown) {
-        super(`Web projection failed for ${mimetype}.`, { cause });
-        this.name = "WebMaterializationError";
-        this.mimetype = mimetype;
-    }
-}
+// {§web-materialization-contract} — the shapes are the framework's; this leaf implements them.
+export { WebMaterializationError };
+export type { WebChannelOutcome, WebFetchResult, WebMaterializedResult, WebResponseBody };
 
 const success = (status = 200): WebChannelOutcome => ({ status });
 const failure = (
@@ -122,7 +79,15 @@ const hasHeader = (headers: ReadonlyArray<readonly [string, string]>, name: stri
     ([candidate]) => candidate.toLowerCase() === name,
 );
 
-export default class WebFetcher {
+export default class WebFetcher implements WebMaterializer {
+    materialize(fetched: WebMaterializationSource, projection: ProjectionCaps, signal?: AbortSignal): Promise<WebMaterializedResult> {
+        return WebFetcher.materialize(fetched, projection, signal);
+    }
+
+    materializedChannels(materialized: WebMaterializedResult, source?: { readonly url: string; readonly method: string }): EntryData["channels"] {
+        return WebFetcher.materializedChannels(materialized, source);
+    }
+
     static validateConfiguration(): void {
         requirePositiveIntegerEnv("PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT");
         if (WebFetcher.#materializerConfigured()) {

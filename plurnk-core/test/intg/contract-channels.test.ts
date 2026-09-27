@@ -85,7 +85,7 @@ test("{§find-channel-selection}: FIND matches the explicitly addressed channel"
             "ordinary output",
             "stderr-only diagnostic",
         );
-        const exec = new Exec();
+        const exec = new Exec(undefined, () => { throw new Error("this test materializes nothing"); });
         const core = makeSchemeCtx({
             db,
             workspaceId,
@@ -126,7 +126,7 @@ test("{§find-channel-selection}: channel-scoped catalog FIND excludes resources
             content: "out only",
             mimetype: "text/stream",
         });
-        const exec = new Exec();
+        const exec = new Exec(undefined, () => { throw new Error("this test materializes nothing"); });
         const core = makeSchemeCtx({
             db,
             workspaceId,
@@ -163,7 +163,7 @@ test("{§channel-selection-missing}: FIND reports an undeclared channel with the
     const { db, workspaceId, workerId } = await setup();
     try {
         await seedExecEntry(db, workspaceId, workerId, "/run/abc", "out", "err");
-        const result = await new Exec().find(
+        const result = await new Exec(undefined, () => { throw new Error("this test materializes nothing"); }).find(
             findStmt(urlPath("exec", "/run/abc", "results"), regex("anything")),
             makeSchemeCtx({
                 db,

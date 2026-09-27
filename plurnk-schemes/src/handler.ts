@@ -28,6 +28,7 @@ import type {
 } from "@plurnk/plurnk-contracts";
 import type { PluginAttributionSource } from "@plurnk/plurnk-meta";
 import type { EntryAddress, ProposalApplyRequest, ProposalApplyResult, SchemeAddressCtx, SchemeCtx } from "./ctx.ts";
+import type { WebMaterializer } from "./WebMaterialization.ts";
 import type { EditBatchResult } from "./edit-receipt.ts";
 import type { RepresentationPreparationResult, SchemeResult } from "./Results.ts";
 import type { SchemeManifest } from "./types.ts";
@@ -54,6 +55,10 @@ export interface SchemeHandler extends PluginAttributionSource {
     // Both run once per unique handler object identity.
     ready?(): Promise<void>;
     close?(): Promise<void>;
+
+    // {§web-materialization-contract}: the handler that acquires and materializes web resources
+    // publishes it here; the entry sink resolves it through the registry, never a package by name.
+    readonly webMaterializer?: WebMaterializer;
     applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult>;
 
     // Resolve a client-visible address through the same pathname and ownership

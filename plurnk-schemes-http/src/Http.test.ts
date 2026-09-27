@@ -327,6 +327,14 @@ const withFetch = async (
 const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 // ── manifest ──────────────────────────────────────────────────────────────
+test("{§web-materialization-contract}: Http publishes its WebFetcher as the framework's web materializer", () => {
+    const http = new Http();
+    assert.ok(http.webMaterializer instanceof WebFetcher, "the published materializer is the handler's own checked WebFetcher");
+    for (const method of ["fetch", "materialize", "materializedChannels"] as const) {
+        assert.equal(typeof http.webMaterializer[method], "function", `${method} is on the published contract`);
+    }
+});
+
 test("manifest: name https (plain http folds in, #340), default channel body, web trait, network-volatile", () => {
     assert.equal(Http.manifest.name, "https");
     assert.equal(Http.manifest.authority, "resource");

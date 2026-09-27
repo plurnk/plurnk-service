@@ -29,6 +29,17 @@ const handler = (name: string, behavior: object = {}): object => ({ manifest: ma
 // siblings. @plurnk/plurnk-schemes-http is installed, so it's found, registered
 // by its declared name ("https"). Agnostic by kind — the package name is never
 // hardcoded ({§plugin-discovery}).
+test("{§web-materialization-contract}: the entry sink's web materializer is the https handler's, reached through the registry", async () => {
+    const registry = new SchemeRegistry();
+    assert.throws(() => registry.webMaterializer(), /requires an installed https scheme handler that publishes it/, "before discovery nothing publishes it; absence is a defect, never a fallback");
+
+    await registry.discoverExternal();
+
+    const https = registry.get("https") as { webMaterializer?: unknown };
+    assert.ok(https.webMaterializer !== undefined, "the https handler publishes web materialization");
+    assert.equal(registry.webMaterializer(), https.webMaterializer, "the registry hands out the handler's own materializer");
+});
+
 test("SchemeRegistry.discoverExternal registers the https sibling", async () => {
     const registry = new SchemeRegistry();
     assert.equal(registry.has("https"), false, "not registered until discovery runs");

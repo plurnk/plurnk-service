@@ -165,7 +165,8 @@ entries, non-JSON text, SSE, and JSONL retain their original formatting.
 ### §html-materialization Readable materialization
 
 `WebFetcher.materialize` is the shared source/projection seam for exact
-GET/FIND preparation and executor entry acquisition. It returns complete
+GET/FIND preparation and executor entry acquisition; `Http` publishes its
+`WebFetcher` as the framework's {§web-materialization-contract}. It returns complete
 source and derived channels for one atomic canonical entry write; SSE and
 textual mutation responses retain incremental streaming.
 

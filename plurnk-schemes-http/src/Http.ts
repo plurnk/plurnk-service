@@ -3,7 +3,7 @@
 // {§http-lifecycle}. The implementation depends only on SchemeCtx capabilities.
 
 import { createParser, type ParseError } from "eventsource-parser";
-import type { SchemeCtx, StreamSubscription, ChannelProducerResult, PassthroughResult, SchemeManifest, SchemeHandler, RepresentationPreparationRequest, RepresentationPreparationResult, SendStatement, ResolvedEditStatement, KillStatement, UrlPath, EntryData, StoredEntryData, SchemeResult, ProjectionCaps, ChannelState } from "@plurnk/plurnk-schemes";
+import type { SchemeCtx, StreamSubscription, ChannelProducerResult, PassthroughResult, SchemeManifest, SchemeHandler, RepresentationPreparationRequest, RepresentationPreparationResult, SendStatement, ResolvedEditStatement, KillStatement, UrlPath, EntryData, StoredEntryData, SchemeResult, ProjectionCaps, ChannelState, WebMaterializer } from "@plurnk/plurnk-schemes";
 import type { ProposalApplyRequest, ProposalApplyResult, ProposalResult } from "@plurnk/plurnk-schemes";
 import { MetadataOptions, MimetypeClassifier, NetworkAddress, ProjectionInputLimitError, Results } from "@plurnk/plurnk-schemes";
 import { readFile } from "node:fs/promises";
@@ -218,6 +218,8 @@ export default class Http implements SchemeHandler {
 
     readonly #errorDetailLimit: number;
     readonly #webFetcher: WebFetcher;
+    // {§web-materialization-contract}: published for the entry sink; reached through the registry.
+    readonly webMaterializer: WebMaterializer;
     // {§http-llms-txt} — one opportunistic origin-companion attempt per TTL
     // window; success and failure share the timer so a 404 does not re-probe
     // on every READ.
@@ -227,6 +229,7 @@ export default class Http implements SchemeHandler {
     constructor() {
         this.#errorDetailLimit = ErrorDetail.configuredLimit();
         this.#webFetcher = new WebFetcher();
+        this.webMaterializer = this.#webFetcher;
         this.#get = new HttpGet({ live: this.#live, errorDetailLimit: this.#errorDetailLimit, webFetcher: this.#webFetcher, address: Http.#address, requestHeaders: Http.#requestHeaders, passthrough: Http.#passthrough, requestMethod: Http.#requestMethod, reusableGetRepresentation: Http.#reusableGetRepresentation, materializerIdentity: Http.#materializerIdentity, validators: Http.#validators, materializationFailure: Http.#materializationFailure, sourceMimetype: Http.#sourceMimetype, fresh: Http.#fresh, cancelled: Http.#cancelled, bad: Http.#bad, revalidationCorresponds: Http.#revalidationCorresponds, refreshAfter304: Http.#refreshAfter304, seedEntry: Http.#seedEntry, settleEventStream: Http.#settleEventStream });
         this.#requester = new HttpRequester({ live: this.#live, manifest: Http.manifest, errorDetailLimit: this.#errorDetailLimit, address: Http.#address, requestHeaders: Http.#requestHeaders, bad: Http.#bad, seedEntry: Http.#seedEntry, passthrough: Http.#passthrough, responseHeader: Http.#responseHeader, writeProjectionIdentity: Http.#writeProjectionIdentity, cancelled: Http.#cancelled, materializationFailure: Http.#materializationFailure });
     }

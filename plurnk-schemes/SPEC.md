@@ -109,6 +109,16 @@ must not substitute the file for a selected derived channel. Native execution
 preserves the file's name and surrounding filesystem; it grants no new
 capability, changes no working directory, and performs no automatic copying.
 
+§web-materialization-contract **Web materialization is a handler capability, not a package name.**
+A handler may publish `webMaterializer`: `fetch(url, {signal})` acquires a checked
+`WebFetchResult` (`null` for a dead source), `materialize(fetched, projection)` produces
+the entry's `WebMaterializedResult`, and `materializedChannels(result, request?)` lays it
+out as entry channels. The result and error shapes (`WebFetchResult`,
+`WebMaterializedResult`, `WebMaterializationError`) are this framework's. The `https`
+handler publishes it; the service's entry sink resolves it through the scheme registry and
+names no leaf package, so a compatible leaf replaces it through the ordinary installation
+and discovery path.
+
 §scheme-operation-dispatch Sister scheme handlers implement op methods consumed by plurnk-service via
 dispatch. The consumer owns READ for every `category: "data"` scheme and owns
 exact-target FIND over its canonical representation; no handler method can

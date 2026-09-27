@@ -11,6 +11,7 @@ import {
     type PacketSectionDraft,
     type PacketSectionTransformer,
     type SchemeHandler,
+    type WebMaterializer,
 } from "@plurnk/plurnk-schemes";
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest } from "./scheme-types.ts";
@@ -67,7 +68,7 @@ export default class SchemeRegistry {
 
 
     // `fetchWeb` ({§exec-entry-sink}) is forwarded to the exec handler's content:null sink; default
-    // = schemes-http's checked WebFetcher, injectable so tests substitute automatic network acquisition.
+    // = the https handler's web materializer, injectable so tests substitute automatic network acquisition.
     constructor(opts?: { fetchWeb?: WebFetch; readTeaching?: ReadTeaching }) {
         this.#readTeaching = opts?.readTeaching ?? readTeachingSource;
         this.#registerBuiltIn("log", new Log());
@@ -75,7 +76,7 @@ export default class SchemeRegistry {
         // and the spawn-abort/idle state lives here, but the model addresses output via the tag
         // schemes (sh://, jq://) and process-KILLs the tag coordinate. The knowledgebase
         // is worker:/// (shared) or worker://<name>/ (named).
-        this.#registerBuiltIn("exec", new Exec(opts?.fetchWeb));
+        this.#registerBuiltIn("exec", new Exec(opts?.fetchWeb, () => this.webMaterializer()));
         this.#registerBuiltIn("reasoning", new TurnSource("reasoning"));
         this.#registerBuiltIn("ops", new TurnSource("ops"));
         this.#registerBuiltIn("note", new TurnSource("note"));
@@ -305,6 +306,14 @@ export default class SchemeRegistry {
             throw new Error(`scheme name '${name}' is reserved by ${existing.label}; ${incoming.label} cannot claim it`);
         }
         throw new Error(`scheme name '${name}' is claimed by both ${existing.label} and ${incoming.label}`);
+    }
+
+    // {§web-materialization-contract} — the https handler publishes web materialization; core
+    // reaches it here and names no leaf package. Absent is a defect of the installation, not a fallback.
+    webMaterializer(): WebMaterializer {
+        const handler = this.#handlers.get("https") as SchemeHandler | undefined;
+        if (handler?.webMaterializer === undefined) throw new Error("web materialization requires an installed https scheme handler that publishes it");
+        return handler.webMaterializer;
     }
 
     get(name: string, workspaceId?: number): object | undefined {

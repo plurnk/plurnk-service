@@ -144,5 +144,15 @@ export type {
 } from "@plurnk/plurnk-contracts";
 export type { WindowResult } from "./Slicer.ts";
 export type { ByteSource } from "./ByteSource.ts";
+export { WebMaterializationError } from "./WebMaterialization.ts";
+export type {
+    WebChannelFailure,
+    WebChannelOutcome,
+    WebFetchResult,
+    WebMaterializationSource,
+    WebMaterializedResult,
+    WebMaterializer,
+    WebResponseBody,
+} from "./WebMaterialization.ts";
 export { default as FileByteSource } from "./FileByteSource.ts";
 export { default as GeneratedByteSource } from "./GeneratedByteSource.ts";
