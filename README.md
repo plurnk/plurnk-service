@@ -131,6 +131,12 @@ another path. Repeated experiment harnesses may build both checkouts once, then
 set `PLURNK_CANDIDATE_SKIP_BUILD=1`; every run pins its own copy of that build at launch and runs its
 daemon and digest export from it ({§candidate-pinned-runtime}).
 
+Three audits run on demand and are never gates: `npm run audit:direction` (import
+direction: no leaf reaches the service, no framework reaches its own leaf, the parser
+only where AGENTS.md declares, no runtime cycles), `npm run audit:unused` (unused
+files, exports and dependencies) and `npm run audit:clones` (copy-pasted code across
+packages). Their configuration lives under `scripts/audit/`.
+
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for hooks, test tiers, and maintenance.
 
 ## Packages

@@ -49,6 +49,9 @@
         "prepare": "git config core.hooksPath .githooks && npm run build",
         "start": "npm start -w @plurnk/plurnk-service",
         "share": "npm run -s share -w @plurnk/plurnk-service --",
+        "audit:direction": "node scripts/audit/direction.mjs",
+        "audit:unused": "knip --config scripts/audit/knip.json --no-progress --no-config-hints",
+        "audit:clones": "node scripts/audit/clones.mjs",
         "source:check": "oxlint --type-aware --report-unused-disable-directives .",
         "docs:check": "markdownlint-cli2",
         "changelog": "node scripts/changelog.mjs",
@@ -89,7 +92,11 @@
         "report:floor": "npm --workspace plurnk-core run report:floor"
     },
     "devDependencies": {
+        "@swc/core": "1.16.2",
         "@types/node": "^26.1.1",
+        "dependency-cruiser": "18.4.0",
+        "jscpd": "5.3.2",
+        "knip": "6.38.0",
         "markdownlint-cli2": "^0.23.2",
         "oxlint": "^1.78.0",
         "oxlint-tsgolint": "^7.0.2001",
@@ -98,7 +105,8 @@
         "web-tree-sitter": "^0.27.0"
     },
     "allowScripts": {
-        "esbuild@0.28.2": true
+        "esbuild@0.28.2": true,
+        "@swc/core@1.16.2": false
     },
     "overrides": {
         "smol-toml": "^1.7.1"

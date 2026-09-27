@@ -1,0 +1,24 @@
+{
+    "$schema": "https://unpkg.com/knip@6/schema.json",
+    "ignoreDependencies": ["jscpd"],
+    "workspaces": {
+        ".": {
+            "entry": ["scripts/**/*.{mjs,ts}", "test/**/*.ts"],
+            "project": ["scripts/**/*.{mjs,ts}", "test/**/*.ts"]
+        },
+        "plurnk-*": {
+            "entry": ["src/**/*.test.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"],
+            "project": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"]
+        },
+        "plurnk-core": {
+            "entry": ["src/**/*.test.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"],
+            "project": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"],
+            "ignoreDependencies": ["@plurnk/plurnk-schemes-*", "@plurnk/plurnk-execs-*", "@plurnk/plurnk-mimetypes-*", "@plurnk/plurnk-providers-*"]
+        },
+        "plurnk-mimetypes": {
+            "entry": ["src/**/*.test.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"],
+            "project": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.{mjs,ts}"],
+            "ignoreDependencies": ["@plurnk/plurnk-mimetypes-grammar-*"]
+        }
+    }
+}
