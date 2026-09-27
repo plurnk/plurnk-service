@@ -23,6 +23,12 @@ test("MetadataOptions.parse fails malformed blocks as the owner's 400 without ec
     assert.match(String(repeated.failure.problem?.type), /metadata-repeated$/);
 });
 
+test("{§service-metadata-keys}: exactly the declared service keys are withheld from an owner, each surfaced raw", () => {
+    assert.deepEqual([...MetadataOptions.SERVICE_KEYS], ["env", "lifetime"]);
+    const read = MetadataOptions.parse(['{"cwd": "src", "env": {"CI": "1"}, "lifetime": "30m", "other": 1}'], "scheme:test");
+    assert.deepEqual(read, { options: { cwd: "src", other: 1 }, env: { CI: "1" }, lifetime: "30m" });
+});
+
 test("MetadataOptions.parse withholds the service's `env` key from an owner and surfaces it raw", () => {
     const read = MetadataOptions.parse(['{"cwd": "src", "env": {"CI": "1"}}'], "scheme:test");
     assert.deepEqual(read, { options: { cwd: "src" }, env: { CI: "1" } });

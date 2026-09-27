@@ -28,11 +28,8 @@ import GitState, { type GitStatusSnapshot } from "./git-state.ts";
 import WorkspaceSettings from "./workspace-settings.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
-import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
-import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
-import type { OutsideEventNotify } from "./OutsideEvent.ts";
+import type { EngineNotifications } from "./notifications.ts";
 import { contentWeight } from "./content-weight.ts";
-import type { LoopPacketNotify } from "./LoopPacket.ts";
 import { generatedPathname } from "./plurnk-uri.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import { readFile } from "node:fs/promises";
@@ -394,11 +391,7 @@ export default class TurnRunner {
     readonly #packets: PacketBuilder;
     readonly #dispatcher: Dispatcher;
     readonly #liveSubscriptions: LiveSubscriptions;
-    readonly #streamEventNotify: StreamEventNotify | undefined;
-    readonly #reasoningEventNotify: ReasoningEventNotify | undefined;
-    readonly #outsideEventNotify: OutsideEventNotify | undefined;
-    readonly #loopPacketNotify: LoopPacketNotify | undefined;
-    readonly #wakeWorkerNotify: WakeWorkerNotify | undefined;
+    readonly #notify: EngineNotifications;
     readonly #executors: () => ExecutorRegistry | undefined;
     readonly #capabilities: CapabilityResolver;
     readonly #loopSignal: (loopId: number) => AbortSignal | undefined;
@@ -423,11 +416,7 @@ export default class TurnRunner {
         packets,
         dispatcher,
         liveSubscriptions,
-        streamEventNotify,
-        reasoningEventNotify,
-        outsideEventNotify,
-        loopPacketNotify,
-        wakeWorkerNotify,
+        notify,
         executors,
         loopSignal,
         interactions,
@@ -445,11 +434,7 @@ export default class TurnRunner {
         packets: PacketBuilder;
         dispatcher: Dispatcher;
         liveSubscriptions: LiveSubscriptions;
-        streamEventNotify?: StreamEventNotify;
-        reasoningEventNotify?: ReasoningEventNotify;
-        outsideEventNotify?: OutsideEventNotify;
-        loopPacketNotify?: LoopPacketNotify;
-        wakeWorkerNotify?: WakeWorkerNotify;
+        notify: EngineNotifications;
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
         interactions: ClientInteractions;
@@ -467,11 +452,7 @@ export default class TurnRunner {
         this.#packets = packets;
         this.#dispatcher = dispatcher;
         this.#liveSubscriptions = liveSubscriptions;
-        this.#streamEventNotify = streamEventNotify;
-        this.#reasoningEventNotify = reasoningEventNotify;
-        this.#outsideEventNotify = outsideEventNotify;
-        this.#loopPacketNotify = loopPacketNotify;
-        this.#wakeWorkerNotify = wakeWorkerNotify;
+        this.#notify = notify;
         this.#executors = executors;
         this.#capabilities = new CapabilityResolver(db, schemes, executors);
         this.#loopSignal = loopSignal;
@@ -492,12 +473,12 @@ export default class TurnRunner {
         evidence: InferenceEvidence;
     }): Promise<void> {
         await Turn.recordInference(this.#db, args.turnId, args.evidence);
-        if (this.#loopPacketNotify === undefined) return;
+        if (this.#notify.loopPacketNotify === undefined) return;
         const packetCount = await this.#db.engine_loop_packet_count.get<{
             count: number; id: number;
         }>({ loop_id: args.loopId });
         if (packetCount === undefined) throw new Error(`loop ${args.loopId}: packet count row missing`);
-        this.#loopPacketNotify(args.workspaceId, {
+        this.#notify.loopPacketNotify(args.workspaceId, {
             workerId: args.workerId,
             loopId: args.loopId,
             packetCount: packetCount.count,
@@ -762,8 +743,8 @@ export default class TurnRunner {
             db: this.#db, workspaceId, workerId, loopId, turnId,
             writer: "_plurnk",
             signal: this.#loopSignal(loopId),
-            streamEventNotify: this.#streamEventNotify,
-            wakeWorkerNotify: this.#wakeWorkerNotify,
+            streamEventNotify: this.#notify.streamEventNotify,
+            wakeWorkerNotify: this.#notify.wakeWorkerNotify,
             weigh: this.#weighContent,
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s, workspaceId),
@@ -1278,7 +1259,7 @@ export default class TurnRunner {
         let reasoningRequestSequence = 0;
         const end = (): void => {
             if (!reasoningStarted) return;
-            this.#reasoningEventNotify!(workspaceId, {
+            this.#notify.reasoningEventNotify!(workspaceId, {
                 workerId,
                 loopId,
                 turnId,
@@ -1294,7 +1275,7 @@ export default class TurnRunner {
             reasoningRequestSequence = modelCall.requestSequence;
             return settle;
         };
-        const observeReasoning = this.#reasoningEventNotify === undefined
+        const observeReasoning = this.#notify.reasoningEventNotify === undefined
             ? undefined
             : (delta: string): void => {
                 if (reasoningRequestSequence === 0) {
@@ -1302,7 +1283,7 @@ export default class TurnRunner {
                 }
                 if (!reasoningStarted) {
                     reasoningStarted = true;
-                    this.#reasoningEventNotify!(workspaceId, {
+                    this.#notify.reasoningEventNotify!(workspaceId, {
                         workerId,
                         loopId,
                         turnId,
@@ -1311,7 +1292,7 @@ export default class TurnRunner {
                         phase: "start",
                     });
                 }
-                this.#reasoningEventNotify!(workspaceId, {
+                this.#notify.reasoningEventNotify!(workspaceId, {
                     workerId,
                     loopId,
                     turnId,
@@ -1696,7 +1677,7 @@ export default class TurnRunner {
                 level: "warn",
                 message: `${split.outside.tokens} tokens emitted outside OPs. Discarded.`,
             });
-            this.#outsideEventNotify?.(workspaceId, {
+            this.#notify.outsideEventNotify?.(workspaceId, {
                 workerId,
                 loopId,
                 turnId: request.turnId,

@@ -67,6 +67,13 @@ The invoked handler owns this admission, not an address it consumes internally.
 An execution delegates its blocks to the selected executor under {§executor-metadata};
 its source acquisition is a separate READ without inherited execution metadata.
 
+§service-metadata-keys **Two keys are the service's, withheld from every owner.**
+`MetadataOptions.SERVICE_KEYS` names `env` and `lifetime`: the reader strips them from
+every owner's `options` and surfaces them raw beside it, so no scheme or executor
+interprets or refuses them and the service alone owns their shapes — the environment a
+scope opens, and how long its live work may run. `pattern` is the language's, lifted
+before the block reaches the reader ({§matcher-option}).
+
 {§manifest-capability-traits} `traits` are closed manifest data, not a policy
 channel. Names match `^[a-z][a-z0-9-]*$`, are unique, and carry through a
 synthesized runtime-output scheme. A handler never interprets policy or a named

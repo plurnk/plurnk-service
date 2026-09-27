@@ -1070,6 +1070,15 @@ single operation captures the equivalent boundary before dispatch. This limits
 only log-row selection: operation phasing and same-turn resource effects retain
 their ordinary contracts.
 
+### §engine-notifications One bundle of daemon callbacks
+
+The daemon's observation callbacks — stream, reasoning, outside-text and packet
+events, worker wake, inject and cancel, operation settlement, notices — are one
+declared bundle (`EngineNotifications`). The Engine receives them flat, carries
+them as one value, and every consumer reads the callbacks it uses from that
+value; adding one is a declaration and a use, never an edit to the constructors
+between. Scheme contexts still expose the specific callbacks a handler may call.
+
 ### §engine-rails Engine rails
 
 After each admitted turn, one inline verdict decides whether the loop continues.
@@ -3004,7 +3013,8 @@ Per-tool programs such as `go`, `cargo`, `make`, and `npm` do not earn executor 
 
 §exec-lifetime **How long a spawn may live is the fence's metadata, one field.**
 `[{"lifetime": …}]` takes a duration (`30s`, `30m`, `2h`), or one of three words;
-absent is `loop`. An execution takes no scope: a numeric coordinate on an
+absent is `loop`. The key is one of the service's reserved metadata keys, withheld
+from every owner by the framework ({§service-metadata-keys}). An execution takes no scope: a numeric coordinate on an
 executor target is refused `scope-unsupported` (400), naming the field.
 
 | `lifetime`   | The spawn |

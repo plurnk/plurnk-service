@@ -6,13 +6,15 @@
 import Results, { type SchemeResult } from "./Results.ts";
 
 export type MetadataOptionsParsed =
-    // `env` and `lifetime` are the service's reserved keys ({§scheme-metadata-modifier}): withheld
-    // from `options` so no owner interprets them, surfaced raw for the service, which owns their
-    // shapes and names.
+    // The service's reserved keys ({§service-metadata-keys}): withheld from `options` so no owner
+    // interprets them, surfaced raw for the service, which owns their shapes.
     | { readonly options: Readonly<Record<string, unknown>>; readonly env?: unknown; readonly lifetime?: unknown }
     | { readonly failure: SchemeResult };
 
 export default class MetadataOptions {
+    // {§service-metadata-keys} — the keys every owner's `options` is stripped of.
+    static readonly SERVICE_KEYS = Object.freeze(["env", "lifetime"] as const);
+
     // `source` names the owner in the Problem (`executor:metadata`, `http`, …).
     static parse(blocks: readonly string[] | null | undefined, source: string, extra: Record<string, unknown> = {}): MetadataOptionsParsed {
         const fail = (code: string, detail: string): MetadataOptionsParsed => ({
@@ -39,13 +41,12 @@ export default class MetadataOptions {
         // {§matcher-option} — `pattern` is the language's key: the parser lifts it into the
         // statement's matcher and leaves the block for its owner, who never interprets it.
         delete options.pattern;
-        // `env` is the service's: the environment of the scope an operation opens.
-        const env = options.env;
-        delete options.env;
-        // `lifetime` is the service's too: how long the live work an operation opens may run
-        // ({§exec-lifetime}).
-        const lifetime = options.lifetime;
-        delete options.lifetime;
-        return { options, ...(env === undefined ? {} : { env }), ...(lifetime === undefined ? {} : { lifetime }) };
+        const reserved: { env?: unknown; lifetime?: unknown } = {};
+        for (const key of MetadataOptions.SERVICE_KEYS) {
+            if (!(key in options)) continue;
+            reserved[key] = options[key];
+            delete options[key];
+        }
+        return { options, ...reserved };
     }
 }

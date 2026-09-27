@@ -129,3 +129,13 @@ does not crash discovery: the family result preserves its package identity as
 skipped evidence. The composed host decides how to present that evidence.
 Direct framework consumers receive the same safe load boundary and can choose
 their own presentation.
+
+## §observed-span Redaction-first spans
+
+`observed(tracer, name, attributes, fn, options?)` and its synchronous twin wrap
+one span around `fn` on the caller's tracer: attributes admit strings (capped at
+300 characters), numbers and booleans and drop everything else; a thrown error
+marks the span `ERROR` and records only `error.type`, the error's class name,
+never its message. Every instrumented package binds these to its own tracer
+rather than declaring a second helper; prompts, payloads and arbitrary URLs never
+reach a span through them.

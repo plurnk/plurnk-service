@@ -55,20 +55,8 @@ says why it was refused.
 
 ## Lifetime
 
-How long a command may run is one metadata field; absent, it ends with the loop.
-
-```sh [{"lifetime": "30m"}]
-npm run e2e
-```
-
-```sh [{"lifetime": "detached"}]
-npm run dev
-```
-
-A duration (`30s`, `30m`, `2h`) kills the command at that deadline. `detached`
-outlives the loop: it runs until it exits or is KILLed. `turn` keeps the command
-only through the current turn. While a stream is live, observation wakes arrive
-on the daemon's cadence and present it for inspection.
+How long a command may run is the heading's `lifetime` metadata field, the
+service's (`env.md`); absent, the run ends with the loop.
 
 ## Live input
 

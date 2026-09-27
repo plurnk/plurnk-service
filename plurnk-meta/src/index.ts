@@ -54,6 +54,8 @@ const SCHEME_TEACHING = Object.freeze({
 
 // {§teaching-corpus} — the authored package membership is one exported fact;
 // consumers decide when and where each required source is projected.
+export { observed, observedSync } from "./observe.ts";
+
 export const TEACHING_CORPUS = Object.freeze({
     policy: "POLICY.md",
     recap: "recap.md",

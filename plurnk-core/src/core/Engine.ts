@@ -9,10 +9,7 @@ import GitMembership from "./git-membership.ts";
 import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { RegistryEntry, RuntimeRegistryRegistration } from "./ExecutorRegistry.ts";
-import type { StreamEventNotify, NoticeNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWorkerNotify } from "./ChannelWrite.ts";
-import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
-import type { OutsideEventNotify } from "./OutsideEvent.ts";
-import type { LoopPacketNotify } from "./LoopPacket.ts";
+import type { EngineNotifications } from "./notifications.ts";
 import { contentWeight } from "./content-weight.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
@@ -29,7 +26,7 @@ import ClientInteractions, { type ClientInteractionPendingEvent } from "./Client
 import type { ProposalProjection } from "@plurnk/plurnk-contracts";
 import Dispatcher from "./Dispatcher.ts";
 import EntryAddressBinding from "./EntryAddressBinding.ts";
-import type { DispatchContext, DispatchResult, OperationSettledNotify, ResolvedClientEntryAddress } from "./Dispatcher.ts";
+import type { DispatchContext, DispatchResult, ResolvedClientEntryAddress } from "./Dispatcher.ts";
 import TurnRunner from "./TurnRunner.ts";
 import { observed } from "../observe/spans.ts";
 import { providerRequestFromStorageRow, type ProviderRequestStorageRow } from "./provider-accounting.ts";
@@ -252,35 +249,25 @@ export default class Engine {
     async drainWorkspaceDerivations(workspaceId: number): Promise<void> {
         await this.#workspaceWarms.get(workspaceId)?.promise;
     }
-    #streamEventNotify: StreamEventNotify | undefined;
-    #wakeWorkerNotify: WakeWorkerNotify | undefined;
+    readonly #notify: EngineNotifications;
     readonly #acquireWorkspaceTurn: AcquireWorkspaceTurn;
     readonly #workspaceTurnStarting: WorkspaceTurnStarting | undefined;
     readonly #loopDriver: LoopDriver;
 
-    constructor({ db, lifecycle, schemes, mimetypes, streamEventNotify, reasoningEventNotify, outsideEventNotify, loopPacketNotify, wakeWorkerNotify, injectWorker, cancelWorker, operationSettledNotify, acquireWorkspaceTurn, workspaceTurnStarting, noticeNotify, weigh }: {
+    // The daemon's callbacks arrive flat and travel as one bundle ({§engine-notifications}).
+    constructor({ db, lifecycle, schemes, mimetypes, acquireWorkspaceTurn, workspaceTurnStarting, weigh, ...notify }: {
         db: Db;
         lifecycle?: LoopLifecycle;
         schemes: SchemeRegistry;
         mimetypes?: Mimetypes;
-        streamEventNotify?: StreamEventNotify;
-        reasoningEventNotify?: ReasoningEventNotify;
-        outsideEventNotify?: OutsideEventNotify;
-        loopPacketNotify?: LoopPacketNotify;
-        wakeWorkerNotify?: WakeWorkerNotify;
-        injectWorker?: InjectWorkerNotify;
-        cancelWorker?: CancelWorkerNotify;
-        operationSettledNotify?: OperationSettledNotify;
         acquireWorkspaceTurn?: AcquireWorkspaceTurn;
         workspaceTurnStarting?: WorkspaceTurnStarting;
-        noticeNotify?: NoticeNotify;
         weigh?: (text: string) => number;
-    }) {
+    } & EngineNotifications) {
         this.#db = db;
         this.#lifecycle = lifecycle ?? new LoopLifecycle(db);
         this.#schemes = schemes;
-        this.#streamEventNotify = streamEventNotify;
-        this.#wakeWorkerNotify = wakeWorkerNotify;
+        this.#notify = notify;
         this.#acquireWorkspaceTurn = acquireWorkspaceTurn ?? (async () => () => {});
         this.#workspaceTurnStarting = workspaceTurnStarting;
         // Default to empty discovery — standalone Engine construction (in
@@ -296,7 +283,7 @@ export default class Engine {
 
         const executors = (): ExecutorRegistry | undefined => this.#executors;
         const loopSignal = (loopId: number): AbortSignal | undefined => this.#loopSignals.get(loopId);
-        this.#notices = new NoticeChannel({ notify: noticeNotify });
+        this.#notices = new NoticeChannel({ notify: notify.noticeNotify });
         this.#problems = new ProblemLog(db, this.#weighContent);
         this.#strikes = new StrikeRail(db);
         this.#packets = new PacketBuilder({
@@ -306,8 +293,7 @@ export default class Engine {
         this.#interactions = new ClientInteractions(db);
         const entryAddresses = new EntryAddressBinding();
         this.#proposals = new ProposalLifecycle({
-            db, schemes, notices: this.#notices,
-            streamEventNotify, wakeWorkerNotify,
+            db, schemes, notices: this.#notices, notify,
             weigh: this.#weighContent, mimetypes: this.#mimetypes, executors, loopSignal,
             liveSubscriptions: this.#liveSubscriptions,
             interactions: this.#interactions,
@@ -319,7 +305,7 @@ export default class Engine {
             interactions: this.#interactions,
             executors, loopSignal,
             settleDerivations: (context) => this.#queueWorkspaceWarm(context, true, false),
-            streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, operationSettledNotify,
+            notify,
             liveSubscriptions: this.#liveSubscriptions,
             entryAddresses });
         this.#turnRunner = new TurnRunner({
@@ -333,11 +319,7 @@ export default class Engine {
             packets: this.#packets,
             dispatcher: this.#dispatcher,
             liveSubscriptions: this.#liveSubscriptions,
-            streamEventNotify,
-            reasoningEventNotify,
-            outsideEventNotify,
-            loopPacketNotify,
-            wakeWorkerNotify,
+            notify,
             executors,
             loopSignal,
             interactions: this.#interactions,
@@ -350,9 +332,9 @@ export default class Engine {
             mimetypes: this.#mimetypes,
             executors,
             weigh: this.#weighContent,
-            streamEventNotify,
-            wakeWorkerNotify,
-            injectWorker,
+            streamEventNotify: notify.streamEventNotify,
+            wakeWorkerNotify: notify.wakeWorkerNotify,
+            injectWorker: notify.injectWorker,
             pushNotice: (workspaceId, workerId, loopId, notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
             defaultChannelFor: (scheme, workspaceId) => schemes.defaultChannelFor(scheme, workspaceId),
             settleDerivations: (context) => this.#queueWorkspaceWarm(context, true, false),
@@ -621,8 +603,8 @@ export default class Engine {
             db: this.#db, workspaceId, workerId: 0, loopId: 0, turnId: 0,
             writer: "_plurnk",
             signal: undefined,
-            streamEventNotify: this.#streamEventNotify,
-            wakeWorkerNotify: this.#wakeWorkerNotify,
+            streamEventNotify: this.#notify.streamEventNotify,
+            wakeWorkerNotify: this.#notify.wakeWorkerNotify,
             weigh: this.#weighContent,
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),

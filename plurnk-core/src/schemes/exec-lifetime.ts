@@ -1,4 +1,5 @@
-// {§exec-lifetime} — how long a spawn may live, stated once in the fence's metadata. A duration
+// {§exec-lifetime} — how long a spawn may live, stated once in the fence's metadata
+// (a service key the framework withholds from every owner, {§service-metadata-keys}). A duration
 // bounds it (504 at the deadline); `loop` — the default, and what absence means — ends it with the
 // loop; `turn` ends it at the worker's next pre-turn; `detached` outlives the loop and is nobody's
 // obligation. Cadence is not here and is not the model's: the daemon's backoff observes an open

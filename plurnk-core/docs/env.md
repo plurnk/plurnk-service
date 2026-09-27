@@ -47,6 +47,24 @@ cargo test
 On `WORK` and `FORK` the same metadata is the child's starting environment: a
 copy of your entries first, then each name here becomes its own (`worker.md`).
 
+## `lifetime`: how long a command runs
+
+The other field the heading's `[metadata]` takes on a command fence. Absent, the
+run ends with the loop.
+
+```sh [{"lifetime": "30m"}]
+npm run e2e
+```
+
+```sh [{"lifetime": "detached"}]
+npm run dev
+```
+
+A duration (`30s`, `30m`, `2h`) kills the command at that deadline. `detached`
+outlives the loop: it runs until it exits or is KILLed. `turn` keeps the command
+only through the current turn. While a stream is live, observation wakes arrive
+on the daemon's cadence and present it for inspection.
+
 ## Names you cannot set
 
 `PLURNK_*` and provider credential names are plurnk's own and never reach a

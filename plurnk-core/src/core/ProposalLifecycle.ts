@@ -14,7 +14,7 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import type { StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
+import type { EngineNotifications } from "./notifications.ts";
 import type { PlurnkSchemeContext, LoopPolicy } from "./scheme-types.ts";
 import { observedSync } from "../observe/spans.ts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
@@ -146,8 +146,7 @@ export default class ProposalLifecycle {
     #db: Db;
     #schemes: SchemeRegistry;
     #notices: NoticeChannel;
-    #streamEventNotify: StreamEventNotify | undefined;
-    #wakeWorkerNotify: WakeWorkerNotify | undefined;
+    readonly #notify: EngineNotifications;
     #weighContent: (text: string) => number;
     #mimetypes: Mimetypes | undefined;
     // Boot-discovered runtime executors, late-injected on Engine — thunked.
@@ -167,12 +166,11 @@ export default class ProposalLifecycle {
     // observers run, so an observer cannot become a hidden policy fallback.
     #listeners: Array<(payload: ProposalPendingEvent) => void> = [];
 
-    constructor({ db, schemes, notices, streamEventNotify, wakeWorkerNotify, weigh, mimetypes, executors, loopSignal, liveSubscriptions, interactions, entryAddresses }: {
+    constructor({ db, schemes, notices, notify, weigh, mimetypes, executors, loopSignal, liveSubscriptions, interactions, entryAddresses }: {
         db: Db;
         schemes: SchemeRegistry;
         notices: NoticeChannel;
-        streamEventNotify?: StreamEventNotify;
-        wakeWorkerNotify?: WakeWorkerNotify;
+        notify: EngineNotifications;
         weigh: (text: string) => number;
         mimetypes?: Mimetypes;
         executors: () => ExecutorRegistry | undefined;
@@ -184,8 +182,7 @@ export default class ProposalLifecycle {
         this.#db = db;
         this.#schemes = schemes;
         this.#notices = notices;
-        this.#streamEventNotify = streamEventNotify;
-        this.#wakeWorkerNotify = wakeWorkerNotify;
+        this.#notify = notify;
         this.#weighContent = weigh;
         this.#mimetypes = mimetypes;
         this.#executors = executors;
@@ -508,8 +505,8 @@ export default class ProposalLifecycle {
             const applyCtx: PlurnkSchemeContext = {
                 db: this.#db, workspaceId, workerId, loopId, turnId,
                 writer: "model", signal: this.#loopSignal(loopId),
-                streamEventNotify: this.#streamEventNotify,
-                wakeWorkerNotify: this.#wakeWorkerNotify,
+                streamEventNotify: this.#notify.streamEventNotify,
+                wakeWorkerNotify: this.#notify.wakeWorkerNotify,
                 weigh: this.#weighContent,
                 mimetypes: this.#mimetypes,
                 ...(ids.resources === undefined ? {} : { resources: ids.resources }),

@@ -19,7 +19,7 @@ import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-t
 import CapabilityResolver from "./CapabilityResolver.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
-import { type StreamEventNotify, type WakeWorkerNotify, type InjectWorkerNotify, type CancelWorkerNotify } from "./ChannelWrite.ts";
+import type { EngineNotifications } from "./notifications.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
@@ -77,7 +77,6 @@ export type DispatchContext = {
 };
 
 export type DispatchResult = SchemeResult;
-export type OperationSettledNotify = (workspaceId: number, logEntryId: number) => Promise<void>;
 
 export interface ResolvedClientEntryAddress {
     readonly scheme: string;
@@ -127,11 +126,7 @@ export default class Dispatcher {
     // {§relation-indexed-dialects} — the engine's derivation pump, awaited by a scheme whose
     // indexed dialect met a still-deriving index.
     #settleDerivations: (context: PlurnkSchemeContext) => Promise<void>;
-    #streamEventNotify: StreamEventNotify | undefined;
-    #wakeWorkerNotify: WakeWorkerNotify | undefined;
-    #injectWorker: InjectWorkerNotify | undefined;
-    #cancelWorker: CancelWorkerNotify | undefined;
-    readonly #operationSettledNotify: OperationSettledNotify | undefined;
+    readonly #notify: EngineNotifications;
     // Per-turn running-worker READ obligations. {§join-blocking-collect}
     #liveSubscriptions: LiveSubscriptions;
     #lifecycle: LoopLifecycle;
@@ -145,7 +140,7 @@ export default class Dispatcher {
     readonly #logWriter: LogWriter;
     readonly #dataRun: DataStatementRunner;
 
-    constructor({ db, lifecycle, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, streamEventNotify, wakeWorkerNotify, injectWorker, cancelWorker, operationSettledNotify, liveSubscriptions, entryAddresses }: {
+    constructor({ db, lifecycle, schemes, mimetypes, weigh, notices, proposals, interactions, executors, loopSignal, settleDerivations, notify, liveSubscriptions, entryAddresses }: {
         db: Db;
         lifecycle: LoopLifecycle;
         schemes: SchemeRegistry;
@@ -157,11 +152,7 @@ export default class Dispatcher {
         executors: () => ExecutorRegistry | undefined;
         loopSignal: (loopId: number) => AbortSignal | undefined;
         settleDerivations: (context: PlurnkSchemeContext) => Promise<void>;
-        streamEventNotify?: StreamEventNotify;
-        wakeWorkerNotify?: WakeWorkerNotify;
-        injectWorker?: InjectWorkerNotify;
-        cancelWorker?: CancelWorkerNotify;
-        operationSettledNotify?: OperationSettledNotify;
+        notify: EngineNotifications;
         liveSubscriptions: LiveSubscriptions;
         entryAddresses: EntryAddressBinding;
     }) {
@@ -175,11 +166,7 @@ export default class Dispatcher {
         this.#executors = executors;
         this.#loopSignal = loopSignal;
         this.#settleDerivations = settleDerivations;
-        this.#streamEventNotify = streamEventNotify;
-        this.#wakeWorkerNotify = wakeWorkerNotify;
-        this.#injectWorker = injectWorker;
-        this.#cancelWorker = cancelWorker;
-        this.#operationSettledNotify = operationSettledNotify;
+        this.#notify = notify;
         this.#liveSubscriptions = liveSubscriptions;
         this.#entryAddresses = entryAddresses;
         this.#capabilities = new CapabilityResolver(db, schemes, executors);
@@ -210,7 +197,7 @@ export default class Dispatcher {
                 this.#proposals.workerApply(statement, result, resolution, ids),
         });
         this.#workerControl = new WorkerControlHandler({ db: this.#db, failure: Dispatcher.#failure });
-        this.#kill = new KillHandler({ db: this.#db, schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, cancelWorker: this.#cancelWorker, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), boundEntryContext: this.#boundEntryContext.bind(this), handlerContext: this.#handlerContext.bind(this), deleteEntry: this.#deleteEntry.bind(this), failure: Dispatcher.#failure });
+        this.#kill = new KillHandler({ db: this.#db, schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, cancelWorker: this.#notify.cancelWorker, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), boundEntryContext: this.#boundEntryContext.bind(this), handlerContext: this.#handlerContext.bind(this), deleteEntry: this.#deleteEntry.bind(this), failure: Dispatcher.#failure });
         this.#disposition = new TurnDispositionHandler({ db: this.#db, lifecycle: this.#lifecycle, unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this) });
         this.#logWriter = new LogWriter({ db: this.#db, weighContent: this.#weighContent, extractTarget: this.#extractTarget.bind(this), canonColumns: this.#canonColumns.bind(this), signalToJson: this.#signalToJson.bind(this), isProposal: Dispatcher.#isProposal });
         this.#dataRun = new DataStatementRunner({ schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), prepareDataRepresentation: this.#prepareDataRepresentation.bind(this), failure: Dispatcher.#failure });
@@ -710,7 +697,7 @@ export default class Dispatcher {
 
     async #notifySettled(context: DispatchContext, logEntryId: number): Promise<void> {
         await context.onSettled?.(logEntryId);
-        await this.#operationSettledNotify?.(context.workspaceId, logEntryId);
+        await this.#notify.operationSettledNotify?.(context.workspaceId, logEntryId);
     }
 
     // {§op-look}: resolve a READ and return its content without writing a
@@ -944,9 +931,9 @@ export default class Dispatcher {
                 (bound) => this.#resourceSelector.capture(targets, bound)) },
             replyToMessage: (statement) => this.#respond(statement, context, loopId),
             signal: this.#loopSignal(loopId),
-            streamEventNotify: this.#streamEventNotify,
-            wakeWorkerNotify: this.#wakeWorkerNotify,
-            injectWorker: this.#injectWorker,
+            streamEventNotify: this.#notify.streamEventNotify,
+            wakeWorkerNotify: this.#notify.wakeWorkerNotify,
+            injectWorker: this.#notify.injectWorker,
             mimetypes: this.#mimetypes,
             weigh: this.#weighContent,
             // {§exec-stream} — a runtime scheme's default channel is its own (stdout), never the

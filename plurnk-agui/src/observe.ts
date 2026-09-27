@@ -1,9 +1,11 @@
 // The AG-UI observational boundary ({§observability-boundary}). This package
 // depends only on the OTel API; the daemon initializes any SDK. Default state is
 // the no-op API. Attributes carry identifiers/statuses only — prompts, payloads,
-// and arbitrary URLs never enter spans here.
+// and arbitrary URLs never enter spans here. The redaction-first helpers are the
+// shared ones ({§observed-span}), bound to this module's tracer.
 
-import { context, SpanStatusCode, trace, type Span } from "@opentelemetry/api";
+import { trace, type Span } from "@opentelemetry/api";
+import { observed as observedWith, observedSync as observedSyncWith } from "@plurnk/plurnk-meta";
 
 const TRACER_NAME = "plurnk.agui";
 
@@ -20,49 +22,14 @@ export const aguiRouteTemplate = (
     return "unmatched";
 };
 
-const MAX_STRING_LENGTH = 300;
-
-const sanitize = (attributes: Record<string, unknown>): Record<string, string | number | boolean> => {
-    const out: Record<string, string | number | boolean> = {};
-    for (const [key, value] of Object.entries(attributes)) {
-        if (value === undefined) continue;
-        if (typeof value === "string") {
-            out[key] = value.length <= MAX_STRING_LENGTH ? value : value.slice(0, MAX_STRING_LENGTH);
-        } else if (typeof value === "number" || typeof value === "boolean") {
-            out[key] = value;
-        }
-    }
-    return out;
-};
-
-export const observed = async <T>(
+export const observed = <T>(
     name: string,
     attributes: Record<string, unknown>,
     fn: (span: Span) => Promise<T>,
-): Promise<T> => {
-    const span = aguiTracer().startSpan(name, { attributes: sanitize(attributes) });
-    try {
-        return await context.with(trace.setSpan(context.active(), span), () => fn(span));
-    } catch (err) {
-        span.setStatus({ code: SpanStatusCode.ERROR });
-        throw err;
-    } finally {
-        span.end();
-    }
-};
+): Promise<T> => observedWith(aguiTracer(), name, attributes, fn);
 
 export const observedSync = <T>(
     name: string,
     attributes: Record<string, unknown>,
     fn: () => T,
-): T => {
-    const span = aguiTracer().startSpan(name, { attributes: sanitize(attributes) });
-    try {
-        return fn();
-    } catch (err) {
-        span.setStatus({ code: SpanStatusCode.ERROR });
-        throw err;
-    } finally {
-        span.end();
-    }
-};
+): T => observedSyncWith(aguiTracer(), name, attributes, fn);
