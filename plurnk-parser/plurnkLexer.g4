@@ -164,6 +164,12 @@ private knownExecutor(name: string): boolean {
     return false;
 }
 private slotReady: boolean = false;
+// {§scope-on-scopeless}: whether this heading has taken its target; a SEND without one takes no scope.
+private headingTarget: boolean = false;
+private scopeless(): boolean {
+    return this.openOp === "WORK" || this.openOp === "FORK" || this.openOp === "BARE" || this.openOp === "NOTE"
+        || this.openOp === "SEND" && !this.headingTarget;
+}
 private targetDepth: number = 0;
 private metadataDepth: number = 0;
 private metadataReady: boolean = false;
@@ -325,6 +331,7 @@ private open(implicitName?: string): void {
     this.started = true;
     this.slotReady = true;
     this.metadataReady = this.execFence || this.openOp === "SEND" || this.openOp === "WAIT";
+    this.headingTarget = false;
     this.inlineBody = false;
 }
 
@@ -644,6 +651,8 @@ SLOTS_LBRACKET : { this.slotReady && this.metadataReady }? '[' { this.metadataDe
 // {§send-wait-scope} — whatever a WAIT names in its scope slot is skipped unread, never refused
 // (#756): the park needs no selection. An aside (`<!--`) is not a scope.
 SLOTS_WAIT_SCOPE : { this.slotReady && this.openOp === "WAIT" }? '<' (~[!\r\n>] ~[\r\n>]*)? '>' -> skip ;
+// {§scope-on-scopeless} - a scope on an operation that takes none is skipped, and named once. An aside (`<!--`) is not a scope.
+SLOTS_NO_SCOPE : { this.slotReady && this.scopeless() }? '<' (~[!\r\n>] ~[\r\n>]*)? '>' { this.noteNotation("scope"); } -> skip ;
 SLOTS_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? TEXT_L_PATTERN -> type(L_MARKER) ;
 SLOTS_L : { this.slotReady }? L_PATTERN -> type(L_MARKER) ;
 // {§combined-anchor-tolerance} — `<@abcde 42>` is the anchor with its displayed line number; the builder drops the number.
@@ -685,7 +694,7 @@ TARGET_NEST_END : { this.targetDepth > 0 }? ')' { this.targetDepth--; } -> type(
 TARGET_TEXT_SCOPE : { this.isTextCoordinateOp() }? TEXT_L_PATTERN { this.targetScopeEnd() }? -> type(L_MARKER) ;
 TARGET_SCOPE : { this.openOp === "FIND" || this.execFence || this.openOp === "SEND" }? L_PATTERN { this.targetScopeEnd() }? -> type(L_MARKER) ;
 TARGET_TICK : '`' -> type(TARGET_TEXT) ;
-TARGET_END : ')' { this.slotReady = true; this.metadataReady = true; } -> type(RPAREN), mode(SLOTS) ;
+TARGET_END : ')' { this.slotReady = true; this.metadataReady = true; this.headingTarget = true; } -> type(RPAREN), mode(SLOTS) ;
 
 mode METADATA;
 METADATA_FENCE : { this.closingAt(1) }? FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;

@@ -301,6 +301,7 @@ export default class PlurnkParser {
                 ? `\`${note.text}\` is how the log shows an address; it was read as the target. Write the target in parentheses: \`${PlurnkParser.heading(statement)}\`.`
                 : note.kind === "charge" ? AstBuilder.chargeAdvisory(note.text)
                     : note.kind === "aside" ? AstBuilder.dotAsideAdvisory(note.text.replace(/^\u00B7[ \t]*/u, "").trim())
+                    : note.kind === "scope" ? PlurnkParser.#scopelessAdvisory(statement, note.text)
                         : `\`${note.text}\` was read as the scope \`<${note.text}>\`; a scope is written in angle brackets.`;
             // COPY and MOVE show both operands in one corrected line: say it once.
             const key = `${note.line}|${note.kind === "arrow" ? note.kind : message}`;
@@ -347,6 +348,15 @@ export default class PlurnkParser {
             items.sort((a, b) => position(a).line - position(b).line || position(a).column - position(b).column);
         }
         return { items, unparsedTail };
+    }
+
+    // {§scope-on-scopeless} — the operation ran without the scope it cannot take; say which slots it has.
+    static #scopelessAdvisory(statement: ClientStatement, scope: string): string {
+        const op = writtenOp(statement);
+        const slots = op === "NOTE" ? "`NOTE` takes no target or scope"
+            : op === "SEND" ? "`SEND` without a recipient takes no scope"
+                : `\`${op}\` takes a target only`;
+        return `${slots}; the scope \`${scope}\` was ignored. A scope selects lines in READ, EDIT and KILL.`;
     }
 
     // {§response-text}: only the lexer's outside-text channel is recoverable; a malformed

@@ -215,9 +215,11 @@ test("{§invalid-scope-diagnostic} {§error-shape} scope diagnostics do not borr
     }
     assert.equal(firstError(section("SEND", " (worker://peer) <later>")).message,
         "invalid SEND scope \"<later>\"; use a numeric scope supported by the recipient");
+    // {§scope-on-scopeless} — an operation that takes no scope drops it and runs, with one advisory naming its slots.
     for (const op of ["BARE", "WORK", "FORK"] as const) {
-        assert.equal(firstError(section(op, " <result range>")).message,
-            `invalid ${op} scope "<result range>"; this operation takes no scope`);
+        const result = PlurnkParser.parse(section(op, " <result range>"));
+        assert.deepEqual(result.items.map((item) => item.kind === "error" ? `${item.error.severity}: ${item.error.message}` : item.kind === "statement" ? item.statement.op : item.kind),
+            [op, `warning: \`${op}\` takes a target only; the scope \`<result range>\` was ignored. A scope selects lines in READ, EDIT and KILL.`]);
     }
     // {§send-wait-scope} — a WAIT scope is skipped unread, never refused (#756).
     assert.deepEqual(PlurnkParser.parse(section("WAIT", " <result range>")).items.filter((item) => item.kind === "error"), []);
