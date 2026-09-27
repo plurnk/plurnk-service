@@ -955,7 +955,7 @@ alias scoping. Zero, other negative values and non-integers are invalid.
 
 | Boundary | Contract |
 | --- | --- |
-| Identity | Provider instances and aliases sharing the resolved API base URL share one allowance. SDK/plugin-owned endpoints without a resolved URL share their provider identity. Conflicting limits for one identity fail construction; they never create independent queues. Limits are fixed for that process lifetime. |
+| Identity | Provider instances and aliases sharing the resolved API base URL share one allowance. SDK/plugin-owned endpoints without a resolved URL share their provider identity. Conflicting limits for one identity fail construction, naming the identity and both values; they never create independent queues. The daemon reads its environment once at boot, so an identity's limit cannot change within a process: reconstructing a provider from that environment reuses its allowance, and in-flight leases keep counting. |
 | Admission | FIFO among live waiters. The lease begins before the physical request observer and ends after the complete response or transport failure settles, including streamed bodies. |
 | Cancellation | A queued abort removes that waiter and preserves the caller's reason. It opens no physical request or accounting row. In-flight cancellation signals the transport; capacity is released when that attempt unwinds. A transport still running despite abort does not authorize exceeding the limit. |
 | Retries | Backoff holds no lease. Each retry rejoins admission as a new physical attempt. |

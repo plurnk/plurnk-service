@@ -13,7 +13,7 @@ export default class InferenceAdmission {
         const existing = this.#endpoints.get(key);
         if (existing !== undefined) {
             if (existing.#limit !== limit) {
-                throw new TypeError("Provider aliases resolving to the same endpoint have conflicting PLURNK_PROVIDERS_MAX_CONCURRENCY values");
+                throw new TypeError(`Provider aliases resolving to ${key} have conflicting PLURNK_PROVIDERS_MAX_CONCURRENCY values ${existing.#limit} and ${limit}; one endpoint has one allowance`);
             }
             return existing;
         }

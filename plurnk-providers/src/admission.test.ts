@@ -290,7 +290,9 @@ test("{§provider-inference-admission} conflicting aliases cannot create indepen
     await provider(wire.url, "openai/gpt-4.1-mini");
     await assert.rejects(provider(wire.url, "openai/gpt-4.1-mini", {
         PLURNK_PROVIDERS_MAX_CONCURRENCY_LIMITED: "2",
-    }), /conflicting.*MAX_CONCURRENCY/);
+    }), (error: Error) => error.message.includes(new URL(wire.url).href.replace(/\/+$/, ""))
+        && /conflicting PLURNK_PROVIDERS_MAX_CONCURRENCY values -?\d+ and 2/.test(error.message),
+    "the refusal names the endpoint and both limits");
 });
 
 for (const value of ["0", "-2", "1.5", "NaN", "Infinity", "9007199254740992"]) {
