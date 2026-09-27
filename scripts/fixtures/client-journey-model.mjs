@@ -117,7 +117,7 @@ export const startClientJourneyModel = async () => {
                 assert.match(String(messageRead.body ?? ""), /^(?:@[0-9A-Za-z]{5} )?\s*1:Exercise the installed interactive terminal\./u,
                     "the READ receipt contains the addressed message, not merely a final success claim");
                 for (const witness of [
-                    /(?:^|\n)@[0-9A-Za-z]{5} +\d+:```BARE\n@[0-9A-Za-z]{5} +\d+:A self-contained prompt\./u,
+                    /(?:^|\n)@[0-9A-Za-z]{5} +\d+:```BARE\n@[0-9A-Za-z]{5} +\d+:A self-contained prompt, with everything it needs pasted in\./u,
                     /(?:^|\n)@[0-9A-Za-z]{5} +\d+:```node <!--/u,
                     /(?:^|\n) *\d+:.*\[Complete \.env\.defaults\]\(\.env\.defaults\)/u,
                     /^### log:\/\/\/\S+\/READ → skill:\/\/plurnk\/\.env\.defaults · \d+$/mu,
