@@ -522,9 +522,15 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                     ? []
                     : executors.availableRuntimes(core.workspaceId)
                         .filter((tag) => executors.toolRegistry(tag, core.workspaceId)?.tools.some((tool) => tool.target === target) === true);
-                const recovery = ownerRuntimes.length === 0
-                    ? `The target must name an existing program resource. A targetless ${runtime} takes the command in its body.`
-                    : `The tool \`${target}\` is registered under executor \`${ownerRuntimes[0]}\`; use that name on the opening fence.`;
+                // A target that names another available executor is a fence written under the wrong
+                // runtime (`sh (python3)` over a Python body, #895); the recovery names that fence.
+                const runtimeTarget = executors !== undefined && target !== null && target !== runtime
+                    && executors.availableRuntimes(core.workspaceId).includes(target);
+                const recovery = ownerRuntimes.length > 0
+                    ? `The tool \`${target}\` is registered under executor \`${ownerRuntimes[0]}\`; use that name on the opening fence.`
+                    : runtimeTarget
+                        ? `\`${target}\` is its own executor; use that name on the opening fence and put the program in the body.`
+                        : `The target must name an existing program resource. A targetless ${runtime} takes the command in its body.`;
                 return refuse(
                     "target-not-found",
                     `The ${runtime} program does not resolve as a script or a registered tool for this executor.`,

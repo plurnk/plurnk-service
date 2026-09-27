@@ -232,6 +232,21 @@ test("{§exec-target-routing} a target that is neither a directory nor a script 
     });
 });
 
+test("{§exec-target-routing} a target that names another available executor is refused with that executor's fence (#895)", async () => {
+    await withWorkspace(async (ctx) => {
+        const result = await ctx.engine.dispatch({
+            statement: execStmt(null, "python3", "import json\nprint(json.dumps({\"ok\": True}))"),
+            workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 400, "refused, never spawned as `sh python3`");
+        const rendered = JSON.stringify(result);
+        assert.match(rendered, /target-not-found/);
+        assert.match(rendered, /`python3` is its own executor; use that name on the opening fence and put the program in the body\./, "the recovery names the fence the body wanted");
+        assert.doesNotMatch(rendered, /A targetless sh takes the command in its body/, "the generic recovery yields to the specific one");
+    });
+});
+
 test("{§exec-target-routing} `[{\"cwd\": \".\"}]` in a headless workspace is the shell's own cwd, and the receipt names it", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();

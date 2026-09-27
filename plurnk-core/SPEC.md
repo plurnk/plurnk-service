@@ -2870,7 +2870,9 @@ anything spawns — a file is the script; a directory is refused `400 target-not
 pointing at `[{"cwd": "…"}]`; an absent path is refused `400 target-not-found`, giving the
 applicable accepted form without inferring what the model meant. When the target is a
 registered tool of another executor, recovery gives that tool's exact bracketed
-invocation; otherwise it points at an existing script or a bare shell-command body. A non-file resource
+invocation; when it names another available executor (`sh (python3)` over a Python body, #895),
+recovery names that executor's fence — `` `python3` is its own executor; use that name on the
+opening fence and put the program in the body. ``; otherwise it points at an existing script or a bare shell-command body. A non-file resource
 target that cannot be read keeps the owning READ's failure identity (#163) and states
 the slot contract in its recovery — the resource is the program and the body its stdin;
 a command belongs beneath a targetless heading — without guessing which was meant (#425). The started receipt always
