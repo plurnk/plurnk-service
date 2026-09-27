@@ -77,3 +77,19 @@ test("{§message-run-on} running on never hides an operation the author wrote: a
     assert.deepEqual(executed.map(({ op }) => op), ["NOTE", "WORK", "WAIT"]);
     assert.match(bodyOf(executed[1])!, /^Run from the repository root[\s\S]*including any FAILED\/ERROR blocks and tracebacks\.$/u);
 });
+
+test("{§naked-kill} a naked KILL shows a fenced `KILL (notes.md)` without running it; the deliverable is the whole turn (recorded rtx5070 demo)", () => {
+    const text = recorded("rtx5070-show-dont-run-77bf0104-1-2.md");
+    const result = parse(text);
+    const executed = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.deepEqual(executed.map(({ op }) => op), ["KILL"], "no targeted KILL runs");
+    const [kill] = executed;
+    assert.equal(kill?.op === "KILL" ? kill.target : "targeted", null, "the one statement is the parameterless completion");
+    assert.equal(bodyOf(kill), text.split("\n").slice(1).join("\n"), "the deliverable is every line after the naked name");
+    assert.match(bodyOf(kill)!, /```KILL \(notes\.md\)\n```/u);
+    assert.match(bodyOf(kill)!, /I'm leaving it in place\.$/u);
+    assert.deepEqual(result.items.filter((item) => item.kind === "text"), []);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []), ["`KILL` opened with no fence; the taught form is three backticks."]);
+    const closed = statements("KILL\nShown:\n```READ (a.md)\n```\nKILL\n```READ (b.md)\n```");
+    assert.deepEqual(closed.map((statement) => `${statement.op}${"target" in statement && statement.target ? ` ${statement.target.raw}` : ""}`), ["KILL", "READ b.md"], "the name alone still closes a naked block; a fence inside never does");
+});

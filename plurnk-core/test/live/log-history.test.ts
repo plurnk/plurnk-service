@@ -3,7 +3,7 @@
 // that the production loop, broad log KILL, and forensic digest retain the
 // same append-only contract end to end.
 
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { liveTest as test } from "../live-test.ts";
@@ -78,7 +78,7 @@ test("live: broad log KILL retires READ receipts without erasing program artifac
 
         const digestDir = join(s.runDir, "digest");
         const digest = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
-            turns: Array<{ id: number; program: string | null }>;
+            turns: Array<{ id: number; program: string | null; artifact: string | null }>;
             log_entries: Array<{ id: number; projection: { active: boolean } }>;
         };
         const durablePrograms = digest.turns.toSorted((a, b) => a.id - b.id)
@@ -88,7 +88,9 @@ test("live: broad log KILL retires READ receipts without erasing program artifac
             "every retired READ remains durable and forensically marked inactive",
         );
 
-        const assistantArtifacts = (await readdir(digestDir)).filter((name) => /^packet\d+\.assistant\.md$/u.test(name)).sort();
+        // {§share-packet-names}: artifacts are named by log coordinate; the digest's turn order is chronological.
+        const assistantArtifacts = digest.turns.toSorted((a, b) => a.id - b.id)
+            .flatMap(({ artifact }) => artifact === null ? [] : [`${artifact}.assistant.md`]);
         const artifactSources = await Promise.all(assistantArtifacts.map((name) => readFile(join(digestDir, name), "utf8")));
         assert.deepEqual(artifactSources, durablePrograms, "every admitted program remains an exact chronological artifact");
         assert.ok(priorPrograms.filter(({ kind }) => kind === "ops").every(({ content }) => artifactSources.includes(content)),

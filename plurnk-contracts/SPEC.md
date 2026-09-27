@@ -306,7 +306,7 @@ horizontal whitespace after it, opens that operation as if it were fenced with t
 backticks: no target, no modifiers, and a body that runs to a line that is exactly the name
 again, to the next heading ({§fence-heading-in-body}), or to the end of the turn. A fence inside
 naming nothing known is body; the block expects no closer, so its body is never cut
-back ({§closer-fallback}). It runs, and one warning-severity receipt follows its statement —
+back ({§closer-fallback}). A naked `KILL` alone holds every fence inside it as text ({§naked-kill}). It runs, and one warning-severity receipt follows its statement —
 `` `KILL` opened with no fence; the taught form is three backticks. `` One rule for every native
 operation: a naked `WAIT` parks, a naked `NOTE` takes its text, a naked `READ` meets the ordinary
 missing-target refusal. A closer the author wrote anyway is still not body: when the body's last line is
@@ -441,6 +441,16 @@ operations the author wrote than the best repaired reading, the repaired reading
 11,235 distinct recorded benchmark emissions this changes 26 readings: bodies that had ended at an
 inner fence keep what followed it (the qflash run192, run90 and run210 deliverables regain their last
 sections), one echoed transcript (glm run155) runs one more operation, and none loses one.
+
+§naked-kill **A naked KILL is the whole rest of the turn.** A parameterless `KILL` opened by its
+name alone ({§naked-operation}) is a completion, and nothing can follow a completion: every fenced
+block inside it, a native operation heading included, is text the deliverable shows, exactly as
+inside a fenced KILL ({§terminal-kill}), and the block ends only at its name alone on a line or at
+the end of the input. No operation the deliverable shows runs. In the rtx5070 demo
+`demo-show-dont-run-sJU8zO` the model, asked to show a deletion without doing it, answered with a
+naked `KILL` whose deliverable quoted ```` ```KILL (notes.md) ````; read as a heading that ended
+the deliverable, the quoted KILL ran and deleted the file. The fenced form of the same answer had
+already read as quotation; this rule makes the two forms one.
 
 §pairing-witness **Witnesses.**
 

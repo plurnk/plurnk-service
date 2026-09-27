@@ -451,7 +451,8 @@ class Search {
         switch (line.kind) {
             case "name":
                 if (context === null) {
-                    yield { kind: "child", cost: ZERO, effects: [], child: { kind: "naked", character: "`", width: Infinity, bareOpened: false, name: line.name, top: true, quoted: false }, line: i, flags };
+                    // {§naked-kill}: a naked KILL is a completion, so nothing can follow it — every fence inside is text.
+                    yield { kind: "child", cost: ZERO, effects: [], child: { kind: "naked", character: "`", width: Infinity, bareOpened: false, name: line.name, top: true, quoted: false, terminal: line.name === "KILL" }, line: i, flags };
                     return;
                 }
                 if (context.kind === "naked" && context.name === line.name && context.top) yield { kind: "end", cost: ZERO, effects: [], end: at(i + 1), record: { kind: "closer", line: i } };

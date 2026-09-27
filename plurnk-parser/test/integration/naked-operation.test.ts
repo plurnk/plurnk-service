@@ -23,8 +23,11 @@ test("{§naked-operation}: the name alone again closes the block; a heading ends
     const closed = PlurnkParser.parse("KILL\nThe answer.\nKILL\n");
     assert.deepEqual(statements(closed).map((s) => [s.op, bodyOf(s)]), [["KILL", "The answer."]]);
     assert.deepEqual(warnings(closed), [RECEIPT("KILL")], "the closing name draws nothing of its own");
-    const headed = PlurnkParser.parse("KILL\nThe answer.\n```READ (x.md)\n```");
-    assert.deepEqual(statements(headed).map((s) => [s.op, bodyOf(s)]), [["KILL", "The answer."], ["READ", null]]);
+    const headed = PlurnkParser.parse("NOTE\nRemember this.\n```READ (x.md)\n```");
+    assert.deepEqual(statements(headed).map((s) => [s.op, bodyOf(s)]), [["NOTE", "Remember this."], ["READ", null]]);
+    // {§naked-kill} — a naked KILL is a completion: a heading inside it is shown, never run.
+    const shown = PlurnkParser.parse("KILL\nThe answer.\n```READ (x.md)\n```");
+    assert.deepEqual(statements(shown).map((s) => [s.op, bodyOf(s)]), [["KILL", "The answer.\n```READ (x.md)\n```"]]);
     const last = PlurnkParser.parse("Text first.\nKILL");
     assert.deepEqual(statements(last).map((s) => [s.op, bodyOf(s)]), [["KILL", null]], "a bare name as the last line concludes with no body");
 });
