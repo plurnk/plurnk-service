@@ -1,5 +1,6 @@
 import type { MatcherBody } from "@plurnk/plurnk-contracts";
 import { InvalidOperationResultError, type MatchEvidence } from "@plurnk/plurnk-schemes";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import Matcher from "../content/matcher.ts";
 import MutationEffects from "./MutationEffects.ts";
 import PatternEdits from "../content/pattern-edits.ts";
@@ -43,7 +44,8 @@ export default class PatternSelection {
                 ? PatternSelection.refuse("pattern-unapplicable", 422, match.reason ?? "The pattern could not be applied to the resource.", scheme, operation)
                 : Results.assert({ status: match.status >= 400 ? match.status : 422, problem: match.problem }) };
         }
-        const lineCount = content.length === 0 ? 0 : content.split("\n").length;
+        // {§logical-line-count} — the scope's -1 clamps to the last logical line.
+        const lineCount = TextCoordinates.lineCount(content);
         const numeric = marks?.map((mark) => {
             if (typeof mark !== "number") throw new InvalidOperationResultError("A pattern operation's scope must be numeric after anchor resolution.");
             return mark;

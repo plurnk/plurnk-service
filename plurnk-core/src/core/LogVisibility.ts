@@ -21,10 +21,6 @@ export default class LogVisibility {
     static readonly OPEN: LogFoldRanges = Object.freeze([]);
     static readonly FOLDED: LogFoldRanges = Object.freeze([Object.freeze([1, -1] as const)]);
 
-    static lineCount(content: string): number {
-        return content.length === 0 ? 0 : TextCoordinates.logicalLines(content).length;
-    }
-
     static parse(value: unknown): LogFoldRanges {
         let decoded = value;
         if (typeof value === "string") {
@@ -80,7 +76,7 @@ export default class LogVisibility {
         const retire = `KILL (${identity}) with no scope retires the whole row`;
         const refuse = (detail: string, recovery = `Trim one line with <L> or lines L through M with <L,M>; ${retire}.`) =>
             ({ ok: false, status: 400, code: "curation-scope-invalid", detail, recovery }) as const;
-        const total = LogVisibility.lineCount(content);
+        const total = TextCoordinates.lineCount(content);
         if (marker === null) {
             return { ok: true, range: total === 0 ? null : [1, -1] };
         }

@@ -4,6 +4,7 @@ import {
     assertResourceEffects,
     type EditReceipt,
 } from "../content/index.ts";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import LogVisibility, { type LogFoldRanges } from "./LogVisibility.ts";
 import LineSelection from "../content/line-selection.ts";
 import ByteView from "../content/byte-view.ts";
@@ -42,7 +43,7 @@ const EMPTY_BODY: ResolvedLogBody = Object.freeze({
 export default class LogBody {
     static readable(row: LogBodyRow, trimmed: LogFoldRanges): ResolvedLogBody & { lineOrdinals: readonly number[]; totalLines: number } {
         const body = LogBody.resolve(row);
-        const totalLines = LogVisibility.lineCount(body.content);
+        const totalLines = TextCoordinates.lineCount(body.content);
         const ordinals = LogVisibility.visibleLineOrdinals(trimmed, totalLines);
         return { ...body, content: LineSelection.retain(body.content, ordinals).content, lineOrdinals: ordinals, totalLines };
     }
@@ -68,7 +69,7 @@ export default class LogBody {
         const { lineOrdinals } = body;
         if (lineOrdinals !== undefined && (
             !Array.isArray(lineOrdinals)
-            || lineOrdinals.length !== LogVisibility.lineCount(body.content)
+            || lineOrdinals.length !== TextCoordinates.lineCount(body.content)
             || lineOrdinals.some((line, index) => !Number.isSafeInteger(line) || line < 1 || (index > 0 && line <= lineOrdinals[index - 1]))
         )) throw new TypeError("A sparse receipt requires one increasing source ordinal per body line.");
         return {

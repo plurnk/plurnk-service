@@ -420,6 +420,7 @@ The exported `ProcessResult` type owns the executable field shape.
 
 `totalLines` is the editor-convention line count of the source content. Conventions:
 
+- §logical-line-count **One owner.** A text's logical line count is `TextCoordinates.lineCount(content)`, the length of `TextCoordinates.logicalLines`; every consumer that needs the number calls it rather than counting, and the persisted `entry_channels.lines` column is its mirror ({§tokenomics-weight-stored-at-write} in the core specification), held equal by a witness.
 - Logical editor lines: `abc\ndef` → `2`, `abc\ndef\n` → `2` (the trailing newline terminates rather than adds a line), `"\n"` → `1`, and `""` → `0`.
 - **Binary content** (mimetypes flagged `binary: true` in their `plurnk` block - PDF, future images/archives): `totalLines: 0`. Lines are not a meaningful unit for the source bytes. A handler's readable `content` projection is independently line-addressable; `totalLines` does not describe that derived text.
 - `0` on every returned error result (detection null or content unreadable). A propagated exception returns no `ProcessResult`.

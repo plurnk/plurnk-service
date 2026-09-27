@@ -9,6 +9,7 @@ import { parseBodyMatcher, type ParsedBodyMatcher } from "./parseBodyMatcher.ts"
 import { projectDeepXml } from "./projectDeepXml.ts";
 import { QueryParseFailureError, UnsupportedDialectError } from "./QueryError.ts";
 import { isGrammarNotInstalled } from "./TreeSitterExtractor.ts";
+import TextCoordinates from "./TextCoordinates.ts";
 import BaseHandler from "./BaseHandler.ts";
 import MimetypeInputError, { isMimetypeInputError } from "./MimetypeInputError.ts";
 import MimetypeInputLimitError from "./MimetypeInputLimitError.ts";
@@ -540,7 +541,7 @@ export default class Mimetypes {
             if (isGrammarNotInstalled(err) || isMimetypeInputError(err)) throw err;
             throw new MimetypeDerivationError({ path: input.path, mimetype, cause: err });
         }
-        const totalLines = typeof content === "string" ? countLines(content) : 0;
+        const totalLines = typeof content === "string" ? TextCoordinates.lineCount(content) : 0; // {§logical-line-count}
 
         return attachNotices({
             mimetype,
@@ -651,7 +652,7 @@ export default class Mimetypes {
         channels: ReadonlySet<Channel>,
         plurnkPackage: string,
     ): Promise<ProcessResult> {
-        const totalLines = typeof content === "string" ? countLines(content) : 0;
+        const totalLines = typeof content === "string" ? TextCoordinates.lineCount(content) : 0; // {§logical-line-count}
         return attachNotices({
             mimetype,
             ok: true,
@@ -862,18 +863,4 @@ function attachNotices(result: ProcessResult): ProcessResult {
         });
     }
     return notices.length === 0 ? result : { ...result, notices };
-}
-
-// Logical editor-line count ({§mimetype-error-policy}): a trailing newline
-// terminates its line without creating another one.
-function countLines(text: string): number {
-    if (text.length === 0) return 0;
-    let newlines = 0;
-    for (let i = 0; i < text.length; i += 1) {
-        if (text.charCodeAt(i) === 0x0a) newlines += 1;
-    }
-    // If the content ends with a newline, that final `\n` is a line
-    // terminator — the line count equals the newline count. Otherwise, the
-    // trailing characters form an unterminated line, so add 1.
-    return text.charCodeAt(text.length - 1) === 0x0a ? newlines : newlines + 1;
 }

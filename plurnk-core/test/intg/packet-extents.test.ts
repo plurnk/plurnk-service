@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import ReadResolve from "../../src/content/read-resolve.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import LogVisibility from "../../src/core/LogVisibility.ts";
@@ -44,7 +45,7 @@ test("{§packet-extent-metadata}: READ acquisition, receipt trimming, and READ o
     assert.equal(whole.body, "17:source line 17\n18:source line 18\n");
     const scope = LogVisibility.resolveScope({ marks: [1] }, "log:///1/2/3/READ", rx.content!);
     assert.equal(scope.ok, true);
-    const folded = LogVisibility.apply([], scope.range, LogVisibility.lineCount(rx.content!));
+    const folded = LogVisibility.apply([], scope.range, TextCoordinates.lineCount(rx.content!));
     const rendered = PacketWire.renderLog([{ ...entry, folded }], weigh);
     const trimmed = parseLogRecords(rendered)[0]!;
     assert.equal(trimmed.range, whole.range, "curation does not rewrite acquisition evidence");
@@ -54,7 +55,7 @@ test("{§packet-extent-metadata}: READ acquisition, receipt trimming, and READ o
     assert.equal(trimmed.logTokens, weigh(rendered), "the new metadata participates in exact row accounting");
     const reread = await ReadResolve.resolve({
         content: rx.content!, mimetype: "text/plain", lineMarker: { marks: [1, -1] },
-        visibleLines: LogVisibility.visibleLineOrdinals(folded, LogVisibility.lineCount(rx.content!)),
+        visibleLines: LogVisibility.visibleLineOrdinals(folded, TextCoordinates.lineCount(rx.content!)),
     });
     const observed = parseLogRecords(PacketWire.renderLog([{
         coordinate: "1/3/1", op: "READ", status: reread.status,

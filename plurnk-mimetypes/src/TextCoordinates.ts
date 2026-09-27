@@ -58,6 +58,11 @@ export default class TextCoordinates {
         return new TextCoordinates(content).logicalLines();
     }
 
+    // {§logical-line-count} — the one line count every consumer calls.
+    static lineCount(content: string): number {
+        return TextCoordinates.logicalLines(content).length;
+    }
+
     logicalLines(): TextLine[] {
         if (this.#content.length === 0) return [];
         return this.#lines.length > 1 && this.#lines.at(-1)?.start === this.#content.length

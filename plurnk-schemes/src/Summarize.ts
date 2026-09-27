@@ -5,6 +5,7 @@
 // the handle. Receipt = `address + OrientIndex`; reaching the body is always an
 // explicit READ. (No preview, no inline — universal-receipt is locked.)
 
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import MimetypeClassifier from "./MimetypeClassifier.ts";
 
 export type OrientIndex =
@@ -53,9 +54,7 @@ export default class Summarize {
     }
 
     static #textIndex(content: string): OrientIndex {
-        const lines = content === ""
-            ? 0
-            : content.endsWith("\n") ? content.split("\n").length - 1 : content.split("\n").length;
+        const lines = TextCoordinates.lineCount(content); // {§logical-line-count}
         // Markdown-style headings (`#`..`######`) — the structural anchors the
         // model slices toward in prose output.
         const headings: string[] = [];

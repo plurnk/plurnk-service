@@ -90,3 +90,6 @@ INSERT INTO entry_channels (entry_id, name, mimetype) VALUES ($entry_id, 'body',
 
 -- PREP: test_entry_channels_insert_missing_mimetype
 INSERT INTO entry_channels (entry_id, name, content) VALUES ($entry_id, 'body', '');
+
+-- PREP: test_entry_channels_get_lines
+SELECT lines FROM entry_channels WHERE entry_id = $entry_id AND name = $name;

@@ -542,6 +542,7 @@ export class SqlRiteSync {
 	test_entry_channels_insert_missing_name: SqlRiteSyncPreparedStatements;
 	test_entry_channels_insert_missing_content: SqlRiteSyncPreparedStatements;
 	test_entry_channels_insert_missing_mimetype: SqlRiteSyncPreparedStatements;
+	test_entry_channels_get_lines: SqlRiteSyncPreparedStatements;
 	test_log_entries_table_sql: SqlRiteSyncPreparedStatements;
 	test_log_entries_insert_full: SqlRiteSyncPreparedStatements;
 	test_log_entries_get_by_id: SqlRiteSyncPreparedStatements;
@@ -1125,6 +1126,7 @@ export default class SqlRite {
 	test_entry_channels_insert_missing_name: SqlRitePreparedStatements;
 	test_entry_channels_insert_missing_content: SqlRitePreparedStatements;
 	test_entry_channels_insert_missing_mimetype: SqlRitePreparedStatements;
+	test_entry_channels_get_lines: SqlRitePreparedStatements;
 	test_log_entries_table_sql: SqlRitePreparedStatements;
 	test_log_entries_insert_full: SqlRitePreparedStatements;
 	test_log_entries_get_by_id: SqlRitePreparedStatements;

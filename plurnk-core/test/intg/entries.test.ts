@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace } from "./_helpers.ts";
 
@@ -372,5 +373,52 @@ test("entry resources have no tag relation", async () => {
     try {
         const row = await db.test_entries_table_sql.get<{ sql: string }>({ name: "entry_tags" });
         assert.equal(row, undefined);
+    } finally { await db.close(); }
+});
+
+// {§logical-line-count} — `entry_channels.lines` is the persisted mirror of the one line count: the
+// frozen trigger expression and `TextCoordinates.lineCount` agree on every shape, at insert and at
+// update ({§tokenomics-weight-stored-at-write}).
+const LINE_CORPUS: ReadonlyArray<readonly [label: string, content: string]> = [
+    ["empty", ""],
+    ["no trailing newline", "a\nb"],
+    ["trailing newline", "a\nb\n"],
+    ["CRLF", "a\r\nb\r\n"],
+    ["one newline", "\n"],
+    ["blank lines", "a\n\n\nb\n"],
+    ["a final line without newline after blank lines", "a\n\n\nb"],
+];
+
+const storedLines = async (db: Db, entryId: number, content: string): Promise<{ inserted: number; updated: number }> => {
+    await db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "body", content: "seed", mimetype: "text/plain" });
+    await db.test_set_channel_content.run({ entry_id: entryId, content });
+    const updated = (await db.test_entry_channels_get_lines.get<{ lines: number }>({ entry_id: entryId, name: "body" }))!.lines;
+    await db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "fresh", content, mimetype: "text/plain" });
+    const inserted = (await db.test_entry_channels_get_lines.get<{ lines: number }>({ entry_id: entryId, name: "fresh" }))!.lines;
+    return { inserted, updated };
+};
+
+test("entry_channels: the stored line count mirrors TextCoordinates.lineCount on every LF shape", async () => {
+    const db = await openMigrated();
+    try {
+        for (const [label, content] of LINE_CORPUS) {
+            const entryId = await insertEntry(db, "worker", `/lines/${crypto.randomUUID()}`);
+            const expected = TextCoordinates.lineCount(content);
+            const { inserted, updated } = await storedLines(db, entryId, content);
+            assert.equal(inserted, expected, `${label}: insert trigger`);
+            assert.equal(updated, expected, `${label}: update trigger`);
+        }
+    } finally { await db.close(); }
+});
+
+// #783 F1: the frozen trigger counts LF only while {§logical-line-count} also breaks on a lone CR;
+// #883's migration makes the mirror exact, and this record turns into an assertion there.
+test("entry_channels: the stored line count mirrors TextCoordinates.lineCount on a lone CR", { todo: "#883: the frozen SQL counts LF only until migration 11" }, async () => {
+    const db = await openMigrated();
+    try {
+        const entryId = await insertEntry(db, "worker", "/lines/lone-cr");
+        const { inserted, updated } = await storedLines(db, entryId, "a\rb\r");
+        assert.equal(inserted, TextCoordinates.lineCount("a\rb\r"), "lone CR: insert trigger");
+        assert.equal(updated, TextCoordinates.lineCount("a\rb\r"), "lone CR: update trigger");
     } finally { await db.close(); }
 });

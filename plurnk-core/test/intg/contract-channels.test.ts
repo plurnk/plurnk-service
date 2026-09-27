@@ -5,6 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { MatcherBody } from "@plurnk/plurnk-contracts";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import Worker from "../../src/schemes/Worker.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import EntryFind from "../../src/schemes/_entry-find.ts";
@@ -257,7 +258,7 @@ test("{§relation-indexed-dialects}: graph FIND resolves evidence in the address
             process: async (input: { content: string; hint: string }) => ({
                 mimetype: input.hint,
                 ok: true,
-                totalLines: input.content.split("\n").length,
+                totalLines: TextCoordinates.lineCount(input.content),
                 symbols: input.content.includes("function foo")
                     ? [{ name: "foo", kind: "function", line: 1, endLine: 1 }]
                     : [],

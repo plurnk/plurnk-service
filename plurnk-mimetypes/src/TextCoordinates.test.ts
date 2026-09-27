@@ -97,3 +97,21 @@ test("TextCoordinates bounds the rejected line's preview to 96 code points (#321
         assert.match(error.message, /Line 1: `x{95}…`$/, "over-wide lines truncate with an ellipsis");
     }
 });
+
+// {§logical-line-count} — the one line count every consumer calls.
+test("TextCoordinates.lineCount is the logical line count: a terminator ends a line, it never opens one", () => {
+    const corpus: ReadonlyArray<readonly [string, number]> = [
+        ["", 0],
+        ["a\nb", 2],
+        ["a\nb\n", 2],
+        ["a\r\nb\r\n", 2],
+        ["a\rb\r", 2],
+        ["\n", 1],
+        ["a\n\n\nb\n", 4],
+        ["a\n\n\nb", 4],
+    ];
+    for (const [content, expected] of corpus) {
+        assert.equal(TextCoordinates.lineCount(content), expected, JSON.stringify(content));
+        assert.equal(TextCoordinates.lineCount(content), TextCoordinates.logicalLines(content).length, `${JSON.stringify(content)}: the count is logicalLines' length`);
+    }
+});

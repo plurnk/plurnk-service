@@ -19,6 +19,7 @@ import Results, { type ProblemDetails, type SchemeResultBase } from "../core/res
 import LogBody from "../core/LogBody.ts";
 import LogEntryProjection from "../core/LogEntryProjection.ts";
 import LogVisibility, { type LogFoldRanges } from "../core/LogVisibility.ts";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import LineSelection from "../content/line-selection.ts";
 import { contentWeight } from "../core/content-weight.ts";
 import EntryFts from "./_entry-fts.ts";
@@ -265,7 +266,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         return {
             identity: `log:///${LogEntryProjection.coordinate(pathname, row)}`,
             ...(trimmed.length === 0 ? {} : { visibleLines: {
-                "": LogVisibility.visibleLineOrdinals(trimmed, LogVisibility.lineCount(underlyingContent)),
+                "": LogVisibility.visibleLineOrdinals(trimmed, TextCoordinates.lineCount(underlyingContent)),
             } }),
             representation: {
                 channels: {
@@ -786,7 +787,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     foldedAfter: LogVisibility.apply(
                         before,
                         scope.range,
-                        LogVisibility.lineCount(body.content),
+                        TextCoordinates.lineCount(body.content),
                     ),
                 });
             }
