@@ -23,10 +23,11 @@ test("live and demo deadline reads the existing env knob and rejects invalid lim
 test("the live catalog contains every registered specimen exactly once", async () => {
     const files = await liveFiles();
     const names = await collectLiveTestNames(files);
-    assert.equal(names.length, 19);
+    assert.equal(names.length, 22);
     assert.ok(names.includes("{§bare-inference} live: delegate two isolated questions and consume their answers"));
     assert.ok(names.includes("live executor input: SEND feeds a running Node process"));
     assert.ok(names.includes("live: a client-attached image persists until log curation"));
+    for (const kind of ["image", "pdf", "audio"]) assert.ok(names.includes(`live: a retained ${kind} is reported as one earlier READ, never as a new arrival`), `the #899 ${kind} account specimen is registered`);
     assert.equal(new Set(names).size, names.length);
 });
 
