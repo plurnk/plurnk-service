@@ -174,6 +174,9 @@ interface RowBody {
     readonly display: "none" | "folded" | "open";
 }
 
+// {§packet-wire-envelope} — the worker's previous submitted program and its `ops://` address.
+export type PreviousEmission = { readonly content: string; readonly address: string };
+
 export default class PacketWire {
     // {§packet-markdown} Render the sections in `slot` to one ChatMessage.content
     // string. Sections render in list order; empties are omitted (no empty headers on the wire);
@@ -293,9 +296,13 @@ export default class PacketWire {
     // slot; the log's records one user message per completed turn; the worker's previous submitted
     // program, verbatim under its heading, as the one assistant message; then the current turn's
     // records and the remaining user sections as the closing user message.
-    static readonly previousEmissionHeading = "## Previous Turn Emission";
+    // The heading names the program by its address, so the log rows that answered it are the ones
+    // sharing that coordinate, and the Worker block below names the turn this request becomes.
+    static previousEmissionHeading(address: string): string {
+        return `## Previous Turn Emission (${address})`;
+    }
 
-    static packetToWireMessages(packet: Packet, previousEmission: string | null = null): Array<{ role: string; content: string }> {
+    static packetToWireMessages(packet: Packet, previousEmission: PreviousEmission | null = null): Array<{ role: string; content: string }> {
         const sections = packet.sections ?? [];
         const messages: Array<{ role: string; content: string }> = [{ role: "system", content: PacketWire.renderSlot(sections, "system") }];
         const log = sections.find((s) => s.slot === "user" && s.name === "log");
@@ -309,8 +316,8 @@ export default class PacketWire {
             if (last && current !== null && group.turn === current) closing.push(group.content);
             else messages.push({ role: "user", content: group.content });
         });
-        if (previousEmission !== null && previousEmission.length > 0) {
-            messages.push({ role: "assistant", content: `${PacketWire.previousEmissionHeading}\n\n${previousEmission}` });
+        if (previousEmission !== null && previousEmission.content.length > 0) {
+            messages.push({ role: "assistant", content: `${PacketWire.previousEmissionHeading(previousEmission.address)}\n\n${previousEmission.content}` });
         }
         const tail = rest.map((s) => PacketWire.renderSection(s)).filter((p) => p.length > 0);
         const closingContent = [...closing, ...tail].join("\n\n");
@@ -1235,7 +1242,7 @@ export default class PacketWire {
         packet: RequestPacket,
         bytesOf: (attachment: PacketAttachment) => Promise<Uint8Array>,
         accepts: (kind: PacketAttachment["kind"]) => boolean = () => true,
-        previousEmission: string | null = null,
+        previousEmission: PreviousEmission | null = null,
     ): Promise<ChatMessage[]> {
         const messages = PacketWire.packetToWireMessages(packet, previousEmission) as ChatMessage[];
         // {§packet-attachment-parts} — native parts ride the closing user message.

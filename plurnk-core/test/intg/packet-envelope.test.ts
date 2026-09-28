@@ -24,13 +24,13 @@ const packet = (records: readonly string[], turn: number | null): RequestPacket 
 
 test("{§packet-wire-envelope}: the log splits by turn, the previous program is the assistant message, the current turn closes with the clump", () => {
     const records = [record("1/1/1", "NOTE", "init"), record("1/2/1", "READ", "a"), record("1/2/2", "FIND", "b"), record("1/3/1", "SEND", "arrival")];
-    const previous = "```READ (a.md) <1,-1>\n```";
+    const previous = { content: "```READ (a.md) <1,-1>\n```", address: "ops://w/1/2" };
     const wire = PacketWire.packetToWireMessages(packet(records, 3), previous);
     assert.deepEqual(wire.map(({ role }) => role), ["system", "user", "user", "assistant", "user"]);
     assert.equal(wire[0]!.content, "the card");
     assert.equal(wire[1]!.content, `## Log\n\n${records[0]}`, "the first turn's records open the log");
     assert.equal(wire[2]!.content, `${records[1]}\n\n${records[2]}`, "one message per completed turn, records joined as in the packet");
-    assert.equal(wire[3]!.content, `## Previous Turn Emission\n\n${previous}`, "the previous program, verbatim under its heading");
+    assert.equal(wire[3]!.content, `## Previous Turn Emission (ops://w/1/2)\n\n${previous.content}`, "the previous program, verbatim under the heading that names its address");
     assert.equal(wire[4]!.content, `${records[3]}\n\n## Worker\n${JSON.stringify({ path: "worker://w", parent: null, loop: 1, turn: 3 })}\n\n## Open Messages\n[]`, "the current turn's records, then the clump");
     const bytes = wire.filter(({ role }) => role === "user").map(({ content }) => content).join("\n\n");
     assert.ok(bytes.includes(records.join("\n\n")), "every log byte is present, in order, across the user messages");
@@ -60,12 +60,13 @@ test("{§packet-wire-envelope}: the turn runner sends turn zero's survey, then t
     const opening = provider.received[0]!;
     const survey = opening.filter((message) => message.role === "assistant");
     assert.equal(survey.length, 1, "the first model request carries turn zero's survey as its assistant message");
-    assert.match(chatMessageText(survey[0]!), /^## Previous Turn Emission\n\n```NOTE\nThis turn surveys tooling and environment\./u);
+    assert.match(chatMessageText(survey[0]!), /^## Previous Turn Emission \(ops:\/\/[^/)]+\/1\/1\)\n\n```NOTE\nThis turn surveys tooling and environment\./u);
     assert.equal(opening.at(-1)!.role, "user");
     const second = provider.received[1]!;
     const assistant = second.filter((message) => message.role === "assistant");
     assert.equal(assistant.length, 1, "exactly one assistant message");
-    assert.equal(chatMessageText(assistant[0]!), `## Previous Turn Emission\n\n${first}`, "the previous turn's program, verbatim under its heading");
+    assert.match(chatMessageText(assistant[0]!), /^## Previous Turn Emission \(ops:\/\/[^/)]+\/1\/2\)\n\n/u, "the heading names the model's own first turn");
+    assert.equal(chatMessageText(assistant[0]!).replace(/^[^\n]+\n\n/u, ""), first, "the previous turn's program, verbatim under its heading");
     assert.equal(second.at(-1)!.role, "user", "the request closes with the clump");
     assert.ok(chatMessageText(second.at(-1)!).includes("## Worker"), "the clump closes the request");
     const users = second.filter((message) => message.role === "user");

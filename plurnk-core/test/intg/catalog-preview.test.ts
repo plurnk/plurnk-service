@@ -202,7 +202,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 // {§packet-wire-envelope}: the program reaches the model as the first request's assistant message.
                 const survey = provider.received[0].filter(({ role }) => role === "assistant");
                 assert.equal(survey.length, 1, "the first model request carries turn 0's program as its one assistant message");
-                const program = { content: chatMessageText(survey[0]!).replace(/^## Previous Turn Emission\n\n/u, "") };
+                const program = { content: chatMessageText(survey[0]!).replace(/^## Previous Turn Emission \(ops:\/\/[^/)]+\/1\/1\)\n\n/u, "") };
                 assert.doesNotMatch(program.content, /```READ \(ops:\/\//, "initialization never READs its own program");
                 assert.match(program.content, /\n```READ \(reasoning:\/\/[^/\s]+\/1\/1\)/, "initialization demonstrates its reasoning address through an ordinary READ");
                 assert.deepEqual(
