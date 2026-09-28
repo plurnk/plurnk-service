@@ -14,7 +14,7 @@ body?
 
 ## Core Plurnk OPs
 
-* NOTE: Internal scratchpad for persisting reasoning conclusions, decisions, facts, and plans.
+* NOTE: Private scratchpad. Persist your bearings, working memory, conclusions, decisions, and plans.
 * FIND: List matching paths, or the match locations inside one path.
 * READ: Read files, entries, streams, or only the lines a pattern selects.
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
