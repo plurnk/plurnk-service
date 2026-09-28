@@ -102,7 +102,7 @@ When representing markdown, `~~~` notation can disambiguate nested content.
 
 ## Context Curation
 
-> [!CAUTION]
+> [!WARNING]
 > logTokensTotal must not exceed logTokensMax. Successful log KILL receipts are not shown.
 
 ```KILL (log:///1/[1-7]/*/{NOTE,READ}) <!-- retires matching log items whole -->
@@ -122,4 +122,3 @@ The child's complete task.
 
 > [!TIP]
 > `SEND (worker://name)` messages a live worker.
-
