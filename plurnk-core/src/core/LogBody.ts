@@ -83,17 +83,18 @@ export default class LogBody {
     }
 
     static #receiptBody(receipts: readonly EditReceipt[]): ResolvedLogBody {
-        // {§edit-result-receipt-projection} — the canonical row body is the
-        // bounded landed context, not the authored mutation text.
+        // {§edit-result-receipt-projection} — the canonical row body is the bounded landed
+        // context, not the authored mutation text: each distinct boundary context once, one after
+        // another. Every line of it carries its coordinate, so no blank line may separate them.
         if (receipts.length === 0) return EMPTY_BODY;
+        const contexts = new Set(receipts
+            .map((receipt) => "effect" in receipt
+                ? receipt.effect.context
+                : receipt.replacement?.context ?? "")
+            .filter((context) => context.length > 0));
         return {
             provenance: "returned",
-            content: receipts
-                .map((receipt) => "effect" in receipt
-                    ? receipt.effect.context
-                    : receipt.replacement?.context ?? "")
-                .filter((context) => context.length > 0)
-                .join("\n\n"),
+            content: [...contexts].join("\n"),
             mimetype: "text/plain",
             startLine: null,
         };

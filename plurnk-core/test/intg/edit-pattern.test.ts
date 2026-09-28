@@ -9,6 +9,7 @@ import Worker from "../../src/schemes/Worker.ts";
 import { openMigrated, seedEnvelope } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { urlPath, editStmt } from "./_dsl.ts";
+import PacketWire from "../../src/core/packet-wire.ts";
 
 const setup = async (content = "alpha foo\nfoo bar foo\nbeta\nfoo", pathname = "/notes.md") => {
     const db = await openMigrated();
@@ -132,5 +133,22 @@ test("a regex pattern edits HTML source coordinates; the readable projection fol
         assert.equal(await body(), "<html>\n  <body>\n    <h2>Roster</h2>\n  </body>\n</html>");
         const projection = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/users.html", name: "readable" });
         assert.match(String(projection?.content), /Roster/, "the derived projection followed the source write");
+    } finally { await db.close(); }
+});
+
+test("{§edit-result-receipt-projection} a multi-span pattern receipt renders as a packet row: both boundaries, every line framed", async () => {
+    const { db, dispatch, body } = await setup("alpha\nbeta\ngamma\ndelta");
+    try {
+        const r = await dispatch(editStmt(target, "A", null, regex("a$", "gm")));
+        assert.equal(r.status, 200, JSON.stringify(r));
+        assert.equal(r.matched, 4);
+        assert.equal(await body(), "alphA\nbetA\ngammA\ndeltA");
+        assert.ok("last" in r, "several spans: the receipt carries the last boundary beside the first");
+        const entry = { coordinate: "1/1/1", origin: "model", op: "EDIT", status: 200, folded: [], target: { scheme: "worker", pathname: "/notes.md" }, tx: { body: "A" }, rx: r };
+        // The next packet renders this row; a body with an unframed line is a 500 on the whole loop.
+        const rendered = PacketWire.renderLog([entry], (s: string) => Math.ceil(s.length / 4));
+        assert.match(rendered, /alphA/u);
+        assert.match(rendered, /deltA/u);
+        assert.doesNotMatch(rendered, /\n\n *[1-9]\d*<@/u, "no blank line inside the receipt body");
     } finally { await db.close(); }
 });

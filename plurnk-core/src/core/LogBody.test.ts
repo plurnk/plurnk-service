@@ -186,7 +186,7 @@ test("LogBody resolves COPY/MOVE bodies only from ordered textual effects", () =
             },
         }),
         {
-            content: "1:destination\n\n1:source",
+            content: "1:destination\n1:source",
             provenance: "returned",
             mimetype: "text/plain",
             startLine: null,
@@ -304,5 +304,20 @@ test("LogBody decodes persisted JSON envelopes before resolving", () => {
             mimetypeRx: "application/json",
         }),
         { content: "persisted", mimetype: "text/markdown", startLine: null, provenance: "returned" },
+    );
+});
+
+test("{§edit-result-receipt-projection} a pattern batch's first and last contexts are one body with a coordinate on every line", () => {
+    const first = receipt("1<@aaaaa>alphA\n2<@bbbbb>betA");
+    const last = { ...first.effect, requested: "<4,5,4,6>", source: "<4,5,4,6>", result: "<4,5,4,6>", context: "3<@ccccc>gammA\n4<@ddddd>deltA" };
+    assert.deepEqual(
+        LogBody.resolve({ op: "EDIT", tx: { body: "A" }, rx: { status: 200, matched: 4, receipt: first, last } }),
+        { content: "1<@aaaaa>alphA\n2<@bbbbb>betA\n3<@ccccc>gammA\n4<@ddddd>deltA", mimetype: "text/plain", startLine: null, provenance: "returned" },
+        "the boundaries follow each other; a blank line would be an unframed packet line",
+    );
+    assert.deepEqual(
+        LogBody.resolve({ op: "EDIT", tx: { body: "A" }, rx: { status: 200, matched: 4, receipt: first, last: { ...last, context: first.effect.context } } }),
+        { content: "1<@aaaaa>alphA\n2<@bbbbb>betA", mimetype: "text/plain", startLine: null, provenance: "returned" },
+        "a last boundary whose context equals the first's is shown once",
     );
 });
