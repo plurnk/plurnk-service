@@ -137,6 +137,8 @@ export const lookThroughScheme = async (
         mimetypes: ctx.mimetypes,
         weigh: ctx.weigh,
     });
+    // A context that carries a registry looks through an engine that has it, as the daemon does.
+    if (ctx.executors !== undefined) engine.setExecutors(ctx.executors);
     const result = await engine.look({
         statement,
         workspaceId: ctx.workspaceId,

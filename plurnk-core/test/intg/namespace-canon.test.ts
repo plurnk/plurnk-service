@@ -12,6 +12,7 @@ import Namespace from "../../src/core/namespace.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { openMigrated, insertWorkspace, insertWorker, rootWorkspace } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
+import { testExecutors } from "./_execs.ts";
 
 const fileUrl = (pathname: string): UrlPath => ({
     kind: "url", raw: `file://${pathname}`, scheme: "file",
@@ -264,4 +265,22 @@ test("an in-root file no grantor admits DOES NOT EXIST; a client pick brings it 
         assert.equal(visible.status, 200, "the client's explicit grant is what brings it into existence — every visible byte traces to an external grantor");
         assert.match(visible.content ?? "", /present on disk/);
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+test("{§problems-file} a bare executor name as a file target is refused as a fence written as a path (#902)", async () => {
+    const { db, ctx } = await setup();
+    try {
+        const executors = await testExecutors();
+        assert.ok(executors.availableRuntimes(ctx.workspaceId).includes("sh"), "the real shell executor is available to the fixture");
+        const withExecutors = { ...ctx, executors };
+        const fence = await readFileScheme(readStmt("sh"), withExecutors);
+        assert.equal(fence.status, 404);
+        assert.equal(fence.problem?.recovery, "`sh` is an executor, not a path: run a program with a ```sh fence and the program in the body; WORK starts a worker by `worker://<name>`.");
+        const plain = await readFileScheme(readStmt("nope"), withExecutors);
+        assert.equal(plain.problem?.recovery, "Check the path with FIND. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body.", "an ordinary miss keeps its recovery");
+        const nested = await readFileScheme(readStmt("tools/sh"), withExecutors);
+        assert.match(nested.problem?.recovery ?? "", /^Check the path with FIND/u, "a path with a separator is a path, whatever its last segment is called");
+        const blind = await readFileScheme(readStmt("sh"), ctx);
+        assert.match(blind.problem?.recovery ?? "", /^Check the path with FIND/u, "without a registry the name is only a path");
+    } finally { await db.close(); }
 });

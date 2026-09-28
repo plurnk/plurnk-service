@@ -235,6 +235,9 @@ export default class File extends CoreSchemeAdapterBase {
             return Results.failure("scheme:file", code, 404, detail, fields, extensions) as SchemeResultBase;
         }
         const occupied = occupant !== null;
+        // A bare name that is an executor's is a fence written as a path (`WORK (sh)`, #902): the
+        // recovery names the fence, not the membership machinery.
+        const executor = !occupied && !key.includes("/") && (core.executors?.availableRuntimes(core.workspaceId).includes(key) ?? false);
         return Results.failure(
             "scheme:file",
             occupied ? "entry-not-member" : "entry-not-found",
@@ -247,7 +250,9 @@ export default class File extends CoreSchemeAdapterBase {
                 target: key,
                 recovery: occupied
                     ? "Admit it with `members (add)` and a `{\"glob\": \"<path>\"}` body."
-                    : "Check the path with FIND. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body.",
+                    : executor
+                        ? `\`${key}\` is an executor, not a path: run a program with a \`\`\`${key} fence and the program in the body; WORK starts a worker by \`worker://<name>\`.`
+                        : "Check the path with FIND. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body.",
                 retryable: false,
             },
         ) as SchemeResultBase;
