@@ -563,8 +563,8 @@ export default class TurnRunner {
     // never from a source that may have changed since the observation.
     async #wireMessages(packet: RequestPacket, ctx: PlurnkSchemeContext, provider: Provider): Promise<MaterializedModelRequest> {
         // {§packet-wire-envelope} — the worker's previous submitted program is the envelope's one assistant message.
-        const previous = await ctx.db.turn_source_previous_emission.get<{ content: string; worker: string; loop: number; turn: number }>({ worker_id: ctx.workerId, turn_id: ctx.turnId });
-        const previousEmission = previous === undefined ? null : { content: previous.content, address: `ops://${previous.worker}/${previous.loop}/${previous.turn}` };
+        const previous = await ctx.db.turn_source_previous_emission.get<{ content: string }>({ worker_id: ctx.workerId, turn_id: ctx.turnId });
+        const previousEmission = previous?.content ?? null;
         const accepted = acceptedKinds(provider.inputModalities);
         if (accepted.length === 0 || !(packet.attachments ?? []).some((attachment) => accepted.includes(attachment.kind))) {
             return {

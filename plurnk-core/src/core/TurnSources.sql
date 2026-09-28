@@ -74,11 +74,10 @@ WHERE turn_id = $turn_id AND kind = $kind AND sequence = $sequence;
 -- the one assistant message of the wire envelope. Turn zero's survey is the first, so every
 -- model request carries one. A turn whose emission was never admitted recorded no ops source
 -- and is skipped.
-SELECT s.content, w.name AS worker, l.sequence AS loop, t.sequence AS turn
+SELECT s.content
 FROM turn_sources s
 JOIN turns t ON t.id = s.turn_id
 JOIN loops l ON l.id = t.loop_id
-JOIN workers w ON w.id = l.worker_id
 WHERE l.worker_id = $worker_id AND s.kind = 'ops' AND s.sequence = 0 AND t.id < $turn_id
 ORDER BY t.id DESC
 LIMIT 1;

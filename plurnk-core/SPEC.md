@@ -4600,10 +4600,10 @@ The packet reaches the provider under the roles the model was tuned on, its byte
 |:--|:--|:--|
 | 1 | `system` | the system slot, as rendered |
 | 2 … | `user` | the log's records, one message per completed turn in record order; the first opens with `## Log` |
-| next | `assistant` | the worker's previous submitted program ({§turn-source-resources}, kind `ops`), verbatim under the heading `## Previous Turn Emission (ops://<worker>/<loop>/<turn>)`; turn zero's survey ({§worker-initialization-entry}) is the first, so every model request carries one |
+| next | `assistant` | the worker's previous submitted program ({§turn-source-resources}, kind `ops`), verbatim and alone, since anything else under the assistant marker becomes the model's output vocabulary; turn zero's survey ({§worker-initialization-entry}) is the first, so every model request carries one |
 | last | `user` | the current turn's records, then the remaining user sections in {§packet-cache-monotone} order; native parts ride here ({§packet-attachment-parts}) |
 
-Only role boundaries and the heading are added. Curation governs every record as before, so a KILLed
+Only role boundaries are added. Curation governs every record as before, so a KILLed
 row is absent from its turn's message; the one emission is bounded and the model's own last words, a
 demonstration of the grammar beside what the log made of it. On the first request it is turn zero's
 survey, the worked example in the model's own place. The prefix through the last completed

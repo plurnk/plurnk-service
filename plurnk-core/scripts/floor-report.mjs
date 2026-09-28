@@ -51,7 +51,8 @@ try {
     if (first === undefined) throw new Error("no model request was captured");
     const messages = first.messages ?? [];
     const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
-    const user = messages.filter((m) => m.role !== "system").map((m) => m.content).join("\n");
+    // {§packet-wire-envelope}: the packet's user text spans the user messages; the assistant message is the model's own last program.
+    const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n\n");
 
     // Measure the visible body here; the packet carries only its complete-row charge.
     const logSection = /(?:^|\n)## Log\n([\s\S]*?)(?=\n## |$)/.exec(user);
