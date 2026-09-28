@@ -22,6 +22,7 @@ import { Mimetypes, type BaseHandler } from "@plurnk/plurnk-mimetypes";
 import FabricatedLog from "./FabricatedLog.ts";
 import Meta, { Knob, type PluginAttributionContext } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
+import PreviousEmission from "./PreviousEmission.ts";
 import GitMembership from "./git-membership.ts";
 import { acceptedKinds } from "./attachments.ts";
 import GitState, { type GitStatusSnapshot } from "./git-state.ts";
@@ -562,9 +563,8 @@ export default class TurnRunner {
     // {§packet-attachment-parts}: native parts come from the READ's immutable snapshot,
     // never from a source that may have changed since the observation.
     async #wireMessages(packet: RequestPacket, ctx: PlurnkSchemeContext, provider: Provider): Promise<MaterializedModelRequest> {
-        // {§packet-wire-envelope} — the worker's previous submitted program is the envelope's one assistant message.
-        const previous = await ctx.db.turn_source_previous_emission.get<{ content: string }>({ worker_id: ctx.workerId, turn_id: ctx.turnId });
-        const previousEmission = previous?.content ?? null;
+        // {§packet-wire-envelope} — the worker's previous program, as the grammar admitted it, is the envelope's one assistant message.
+        const previousEmission = (await PreviousEmission.resolve(ctx.db, { workspaceId: ctx.workspaceId, workerId: ctx.workerId, turnId: ctx.turnId }, this.#executors()))?.content ?? null;
         const accepted = acceptedKinds(provider.inputModalities);
         if (accepted.length === 0 || !(packet.attachments ?? []).some((attachment) => accepted.includes(attachment.kind))) {
             return {

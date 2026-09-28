@@ -5,6 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
+import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -65,11 +66,35 @@ test("{§packet-wire-envelope}: the turn runner sends turn zero's survey, then t
     const second = provider.received[1]!;
     const assistant = second.filter((message) => message.role === "assistant");
     assert.equal(assistant.length, 1, "exactly one assistant message");
-    assert.equal(chatMessageText(assistant[0]!), first, "the previous turn's program, verbatim and alone");
+    const canonical = PlurnkParser.stringify(PlurnkParser.parse(first).items.filter((item): item is { kind: "statement"; statement: PlurnkStatement } => item.kind === "statement").map(({ statement }) => statement));
+    assert.equal(chatMessageText(assistant[0]!), canonical, "the previous turn's program as the grammar reads it, alone");
     assert.equal(second.at(-1)!.role, "user", "the request closes with the clump");
     assert.ok(chatMessageText(second.at(-1)!).includes("## Worker"), "the clump closes the request");
     assert.match(chatMessageText(second.at(-1)!), /"turn":3,"previousEmission":"ops:\/\/[^/"]+\/1\/2"\}/u, "the Worker block names the program the assistant message carries ({§packet-current-turn})");
     const users = second.filter((message) => message.role === "user");
     assert.ok(users.length >= 2, "the log arrives one user message per completed turn before the program");
     assert.ok(chatMessageText(users[0]!).startsWith("## Log"), "the first log message opens the log");
+});
+
+test("{§packet-wire-envelope}: the assistant message is the grammar's reading of the previous program: admitted statements only, no free text", async (t) => {
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const workspaceId = await insertWorkspace(db, "envelope-canonical");
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1, "Answer.");
+    const note = PlurnkParser.frame("NOTE", "Bearings: start.");
+    const provider = new Mock({ contextWindow: 100000, responses: [
+        { assistant: { content: `Let me look around first.\n\n${note}\n\nDone for now.`, reasoning: null }, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } },
+        { assistant: { content: "Still thinking, no operation this time.", reasoning: null }, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } },
+        { assistant: { content: PlurnkParser.frame("KILL", "Answer."), reasoning: null }, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } },
+    ] });
+    const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4 });
+    assert.equal(result.result.status, 200);
+    assert.ok(provider.received.length >= 3, "the prose-only emission was rejected and rerolled");
+    for (const request of provider.received.slice(1)) {
+        const assistant = request.filter((message) => message.role === "assistant");
+        assert.equal(assistant.length, 1);
+        assert.equal(chatMessageText(assistant[0]!), note, "the canonical NOTE alone: the free text around it is gone, and the rejected prose turn never appears");
+        assert.match(chatMessageText(request.at(-1)!), /"previousEmission":"ops:\/\/[^/"]+\/1\/2"\}/u, "the Worker block names the program the slot renders");
+    }
 });

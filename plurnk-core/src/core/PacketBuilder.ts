@@ -1,5 +1,6 @@
 import type { Notice } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
+import PreviousEmission from "./PreviousEmission.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { GitStatus } from "./git-state.ts";
@@ -316,8 +317,7 @@ export default class PacketBuilder {
         const attachmentsWeight = renderedLog.attachments.reduce((sum, { weight }) => sum + weight, 0);
         // {§packet-current-turn} — the address of the program the envelope's assistant message carries
         // ({§packet-wire-envelope}): the rows sharing that coordinate are its receipts.
-        const previous = turnId === null ? undefined : await this.#db.turn_source_previous_emission.get<{ worker: string; loop: number; turn: number }>({ worker_id: workerId, turn_id: turnId });
-        const previousEmission = previous === undefined ? null : `ops://${previous.worker}/${previous.loop}/${previous.turn}`;
+        const previousEmission = turnId === null ? null : (await PreviousEmission.resolve(this.#db, { workspaceId, workerId, turnId }, this.#executors()))?.address ?? null;
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
             // Stable privileged policy follows the definition for prefix-cache locality.

@@ -70,11 +70,11 @@ UPDATE turn_sources SET deep_hash = $deep_hash
 WHERE turn_id = $turn_id AND kind = $kind AND sequence = $sequence;
 
 -- PREP: turn_source_previous_emission
--- {§packet-wire-envelope} The last program this worker submitted before the given turn, verbatim:
--- the one assistant message of the wire envelope, with the address the Worker block names as
--- `previousEmission` ({§packet-current-turn}). Turn zero's survey is the first, so every model
--- request carries one. A turn whose emission was never admitted recorded no ops source and is
--- skipped.
+-- {§packet-wire-envelope} The programs this worker submitted before the given turn, newest first,
+-- verbatim: PreviousEmission renders the first that admits any statement as the envelope's one
+-- assistant message, with the address the Worker block names as `previousEmission`
+-- ({§packet-current-turn}). Turn zero's survey is the first, so every model request carries one.
+-- A turn whose emission was never admitted recorded no ops source and is absent here.
 SELECT s.content, w.name AS worker, l.sequence AS loop, t.sequence AS turn
 FROM turn_sources s
 JOIN turns t ON t.id = s.turn_id
@@ -82,4 +82,4 @@ JOIN loops l ON l.id = t.loop_id
 JOIN workers w ON w.id = l.worker_id
 WHERE l.worker_id = $worker_id AND s.kind = 'ops' AND s.sequence = 0 AND t.id < $turn_id
 ORDER BY t.id DESC
-LIMIT 1;
+LIMIT 8;

@@ -4602,12 +4602,14 @@ The packet reaches the provider under the roles the model was tuned on, its byte
 |:--|:--|:--|
 | 1 | `system` | the system slot, as rendered |
 | 2 … | `user` | the log's records, one message per completed turn in record order; the first opens with `## Log` |
-| next | `assistant` | the worker's previous submitted program ({§turn-source-resources}, kind `ops`), verbatim and alone, since anything else under the assistant marker becomes the model's output vocabulary; turn zero's survey ({§worker-initialization-entry}) is the first, so every model request carries one |
+| next | `assistant` | the canonical rendering ({§statement-rendering}) of every statement the parser admitted from the worker's most recent program that admitted any ({§turn-source-resources}, kind `ops`), in order and alone: free text and unadmitted forms are absent, a recovered native call ({§native-tool-calls}) appears as the operation it was read as, and an operation whose receipt failed stays, since it produced its row; turn zero's survey ({§worker-initialization-entry}) is the first, so every model request carries one |
 | last | `user` | the current turn's records, then the remaining user sections in {§packet-cache-monotone} order; native parts ride here ({§packet-attachment-parts}) |
 
 Only role boundaries are added. Curation governs every record as before, so a KILLed
-row is absent from its turn's message; the one emission is bounded and the model's own last words, a
-demonstration of the grammar beside what the log made of it. On the first request it is turn zero's
+row is absent from its turn's message; the one program is bounded and the model's own last operations,
+a demonstration of the grammar beside what the log made of it. Whatever sits under the assistant marker
+is what the model writes next, for better and for worse: shown its own slip, a model repeats it, so the
+slot carries the grammar's reading and never the bytes as typed. On the first request it is turn zero's
 survey, the worked example in the model's own place. The prefix through the last completed
 turn stays reusable across requests; the assistant message and the closing user message are the
 changing tail. The digest's packet artifacts record the packet; the envelope is its projection (#903).
