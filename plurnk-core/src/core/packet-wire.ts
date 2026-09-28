@@ -1190,9 +1190,20 @@ export default class PacketWire {
         for (const attachment of packet.attachments ?? []) {
             if (!accepts(attachment.kind)) continue;
             const bytes = await bytesOf(attachment);
+            parts.push({ type: "text", text: PacketWire.attachmentCaption(attachment) });
             parts.push({ type: "file", data: bytes, mediaType: attachment.mimetype });
         }
         return parts.length === 1 ? [system, user] : [system, { role: "user", content: parts }];
+    }
+
+    // {§packet-attachment-parts} — the part's identity: a native part on the user turn otherwise reads as
+    // an arrival, and the model cannot tell that the READ row is what keeps it in the packet.
+    static attachmentCaption(attachment: PacketAttachment): string {
+        const facts = [attachment.mimetype];
+        if (attachment.width !== undefined && attachment.height !== undefined) facts.push(`${attachment.width}×${attachment.height} px`);
+        if (attachment.pages !== undefined) facts.push(`${attachment.pages} pages`);
+        if (attachment.duration !== undefined) facts.push(`${attachment.duration} s`);
+        return `Retained READ observation log:///${attachment.coordinate}/READ → ${attachment.path} (${facts.join(", ")}). The native part that follows is that READ's own bytes, present in every packet until the row is KILLed; nothing new arrived.`;
     }
 
     static #projectRelativeCwd(cwd: string, projectRoot: string | null): string | null {

@@ -2302,7 +2302,10 @@ Authored `metadata` retains its opaque ordered block strings under {§scheme-met
   This is retained evidence, not a separate visibility or delivery lifecycle. Source mutation/deletion
   cannot change a retained observation. Explicit READ of its still-active log source can acquire the same media again.
   Every compatible-model packet includes one file part per retained, admitted READ observation, after the
-  packet text, in observation order. Model-response settlement never consumes an observation. KILL follows
+  packet text, in observation order, each preceded by a text part that names the observation's log
+  coordinate, source path and projection facts and states that the bytes are that READ's own, retained
+  until its row is KILLed: an uncaptioned native part on the user turn reads as a fresh arrival (#899).
+  Model-response settlement never consumes an observation. KILL follows
   {§log-kill-scope}; forks inherit the snapshot and ordinary projection state independently. Output withholding
   suppresses the complete native part under {§context-output-admission}. Unsupported routes receive only the
   text projection and no native charge; switching back to a compatible route exposes still-retained media.

@@ -32,6 +32,12 @@ the default channel stays the source, and a pattern matches the channel it
 addresses. The projection follows every source write and is never written
 itself.
 
+A READ of an image, PDF or audio source retains its bytes: on a route whose
+model takes that media, every later packet carries them as a native part
+captioned with the READ's log coordinate, until you KILL that READ row. The
+service never re-sends media; a captioned part is your own earlier READ, not a
+new arrival.
+
 ## Delegation
 
 WORK starts a fresh log with the task body as its prompt; FORK copies your

@@ -59,7 +59,9 @@ test("{§packet-attachment-parts} a document route receives the PDF as a native 
     const file = user.content.find((part) => part.type === "file");
     assert.ok(text?.type === "text" && /"tokensAttachment":1500/.test(text.text), "one page weighs 1500 in the readout");
     assert.ok(file?.type === "file" && file.mediaType === "application/pdf" && Buffer.from(file.data).equals(PDF), "the document itself rides as the file part");
-    assert.equal(user.content.length, 2, "the retained document needs no ejection message");
+    const caption = user.content[user.content.indexOf(file) - 1];
+    assert.ok(caption?.type === "text" && /^Retained READ observation log:\/\/\/\d+\/\d+\/\d+\/READ → \S+ \(application\/pdf, 1 pages\)\./u.test(caption.text), `the part is captioned as the model's own READ (#899): ${JSON.stringify(caption)}`);
+    assert.equal(user.content.length, 3, "packet text, one caption, one part: the retained document needs no ejection message");
     const system = second.find((message) => message.role === "system");
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "native delivery adds no permanent hot-path teaching");
 });

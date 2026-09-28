@@ -54,7 +54,8 @@ test("{§packet-attachment-parts} audio duration weighs the retained source, wit
     const bytes = new Uint8Array([82, 73, 70, 70]);
     const [, user] = await PacketWire.wireMessages(packet, async () => bytes);
     assert.ok(Array.isArray(user.content));
-    assert.deepEqual(user.content[1], { type: "file", data: bytes, mediaType: "audio/wav" });
+    assert.deepEqual(user.content[1], { type: "text", text: "Retained READ observation log:///1/1/2/READ → file:///clip.wav (audio/wav, 1.25 s). The native part that follows is that READ's own bytes, present in every packet until the row is KILLed; nothing new arrived." });
+    assert.deepEqual(user.content[2], { type: "file", data: bytes, mediaType: "audio/wav" });
 });
 
 test("{§packet-attachment-parts} a visible READ of an image weighs the picture and becomes an image attachment", () => {
@@ -132,11 +133,13 @@ test("{§packet-attachment-parts} retained native parts follow the packet text w
     assert.equal(typeof system.content, "string");
     assert.ok(Array.isArray(user.content));
     assert.equal(user.content[0]?.type, "text");
-    assert.deepEqual(user.content[1], { type: "file", data: png, mediaType: "image/png" });
-    assert.deepEqual(user.content[2], { type: "file", data: pdf, mediaType: "application/pdf" });
-    assert.equal(user.content.length, 3);
+    assert.deepEqual(user.content[1], { type: "text", text: "Retained READ observation log:///1/1/2/READ → logo.png (image/png, 640×480 px). The native part that follows is that READ's own bytes, present in every packet until the row is KILLed; nothing new arrived." }, "every native part is captioned as the model's own READ, never an arrival");
+    assert.deepEqual(user.content[2], { type: "file", data: png, mediaType: "image/png" });
+    assert.deepEqual(user.content[3], { type: "text", text: "Retained READ observation log:///1/1/3/READ → contract.pdf (application/pdf, 3 pages). The native part that follows is that READ's own bytes, present in every packet until the row is KILLed; nothing new arrived." });
+    assert.deepEqual(user.content[4], { type: "file", data: pdf, mediaType: "application/pdf" });
+    assert.equal(user.content.length, 5);
     const [, imageOnly] = await PacketWire.wireMessages(packet, bytesOf, (kind) => kind === "image");
-    assert.ok(Array.isArray(imageOnly.content) && imageOnly.content.length === 2, "a kind the route refuses contributes no part");
+    assert.ok(Array.isArray(imageOnly.content) && imageOnly.content.length === 3, "a kind the route refuses contributes neither caption nor part");
     await assert.rejects(PacketWire.wireMessages(packet, async () => { throw new Error("Missing immutable native content"); }), /Missing immutable native content/);
 });
 
