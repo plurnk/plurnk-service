@@ -3,6 +3,7 @@
 import { parseArgs } from "node:util";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
+import { isIPv6 } from "node:net";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import SqlRite from "@possumtech/sqlrite";
@@ -267,7 +268,9 @@ export default class Service {
                 );
             }
             const routeText = route === null ? "no model" : Service.#formatModelRoute(route);
-            process.stdout.write(`plurnk-service agui=http://${aguiAddr.host}:${aguiAddr.port} db=${dbPath} ${routeText}\n`);
+            // {§startup-readiness-line} — a URL (IPv6 in brackets), then two JSON strings: exact under spaces.
+            const aguiUrl = `http://${isIPv6(aguiAddr.host) ? `[${aguiAddr.host}]` : aguiAddr.host}:${aguiAddr.port}`;
+            process.stdout.write(`plurnk-service agui=${aguiUrl} db=${JSON.stringify(dbPath)} route=${JSON.stringify(routeText)}\n`);
 
             const shutdown = (): void => {
                 teardown.request(

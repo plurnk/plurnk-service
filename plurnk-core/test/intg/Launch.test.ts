@@ -4,10 +4,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { spawn } from "node:child_process";
 import Launch, { LaunchError, READINESS_LINE } from "../../src/launch/Launch.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -44,7 +45,8 @@ const freePort = async (): Promise<number> => {
 
 test("{§daemon-launch} {§state-root}: a private daemon publishes its address, roots its database under the state root, and stops on request", { timeout: 120_000 }, async () => {
     const home = await mkdtemp(join(tmpdir(), "plurnk-launch-"));
-    const root = join(home, "private");
+    // A root with a space: the readiness line carries the path as a JSON string, so it parses exact.
+    const root = join(home, "private world");
     try {
         const first = await Launch.start({ command: COMMAND, env: daemonEnv(home), stateRoot: root, host: "127.0.0.1", port: 0, readyTimeoutMs: 60_000, stopGraceMs: 5_000 });
         assert.match(first.url, /^http:\/\/127\.0\.0\.1:\d+$/u);
@@ -143,6 +145,93 @@ test("{§daemon-launch}: an executable that cannot be spawned is a spawn failure
             Launch.start({ command: [join(home, "no-such-executable"), "start"], env: daemonEnv(home), readyTimeoutMs: 5_000, stopGraceMs: 1_000 }),
             (error: unknown) => error instanceof LaunchError && error.kind === "spawn",
         );
+    } finally {
+        await rm(home, { recursive: true, force: true });
+    }
+});
+
+test("{§startup-readiness-line}: an IPv6 host is bracketed in the published URL and parsed back as the host", { timeout: 120_000 }, async () => {
+    const home = await mkdtemp(join(tmpdir(), "plurnk-launch-v6-"));
+    try {
+        const daemon = await Launch.start({ command: COMMAND, env: daemonEnv(home), stateRoot: join(home, "private"), host: "::1", port: 0, readyTimeoutMs: 60_000, stopGraceMs: 5_000 });
+        try {
+            assert.match(daemon.url, /^http:\/\/\[::1\]:\d+$/u);
+            assert.equal(daemon.host, "[::1]");
+            assert.ok(daemon.port > 0);
+            const response = await fetch(`${daemon.url}/`);
+            assert.notEqual(response.status, 503);
+        } finally { await daemon.stop(); }
+    } finally {
+        await rm(home, { recursive: true, force: true });
+    }
+});
+
+const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const untilGone = async (pid: number, deadlineMs: number): Promise<boolean> => {
+    const deadline = Date.now() + deadlineMs;
+    while (alive(pid)) {
+        if (Date.now() > deadline) return false;
+        await new Promise((accept) => setTimeout(accept, 100));
+    }
+    return true;
+};
+
+test("{§daemon-launch}: a shared daemon logs to its file, is released at readiness, and survives the launcher that started it", { timeout: 120_000 }, async () => {
+    const home = await mkdtemp(join(tmpdir(), "plurnk-launch-shared-"));
+    const logFile = join(home, "service.log");
+    const launcher = join(home, "launcher.mjs");
+    let pid: number | undefined;
+    try {
+        // The launcher is a separate process that starts a shared daemon and exits without stopping it.
+        const options = { command: COMMAND, env: daemonEnv(home), stateRoot: join(home, "private"), lifetime: "shared", logFile, host: "127.0.0.1", port: 0, readyTimeoutMs: 60_000, stopGraceMs: 5_000 };
+        await writeFile(launcher, [
+            `import Launch from ${JSON.stringify(pathToFileURL(resolve(here, "../../src/launch/Launch.ts")).href)};`,
+            `const daemon = await Launch.start(${JSON.stringify(options)});`,
+            "process.stdout.write(JSON.stringify({ pid: daemon.child.pid, url: daemon.url, dbPath: daemon.dbPath, sawLine: daemon.stdout().includes('plurnk-service agui=') }));",
+        ].join("\n"));
+        const run = spawn(process.execPath, [...CONDITION_ARGS, launcher], { stdio: ["ignore", "pipe", "pipe"] });
+        let out = "";
+        let err = "";
+        run.stdout.setEncoding("utf8"); run.stderr.setEncoding("utf8");
+        run.stdout.on("data", (chunk: string) => { out += chunk; });
+        run.stderr.on("data", (chunk: string) => { err += chunk; });
+        const ended = await new Promise<{ code: number | null }>((accept) => run.once("exit", (code) => accept({ code })));
+        assert.equal(ended.code, 0, `the launcher exited on its own once the daemon was ready (a released daemon holds no event-loop handle)\n${err}`);
+        const report = JSON.parse(out) as { pid: number; url: string; dbPath: string; sawLine: boolean };
+        pid = report.pid;
+        assert.ok(report.sawLine, "readiness was read from the log file");
+        assert.equal(report.dbPath, join(home, "private", "data", "plurnk", "plurnk.db"));
+        assert.ok(alive(pid), "the daemon outlives its launcher");
+        const response = await fetch(`${report.url}/`);
+        assert.notEqual(response.status, 503, "and still answers");
+        assert.match(await readFile(logFile, "utf8"), READINESS_LINE, "the daemon's output is in the caller's log, not in a departed launcher");
+        process.kill(pid, "SIGTERM");
+        assert.ok(await untilGone(pid, 10_000), "SIGTERM by pid still ends it");
+        pid = undefined;
+    } finally {
+        if (pid !== undefined && alive(pid)) process.kill(pid, "SIGKILL");
+        await rm(home, { recursive: true, force: true });
+    }
+});
+
+test("{§daemon-launch}: a shared start that exits before readiness is owned to the end and reports the log's last words", { timeout: 60_000 }, async () => {
+    const home = await mkdtemp(join(tmpdir(), "plurnk-launch-shared-exit-"));
+    const logFile = join(home, "service.log");
+    try {
+        await assert.rejects(
+            Launch.start({
+                command: [process.execPath, "-e", "process.stderr.write('admission refused\\n'); process.exit(17)"],
+                env: daemonEnv(home), lifetime: "shared", logFile, readyTimeoutMs: 10_000, stopGraceMs: 1_000,
+            }),
+            (error: unknown) => {
+                assert.ok(error instanceof LaunchError);
+                assert.equal(error.kind, "exited");
+                assert.equal(error.code, 17);
+                assert.match(error.stdout, /admission refused/u, "both streams of a shared daemon land in the log, and the failure carries what it said");
+                return true;
+            },
+        );
+        await assert.rejects(Launch.start({ command: COMMAND, env: daemonEnv(home), lifetime: "shared", readyTimeoutMs: 1, stopGraceMs: 1 }), /needs a logFile/u);
     } finally {
         await rm(home, { recursive: true, force: true });
     }

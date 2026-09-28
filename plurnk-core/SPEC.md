@@ -225,9 +225,11 @@ later startup failure closes resources in reverse ownership order while
 preserving the originating failure: daemon, observability, database, listener.
 
 §startup-readiness-line **Readiness is one stdout line.** After the client interface is mounted
-the service prints exactly one line, `plurnk-service agui=http://<host>:<port> db=<path> <route>`,
-where `<route>` is the active model route or `no model`; nothing else the service prints on stdout
-before it has that prefix. Before the line the listener answers `503 service-starting`; after it,
+the service prints exactly one line, `plurnk-service agui=<url> db=<json string> route=<json string>`:
+the URL brackets an IPv6 host, and the database path and the route (the active model route or
+`no model`) are JSON strings, so a path or route containing spaces is exact and a consumer parses
+the URL as a URL and the strings as JSON; nothing else the service prints on stdout before it has
+that prefix. Before the line the listener answers `503 service-starting`; after it,
 `discover` is the identity check a launcher uses to tell this daemon from any other listener. A bind
 failure is an exit with the originating address error and means *occupied*, not *foreign* — another
 plurnk-service may be starting there, and only `discover` says which.
@@ -240,7 +242,12 @@ its own: the caller states the readiness timeout and the stop grace. A start tha
 exit before readiness, or timeout — is stopped and awaited before the failure is thrown with its kind
 and both output streams; the helper never creates, keeps or removes state. A shared daemon survives
 the launcher that started it (scheduled deliveries, other clients and inbound A2A depend on it); a
-private daemon is its launcher's child and ends with it under managed shutdown. Shell and container
+private daemon is its launcher's child and ends with it under managed shutdown. The launcher
+spawns either: `lifetime: "private"` (the default) pipes both streams to the launcher; `lifetime:
+"shared"` puts the daemon in its own process group with both streams appended to the caller's
+`logFile`, reads readiness from that file, and releases the process once ready, so the launcher may
+exit while the daemon runs on and no output accumulates in a launcher that has left; until
+readiness the launcher owns it either way, and `stop()` ends it while the launcher lives. Shell and container
 launchers consume the same contract by reading the line themselves.
 
 ## §actor-boundary Workers and workspace boundaries

@@ -40,4 +40,4 @@ process.once("SIGINT", stop);
 const address = server.address();
 if (address === null || typeof address === "string") throw new Error("fixture did not bind TCP");
 process.stderr.write(`plurnk-service: @plurnk/plurnk-service@${version} fixture fixture-path\n`);
-process.stdout.write(`plurnk-service agui=http://${process.env.PLURNK_HOST}:${address.port} db=fixture no model\n`);
+process.stdout.write(`plurnk-service agui=http://${process.env.PLURNK_HOST}:${address.port} db="fixture" route="no model"\n`);
