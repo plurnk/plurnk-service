@@ -19,7 +19,9 @@ interface EditFixture {
 
 // One EDIT log row as the dispatcher writes it: the statement in tx, the marker beside it.
 const insertEdit = async (db: Db, fixture: EditFixture): Promise<number> => {
-    const statement = { op: "EDIT", path: fixture.pathname, lineMarker: fixture.marker === null ? null : JSON.parse(fixture.marker), pattern: fixture.pattern ?? null, body: "x" };
+    // The durable statement's matcher is a MatcherBody, as the parser records it.
+    const matcher = fixture.pattern === undefined || fixture.pattern === null ? null : { dialect: "regex", raw: fixture.pattern, pattern: fixture.pattern.slice(1, -1), flags: "" };
+    const statement = { op: "EDIT", path: fixture.pathname, lineMarker: fixture.marker === null ? null : JSON.parse(fixture.marker), matcher, body: "x" };
     const row = await db.engine_insert_log_entry.get<{ id: number }>({
         worker_id: fixture.workerId, loop_id: fixture.loopId, turn_id: fixture.turnId, sequence: fixture.sequence,
         origin: fixture.origin ?? "model", source: null, model_call_id: null,

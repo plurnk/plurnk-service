@@ -117,7 +117,7 @@ ORDER BY worker_id, n DESC, op;
 -- durable statement carried, and how it landed. tx is the statement (application/json).
 SELECT id, worker_id, loop_id, turn_id, sequence, pathname, status_rx,
        lineMarker AS line_marker,
-       CASE WHEN json_valid(tx) THEN json_extract(tx, '$.pattern') END AS pattern
+       CASE WHEN json_valid(tx) THEN json_extract(tx, '$.matcher.raw') END AS pattern
 FROM log_entries
 WHERE op = 'EDIT' AND origin = 'model'
 ORDER BY worker_id, turn_id, sequence;
