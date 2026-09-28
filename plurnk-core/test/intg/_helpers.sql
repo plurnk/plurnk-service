@@ -853,3 +853,8 @@ SELECT COUNT(*) AS n, SUM(length(content)) AS bytes FROM contents;
 
 -- PREP: test_loop_termination_events
 SELECT rx FROM ambient_events WHERE kind = 'loop_termination' AND recipient_worker_id = $recipient_worker_id ORDER BY id;
+-- PREP: test_edit_rows_by_worker
+-- {§digest-edit-census}: a worker's model-authored EDITs with the scope and pattern they authored.
+SELECT id, pathname, status_rx, lineMarker AS line_marker,
+       CASE WHEN json_valid(tx) THEN json_extract(tx, '$.matcher.raw') END AS pattern
+FROM log_entries WHERE worker_id = $worker_id AND op = 'EDIT' AND origin = 'model' ORDER BY id;
