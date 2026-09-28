@@ -1258,7 +1258,7 @@ Three current entry points:
 
 ### Engine → provider guarantees
 
-- `messages` is a complete prompt (the section list, pre-assembled into the system + user messages). Provider does not reorder.
+- `messages` is a complete prompt (the section list, pre-assembled into the wire envelope, {§packet-wire-envelope}). Provider does not reorder.
 - §provider-guarantees-signal-wired `signal` is wired to the worker's AbortController.
 - §provider-guarantees-serial-attempts Emission attempts for one engine turn are serial. They reuse the exact messages, coordinates, generation limits, and strike state; two attempts for that turn never overlap.
 - BARE calls admitted by one turn launch as one parallel batch; each call retains independent observer and failure state, and the engine awaits the complete batch before committing results in authored order ({§bare-inference}).
@@ -4591,6 +4591,23 @@ flowchart LR
     render --> measure[Budget substitution and<br/>core-owned measurement]
     measure --> rail[Engine budget admission and dispatch]
 ```
+
+### §packet-wire-envelope The wire envelope
+
+The packet reaches the provider under the roles the model was tuned on, its bytes unchanged:
+
+| Message | Role | Content |
+|:--|:--|:--|
+| 1 | `system` | the system slot, as rendered |
+| 2 … | `user` | the log's records, one message per completed turn in record order; the first opens with `## Log` |
+| next | `assistant` | the worker's previous submitted program ({§turn-source-resources}, kind `ops`), verbatim and unlabelled; absent before the first admitted emission |
+| last | `user` | the current turn's records, then the remaining user sections in {§packet-cache-monotone} order; native parts ride here ({§packet-attachment-parts}) |
+
+Only role boundaries are added. Curation governs every record as before, so a KILLed row is absent
+from its turn's message; the one emission is bounded and the model's own last words, a demonstration
+of the grammar beside what the log made of it, as turn zero is. The prefix through the last completed
+turn stays reusable across requests; the assistant message and the closing user message are the
+changing tail. The digest's packet artifacts record the packet; the envelope is its projection (#903).
 
 ### §packet-cache-monotone Default order and cache locality
 

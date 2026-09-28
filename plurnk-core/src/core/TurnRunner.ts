@@ -562,10 +562,13 @@ export default class TurnRunner {
     // {§packet-attachment-parts}: native parts come from the READ's immutable snapshot,
     // never from a source that may have changed since the observation.
     async #wireMessages(packet: RequestPacket, ctx: PlurnkSchemeContext, provider: Provider): Promise<MaterializedModelRequest> {
+        // {§packet-wire-envelope} — the worker's previous submitted program is the envelope's one assistant message.
+        const previous = await ctx.db.turn_source_previous_emission.get<{ content: string }>({ worker_id: ctx.workerId, turn_id: ctx.turnId });
+        const previousEmission = previous?.content ?? null;
         const accepted = acceptedKinds(provider.inputModalities);
         if (accepted.length === 0 || !(packet.attachments ?? []).some((attachment) => accepted.includes(attachment.kind))) {
             return {
-                messages: PacketWire.packetToWireMessages(packet) as ChatMessage[],
+                messages: PacketWire.packetToWireMessages(packet, previousEmission) as ChatMessage[],
                 nativeInputs: [],
             };
         }
@@ -574,7 +577,7 @@ export default class TurnRunner {
             const bytes = await NativeContent.read(ctx.db, attachment.contentHash);
             nativeInputs.add(attachment.coordinate);
             return bytes;
-        }, (kind) => accepted.includes(kind));
+        }, (kind) => accepted.includes(kind), previousEmission);
         return { messages, nativeInputs: [...nativeInputs] };
     }
 

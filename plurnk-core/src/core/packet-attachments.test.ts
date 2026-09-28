@@ -52,7 +52,7 @@ test("{§packet-attachment-parts} audio duration weighs the retained source, wit
         assert.throws(() => StoredPacket.assert({ ...packet, attachments: [{ ...rendered.attachments[0], duration }] }), /duration must be a nonnegative finite number/u);
     }
     const bytes = new Uint8Array([82, 73, 70, 70]);
-    const [, user] = await PacketWire.wireMessages(packet, async () => bytes);
+    const user = (await PacketWire.wireMessages(packet, async () => bytes)).at(-1)!;
     assert.ok(Array.isArray(user.content));
     assert.deepEqual(user.content[1], { type: "text", text: "log:///1/1/2/READ → file:///clip.wav (audio/wav, 1.25 s): the bytes of that READ row, retained until it is KILLed. Not a new arrival." });
     assert.deepEqual(user.content[2], { type: "file", data: bytes, mediaType: "audio/wav" });
@@ -128,7 +128,9 @@ test("{§packet-attachment-parts} retained native parts follow the packet text w
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
     const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
     const bytesOf = async (attachment: { kind: string }) => attachment.kind === "image" ? png : pdf;
-    const [system, user] = await PacketWire.wireMessages(packet, bytesOf);
+    const wired = await PacketWire.wireMessages(packet, bytesOf);
+    const [system] = wired;
+    const user = wired.at(-1)!;
     assert.equal(system.role, "system");
     assert.equal(typeof system.content, "string");
     assert.ok(Array.isArray(user.content));
@@ -138,7 +140,7 @@ test("{§packet-attachment-parts} retained native parts follow the packet text w
     assert.deepEqual(user.content[3], { type: "text", text: "log:///1/1/3/READ → contract.pdf (application/pdf, 3 pages): the bytes of that READ row, retained until it is KILLed. Not a new arrival." });
     assert.deepEqual(user.content[4], { type: "file", data: pdf, mediaType: "application/pdf" });
     assert.equal(user.content.length, 5);
-    const [, imageOnly] = await PacketWire.wireMessages(packet, bytesOf, (kind) => kind === "image");
+    const imageOnly = (await PacketWire.wireMessages(packet, bytesOf, (kind) => kind === "image")).at(-1)!;
     assert.ok(Array.isArray(imageOnly.content) && imageOnly.content.length === 3, "a kind the route refuses contributes neither caption nor part");
     await assert.rejects(PacketWire.wireMessages(packet, async () => { throw new Error("Missing immutable native content"); }), /Missing immutable native content/);
 });

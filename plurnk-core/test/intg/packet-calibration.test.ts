@@ -97,7 +97,8 @@ test("{§packet-token-accounting} non-unit calibration preserves one ruler for R
     const read = rows.find(({ logPath: path }) => path === "log:///1/1/2/READ")!;
     assert.ok(Number(read.logTokens) < state.logTokensTotal, "a visible READ cannot outweigh its complete packet");
     assert.equal(state.logTokensTotal, packet.weight, "the total retains the measured curation ruler");
-    assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, { content }) => sum + contentWeight(content), 0));
+    // The ruler measures the packet's two slots; the envelope adds only role boundaries ({§packet-wire-envelope}).
+    assert.equal(packet.weight, contentWeight(PacketWire.renderSlot(packet.sections, "system")) + contentWeight(PacketWire.renderSlot(packet.sections, "user")));
     assert.equal(state.logTokensMax, Math.floor(provider.inputCapacity! / factor));
     assert.deepEqual(rows, logEntries(uncalibrated), "neither receipt nor FIND item costs are rewritten by calibration");
     const find = rows.find(({ logPath: path }) => path === "log:///1/1/3/FIND")!;
@@ -253,7 +254,8 @@ test("{§packet-token-accounting} scoped and whole KILL reclaim stable costs wit
     assert.equal(logEntries(killed).some(({ logPath: path }) => path === read.logPath), false);
     for (const packet of [before, trimmed, killed]) {
         assert.equal(budgetOf(packet).logTokensTotal, packet.weight);
-        assert.equal(packet.weight, PacketWire.packetToWireMessages(packet).reduce((sum, { content }) => sum + contentWeight(content), 0));
+        // The ruler measures the packet's two slots; the envelope adds only role boundaries ({§packet-wire-envelope}).
+    assert.equal(packet.weight, contentWeight(PacketWire.renderSlot(packet.sections, "system")) + contentWeight(PacketWire.renderSlot(packet.sections, "user")));
         assert.equal(budgetOf(packet).logTokensMax, budgetOf(before).logTokensMax);
     }
     assert.deepEqual(await f.db.tok_log_weight.get({ id: readId }), raw, "curation cannot alter the immutable READ result or its write-time weight");

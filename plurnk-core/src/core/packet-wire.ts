@@ -289,12 +289,59 @@ export default class PacketWire {
     // Project a packet to the request ChatMessage[] for the wire: one message
     // per slot. Engine calls this directly; the result is what provider.generate
     // receives. The digest calls renderSlot for byte-identical packet files.
-    static packetToWireMessages(packet: Packet): Array<{ role: string; content: string }> {
+    // {§packet-wire-envelope} — the packet's bytes under the roles the model was tuned on: the system
+    // slot; the log's records one user message per completed turn; the worker's previous submitted
+    // program, verbatim and unlabelled, as the one assistant message; then the current turn's records
+    // and the remaining user sections as the closing user message. Only role boundaries are added.
+    static packetToWireMessages(packet: Packet, previousEmission: string | null = null): Array<{ role: string; content: string }> {
         const sections = packet.sections ?? [];
-        return [
-            { role: "system", content: PacketWire.renderSlot(sections, "system") },
-            { role: "user", content: PacketWire.renderSlot(sections, "user") },
-        ];
+        const messages: Array<{ role: string; content: string }> = [{ role: "system", content: PacketWire.renderSlot(sections, "system") }];
+        const log = sections.find((s) => s.slot === "user" && s.name === "log");
+        const rest = sections.filter((s) => s.slot === "user" && s.name !== "log");
+        const worker = sections.find((s) => s.name === "worker");
+        const current = PacketWire.#currentCoordinate(worker);
+        const groups = log === undefined ? [] : PacketWire.#turnGroups(PacketWire.renderSection(log));
+        const closing: string[] = [];
+        groups.forEach((group, index) => {
+            const last = index === groups.length - 1;
+            if (last && current !== null && group.turn === current) closing.push(group.content);
+            else messages.push({ role: "user", content: group.content });
+        });
+        if (previousEmission !== null && previousEmission.length > 0) messages.push({ role: "assistant", content: previousEmission });
+        const tail = rest.map((s) => PacketWire.renderSection(s)).filter((p) => p.length > 0);
+        const closingContent = [...closing, ...tail].join("\n\n");
+        if (closingContent.length > 0 || messages.at(-1)?.role !== "user") messages.push({ role: "user", content: closingContent });
+        return messages;
+    }
+
+    // The coordinate the Worker block names, `loop/turn`, or null when the packet carries none.
+    static #currentCoordinate(worker: SectionView | undefined): string | null {
+        if (worker === undefined || typeof worker.content !== "string") return null;
+        try {
+            const { loop, turn } = JSON.parse(worker.content) as { loop?: unknown; turn?: unknown };
+            return typeof loop === "number" && typeof turn === "number" ? `${loop}/${turn}` : null;
+        } catch { return null; }
+    }
+
+    // The rendered log section split by the turn that wrote each record; a record without a
+    // coordinate stays with the group before it. The section heading opens the first group.
+    static #turnGroups(rendered: string): Array<{ turn: string | null; content: string }> {
+        if (rendered.length === 0) return [];
+        const groups: Array<{ turn: string | null; records: string[] }> = [];
+        let heading: string[] = [];
+        for (const record of rendered.split(/\n\n(?=### log:\/\/\/)/u)) {
+            const coordinate = /(?:^|\n)### log:\/\/\/(\d+)\/(\d+)\//u.exec(record);
+            const group = groups.at(-1);
+            if (coordinate === null) {
+                if (group === undefined) heading.push(record); else group.records.push(record);
+                continue;
+            }
+            const turn = `${coordinate[1]}/${coordinate[2]}`;
+            if (group !== undefined && group.turn === turn) group.records.push(record);
+            else { groups.push({ turn, records: [...heading, record] }); heading = []; }
+        }
+        if (heading.length > 0) groups.push({ turn: null, records: heading });
+        return groups.map(({ turn, records }) => ({ turn, content: records.join("\n\n") }));
     }
 
     // Number a non-READ body line as `<N>:<line>` — `N:` followed by NO separator whitespace
@@ -1184,16 +1231,19 @@ export default class PacketWire {
         packet: RequestPacket,
         bytesOf: (attachment: PacketAttachment) => Promise<Uint8Array>,
         accepts: (kind: PacketAttachment["kind"]) => boolean = () => true,
+        previousEmission: string | null = null,
     ): Promise<ChatMessage[]> {
-        const [system, user] = PacketWire.packetToWireMessages(packet) as [ChatMessage, ChatMessage];
-        const parts: ChatContentPart[] = [{ type: "text", text: user.content as string }];
+        const messages = PacketWire.packetToWireMessages(packet, previousEmission) as ChatMessage[];
+        // {§packet-attachment-parts} — native parts ride the closing user message.
+        const closing = messages.at(-1)!;
+        const parts: ChatContentPart[] = [{ type: "text", text: closing.content as string }];
         for (const attachment of packet.attachments ?? []) {
             if (!accepts(attachment.kind)) continue;
             const bytes = await bytesOf(attachment);
             parts.push({ type: "text", text: PacketWire.attachmentCaption(attachment) });
             parts.push({ type: "file", data: bytes, mediaType: attachment.mimetype });
         }
-        return parts.length === 1 ? [system, user] : [system, { role: "user", content: parts }];
+        return parts.length === 1 ? messages : [...messages.slice(0, -1), { role: "user", content: parts }];
     }
 
     // {§packet-attachment-parts} — the part's identity: a native part on the user turn otherwise reads as

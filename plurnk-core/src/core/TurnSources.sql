@@ -68,3 +68,16 @@ WHERE w.workspace_id = $workspace_id;
 -- PREP: turn_source_attach_derivation
 UPDATE turn_sources SET deep_hash = $deep_hash
 WHERE turn_id = $turn_id AND kind = $kind AND sequence = $sequence;
+
+-- PREP: turn_source_previous_emission
+-- {§packet-wire-envelope} The last program this worker submitted before the given turn, verbatim:
+-- the one assistant message of the wire envelope. Only the model's own turns count: the
+-- initialization survey is the harness's program. A turn whose emission was never admitted
+-- recorded no ops source and is skipped.
+SELECT s.content
+FROM turn_sources s
+JOIN turns t ON t.id = s.turn_id
+JOIN loops l ON l.id = t.loop_id
+WHERE l.worker_id = $worker_id AND t.producer = 'model' AND s.kind = 'ops' AND s.sequence = 0 AND t.id < $turn_id
+ORDER BY t.id DESC
+LIMIT 1;

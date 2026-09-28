@@ -4,7 +4,7 @@
 // user message). Measured per sample: reasoning tokens, whether the reasoning restarts from the
 // task, and whether the first operation matches what the model actually did at that turn.
 // A paid experiment, never a test.
-// usage: node --conditions=plurnk-dev test/replay/envelope-replay.mjs <alias> <run-digest-dir> <worker> <turns e.g. 4,8,12> <samples> <concurrency> <out.jsonl> [arms=today,turns,ops,turnsline]
+// usage: node --conditions=plurnk-dev test/replay/envelope-replay.mjs <alias> <run-digest-dir> <worker> <turns e.g. 4,8,12> <samples> <concurrency> <out.jsonl> [arms=today,turns,ops,turnsline,lastturn,lastturn-causal,syslog]
 import { readFileSync, appendFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { loadActiveProvider } from "@plurnk/plurnk-providers";
@@ -75,6 +75,45 @@ const emissionEnvelope = (user, turn) => {
     return messages;
 };
 
+// The operator's shapes (2026-09-28). Rows by turn, all origins, from the recorded packet.
+const rowsAndClump = (user) => {
+    const clumpAt = user.indexOf("\n## Worker\n");
+    if (clumpAt < 0) throw new Error("recorded packet has no Worker section");
+    const clump = user.slice(clumpAt + 1);
+    const rowsByTurn = new Map();
+    let currentTurn = null;
+    for (const line of user.slice(0, clumpAt).split("\n")) {
+        const header = /^### log:\/\/\/(\d+)\/(\d+)\/(\d+)\//u.exec(line);
+        if (header !== null) currentTurn = Number(header[2]);
+        if (currentTurn === null) continue;
+        rowsByTurn.set(currentTurn, [...(rowsByTurn.get(currentTurn) ?? []), line]);
+    }
+    return { rowsByTurn, clump, log: user.slice(0, clumpAt).trimEnd() };
+};
+const previousEmission = (turn) => {
+    const path = join(digestDir, `${worker}-1-${turn - 1}.assistant.md`);
+    return existsSync(path) ? `## Previous Turn Emission\n\n${readFileSync(path, "utf8").trimEnd()}` : null;
+};
+// lastturn: [user rows 1]…[user rows T-1][assistant emission T-1][user rows T + clump]
+const lastTurnEnvelope = (user, turn, causal) => {
+    const { rowsByTurn, clump } = rowsAndClump(user);
+    const rows = (t) => (rowsByTurn.get(t) ?? []).join("\n").trimEnd();
+    const messages = [];
+    const upTo = causal ? turn - 2 : turn - 1;
+    for (let t = 1; t <= upTo; t += 1) if (rowsByTurn.has(t)) messages.push({ role: "user", content: rows(t) });
+    const emission = previousEmission(turn);
+    if (emission !== null) messages.push({ role: "assistant", content: emission });
+    const tail = [causal && rowsByTurn.has(turn - 1) ? rows(turn - 1) : "", rowsByTurn.has(turn) ? rows(turn) : "", clump].filter((part) => part.length > 0);
+    messages.push({ role: "user", content: tail.join("\n\n") });
+    return messages;
+};
+// syslog: [system card + log][assistant emission T-1][user clump]
+const systemLogEnvelope = (system, user, turn) => {
+    const { clump, log } = rowsAndClump(user);
+    const emission = previousEmission(turn);
+    return [{ role: "system", content: `${system.trimEnd()}\n\n${log}` }, ...(emission === null ? [] : [{ role: "assistant", content: emission }]), { role: "user", content: clump }];
+};
+
 const firstOp = (text) => {
     const m = /```+\s*([A-Za-z0-9_-]+)([^\n]*)/u.exec(text);
     return m === null ? null : `${m[1]}${m[2].trim().length > 0 ? ` ${m[2].trim().split(/\s+/u)[0]}` : ""}`;
@@ -96,6 +135,12 @@ const worker_ = async () => {
             ? [{ role: "system", content: system }, { role: "user", content: user }]
             : cell.arm === "turnsline"
                 ? [{ role: "system", content: system + RECEIPT_LINE }, ...turnEnvelope(user)]
+                : cell.arm === "lastturn"
+                    ? [{ role: "system", content: system }, ...lastTurnEnvelope(user, cell.turn, false)]
+                    : cell.arm === "lastturn-causal"
+                        ? [{ role: "system", content: system }, ...lastTurnEnvelope(user, cell.turn, true)]
+                        : cell.arm === "syslog"
+                            ? systemLogEnvelope(system, user, cell.turn)
             : cell.arm === "ops"
                 ? [{ role: "system", content: system }, ...emissionEnvelope(user, cell.turn)]
                 : [{ role: "system", content: system }, ...turnEnvelope(user)];

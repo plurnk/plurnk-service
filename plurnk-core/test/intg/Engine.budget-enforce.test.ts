@@ -287,11 +287,12 @@ test("an estimate defers physical admission to the upstream provider", async () 
         const result = await engine.runLoop({ provider: mock, workspaceId, workerId, loopId, messages, maxTurns: 5 });
         assert.equal(result.result.status, 200);
         assert.equal(mock.remaining, 2, "an empirical estimate neither admits nor rejects; the upstream mock receives the request");
-        assert.deepEqual(
-            measuredMessages?.map(({ role }) => role),
-            ["system", "user"],
-            "the provider measured the same two rendered slots dispatched by PacketWire",
-        );
+        // {§packet-wire-envelope} — the provider measured the envelope PacketWire dispatched: the system
+        // slot first, the clump last, and nothing but the model's own program between the user messages.
+        const roles = measuredMessages?.map(({ role }) => role) ?? [];
+        assert.equal(roles[0], "system");
+        assert.equal(roles.at(-1), "user");
+        assert.ok(roles.every((role) => role === "system" || role === "user" || role === "assistant"), `unexpected role in ${roles.join(",")}`);
         const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
         assert.equal(errors.length, 0, "deferred admission is not an error");
     } finally {
