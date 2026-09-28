@@ -323,6 +323,7 @@ export class SqlRiteSync {
 	turn_source_derivations: SqlRiteSyncPreparedStatements;
 	turn_source_attach_derivation: SqlRiteSyncPreparedStatements;
 	turn_source_previous_emission: SqlRiteSyncPreparedStatements;
+	turn_source_request_log: SqlRiteSyncPreparedStatements;
 	engine_unconcluded_emission: SqlRiteSyncPreparedStatements;
 	worker_resolve_by_name: SqlRiteSyncPreparedStatements;
 	worker_name_by_id: SqlRiteSyncPreparedStatements;
@@ -615,6 +616,7 @@ export default class SqlRite {
 	turn_source_derivations: SqlRitePreparedStatements;
 	turn_source_attach_derivation: SqlRitePreparedStatements;
 	turn_source_previous_emission: SqlRitePreparedStatements;
+	turn_source_request_log: SqlRitePreparedStatements;
 	engine_unconcluded_emission: SqlRitePreparedStatements;
 	worker_resolve_by_name: SqlRitePreparedStatements;
 	worker_name_by_id: SqlRitePreparedStatements;

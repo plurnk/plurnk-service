@@ -603,8 +603,8 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
   `{"path": "worker://<name>", "parent": <address or null>, "loop": L, "turn": T, "previousEmission": <ops address or null>}`:
   the actor, whose child it is, the coordinate this packet's response becomes, so `reasoning://<worker>/L/T`
   and `ops://<worker>/L/T` are the model's own and `log:///L/T/*` its rows, and the address of the program
-  the envelope's assistant message carries ({§packet-wire-envelope}), so the rows sharing that coordinate
-  are its receipts; a model never infers the present from the last row's coordinate, which may or may
+  the envelope's assistant message carries ({§packet-wire-envelope}); that turn's incoming records
+  precede the program and its results follow it. A model never infers the present from the last row's coordinate, which may or may
   not be its own turn. The block
   changes every turn, so nothing of it precedes the log, and the packet carries no date, time
   or zone anywhere. The coordinates and the last program's address only; the other source
@@ -4601,18 +4601,24 @@ The packet reaches the provider under the roles the model was tuned on, its byte
 | Message | Role | Content |
 |:--|:--|:--|
 | 1 | `system` | the system slot, as rendered |
-| 2 … | `user` | the log's records, one message per completed turn in record order; the first opens with `## Log` |
+| 2 … | `user` | earlier retained turns, one message per turn; then the selected program's incoming records that were in its saved request |
 | next | `assistant` | the canonical rendering ({§statement-rendering}) of every statement the parser admitted from the worker's most recent program that admitted any ({§turn-source-resources}, kind `ops`), in order and alone: free text and unadmitted forms are absent, a recovered native call ({§native-tool-calls}) appears as the operation it was read as, and an operation whose receipt failed stays, since it produced its row; turn zero's survey ({§worker-initialization-entry}) is the first, so every model request carries one |
+| next … | `user` | the selected program's retained results, then later completed turns, one message per turn |
 | last | `user` | the current turn's records, then the remaining user sections in {§packet-cache-monotone} order; native parts ride here ({§packet-attachment-parts}) |
 
-Only role boundaries are added. Curation governs every record as before, so a KILLed
-row is absent from its turn's message; the one program is bounded and the model's own last operations,
-a demonstration of the grammar beside what the log made of it. Whatever sits under the assistant marker
-is what the model writes next, for better and for worse: shown its own slip, a model repeats it, so the
-slot carries the grammar's reading and never the bytes as typed. On the first request it is turn zero's
-survey, the worked example in the model's own place. The prefix through the last completed
-turn stays reusable across requests; the assistant message and the closing user message are the
-changing tail. The digest's packet artifacts record the packet; the envelope is its projection (#903).
+Only role boundaries are added; log bytes and record order are unchanged. Empty log
+groups are omitted and the first surviving group opens with `## Log`. The selected
+program splits its turn after the highest sequence present in that turn's saved request
+log, or before its first record when none was present. Operation names and origins do not
+classify incoming records. Packetless programs, including turn zero's survey, precede
+their results. Rejected turns do not change the selected program's coordinate.
+
+Curation governs every record: the saved request determines only the boundary, never
+restores a KILLed row or trimmed body. The single bounded program remains canonical,
+not raw emission or receipts. If all its rows have been curated away, it still precedes
+any later turn's rows. The reusable prefix ends before this program; its results and
+the current indices follow it. The digest's packet artifacts record the sections,
+not the wire's role boundaries; the envelope is their projection (#903).
 
 ### §packet-cache-monotone Default order and cache locality
 

@@ -6,8 +6,15 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
+import PacketWire from "./packet-wire.ts";
 
-export type PreviousEmissionView = { readonly content: string; readonly address: string };
+export type PreviousEmissionView = {
+    readonly content: string;
+    readonly address: string;
+    readonly loop: number;
+    readonly turn: number;
+    readonly inputSequence: number;
+};
 
 export default class PreviousEmission {
     static async resolve(
@@ -19,13 +26,23 @@ export default class PreviousEmission {
             executors: executors?.availableRuntimes(workspaceId) ?? [],
             jsonBodyExecutors: executors?.jsonBodyRuntimes(workspaceId) ?? [],
         };
-        const programs = await db.turn_source_previous_emission.all<{ content: string; worker: string; loop: number; turn: number }>({ worker_id: workerId, turn_id: turnId });
+        const programs = await db.turn_source_previous_emission.all<{ content: string; turn_id: number; worker: string; loop: number; turn: number }>({ worker_id: workerId, turn_id: turnId });
         for (const program of programs) {
             const statements = PlurnkParser.parse(program.content, options).items
                 .filter((item): item is { kind: "statement"; statement: PlurnkStatement } => item.kind === "statement")
                 .map(({ statement }) => statement);
             if (statements.length === 0) continue;
-            return { content: PlurnkParser.stringify(statements), address: `ops://${program.worker}/${program.loop}/${program.turn}` };
+            const inputs = await db.turn_source_request_log.all<{ content: string }>({
+                turn_id: program.turn_id,
+                heading: `### log:///${program.loop}/${program.turn}/`,
+            });
+            return {
+                content: PlurnkParser.stringify(statements),
+                address: `ops://${program.worker}/${program.loop}/${program.turn}`,
+                loop: program.loop,
+                turn: program.turn,
+                inputSequence: PacketWire.inputSequence(inputs.map(({ content }) => content), program.loop, program.turn),
+            };
         }
         return null;
     }

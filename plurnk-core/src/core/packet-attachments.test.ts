@@ -157,6 +157,29 @@ test("{§packet-attachment-parts} a stored packet admits attachments of a known 
     assert.deepEqual(JSON.parse(StoredPacket.stringify(withAttachment)), bag, "stored request evidence retains its native deliveries");
 });
 
+test("{§packet-wire-envelope} native attachments remain on the closing user message after their program and READ result", async () => {
+    const rendered = PacketWire.renderLogWithAccounting([readRow()], weigh);
+    const packet: RequestPacket = {
+        weight: 1000, attributions: [], attachments: [...rendered.attachments],
+        sections: [
+            { name: "definition", slot: "system", header: null, content: "sys", weight: 2 },
+            { name: "log", slot: "user", header: "Log", content: rendered.content, weight: 990 },
+            { name: "worker", slot: "user", header: "Worker", content: '{"loop":1,"turn":2}', weight: 8 },
+        ],
+    };
+    const previous = { content: "```READ (logo.png)\n```", address: "ops://w/1/1", loop: 1, turn: 1, inputSequence: 0 };
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const wire = await PacketWire.wireMessages(packet, async () => bytes, () => true, previous);
+    assert.deepEqual(wire.map(({ role }) => role), ["system", "assistant", "user", "user"]);
+    assert.equal(wire[1]!.content, previous.content);
+    assert.equal(wire[2]!.content, `## Log\n\n${rendered.content}`);
+    const closing = wire.at(-1)!.content;
+    assert.ok(Array.isArray(closing));
+    assert.deepEqual(closing[0], { type: "text", text: '## Worker\n{"loop":1,"turn":2}' });
+    assert.deepEqual(closing[1], { type: "text", text: PacketWire.attachmentCaption(rendered.attachments[0]!) });
+    assert.deepEqual(closing[2], { type: "file", data: bytes, mediaType: "image/png" });
+});
+
 test("{§packet-attachment-parts} native-only observations are weighed, reclaimable, and subject to output admission", () => {
     const row = readRow({ id: 42, output_admission_turn_id: null, rx: { content: "", mimetype: "text/markdown", image: { mimetype: "image/png", width: 640, height: 480, bytes: 12345 } } });
     const rendered = PacketWire.renderLogWithAccounting([row], weigh);

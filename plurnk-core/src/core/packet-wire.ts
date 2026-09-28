@@ -9,6 +9,7 @@ import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // supply names and typed content; this projection preserves their ordered evidence.
 
 import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
+import type { PreviousEmissionView } from "./PreviousEmission.ts";
 import type { ChatContentPart, ChatMessage } from "@plurnk/plurnk-providers";
 import { relative, sep } from "node:path";
 import { Problems, Validator, type ProblemDetails, type RangeExtent, type TextLineMarker, type TextRegion } from "@plurnk/plurnk-contracts";
@@ -105,6 +106,7 @@ interface NoticeView {
 // Loose view of a section re-parsed from `turns.packet` JSON (the digest path).
 interface SectionView { name?: unknown; slot?: unknown; header?: unknown; content?: unknown; weight?: unknown }
 interface Packet { sections?: SectionView[] }
+interface LogPosition { loop: number; turn: number; sequence: number }
 type WeighContent = (text: string) => number;
 interface RenderLogOptions {
     readonly promptProjectionWeight?: number;
@@ -286,29 +288,27 @@ export default class PacketWire {
         return typeof s?.content === "string" ? s.content : "";
     }
 
-    // Project a packet to the request ChatMessage[] for the wire: one message
-    // per slot. Engine calls this directly; the result is what provider.generate
-    // receives. The digest calls renderSlot for byte-identical packet files.
-    // {§packet-wire-envelope} — the packet's bytes under the roles the model was tuned on: the system
-    // slot; the log's records one user message per completed turn; the worker's previous submitted
-    // program, verbatim and alone, as the one assistant message; then the current turn's records
-    // and the remaining user sections as the closing user message. Nothing but grammar sits under
-    // the assistant marker: whatever does becomes the model's output vocabulary (#903).
-    static packetToWireMessages(packet: Packet, previousEmission: string | null = null): Array<{ role: string; content: string }> {
+    // {§packet-wire-envelope} — inputs, one canonical program, results, then current indices.
+    static packetToWireMessages(packet: Packet, previousEmission: PreviousEmissionView | null = null): Array<{ role: string; content: string }> {
         const sections = packet.sections ?? [];
         const messages: Array<{ role: string; content: string }> = [{ role: "system", content: PacketWire.renderSlot(sections, "system") }];
         const log = sections.find((s) => s.slot === "user" && s.name === "log");
         const rest = sections.filter((s) => s.slot === "user" && s.name !== "log");
         const worker = sections.find((s) => s.name === "worker");
         const current = PacketWire.#currentCoordinate(worker);
-        const groups = log === undefined ? [] : PacketWire.#turnGroups(PacketWire.renderSection(log));
+        const groups = log === undefined ? [] : PacketWire.#turnGroups(PacketWire.renderSection(log), previousEmission);
         const closing: string[] = [];
+        let pending = previousEmission;
         groups.forEach((group, index) => {
+            if (pending !== null && group.followsEmission) {
+                messages.push({ role: "assistant", content: pending.content });
+                pending = null;
+            }
             const last = index === groups.length - 1;
             if (last && current !== null && group.turn === current) closing.push(group.content);
             else messages.push({ role: "user", content: group.content });
         });
-        if (previousEmission !== null && previousEmission.length > 0) messages.push({ role: "assistant", content: previousEmission });
+        if (pending !== null) messages.push({ role: "assistant", content: pending.content });
         const tail = rest.map((s) => PacketWire.renderSection(s)).filter((p) => p.length > 0);
         const closingContent = [...closing, ...tail].join("\n\n");
         if (closingContent.length > 0 || messages.at(-1)?.role !== "user") messages.push({ role: "user", content: closingContent });
@@ -324,25 +324,45 @@ export default class PacketWire {
         } catch { return null; }
     }
 
-    // The rendered log section split by the turn that wrote each record; a record without a
-    // coordinate stays with the group before it. The section heading opens the first group.
-    static #turnGroups(rendered: string): Array<{ turn: string | null; content: string }> {
+    // {§packet-wire-envelope} — request evidence supplies the input boundary, not current row visibility.
+    static inputSequence(items: readonly string[], loop: number, turn: number): number {
+        let sequence = 0;
+        for (const item of items) {
+            for (const { coordinate } of PacketWire.#logRecords(item)) {
+                if (coordinate?.loop === loop && coordinate.turn === turn) sequence = Math.max(sequence, coordinate.sequence);
+            }
+        }
+        return sequence;
+    }
+
+    static #logRecords(rendered: string): Array<{ content: string; coordinate: LogPosition | null }> {
+        return rendered.split(/\n\n(?=### log:\/\/\/)/u).map((content) => {
+            const match = /^### log:\/\/\/(\d+)\/(\d+)\/(\d+)(?=\/|\s|$)/mu.exec(content);
+            return { content, coordinate: match === null ? null : { loop: Number(match[1]), turn: Number(match[2]), sequence: Number(match[3]) } };
+        });
+    }
+
+    // A turn has two groups only when the selected program separates its inputs and results.
+    // The section heading opens the first group; unaddressed content stays with its preceding record.
+    static #turnGroups(rendered: string, emission: PreviousEmissionView | null): Array<{ turn: string | null; followsEmission: boolean; content: string }> {
         if (rendered.length === 0) return [];
-        const groups: Array<{ turn: string | null; records: string[] }> = [];
+        const groups: Array<{ turn: string | null; followsEmission: boolean; records: string[] }> = [];
         let heading: string[] = [];
-        for (const record of rendered.split(/\n\n(?=### log:\/\/\/)/u)) {
-            const coordinate = /(?:^|\n)### log:\/\/\/(\d+)\/(\d+)\//u.exec(record);
+        for (const { content, coordinate } of PacketWire.#logRecords(rendered)) {
             const group = groups.at(-1);
             if (coordinate === null) {
-                if (group === undefined) heading.push(record); else group.records.push(record);
+                if (group === undefined) heading.push(content); else group.records.push(content);
                 continue;
             }
-            const turn = `${coordinate[1]}/${coordinate[2]}`;
-            if (group !== undefined && group.turn === turn) group.records.push(record);
-            else { groups.push({ turn, records: [...heading, record] }); heading = []; }
+            const turn = `${coordinate.loop}/${coordinate.turn}`;
+            const followsEmission = emission !== null && (coordinate.loop > emission.loop
+                || coordinate.loop === emission.loop && (coordinate.turn > emission.turn
+                    || coordinate.turn === emission.turn && coordinate.sequence > emission.inputSequence));
+            if (group !== undefined && group.turn === turn && group.followsEmission === followsEmission) group.records.push(content);
+            else { groups.push({ turn, followsEmission, records: [...heading, content] }); heading = []; }
         }
-        if (heading.length > 0) groups.push({ turn: null, records: heading });
-        return groups.map(({ turn, records }) => ({ turn, content: records.join("\n\n") }));
+        if (heading.length > 0) groups.push({ turn: null, followsEmission: false, records: heading });
+        return groups.map(({ turn, followsEmission, records }) => ({ turn, followsEmission, content: records.join("\n\n") }));
     }
 
     // Number a non-READ body line as `<N>:<line>` — `N:` followed by NO separator whitespace
@@ -1232,7 +1252,7 @@ export default class PacketWire {
         packet: RequestPacket,
         bytesOf: (attachment: PacketAttachment) => Promise<Uint8Array>,
         accepts: (kind: PacketAttachment["kind"]) => boolean = () => true,
-        previousEmission: string | null = null,
+        previousEmission: PreviousEmissionView | null = null,
     ): Promise<ChatMessage[]> {
         const messages = PacketWire.packetToWireMessages(packet, previousEmission) as ChatMessage[];
         // {§packet-attachment-parts} — native parts ride the closing user message.

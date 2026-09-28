@@ -315,8 +315,7 @@ export default class PacketBuilder {
             },
         );
         const attachmentsWeight = renderedLog.attachments.reduce((sum, { weight }) => sum + weight, 0);
-        // {§packet-current-turn} — the address of the program the envelope's assistant message carries
-        // ({§packet-wire-envelope}): the rows sharing that coordinate are its receipts.
+        // {§packet-current-turn} — the address of the program the envelope's assistant message carries.
         const previousEmission = turnId === null ? null : (await PreviousEmission.resolve(this.#db, { workspaceId, workerId, turnId }, this.#executors()))?.address ?? null;
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
