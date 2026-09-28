@@ -1203,7 +1203,7 @@ export default class PacketWire {
         if (attachment.width !== undefined && attachment.height !== undefined) facts.push(`${attachment.width}×${attachment.height} px`);
         if (attachment.pages !== undefined) facts.push(`${attachment.pages} pages`);
         if (attachment.duration !== undefined) facts.push(`${attachment.duration} s`);
-        return `Retained READ observation log:///${attachment.coordinate}/READ → ${attachment.path} (${facts.join(", ")}). The native part that follows is that READ's own bytes, present in every packet until the row is KILLed; nothing new arrived.`;
+        return `log:///${attachment.coordinate}/READ → ${attachment.path} (${facts.join(", ")}): the bytes of that READ row, retained until it is KILLed. Not a new arrival.`;
     }
 
     static #projectRelativeCwd(cwd: string, projectRoot: string | null): string | null {
