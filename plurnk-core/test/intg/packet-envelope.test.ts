@@ -68,6 +68,7 @@ test("{§packet-wire-envelope}: the turn runner sends turn zero's survey, then t
     assert.equal(chatMessageText(assistant[0]!), first, "the previous turn's program, verbatim and alone");
     assert.equal(second.at(-1)!.role, "user", "the request closes with the clump");
     assert.ok(chatMessageText(second.at(-1)!).includes("## Worker"), "the clump closes the request");
+    assert.match(chatMessageText(second.at(-1)!), /"turn":3,"previousEmission":"ops:\/\/[^/"]+\/1\/2"\}/u, "the Worker block names the program the assistant message carries ({§packet-current-turn})");
     const users = second.filter((message) => message.role === "user");
     assert.ok(users.length >= 2, "the log arrives one user message per completed turn before the program");
     assert.ok(chatMessageText(users[0]!).startsWith("## Log"), "the first log message opens the log");

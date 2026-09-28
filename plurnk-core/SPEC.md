@@ -600,13 +600,15 @@ Every admitted authority is a literal `workers.name`; self-addressing uses the c
   `"parent": null` at a root, so a worker never infers its rank from silence.
 - §packet-current-turn **The packet says who and which turn, below the log.** The
   `## Worker` block is the first section after the log, carrying
-  `{"path": "worker://<name>", "parent": <address or null>, "loop": L, "turn": T}`: the actor,
-  whose child it is, and the coordinate this packet's response becomes, so `reasoning://<worker>/L/T`
-  and `ops://<worker>/L/T` are the model's own and `log:///L/T/*` its rows; a model never infers the
-  present from the last row's coordinate, which may or may not be its own turn. The block
+  `{"path": "worker://<name>", "parent": <address or null>, "loop": L, "turn": T, "previousEmission": <ops address or null>}`:
+  the actor, whose child it is, the coordinate this packet's response becomes, so `reasoning://<worker>/L/T`
+  and `ops://<worker>/L/T` are the model's own and `log:///L/T/*` its rows, and the address of the program
+  the envelope's assistant message carries ({§packet-wire-envelope}), so the rows sharing that coordinate
+  are its receipts; a model never infers the present from the last row's coordinate, which may or may
+  not be its own turn. The block
   changes every turn, so nothing of it precedes the log, and the packet carries no date, time
-  or zone anywhere. The coordinate only; the source addresses stay
-  documented, not taught.
+  or zone anywhere. The coordinates and the last program's address only; the other source
+  addresses stay documented, not taught.
 
 Worker control rides the daemon's inject seam (active→fold, idle→enqueue+drain), so the handler creates/branches the worker and hands off; the daemon owns provider + system prompt. FORK/WORK carry the seed task in the body and are their own ops, dispatched to worker control — never the entry-copy path.
 
@@ -4620,7 +4622,7 @@ Conditional absence never reorders the surviving default sections.
 |     2 | system | `system-policy`       | Operator policy; empty content is omitted on the wire. |
 |     3 | system | `inject`              | Present only when operator notes are configured. |
 |     4 | user   | `log`                 | Append-mostly model-visible history; the first user section, so the cached prefix ends inside it. |
-|     5 | user   | `worker`              | `Worker`: `{"path": "worker://alice", "parent": <address or null>, "loop": L, "turn": T}`, the actor and the coordinate this packet's response becomes ({§packet-current-turn}). |
+|     5 | user   | `worker`              | `Worker`: `{"path": "worker://alice", "parent": <address or null>, "loop": L, "turn": T, "previousEmission": <ops address or null>}`, the actor, the coordinate this packet's response becomes and the address of its previous program ({§packet-current-turn}). |
 |     6 | user   | `delegation`          | `Delegation`: per-turn `{workers, streams}` pointers; always present, each list `[]` when empty ({§packet-empty-sections}). |
 |     7 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
 |     8 | user   | `notices`             | Per-turn observations; empty content is omitted. |

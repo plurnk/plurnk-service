@@ -16,7 +16,9 @@ an entry rather than controlling that worker.
 | `worker:///example.md` | Shared commons entry | Read and write. |
 
 The packet's `## Worker` block, below the log, names your worker, its parent
-(`null` at a root), and the loop and turn you are producing. Addresses are
+(`null` at a root), the loop and turn you are producing, and `previousEmission`, the
+address of the program you submitted last: the log rows at that coordinate are its
+receipts. Addresses are
 literal and keep the same meaning when passed to another worker. Scratch
 belongs to the workspace; a namespace does not require a namesake worker.
 Generated references live under `worker:///_plurnk/`, and reference refreshes

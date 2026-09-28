@@ -19,11 +19,12 @@ test("{§packet-current-turn}: the Worker block follows the log with path, paren
         const packet = await packets.buildRequestPacket({
             initialMessages: [], workspaceId, workerId, loopId, currentTurnSeq: 3, provider: provider(), gitStatus: null,
         });
-        const block = JSON.parse(packetSection(packet, "worker")) as { path: string; parent: string | null; loop: number; turn: number };
+        const block = JSON.parse(packetSection(packet, "worker")) as { path: string; parent: string | null; loop: number; turn: number; previousEmission: string | null };
         assert.match(block.path, /^worker:\/\//);
         assert.equal(block.parent, null, "a root worker states parent: null");
         assert.deepEqual([block.loop, block.turn], [1, 3], "the coordinate this packet's response becomes");
-        assert.deepEqual(Object.keys(block), ["path", "parent", "loop", "turn"], "the block carries nothing else: no date, time or zone");
+        assert.deepEqual(Object.keys(block), ["path", "parent", "loop", "turn", "previousEmission"], "the block carries nothing else: no date, time or zone");
+        assert.equal(block.previousEmission, null, "no program submitted yet: previousEmission is null, never omitted ({§packet-current-turn})");
         const user = packet.sections.filter(({ slot }) => slot === "user").map(({ name }) => name);
         assert.equal(user.indexOf("worker"), user.indexOf("log") + 1, "the Worker block is the first section after the log");
         assert.equal(user[0], "log", "nothing volatile precedes the log");

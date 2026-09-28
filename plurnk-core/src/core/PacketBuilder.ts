@@ -314,6 +314,10 @@ export default class PacketBuilder {
             },
         );
         const attachmentsWeight = renderedLog.attachments.reduce((sum, { weight }) => sum + weight, 0);
+        // {§packet-current-turn} — the address of the program the envelope's assistant message carries
+        // ({§packet-wire-envelope}): the rows sharing that coordinate are its receipts.
+        const previous = turnId === null ? undefined : await this.#db.turn_source_previous_emission.get<{ worker: string; loop: number; turn: number }>({ worker_id: workerId, turn_id: turnId });
+        const previousEmission = previous === undefined ? null : `ops://${previous.worker}/${previous.loop}/${previous.turn}`;
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
             // Stable privileged policy follows the definition for prefix-cache locality.
@@ -332,7 +336,7 @@ export default class PacketBuilder {
             // the actor is, whose child it is, and the coordinate this packet's response becomes —
             // the one fact the sources cannot state about themselves (which `reasoning://<worker>/L/T` is
             // the model's own). It changes every turn, so it never precedes the log.
-            { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({ path: `worker://${workerName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq }) },
+            { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({ path: `worker://${workerName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq, previousEmission }) },
             // The per-turn status clump follows the log ({§packet-cache-monotone}).
             // child-orientation: what this worker holds live — its child workers and its open streams — under
             // the teaching's own word, just above errors. Terse pointers (the path is the actionable address
