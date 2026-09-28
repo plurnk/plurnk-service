@@ -193,6 +193,7 @@ test("worker status projects the durable model and exact packet-bearing loop cou
         packetCount: 4,
         activity: null,
         children: 0,
+        descendants: { requests: 0, usage: null, costUsd: null },
     });
     assert.deepEqual(statusState(null, null), {
         lifecycle: "idle",
@@ -201,6 +202,7 @@ test("worker status projects the durable model and exact packet-bearing loop cou
         packetCount: 0,
         activity: null,
         children: 0,
+        descendants: { requests: 0, usage: null, costUsd: null },
     });
     // {§agui-status-children} — alive means still owing a result: queued, running, or parked.
     assert.equal(aliveChildren([

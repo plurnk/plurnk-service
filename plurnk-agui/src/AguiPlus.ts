@@ -9,7 +9,7 @@
 import { EventType, type AguiEvent, type ProposalNotification } from "./types.ts";
 import type { JsonPatch } from "@ag-ui/core";
 import type { Interrupt, ResumeEntry } from "@ag-ui/core";
-import { lifecycleOfLoopStatus, type LoopLifecycle } from "@plurnk/plurnk-contracts";
+import { lifecycleOfLoopStatus, type LoopLifecycle, type ProviderAccounting, type ProviderUsage } from "@plurnk/plurnk-contracts";
 import type {
     ApplicationLoopProjection,
     ClientInteractionProjection,
@@ -150,7 +150,24 @@ export interface AguiStatusState {
     readonly activity: AguiStatusActivity | null;
     // {§agui-status-children} — the bound Worker's alive direct children (queued, running, parked).
     readonly children: number;
+    // {§agui-status-descendants} — what the bound Worker's descendants have spent on this delegation.
+    readonly descendants: AguiDescendantsState;
 }
+
+// {§agui-status-descendants} — the daemon's {§provider-accounting} projection over the descendant
+// tree, without its request list: how many settled requests, their usage, their cost. Numbers
+// verbatim ({§agui-numbers-passthrough}); zero requests is "nothing spent", not "unknown".
+export interface AguiDescendantsState {
+    readonly requests: number;
+    readonly usage: ProviderUsage | null;
+    readonly costUsd: string | null;
+}
+export const descendantsState = (accounting: ProviderAccounting): AguiDescendantsState => ({
+    requests: accounting.requests.length,
+    usage: accounting.usage,
+    costUsd: accounting.costUsd,
+});
+export const EMPTY_DESCENDANTS: AguiDescendantsState = Object.freeze({ requests: 0, usage: null, costUsd: null });
 
 // {§agui-status-children} — a child that still owes a result is alive; one that concluded is not.
 export const ALIVE_LIFECYCLES: ReadonlySet<LoopLifecycle> = new Set<LoopLifecycle>(["queued", "running", "parked"]);
@@ -176,6 +193,7 @@ export const statusState = (
     loop: ApplicationLoopProjection | null,
     activity: AguiStatusActivity | null = null,
     children = 0,
+    descendants: AguiDescendantsState = EMPTY_DESCENDANTS,
 ): AguiStatusState => ({
     // {§loop-lifecycle-vocabulary} — the one projection the worker directory shares.
     lifecycle: lifecycleOfLoopStatus(loop?.status ?? null),
@@ -184,6 +202,7 @@ export const statusState = (
     packetCount: loop?.packetCount ?? 0,
     activity,
     children,
+    descendants,
 });
 export interface AguiBudgetState {
     readonly curationWeight: number | null;

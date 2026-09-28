@@ -379,6 +379,7 @@ export default class DrainSupervisor {
                     }
                     currentLoopId = loopRow.id;
                     this.#clearLoopTimer(loopRow.id);
+                    this.#emitLoopStatus(workspaceId, workerId, loopRow.id, 102);
                     const onSettled = async (logEntryId: number): Promise<void> => {
                         await this.#emitLogEntry(workspaceId, logEntryId).catch((error: unknown) => {
                             console.error("log/entry broadcast failed:", error instanceof Error ? error.message : String(error));
@@ -404,6 +405,7 @@ export default class DrainSupervisor {
                         },
                     );
                     if (result.result.status === 202) {
+                        this.#emitLoopStatus(workspaceId, workerId, loopRow.id, 202);
                         // The loop parked — suspended, not terminated. Leave it at 202
                         // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion
                         // through handleWakeWorker re-queues it; if it holds an open stream, the daemon's
@@ -892,6 +894,14 @@ export default class DrainSupervisor {
         // Floored by the optimistic settlement cap so the first step cannot wake a parked loop
         // faster than the preceding turn's settlement scale.
         return Math.max(execPollBackoffMs(step, base, turns), readOptimisticSettlementMs());
+    }
+
+    // {§loop-status-notice} — a transient lifecycle notice: running when the drain claims a loop,
+    // parked when it leaves one suspended. Broadcast only; it never enters a packet.
+    #emitLoopStatus(workspaceId: number, workerId: number, loopId: number, status: 102 | 202): void {
+        this.#emit(workspaceId, "notice/event", {
+            workerId, loopId, notice: { source: "engine:lifecycle", kind: "loop_status", level: "info", status },
+        });
     }
 
     async #wakeLoop(workerId: number, loopId: number, condition: Parameters<LoopLifecycle["wake"]>[1] = {}): Promise<boolean> {

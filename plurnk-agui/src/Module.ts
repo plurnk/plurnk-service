@@ -14,7 +14,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse, type Server as HttpServer } from "node:http";
 import Portal from "./Portal.ts";
-import { aliveChildren, derivationActivity, statusState, actionResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
+import { aliveChildren, derivationActivity, descendantsState, statusState, actionResult, type ActionRequest, type ActionOutcome, type AguiStatusState } from "./AguiPlus.ts";
 import { EventType, type AguiEvent, type RunAgentInput } from "./types.ts";
 import { aguiRouteTemplate, observed } from "./observe.ts";
 import { Problems, Validator, selectWorkerLoop, type AguiDiscovery, type ApplicationPort, type ClientEnvelope, type ProblemDetails } from "@plurnk/plurnk-contracts";
@@ -410,11 +410,14 @@ export default class Module {
             this.#seam.listWorkerLoops({ workspaceId, workerId }),
             this.#seam.listWorkers(workspaceId, { parentWorkerId: workerId }),
         ]);
+        const loop = selectWorkerLoop(loops);
+        const descendants = await this.#seam.descendantAccounting({ workspaceId, workerId, loopId: loop?.id ?? null });
         return statusState(
             model,
-            selectWorkerLoop(loops),
+            loop,
             derivationActivity(this.#seam.workspaceDerivationStatus(workspaceId)),
             aliveChildren(children),
+            descendantsState(descendants),
         );
     }
 

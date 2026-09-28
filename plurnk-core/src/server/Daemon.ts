@@ -14,7 +14,7 @@ import ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { RuntimeDeclaration } from "@plurnk/plurnk-execs";
-import type { Provider, ProviderSpec } from "@plurnk/plurnk-providers";
+import type { Provider, ProviderAccounting, ProviderSpec } from "@plurnk/plurnk-providers";
 import { projectModelRoute, routeForSpec, specForRoute } from "./model-route.ts";
 import { discoverDaemonModules } from "./module-discovery.ts";
 import EffectPolicy from "../schemes/EffectPolicy.ts";
@@ -1144,6 +1144,15 @@ export default class Daemon implements ApplicationPort {
         if (row === undefined || row.workspace_id !== workspaceId) return null;
         const { workspace_id: _workspaceId, ...projection } = projectWorkerRow(row);
         return projection;
+    }
+
+    // {§methods-worker-descendants}
+    async descendantAccounting(args: { workspaceId: number; workerId: number; loopId: number | null }): Promise<ProviderAccounting> {
+        const workspaceId = ClientInput.assertId("worker.descendants", "workspaceId", args.workspaceId);
+        const workerId = ClientInput.assertId("worker.descendants", "workerId", args.workerId);
+        await this.#assertWorkerOwned(workspaceId, workerId);
+        const loopId = args.loopId === null ? null : ClientInput.assertId("worker.descendants", "loopId", args.loopId);
+        return this.#engine.descendantAccounting(workerId, loopId);
     }
 
     async listWorkerLoops(args: {

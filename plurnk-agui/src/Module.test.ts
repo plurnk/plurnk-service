@@ -132,6 +132,7 @@ const mockSeam = () => {
         listWorkers: async () => [workerRow(10, "client-1", "client")],
         readWorker: async () => null,
         listWorkerLoops: async () => [],
+        descendantAccounting: async () => ({ requests: [], usage: null, costUsd: null }),
         ensureModelWorker: async () => 20,
         listPrompts: async () => ["hi"],
         renameWorkspace: async (_id, name) => ({ id: 3, name }),
@@ -210,6 +211,9 @@ for (const status of [200, 502]) {
         seam.listWorkers = async (_workspaceId, query) => query?.parentWorkerId === 77
             ? children ? [{ ...workerRow(88, "child", "model", 77), lifecycle: "running" }] : []
             : [workerRow(77, "state-replay")];
+        // {§agui-status-descendants} — the daemon's projection over the child's settled spend, verbatim.
+        const spent = { requests: [{ provider: "openai", model: "mocktest", outcome: "response" as const, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, cost: { kind: "estimated" as const, amount: { amount: "0.01", currency: "USD" }, source: "fixture" } }], usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, costUsd: "0.01" };
+        seam.descendantAccounting = async () => children ? spent : { requests: [], usage: null, costUsd: null };
         const usage = loopUsage({ curationWeight: 123, curationBudget: 4000, contextTokens: 900, contextCapacity: 8000 });
         seam.runLoop = async () => {
             setImmediate(async () => {
@@ -220,6 +224,8 @@ for (const status of [200, 502]) {
                 emit(3, "loop/packet", { workerId: 77, loopId: 9, packetCount: 1 });
                 children = true;
                 emit(3, "loop/packet", { workerId: 88, loopId: 10, packetCount: 1 });
+                await new Promise<void>((resolve) => setImmediate(resolve));
+                emit(3, "notice/event", { workerId: 88, loopId: 10, notice: { source: "engine:turn", kind: "turn_generated", level: "info" } });
                 await new Promise<void>((resolve) => setImmediate(resolve));
                 emit(3, "loop/packet", { workerId: 77, loopId: 9, packetCount: 2 });
                 emit(3, "loop/terminated", termination({ workerId: 77, loopId: 9, usage,
@@ -240,11 +246,13 @@ for (const status of [200, 502]) {
             assert.ok(patches.some(({ path }) => path === "/plurnk/status"), "the whole-gauge replacement is exercised");
             assert.ok(patches.some((op) => op.path === "/plurnk/status/activity" && "value" in op && (op.value as { percent?: number })?.percent === 50), "derivation reaches state");
             assert.ok(patches.some((op) => op.path === "/plurnk/status/children" && "value" in op && op.value === 1), "child activity reaches state");
+            assert.ok(patches.some((op) => op.path === "/plurnk/status/descendants" && "value" in op && (op.value as { requests?: number })?.requests === 1), "the descendants' spend reaches state without promoting the child's notice");
             assert.deepEqual(replayState(events), {
                 ...initial.snapshot,
                 plurnk: { ...initial.snapshot.plurnk, status: {
                     lifecycle: status === 200 ? "completed" : "failed", model: null, loopId: 9,
                     packetCount: 2, children: 1, activity: null,
+                    descendants: { requests: 1, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, costUsd: "0.01" },
                 } },
                 budget: { curationWeight: 123, curationBudget: 4000, contextTokens: 900, contextCapacity: 8000 },
             });
@@ -545,6 +553,7 @@ test("the initial AG-UI snapshot carries durable model, exact packet count, and 
             loopId: 9,
             packetCount: 3,
             children: 0,
+            descendants: { requests: 0, usage: null, costUsd: null },
             activity: {
                 kind: "derivation",
                 phase: "indexing",

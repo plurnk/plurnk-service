@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { LoopLifecycle } from "./LoopLifecycle.ts";
+import type { ProviderAccounting } from "./types.generated.ts";
 import type { ApplicationMessage, MessageResource } from "./MessageResource.ts";
 import type {
     CapabilityPolicy,
@@ -262,6 +263,13 @@ export interface ApplicationPort extends HttpHost {
         readonly workspaceId: number;
         readonly workerId: number;
     }): Promise<ApplicationLoopProjection[]>;
+    // {§methods-worker-descendants} — the spend of the worker's descendants on loops begun
+    // after `loopId`; `null` (no loop) is the empty projection.
+    descendantAccounting(args: {
+        readonly workspaceId: number;
+        readonly workerId: number;
+        readonly loopId: number | null;
+    }): Promise<ProviderAccounting>;
     // {§methods-workspace-prompts} — an omitted workerId lists every model worker's client-addressed seeds.
     listPrompts(workspaceId: number, limit?: number, workerId?: number): Promise<string[]>;
     // {§share} — the workspace's share, from a consistent copy of the daemon's database, into an absolute folder.

@@ -83,7 +83,7 @@ One accepted Run or daemon notification produces zero-or-more AG-UI events:
 | `loop/packet`                              | `STATE_DELTA` replacing the bound thread's loop id, lifecycle, and exact packet count |
 | `loop/terminated`                          | `STATE_DELTA` (latest-turn gauge only) + `CUSTOM plurnk.terminated` (the complete daemon terminal, including physical-request accounting and top-level attribution) + `RAW` (the provider's opaque metadata bag, `source: provider`, §475) + `RUN_FINISHED` (`result.status === 200`) or `RUN_ERROR` (otherwise, from the exact RFC 9457 Problem Details) |
 | transport failure after SSE opens          | `CUSTOM plurnk.problem` (exact Problem Details) + `RUN_ERROR` (`code` = Problem `type`, `message` = Problem `detail`) |
-| `notice/event`                             | `CUSTOM plurnk.notice`; routine derivation lifecycle uses only `STATE /plurnk/status/activity`, while warnings/errors also retain their diagnostic Notice. |
+| `notice/event`                             | `CUSTOM plurnk.notice`; routine derivation lifecycle uses only `STATE /plurnk/status/activity`, and the drain's lifecycle beat ({§loop-status-notice}) only `STATE /plurnk/status/lifecycle`, while warnings/errors also retain their diagnostic Notice. |
 | `reasoning/event`                          | Standard live `REASONING_START` → `REASONING_MESSAGE_START` → one or more `REASONING_MESSAGE_CONTENT` → `REASONING_MESSAGE_END` → `REASONING_END` {§agui-readable-reasoning} |
 | §agui-outside-text `outside/event`          | `CUSTOM plurnk.outside` with `{ coordinate, text, tokens }` exactly as core stored and weighed it ({§notifications-outside-event}): the thread's model worker's text outside every operation, once per admitted emission, after the turn's `STEP_STARTED`. Never assistant speech, reasoning or a NOTE; a foreign worker's text never enters the thread. |
 | `stream/event` + `stream/concluded`        | `CUSTOM plurnk.stream` + `ACTIVITY_SNAPSHOT` (the standard background-activity channel: `activityType` = the scheme, replace-snapshot, §475). A conclusion preserves its exact universal `result`, including RFC 9457 Problem Details; AG-UI does not reconstruct failure from a status or summary. |
@@ -147,6 +147,20 @@ indicator and never poll the directory to keep it honest. Topology is navigation
 hops to a child to speak to it; watching a child's rows is the delegation observation a Run
 asks for ({§agui-delegation-observation}).
 
+§agui-status-descendants **The descendants' spend is the daemon's, republished, never promoted.**
+`status.descendants` is `{ requests, usage, costUsd }`: the daemon's {§provider-accounting}
+projection over the bound Worker's descendant tree on this delegation
+({§methods-worker-descendants}), without its request list — `requests` counts them, so zero
+requests reads as nothing spent rather than unknown, and `usage` and `costUsd` pass through
+verbatim ({§agui-numbers-passthrough}). The module reads it beside `children` for every snapshot
+and whole-gauge replacement, and republishes `STATE_DELTA /plurnk/status/descendants` only when
+the projection changes: after another worker's `loop/packet` or `loop/terminated`, after another
+worker's `turn_generated` notice (a descendant's spend just settled), or after the bound Worker's
+own `WORK`, `FORK` or `KILL` row. Descendant notices, packets and terminals themselves are not
+promoted ({§agui-delegation-observation}); the parent's own `turn_generated` and
+`plurnk.terminated` accounting keep their meaning. With the lifecycle beat
+({§loop-status-notice}) a parked parent's clock and its children's cost both move.
+
 §agui-numbers-passthrough **Gauge numbers pass through verbatim.** The module
 never recomputes the daemon's gauge or promotes accounting into application
 state paths that could be mistaken for standard AG-UI fields.
@@ -162,7 +176,9 @@ current gauge without clients inventing missing fields.
 | `snapshot.plurnk.status.loopId`              | representative `ApplicationLoopProjection.id` | Selected under {§application-worker-observation}: live work precedes terminal history; `null` when none exists. Maintenance-only loops are excluded by Core under {§application-loop-observation}. |
 | `snapshot.plurnk.status.packetCount`         | latest `ApplicationLoopProjection.packetCount` | Exact packet-bearing Turn count; packetless Turns and provider retries do not contribute. |
 | `snapshot.plurnk.status.lifecycle` | latest `ApplicationLoopProjection.status` | Queued `100` is `queued`, not executing or WAITing. Running `102`, parked `202`, and terminal states retain their ordinary lifecycle meanings. |
+| `STATE_DELTA /plurnk/status/lifecycle` | `loop/packet` (running), `loop/terminated` (completed, failed), and the drain's lifecycle beat ({§loop-status-notice}: running on claim, parked on park) | A parked delegation and its wake reach the client the moment the daemon decides them; a client never infers parked from a WAIT row. |
 | `snapshot.plurnk.status.children` | `ApplicationPort.listWorkers({ parentWorkerId })` | The bound Worker's alive direct children — `queued`, `running`, or `parked` under {§loop-lifecycle-vocabulary}; a parked child still owes a result. Computed by the daemon for every snapshot and whole-gauge replacement, and republished as `STATE_DELTA /plurnk/status/children` only when it changes: after another worker's `loop/terminated` or `loop/packet` (it may be a child), or after the bound Worker's own `WORK`, `FORK`, or `KILL` row lands (it spawned or killed one). Clients render the number and never poll the directory for it ({§agui-status-children}). |
+| `snapshot.plurnk.status.descendants` | `ApplicationPort.descendantAccounting({ workspaceId, workerId, loopId })` | `{ requests, usage, costUsd }`: the daemon's {§provider-accounting} projection of the bound Worker's descendants' settled spend on this delegation, without the request list. Computed for every snapshot and whole-gauge replacement, republished as `STATE_DELTA /plurnk/status/descendants` only when it changes ({§agui-status-descendants}). |
 | `STATE_DELTA /plurnk/status/*`               | packet, termination, and derivation events | Replaceable lifecycle, packet chronology, and transient activity. Reattachment snapshots carry current derivation activity through the same projection, without polling or duplicate routine Notices. Clients never reconstruct packet count from row or STEP traffic. |
 | `snapshot.budget`                            | Run initialization                         | Creates all four gauge fields as `null`, so subsequent RFC 6902 `replace` operations always address existing values. |
 | `STATE_DELTA /budget/curationWeight`         | `loop/terminated.usage.curationWeight`    | Latest assembled packet's model-independent curation weight, or `null` when no packet exists. |

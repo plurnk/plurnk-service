@@ -590,3 +590,11 @@ test("{§agui-outside-text}: outside text projects one plurnk.outside per admitt
     assert.deepEqual(tr.outside({ ...event, workerId: 9, loopId: 12, turnId: 13 }), [], "a foreign worker's text never enters the thread");
     assert.equal(tr.outside({ ...event, turnId: 7 }).filter(({ type }) => type === EventType.STEP_STARTED).length, 0, "a second emission in the same turn opens no second step");
 });
+
+test("{§loop-status-notice} a lifecycle notice is the lifecycle gauge and nothing else", () => {
+    const tr = t();
+    const beat = (status: number) => tr.notice({ source: "engine:lifecycle", kind: "loop_status", level: "info", status });
+    assert.deepEqual(beat(202), [{ type: EventType.STATE_DELTA, delta: [{ op: "replace", path: "/plurnk/status/lifecycle", value: "parked" }] }], "parked, and no diagnostic custom");
+    assert.deepEqual(beat(102), [{ type: EventType.STATE_DELTA, delta: [{ op: "replace", path: "/plurnk/status/lifecycle", value: "running" }] }]);
+    assert.throws(() => beat(200), /carries 102 or 202/u, "a terminal is loop/terminated's, never a beat");
+});

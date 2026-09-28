@@ -30,7 +30,7 @@ import {
 } from "./types.ts";
 import { derivationActivity } from "./AguiPlus.ts";
 import MessageAddress from "./MessageAddress.ts";
-import { Validator, type ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
+import { Validator, lifecycleOfLoopStatus, type ApplicationLoopPacket } from "@plurnk/plurnk-contracts";
 
 export interface TranslatorContinuation {
     readonly currentTurn: number | null;
@@ -335,7 +335,15 @@ export default class Translator {
 
     notice(notice: unknown): AguiEvent[] {
         const diagnostic: AguiEvent = { type: EventType.CUSTOM, name: "plurnk.notice", value: notice };
-        const value = notice as { source?: unknown; kind?: unknown; level?: unknown };
+        const value = notice as { source?: unknown; kind?: unknown; level?: unknown; status?: unknown };
+        // {§loop-status-notice} — the drain's running/parked beat is the lifecycle gauge, nothing else.
+        if (value.source === "engine:lifecycle" && value.kind === "loop_status") {
+            if (value.status !== 102 && value.status !== 202) throw new TypeError("A loop_status notice carries 102 or 202.");
+            return [{
+                type: EventType.STATE_DELTA,
+                delta: [{ op: "replace", path: "/plurnk/status/lifecycle", value: lifecycleOfLoopStatus(value.status) }],
+            }];
+        }
         if (value.source !== "engine:derivation" || value.kind !== "search_progress") return [diagnostic];
         const events: AguiEvent[] = [{
             type: EventType.STATE_DELTA,
