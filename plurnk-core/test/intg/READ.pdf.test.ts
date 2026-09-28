@@ -9,6 +9,7 @@ import { Mock, type InputModality } from "@plurnk/plurnk-providers";
 import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/src/buildPdf.ts";
 import { viableWindow } from "./_provider.ts";
 import { rpcCall, connect, withDaemon, waitForDb } from "./_rpc.ts";
+import { userText } from "./_mock.ts";
 
 process.env.PLURNK_MEMBERS_TASK = "**";
 process.env.PLURNK_MEMBERS_ENABLED = "[\"task\"]";
@@ -53,11 +54,10 @@ test("{§packet-attachment-parts} a document route receives the PDF as a native 
     const requests = await runLoop(["pdf"]);
     const second = requests.at(-1);
     assert.ok(second !== undefined && second.length >= 2, "two turns reached the provider");
-    const user = second.find((message) => message.role === "user");
-    assert.ok(user !== undefined && Array.isArray(user.content), `the user slot carries parts: ${JSON.stringify(user?.content).slice(0, 200)}`);
-    const text = user.content.find((part) => part.type === "text");
+    const user = second.at(-1);
+    assert.ok(user !== undefined && Array.isArray(user.content), `the closing message carries parts: ${JSON.stringify(user?.content).slice(0, 200)}`);
     const file = user.content.find((part) => part.type === "file");
-    assert.ok(text?.type === "text" && /"tokensAttachment":1500/.test(text.text), "one page weighs 1500 in the readout");
+    assert.match(userText(second), /"tokensAttachment":1500/, "one page weighs 1500 in the readout");
     assert.ok(file?.type === "file" && file.mediaType === "application/pdf" && Buffer.from(file.data).equals(PDF), "the document itself rides as the file part");
     const caption = user.content[user.content.indexOf(file) - 1];
     assert.ok(caption?.type === "text" && /^log:\/\/\/\d+\/\d+\/\d+\/READ → \S+ \(application\/pdf, 1 pages\): the bytes of that READ row, retained until it is KILLed\. Not a new arrival\.$/u.test(caption.text), `the part is captioned as the model's own READ (#899): ${JSON.stringify(caption)}`);
@@ -68,7 +68,7 @@ test("{§packet-attachment-parts} a document route receives the PDF as a native 
 
 test("{§packet-attachment-parts} a picture-only route receives the PDF as text alone", async () => {
     const requests = await runLoop(["image"]);
-    const user = requests.at(-1)?.find((message) => message.role === "user");
-    assert.ok(user !== undefined && typeof user.content === "string", "no part rides for a kind the route refuses");
-    assert.doesNotMatch(user.content, /tokensAttachment|has been ejected from context/);
+    const last = requests.at(-1)!;
+    assert.ok(last.every((message) => typeof message.content === "string"), "no part rides for a kind the route refuses");
+    assert.doesNotMatch(userText(last), /tokensAttachment|has been ejected from context/);
 });

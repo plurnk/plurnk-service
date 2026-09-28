@@ -34,7 +34,7 @@ test("live: broad log KILL retires READ receipts without erasing program artifac
             id: number; op: string | null; active: number;
         }>({ loop_id: primedTurn.loop_id })).filter(({ op }) => op === "READ");
         const activePriorIds = priorReads.filter(({ active }) => active === 1).map(({ id }) => id);
-        assert.ok(activePriorIds.length > 0, "initialization's actual program READ is available for curation");
+        assert.ok(activePriorIds.length > 0, "initialization's reasoning READ is available for curation");
 
         const { finalStatus, modelWorkerId, turnIds } = await liveLoop(
             s,

@@ -10,6 +10,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { viableWindow } from "./_provider.ts";
 import { rpcCall, connect, withDaemon, waitForDb } from "./_rpc.ts";
+import { userText } from "./_mock.ts";
 
 const execFileP = promisify(execFile);
 
@@ -45,8 +46,7 @@ const runLoop = async (root: string) => {
             return db.test_entries_by_coordinate_workspaces.all<{ workspace_id: number; content: string }>({ scheme: "worker", authority: "", pathname: "/_plurnk/skills/git.md" });
         } finally { ws.close(); }
     });
-    const survey = mock.received[1]?.find((message) => message.role === "user");
-    return { rows, survey: typeof survey?.content === "string" ? survey.content : "" };
+    return { rows, survey: userText(mock.received[1] ?? []) };
 };
 
 test("{§skills-resources} a git-backed workspace does not manufacture a Git skill", async () => {

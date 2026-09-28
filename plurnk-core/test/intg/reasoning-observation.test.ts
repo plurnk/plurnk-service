@@ -46,7 +46,7 @@ for (const limit of [-1, 0]) test(`{§worker-initialization-entry}: program and 
         const orientation = "This turn surveys tooling and environment. The log records results; ops://alice/3/1 contains the submitted OPs.";
         assert.ok(source.content.startsWith(PlurnkParser.frame("NOTE", orientation)));
         if (limit !== 0) assert.match(source.content, /READ \(reasoning:\/\/alice\/3\/1\)/);
-        assert.match(source.content, /READ \(ops:\/\/alice\/3\/1\)/);
+        assert.doesNotMatch(source.content, /READ \(ops:\/\/alice\/3\/1\)/, "the program is the first request's assistant message, never its own READ ({§packet-wire-envelope})");
         assert.doesNotMatch(source.content, /READ \(prompt:\/\//, "the prompt arrives as its row, never as a second READ");
         const notes = logEntries(packet).filter((row) => /^log:\/\/\/3\/1\/\d+\/NOTE$/.test(String(row.logPath)));
         assert.deepEqual(notes.map((row) => row.resource), ["note://alice/3/1/1", "note://alice/3/1/2"]);

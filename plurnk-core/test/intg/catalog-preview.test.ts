@@ -187,8 +187,8 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 assert.deepEqual(
                     initializationRows.map(({ op }) => op),
-                    ["NOTE", "NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ"],
-                    "initialization reads its authored reasoning and its exact program; the prompt arrives as its row",
+                    ["NOTE", "NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ"],
+                    "initialization reads its authored reasoning; its program is the first assistant message; the prompt arrives as its row",
                 );
                 const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
                 assert.deepEqual(
@@ -199,16 +199,17 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const note = JSON.parse(initializationRows.find(({ op }) => op === "NOTE")!.tx) as { body: string };
                 const reasoning = JSON.parse(initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "reasoning")!.rx) as { content: string };
                 assert.ok(reasoning.content.includes(note.body), "the ordinary NOTE is extracted from the preserved reasoning source");
-                const program = JSON.parse(initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "ops")!.rx) as { content: string };
-                assert.match(program.content, /\n```READ \(ops:\/\/[^/\s]+\/1\/1\)/, "initialization demonstrates its source address through an ordinary READ");
+                // {§packet-wire-envelope}: the program reaches the model as the first request's assistant message.
+                const survey = provider.received[0].filter(({ role }) => role === "assistant");
+                assert.equal(survey.length, 1, "the first model request carries turn 0's program as its one assistant message");
+                const program = { content: chatMessageText(survey[0]!).replace(/^## Previous Turn Emission\n\n/u, "") };
+                assert.doesNotMatch(program.content, /```READ \(ops:\/\//, "initialization never READs its own program");
+                assert.match(program.content, /\n```READ \(reasoning:\/\/[^/\s]+\/1\/1\)/, "initialization demonstrates its reasoning address through an ordinary READ");
                 assert.deepEqual(
                     program.content.split("\n\n").map((block) => /^```([A-Z]+)/.exec(block)?.[1]),
                     initializationRows.slice(1).map(({ op }) => op),
                     "{§statement-rendering}: every initialization operation is separated by a blank line",
                 );
-                const packet = provider.received[0].filter(({ role }) => role === "user").map(chatMessageText).join("\n");
-                assert.ok(packet.replace(/^ *\d+:/gm, "").includes(program.content),
-                    "the first model packet preserves the complete spaced initialization program");
             } finally { ws.close(); }
         });
     } finally {
@@ -306,17 +307,11 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["NOTE", "NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ"],
-                    "initialization contains reasoning and program NOTEs, eight surveys, and the reasoning and program READs",
+                    ["NOTE", "NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ"],
+                    "initialization contains reasoning and program NOTEs, eight surveys, and the reasoning READ",
                 );
-                const turnOps = initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "ops");
-                assert.equal(turnOps?.origin, "_plurnk");
-                assert.equal(turnOps?.folded, "[]", "the exact initialization program is born visible");
-                assert.match(
-                    (JSON.parse(turnOps?.rx ?? "null") as { content: string }).content,
-                    /^```NOTE\n[^\n]+\n```\n\n```FIND[^\n]*\n[\s\S]*\n```READ \(ops:\/\/[^/\s]+\/1\/1\)[^\n]*\n```$/,
-                    "the exact initialization source surrounds the same eight executed surveys",
-                );
+                assert.equal(initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "ops"), undefined,
+                    "turn 0 never READs its own program: it is the first request's assistant message ({§packet-wire-envelope})");
             } finally { ws.close(); }
         });
     } finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev; }

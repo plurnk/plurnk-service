@@ -378,7 +378,7 @@ direct-entry-plus-directory count; `-1` enables the ordinary markerless page;
 unset / `0` disables previews. `log://` is absent because the current worker's
 log already renders in present mode.
 
-§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its reasoning and program are stored before execution. NOTEs from its reasoning and program, the orienting READ/FIND surveys, and the reasoning and program READs in {§reasoning-initial-read} execute under {§op-execution-order}. The full `<1,-1>` READ of its own `ops://<worker>/<loop>/<turn>` source supplies the worked program example; no actionless source row or simulated READ is added. Every orienting row is structurally classified `_plurnk` and `init`. The namespace surveys and their asides follow {§actor-boundary-catalog-preview}.
+§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its reasoning and program are stored before execution. NOTEs from its reasoning and program, the orienting READ/FIND surveys, and the reasoning READ in {§reasoning-initial-read} execute under {§op-execution-order}. Its program supplies the worked example as the first request's assistant message ({§packet-wire-envelope}); no program READ, actionless source row or simulated READ is added. Every orienting row is structurally classified `_plurnk` and `init`. The namespace surveys and their asides follow {§actor-boundary-catalog-preview}.
 
 Incoming messages publish once as inbound SEND rows in the first model turn
 ({§message-arrival}); initialization neither READs nor archives them. The turn
@@ -4600,12 +4600,13 @@ The packet reaches the provider under the roles the model was tuned on, its byte
 |:--|:--|:--|
 | 1 | `system` | the system slot, as rendered |
 | 2 … | `user` | the log's records, one message per completed turn in record order; the first opens with `## Log` |
-| next | `assistant` | the worker's previous submitted program ({§turn-source-resources}, kind `ops`), verbatim and unlabelled; absent before the first admitted emission |
+| next | `assistant` | the worker's previous submitted program ({§turn-source-resources}, kind `ops`), verbatim under the heading `## Previous Turn Emission`; turn zero's survey ({§worker-initialization-entry}) is the first, so every model request carries one |
 | last | `user` | the current turn's records, then the remaining user sections in {§packet-cache-monotone} order; native parts ride here ({§packet-attachment-parts}) |
 
-Only role boundaries are added. Curation governs every record as before, so a KILLed row is absent
-from its turn's message; the one emission is bounded and the model's own last words, a demonstration
-of the grammar beside what the log made of it, as turn zero is. The prefix through the last completed
+Only role boundaries and the heading are added. Curation governs every record as before, so a KILLed
+row is absent from its turn's message; the one emission is bounded and the model's own last words, a
+demonstration of the grammar beside what the log made of it. On the first request it is turn zero's
+survey, the worked example in the model's own place. The prefix through the last completed
 turn stays reusable across requests; the assistant message and the closing user message are the
 changing tail. The digest's packet artifacts record the packet; the envelope is its projection (#903).
 

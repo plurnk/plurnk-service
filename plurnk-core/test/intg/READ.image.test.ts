@@ -10,6 +10,7 @@ import { rpcCall, connect, withDaemon, waitForDb } from "./_rpc.ts";
 import type { Db } from "../../src/core/Db.ts";
 import Fork from "../../src/core/fork.ts";
 import NativeContent from "../../src/core/NativeContent.ts";
+import { userText } from "./_mock.ts";
 
 // The member tree is a plain directory: the service member definition admits it, as the harness does.
 process.env.PLURNK_MEMBERS_TASK = "**";
@@ -98,13 +99,13 @@ test("{§packet-attachment-parts} a seeing route receives the picture as a nativ
     const requests = await runLoop(["image"]);
     const second = requests[1];
     assert.ok(second !== undefined && second.length >= 2, "the request after READ reached the provider");
-    const user = second.find((message) => message.role === "user");
+    const user = second.at(-1);
     assert.ok(user !== undefined && Array.isArray(user.content), `the user slot carries parts: ${JSON.stringify(user?.content).slice(0, 200)}`);
-    const text = user.content.find((part) => part.type === "text");
+    const text = userText(second);
     const image = user.content.find((part) => part.type === "file" && part.mediaType === "image/png");
     const ejection = user.content.find((part) => part.type === "text" && part.text.includes("has been ejected from context"));
-    assert.ok(text?.type === "text" && /PNG image, 1×1 px, \d+ bytes/.test(text.text), "the READ row reads as the header line");
-    assert.match(text.text, /"tokensAttachment":\d+/, "the row weighs the picture");
+    assert.match(text, /PNG image, 1×1 px, \d+ bytes/, "the READ row reads as the header line");
+    assert.match(text, /"tokensAttachment":\d+/, "the row weighs the picture");
     assert.ok(image?.type === "file" && Buffer.from(image.data).equals(PNG), "the picture itself rides as image media in the current file part");
     assert.equal(ejection, undefined);
     const system = second.find((message) => message.role === "system");
@@ -139,12 +140,12 @@ test("{§context-output-admission}: withholding native output does not deliver i
                 assert.equal(JSON.parse(images[0]!.rx).nativeContentHash, JSON.parse(images[1]!.rx).nativeContentHash, "both observations retain the same immutable source bytes");
             } finally { ws.close(); }
         });
-        const users = provider.received.map((messages) => messages.find(({ role }) => role === "user")!);
-        assert.equal(typeof users[1]!.content, "string", "the overflow request carries no native part");
-        assert.equal(typeof users[2]!.content, "string", "old omission cannot silently reattach the image");
-        assert.match(String(users[1]!.content), /output lines not shown; the log exceeded logTokensMax when this row was withheld/u);
-        assert.match(String(users[1]!.content), /> \[!WARNING\]\n> YOU MUST ONLY KILL/u);
-        const renewed = users[3]!.content;
+        const closings = provider.received.map((messages) => messages.at(-1)!);
+        assert.equal(typeof closings[1]!.content, "string", "the overflow request carries no native part");
+        assert.equal(typeof closings[2]!.content, "string", "old omission cannot silently reattach the image");
+        assert.match(userText(provider.received[1]!), /output lines not shown; the log exceeded logTokensMax when this row was withheld/u);
+        assert.match(userText(provider.received[1]!), /> \[!WARNING\]\n> YOU MUST ONLY KILL/u);
+        const renewed = closings[3]!.content;
         assert.ok(Array.isArray(renewed));
         const image = renewed.find((part) => part.type === "file");
         assert.ok(image?.type === "file" && Buffer.from(image.data).equals(PNG));
@@ -153,29 +154,28 @@ test("{§context-output-admission}: withholding native output does not deliver i
 
 test("{§packet-attachment-parts} a blind route receives the same READ as text alone without the reactive sentence", async () => {
     const requests = await runLoop([]);
-    const user = requests[1]?.find((message) => message.role === "user");
-    assert.ok(user !== undefined && typeof user.content === "string");
-    assert.match(user.content, /PNG image, 1×1 px, \d+ bytes/);
-    assert.doesNotMatch(user.content, /tokensAttachment|has been ejected from context/);
+    assert.ok(requests[1]!.every((message) => typeof message.content === "string"), "a blind route receives text alone");
+    const text = userText(requests[1]!);
+    assert.match(text, /PNG image, 1×1 px, \d+ bytes/);
+    assert.doesNotMatch(text, /tokensAttachment|has been ejected from context/);
     const system = requests[1]?.find((message) => message.role === "system");
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "no Attachments section on a blind route");
 });
 
 test("{§packet-attachment-parts} completed responses retain native content alongside the READ text", async () => {
     const requests = await runLoop(["image"]);
-    const third = requests[2]?.find((message) => message.role === "user");
+    const third = requests[2]?.at(-1);
     assert.ok(third !== undefined && Array.isArray(third.content), "the subsequent request retains native content");
     assert.ok(third.content.some((part) => part.type === "file" && Buffer.from(part.data).equals(PNG)));
-    const text = third.content.find((part) => part.type === "text");
-    assert.ok(text?.type === "text");
-    assert.match(text.text, /PNG image, 1×1 px, \d+ bytes/);
-    assert.match(text.text, /tokensAttachment/);
-    assert.doesNotMatch(text.text, /has been ejected from context/);
+    const text = userText(requests[2]!);
+    assert.match(text, /PNG image, 1×1 px, \d+ bytes/);
+    assert.match(text, /tokensAttachment/);
+    assert.doesNotMatch(text, /has been ejected from context/);
 });
 
 test("{§packet-attachment-parts} repeating READ creates a new native delivery for the following request", async () => {
     const requests = await runLoop(["image"], "````READ (logo.png)````", true);
-    const third = requests[2]?.find((message) => message.role === "user");
+    const third = requests[2]?.at(-1);
     assert.ok(third !== undefined && Array.isArray(third.content), "the renewed request carries parts");
     assert.equal(third.content.filter((part) => part.type === "file").length, 2, "both retained observations contribute native content");
     assert.equal(third.content.filter((part) => part.type === "text" && part.text.includes("has been ejected from context")).length, 0);
@@ -188,11 +188,11 @@ test("{§packet-attachment-parts} invalid-emission rerolls reuse the same materi
         mockTurn("````NOTE\nrecovered\n````"),
         mockTurn("````KILL\nseen\n````"),
     ]);
-    const attempted = requests.slice(1, 3).map((request) => request.find((message) => message.role === "user"));
+    const attempted = requests.slice(1, 3).map((request) => request.at(-1));
     assert.equal(attempted.length, 2);
     assert.ok(attempted.every((message) => Array.isArray(message?.content)), "both physical attempts carry the native part");
     assert.equal(JSON.stringify(attempted[0]), JSON.stringify(attempted[1]), "the reroll reuses the exact frozen user message");
-    const after = requests[3]?.find((message) => message.role === "user");
+    const after = requests[3]?.at(-1);
     assert.ok(after !== undefined && Array.isArray(after.content), "the next logical turn retains native content");
     assert.ok(after.content.some((part) => part.type === "file" && Buffer.from(part.data).equals(PNG)));
 });
@@ -218,31 +218,28 @@ test("{§packet-attachment-parts} a response-less network retry retains the same
 
 test("{§read-bytes} {§packet-attachment-parts} a ranged byte READ returns its hex slice and the complete native image", async () => {
     const requests = await runLoop(["image"], "````READ (file:///logo.png#bytes) <1,16>````");
-    const user = requests[1]?.find((message) => message.role === "user");
-    const logoAt = typeof user?.content === "string" ? user.content.lastIndexOf("logo.png") : -1;
-    const diagnostic = typeof user?.content === "string"
-        ? user.content.slice(Math.max(0, logoAt - 300), logoAt + 1400)
-        : JSON.stringify(user?.content).slice(0, 1400);
+    const user = requests[1]?.at(-1);
+    const packetText = userText(requests[1] ?? []);
+    const logoAt = packetText.lastIndexOf("logo.png");
+    const diagnostic = Array.isArray(user?.content) ? JSON.stringify(user.content).slice(0, 1400) : packetText.slice(Math.max(0, logoAt - 300), logoAt + 1400);
     assert.ok(
         user !== undefined && Array.isArray(user.content),
         `the ranged byte READ carries text and native parts: ${diagnostic}`,
     );
-    const text = user.content.find((part) => part.type === "text");
     const image = user.content.find((part) => part.type === "file" && part.mediaType === "image/png");
-    assert.ok(text?.type === "text");
-    assert.match(text.text, new RegExp(`"range":"<1,16> of ${PNG.length} bytes"`, "u"));
-    assert.match(text.text, /\n\s*1:\s*89\n/u, "the requested byte slice remains visible as hexadecimal");
-    assert.match(text.text, /\n16:\s*52(?:\n|$)/u, "the byte projection stops at the requested endpoint");
+    assert.match(packetText, new RegExp(`"range":"<1,16> of ${PNG.length} bytes"`, "u"));
+    assert.match(packetText, /\n\s*1:\s*89\n/u, "the requested byte slice remains visible as hexadecimal");
+    assert.match(packetText, /\n16:\s*52(?:\n|$)/u, "the byte projection stops at the requested endpoint");
     assert.ok(image?.type === "file" && Buffer.from(image.data).equals(PNG), "the full source image rides beside the slice");
 });
 
 test("{§read-bytes} {§packet-attachment-parts} a ranged byte READ remains the same hex slice on a text-only route", async () => {
     const requests = await runLoop([], "````READ (file:///logo.png#bytes) <1,16>````");
-    const user = requests[1]?.find((message) => message.role === "user");
-    assert.ok(user !== undefined && typeof user.content === "string", "a text-only route receives no native part");
-    assert.match(user.content, new RegExp(`"range":"<1,16> of ${PNG.length} bytes"`, "u"));
-    assert.match(user.content, /\n\s*1:\s*89\n/u);
-    assert.match(user.content, /\n16:\s*52(?:\n|$)/u);
+    assert.ok(requests[1]!.every((message) => typeof message.content === "string"), "a text-only route receives no native part");
+    const text = userText(requests[1]!);
+    assert.match(text, new RegExp(`"range":"<1,16> of ${PNG.length} bytes"`, "u"));
+    assert.match(text, /\n\s*1:\s*89\n/u);
+    assert.match(text, /\n16:\s*52(?:\n|$)/u);
 });
 
 test("{§packet-attachment-parts} native content survives completed responses until scoped KILL retires its READ", async () => {
@@ -253,7 +250,7 @@ test("{§packet-attachment-parts} native content survives completed responses un
         mockTurn(`\`\`\`\`KILL (log:///*/*/*/READ) <42>\`\`\`\`\n${next}`),
         mockTurn("````KILL\nImage inspection complete.\n````"),
     ]);
-    const users = requests.map((messages) => messages.find(({ role }) => role === "user")!);
+    const users = requests.map((messages) => messages.at(-1)!);
     for (const index of [1, 2]) {
         const content = users[index]!.content;
         assert.ok(Array.isArray(content), `request ${index + 1} retains native content`);
@@ -262,8 +259,8 @@ test("{§packet-attachment-parts} native content survives completed responses un
         assert.doesNotMatch(JSON.stringify(content), /has been ejected from context/);
     }
     assert.equal(typeof users[3]!.content, "string", "even an irrelevant KILL scope releases the atomic native observation");
-    assert.doesNotMatch(String(users[3]!.content), /### log:\/\/\/\d+\/\d+\/\d+\/READ → logo\.png/);
-    assert.match(String(users[3]!.content), /^### log:\/\/\/\S+\/READ → ops:\/\/[^/)]+\/1\/1/m, "the out-of-bounds text scope remains a no-op for the ordinary initialization READ");
+    assert.doesNotMatch(userText(requests[3]!), /### log:\/\/\/\d+\/\d+\/\d+\/READ → logo\.png/);
+    assert.match(userText(requests[3]!), /^### log:\/\/\/\S+\/READ → reasoning:\/\/[^/)]+\/1\/1/m, "the out-of-bounds text scope remains a no-op for the ordinary initialization READ");
 });
 
 test("{§packet-attachment-parts} retained and forked READs preserve original bytes after source deletion", async () => {
@@ -282,7 +279,7 @@ test("{§packet-attachment-parts} retained and forked READs preserve original by
         const hash = JSON.parse(image.rx).nativeContentHash as string;
         assert.deepEqual(Buffer.from(await NativeContent.read(db, hash)), PNG, "forked evidence references the same retained snapshot");
     });
-    const content = requests[2]!.find(({ role }) => role === "user")!.content;
+    const content = requests[2]!.at(-1)!.content;
     assert.ok(Array.isArray(content), "deleting the source does not erase the observation");
     const image = content.find((part) => part.type === "file");
     assert.ok(image?.type === "file" && Buffer.from(image.data).equals(PNG), "the retained observation preserves the READ's bytes");
@@ -296,10 +293,10 @@ test("{§packet-attachment-parts} explicit log READ preserves its own observatio
         mockTurn(`\`\`\`\`KILL (log:///1/2/2/READ) <42>\`\`\`\`\n${next}`),
         mockTurn("````KILL\nImage inspection complete.\n````"),
     ]);
-    const copied = requests[2]!.find(({ role }) => role === "user")!.content;
+    const copied = requests[2]!.at(-1)!.content;
     assert.ok(Array.isArray(copied));
     assert.equal(copied.filter((part) => part.type === "file").length, 2);
-    const content = requests[3]!.find(({ role }) => role === "user")!.content;
+    const content = requests[3]!.at(-1)!.content;
     assert.ok(Array.isArray(content));
     assert.equal(content.filter((part) => part.type === "file").length, 1);
     const image = content.find((part) => part.type === "file");
@@ -313,9 +310,9 @@ test("{§log-kill-scope} a text-only route preserves ordinary scoped trimming of
         mockTurn(`\`\`\`\`KILL (log:///1/2/2/READ) <1>\`\`\`\`\n${next}`),
         mockTurn("````KILL\nImage inspection complete.\n````"),
     ]);
-    const content = requests[2]!.find(({ role }) => role === "user")!.content;
-    assert.equal(typeof content, "string");
-    assert.match(String(content), /### log:\/\/\/1\/2\/2\/READ → logo\.png#bytes · \d+\n/);
-    assert.doesNotMatch(String(content), /\n\s*1:89\n/u);
-    assert.match(String(content), /\n\s*2:50\n/u);
+    assert.ok(requests[2]!.every((message) => typeof message.content === "string"));
+    const content = userText(requests[2]!);
+    assert.match(content, /### log:\/\/\/1\/2\/2\/READ → logo\.png#bytes · \d+\n/);
+    assert.doesNotMatch(content, /\n\s*1:89\n/u);
+    assert.match(content, /\n\s*2:50\n/u);
 });

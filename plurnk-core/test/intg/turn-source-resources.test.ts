@@ -41,14 +41,13 @@ test("{§turn-source-resources}: initialization reads its real program; later so
         assert.ok("content" in initialization && typeof initialization.content === "string");
         const parsed = PlurnkParser.parseStatements(initialization.content, { executors: fixtureExecutors(initialization.content) });
         assert.ok(parsed.items.some((item) => item.kind === "statement" && item.statement.op === "READ"
-            && item.statement.target?.raw === "ops://analyst/1/1"
-            && JSON.stringify(item.statement.lineMarker?.marks) === "[1,-1]"), "the program contains its own ordinary full READ");
+            && item.statement.target?.raw === "reasoning://analyst/1/1"), "the program contains its reasoning READ");
+        assert.ok(!parsed.items.some((item) => item.kind === "statement" && item.statement.op === "READ" && item.statement.target?.raw === "ops://analyst/1/1"),
+            "the program never READs itself: it is the first request's assistant message ({§packet-wire-envelope})");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: first.turnId }))!.packet);
         const records = logEntries(packet);
-        const selfRead = records.find((row: Record<string, unknown>) => row.path === "ops://analyst/1/1");
-        assert.ok(selfRead, "the actual initialization READ is visible to the first model request");
-        assert.equal(selfRead.origin, "_plurnk");
-        assert.ok(typeof selfRead.body === "string" && selfRead.body.includes("ops://analyst/1/1"));
+        assert.equal(records.find((row: Record<string, unknown>) => row.path === "ops://analyst/1/1"), undefined,
+            "no READ receipt of the program: the first model request carries it as its assistant message ({§packet-wire-envelope})");
         assert.ok(!records.some((row: Record<string, unknown>) => String(row.logPath).endsWith("/ops")));
         const turn = (await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId }))!;
         const coordinate = `1/${turn.sequence}`;

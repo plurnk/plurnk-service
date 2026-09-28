@@ -61,7 +61,7 @@ test("{§log-kill-meta-operation} a KILL that worked never renders; one that mat
             assert.deepEqual(history.filter(({ op, pathname }) => op === "KILL" && pathname === null)
                 .map(({ status_rx }) => status_rx), [200], "the final KILL concludes without curating a resource");
             assert.ok(recordedKills.every(({ active }) => active === 1), "packet suppression does not retire or delete receipt history");
-            assert.equal(JSON.parse(recordedKills[0].rx).matched, 3, "the broad sweep includes initialization's reasoning and program READs and the file READ");
+            assert.equal(JSON.parse(recordedKills[0].rx).matched, 2, "the broad sweep includes initialization's reasoning READ and the file READ");
             const sourceReads = history.filter(({ op, scheme, pathname }) => op === "READ" && scheme === "worker" && pathname === "/note");
             assert.equal(sourceReads.length, 2);
             for (const read of sourceReads) {

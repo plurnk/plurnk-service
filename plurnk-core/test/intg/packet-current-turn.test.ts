@@ -10,6 +10,7 @@ import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 import { provider, statement } from "./reasoning-fixture.ts";
+import { userText } from "./_mock.ts";
 
 test("{§packet-current-turn}: the Worker block carries the loop and turn sequence the packet opens, placed right after the log", async () => {
     const db = await openMigrated();
@@ -43,8 +44,7 @@ test("{§packet-current-turn}: the coordinate on the packet is the one whose rea
         const ran = await engine.runTurn({ ...context, provider: mock, messages: [] });
         const turn = await db.test_get_turn.get<{ sequence: number }>({ id: ran.turnId });
         assert.equal(turn?.sequence, 2);
-        const user = mock.received.at(-1)!.find((m) => m.role === "user")?.content;
-        assert.ok(typeof user === "string", "the mock receives the user packet as text");
+        const user = userText(mock.received.at(-1)!);
         assert.match(user, /## Worker\n\{"path":"worker:\/\/alice","parent":null,"loop":1,"turn":2\}/, "the packet the model answered named turn 1/2 in its Worker block");
         assert.ok(user.indexOf("## Log") < user.indexOf("## Worker"), "below the log");
         const own = await engine.look({ ...context, statement: statement("````READ (reasoning://alice/1/2) <1,-1>````") });

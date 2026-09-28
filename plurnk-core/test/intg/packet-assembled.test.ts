@@ -232,13 +232,13 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const initializationOutcomes = initialization;
         assert.deepEqual(
             initializationOutcomes.map(({ logPath: path }) => String(path).split("/").at(-1)),
-            ["NOTE", "NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ", "READ"],
-            "turn 0 exposes its reasoning and program notes, executed surveys, and reasoning and program READs",
+            ["NOTE", "NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ"],
+            "turn 0 exposes its reasoning and program notes, executed surveys, and its reasoning READ",
         );
-        assert.deepEqual(
-            initialization.filter(({ path: target }) => target === "ops://subject/1/1").map((row) => ({ open: "body" in row, origin: row.origin })),
-            [{ open: true, origin: "_plurnk" }],
-            "turn 0's source is the result of its actual READ",
+        assert.equal(
+            initialization.some(({ path: target }) => target === "ops://subject/1/1"),
+            false,
+            "turn 0's program reaches the model as the envelope's assistant message, not as a READ ({§packet-wire-envelope})",
         );
         assert.deepEqual(
             initializationOutcomes.filter(({ path: target }) => target !== undefined).slice(0, 5).map(({ path: target }) => target),

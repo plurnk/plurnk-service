@@ -291,8 +291,10 @@ export default class PacketWire {
     // receives. The digest calls renderSlot for byte-identical packet files.
     // {§packet-wire-envelope} — the packet's bytes under the roles the model was tuned on: the system
     // slot; the log's records one user message per completed turn; the worker's previous submitted
-    // program, verbatim and unlabelled, as the one assistant message; then the current turn's records
-    // and the remaining user sections as the closing user message. Only role boundaries are added.
+    // program, verbatim under its heading, as the one assistant message; then the current turn's
+    // records and the remaining user sections as the closing user message.
+    static readonly previousEmissionHeading = "## Previous Turn Emission";
+
     static packetToWireMessages(packet: Packet, previousEmission: string | null = null): Array<{ role: string; content: string }> {
         const sections = packet.sections ?? [];
         const messages: Array<{ role: string; content: string }> = [{ role: "system", content: PacketWire.renderSlot(sections, "system") }];
@@ -307,7 +309,9 @@ export default class PacketWire {
             if (last && current !== null && group.turn === current) closing.push(group.content);
             else messages.push({ role: "user", content: group.content });
         });
-        if (previousEmission !== null && previousEmission.length > 0) messages.push({ role: "assistant", content: previousEmission });
+        if (previousEmission !== null && previousEmission.length > 0) {
+            messages.push({ role: "assistant", content: `${PacketWire.previousEmissionHeading}\n\n${previousEmission}` });
+        }
         const tail = rest.map((s) => PacketWire.renderSection(s)).filter((p) => p.length > 0);
         const closingContent = [...closing, ...tail].join("\n\n");
         if (closingContent.length > 0 || messages.at(-1)?.role !== "user") messages.push({ role: "user", content: closingContent });

@@ -8,7 +8,7 @@ import { parsePath, PlurnkParser } from "@plurnk/plurnk-parser";
 import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { insertWorker } from "./_db.ts";
-import { fixtureExecutors } from "./_mock.ts";
+import { fixtureExecutors, userText } from "./_mock.ts";
 import { copyStmt, findStmt, readStmt, regex } from "./_dsl.ts";
 
 class CapturingMock extends Mock {
@@ -193,14 +193,14 @@ test("{§skills-resources} {§packet-attachment-parts} a sliced skill asset READ
         const result = await runLoopToTerminal(ws, 2, { prompt: "Inspect the image.", policy: { proposals: "accept" } });
         assert.equal(result.finalStatus, 200);
     });
-    const user = provider.received[1]?.find((message) => message.role === "user");
+    const user = provider.received[1]?.at(-1);
     assert.ok(Array.isArray(user?.content), "the skill asset reaches the native request");
     const image = user.content.find((part) => part.type === "file");
     assert.ok(image?.type === "file");
     assert.equal(image.mediaType, "image/png");
     assert.deepEqual(Buffer.from(image.data), PNG);
-    assert.match(chatMessageText(user), /1:89\n2:50\n3:4e/);
-    const later = provider.received[2]?.find((message) => message.role === "user");
+    assert.match(userText(provider.received[1]!), /1:89\n2:50\n3:4e/);
+    const later = provider.received[2]?.at(-1);
     assert.ok(Array.isArray(later?.content), "the native observation stays in context");
     const retained = later.content.find((part) => part.type === "file");
     assert.ok(retained?.type === "file");

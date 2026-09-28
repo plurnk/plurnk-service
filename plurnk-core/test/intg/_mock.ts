@@ -2,7 +2,12 @@
 
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
-import type { MockResponse } from "@plurnk/plurnk-providers";
+import { chatMessageText, type ChatMessage, type MockResponse } from "@plurnk/plurnk-providers";
+
+// {§packet-wire-envelope} — the packet's text as the model reads it: every user message in order.
+// Native parts ride the closing message alone; read `messages.at(-1)` for those.
+export const userText = (messages: readonly ChatMessage[]): string =>
+    messages.filter(({ role }) => role === "user").map(chatMessageText).join("\n\n");
 
 // {§fence-heading-in-body} — every executor tag the integration fixtures write, as the daemon would name them.
 export const TEST_EXECUTORS: readonly string[] = ["sh", "bash", "node", "python3", "sqlite", "jq", "gitea", "brave", "fixture", "fx", "dialogue", "tools", "question", "members", "skills", "env", "a2a", "svc", "mcp", "resource-tool", "optional-resource", "kubernetes", "goji", "example", "viaexec", "tool", "other", "familytool", "calc", "workspacecap", "echo", "cdp", "playwright"];

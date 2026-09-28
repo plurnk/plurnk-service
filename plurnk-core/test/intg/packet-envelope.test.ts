@@ -1,6 +1,6 @@
 // {§packet-wire-envelope} — the packet's bytes under the roles the model was tuned on: the log one
-// user message per completed turn, the worker's previous program as the one assistant message, the
-// current turn's records and the status clump closing. Bytes unchanged; only the boundaries added.
+// user message per completed turn, the worker's previous program under its heading as the one
+// assistant message, the current turn's records and the status clump closing.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
@@ -30,7 +30,7 @@ test("{§packet-wire-envelope}: the log splits by turn, the previous program is 
     assert.equal(wire[0]!.content, "the card");
     assert.equal(wire[1]!.content, `## Log\n\n${records[0]}`, "the first turn's records open the log");
     assert.equal(wire[2]!.content, `${records[1]}\n\n${records[2]}`, "one message per completed turn, records joined as in the packet");
-    assert.equal(wire[3]!.content, previous, "the previous program, verbatim and unlabelled");
+    assert.equal(wire[3]!.content, `## Previous Turn Emission\n\n${previous}`, "the previous program, verbatim under its heading");
     assert.equal(wire[4]!.content, `${records[3]}\n\n## Worker\n${JSON.stringify({ path: "worker://w", parent: null, loop: 1, turn: 3 })}\n\n## Open Messages\n[]`, "the current turn's records, then the clump");
     const bytes = wire.filter(({ role }) => role === "user").map(({ content }) => content).join("\n\n");
     assert.ok(bytes.includes(records.join("\n\n")), "every log byte is present, in order, across the user messages");
@@ -43,7 +43,7 @@ test("{§packet-wire-envelope}: the log splits by turn, the previous program is 
     assert.deepEqual(flat.map(({ role }) => role), ["system", "user", "user", "user", "assistant", "user"], "without a Worker block no turn is current: every group precedes the program");
 });
 
-test("{§packet-wire-envelope}: the turn runner sends the worker's last admitted program as the assistant message of the next request", async (t) => {
+test("{§packet-wire-envelope}: the turn runner sends turn zero's survey, then the worker's last admitted program, as the assistant message", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "envelope");
@@ -58,12 +58,14 @@ test("{§packet-wire-envelope}: the turn runner sends the worker's last admitted
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 2);
     const opening = provider.received[0]!;
-    assert.equal(opening.some((message) => message.role === "assistant"), false, "the first model request carries no program yet");
+    const survey = opening.filter((message) => message.role === "assistant");
+    assert.equal(survey.length, 1, "the first model request carries turn zero's survey as its assistant message");
+    assert.match(chatMessageText(survey[0]!), /^## Previous Turn Emission\n\n```NOTE\nThis turn surveys tooling and environment\./u);
     assert.equal(opening.at(-1)!.role, "user");
     const second = provider.received[1]!;
     const assistant = second.filter((message) => message.role === "assistant");
     assert.equal(assistant.length, 1, "exactly one assistant message");
-    assert.equal(chatMessageText(assistant[0]!), first, "the previous turn's program, verbatim");
+    assert.equal(chatMessageText(assistant[0]!), `## Previous Turn Emission\n\n${first}`, "the previous turn's program, verbatim under its heading");
     assert.equal(second.at(-1)!.role, "user", "the request closes with the clump");
     assert.ok(chatMessageText(second.at(-1)!).includes("## Worker"), "the clump closes the request");
     const users = second.filter((message) => message.role === "user");

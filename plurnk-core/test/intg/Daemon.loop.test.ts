@@ -187,7 +187,7 @@ test("loop.run streams log/entry notifications during execution", async () => {
                 "initialization has no synthetic actionless receipt",
             );
             assert.equal(initialization[0]?.op, "NOTE", "initialization extracts its own reasoning NOTE");
-            assert.equal(initialization.at(-1)?.op, "READ", "initialization ends with its own program READ");
+            assert.equal(initialization.at(-1)?.op, "READ", "initialization ends with its reasoning READ");
             assert.equal(new Set(initialization.map(({ id }) => id)).size, initialization.length, "initialization rows are ordinary settled operations, not later updates");
             assert.ok(initialization.filter(({ op }) => op === "READ").every(({ status_rx }) => status_rx === 200));
             const authored = captured.filter((event) => {

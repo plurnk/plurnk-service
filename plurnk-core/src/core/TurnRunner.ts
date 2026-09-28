@@ -804,19 +804,12 @@ export default class TurnRunner {
         if (filesItems !== null) { // {§actor-boundary-catalog-preview} — once per worker
             initializationStatements.push(...await this.#catalogSurveys(args, container, filesItems));
         }
-        const pathname = `/${loopSequence}/${initializationTurn.sequence}`;
         const reasoning = ReasoningView.initialSource();
         await Turn.recordSource(this.#db, initializationTurn.id, "reasoning", reasoning);
         const reasoningRead = ReasoningView.initialRead(provider, workerName, loopSequence, initializationTurn.sequence);
         if (reasoningRead !== null) initializationStatements.push(reasoningRead);
-        initializationStatements.push({
-            op: "READ", aside: "inspect this turn's emission", matcher: null, body: null, metadata: null,
-            target: {
-                kind: "url", raw: `ops://${workerName}${pathname}`, scheme: "ops", pathname,
-                username: null, password: null, hostname: workerName, port: null, query: null, fragment: null,
-            },
-            lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-        });
+        // {§packet-wire-envelope} — the survey's program reaches the model as the first request's
+        // assistant message; turn zero READs its reasoning, never its own program.
         // {§message-arrival} — the message reaches the model as an inbound SEND in the first
         // model turn; initialization does not READ it a second time.
         const admittedInitializationStatements = initializationStatements.filter((statement) =>
