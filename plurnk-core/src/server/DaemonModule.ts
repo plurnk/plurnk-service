@@ -171,11 +171,12 @@ export interface ModuleSetupSeam {
 }
 
 export interface StartedModule {
-    close(): void | Promise<void>;
+    // {§module-shutdown-order} Producers settle before observers are released.
+    stop?(): void | Promise<void>;
+    close?(): void | Promise<void>;
 }
 
-export interface DaemonModule<StartSeam> {
-    close?(): void | Promise<void>;
+export interface DaemonModule<StartSeam> extends StartedModule {
     // setup establishes every capability Core may demand during recovery.
     setup?(seam: ModuleSetupSeam): void | Promise<void>;
     // start opens exterior ingress only after durable recovery is complete.

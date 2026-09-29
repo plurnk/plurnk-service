@@ -114,7 +114,7 @@ export default class Daemon implements ApplicationPort {
     #started = false; // {§module-lifecycle}: one discovery/module boot; no listener
 
     #modules: Array<DaemonModule<ApplicationPort>> = [];
-    #moduleClosers: StartedModule[] = [];
+    #moduleLifetimes: StartedModule[] = [];
     #moduleActions = new Map<string, ModuleActionRegistration>();
     #residency: WorkspaceResidency;
     readonly #functionality: Functionality;
@@ -1582,7 +1582,7 @@ export default class Daemon implements ApplicationPort {
         }
         const setupSeam: ModuleSetupSeam = this;
         for (const module of this.#modules) {
-            if (module.close !== undefined) this.#moduleClosers.push(module as StartedModule);
+            if (module.stop !== undefined || module.close !== undefined) this.#moduleLifetimes.push(module);
             await module.setup?.(setupSeam);
         }
         await this.#schemes.ready();
@@ -1595,8 +1595,8 @@ export default class Daemon implements ApplicationPort {
         // lifecycle recovery are complete. None opens a listener of its own.
         for (const module of this.#modules) {
             const started = await module.start?.(this);
-            if (started !== undefined && !this.#moduleClosers.includes(started)) {
-                this.#moduleClosers.push(started);
+            if (started !== undefined && !this.#moduleLifetimes.includes(started)) {
+                this.#moduleLifetimes.push(started);
             }
         }
     }
@@ -1715,12 +1715,14 @@ export default class Daemon implements ApplicationPort {
         // Stop accepting external work immediately, but do not await listener
         // closure before cancelling active workers: an SSE connection may itself be
         // waiting for the worker cancellation that follows.
-        const moduleClose = Promise.allSettled(
-            this.#moduleClosers
-                .toReversed()
-                .map((module) => Promise.resolve().then(() => module.close())),
-        );
-        this.#moduleClosers = [];
+        const modules = this.#moduleLifetimes.toReversed();
+        this.#moduleLifetimes = [];
+        const modulePhase = async (phase: "stop" | "close"): Promise<void> => {
+            const results = await Promise.allSettled(modules.map((module) => Promise.resolve().then(() => module[phase]?.())));
+            const errors = results.filter((result): result is PromiseRejectedResult => result.status === "rejected").map(({ reason }) => reason);
+            if (errors.length > 0) throw new AggregateError(errors, `module ${phase} failed`);
+        };
+        const moduleStop = settle("modules stop", () => modulePhase("stop"));
 
         // Drain order: (1) tell the supervisor to abort worker scopes so
         // strike paths don't keep going, (2) await its active drains
@@ -1743,12 +1745,7 @@ export default class Daemon implements ApplicationPort {
         // A boundary publication queued behind the last turn settles before
         // modules close and before the DB goes away ({§functionality-publication}).
         const functionalityResult = await settle("functionality publications", () => this.#functionality.settle());
-        const moduleResult = await settle("modules close", async () => {
-            const results = await moduleClose;
-            if (results.some((r) => r.status === "rejected")) throw new AggregateError(
-                results.filter((r): r is PromiseRejectedResult => r.status === "rejected").map((r) => r.reason),
-                "module close failed");
-        });
+        const moduleStopResult = await moduleStop;
         const streamingResult = await settle("streaming schemes idle", () => this.#drainStreamingSchemes());
         const derivationResult = await settle("derivation drain", () => this.#engine.drainDerivations(derivationAbort));
         const mimetypeResult = this.#ownsMimetypes
@@ -1759,13 +1756,15 @@ export default class Daemon implements ApplicationPort {
         // conclusion notifications. Join the supervisor-owned async tails only
         // after those producers settle, before the caller may close SQLite.
         const wakeResult = await settle("drains idle (wake)", () => this.#drains.idle());
+        const moduleCloseResult = await settle("modules close", () => modulePhase("close"));
         // {§db-maintenance-optimize} — the last database step before the caller closes SQLite:
         // planner statistics refreshed on the writer, bounded by SQLite's own analysis limit.
         // {§retention-policy} — the operator's retention runs once more before the statistics.
         const collectResult = await settle("retention", () => this.#retention.run());
         const optimizeResult = await settle("database optimize", () => this.#db.maintenance_optimize.run({}));
         const closeErrors = [
-            moduleResult,
+            moduleStopResult,
+            moduleCloseResult,
             functionalityResult,
             drainResult,
             streamingResult,

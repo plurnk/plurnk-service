@@ -133,13 +133,15 @@ test("{§module-discovery}: primitive exports and primitive factory results fail
 test("{§module-discovery}: malformed lifecycle hooks fail at discovery", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-disc-"));
     try {
-        const malformed = await packageOf(root, "@acme/malformed-module", {
-            plurnk: { kind: "module", module: "module.mjs" },
-        }, "export default { setup: true };");
-        await assert.rejects(
-            discoverDaemonModules({ packageDirs: [malformed] }),
-            /lifecycle member 'setup' must be a function/,
-        );
+        for (const member of ["setup", "start", "stop", "close"]) {
+            const malformed = await packageOf(root, `@acme/malformed-${member}`, {
+                plurnk: { kind: "module", module: "module.mjs" },
+            }, `export default { ${member}: true };`);
+            await assert.rejects(
+                discoverDaemonModules({ packageDirs: [malformed] }),
+                new RegExp(`lifecycle member '${member}' must be a function`),
+            );
+        }
     } finally {
         await rm(root, { recursive: true, force: true });
     }

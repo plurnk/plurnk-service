@@ -69,7 +69,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
                 } };
             },
         }),
-        close: () => mcp.close(),
+        stop: () => mcp.stop(),
     });
     t.after(async () => { release.resolve(); await daemon.stop(); await db.close(); });
     await daemon.start();

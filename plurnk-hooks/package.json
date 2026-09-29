@@ -23,6 +23,10 @@
     "license": "MIT",
     "author": "@wikitopian",
     "type": "module",
+    "dependencies": {
+        "@plurnk/plurnk-contracts": "^1.24.0",
+        "@plurnk/plurnk-meta": "^1.24.0"
+    },
     "publishConfig": {
         "access": "public"
     },

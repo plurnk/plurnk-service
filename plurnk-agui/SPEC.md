@@ -673,6 +673,7 @@ reconstruct one from `RUN_ERROR`.
 |---|---:|---|
 | `parse-failed` | 400 | A client-authored block did not parse; the detail is the parser's own diagnostic, verbatim, with its line, column and source ({§agui-outside-text}). |
 | `service-starting` | 503 | The PLURNK service owns this listener but has not completed durable recovery. |
+| `service-stopping` | 503 | The service is shutting down. New requests are refused while existing runs retain terminal-event delivery until observer closure ({§module-shutdown-order}). |
 | `route-not-found` | 404 | The requested HTTP route does not exist. |
 | `request-failed` | 500 | The AG-UI request failed unexpectedly. |
 | `workspace-required` | 400 | forwardedProps.plurnk.workspace must name a workspace. Recovery: Provide a non-empty workspace name. |

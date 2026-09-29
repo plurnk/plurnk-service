@@ -340,6 +340,31 @@ test("{§agui-listener-admission}: a bound listener refuses work until daemon ac
     } finally { await mod.close(); }
 });
 
+test("{§module-shutdown-order} stopping AG-UI refuses new work while an existing run receives its terminal event", async () => {
+    const { seam, finish } = mockSeam();
+    const entered = Promise.withResolvers<void>();
+    seam.runLoop = async () => {
+        entered.resolve();
+        return { status: 100, action: "enqueued_new_loop", loopId: 9, turnSeq: 1 };
+    };
+    const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
+    try {
+        const port = mod.address().port;
+        const stream = openStream(port, { threadId: "shutdown", messages: [{ role: "user", content: "hi" }], forwardedProps: { plurnk: { workspace: "w" } } });
+        await entered.promise;
+        mod.stop();
+        const refused = await fetch(`http://127.0.0.1:${port}/`);
+        assert.equal(refused.status, 503);
+        const problem = await refused.json() as { type: string; stage: string };
+        assert.equal(problem.type, "https://problems.plurnk.xyz/agui/http/service-stopping");
+        assert.equal(problem.stage, "shutdown");
+        finish(3, 77);
+        const events = await stream;
+        assert.ok(events.some((event) => event.type === "CUSTOM" && event.name === "plurnk.terminated"));
+        assert.ok(events.some((event) => event.type === "RUN_FINISHED"));
+    } finally { await mod.close(); }
+});
+
 test("{§agui-listener-admission}: a lost bind race rejects with the socket error", async () => {
     const holder = createServer();
     try {

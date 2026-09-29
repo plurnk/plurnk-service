@@ -95,7 +95,7 @@ export default class Module {
         const executor = new PlurnkAgentExecutor(application, workspace, store, options.proposals);
         const handler = new PlurnkRequestHandler(this.#card, store, executor);
         const app = express();
-        // {§module-lifecycle} — close() stops accepting external work; the routes stay mounted on the
+        // {§module-lifecycle} — stop() refuses new external work; the routes stay mounted on the
         // daemon's listener until the process ends, so they answer that the exposure is gone.
         app.use((_req: Request, res: Response, next: NextFunction) => {
             if (this.#closed) {
@@ -153,7 +153,7 @@ export default class Module {
         return structuredClone(this.#card);
     }
 
-    close(): void {
+    stop(): void {
         this.#closed = true;
     }
 }

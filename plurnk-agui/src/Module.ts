@@ -64,6 +64,7 @@ export default class Module {
     #actions = new Map<string, RegisteredAction>();
     #listening = false;
     #activated = false;
+    #stopped = false;
     readonly #builtins = new BuiltinActions({ seam: () => this.#seam, capabilities: this.#capabilities.bind(this), envelope: this.#envelope.bind(this), requireWorkspace: Module.#requireWorkspace });
     readonly #runs = new RunHandler({ seam: () => this.#seam, opts: () => this.#opts, portal: () => this.#portal, requiresWorkspace: this.#requiresWorkspace.bind(this), controlRun: this.#controlRun.bind(this), envelope: this.#envelope.bind(this), conversationWorker: this.#conversationWorker.bind(this), workerStatus: this.#workerStatus.bind(this), action: this.#action.bind(this) });
     #closing: Promise<void> | null = null;
@@ -191,6 +192,7 @@ export default class Module {
     }
 
     async start(seam: ApplicationPort): Promise<Module> {
+        if (this.#stopped) throw new Error("plurnk-agui: stopped module cannot be activated");
         if (this.#activated) throw new Error("plurnk-agui: module already activated");
         if (this.#http === null) {
             // {§http-host} — mount as the root: every request nothing more specific claims is
@@ -215,7 +217,12 @@ export default class Module {
         return { host: this.#opts.host, port: addr.port };
     }
 
+    stop(): void {
+        this.#stopped = true;
+    }
+
     async close(): Promise<void> {
+        this.stop();
         if (this.#activated) {
             this.#activated = false;
             this.#portal.stop();
@@ -228,6 +235,15 @@ export default class Module {
     }
 
     async #route(req: IncomingMessage, res: ServerResponse): Promise<void> {
+        if (this.#stopped) {
+            writeHttpProblem(res, httpProblem(
+                "service-stopping",
+                503,
+                "The PLURNK service is shutting down and no longer accepts requests.",
+                { stage: "shutdown", retryable: true },
+            ));
+            return;
+        }
         if (!this.#activated) {
             writeHttpProblem(res, httpProblem(
                 "service-starting",

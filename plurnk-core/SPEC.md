@@ -3965,9 +3965,17 @@ proceeds. `setup` is the readiness boundary for every capability registered
 with Core: recovery may demand a workspace provider before `start`. For a
 pre-bound client interface, requests remain unavailable until `start`; every
 other module opens its module-owned exterior ingress only after recovery. No
-registered capability may depend on exterior ingress. Shutdown begins started
-and self-closing module closure in reverse order and surfaces aggregated close
-failures.
+registered capability may depend on exterior ingress. A module, and any distinct
+lifetime object returned by `start`, may implement the following phases:
+
+| Phase | Obligation |
+|---|---|
+| `stop()` | Reject new ingress, stop timers and other producers, and settle owned work that can emit core events. Keep event subscriptions and resources needed for settlement alive. |
+| `close()` | Unsubscribe observers and release remaining resources after producer settlement; await admitted notification deliveries. Do not start new core work. |
+
+Both phases are optional and idempotent; repeated calls join the same work.
+Core tracks a module before `setup` so partially acquired resources are released
+even if setup fails. A returned object identical to its module is tracked once.
 
 §module-discovery **Third-party daemon-module composition is manifest
 discovery.** A package declares `plurnk: { kind: "module", module:
@@ -3983,18 +3991,22 @@ an object nor a no-arg factory, a factory returning a non-object, or an object
 with a non-function lifecycle member fails boot loudly.
 
 §module-shutdown-order `Daemon.stop()` first rejects new capability demand and
-aborts proposals, branches, derivations, and worker scopes. It simultaneously
-begins every module closer in reverse registration order, allowing exterior
-listeners to stop accepting work while active requests observe those
-cancellations. It then settles branches, drains, module closers, streaming
-producers, derivations, mimetypes, and schemes before its final worker-settlement
-barrier. The supervisor owns each asynchronous cancellation and wake task from
+aborts proposals, branches, derivations, and worker scopes. It begins module
+`stop()` calls in reverse registration order without serially awaiting them,
+so every producer is asked to stop even if another stalls. Core settles drains,
+capability publications, module producers, streaming producers, derivations,
+mimetypes, schemes, and the final worker-settlement barrier while observers
+remain subscribed. Only then does it begin and join module `close()` calls in
+reverse order. Failures do not skip later phases and join one shutdown aggregate.
+The supervisor owns each asynchronous cancellation and wake task from
 acceptance through settlement, including immediately acknowledged and explicitly
 awaited cancellation; a task failure participates in the shutdown aggregate.
 After asynchronous selection, the supervisor rechecks shutdown before creating
 a drain or installing a timer; parked-loop wake mutations also recheck worker
 cancellation under {§worker-lifecycle-durable-disposition}.
-The database may be released only after the final settlement barrier resolves.
+The database remains available through observer closure and final maintenance.
+The shared deadline bounds every phase, including observer delivery; forced
+shutdown may therefore lose notifications and reports the unfinished phase.
 
 §crash-only-stop The settle sequence is deadline-bounded
 (`PLURNK_SERVICE_STOP_TIMEOUT_MS`, default 30000): past the deadline each wait
@@ -4008,14 +4020,15 @@ backstop, not the exit.
 ```mermaid
 flowchart LR
     stop[Begin stop] --> abort[Abort core producers]
-    stop --> moduleClose[Begin reverse module closure]
+    stop --> moduleStop[Begin reverse module stop]
     abort --> drains[Settle worker drains]
-    drains --> joined[Settle module closures]
-    moduleClose --> joined
+    drains --> joined[Settle module producers]
+    moduleStop --> joined
     joined --> producers[Settle streaming producers]
     producers --> resources[Dispose derivations,<br/>mimetypes, and schemes]
     resources --> settlement[Settle cancellations and wakes]
-    settlement --> database[Release database]
+    settlement --> observers[Close observers and resources]
+    observers --> database[Maintain and release database]
 ```
 
 | Setup function | Contract |

@@ -36,7 +36,7 @@ const assertDaemonModule = (
             : "must export a DaemonModule object or no-argument factory";
         throw new TypeError(`module package '${packageName}' ${detail}.`);
     }
-    for (const member of ["setup", "start", "close"] as const) {
+    for (const member of ["setup", "start", "stop", "close"] as const) {
         const hook = (value as Record<string, unknown>)[member];
         if (hook !== undefined && typeof hook !== "function") {
             throw new TypeError(

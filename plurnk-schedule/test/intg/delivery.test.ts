@@ -50,7 +50,7 @@ const assertDelivery = async (workerName: string): Promise<void> => {
     daemon.registerModule({
         setup: (seam: Parameters<Module["setup"]>[0]) => { module.setup(seam); },
         start: async (seam: ApplicationPort) => { port = seam; await module.start(seam); },
-        close: () => module.close(),
+        stop: () => module.stop(),
     });
     await daemon.start();
     try {

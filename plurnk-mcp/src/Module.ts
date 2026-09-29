@@ -335,6 +335,7 @@ export default class Module {
     readonly #retainWorkspace = new Map<number, () => () => void>();
     #handle: FunctionalityFamilyHandle | undefined;
     #closed = false;
+    #stopping: Promise<void> | null = null;
 
     static init(options: ModuleOptions = {}): Module {
         return new Module(options.env ?? process.env);
@@ -904,8 +905,12 @@ export default class Module {
         this.#refreshTimers.delete(key);
     }
 
-    async close(): Promise<void> {
-        if (this.#closed) return;
+    stop(): Promise<void> {
+        this.#stopping ??= this.#stop();
+        return this.#stopping;
+    }
+
+    async #stop(): Promise<void> {
         this.#closed = true;
         for (const timer of this.#refreshTimers.values()) clearTimeout(timer);
         this.#refreshTimers.clear();

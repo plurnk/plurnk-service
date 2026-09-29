@@ -1,7 +1,7 @@
 import type { FunctionalityFamilyHandle } from "@plurnk/plurnk-contracts";
 // {§schedule-family} — the daemon module: registers the family at setup, arms every workspace's
 // enabled rules at start from the coordinator's persisted state ({§schedule-residency}), and
-// disarms at close.
+// disarms during producer stop ({§module-shutdown-order}).
 import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import { readDefinition } from "./definition.ts";
 import ScheduleFunctionality, {
@@ -43,6 +43,7 @@ export default class Module {
     readonly #report: (message: string, cause: unknown) => void;
     #seam: SetupSeam | null = null;
     #started = false;
+    #stopping: Promise<void> | null = null;
 
     static init(options: ModuleOptions = {}): Module {
         return new Module(options);
@@ -98,8 +99,9 @@ export default class Module {
         }
     }
 
-    async close(): Promise<void> {
-        await this.#functionality.scheduler.close();
+    stop(): Promise<void> {
+        this.#stopping ??= this.#functionality.scheduler.close();
+        return this.#stopping;
     }
 
     static #state(raw: unknown): FamilyState {

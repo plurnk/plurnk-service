@@ -238,7 +238,7 @@ test("{§mcp-module} the adapter registers the mcp family, its continuations, an
         const available = await h.adapter().available(h.identity(1));
         assert.deepEqual(available.map(({ alias, enabled }) => ({ alias, enabled })), [{ alias: "fixture", enabled: true }]);
         assert.equal((available[0]!.definition as McpServerDefinition).transport, "stdio");
-    } finally { await h.module.close(); }
+    } finally { await h.module.stop(); }
 });
 
 test("{§mcp-module} admission validates the exact definition and binds the alias to its name", async () => {
@@ -251,7 +251,7 @@ test("{§mcp-module} admission validates the exact definition and binds the alia
         assert.equal(derived.alias, "echo", "an omitted alias is the definition's name");
         await rejectsManagementProblem(() => h.adapter().admit({ alias: "other", definition: stdio("echo") }, h.identity(1)), "alias-mismatch", 400);
         await rejectsManagementProblem(() => h.adapter().admit({ alias: "bad", definition: { name: "bad" } }, h.identity(1)), "definition-invalid", 400);
-    } finally { await h.module.close(); }
+    } finally { await h.module.stop(); }
 });
 
 test("{§mcp-discovery} discovery is inert: client configuration becomes candidates without connecting, a direct target is probed and released, registry search is a stated absence", async () => {
@@ -274,7 +274,7 @@ test("{§mcp-discovery} discovery is inert: client configuration becomes candida
         assert.equal(probed.length, 1);
         assert.equal(probed[0]!.provenance.kind, "direct-target");
         await rejectsManagementProblem(() => h.adapter().discover({ query: "gitea" }, h.identity(1)), "registry-not-configured", 501);
-    } finally { await h.module.close(); }
+    } finally { await h.module.stop(); }
 });
 
 test("{§mcp-setup} preparation publishes one executor family and resource facet per enabled server, with catalog detail", async () => {
@@ -288,7 +288,7 @@ test("{§mcp-setup} preparation publishes one executor family and resource facet
         assert.ok((outcome as { detail?: { tools?: string[] } }).detail?.tools?.includes("echo"), "active outcomes carry the catalog tool names");
         assert.ok(prepared.runtimes[0]?.scheme, "the server's resource facet is published beside its executor");
         assert.equal(prepared.runtimes[0]?.decl.resourcesPath, "/tools");
-    } finally { await h.teardown(1); await h.module.close(); }
+    } finally { await h.teardown(1); await h.module.stop(); }
 });
 
 test("{§mcp-activation-isolation} a failed preparation rejects under reject and publishes unavailable under publish-unavailable, isolating healthy servers", async () => {
@@ -310,7 +310,7 @@ test("{§mcp-activation-isolation} a failed preparation rejects under reject and
         const retried = await h.lane(1, new Map([["echo", stdio("echo")], ["broken", stdio("broken", ["/nonexistent/server.mjs"])]]), { force: "broken" });
         assert.equal(retried.outcomes.get("broken")?.state, "unavailable");
         assert.equal(retried.outcomes.get("echo")?.state, "active");
-    } finally { await h.teardown(1); await h.module.close(); }
+    } finally { await h.teardown(1); await h.module.stop(); }
 });
 
 test("{§mcp-catalog-deadline} activation publishes a stalled catalog as unavailable and explicit retry restores it", { timeout: 10000 }, async (t) => {
@@ -342,7 +342,7 @@ test("{§mcp-catalog-deadline} activation publishes a stalled catalog as unavail
         const retry = await h.lane(1, enabled, { force: "stall" });
         assert.equal(retry.outcomes.get("stall")?.state, "active");
         assert.deepEqual(h.runtimeTags(1).toSorted(), ["echo", "stall"]);
-    } finally { await h.teardown(1); await h.module.close(); }
+    } finally { await h.teardown(1); await h.module.stop(); }
 });
 
 test("{§mcp-setup} commit closes connections the next snapshot no longer uses; abort closes only what the attempt opened; teardown closes the rest", async (t) => {
@@ -376,7 +376,7 @@ test("{§mcp-setup} commit closes connections the next snapshot no longer uses; 
 
         await h.teardown(1);
         await waitForFile(marker("a"));
-    } finally { await h.module.close(); }
+    } finally { await h.module.stop(); }
 });
 
 test("{§oauth-lifetime} an interactive OAuth server publishes authorization-required, holds Worker residency, and the callback re-enables it through the coordinator", async (t) => {
@@ -400,7 +400,7 @@ test("{§oauth-lifetime} an interactive OAuth server publishes authorization-req
         assert.deepEqual(h.runtimeTags(1), ["oauth"], "the authorized server is published through the re-enable");
         assert.equal(h.leases(), 0, "the pending lease was released on publication");
         await rejectsManagementProblem(() => h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: `${origin}/callback?code=x&state=y` }), "oauth-not-pending", 404);
-    } finally { await h.teardown(1).catch(() => undefined); await h.module.close(); }
+    } finally { await h.teardown(1).catch(() => undefined); await h.module.stop(); }
 });
 
 test("{§oauth-lifetime} a superseded authorization attempt cannot complete a replacement, and a changed target conflicts", async (t) => {
@@ -430,7 +430,7 @@ test("{§oauth-lifetime} a superseded authorization attempt cannot complete a re
         assert.equal(completed.status, 200);
         assert.deepEqual(h.runtimeTags(1), ["echo", "oauth"]);
         assert.equal(h.leases(), 0);
-    } finally { await h.teardown(1).catch(() => undefined); await h.module.close(); }
+    } finally { await h.teardown(1).catch(() => undefined); await h.module.stop(); }
 });
 
 test("{§mcp-authority} a legacy peer negotiates below the pin and serves its standard catalog", async () => {
@@ -441,7 +441,7 @@ test("{§mcp-authority} a legacy peer negotiates below the pin and serves its st
         const outcome = prepared.outcomes.get("legacy") as { state: string; detail?: { protocolVersion?: string } };
         assert.equal(outcome.state, "active");
         assert.equal(outcome.detail?.protocolVersion, "2025-06-18");
-    } finally { await h.teardown(1); await h.module.close(); }
+    } finally { await h.teardown(1); await h.module.stop(); }
 });
 
 test("{§mcp-module} completion routes to the connected server and refuses a disconnected one", async () => {
@@ -451,7 +451,7 @@ test("{§mcp-module} completion routes to the connected server and refuses a dis
         await h.lane(1, new Map([["echo", stdio("echo")]]));
         await rejectsManagementProblem(() => h.action(1, "workspace.mcp.complete", { server: "missing", ref: {}, argument: {} }), "server-not-connected", 409);
         await rejectsManagementProblem(() => h.action(1, "workspace.mcp.complete", { server: "echo", ref: "x", argument: {} }), "completion-parameters-invalid", 400);
-    } finally { await h.teardown(1); await h.module.close(); }
+    } finally { await h.teardown(1); await h.module.stop(); }
 });
 
 test("{§mcp-setup} shutdown closes every connection and aggregates failures", async () => {
@@ -531,7 +531,7 @@ test("{§mcp-catalog-refresh-in-place} withdrawing an attachment retires its pen
     });
     const h = harness();
     await h.setup();
-    t.after(() => h.module.close());
+    t.after(() => h.module.stop());
     const first = await h.lane(1, new Map([["fixture", { name: "fixture", transport: "http", url: served.url }]]));
     failListing = true;
     handler.notify.toolsChanged();

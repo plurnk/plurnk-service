@@ -1562,7 +1562,7 @@ test("the client-interface seam — the boot plug-point hands a registered modul
     }
 });
 
-test("module lifecycle readies setup capabilities before exterior start and closes modules before backing resources", async () => {
+test("{§module-shutdown-order} module producers stop before draining and observers close after settlement", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({
         db,
@@ -1596,11 +1596,13 @@ test("module lifecycle readies setup capabilities before exterior start and clos
         start: async () => {
             events.push("start");
             return {
+                stop: async () => { events.push("listener-stop"); },
                 close: async () => {
                     events.push("listener-close");
                 },
             };
         },
+        stop: async () => { events.push("module-stop"); },
         close: async () => {
             events.push("module-close");
         },
@@ -1613,14 +1615,58 @@ test("module lifecycle readies setup capabilities before exterior start and clos
             "setup",
             "capability-ready",
             "start",
+            "listener-stop",
+            "module-stop",
+            "derivations-drained",
             "listener-close",
             "module-close",
-            "derivations-drained",
         ]);
     } finally {
         await daemon.stop();
         await db.close();
     }
+});
+
+test("{§module-lifecycle} stop-only modules and self-returned lifetimes are tracked exactly once", async (t) => {
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null });
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    const calls: string[] = [];
+    daemon.registerModule({ stop() { calls.push("stop-only"); } });
+    daemon.registerModule({
+        start() { return this; },
+        stop() { calls.push("stop-self"); },
+        close() { calls.push("close-self"); },
+    });
+    await daemon.start();
+    await daemon.stop();
+    await daemon.stop();
+    assert.deepEqual(calls, ["stop-self", "stop-only", "close-self"]);
+});
+
+test("{§module-shutdown-order} a stalled producer does not prevent other producers or observers from closing", async (t) => {
+    const prior = process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS;
+    process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS = "100";
+    t.after(() => {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS;
+        else process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS = prior;
+    });
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null });
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    const calls: string[] = [];
+    daemon.registerModule({
+        stop() { calls.push("producer-stopped"); },
+        close() { calls.push("observer-closed"); },
+    });
+    daemon.registerModule({ stop: () => new Promise(() => {}) });
+    await daemon.start();
+    await assert.rejects(daemon.stop(), (cause: unknown) => {
+        assert.ok(cause instanceof AggregateError);
+        assert.ok(cause.errors.some((error: unknown) => String(error).includes("stop deadline exceeded waiting for modules stop")));
+        return true;
+    });
+    assert.deepEqual(calls, ["producer-stopped", "observer-closed"]);
 });
 
 test("Daemon.stop disposes its owned mimetypes after derivations exactly once", async () => {
@@ -1694,6 +1740,7 @@ test("daemon shutdown preserves module and scheme lifecycle failures in one aggr
         }),
     });
     daemon.registerModule({
+        async stop() { throw new Error("module stop failed"); },
         async close() { throw new Error("module close failed"); },
     });
     daemon.mimetypes.dispose = async () => { throw new Error("mimetype dispose failed"); };
@@ -1719,6 +1766,7 @@ test("daemon shutdown preserves module and scheme lifecycle failures in one aggr
                 assert.deepEqual(
                     error.errors.map((cause) => String(cause)),
                     [
+                        "Error: module stop failed",
                         "Error: module close failed",
                         "Error: mimetype dispose failed",
                         "Error: scheme close failed",

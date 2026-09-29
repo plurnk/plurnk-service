@@ -1,20 +1,12 @@
-export const HOOK_EVENTS = [
-    "log/entry",
-    "loop/proposal",
-    "loop/terminated",
-    "notice/event",
-    "stream/concluded",
-    "stream/event",
-    "workspace/created",
-] as const;
-
-export type HookEvent = typeof HOOK_EVENTS[number];
+import { Knob } from "@plurnk/plurnk-meta";
 
 export interface HookConfig {
     readonly command: string;
     readonly args: string[];
-    readonly events: ReadonlySet<HookEvent>;
+    readonly events: ReadonlySet<string>;
     readonly timeoutMs: number;
+    readonly concurrency: number;
+    readonly queueLimit: number;
 }
 
 const hookArgs = (raw: string | undefined): string[] => {
@@ -31,32 +23,26 @@ const hookArgs = (raw: string | undefined): string[] => {
     return parsed;
 };
 
-const hookEvents = (raw: string | undefined): ReadonlySet<HookEvent> => {
+const hookEvents = (raw: string | undefined): ReadonlySet<string> => {
     if (raw === undefined || raw.trim().length === 0) {
         throw new Error("PLURNK_HOOKS_EVENTS must select at least one event.");
     }
-    const known = new Set<string>(HOOK_EVENTS);
-    const selected = new Set<HookEvent>();
+    const selected = new Set<string>();
     for (const event of raw.split(",").map((value) => value.trim())) {
-        if (!known.has(event)) throw new Error(`PLURNK_HOOKS_EVENTS names unknown core event '${event}'.`);
-        if (selected.has(event as HookEvent)) {
+        if (!/^[^\s,/*]+(?:\/[^\s,/*]+)+$/u.test(event)) throw new Error(`PLURNK_HOOKS_EVENTS requires exact event names; got '${event}'.`);
+        if (selected.has(event)) {
             throw new Error(`PLURNK_HOOKS_EVENTS selects '${event}' more than once.`);
         }
-        selected.add(event as HookEvent);
+        selected.add(event);
     }
     return selected;
 };
 
-const hookTimeoutMs = (raw: string | undefined): number => {
-    const timeoutMs = Number(raw);
-    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
-        throw new Error(`PLURNK_HOOKS_TIMEOUT_MS must be a positive integer; got ${JSON.stringify(raw)}.`);
-    }
-    return timeoutMs;
-};
-
-export const hookConfig = (environment: NodeJS.ProcessEnv = process.env): HookConfig | null => {
-    const timeoutMs = hookTimeoutMs(environment.PLURNK_HOOKS_TIMEOUT_MS);
+export const hookConfig = (): HookConfig | null => {
+    const environment = process.env;
+    const timeoutMs = Knob.integer("PLURNK_HOOKS_TIMEOUT_MS", 1);
+    const concurrency = Knob.integer("PLURNK_HOOKS_CONCURRENCY", 1);
+    const queueLimit = Knob.integer("PLURNK_HOOKS_QUEUE_LIMIT", 0);
     const command = environment.PLURNK_HOOKS_COMMAND?.trim() ?? "";
     if (command.length === 0) {
         if (
@@ -67,13 +53,12 @@ export const hookConfig = (environment: NodeJS.ProcessEnv = process.env): HookCo
         }
         return null;
     }
-    if (/\s/.test(command)) {
-        throw new Error("PLURNK_HOOKS_COMMAND must contain one executable; put arguments in PLURNK_HOOKS_ARGS.");
-    }
     return {
         command,
         args: hookArgs(environment.PLURNK_HOOKS_ARGS),
         events: hookEvents(environment.PLURNK_HOOKS_EVENTS),
         timeoutMs,
+        concurrency,
+        queueLimit,
     };
 };
