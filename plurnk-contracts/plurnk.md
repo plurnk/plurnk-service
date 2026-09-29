@@ -27,6 +27,9 @@ body?
 
 ## Workflow Management
 
+> [!TIP]
+> YOU SHOULD stop reasoning and emit fact-finding OPs when further progress depends on missing information.
+
 > [!IMPORTANT]
 > YOU MAY KILL the loop by performing a KILL turn with only a parameterless KILL containing the final deliverable response.
 
