@@ -215,6 +215,8 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
     try {
         // The installed union is the service baseline: project shadows global;
         // an invalid skill is unavailable on its own, never failing the family.
+        assert.ok((await listed()).every(({ state }) => state === "dormant"), "listing does not prepare installed skills");
+        await catalog();
         assert.deepEqual(await states(), [
             "bad:service:unavailable:global",
             "grep:service:active:project",
@@ -298,6 +300,8 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
         await daemon.stop();
         daemon = new Daemon({ db, provider: null, hostPaths, skills: { toolchain } });
         await daemon.start();
+        assert.ok((await listed()).every(({ state }) => state === "dormant"), "restart inspection does not prepare skills");
+        await catalog();
         assert.deepEqual(await states(), [
             "alpha:workspace:active:project",
             "bad:service:unavailable:global",
@@ -334,7 +338,7 @@ test("{§skills-functionality} a headless workspace exposes its service skill bu
     const context = { scope: "workspace" as const, workspaceId };
     try {
         const list = await daemon.invokeModuleAction("workspace.skills.list", {}, context) as { definitions: Array<{ alias: string; state: string; origin: string }> };
-        assert.deepEqual(list.definitions.map(({ alias, state, origin }) => ({ alias, state, origin })), [{ alias: "plurnk", state: "active", origin: "service" }]);
+        assert.deepEqual(list.definitions.map(({ alias, state, origin }) => ({ alias, state, origin })), [{ alias: "plurnk", state: "dormant", origin: "service" }]);
         const catalog = await daemon.dispatchAsClient({ workspaceId, workerId: client, statement: findStmt(parsePath("skill://*/SKILL.md")) });
         assert.equal(catalog.status, 200);
         assert.deepEqual((catalog.results as Array<Array<{ path: string }>>).flat().map(({ path }) => path), ["skill://plurnk/SKILL.md"]);

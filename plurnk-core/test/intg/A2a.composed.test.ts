@@ -263,7 +263,7 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
         }) as { definitions: Array<{ alias: string; origin: string; state: string }> };
         assert.deepEqual(
             listed.definitions.map(({ alias, origin, state }) => `${alias}:${origin}:${state}`),
-            ["remote:service:active"],
+            ["remote:service:dormant"],
             "the environment definition is the Worker's active service baseline",
         );
 

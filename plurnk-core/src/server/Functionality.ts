@@ -602,7 +602,6 @@ export default class Functionality {
         caller: FunctionalityCaller,
         options: FunctionalityOptions,
     ): Promise<FunctionalityInvocation> {
-        if (!this.#families.has(this.#key(identity.workspaceId, adapter.family))) throw failure(adapter.family, "workspace-not-resident", 409, `Workspace ${identity.workspaceId} has no resident ${adapter.family} Functionality.`, { recovery: "Retry through a workspace operation, then retry.", retryable: false });
         const state = await this.#loadWorkerState(adapter, workerId);
         const effective = await this.#effective(adapter, identity, state);
         if (verb === "list") {

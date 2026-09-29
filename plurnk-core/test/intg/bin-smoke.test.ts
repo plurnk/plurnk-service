@@ -62,7 +62,7 @@ const bootDaemon = (
         const dbPath = join(dir, "plurnk.db");
         const overrides = await prepare?.({ dir, dbPath }) ?? {};
         const env: NodeJS.ProcessEnv = {
-            ...process.env,
+            ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("PLURNK_"))),
             HOME: dir,
             XDG_CONFIG_HOME: join(dir, ".config"),
             XDG_DATA_HOME: join(dir, ".local", "share"),
@@ -267,6 +267,8 @@ test("bin: persisted and attached workspaces stay cold until capability demand",
             "attachment must not launch the configured MCP endpoint",
         );
         await action(booted, "workspace.mcp.list", {}, "cold-one", "cold-one");
+        assert.deepEqual(await markerLines(startMarker), [], "inspection remains passive");
+        await action(booted, "workspace.mcp.enable", { alias: "echo" }, "cold-one", "cold-one");
         const firstActivationStarts = (await markerLines(startMarker)).length;
         assert.ok(
             firstActivationStarts > 0,
@@ -311,8 +313,8 @@ test("bin: SIGTERM interrupts capability-demand activation and reaps its MCP pro
         assert.deepEqual(await markerLines(startMarker), [], "attachment remains passive");
         const demand = action(
             booted,
-            "workspace.mcp.list",
-            {},
+            "workspace.mcp.enable",
+            { alias: "echo" },
             "activation-stop",
             "activation-stop",
         ).catch((error: unknown) => error);

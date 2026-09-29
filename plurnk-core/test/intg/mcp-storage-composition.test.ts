@@ -82,7 +82,8 @@ test("{§mcp-working-storage} probes and attached tools write outside the projec
         daemon = boot();
         await daemon.start();
         const listed = await invoke(workspaceId, "mcp", "list") as FunctionalityListResult;
-        assert.equal(listed.definitions[0]?.state, "active");
+        assert.equal(listed.definitions[0]?.state, "dormant");
+        await invoke(workspaceId, "mcp", "enable", { alias: "fixture" });
         assert.equal((await starts()).at(-1)!.cwd, attached.cwd, "restart and a different launcher CWD preserve storage");
         assert.deepEqual(listed.definitions[0]?.definition, definition, "derived paths do not leak into durable definitions");
         assert.equal(await readFile(join(attached.cwd, ".tool-state/result.txt"), "utf8"), "retained result\n");

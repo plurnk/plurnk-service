@@ -124,6 +124,8 @@ test("{§members-functionality} client and model share one surface; the ceiling,
             assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "an untracked file is dark until added");
             // Service definitions from the operator's env ride like PLURNK_MCP_*: docs is enabled by
             // default, and list says what it resolved to.
+            assert.deepEqual(await states(), ["docs:service:dormant"]);
+            await invoke("enable", { alias: "docs" });
             assert.deepEqual(await states(), ["docs:service:active"]);
             await daemon.settleFunctionality(workspaceId);
             // {§functionality-document-body} — the family document teaches tracked-or-picked and the scope

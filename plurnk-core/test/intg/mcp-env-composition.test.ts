@@ -101,8 +101,12 @@ test("{§mcp-launch-environment} a real MCP probe and server use workspace env, 
         daemon = boot();
         await daemon.start();
         const coldList = await invoke("mcp", "list") as FunctionalityListResult;
+        assert.deepEqual(coldList.definitions.map(({ alias, state }) => [alias, state]), [["explicit", "dormant"], ["fixture", "dormant"]]);
+        assert.equal((await starts()).length, beforeCold, "cold inspection starts no servers");
+        await invoke("mcp", "enable", { alias: "fixture" });
         const rehydrated = (await starts()).slice(beforeCold);
-        assert.deepEqual(coldList.definitions.map(({ alias, state }) => [alias, state]), [["explicit", "active"], ["fixture", "active"]]);
+        const activeList = await invoke("mcp", "list") as FunctionalityListResult;
+        assert.deepEqual(activeList.definitions.map(({ alias, state }) => [alias, state]), [["explicit", "active"], ["fixture", "active"]]);
         assert.deepEqual(new Set(rehydrated.map(({ witness }) => witness)), new Set(["updated", "explicit"]), "cold activation reconstructs workspace defaults and retained launch options");
         for (const received of rehydrated) {
             assert.equal(received.bound, "workspace-reference");

@@ -314,10 +314,11 @@ const matrix = async (family: Family): Promise<void> => {
             daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith(`workspace.${family.family}.`) && !name.includes(".oauth.") && !name.endsWith(".complete")).toSorted(),
             ["add", "disable", "discover", "enable", "list", "remove"].map((verb) => `workspace.${family.family}.${verb}`),
         );
-        // 2. Configuration baseline is service-origin and live.
-        assert.equal(await stateOf(family.service.alias), "active");
+        // 2. Inspection is passive; real use activates the service definition.
+        assert.equal(await stateOf(family.service.alias), "dormant");
         assert.equal((await listed()).find((entry) => entry.alias === family.service.alias)?.origin, "service");
         assert.equal(await live(family.service), true, "the configured definition is live");
+        assert.equal(await stateOf(family.service.alias), "active");
         assert.equal(await document(family.service.alias), 200, "the active definition has its generated document");
         // {§functionality-model-projection} — real installed managers use the same schema documents as attached tools.
         const references = await daemon.engine.referenceEntries(workspaceId);
@@ -450,9 +451,11 @@ ${JSON.stringify({ alias: family.addable.alias })}
         ({ daemon } = await family.boot(db, provider));
         await daemon.start();
         unsubscribe = daemon.subscribeToEvents(() => {});
-        assert.equal(await stateOf(family.service.alias), "active");
-        assert.equal(await stateOf(family.addable.alias), "active", "the workspace definition survives restart");
+        assert.equal(await stateOf(family.service.alias), "dormant");
+        assert.equal(await stateOf(family.addable.alias), "dormant", "the workspace definition survives without activation");
         assert.equal(await live(family.addable), true);
+        assert.equal(await stateOf(family.service.alias), "active");
+        assert.equal(await stateOf(family.addable.alias), "active");
         assert.equal(await document(family.addable.alias), 200);
         assert.equal(await live(family.addable, child), true, "the child sees the restored workspace definition");
         assert.equal(await live(family.addable, peer), true, "the independent worker sees the same definition");

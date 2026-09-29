@@ -62,6 +62,8 @@ test("{§a2a-functionality} outbound agents are workspace Functionality: baselin
             ["workspace.a2a.add", "workspace.a2a.disable", "workspace.a2a.discover", "workspace.a2a.enable", "workspace.a2a.list", "workspace.a2a.remove"],
         );
         // The environment baseline: researcher enabled by default, scribe available but disabled.
+        assert.deepEqual(await states(), ["researcher:service:dormant", "scribe:service:disabled"]);
+        await invoke("enable", { alias: "researcher" });
         assert.deepEqual(await states(), ["researcher:service:active", "scribe:service:disabled"]);
         const researcher = (await invoke<{ definitions: Listed[] }>("list", {})).definitions.find(({ alias }) => alias === "researcher")!;
         assert.deepEqual(researcher.detail?.skills, ["echo"]);
