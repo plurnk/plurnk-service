@@ -41,11 +41,7 @@ export default class TurnDispositionHandler {
     async handle(ctx: TurnContext): Promise<DispatchResult> {
         // {§wait-obligation-matrix}: record intent now; settle the complete program before parking.
         if (await this.#hasLiveWork(ctx.loopId)) return { status: 202, attrs: { waiting: -1 } };
-        // {§wait-obligation-matrix}: a second idle WAIT names what WAIT is for.
-        const prior = await this.#db.engine_prior_idle_waits.get<{ count: number }>({ loop_id: ctx.loopId });
-        return (prior?.count ?? 0) > 0
-            ? { status: 102, detail: "WAIT doesn't wait unless there's a child worker or stream to wait on. Use schedule for specific timing decisions." }
-            : { status: 102, detail: "Nothing is in flight. Continuing." };
+        return { status: 102, detail: "Nothing is in flight. Continuing." };
     }
 
     async completion(ctx: TurnContext, eligible: boolean): Promise<DispatchResult> {
