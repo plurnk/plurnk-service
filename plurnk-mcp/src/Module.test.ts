@@ -128,6 +128,7 @@ const harness = (env: Record<string, string> = {}) => {
     };
     return {
         module,
+        seam,
         actions,
         snapshots,
         leases: () => leases,
@@ -227,6 +228,40 @@ const oauthDefinition = (served: { url: string }, origin: string): McpServerDefi
         scope: "mcp:read",
     },
 } as McpServerDefinition);
+
+test("{§mcp-connection-shutdown} environment resolution cannot open a connection after producer stop", async (t) => {
+    for (const operation of ["prepare", "discover"] as const) {
+        await t.test(operation, async (t) => {
+            let requests = 0;
+            const served = await serveMcpHttp(t, httpHandler(), () => { requests++; return null; });
+            const h = harness();
+            const entered = Promise.withResolvers<void>();
+            const release = Promise.withResolvers<void>();
+            const original = h.seam.readWorkspaceEnvironment;
+            t.mock.method(h.seam, "readWorkspaceEnvironment", async () => {
+                entered.resolve();
+                await release.promise;
+                return original();
+            });
+            await h.setup();
+            t.after(async () => {
+                release.resolve();
+                if (h.snapshots.has(1)) await h.teardown(1);
+                await h.module.stop();
+            });
+            const work = operation === "prepare"
+                ? h.lane(1, new Map([["fixture", { name: "fixture", transport: "http", url: served.url }]]))
+                : h.adapter().discover({ source: served.url }, h.identity(1));
+            await entered.promise;
+            const stopping = h.module.stop();
+            assert.equal(h.module.stop(), stopping, "repeated producer stop joins the same settlement");
+            await stopping;
+            release.resolve();
+            await assert.rejects(work, /MCP module is closed/);
+            assert.equal(requests, 0, "no remote discovery, negotiation, or catalog request after stop");
+        });
+    }
+});
 
 test("{§mcp-module} the adapter registers the mcp family, its continuations, and service definitions with their default enabledness", async () => {
     const h = harness({ PLURNK_MCP_FIXTURE: process.execPath, PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixture]), PLURNK_MCP_ENABLED: JSON.stringify(["fixture"]) });

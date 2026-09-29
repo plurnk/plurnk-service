@@ -536,8 +536,11 @@ commit leaves the durable definition, connection, Registry, docs, and resource
 authority unchanged. Materialization and registration inspect the complete
 owning operation result; a non-success preserves its original Problem.
 
-§mcp-connection-shutdown Shutdown prevents new work and aborts each connection's
-active requests, including client-input waits. Their protocol cleanup settles
+§mcp-connection-shutdown Module `stop()` prevents new work and aborts each connection's
+active requests, including client-input waits. Discovery and preparation recheck
+admission after asynchronous environment resolution, before owning a new connection;
+connection startup rechecks after asynchronous directory resolution before opening
+its transport. Their protocol cleanup settles
 before the extension channel or connected transport closes, so a created Task
 can receive `tasks/cancel`. Concurrent closers await the same settlement.
 Candidates still negotiating and standalone OAuth transports close immediately.

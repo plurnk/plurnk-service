@@ -470,6 +470,7 @@ export default class Module {
                 : { name: "discovered", transport: "stdio", command, args }, options);
             Validator.assertMcpServerDefinition(definition);
             const environment = await this.#workspaceEnvironment(identity.workspaceId);
+            this.#assertOpen();
             let directory: string | undefined;
             const connection = new ServerConnection(definition, environment(this.#env), {
                 environment: environment(),
@@ -555,6 +556,7 @@ export default class Module {
     ): Promise<Attachment> {
         this.#assertOpen();
         const environment = await this.#workspaceEnvironment(workspaceId);
+        this.#assertOpen();
         const candidate = connection ?? new ServerConnection(definition, environment(this.#env), {
             environment: environment(),
             workingDirectory: async () => {
