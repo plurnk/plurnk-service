@@ -70,6 +70,7 @@
                                 "model": null,
                                 "loopId": null,
                                 "packetCount": 0,
+                                "preparation": [],
                                 "activity": null
                             }
                         },
@@ -79,6 +80,15 @@
                 {
                     "type": "STATE_DELTA",
                     "delta": [
+                        { "op": "replace", "path": "/plurnk/status/preparation", "value": [
+                            { "family": "mcp", "alias": "search", "phase": "preparing", "since": "2026-09-29T00:00:00.000Z" }
+                        ] }
+                    ]
+                },
+                {
+                    "type": "STATE_DELTA",
+                    "delta": [
+                        { "op": "replace", "path": "/plurnk/status/preparation", "value": [] },
                         { "op": "replace", "path": "/plurnk/status/lifecycle", "value": "running" },
                         { "op": "replace", "path": "/plurnk/status/loopId", "value": 1 },
                         { "op": "replace", "path": "/plurnk/status/packetCount", "value": 1 }
@@ -134,7 +144,7 @@
             ],
             "expect": {
                 "completion": "success",
-                "families": ["log/entry", "loop/packet", "loop/terminated"],
+                "families": ["log/entry", "loop/packet", "loop/terminated", "workspace/preparation"],
                 "status": 200
             }
         },
