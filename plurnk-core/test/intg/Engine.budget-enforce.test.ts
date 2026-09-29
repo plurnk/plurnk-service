@@ -155,7 +155,8 @@ test("{§tokenomics-context-envelope-admission} {§provider-surface-prompt-measu
         const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
         if (next === undefined) throw new Error("next turn sequence unavailable");
         const probeProvider = mockAt(999_000, [], 1_000_000);
-        const probe = await new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined }).buildRequestPacket({
+        const probeBuilder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
+        const probe = await probeBuilder.buildRequestPacket({
             initialMessages: MESSAGES,
             workspaceId,
             workerId,
@@ -164,7 +165,7 @@ test("{§tokenomics-context-envelope-admission} {§provider-surface-prompt-measu
             provider: probeProvider,
             gitStatus: null,
         });
-        const exactChars = PacketWire.packetToWireMessages(probe)
+        const exactChars = PacketWire.packetToWireMessages(probe, probeBuilder.emissionsFor(probe))
             .reduce((sum, { content }) => sum + content.length, 0);
         const capacity = Math.floor((probe.weight + exactChars) / 2);
         assert.ok(probe.weight < capacity && capacity < exactChars, "fixture separates the curation ruler from provider tokens");

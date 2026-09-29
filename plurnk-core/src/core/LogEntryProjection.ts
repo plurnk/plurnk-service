@@ -29,7 +29,16 @@ export default class LogEntryProjection {
         return materializedEntry ? "READ" : op;
     }
 
+    // {§emission-row}: the announcement of an admitted emission, stored as the harness's READ of its
+    // own turn's ops source and addressed by its own leaf. The schema admits the kind only on that shape.
+    static isEmission(row: LogEntryProjectionRow): boolean {
+        if (row.op !== "READ") return false;
+        const attrs = LogEntryProjection.#decode(row.attrs, "attrs");
+        return attrs !== null && typeof attrs === "object" && (attrs as { kind?: unknown }).kind === "emission";
+    }
+
     static leaf(row: LogEntryProjectionRow): string {
+        if (LogEntryProjection.isEmission(row)) return "emission";
         const op = LogEntryProjection.op(row);
         // An execution row's leaf is its runtime: the op as written.
         if (isExecutionOp(op)) return op;

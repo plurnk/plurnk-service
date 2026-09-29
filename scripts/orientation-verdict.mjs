@@ -41,7 +41,8 @@ const includesEveryGroup = (text, groups) =>
 export const evaluateOrientation = (record, digest) => {
     const response = typeof record?.response === "string" ? record.response.trim() : "";
     const lower = response.toLowerCase();
-    const ops = flattenOps(record);
+    // {§emission-row}: harness rows, turn zero's survey and every emission's announcement, are not inspection.
+    const ops = flattenOps(record).filter((op) => op?.origin === "model");
     const inspectionOps = ops.filter((op) =>
         (["READ", "FIND"].includes(op?.op) || /^[a-z][a-z0-9+.-]*$/.test(op?.op ?? "")) && Number(op?.status) < 400);
     const evidence = evidenceNames(response);

@@ -17,7 +17,7 @@ test("{§log-kill-meta-operation} a KILL that worked never renders; one that mat
     const mock = new Mock({ contextWindow: 32768, responses: [
         "````EDIT (worker:///note)\nfirst line\nsecond line\n````\n\n````READ (worker:///note)````\n````NOTE\nwrote\n````",
         "````KILL (log:///1/**/READ) <2,-1>````\n````KILL (log:///1/**/EDIT)````\n````KILL (log:///9/9/9)````\n````NOTE\ncurated\n````",
-        "````KILL (log:///1/**/EDIT)````\n````READ (log:///1/3/1/KILL)````\n````READ (worker:///note)````\n````KILL (worker:///note)````\n````NOTE\nverified\n````",
+        "````KILL (log:///1/**/EDIT)````\n````READ (log:///1/3/2/KILL)````\n````READ (worker:///note)````\n````KILL (worker:///note)````\n````NOTE\nverified\n````",
         "````NOTE\nthe mismatch has been seen; moving on\n````",
         "````KILL\ndone\n````",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
@@ -46,7 +46,7 @@ test("{§log-kill-meta-operation} a KILL that worked never renders; one that mat
                 { target: "log:///1/**/EDIT", status: 204 },
                 { target: "worker:///note", status: 200 },
             ], "the mismatch says so in the very next packet — the model cannot otherwise tell its own earlier KILL emptied the selection (#779)");
-            assert.ok(rows(afterRepeat, "READ").some(({ path: target }) => target === "log:///1/3/1/KILL"), "explicit READ of a suppressed receipt remains an ordinary visible operation");
+            assert.ok(rows(afterRepeat, "READ").some(({ path: target }) => target === "log:///1/3/2/KILL"), "explicit READ of a suppressed receipt remains an ordinary visible operation");
             const afterNext = await packetOf(5);
             assert.deepEqual(rows(afterNext, "KILL").map(({ path: target, status }) => ({ target, status })), [
                 { target: "log:///9/9/9", status: 404 },
@@ -67,7 +67,7 @@ test("{§log-kill-meta-operation} a KILL that worked never renders; one that mat
             for (const read of sourceReads) {
                 assert.equal(JSON.parse(read.rx).content, "first line\nsecond line", "log curation changes neither the original receipt evidence nor its source");
             }
-            const receiptRead = history.find(({ op, scheme, pathname }) => op === "READ" && scheme === "log" && pathname === "/1/3/1/KILL");
+            const receiptRead = history.find(({ op, scheme, pathname }) => op === "READ" && scheme === "log" && pathname === "/1/3/2/KILL");
             assert.ok(receiptRead);
             assert.equal(receiptRead.status_rx, 204, "the suppressed receipt remains addressable with its ordinary empty body, not a missing-entry error");
             assert.equal(JSON.parse(receiptRead.rx).content, "");

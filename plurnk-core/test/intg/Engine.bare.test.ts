@@ -8,6 +8,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { testProviderCapacity } from "./_provider.ts";
+import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
 const mainResponse = (operations: string): ConstructorParameters<typeof Mock>[0]["responses"][number] => ({
     assistant: {
@@ -335,8 +336,8 @@ test("{§bare-inference}: a log prompt uses only retained source lines", async (
                 "````NOTE\nContinue the task.\n````",
             ].join("\n"))] }),
         });
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; sequence: number }>({ turn_id: first.turnId });
-        const source = rows.find(({ op }) => op === "READ");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; sequence: number; attrs: string }>({ turn_id: first.turnId });
+        const source = rows.find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
         assert.ok(source);
         const turn = await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId });
         assert.ok(turn);

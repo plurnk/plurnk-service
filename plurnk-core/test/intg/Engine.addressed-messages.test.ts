@@ -10,6 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { makeRawMockResponse } from "./_mock.ts";
+import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
 const frame = PlurnkParser.frame;
 
@@ -49,8 +50,8 @@ test("{§message-source-scheme} restart retains source text and answered state a
         ].join("\n\n"))] });
         const read = await reopened.runTurn({ messages: [], provider: reader, workspaceId, workerId, loopId: readingLoop });
         assert.deepEqual(read.outcomes.map(({ status }) => status), [200, 404], "the source survives while the curated log remains gone");
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: read.turnId });
-        const retained = rows.find(({ op, status_rx }) => op === "READ" && status_rx === 200);
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string; attrs: string }>({ turn_id: read.turnId });
+        const retained = rows.find((row) => row.op === "READ" && row.status_rx === 200 && !LogEntryProjection.isEmission(row));
         assert.ok(retained);
         assert.equal(JSON.parse(retained.rx).content, "Keep this original assignment.");
         assert.equal((await db.message_unanswered_count.get({ loop_id: loopId }))?.count, 0, "curation and restart do not revoke the answer");
@@ -232,8 +233,8 @@ for (const scope of ["", " <1,-1>"]) test(`{§message-arrival} curation${scope} 
         assert.deepEqual(one.outcomes.map(({ op, status }) => [op, status]), [
             ["KILL", 200], ["READ", 200], ["COPY", 201], ["SEND", 200],
         ]);
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: one.turnId });
-        assert.equal(JSON.parse(rows.find(({ op }) => op === "READ")!.rx).content, "First assignment.");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string; attrs: string }>({ turn_id: one.turnId });
+        assert.equal(JSON.parse(rows.find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))!.rx).content, "First assignment.");
         const two = await run();
         assert.equal(two.status, 102, "one addressed answer cannot conclude over the second assignment");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: two.turnId }))!.packet);

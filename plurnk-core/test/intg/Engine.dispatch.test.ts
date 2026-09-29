@@ -262,7 +262,7 @@ test("{§completion-defers-to-results}: retiring a failed receipt does not make 
         assert.equal(failed.status, 404);
         const result = await engine.executeAdmittedTurn({
             statements: [killStmt({ target: urlPath("log", "/1/1/1/READ") }), sendStmt(null)],
-            source: null, ...env, fromSequence: 2, origin: "model",
+            source: null, emission: null, ...env, fromSequence: 2, origin: "model",
         });
         assert.equal(result.status, 102, "retiring the receipt cannot remove the observation barrier");
         assert.deepEqual(result.outcomes, [

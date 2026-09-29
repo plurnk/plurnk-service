@@ -46,8 +46,8 @@ test("{§turn-source-resources}: initialization reads its real program; later so
             "the program never READs itself: it is the first request's assistant message ({§packet-wire-envelope})");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: first.turnId }))!.packet);
         const records = logEntries(packet);
-        assert.equal(records.find((row: Record<string, unknown>) => row.path === "ops://analyst/1/1"), undefined,
-            "no READ receipt of the program: the first model request carries it as its assistant message ({§packet-wire-envelope})");
+        assert.deepEqual(records.filter((row: Record<string, unknown>) => row.path === "ops://analyst/1/1").map((row: Record<string, unknown>) => row.logPath), ["log:///1/1/1/emission"],
+            "no READ receipt of the program: its row announces it, and the first model request carries it as its assistant message ({§emission-row})");
         assert.ok(!records.some((row: Record<string, unknown>) => String(row.logPath).endsWith("/ops")));
         const turn = (await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId }))!;
         const coordinate = `1/${turn.sequence}`;

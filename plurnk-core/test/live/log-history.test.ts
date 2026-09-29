@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { liveTest as test } from "../live-test.ts";
 import { liveLoop, liveWorkspace } from "../_live-harness.ts";
+import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
 
 test("live: broad log KILL retires READ receipts without erasing program artifacts", async (t) => {
@@ -31,8 +32,8 @@ test("live: broad log KILL retires READ receipts without erasing program artifac
         const priorPrograms = await s.db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: primed.modelWorkerId });
         assert.ok(priorPrograms.filter(({ kind }) => kind === "ops").length >= 2, "the prior loop contains multiple admitted programs");
         const priorReads = (await s.db.test_log_entries_by_loop.all<{
-            id: number; op: string | null; active: number;
-        }>({ loop_id: primedTurn.loop_id })).filter(({ op }) => op === "READ");
+            id: number; op: string | null; active: number; attrs: string;
+        }>({ loop_id: primedTurn.loop_id })).filter((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
         const activePriorIds = priorReads.filter(({ active }) => active === 1).map(({ id }) => id);
         assert.ok(activePriorIds.length > 0, "initialization's reasoning READ is available for curation");
 

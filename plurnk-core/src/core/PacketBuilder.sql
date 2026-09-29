@@ -111,7 +111,9 @@ SELECT
     le.tx, le.mimetype_tx,
     le.state, le.outcome, le.initial_folded, le.folded,
     le.source, le.weight, le.attrs,
-    le.output_admission_turn_id, le.output_withheld
+    le.output_admission_turn_id, le.output_withheld,
+    -- {§emission-row}: an emission row names its author, the producer of its turn.
+    t.producer
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id

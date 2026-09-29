@@ -9,7 +9,6 @@ import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // supply names and typed content; this projection preserves their ordered evidence.
 
 import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
-import type { PreviousEmissionView } from "./PreviousEmission.ts";
 import type { ChatContentPart, ChatMessage } from "@plurnk/plurnk-providers";
 import { relative, sep } from "node:path";
 import { Problems, Validator, type ProblemDetails, type RangeExtent, type TextLineMarker, type TextRegion } from "@plurnk/plurnk-contracts";
@@ -94,6 +93,8 @@ interface LogEntryView {
     initial_folded?: unknown;
     source?: unknown;
     attrs?: unknown;
+    // {§emission-row}: the producer of the row's turn, which authored an emission row's emission.
+    producer?: unknown;
     lineAnchors?: readonly string[];
     lineNumberWidth?: number;
 }
@@ -106,7 +107,6 @@ interface NoticeView {
 // Loose view of a section re-parsed from `turns.packet` JSON (the digest path).
 interface SectionView { name?: unknown; slot?: unknown; header?: unknown; content?: unknown; weight?: unknown }
 interface Packet { sections?: SectionView[] }
-interface LogPosition { loop: number; turn: number; sequence: number }
 type WeighContent = (text: string) => number;
 interface RenderLogOptions {
     readonly promptProjectionWeight?: number;
@@ -128,8 +128,18 @@ export interface RenderedLog {
     readonly curationTargets: readonly ReclaimableLogItem[];
     // {§packet-attachment-parts} — native deliveries selected for this request, in row order.
     readonly attachments: readonly PacketAttachment[];
+    // {§emission-row} — the emissions the rendered rows announce, in row order.
+    readonly emissions: readonly RenderedEmission[];
     readonly unadmittedOutput: readonly number[];
     readonly newOverflow: boolean;
+}
+
+// {§emission-row} — an announced emission: its row's coordinate, its frozen canonical text, and the
+// weight its row charges for it.
+export interface RenderedEmission {
+    readonly coordinate: string;
+    readonly content: string;
+    readonly weight: number;
 }
 // {§packet-attachment-parts} — the attachment kinds and their readout weights live in one table.
 import { audioWeight, imageWeight, pdfWeight } from "./attachments.ts";
@@ -139,6 +149,7 @@ interface RenderedLogRow {
     readonly content: string;
     readonly curationTarget: ReclaimableLogItem | null;
     readonly attachment: PacketAttachment | null;
+    readonly emission: RenderedEmission | null;
     readonly unadmittedOutput: number | null;
     readonly newOverflow: boolean;
 }
@@ -266,7 +277,7 @@ export default class PacketWire {
     // accounting come from one render pass; packet assembly never re-parses its text.
     static renderLogWithAccounting(entries: unknown, weighContent: WeighContent, options: RenderLogOptions = {}): RenderedLog {
         const log = Array.isArray(entries) ? (entries as LogEntryView[]) : [];
-        if (log.length === 0) return { content: "", records: [], curationTargets: [], attachments: [], unadmittedOutput: [], newOverflow: false };
+        if (log.length === 0) return { content: "", records: [], curationTargets: [], attachments: [], emissions: [], unadmittedOutput: [], newOverflow: false };
         const rows = PacketWire.#renderLogEntries(log, weighContent, options);
         const records = rows.map(({ content }) => content);
         return {
@@ -275,6 +286,7 @@ export default class PacketWire {
             curationTargets: rows.flatMap(({ curationTarget }) =>
                 curationTarget === null ? [] : [curationTarget]),
             attachments: rows.flatMap(({ attachment }) => attachment === null ? [] : [attachment]),
+            emissions: rows.flatMap(({ emission }) => emission === null ? [] : [emission]),
             unadmittedOutput: rows.flatMap(({ unadmittedOutput }) => unadmittedOutput === null ? [] : [unadmittedOutput]),
             newOverflow: rows.some(({ newOverflow }) => newOverflow),
         };
@@ -288,81 +300,60 @@ export default class PacketWire {
         return typeof s?.content === "string" ? s.content : "";
     }
 
-    // {§packet-wire-envelope} — inputs, one canonical program, results, then current indices.
-    static packetToWireMessages(packet: Packet, previousEmission: PreviousEmissionView | null = null): Array<{ role: string; content: string }> {
+    // {§packet-wire-envelope} — the packet as a transcript: the system slot, then the user sections in
+    // order, split after each placed emission row so that row's emission follows as the worker's own
+    // assistant message. The user contents joined by one blank line equal renderSlot(user) byte for
+    // byte; the request always closes on a user message.
+    static packetToWireMessages(packet: Packet, emissions: ReadonlyMap<string, string>): Array<{ role: string; content: string }> {
         const sections = packet.sections ?? [];
         const messages: Array<{ role: string; content: string }> = [{ role: "system", content: PacketWire.renderSlot(sections, "system") }];
-        const log = sections.find((s) => s.slot === "user" && s.name === "log");
-        const rest = sections.filter((s) => s.slot === "user" && s.name !== "log");
-        const worker = sections.find((s) => s.name === "worker");
-        const current = PacketWire.#currentCoordinate(worker);
-        const groups = log === undefined ? [] : PacketWire.#turnGroups(PacketWire.renderSection(log), previousEmission);
-        const closing: string[] = [];
-        let pending = previousEmission;
-        groups.forEach((group, index) => {
-            if (pending !== null && group.followsEmission) {
-                messages.push({ role: "assistant", content: pending.content });
-                pending = null;
+        let pending: string[] = [];
+        for (const section of sections) {
+            if (section.slot !== "user") continue;
+            const rendered = PacketWire.renderSection(section);
+            if (rendered.length === 0) continue;
+            if (section.name !== "log") {
+                pending.push(rendered);
+                continue;
             }
-            const last = index === groups.length - 1;
-            if (last && current !== null && group.turn === current) closing.push(group.content);
-            else messages.push({ role: "user", content: group.content });
-        });
-        if (pending !== null) messages.push({ role: "assistant", content: pending.content });
-        const tail = rest.map((s) => PacketWire.renderSection(s)).filter((p) => p.length > 0);
-        const closingContent = [...closing, ...tail].join("\n\n");
-        if (closingContent.length > 0 || messages.at(-1)?.role !== "user") messages.push({ role: "user", content: closingContent });
+            for (const { content, coordinate } of PacketWire.#logRecords(rendered)) {
+                pending.push(content);
+                const emission = coordinate === null ? undefined : emissions.get(coordinate);
+                if (emission === undefined) continue;
+                messages.push({ role: "user", content: pending.join("\n\n") });
+                messages.push({ role: "assistant", content: emission });
+                pending = [];
+            }
+        }
+        const closing = pending.join("\n\n");
+        if (closing.length === 0 && messages.at(-1)?.role === "assistant") throw new Error("a request never ends on an emission: nothing follows the last one");
+        messages.push({ role: "user", content: closing });
         return messages;
     }
 
-    // The coordinate the Worker block names, `loop/turn`, or null when the packet carries none.
-    static #currentCoordinate(worker: SectionView | undefined): string | null {
-        if (worker === undefined || typeof worker.content !== "string") return null;
-        try {
-            const { loop, turn } = JSON.parse(worker.content) as { loop?: unknown; turn?: unknown };
-            return typeof loop === "number" && typeof turn === "number" ? `${loop}/${turn}` : null;
-        } catch { return null; }
-    }
-
-    // {§packet-wire-envelope} — request evidence supplies the input boundary, not current row visibility.
-    static inputSequence(items: readonly string[], loop: number, turn: number): number {
-        let sequence = 0;
-        for (const item of items) {
-            for (const { coordinate } of PacketWire.#logRecords(item)) {
-                if (coordinate?.loop === loop && coordinate.turn === turn) sequence = Math.max(sequence, coordinate.sequence);
+    // {§emission-row} — the coordinates of the emission rows present in the final log section, in order.
+    // Every emission row must be announced by the render pass that built the map.
+    static placedEmissions(sections: readonly SectionView[], emissions: ReadonlyMap<string, string>): string[] {
+        const log = sections.find((section) => section.slot === "user" && section.name === "log");
+        if (log === undefined) return [];
+        const placed: string[] = [];
+        for (const { coordinate, leaf } of PacketWire.#logRecords(PacketWire.renderSection(log))) {
+            if (coordinate === null) continue;
+            if (emissions.has(coordinate)) {
+                if (placed.includes(coordinate)) throw new Error(`log:///${coordinate}/emission appears twice in one log section`);
+                placed.push(coordinate);
+            } else if (leaf === "emission") {
+                throw new Error(`log:///${coordinate}/emission reached the log section without its emission`);
             }
         }
-        return sequence;
+        return placed;
     }
 
-    static #logRecords(rendered: string): Array<{ content: string; coordinate: LogPosition | null }> {
+    static #logRecords(rendered: string): Array<{ content: string; coordinate: string | null; leaf: string | null }> {
         return rendered.split(/\n\n(?=### log:\/\/\/)/u).map((content) => {
-            const match = /^### log:\/\/\/(\d+)\/(\d+)\/(\d+)(?=\/|\s|$)/mu.exec(content);
-            return { content, coordinate: match === null ? null : { loop: Number(match[1]), turn: Number(match[2]), sequence: Number(match[3]) } };
+            const match = /^### log:\/\/\/(\d+\/\d+\/\d+)(?:\/(\S*))?(?=\s|$)/mu.exec(content);
+            return { content, coordinate: match?.[1] ?? null, leaf: match?.[2] ?? null };
         });
-    }
-
-    // A turn has two groups only when the selected program separates its inputs and results.
-    // The section heading opens the first group; unaddressed content stays with its preceding record.
-    static #turnGroups(rendered: string, emission: PreviousEmissionView | null): Array<{ turn: string | null; followsEmission: boolean; content: string }> {
-        if (rendered.length === 0) return [];
-        const groups: Array<{ turn: string | null; followsEmission: boolean; records: string[] }> = [];
-        let heading: string[] = [];
-        for (const { content, coordinate } of PacketWire.#logRecords(rendered)) {
-            const group = groups.at(-1);
-            if (coordinate === null) {
-                if (group === undefined) heading.push(content); else group.records.push(content);
-                continue;
-            }
-            const turn = `${coordinate.loop}/${coordinate.turn}`;
-            const followsEmission = emission !== null && (coordinate.loop > emission.loop
-                || coordinate.loop === emission.loop && (coordinate.turn > emission.turn
-                    || coordinate.turn === emission.turn && coordinate.sequence > emission.inputSequence));
-            if (group !== undefined && group.turn === turn && group.followsEmission === followsEmission) group.records.push(content);
-            else { groups.push({ turn, followsEmission, records: [...heading, content] }); heading = []; }
-        }
-        if (heading.length > 0) groups.push({ turn: null, followsEmission: false, records: heading });
-        return groups.map(({ turn, followsEmission, records }) => ({ turn, followsEmission, content: records.join("\n\n") }));
     }
 
     // Number a non-READ body line as `<N>:<line>` — `N:` followed by NO separator whitespace
@@ -810,7 +801,9 @@ export default class PacketWire {
         // Absence = "model" — the worker's own authorship is the default (#338). An arrival is an
         // inbound SEND row the harness published ({§message-causal-source}): its stored origin says
         // nothing, so the row names its sender instead (#706).
-        if (typeof e.origin === "string" && e.origin !== "model" && !PacketWire.isArrival(e)) meta.origin = e.origin;
+        // {§emission-row}: an emission row is stored as the harness's, but names its author.
+        const author = LogEntryProjection.isEmission(e) ? e.producer : e.origin;
+        if (typeof author === "string" && author !== "model" && !PacketWire.isArrival(e)) meta.origin = author;
         // {§env-delta-attribution}: render the causal worker address or
         // subsystem token when present; absence means the owning worker.
         // {§message-short-identity} an arrival whose source is the transport's own name for it adds
@@ -1050,7 +1043,7 @@ export default class PacketWire {
         promptProjectionWeight: number | undefined,
         weighContent: WeighContent,
     ): RowBody {
-        const { meta, op, renderedLeaf } = identity;
+        const { meta, op } = identity;
         const projectedBody = {
             ...fullBody,
             content: bodyVisibility.fullyFolded ? bodyVisibility.readableContent : bodyVisibility.content,
@@ -1059,7 +1052,6 @@ export default class PacketWire {
         const previewExempt = op === "READ"
             || op === "FIND"
             || op === "NOTE" || typeof op === "string" && TurnDisposition.isOp(op)
-            || (op === null && renderedLeaf === "ops")
             || facts.structuredMutationReceipt;
         const lineAnchors = op === "READ" ? e.lineAnchors ?? null : null;
         const lineNumberWidth = op === "READ" ? e.lineNumberWidth ?? null : null;
@@ -1185,13 +1177,19 @@ export default class PacketWire {
             ? native
             : null;
         if (attachment !== null) meta.tokensAttachment = attachment.weight;
+        // {§emission-row}: an emission row carries its emission outside its record, as the worker's own
+        // message, and charges its weight exactly as a native part is charged.
+        const emission = LogEntryProjection.isEmission(e) && coordinate !== null
+            ? { coordinate, content: fullBody.content, weight: weighContent(fullBody.content) }
+            : null;
         for (let pass = 0; pass < 8; pass += 1) {
-            const next = weighContent(renderRow()) + (attachment?.weight ?? 0);
+            const next = weighContent(renderRow()) + (attachment?.weight ?? 0) + (emission?.weight ?? 0);
             if (next === logTokens) {
                 return {
                     content: renderRow(),
                     curationTarget: { path, logTokens },
                     attachment,
+                    emission,
                     unadmittedOutput: (display === "open" || attachment !== null)
                         && fullBody.provenance === "returned"
                         && e.output_admission_turn_id == null
@@ -1250,11 +1248,11 @@ export default class PacketWire {
     // retained native part in observation order.
     static async wireMessages(
         packet: RequestPacket,
+        emissions: ReadonlyMap<string, string>,
         bytesOf: (attachment: PacketAttachment) => Promise<Uint8Array>,
         accepts: (kind: PacketAttachment["kind"]) => boolean = () => true,
-        previousEmission: PreviousEmissionView | null = null,
     ): Promise<ChatMessage[]> {
-        const messages = PacketWire.packetToWireMessages(packet, previousEmission) as ChatMessage[];
+        const messages = PacketWire.packetToWireMessages(packet, emissions) as ChatMessage[];
         // {§packet-attachment-parts} — native parts ride the closing user message.
         const closing = messages.at(-1)!;
         const parts: ChatContentPart[] = [{ type: "text", text: closing.content as string }];

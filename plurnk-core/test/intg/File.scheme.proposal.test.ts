@@ -109,7 +109,7 @@ Continue the task.
         let dispatched = 0;
         const turn = await Turn.open(ctx.db, { loopId: ctx.loopId, producer: "client", kind: "operation" });
         const execution = ctx.engine.executeAdmittedTurn({
-            ...ctx, turnId: turn.id, origin: "client", source,
+            ...ctx, turnId: turn.id, origin: "client", source, emission: null,
             fromSequence: 1, statements: TurnOps.parseInternal(source),
             onDispatch: (id) => {
                 dispatched++;

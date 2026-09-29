@@ -198,7 +198,8 @@ every other daemon surface.
 
 - §agui-row-channel **The row channel** — every log row ALSO rides `CUSTOM plurnk.row`
   carrying the complete client-facing row (curation metadata, durable tags, coordinate)
-  alongside its core projection. Literal bodies follow {§agui-lifecycle-projection}; rich clients
+  alongside its core projection. An emission row ({§emission-row}) rides it like any other; the
+  operations it announces arrive as their own rows, so a client that renders operations omits it. Literal bodies follow {§agui-lifecycle-projection}; rich clients
   never receive the internal Plan extension. Generic clients ignore this metadata
   channel.
 - **The gauge starts true** — `RUN_STARTED` is followed by a `STATE_SNAPSHOT` carrying the

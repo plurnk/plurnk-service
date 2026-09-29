@@ -5,6 +5,7 @@ import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
 import { rpcCall, subscribeNotifications, flush, connect, withDaemon, runLoopToTerminal, waitFor } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
 test("loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
     const dsl = "````EDIT (worker:///france/capital)\nParis\n````\n\n````SEND\nParis is the capital.\n````";
@@ -178,9 +179,11 @@ test("loop.run streams log/entry notifications during execution", async () => {
             await flush();
 
             const captured = logEntries().filter((event) => (event as { entry?: { loop_id?: unknown } }).entry?.loop_id === terminal.loopId);
-            const initialization = captured
-                .map((event) => (event as { entry: { id: number; op: string | null; origin: string; status_rx: number } }).entry)
+            const harness = captured
+                .map((event) => (event as { entry: { id: number; op: string | null; origin: string; status_rx: number; attrs: unknown } }).entry)
                 .filter((entry) => entry.origin === "_plurnk" && entry.op !== "SEND");
+            assert.equal(LogEntryProjection.isEmission(harness[0]!), true, "initialization first announces its admitted survey ({§emission-row})");
+            const initialization = harness.filter((entry) => !LogEntryProjection.isEmission(entry));
             assert.equal(
                 captured.some((event) => (event as { entry: { op: string | null } }).entry.op === null),
                 false,

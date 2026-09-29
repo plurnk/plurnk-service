@@ -57,6 +57,39 @@ for (const release of [RELEASED, PREVIOUS]) {
     });
 }
 
+test(`{§db-migrations} {§emission-row}: a ${RELEASED.release} database migrates in place, keeping its log and inventing no announcement`, async () => {
+    const path = await released(RELEASED);
+    const before = new DatabaseSync(path);
+    before.function("sha256", { deterministic: true }, (text) => sha256(text as string));
+    try {
+        before.exec(`
+            INSERT INTO workspaces (id, name) VALUES (1, 'exampleWorkspace');
+            INSERT INTO model_routes (id, alias, provider, model) VALUES (1, 'example', 'deepseek', 'deepseek-chat');
+            INSERT INTO workers (id, workspace_id, name, model_route_id, effort, effort_source)
+                VALUES (1, 1, 'exampleWorkerName', 1, 'medium', 'explicit');
+            INSERT INTO loops (id, worker_id, sequence, prompt, policy, max_turns) VALUES (1, 1, 1, 'example prompt', '{}', 3);
+            INSERT INTO turns (id, loop_id, sequence, producer, kind, status) VALUES (1, 1, 1, 'model', 'inference', 200);
+            INSERT INTO turn_sources (turn_id, kind, content) VALUES (1, 'ops', 'exampleProgram');
+            INSERT INTO log_entries (id, worker_id, loop_id, turn_id, sequence, origin, op, scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx)
+                VALUES (1, 1, 1, 1, 1, 'model', 'READ', 'worker', '/example.md', '{}', 'application/json', '{"status":200,"content":"example"}', 'application/json', 200);
+            INSERT INTO log_entry_projections (log_entry_id) VALUES (1);
+        `);
+    } finally { before.close(); }
+
+    const db = await openMigrated(path);
+    await db.close();
+
+    const after = new DatabaseSync(path);
+    try {
+        assert.deepEqual((after.prepare("SELECT id, turn_id, sequence, op, attrs FROM log_entries").all()).map((row) => ({ ...row })),
+            [{ id: 1, turn_id: 1, sequence: 1, op: "READ", attrs: "{}" }], "the released row is kept, and its turn gains no backfilled announcement");
+        assert.deepEqual(
+            (after.prepare("SELECT type, name FROM sqlite_master WHERE name IN ('log_entries_emission_turn', 'log_entries_emission_shape', 'log_entries_emission_frozen', 'log_entry_projections_emission_whole') ORDER BY name").all() as Array<{ type: string; name: string }>).map(({ type, name }) => `${type} ${name}`),
+            ["trigger log_entries_emission_frozen", "trigger log_entries_emission_shape", "index log_entries_emission_turn", "trigger log_entry_projections_emission_whole"],
+        );
+    } finally { after.close(); }
+});
+
 test(`{§db-migrations}: a ${PREVIOUS.release} database migrates in place and keeps its rows`, async () => {
     const path = await released(PREVIOUS);
     const before = new DatabaseSync(path);

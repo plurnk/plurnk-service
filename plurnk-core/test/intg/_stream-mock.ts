@@ -7,7 +7,7 @@ export default class StreamMock extends Mock {
     override async generate(...args: Parameters<Mock["generate"]>): ReturnType<Mock["generate"]> {
         const response = await super.generate(...args);
         if (!/\$(?:STREAM|INVOCATION)/u.test(response.assistant.content)) return response;
-        // {§packet-wire-envelope}: the log spans the user messages; the assistant message is the previous program.
+        // {§packet-wire-envelope}: the log spans the user messages; the assistant messages are the worker's emissions.
         const text = args[0].messages.filter(({ role }) => role !== "assistant").map(chatMessageText).join("\n\n");
         const stream = /"stream"\s*:\s*"([a-z][a-z0-9+.-]*:\/\/\/[a-f0-9]{8})(?:#|")/.exec(text)?.[1];
         assert.ok(stream, "the next program follows an execution address actually delivered to the model");

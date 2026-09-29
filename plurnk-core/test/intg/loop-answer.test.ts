@@ -32,7 +32,7 @@ test("{§loop-answer}: a loop's address reads its SEND answer; running is 425, a
         assert.equal(answered.status, 200);
         assert.ok("content" in answered);
         assert.equal(answered.content, "Four.", "the SEND is the loop's answer");
-        const row = await look("log:///1/2/2/SEND");
+        const row = await look("log:///1/2/3/SEND");
         assert.equal(row.status, 200, "a final reply is an ordinary SEND row");
 
         const second = await insertLoop(db, workerId, 2, "And three plus three?");

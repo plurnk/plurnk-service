@@ -3,6 +3,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import PacketWire from "../core/packet-wire.ts";
+import FabricatedLog from "../core/FabricatedLog.ts";
 import StoredPacket from "../core/StoredPacket.ts";
 import { contentWeight } from "../core/content-weight.ts";
 import { renderTarget } from "../core/plurnk-uri.ts";
@@ -156,6 +157,10 @@ export default class DigestRender {
 
     static #renderGroupedOpLine(row: LogRow, m: DigestModel): string {
         const attrs = DigestRender.parseJson(row.attrs, {}) as { kind?: unknown };
+        // {§emission-row}: the announcement of an admitted emission, and whether the model retired it.
+        if (row.op === "READ" && attrs.kind === "emission") {
+            return DigestRender.#renderOpLine(row, row.projection_active === 1 ? "emission" : "emission (killed)", DigestRender.#environmentOf(row, m));
+        }
         const materialized = row.origin === "_plurnk" && row.op === "EDIT" && attrs.kind === "entry_materialized";
         const actionlessKind = row.op === null ? attrs.kind : null;
         const label = actionlessKind === "emissionAttempt"
@@ -216,12 +221,22 @@ export default class DigestRender {
         return `Claimed: ${loop.claimed_at} · first model turn +${seconds.toFixed(1)} s`;
     }
 
-    // {§digest-cache-ledger} — the prompt a turn's request carried: the packet's system text followed by
-    // its user text, the bytes `.system.md` and `.user.md` hold; null when no valid packet is stored.
+    // {§digest-cache-ledger} — the prompt a turn's request carried: its wire messages in order, each role
+    // above its content, the text `.wire.json` holds; null when no valid packet is stored.
     static #promptText(turn: TurnRow, m: DigestModel): string | null {
         const { packet } = m.evidence.packet(turn);
         if (packet === null) return null;
-        return `${PacketWire.renderSlot(packet.sections, "system")}${PacketWire.renderSlot(packet.sections, "user")}`;
+        return PacketWire.packetToWireMessages(packet, DigestRender.#emissionsOf(turn, m))
+            .map(({ role, content }) => `${role}\n${content}`)
+            .join("\n");
+    }
+
+    // {§emission-row} — the emissions the turn's worker announced; a stored request places those its log
+    // section carried.
+    static #emissionsOf(turn: TurnRow, m: DigestModel): ReadonlyMap<string, string> {
+        const loop = m.loopsById.get(turn.loop_id);
+        if (loop === undefined) throw new Error(`digest: turn ${turn.id} names loop ${turn.loop_id}, which the digest did not read`);
+        return m.emissionsByWorker.get(loop.worker_id) ?? new Map();
     }
 
     static #commonPrefixLength(left: string, right: string): number {
@@ -525,7 +540,18 @@ export default class DigestRender {
             `Wire:       ${wireStr}`,
             `Op mix:     ${opMix.length > 0 ? opMix : "(no ops)"}`,
             `EDITs:      ${DigestRender.#renderEditCensus(DigestRender.#editCensus(m).byWorker.get(worker.id))}`,
+            `Emissions:  ${DigestRender.#renderEmissions(worker, m)}`,
         ].join("\n");
+    }
+
+    // {§emission-row} — announced, retired by the model, and echoed back as headings in its own text.
+    static #renderEmissions(worker: WorkerRow, m: DigestModel): string {
+        const rows = m.emissionRows.filter((row) => row.worker_id === worker.id);
+        const killed = rows.filter((row) => row.active === 0).length;
+        const echoes = (m.loopsByWorker.get(worker.id) ?? [])
+            .flatMap((loop) => m.turnsByLoop.get(loop.id) ?? [])
+            .reduce((sum, turn) => sum + FabricatedLog.echoes(turn.outside ?? ""), 0);
+        return `${rows.length} announced · ${killed} killed · ${echoes} header echo${echoes === 1 ? "" : "es"}`;
     }
 
     static waterfall(m: DigestModel): string {
@@ -740,6 +766,13 @@ export default class DigestRender {
                     [`${padded}.system.md`, PacketWire.renderSlot(packet.sections, "system")],
                     [`${padded}.user.md`, PacketWire.renderSlot(packet.sections, "user")],
                 );
+                // {§packet-wire-envelope} — the exact text messages the request carried; a stored packet
+                // whose log cannot be projected is evidence of its own, never a reason to stop the digest.
+                try {
+                    files.push([`${padded}.wire.json`, JSON.stringify(PacketWire.packetToWireMessages(packet, DigestRender.#emissionsOf(turn, m)), null, 2)]);
+                } catch (cause) {
+                    files.push([`${padded}.wire.invalid.json`, JSON.stringify({ turnId: turn.id, error: cause instanceof Error ? cause.message : String(cause) }, null, 2)]);
+                }
             }
             if (source !== null) {
                 files.push([`${padded}.assistant.md`, source]);

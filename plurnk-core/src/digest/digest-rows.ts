@@ -123,6 +123,8 @@ export interface LogRow {
     rx: string | null; mimetype_rx: string; status_rx: number; state: string; outcome: string | null;
     initial_folded: string; projection_active: 0 | 1; projection_folded: string;
 }
+// {§emission-row} — one announced emission: its row's coordinate, its frozen text, whether it is live.
+export interface EmissionRow { worker_id: number; coordinate: string; content: string; active: 0 | 1 }
 // {§digest-edit-census} — one model-authored EDIT: the scope it authored (the log row's lineMarker
 // JSON), the pattern its durable statement carried, and the status it landed with.
 export interface EditRow {
@@ -200,6 +202,9 @@ export interface DigestModel {
     requestsByWorker: Map<number, ProviderRequestRow[]>;
     requestsByWorkspace: Map<number, ProviderRequestRow[]>;
     logEntriesByTurn: Map<number, LogRow[]>;
+    // {§emission-row} — each worker's announced emissions by row coordinate, retired ones included.
+    emissionRows: EmissionRow[];
+    emissionsByWorker: Map<number, ReadonlyMap<string, string>>;
     editRows: EditRow[];
     editRowsByWorker: Map<number, EditRow[]>;
     // keyed `${workspace_id}:${stream}`; a spawn's environment as recorded on its output ({§exec-env-scoped})

@@ -60,6 +60,7 @@ export default class DispatchAsPlurnk {
             await engine.executeAdmittedTurn({
                 statements: admitted,
                 source,
+                emission: null,
                 origin: "_plurnk",
                 workspaceId,
                 workerId,

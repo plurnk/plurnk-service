@@ -710,7 +710,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         ctx: PlurnkSchemeContext,
         maxLogEntryId: number | null,
     ): Promise<LogCurationOutcome> {
-        const planned = async (ids: number[]): Promise<LogCurationOutcome> => {
+        const planned = async (ids: number[], exact: boolean): Promise<LogCurationOutcome> => {
             const rows = await ctx.db.log_curation_targets.all<{
                 id: number;
                 coordinate: string;
@@ -779,6 +779,35 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     };
                 }
                 const before = LogVisibility.parse(row.folded);
+                // {§emission-row} — an emission is curated whole. A scope covering every line (`<1,-1>`)
+                // retires it like an unscoped KILL; a partial scope aimed at it is refused, and a partial
+                // scope that sweeps across it leaves it intact.
+                if (LogEntryProjection.isEmission(row)) {
+                    const lines = TextCoordinates.lineCount(body.content);
+                    if (LogVisibility.fullyFolded(LogVisibility.apply(LogVisibility.OPEN, scope.range, lines), lines)) {
+                        targets.push({ id: row.id, activeBefore: 1, activeAfter: 0, foldedBefore: before, foldedAfter: before });
+                        continue;
+                    }
+                    if (exact) {
+                        return {
+                            result: Results.failure(
+                                "scheme:log",
+                                "emission-curated-whole",
+                                422,
+                                `${identity} is an emission, curated whole: a line scope cannot trim it.`,
+                                {},
+                                {
+                                    target: identity,
+                                    recovery: `KILL (${identity}) retires it, and so does the scope <1,-1>.`,
+                                    retryable: false,
+                                },
+                            ) as OpenFoldResult,
+                            plan: null,
+                        };
+                    }
+                    targets.push({ id: row.id, activeBefore: 1, activeAfter: 1, foldedBefore: before, foldedAfter: before });
+                    continue;
+                }
                 targets.push({
                     id: row.id,
                     activeBefore: 1,
@@ -820,7 +849,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                     plan: null,
                 };
             }
-            return planned(matched.ids);
+            return planned(matched.ids, false);
         }
 
         if (statement.target === null) {
@@ -863,7 +892,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 plan: null,
             };
         }
-        return planned(selected.ids);
+        return planned(selected.ids, parseCoordinate(pathname) !== null);
     }
 
     // {§log-curation-set-selection} — the target and an optional pattern select the rows by

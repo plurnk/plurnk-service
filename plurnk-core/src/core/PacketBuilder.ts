@@ -1,6 +1,5 @@
 import type { Notice } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
-import PreviousEmission from "./PreviousEmission.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { GitStatus } from "./git-state.ts";
@@ -130,6 +129,7 @@ export default class PacketBuilder {
     // {§tokenomics-calibrated-readout} — admission and client gauges consume
     // the allowance captured before this request can change model evidence.
     readonly #curationBudgets = new WeakMap<readonly StoredPacketSection[], number | null>();
+    readonly #emissions = new WeakMap<readonly StoredPacketSection[], ReadonlyMap<string, string>>();
     readonly #streamObservations = new WeakMap<readonly StoredPacketSection[], readonly { publication_id: number; bytes: number }[]>();
     readonly #unadmittedOutput = new WeakMap<readonly StoredPacketSection[], readonly number[]>();
     #schemes: SchemeRegistry;
@@ -191,6 +191,13 @@ export default class PacketBuilder {
     #promptProjectionFor(alias: string): number {
         const view = scopeEnvToAlias(process.env, alias, PacketBuilder.#KNOBS);
         return readRequiredPercentFrom(view, "PLURNK_SERVICE_PROMPT_PROJECTION");
+    }
+
+    // {§packet-wire-envelope} — the emissions this packet placed, keyed by their rows' coordinates.
+    emissionsFor(packet: RequestPacket): ReadonlyMap<string, string> {
+        const emissions = this.#emissions.get(packet.sections);
+        if (emissions === undefined) throw new Error("emissionsFor: the packet was not built by this PacketBuilder");
+        return emissions;
     }
 
     curationBudgetFor(packet: RequestPacket): number | null {
@@ -315,8 +322,6 @@ export default class PacketBuilder {
             },
         );
         const attachmentsWeight = renderedLog.attachments.reduce((sum, { weight }) => sum + weight, 0);
-        // {§packet-current-turn} — the address of the program the envelope's assistant message carries.
-        const previousEmission = turnId === null ? null : (await PreviousEmission.resolve(this.#db, { workspaceId, workerId, turnId }, this.#executors()))?.address ?? null;
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
             // Stable privileged policy follows the definition for prefix-cache locality.
@@ -335,7 +340,7 @@ export default class PacketBuilder {
             // the actor is, whose child it is, and the coordinate this packet's response becomes —
             // the one fact the sources cannot state about themselves (which `reasoning://<worker>/L/T` is
             // the model's own). It changes every turn, so it never precedes the log.
-            { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({ path: `worker://${workerName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq, previousEmission }) },
+            { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({ path: `worker://${workerName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq }) },
             // The per-turn status clump follows the log ({§packet-cache-monotone}).
             // child-orientation: what this worker holds live — its child workers and its open streams — under
             // the teaching's own word, just above errors. Terse pointers (the path is the actionable address
@@ -355,6 +360,14 @@ export default class PacketBuilder {
         // Plugin packet control ({§packet-assembly}): trusted schemes rewrite the
         // default list — add, remove, reorder — in-process, before measurement.
         let drafts = await this.#schemes.transformSections(defaults, workspaceId);
+        // {§emission-row} {§packet-wire-envelope} — an emission rides with its row: the rows present in
+        // the final log section place their emissions, and the packet charges exactly those.
+        const announced = new Map(renderedLog.emissions.map(({ coordinate, content }) => [coordinate, content] as const));
+        const placed = PacketWire.placedEmissions(drafts, announced);
+        const emissions = new Map(placed.map((coordinate) => [coordinate, announced.get(coordinate)!] as const));
+        const emissionsWeight = renderedLog.emissions
+            .filter(({ coordinate }) => emissions.has(coordinate))
+            .reduce((sum, { weight }) => sum + weight, 0);
         const budgetSection = drafts.find((section) => section.name === "budget");
         if (budgetSection !== undefined && curationBudget !== null) {
             const transformedLog = drafts.find((section) => section.name === "log");
@@ -366,7 +379,8 @@ export default class PacketBuilder {
                     section === budgetSection ? { ...section, content: candidate } : section);
                 return weighContent(PacketWire.renderSlot(candidateDrafts, "system"))
                     + weighContent(PacketWire.renderSlot(candidateDrafts, "user"))
-                    + attachmentsWeight;
+                    + attachmentsWeight
+                    + emissionsWeight;
             }, curationTargets, renderedLog.newOverflow);
             drafts = drafts.map((section) => section === budgetSection ? { ...section, content } : section);
         }
@@ -379,9 +393,11 @@ export default class PacketBuilder {
             items: section.name === "log" && section.content === renderedLog.content ? renderedLog.records : [section.content],
         }));
         const renderWeight = weighContent(PacketWire.renderSlot(sections, "system")) + weighContent(PacketWire.renderSlot(sections, "user"));
-        // {§packet-attachment-parts} — pictures weigh in the packet like everything else it carries.
-        const packet: RequestPacket = { weight: renderWeight + attachmentsWeight, sections, attributions: [], attachments: [...renderedLog.attachments] };
+        // {§packet-attachment-parts} — pictures weigh in the packet like everything else it carries,
+        // and so do the emissions it places ({§emission-row}).
+        const packet: RequestPacket = { weight: renderWeight + attachmentsWeight + emissionsWeight, sections, attributions: [], attachments: [...renderedLog.attachments] };
         this.#curationBudgets.set(packet.sections, curationBudget);
+        this.#emissions.set(packet.sections, emissions);
         this.#streamObservations.set(packet.sections, openChannels);
         this.#unadmittedOutput.set(packet.sections, renderedLog.unadmittedOutput);
         return packet;
@@ -497,6 +513,7 @@ export default class PacketBuilder {
             status_rx: number; rx: string; mimetype_rx: string;
             output_admission_turn_id: number | null; output_withheld: number;
             tx: string; mimetype_tx: string; initial_folded: string; folded: string; source: string | null; attrs: string | null;
+            producer: string;
         }>({ worker_id: workerId, turn_id: turnId });
         return rows.map((r) => {
             const tx = r.mimetype_tx === "application/json" ? JSON.parse(r.tx) as unknown : r.tx;
@@ -555,6 +572,7 @@ export default class PacketBuilder {
                 folded: LogVisibility.parse(r.folded),
                 source: r.source,
                 attrs: r.attrs === null ? null : JSON.parse(r.attrs),
+                producer: r.producer,
                 ...(lineAnchors === undefined ? {} : { lineAnchors }),
                 ...(lineNumberWidth === undefined ? {} : { lineNumberWidth }),
             };

@@ -74,7 +74,7 @@ test("a delivered answer cannot complete before the just-concluded child is obse
     const db = await openMigrated();
     try {
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);
-        const r = await engine.executeAdmittedTurn({ statements: [concludeStmt("done")], source: null, workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, fromSequence: 1, origin: "model" });
+        const r = await engine.executeAdmittedTurn({ statements: [concludeStmt("done")], source: null, emission: null, workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, fromSequence: 1, origin: "model" });
         assert.equal(r.status, 102, "concluding over an undelivered worker result is deferred, never refused");
         assert.deepEqual(r.outcomes, [{ op: "KILL", status: 102, problemType: null }]);
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````KILL\nThe observed value is 42.\n````", reasoning: null } }] });

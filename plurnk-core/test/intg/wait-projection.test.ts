@@ -7,6 +7,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import LogBody from "../../src/core/LogBody.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
 for (const header of ["WAIT", "WAIT (sh:///missing) <60,60> [{\"timeout\":42}]"]) {
     test(`{§park-202-only} {§wait-obligation-matrix} ${header} parks on the actual live child, not the decoration`, async (t) => {
@@ -54,8 +55,8 @@ test("{§park-202-only} {§wait-obligation-matrix} WAIT retains literal prose wi
         assert.equal(result.status, 102, "absence of live work does not complete a waiting task");
         const terminal = await new LoopLifecycle(db).result(loopId);
         assert.equal(terminal, null, "no deliverable is manufactured from a wait");
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; tx: string; rx: string; status_rx: number }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["WAIT"]);
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string; tx: string; rx: string; status_rx: number }>({ turn_id: result.turnId });
+        assert.deepEqual(rows.filter((row) => row.op !== null && row.op !== "prompt" && !LogEntryProjection.isEmission(row)).map(({ op }) => op), ["WAIT"]);
         const wait = rows.find(({ op }) => op === "WAIT")!;
         assert.equal(wait.status_rx, 102);
         assert.equal(JSON.parse(wait.rx).detail, "Nothing is in flight. Continuing."); // {§pinned-wording-core}

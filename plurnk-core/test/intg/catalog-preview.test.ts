@@ -13,6 +13,7 @@ import WorkerName from "../../src/core/WorkerName.ts";
 import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
 import { rpcCall, rpcProblem, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
+import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
 type LogRow = { op: string | null; pathname: string; scheme: string | null; hostname: string | null; sequence: number; turn_id: number; signal: string | null; status_rx: number; tx: string; rx: string; attrs: string; folded: string; origin: string };
 const mock = () => new Mock({ contextWindow: 100000, responses: [makeMockResponse("```KILL\ndone\n```", 50)] });
@@ -187,9 +188,11 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 assert.deepEqual(
                     initializationRows.map(({ op }) => op),
-                    ["NOTE", "NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ"],
-                    "initialization reads its authored reasoning; its program is the first assistant message; the prompt arrives as its row",
+                    ["READ", "NOTE", "NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ"],
+                    "initialization announces its program, then reads its authored reasoning; the prompt arrives as its row",
                 );
+                assert.equal(LogEntryProjection.isEmission(initializationRows[0]!), true,
+                    "the first row announces the survey the first request carries as its assistant message ({§emission-row})");
                 const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
                 assert.deepEqual(
                     { producer: turn?.producer, kind: turn?.kind, status: turn?.status },
@@ -207,7 +210,7 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 assert.match(program.content, /\n```READ \(reasoning:\/\/[^/\s]+\/1\/1\)/, "initialization demonstrates its reasoning address through an ordinary READ");
                 assert.deepEqual(
                     program.content.split("\n\n").map((block) => /^```([A-Z]+)/.exec(block)?.[1]),
-                    initializationRows.slice(1).map(({ op }) => op),
+                    initializationRows.slice(2).map(({ op }) => op),
                     "{§statement-rendering}: every initialization operation is separated by a blank line",
                 );
             } finally { ws.close(); }
@@ -307,11 +310,11 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["NOTE", "NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ"],
-                    "initialization contains reasoning and program NOTEs, eight surveys, and the reasoning READ",
+                    ["READ", "NOTE", "NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ"],
+                    "initialization contains its program's announcement, reasoning and program NOTEs, eight surveys, and the reasoning READ",
                 );
-                assert.equal(initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "ops"), undefined,
-                    "turn 0 never READs its own program: it is the first request's assistant message ({§packet-wire-envelope})");
+                assert.deepEqual(initializationRows.filter(({ op, scheme }) => op === "READ" && scheme === "ops").map((row) => LogEntryProjection.isEmission(row)), [true],
+                    "turn 0 never READs its own program: its one ops row announces the first request's assistant message ({§emission-row})");
             } finally { ws.close(); }
         });
     } finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev; }

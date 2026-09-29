@@ -34,6 +34,7 @@ import { readDigestDb } from "./digest-db.ts";
 import type {
     SyncPrep,
     WorkerRow,
+    EmissionRow,
     LoopRow,
     TurnRow,
     TurnAttemptRow,
@@ -102,8 +103,15 @@ export default class DigestRequiem {
             throw new Error("PLURNK_SERVICE_REQUIEM_RETRY_MAX_TOKENS must be at least PLURNK_SERVICE_REQUIEM_MAX_TOKENS");
         }
 
-        const { workers, byWorker } = readDigestDb(dbPath, (db) => {
+        const { workers, byWorker, emissionsByWorker } = readDigestDb(dbPath, (db) => {
             const workers = (db.digest_workers as SyncPrep<WorkerRow>).all();
+            // {§emission-row}: the worker's final request is its transcript, emissions in place.
+            const emissionsByWorker = new Map<number, Map<string, string>>();
+            for (const row of (db.digest_emissions as SyncPrep<EmissionRow>).all()) {
+                const map = emissionsByWorker.get(row.worker_id) ?? new Map<string, string>();
+                map.set(row.coordinate, row.content);
+                emissionsByWorker.set(row.worker_id, map);
+            }
             const loops = (db.digest_loops as SyncPrep<LoopRow>).all();
             const turnAttempts = (db.digest_turn_attempts as SyncPrep<TurnAttemptRow>).all();
             const turns = (db.digest_turns as SyncPrep<TurnRow>).all();
@@ -159,7 +167,7 @@ export default class DigestRequiem {
                 });
                 byWorker.set(loop.worker_id, arr);
             }
-            return { workers, byWorker };
+            return { workers, byWorker, emissionsByWorker };
         });
 
         const out: string[] = [
@@ -205,8 +213,7 @@ export default class DigestRequiem {
                 ];
                 const evidence = {
                     finalPacket: {
-                        system: PacketWire.renderSlot(last.sections, "system"),
-                        user: PacketWire.renderSlot(last.sections, "user"),
+                        messages: PacketWire.packetToWireMessages({ sections: last.sections }, emissionsByWorker.get(worker.id) ?? new Map()),
                     },
                     providerAttempts: quoted,
                     ...(providerAttempts.length === 0 && last.assistant !== ""

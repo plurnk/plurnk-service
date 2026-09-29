@@ -109,7 +109,7 @@ export const startClientJourneyModel = async () => {
             const [journey, definition] = matches[0];
             const index = counts.get(journey) ?? 0;
             const program = definition.programs[index];
-            // {§packet-wire-envelope}: the packet is the system and user messages; the assistant message is the model's own last program.
+            // {§packet-wire-envelope}: the packet is the system and user messages; the assistant messages are the worker's emissions.
             const text = (body.messages ?? []).filter((message) => message.role !== "assistant").map((message) => typeof message.content === "string" ? message.content : "").join("\n\n");
             if (journey === "tui" && index === 1) {
                 const log = /(?:^|\n)## Log\n([\s\S]*?)(?=\n## |$)/u.exec(text)?.[1]?.trim() ?? "";

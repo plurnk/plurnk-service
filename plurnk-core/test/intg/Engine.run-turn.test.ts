@@ -159,8 +159,8 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         assert.ok(initializationRows.some(({ op }) => op === "READ"), "initialization observes its reasoning");
         assert.ok(initializationRows.some(({ op }) => op === "NOTE"), "source retention does not replace executed results");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
-        assert.equal(logEntries(packet).find(({ path: target }) => target === "ops://subject/1/1"), undefined,
-            "turn 0's program is the first request's assistant message, never a READ receipt ({§packet-wire-envelope})");
+        assert.deepEqual(logEntries(packet).filter(({ path: target }) => target === "ops://subject/1/1").map(({ logPath }) => logPath), ["log:///1/1/1/emission"],
+            "turn 0's program is announced once, by its emission row, and never READ as a receipt ({§emission-row})");
 
         const inferenceRows = await rowsFor(turns[1]!.id);
         const inferenceSource = sources.find((row) => row.turn_id === turns[1]!.id && row.kind === "ops");
@@ -323,8 +323,13 @@ test("Engine.runTurn: admitted response does not change packet request-weight se
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         assert.ok(row !== undefined);
         const packet = JSON.parse(row.packet) as { weight: number; sections: StoredPacketSection[] };
+        const announced = new Map((await db.test_emission_rows_by_worker.all<{ coordinate: string; rx: string }>({ worker_id: workerId }))
+            .map(({ coordinate, rx }) => [coordinate, (JSON.parse(rx) as { content: string }).content] as const));
+        const placed = PacketWire.placedEmissions(packet.sections, announced);
+        assert.deepEqual(placed, ["1/1/1"], "the request carries turn zero's survey, never the response it is about to receive");
         const requestWeight = contentWeight(PacketWire.renderSlot(packet.sections, "system"))
-            + contentWeight(PacketWire.renderSlot(packet.sections, "user"));
+            + contentWeight(PacketWire.renderSlot(packet.sections, "user"))
+            + placed.reduce((sum, coordinate) => sum + contentWeight(announced.get(coordinate)!), 0);
         assert.equal(packet.weight, requestWeight);
     } finally { await db.close(); }
 });

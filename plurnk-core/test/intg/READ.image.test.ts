@@ -289,8 +289,8 @@ test("{§packet-attachment-parts} explicit log READ preserves its own observatio
     const next = "````NOTE\nInspect history.\n````";
     const requests = await runLoop(["image"], undefined, false, [
         mockTurn(`\`\`\`\`READ (logo.png)\`\`\`\`\n${next}`),
-        mockTurn(`\`\`\`\`KILL (logo.png)\`\`\`\`\n\`\`\`\`READ (log:///1/2/2/READ)\`\`\`\`\n${next}`),
-        mockTurn(`\`\`\`\`KILL (log:///1/2/2/READ) <42>\`\`\`\`\n${next}`),
+        mockTurn(`\`\`\`\`KILL (logo.png)\`\`\`\`\n\`\`\`\`READ (log:///1/2/3/READ)\`\`\`\`\n${next}`),
+        mockTurn(`\`\`\`\`KILL (log:///1/2/3/READ) <42>\`\`\`\`\n${next}`),
         mockTurn("````KILL\nImage inspection complete.\n````"),
     ]);
     const copied = requests[2]!.at(-1)!.content;
@@ -307,12 +307,12 @@ test("{§log-kill-scope} a text-only route preserves ordinary scoped trimming of
     const next = "````NOTE\nInspect bytes.\n````";
     const requests = await runLoop([], undefined, false, [
         mockTurn(`\`\`\`\`READ (file:///logo.png#bytes) <1,16>\`\`\`\`\n${next}`),
-        mockTurn(`\`\`\`\`KILL (log:///1/2/2/READ) <1>\`\`\`\`\n${next}`),
+        mockTurn(`\`\`\`\`KILL (log:///1/2/3/READ) <1>\`\`\`\`\n${next}`),
         mockTurn("````KILL\nImage inspection complete.\n````"),
     ]);
     assert.ok(requests[2]!.every((message) => typeof message.content === "string"));
     const content = userText(requests[2]!);
-    assert.match(content, /### log:\/\/\/1\/2\/2\/READ → logo\.png#bytes · \d+\n/);
+    assert.match(content, /### log:\/\/\/1\/2\/3\/READ → logo\.png#bytes · \d+\n/);
     assert.doesNotMatch(content, /\n\s*1:89\n/u);
     assert.match(content, /\n\s*2:50\n/u);
 });

@@ -14,6 +14,7 @@ import { OperationFailureError } from "../../src/core/results.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { logEntries, packetSection, digestStems } from "./_packet.ts";
 import { testProviderCapacity } from "./_provider.ts";
+import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
 const requestUsage = (
     inputTokens: number,
@@ -291,8 +292,8 @@ test("{§outside-text}: interstitial text is one outside source, never a row, an
             workspaceId, workerId, loopId,
             messages: [{ role: "user", content: "Inspect the original emission." }],
         });
-        const reviewRows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string; status_rx: number }>({ turn_id: review.turnId });
-        const read = reviewRows.find(({ op }) => op === "READ");
+        const reviewRows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string; status_rx: number; attrs: string }>({ turn_id: review.turnId });
+        const read = reviewRows.find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
         assert.equal(read?.status_rx, 200);
         assert.match(read!.rx, /Prelude: preparing the edit\./);
         assert.match(read!.rx, /3 — invented result, not a receipt\./);
@@ -395,8 +396,8 @@ test("{§fabricated-log-entry}: an emission that writes the harness log is resam
             message: "`### log:///1/1/2/READ` is a log entry, and only the harness writes the log. Write the operation, then wait for its receipt.",
             line: 1, column: 1, source: "harness",
         });
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null }>({ turn_id: result.turnId });
-        assert.ok(!rows.some(({ op }) => op === "READ" || op === "NOTE"), "neither the fabricated text nor the operation beside it is admitted");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; attrs: string }>({ turn_id: result.turnId });
+        assert.ok(!rows.some((row) => (row.op === "READ" || row.op === "NOTE") && !LogEntryProjection.isEmission(row)), "neither the fabricated text nor the operation beside it is admitted");
     } finally {
         await db.close();
     }
@@ -465,11 +466,12 @@ test("{§turn-shape} a valid operation without a lifecycle verb is admitted once
         const rows = await db.test_log_entries_by_turn.all<{
             op: string | null;
             origin: string;
+            attrs: string;
             tx: string;
             status_rx: number;
         }>({ turn_id: result.turnId });
         assert.deepEqual(
-            rows.filter(({ op, origin }) => op !== null && !(op === "SEND" && origin === "_plurnk")).map(({ op }) => op),
+            rows.filter((row) => row.op !== null && !(row.op === "SEND" && row.origin === "_plurnk") && !LogEntryProjection.isEmission(row)).map(({ op }) => op),
             ["EDIT"],
             "only the authored operation is recorded",
         );
@@ -503,8 +505,8 @@ test("a literal nested NOTE remains data and the next packet receives only the a
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: first.turnId });
         assert.equal(attempts[0]?.accepted, 1);
         assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), []);
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; rx: string }>({ turn_id: first.turnId });
-        assert.equal(rows.some(({ op }) => op === "READ"), false, "shorter nested fences remain literal data");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string; rx: string }>({ turn_id: first.turnId });
+        assert.equal(rows.some((row) => row.op === "READ" && !LogEntryProjection.isEmission(row)), false, "shorter nested fences remain literal data");
         assert.equal(rows.some(({ op }) => op === "NOTE"), false, "no nested NOTE was dispatched");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
         assert.equal(sources.find(({ turn_id, kind }) => turn_id === first.turnId && kind === "ops")?.content, source);

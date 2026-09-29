@@ -16,6 +16,7 @@ import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, in
 import { testExecutors } from "./_execs.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import type { RuntimeTag } from "@plurnk/plurnk-contracts";
+import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
 const execStmt = (runtime: string): ExecStatement => ({
     metadata: null,
@@ -145,8 +146,8 @@ test("{§capability-admission}: harness-authored initialization obeys the same w
             ],
         });
         assert.equal(result.status, 200);
-        const rows = await db.test_log_entries_by_loop.all<{ origin: string; op: string | null }>({ loop_id: loopId });
-        const harnessOps = rows.filter(({ origin }) => origin === "_plurnk").map(({ op }) => op);
+        const rows = await db.test_log_entries_by_loop.all<{ origin: string; op: string | null; attrs: string }>({ loop_id: loopId });
+        const harnessOps = rows.filter((row) => row.origin === "_plurnk" && !LogEntryProjection.isEmission(row)).map(({ op }) => op);
         assert.equal(harnessOps.includes("PLAN"), false);
         assert.equal(harnessOps.includes("NOTE"), true);
         assert.deepEqual(

@@ -23,8 +23,8 @@ for (const modalities of [["audio"], []] as InputModality[][]) {
         const provider = new Mock({ contextWindow: viableWindow(), inputModalities: modalities, responses: [
             turn(`\`\`\`\`READ (clip.wav#bytes) <1,4>\`\`\`\`\n${next}`),
             turn(`\`\`\`\`KILL (clip.wav)\`\`\`\`\n${next}`),
-            turn(`\`\`\`\`READ (log:///1/2/2/READ)\`\`\`\`\n${next}`),
-            turn(`\`\`\`\`KILL (log:///1/2/2/READ) <42>\`\`\`\`\n${next}`),
+            turn(`\`\`\`\`READ (log:///1/2/3/READ)\`\`\`\`\n${next}`),
+            turn(`\`\`\`\`KILL (log:///1/2/3/READ) <42>\`\`\`\`\n${next}`),
             turn("````KILL\nAudio inspection complete.\n````"),
         ] });
         try {
@@ -39,7 +39,7 @@ for (const modalities of [["audio"], []] as InputModality[][]) {
                     const loop = await db.drain_message_source.get<{ worker_id: number }>({ loop_id: loopId });
                     const fork = await Fork.fork(db, loop!.worker_id, "audio-fork");
                     const rows = await db.engine_render_log.all<{ op: string; pathname: string; status_rx: number; rx: string }>({ worker_id: fork });
-                    const observation = rows.find((row) => row.op === "READ" && row.pathname === "/1/2/2/READ");
+                    const observation = rows.find((row) => row.op === "READ" && row.pathname === "/1/2/3/READ");
                     assert.ok(observation, "the fork inherits the explicit log READ");
                     assert.equal(typeof JSON.parse(observation.rx).nativeContentHash, "string", observation.rx);
                     assert.ok(Buffer.from(await NativeContent.read(db, JSON.parse(observation.rx).nativeContentHash)).equals(bytes), "the fork retains the exact audio bytes");

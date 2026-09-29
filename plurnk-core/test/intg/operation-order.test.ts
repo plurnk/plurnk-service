@@ -130,7 +130,7 @@ invalid
 TWO
 \`\`\`\`${hasNote ? "\n````NOTE\nContinue the task.\n````" : ""}`;
             const execution = engine.executeAdmittedTurn({
-                ...env, origin, source, statements: TurnOps.parseInternal(source),
+                ...env, origin, source, emission: null, statements: TurnOps.parseInternal(source),
                 fromSequence: 1, failOnOperationError,
             });
             if (failOnOperationError) await assert.rejects(execution, OperationFailureError);

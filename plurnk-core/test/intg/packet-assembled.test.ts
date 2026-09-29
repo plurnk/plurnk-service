@@ -22,6 +22,7 @@ import { packetSection, logEntries } from "./_packet.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { concludeStmt, copyStmt, editStmt, readStmt, findStmt, regex, urlPath, noteStmt } from "./_dsl.ts";
+import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string; header: string | null; content: string; weight: number }> }> =>
     JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
@@ -188,7 +189,7 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const rows = await db.test_log_entries_by_loop.all<{ id: number; op: string | null; origin: string; tx: string; rx: string; attrs: string }>({ loop_id: loopId });
         const foists = rows
-            .filter(({ op, origin }) => origin === "_plurnk" && (op === "FIND" || op === "READ"));
+            .filter((row) => row.origin === "_plurnk" && (row.op === "FIND" || row.op === "READ") && !LogEntryProjection.isEmission(row));
         assert.ok(foists.length > 0, "the first turn persists its structural observation foists");
         const sources = await db.test_turn_sources.all<{ kind: string; producer: string; content: string }>({ worker_id: workerId });
         const turnSource = sources.find(({ kind, producer }) => kind === "ops" && producer === "_plurnk");
@@ -229,17 +230,17 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
         assert.ok(logEntries(packet).some(({ logPath: path }) => String(path).endsWith("/FIND")), "the catalog foist appears as a FIND op in the log address");
         const initialization = logEntries(packet)
             .filter(({ logPath: path }) => String(path).startsWith("log:///1/1/"));
-        const initializationOutcomes = initialization;
         assert.deepEqual(
-            initializationOutcomes.map(({ logPath: path }) => String(path).split("/").at(-1)),
-            ["NOTE", "NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ"],
-            "turn 0 exposes its reasoning and program notes, executed surveys, and its reasoning READ",
+            initialization.map(({ logPath: path }) => String(path).split("/").at(-1)),
+            ["emission", "NOTE", "NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ"],
+            "turn 0 announces its program, then exposes its reasoning and program notes, executed surveys, and its reasoning READ",
         );
-        assert.equal(
-            initialization.some(({ path: target }) => target === "ops://subject/1/1"),
-            false,
-            "turn 0's program reaches the model as the envelope's assistant message, not as a READ ({§packet-wire-envelope})",
+        assert.deepEqual(
+            initialization.filter(({ path: target }) => target === "ops://subject/1/1").map(({ logPath: path }) => path),
+            ["log:///1/1/1/emission"],
+            "turn 0's program reaches the model as the envelope's assistant message, announced by its row, never as a READ ({§emission-row})",
         );
+        const initializationOutcomes = initialization.slice(1);
         assert.deepEqual(
             initializationOutcomes.filter(({ path: target }) => target !== undefined).slice(0, 5).map(({ path: target }) => target),
             [

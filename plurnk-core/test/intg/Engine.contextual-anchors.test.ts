@@ -28,7 +28,7 @@ const runtime = async (t: TestContext) => {
         const ops = statements(program);
         const fromSequence = sequence + 1;
         sequence += ops.length;
-        return engine.executeAdmittedTurn({ ...env, statements: ops, source: null, fromSequence, origin: "model" });
+        return engine.executeAdmittedTurn({ ...env, statements: ops, source: null, emission: null, fromSequence, origin: "model" });
     };
     const read = async (path: string, scope = "1,-1") =>
         Results.assertReadResult(await run(`\`\`\`READ (${path}) <${scope}>\n\`\`\``)) as AnchoredReadResult;

@@ -1,5 +1,5 @@
 import { parsePath } from "@plurnk/plurnk-parser";
-import { TurnDisposition } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import Turn from "./Turn.ts";
 import type { BareStatement, CapabilityProjection, EditStatement, FindStatement, ForkStatement, KillStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -42,6 +42,7 @@ import KillHandler from "./KillHandler.ts";
 import TurnDispositionHandler, { type CompletionEvidence, type PacketBoundaries } from "./TurnDispositionHandler.ts";
 import LogWriter from "./LogWriter.ts";
 import LogEntryProjection from "./LogEntryProjection.ts";
+import DurableStatement from "./DurableStatement.ts";
 import DataStatementRunner from "./DataStatementRunner.ts";
 import ResourceBindings from "./ResourceBindings.ts";
 import type EditSequence from "./EditSequence.ts";
@@ -1119,6 +1120,51 @@ export default class Dispatcher {
             initial_folded: LogVisibility.serialize(LogVisibility.FOLDED),
         });
         if (row === undefined) throw new Error("Dispatcher.writeEmissionAttempt: insert returned no row");
+        return row.id;
+    }
+
+    // {§emission-row} — the announcement of an admitted emission: the harness's born-folded READ of its
+    // own turn's ops source, whose frozen body is the emission as the grammar admitted it. The packet
+    // projects that body as the worker's own assistant message ({§packet-wire-envelope}).
+    async writeEmission({ content, workerName, loopSeq, turnSeq, workerId, loopId, turnId, sequence }: {
+        content: string; workerName: string; loopSeq: number; turnSeq: number;
+        workerId: number; loopId: number; turnId: number; sequence: number;
+    }): Promise<number> {
+        if (content.length === 0) throw new Error("Dispatcher.writeEmission: an admitted emission is never empty");
+        const pathname = `/${loopSeq}/${turnSeq}`;
+        const statement: ReadStatement = {
+            op: "READ", aside: null, metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
+            target: {
+                kind: "url", raw: `ops://${workerName}${pathname}`, scheme: "ops",
+                username: null, password: null, hostname: workerName, port: null, pathname, query: null, fragment: null,
+            },
+        };
+        const durableAttrs = { kind: "emission" };
+        const tx = JSON.stringify(DurableStatement.project(statement));
+        const rx = JSON.stringify({ status: 200, content, mimetype: "text/vnd.plurnk" });
+        const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
+            worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
+            origin: "_plurnk", source: null, model_call_id: null,
+            op: "READ", signal: null,
+            scheme: "ops", username: null, password: null, hostname: workerName, port: null,
+            pathname, query: null, fragment: null, lineMarker: null,
+            tx, mimetype_tx: "application/json",
+            rx,
+            mimetype_rx: "application/json",
+            status_rx: 200,
+            weight: LogBody.weight({
+                op: "READ",
+                attrs: durableAttrs,
+                tx,
+                rx,
+                mimetypeTx: "application/json",
+                mimetypeRx: "application/json",
+            }, this.#weighContent),
+            state: "resolved", outcome: null,
+            attrs: JSON.stringify(durableAttrs),
+            initial_folded: LogVisibility.serialize(LogVisibility.FOLDED),
+        });
+        if (row === undefined) throw new Error("Dispatcher.writeEmission: insert returned no row");
         return row.id;
     }
 

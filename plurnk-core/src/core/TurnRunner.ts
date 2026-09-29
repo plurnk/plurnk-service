@@ -13,6 +13,8 @@ import type { BareStatement, PlurnkStatement, ReadStatement, UrlPath, FindStatem
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
 // before being pushed to the loop's notices buffer.
 export type ParseErrorInfo = Pick<PlurnkParseError, "message" | "line" | "column"> & { source: string; recovery?: string };
+// {§emission-row} — an admitted emission as the grammar read it, and the turn it announces.
+export type AdmittedEmission = { readonly content: string; readonly workerName: string; readonly loopSeq: number; readonly turnSeq: number };
 const comparePosition = (
     a: { line: number; column: number },
     b: { line: number; column: number },
@@ -22,7 +24,6 @@ import { Mimetypes, type BaseHandler } from "@plurnk/plurnk-mimetypes";
 import FabricatedLog from "./FabricatedLog.ts";
 import Meta, { Knob, type PluginAttributionContext } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
-import PreviousEmission from "./PreviousEmission.ts";
 import GitMembership from "./git-membership.ts";
 import { acceptedKinds } from "./attachments.ts";
 import GitState, { type GitStatusSnapshot } from "./git-state.ts";
@@ -154,6 +155,9 @@ type SplitProviderResponse = {
     finalResponse: boolean;
     // {§outside-text}: every span outside an operation, in source order, weighed by the packet's ruler.
     outside: { text: string; tokens: number } | null;
+    // {§emission-row}: the admission parse's statements re-framed ({§statement-rendering}), reasoning
+    // NOTEs excluded; null when no statement was admitted from the provider's content.
+    admittedEmission: string | null;
 };
 
 type MaterializedModelRequest = {
@@ -563,21 +567,22 @@ export default class TurnRunner {
     // {§packet-attachment-parts}: native parts come from the READ's immutable snapshot,
     // never from a source that may have changed since the observation.
     async #wireMessages(packet: RequestPacket, ctx: PlurnkSchemeContext, provider: Provider): Promise<MaterializedModelRequest> {
-        // {§packet-wire-envelope} — the worker's previous program, as the grammar admitted it, is the envelope's one assistant message.
-        const previousEmission = await PreviousEmission.resolve(ctx.db, { workspaceId: ctx.workspaceId, workerId: ctx.workerId, turnId: ctx.turnId }, this.#executors());
+        // {§packet-wire-envelope} — each emission row the packet placed carries its emission as the
+        // worker's own assistant message.
+        const emissions = this.#packets.emissionsFor(packet);
         const accepted = acceptedKinds(provider.inputModalities);
         if (accepted.length === 0 || !(packet.attachments ?? []).some((attachment) => accepted.includes(attachment.kind))) {
             return {
-                messages: PacketWire.packetToWireMessages(packet, previousEmission) as ChatMessage[],
+                messages: PacketWire.packetToWireMessages(packet, emissions) as ChatMessage[],
                 nativeInputs: [],
             };
         }
         const nativeInputs = new Set<string>();
-        const messages = await PacketWire.wireMessages(packet, async (attachment) => {
+        const messages = await PacketWire.wireMessages(packet, emissions, async (attachment) => {
             const bytes = await NativeContent.read(ctx.db, attachment.contentHash);
             nativeInputs.add(attachment.coordinate);
             return bytes;
-        }, (kind) => accepted.includes(kind), previousEmission);
+        }, (kind) => accepted.includes(kind));
         return { messages, nativeInputs: [...nativeInputs] };
     }
 
@@ -808,8 +813,8 @@ export default class TurnRunner {
         await Turn.recordSource(this.#db, initializationTurn.id, "reasoning", reasoning);
         const reasoningRead = ReasoningView.initialRead(provider, workerName, loopSequence, initializationTurn.sequence);
         if (reasoningRead !== null) initializationStatements.push(reasoningRead);
-        // {§packet-wire-envelope} — the survey's program reaches the model as the first request's
-        // assistant message; turn zero READs its reasoning, never its own program.
+        // {§emission-row} — the survey is announced as the worker's first emission and reaches the
+        // model as its first assistant message; turn zero READs its reasoning, never its own program.
         // {§message-arrival} — the message reaches the model as an inbound SEND in the first
         // model turn; initialization does not READ it a second time.
         const admittedInitializationStatements = initializationStatements.filter((statement) =>
@@ -819,6 +824,7 @@ export default class TurnRunner {
         const result = await this.executeAdmittedTurn({
             statements: admitted,
             source,
+            emission: source.length === 0 ? null : { content: source, workerName, loopSeq: loopSequence, turnSeq: initializationTurn.sequence },
             origin: "_plurnk",
             workspaceId,
             workerId,
@@ -1712,6 +1718,9 @@ export default class TurnRunner {
         const executed = await this.executeAdmittedTurn({
             statements: split.packetAssistant.ops,
             source: split.sourceBacked ? split.packetAssistant.content : null,
+            emission: split.admittedEmission === null ? null : {
+                content: split.admittedEmission, workerName: request.workerName, loopSeq: request.loopSeq, turnSeq: request.seq,
+            },
             sourceModelCallId: emission.modelCallId,
             origin: "model",
             workspaceId,
@@ -1759,6 +1768,7 @@ export default class TurnRunner {
         const result = await this.executeAdmittedTurn({
             statements: TurnOps.parseInternal(source),
             source,
+            emission: null,
             origin: "_plurnk",
             workspaceId,
             workerId,
@@ -1893,6 +1903,9 @@ export default class TurnRunner {
             && !hasUnparsedTail && parseErrors.length === 0
             && assistant.finishReason !== "length";
         const emptyTurn = preParsedOps === undefined && contentStatementCount === 0 && !hasUnparsedTail;
+        // {§emission-row}: the emission as the grammar admitted it, before reasoning NOTEs join the
+        // program; a pre-parsed Mock response has no recorded source to announce.
+        const admittedEmission = preParsedOps === undefined && contentStatementCount > 0 ? PlurnkParser.stringify(ops) : null;
         const reasoning = assistant.reasoning ?? null;
         const notes = reasoning === null ? [] : PlurnkParser.parseReasoningNotes(reasoning);
         ops.unshift(...notes);
@@ -1916,6 +1929,7 @@ export default class TurnRunner {
             parseNotices,
             emissionValid,
             outside: outside.length === 0 ? null : { text: outsideText, tokens: contentWeight(outsideText) },
+            admittedEmission,
         };
     }
 

@@ -250,7 +250,7 @@ for (const specimen of [
                 "closed is not observed: the loop continues so the terminal stream observation can land next packet",
             );
             const completed = await engine.executeAdmittedTurn({
-                statements: [concludeStmt()], source: null,
+                statements: [concludeStmt()], source: null, emission: null,
                 workspaceId, workerId, loopId, turnId, fromSequence: 3, origin: "model",
             });
             assert.equal(completed.status, 102, "closed but unobserved: the completion defers to the next packet");
@@ -278,7 +278,7 @@ test("{§send-premature-terminate}: an earlier turn's completed stream is identi
         await Turn.complete(db, turnId, 102);
         const { id: nextTurnId } = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
         const completed = await engine.executeAdmittedTurn({
-            statements: [concludeStmt()], source: null,
+            statements: [concludeStmt()], source: null, emission: null,
             workspaceId, workerId, loopId, turnId: nextTurnId, fromSequence: 1, origin: "model",
         });
         assert.equal(completed.status, 102);

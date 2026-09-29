@@ -5,6 +5,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import TurnOps from "../../src/core/TurnOps.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
 const response = (content: string) => ({ assistant: { content, reasoning: null } });
 
@@ -35,8 +36,8 @@ Answer.
         });
         assert.equal(result.status, 102, "a SEND with a sibling operation is not terminal");
         assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["KILL", 200]]);
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; tx: string }>({ turn_id: result.turnId });
-        assert.deepEqual(rows.filter(({ op }) => op !== null && op !== "prompt").map(({ op }) => op), ["SEND", "KILL"]);
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; tx: string; attrs: string }>({ turn_id: result.turnId });
+        assert.deepEqual(rows.filter((row) => row.op !== null && row.op !== "prompt" && !LogEntryProjection.isEmission(row)).map(({ op }) => op), ["SEND", "KILL"]);
         const send = rows.find(({ op }) => op === "SEND");
         assert.ok(send);
         assert.equal(JSON.parse(send.tx).body.raw, "Answer.");

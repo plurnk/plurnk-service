@@ -12,6 +12,7 @@ import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_db.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { findStmt, killStmt, readStmt, regex, urlPath } from "./_dsl.ts";
+import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
 const messages = [{ role: "system" as const, content: "An agent." }, { role: "user" as const, content: "Review the evidence." }];
 const response = (content: string): MockResponse => ({ assistant: { content, reasoning: null } });
@@ -43,8 +44,8 @@ test("{§tokenomics-fetch-fits-free} {§context-output-admission}: oversized out
         const first = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 1,
             provider: providerAt(999_000, [response(`\`\`\`\`READ (worker:///large.md) <1,-1>\`\`\`\`\n${continuing}`)]),
         });
-        const original = await db.test_log_entries_by_turn.all<{ id: number; sequence: number; op: string; rx: string; tx: string; folded: string }>({ turn_id: first.turnId });
-        const read = original.find(({ op }) => op === "READ")!;
+        const original = await db.test_log_entries_by_turn.all<{ id: number; sequence: number; op: string; attrs: string; rx: string; tx: string; folded: string }>({ turn_id: first.turnId });
+        const read = original.find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))!;
         const firstTurn = await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId });
         const path = `/1/${firstTurn!.sequence}/${read.sequence}/READ`;
         const provider = providerAt(12_000, [response(continuing), response(`\`\`\`\`READ (log://${path}) <2,3>\`\`\`\`\n${continuing}`), response(continuing)]);
@@ -117,8 +118,8 @@ test("{§context-output-receipt}: scoped KILL precedes admission and FIND retain
         });
         assert.equal(trim.status, 200, JSON.stringify(trim));
         await Turn.complete(db, trimming.id, 200);
-        const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string; folded: string; rx: string }>({ turn_id: first.turnId });
-        const read = rows.find(({ op }) => op === "READ")!;
+        const rows = await db.test_log_entries_by_turn.all<{ sequence: number; op: string; attrs: string; folded: string; rx: string }>({ turn_id: first.turnId });
+        const read = rows.find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))!;
         assert.equal(read.folded, "[[1,10]]");
         const sequence = (await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId }))!.sequence;
         const path = `/1/${sequence}/${read.sequence}/READ`;

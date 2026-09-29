@@ -93,7 +93,7 @@ test("Floor-scope capstone: full DSL surface exercised end-to-end", async () => 
         assert.equal(skillGone, undefined);
 
         const [send] = parse("````SEND\nanswer delivered\n````");
-        const r12 = await engine.executeAdmittedTurn({ ...env, statements: [send], source: null, fromSequence: 11, origin: "client" });
+        const r12 = await engine.executeAdmittedTurn({ ...env, statements: [send], source: null, emission: null, fromSequence: 11, origin: "client" });
         assert.equal(r12.status, 200);
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: env.loopId }))?.status, 102, "delivering a message does not complete work");
 

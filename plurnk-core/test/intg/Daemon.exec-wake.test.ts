@@ -415,7 +415,7 @@ test("{§worker-wait-timing} wake-on-completion: a slept (202) loop resumes IN P
             assert.equal(wake.wakeAction, "wake-pending", "the conclusion reports scheduling, not execution");
             assert.equal(Object.hasOwn(wake, "wakeLoopId"), false);
 
-            assert.deepEqual([wake.loop_seq, wake.turn_seq, wake.sequence], [1, 2, 2],
+            assert.deepEqual([wake.loop_seq, wake.turn_seq, wake.sequence], [1, 2, 3],
                 "stream/concluded carries causal coordinates independently of its output URI");
 
             // The loop's TRUE outcome arrives via loop/terminated — the resumed loop ends 200,

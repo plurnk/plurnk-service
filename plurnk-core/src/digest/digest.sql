@@ -109,8 +109,24 @@ ORDER BY r.id;
 SELECT worker_id, op, COUNT(*) AS n
 FROM log_entries
 WHERE op IS NOT NULL
+  -- {§emission-row}: an emission's announcement is the harness's, never an operation of the worker's.
+  AND COALESCE(json_extract(attrs, '$.kind'), '') <> 'emission'
 GROUP BY worker_id, op
 ORDER BY worker_id, n DESC, op;
+
+-- PREP: digest_emissions
+-- {§emission-row}: every emission a worker's rows announced, retired ones included: a stored request
+-- places exactly the emission rows its own log section carried ({§packet-wire-envelope}).
+SELECT le.worker_id,
+       l.sequence || '/' || t.sequence || '/' || le.sequence AS coordinate,
+       json_extract(le.rx, '$.content') AS content,
+       projection.active AS active
+FROM log_entries le
+JOIN turns t ON t.id = le.turn_id
+JOIN loops l ON l.id = le.loop_id
+JOIN log_entry_projections projection ON projection.log_entry_id = le.id
+WHERE json_extract(le.attrs, '$.kind') = 'emission'
+ORDER BY le.id;
 
 -- PREP: digest_edit_statements
 -- {§digest-edit-census}: every model-authored EDIT with the scope it authored, the pattern the

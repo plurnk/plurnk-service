@@ -14,6 +14,7 @@
 //   <digest>/<stem>.system.md       BYTE-FOR-BYTE the system message sent
 //                                         when the turn involved a provider.
 //   <digest>/<stem>.user.md         User text slot; digest.json retains native attachment descriptors.
+//   <digest>/<stem>.wire.json       The request's text messages in order, emissions in place.
 //   <digest>/<stem>.response.md      Request-only note when no response was admitted.
 //   <digest>/<stem>.assistant.md     Exact persisted turnOps, regardless of producer.
 //   <digest>/<stem>.assistantRaw.json  Opaque provider response.
@@ -53,7 +54,7 @@ import type {
     ModelCallRow,
     ProviderRequestRow,
     LogRow,
-    EditRow,
+    EditRow, EmissionRow,
     LogCurationEffectRow,
     WorkerRollupRow,
     OpMixRow,
@@ -115,6 +116,7 @@ export default class Digest {
             providerRequests: (db.digest_provider_requests as SyncPrep<ProviderRequestRow>).all(),
             logEntries: (db.digest_log_entries as SyncPrep<LogRow>).all(),
             editRows: (db.digest_edit_statements as SyncPrep<EditRow>).all(),
+            emissionRows: (db.digest_emissions as SyncPrep<EmissionRow>).all(),
             curationEffects: (db.digest_curation_effects as SyncPrep<LogCurationEffectRow>).all(),
             workerRollupRows: (db.digest_worker_rollups as SyncPrep<WorkerRollupRow>).all(),
             opMixRows: (db.digest_worker_op_mix as SyncPrep<OpMixRow>).all(),
@@ -128,7 +130,7 @@ export default class Digest {
         };
         let { workspaces, workers, inferenceCalls, modelCalls, turnAttempts, providerRequests,
             logEntries, editRows, curationEffects, workerRollupRows, opMixRows } = rows;
-        const { environmentRows, searchState, derivationState, dispositionCounts, dispositions, storageTables } = rows;
+        const { environmentRows, searchState, derivationState, dispositionCounts, dispositions, storageTables, emissionRows } = rows;
         let loops = rows.loops.map((loop): LoopRow => ({ ...loop, claimed_at: loop.claimed_at ?? null }));
         if (rows.storage === undefined) throw new Error("digest: the database reported no storage facts");
         const storage = { ...rows.storage, tables: storageTables };
@@ -218,6 +220,12 @@ export default class Digest {
         const workersById = new Map(workers.map((r) => [r.id, r]));
         const workerRollups = new Map(workerRollupRows.map((r) => [r.worker_id, r]));
         const environments = new Map(environmentRows.map((row) => [`${row.workspace_id}:${row.stream}`, JSON.parse(row.env) as Record<string, unknown>]));
+        const emissionsByWorker = new Map<number, Map<string, string>>();
+        for (const row of emissionRows) {
+            const map = emissionsByWorker.get(row.worker_id) ?? new Map<string, string>();
+            map.set(row.coordinate, row.content);
+            emissionsByWorker.set(row.worker_id, map);
+        }
         const opMixByWorker = new Map<number, OpMixRow[]>();
         for (const o of opMixRows) { const arr = opMixByWorker.get(o.worker_id) ?? []; arr.push(o); opMixByWorker.set(o.worker_id, arr); }
 
@@ -226,7 +234,7 @@ export default class Digest {
             dbPath, storage, digestDir, workspaces, workers, loops, turns, inferenceCalls, modelCalls, turnAttempts, providerRequests, logEntries, curationEffects,
             workersByWorkspace, loopsByWorker, turnsByLoop, attemptsByTurn,
             requestsByInferenceCall, requestsByAttempt, requestsByTurn, requestsByLoop, requestsByWorker, requestsByWorkspace,
-            logEntriesByTurn, editRows, editRowsByWorker, environments, loopsById, workersById,
+            logEntriesByTurn, emissionRows, emissionsByWorker, editRows, editRowsByWorker, environments, loopsById, workersById,
             workerRollups, opMixByWorker, search,
         };
 

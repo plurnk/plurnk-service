@@ -15,10 +15,10 @@ was available, so the current stabilization goal is unverified; that missing con
     turns: [{
         turn: 1,
         ops: [
-            { op: "FIND", target: "**", status: 200 },
-            { op: "READ", target: "plurnk-service/plurnk-core/src/service.ts", status: 200 },
-            { op: "READ", target: "plurnk-service/plurnk-contracts/README.md", status: 200 },
-            { op: "READ", target: "outside-client/README.md", status: 200 },
+            { op: "FIND", target: "**", status: 200, origin: "model" },
+            { op: "READ", target: "plurnk-service/plurnk-core/src/service.ts", status: 200, origin: "model" },
+            { op: "READ", target: "plurnk-service/plurnk-contracts/README.md", status: 200, origin: "model" },
+            { op: "READ", target: "outside-client/README.md", status: 200, origin: "model" },
         ],
     }],
 };
@@ -46,11 +46,29 @@ test("orientation verdict accepts a terminal, inspected, evidence-bearing report
 
 test("orientation verdict rejects a plausible answer that did not inspect its evidence", () => {
     const shallow = structuredClone(record);
-    shallow.turns = [{ turn: 1, ops: [{ op: "FIND", target: "**", status: 200 }] }];
+    shallow.turns = [{ turn: 1, ops: [{ op: "FIND", target: "**", status: 200, origin: "model" }] }];
     const verdict = evaluateOrientation(shallow, digest);
     assert.equal(verdict.pass, false);
     assert.ok(verdict.failed.includes("inspection"));
     assert.ok(verdict.failed.includes("evidence"));
+});
+
+test("{§emission-row} orientation verdict counts only the model's own inspection", () => {
+    const harnessOnly = structuredClone(record);
+    harnessOnly.turns = [
+        { turn: 1, ops: [
+            { op: "READ", target: "ops://meta/1/1", status: 200, origin: "_plurnk" },
+            ...Array.from({ length: 8 }, () => ({ op: "FIND", target: "worker:///_plurnk/plurnk/*.md", status: 200, origin: "_plurnk" })),
+            { op: "READ", target: "reasoning://meta/1/1", status: 200, origin: "_plurnk" },
+        ] },
+        { turn: 2, ops: [
+            { op: "READ", target: "ops://meta/1/2", status: 200, origin: "_plurnk" },
+            { op: "KILL", target: null, status: 200, origin: "model" },
+        ] },
+    ];
+    const verdict = evaluateOrientation(harnessOnly, digest);
+    assert.equal(verdict.pass, false);
+    assert.deepEqual(verdict.checks.inspection.detail, { successfulRetrievals: 0, operations: [] });
 });
 
 test("orientation verdict does not count archived issue URLs as inspected repository evidence", () => {

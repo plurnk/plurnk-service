@@ -68,29 +68,3 @@ WHERE w.workspace_id = $workspace_id;
 -- PREP: turn_source_attach_derivation
 UPDATE turn_sources SET deep_hash = $deep_hash
 WHERE turn_id = $turn_id AND kind = $kind AND sequence = $sequence;
-
--- PREP: turn_source_previous_emission
--- {§packet-wire-envelope} The programs this worker submitted before the given turn, newest first,
--- verbatim: PreviousEmission renders the first that admits any statement as the envelope's one
--- assistant message, with the address the Worker block names as `previousEmission`
--- ({§packet-current-turn}). Turn zero's survey is the first, so every model request carries one.
--- A turn whose emission was never admitted recorded no ops source and is absent here.
-SELECT s.content, t.id AS turn_id, w.name AS worker, l.sequence AS loop, t.sequence AS turn
-FROM turn_sources s
-JOIN turns t ON t.id = s.turn_id
-JOIN loops l ON l.id = t.loop_id
-JOIN workers w ON w.id = l.worker_id
-WHERE l.worker_id = $worker_id AND s.kind = 'ops' AND s.sequence = 0 AND t.id < $turn_id
-ORDER BY t.id DESC
-LIMIT 8;
-
--- PREP: turn_source_request_log
--- {§packet-wire-envelope} Only the selected program's incoming records are needed from its
--- saved request. Read retained packet items, never today's curatable log or the whole history.
-SELECT pi.text AS content
-FROM turn_sections ts
-JOIN turn_section_items tsi ON tsi.turn_id = ts.turn_id AND tsi.section = ts.position
-JOIN packet_items pi ON pi.hash = tsi.item_hash
-WHERE ts.turn_id = $turn_id AND ts.slot = 'user' AND ts.name = 'log'
-  AND instr(pi.text, $heading) > 0
-ORDER BY tsi.position;

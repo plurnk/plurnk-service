@@ -12,6 +12,7 @@ import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, rootWorkspace } from "./_db.ts";
 import { makeRawMockResponse } from "./_mock.ts";
+import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
 const turnRows = async (program: string) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-dir-target-"));
@@ -33,8 +34,8 @@ const turnRows = async (program: string) => {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100_000, responses: [makeRawMockResponse(program)] });
         const turn = await engine.runTurn({ messages: [], provider, workspaceId, workerId, loopId });
-        const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turn.turnId });
-        return rows.filter(({ op }) => op !== "NOTE").map(({ op, rx }) => ({ op, ...JSON.parse(rx) as { status: number; content?: string; problem?: Record<string, unknown> } }));
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string; attrs: string }>({ turn_id: turn.turnId });
+        return rows.filter((row) => row.op !== "NOTE" && !LogEntryProjection.isEmission(row)).map(({ op, rx }) => ({ op, ...JSON.parse(rx) as { status: number; content?: string; problem?: Record<string, unknown> } }));
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });

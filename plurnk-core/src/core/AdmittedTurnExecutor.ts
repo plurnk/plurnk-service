@@ -20,7 +20,7 @@ import BareBatchRunner from "./BareBatchRunner.ts";
 import EditSequence from "./EditSequence.ts";
 import LineAnchors from "../content/line-anchors.ts";
 import { ENGINE_PROBLEMS, TURN_STATUS_IMPLICIT_CONTINUE } from "./turn-signals.ts";
-import type { ParseErrorInfo, EngineProblemKind, BareBatchResult, BareExecution, AdmittedTurnResult } from "./TurnRunner.ts";
+import type { ParseErrorInfo, EngineProblemKind, BareBatchResult, BareExecution, AdmittedTurnResult, AdmittedEmission } from "./TurnRunner.ts";
 import { isExecution } from "@plurnk/plurnk-contracts";
 import { writtenOp } from "@plurnk/plurnk-contracts";
 
@@ -58,6 +58,7 @@ export default class AdmittedTurnExecutor {
     async executeAdmittedTurn({
         statements,
         source,
+        emission,
         sourceModelCallId = null,
         origin,
         workspaceId,
@@ -77,6 +78,9 @@ export default class AdmittedTurnExecutor {
     }: {
         statements: readonly PlurnkStatement[];
         source: string | null;
+        // {§emission-row} — the admitted emission this turn announces, or null when nothing was admitted
+        // from a recorded source. Every caller states it.
+        emission: AdmittedEmission | null;
         sourceModelCallId?: number | null;
         origin: WriterTier;
         workspaceId: number;
@@ -102,6 +106,8 @@ export default class AdmittedTurnExecutor {
         if (statements.length === 0 && !emptyTurn) {
             throw new Error("an admitted operation batch must contain operations");
         }
+        if (emission === undefined) throw new Error("executeAdmittedTurn requires the admitted emission, or null, to be stated");
+        if (emission !== null && source === null) throw new Error("an admitted emission requires its recorded ops source");
         // {§empty-turn} — a model response with no operation is a turn all the same: its text and
         // reasoning are kept, the strike rail counts it once, and its one error row is how the
         // model hears the strike ({§operation-result-uniform-error-channel}).
@@ -119,6 +125,7 @@ export default class AdmittedTurnExecutor {
         };
         const emptyTurnExtensions = { stage: "dispatch-admission", recovery: "Emit at least one fenced operation.", retryable: true };
         if (statements.length === 0 && recoverableParseErrors.length === 0) {
+            if (emission !== null) throw new Error("a turn that admitted nothing announces no emission");
             if (source !== null) await Turn.recordSource(this.#db, turnId, "ops", source, { modelCallId: sourceModelCallId });
             await recordEngineProblem("no_operation", fromSequence, emptyTurnExtensions);
             await Turn.complete(this.#db, turnId, TURN_STATUS_IMPLICIT_CONTINUE);
@@ -150,6 +157,13 @@ export default class AdmittedTurnExecutor {
             await Turn.recordSource(this.#db, turnId, "ops", source, {
                 modelCallId: sourceModelCallId,
             });
+        }
+        // {§emission-row} — the turn's next sequence after its recorded inputs and before its
+        // operations, written after the selection snapshot so the emission's own program cannot select it.
+        if (emission !== null) {
+            const id = await this.#dispatcher.writeEmission({ ...emission, workerId, loopId, turnId, sequence: rowSequence++ });
+            onDispatch?.(id);
+            await onSettled?.(id);
         }
         let parseErrorsRecorded = false;
         const recordRecoverableParseErrors = async (): Promise<void> => {

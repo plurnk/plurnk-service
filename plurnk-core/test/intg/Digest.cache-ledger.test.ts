@@ -31,10 +31,9 @@ const packet = (turn: number): DurablePacket => ({
     assistantRaw: null,
 });
 
-const prompt = (turn: number): string => {
-    const { sections } = packet(turn);
-    return `${PacketWire.renderSlot(sections, "system")}${PacketWire.renderSlot(sections, "user")}`;
-};
+const prompt = (turn: number): string => PacketWire.packetToWireMessages(packet(turn), new Map())
+    .map(({ role, content }) => `${role}\n${content}`)
+    .join("\n");
 
 const recordRequest = async (db: Db, turnId: number, cacheReadTokens: number | null): Promise<number> => {
     const modelCall = await db.engine_open_model_call.get<{ id: number }>({ turn_id: turnId, kind: "emission", attributions: "[]", model: "mock" });

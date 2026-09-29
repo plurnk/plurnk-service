@@ -154,6 +154,7 @@ export class SqlRiteSync {
 	digest_log_entries: SqlRiteSyncPreparedStatements;
 	digest_worker_rollups: SqlRiteSyncPreparedStatements;
 	digest_worker_op_mix: SqlRiteSyncPreparedStatements;
+	digest_emissions: SqlRiteSyncPreparedStatements;
 	digest_edit_statements: SqlRiteSyncPreparedStatements;
 	digest_curation_effects: SqlRiteSyncPreparedStatements;
 	digest_channel_search_state: SqlRiteSyncPreparedStatements;
@@ -330,8 +331,6 @@ export class SqlRiteSync {
 	turn_source_candidates: SqlRiteSyncPreparedStatements;
 	turn_source_derivations: SqlRiteSyncPreparedStatements;
 	turn_source_attach_derivation: SqlRiteSyncPreparedStatements;
-	turn_source_previous_emission: SqlRiteSyncPreparedStatements;
-	turn_source_request_log: SqlRiteSyncPreparedStatements;
 	engine_unconcluded_emission: SqlRiteSyncPreparedStatements;
 	worker_resolve_by_name: SqlRiteSyncPreparedStatements;
 	worker_name_by_id: SqlRiteSyncPreparedStatements;
@@ -519,6 +518,7 @@ export class SqlRiteSync {
 	test_content_store_count: SqlRiteSyncPreparedStatements;
 	test_loop_termination_events: SqlRiteSyncPreparedStatements;
 	test_edit_rows_by_worker: SqlRiteSyncPreparedStatements;
+	test_emission_rows_by_worker: SqlRiteSyncPreparedStatements;
 	test_context_insert_turn: SqlRiteSyncPreparedStatements;
 	test_context_insert_failed_model_call: SqlRiteSyncPreparedStatements;
 	test_context_fail_model_call: SqlRiteSyncPreparedStatements;
@@ -559,6 +559,8 @@ export class SqlRiteSync {
 	test_log_entries_address_join: SqlRiteSyncPreparedStatements;
 	test_log_entries_indexes: SqlRiteSyncPreparedStatements;
 	test_log_entries_update_tx: SqlRiteSyncPreparedStatements;
+	test_log_entries_update_rx: SqlRiteSyncPreparedStatements;
+	test_log_entries_update_weight: SqlRiteSyncPreparedStatements;
 	test_log_entries_delete: SqlRiteSyncPreparedStatements;
 	test_log_curation_effect_update: SqlRiteSyncPreparedStatements;
 	test_log_curation_effect_delete: SqlRiteSyncPreparedStatements;
@@ -746,6 +748,7 @@ export default class SqlRite {
 	digest_log_entries: SqlRitePreparedStatements;
 	digest_worker_rollups: SqlRitePreparedStatements;
 	digest_worker_op_mix: SqlRitePreparedStatements;
+	digest_emissions: SqlRitePreparedStatements;
 	digest_edit_statements: SqlRitePreparedStatements;
 	digest_curation_effects: SqlRitePreparedStatements;
 	digest_channel_search_state: SqlRitePreparedStatements;
@@ -922,8 +925,6 @@ export default class SqlRite {
 	turn_source_candidates: SqlRitePreparedStatements;
 	turn_source_derivations: SqlRitePreparedStatements;
 	turn_source_attach_derivation: SqlRitePreparedStatements;
-	turn_source_previous_emission: SqlRitePreparedStatements;
-	turn_source_request_log: SqlRitePreparedStatements;
 	engine_unconcluded_emission: SqlRitePreparedStatements;
 	worker_resolve_by_name: SqlRitePreparedStatements;
 	worker_name_by_id: SqlRitePreparedStatements;
@@ -1111,6 +1112,7 @@ export default class SqlRite {
 	test_content_store_count: SqlRitePreparedStatements;
 	test_loop_termination_events: SqlRitePreparedStatements;
 	test_edit_rows_by_worker: SqlRitePreparedStatements;
+	test_emission_rows_by_worker: SqlRitePreparedStatements;
 	test_context_insert_turn: SqlRitePreparedStatements;
 	test_context_insert_failed_model_call: SqlRitePreparedStatements;
 	test_context_fail_model_call: SqlRitePreparedStatements;
@@ -1151,6 +1153,8 @@ export default class SqlRite {
 	test_log_entries_address_join: SqlRitePreparedStatements;
 	test_log_entries_indexes: SqlRitePreparedStatements;
 	test_log_entries_update_tx: SqlRitePreparedStatements;
+	test_log_entries_update_rx: SqlRitePreparedStatements;
+	test_log_entries_update_weight: SqlRitePreparedStatements;
 	test_log_entries_delete: SqlRitePreparedStatements;
 	test_log_curation_effect_update: SqlRitePreparedStatements;
 	test_log_curation_effect_delete: SqlRitePreparedStatements;

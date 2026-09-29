@@ -858,3 +858,15 @@ SELECT rx FROM ambient_events WHERE kind = 'loop_termination' AND recipient_work
 SELECT id, pathname, status_rx, lineMarker AS line_marker,
        CASE WHEN json_valid(tx) THEN json_extract(tx, '$.matcher.raw') END AS pattern
 FROM log_entries WHERE worker_id = $worker_id AND op = 'EDIT' AND origin = 'model' ORDER BY id;
+
+-- PREP: test_emission_rows_by_worker
+-- {§emission-row}: a worker's emission announcements with their coordinates and projection state.
+SELECT l.sequence || '/' || t.sequence || '/' || le.sequence AS coordinate,
+       le.origin, le.op, le.scheme, le.hostname, le.pathname, le.attrs, le.rx, le.initial_folded,
+       projection.active, projection.folded
+FROM log_entries le
+JOIN turns t ON t.id = le.turn_id
+JOIN loops l ON l.id = le.loop_id
+JOIN log_entry_projections projection ON projection.log_entry_id = le.id
+WHERE le.worker_id = $worker_id AND json_extract(le.attrs, '$.kind') = 'emission'
+ORDER BY le.id;

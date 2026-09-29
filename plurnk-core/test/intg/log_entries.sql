@@ -42,6 +42,12 @@ SELECT name, sql FROM sqlite_master WHERE type='index' AND name LIKE 'log_entrie
 -- PREP: test_log_entries_update_tx
 UPDATE log_entries SET tx = $tx WHERE id = $id;
 
+-- PREP: test_log_entries_update_rx
+UPDATE log_entries SET rx = $rx WHERE id = $id;
+
+-- PREP: test_log_entries_update_weight
+UPDATE log_entries SET weight = $weight WHERE id = $id;
+
 -- PREP: test_log_entries_delete
 DELETE FROM log_entries WHERE id = $id;
 

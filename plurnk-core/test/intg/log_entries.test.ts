@@ -4,6 +4,7 @@ import type { Db } from "../../src/core/Db.ts";
 import { openMigrated, seedEnvelope, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import LogEntry from "../../src/server/logEntry.ts";
 import Turn from "../../src/core/Turn.ts";
+import Fork from "../../src/core/fork.ts";
 
 type SqlValue = string | number | bigint | null;
 
@@ -492,6 +493,65 @@ test("log_entries: full CASCADE chain", async () => {
     } finally { await db.close(); }
 });
 
+test("{§emission-row}: the schema admits an emission row only as one born-folded _plurnk announcement of its own turn's admitted ops source", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `emission-row-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, workerId, 1);
+        const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
+        const content = "```READ (a.md)\n```";
+        const emission = async (overrides: Record<string, SqlValue> = {}): Promise<number> => {
+            const row = await db.engine_insert_log_entry.get<{ id: number }>({
+                worker_id: workerId, loop_id: loopId, turn_id: turn.id, sequence: 1,
+                origin: "_plurnk", source: null, model_call_id: null, op: "READ", signal: null,
+                scheme: "ops", username: null, password: null, hostname: "alice", port: null,
+                pathname: `/1/${turn.sequence}`, query: null, fragment: null, lineMarker: null,
+                tx: "{}", mimetype_tx: "application/json",
+                rx: JSON.stringify({ status: 200, content, mimetype: "text/vnd.plurnk" }), mimetype_rx: "application/json", status_rx: 200,
+                weight: 8, state: "resolved", outcome: null, attrs: JSON.stringify({ kind: "emission" }), initial_folded: "[[1,-1]]",
+                ...overrides,
+            });
+            if (row === undefined) throw new Error("emission insert returned no row");
+            return row.id;
+        };
+        const refused = /an emission row is one born-folded _plurnk announcement of its own turn's admitted ops source/;
+        await assert.rejects(() => emission(), refused, "a turn without an admitted ops source announces nothing");
+        await Turn.recordSource(db, turn.id, "ops", content);
+        const shapes: Array<[Record<string, SqlValue>, string]> = [
+            [{ origin: "model" }, "only the harness writes the announcement"],
+            [{ op: "FIND" }, "the announcement is a READ"],
+            [{ scheme: "reasoning" }, "of the ops source"],
+            [{ initial_folded: "[]" }, "born folded: the emission rides outside its record"],
+            [{ rx: JSON.stringify({ status: 200, content: "", mimetype: "text/vnd.plurnk" }) }, "an admitted emission is never empty"],
+            [{ pathname: `/1/${turn.sequence + 1}` }, "of its own turn"],
+            [{ hostname: "bob" }, "a row the worker wrote names the worker"],
+        ];
+        for (const [overrides, reason] of shapes) await assert.rejects(() => emission(overrides), refused, reason);
+        await minimalLog(db, { workerId, loopId, turnId: turn.id }, { sequence: 5 });
+        await assert.rejects(() => emission({ sequence: 3 }), refused, "written before the turn's operations, so never behind one");
+        const id = await emission({ sequence: 6 });
+        await assert.rejects(() => emission({ sequence: 7 }), /UNIQUE constraint failed: log_entries\.turn_id/, "one announcement per turn");
+        await assert.rejects(() => db.test_log_entries_update_rx.run({ id, rx: JSON.stringify({ status: 200, content: "rewritten", mimetype: "text/vnd.plurnk" }) }), /an emission row is frozen/);
+        await assert.rejects(() => db.test_log_entries_update_weight.run({ id, weight: 1 }), /an emission row is frozen/);
+        const plan = (foldedAfter: string, activeAfter: 0 | 1) => ({ targets: JSON.stringify([{ id, activeBefore: 1, activeAfter, foldedBefore: "[]", foldedAfter }]) });
+        await assert.rejects(() => db.log_apply_projection_plan.all(plan("[[1,1]]", 1)), /an emission row is curated whole/);
+        await Turn.complete(db, turn.id, 200);
+        const operation = await Turn.open(db, { loopId, producer: "_plurnk", kind: "operation" });
+        await Turn.recordSource(db, operation.id, "ops", content);
+        await assert.rejects(() => emission({ turn_id: operation.id, pathname: `/1/${operation.sequence}` }), refused, "only an inference or initialization turn admits an emission");
+        await Turn.complete(db, operation.id, 200);
+        const branch = await Fork.fork(db, workerId, "branch");
+        assert.deepEqual(
+            (await db.test_emission_rows_by_worker.all<{ coordinate: string; hostname: string; pathname: string }>({ worker_id: branch }))
+                .map(({ coordinate, hostname, pathname }) => ({ coordinate, hostname, pathname })),
+            [{ coordinate: `1/${turn.sequence}/6`, hostname: "alice", pathname: `/1/${turn.sequence}` }],
+            "a fork's inherited copy keeps naming the worker that wrote it",
+        );
+        assert.deepEqual(await db.log_apply_projection_plan.all(plan("[]", 0)), [{ id }], "a whole KILL retires it");
+    } finally { await db.close(); }
+});
+
 test("log_entries: immutability trigger — UPDATE of core fields rejected", async () => {
     const db = await openMigrated();
     try {
@@ -541,6 +601,7 @@ test("log_entries: indexes exist", async () => {
         const names = rows.map((r) => r.name).sort();
         assert.deepEqual(names, [
             "log_entries_deep_hash",
+            "log_entries_emission_turn",
             "log_entries_loop_id",
             "log_entries_model_call_id",
             "log_entries_subscription_publication_id",

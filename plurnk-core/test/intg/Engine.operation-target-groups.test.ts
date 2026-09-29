@@ -6,6 +6,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
 const response = (content: string): MockResponse => ({
     assistant: { content, reasoning: null },
@@ -91,13 +92,14 @@ test("{§safe-uri-target-groups}: one admitted READ dispatches every explicit UR
         });
         const rows = await db.test_log_entries_by_turn.all<{
             op: string | null;
+            attrs: string;
             pathname: string | null;
             status_rx: number;
         }>({ turn_id: result.turnId });
 
         assert.deepEqual(
             rows
-                .filter(({ op }) => op === "READ")
+                .filter((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))
                 .map(({ pathname, status_rx }) => ({ pathname, status: status_rx })),
             [
                 { pathname: "/alpha.md", status: 200 },
