@@ -419,12 +419,17 @@ try {
     const persistedCapabilities = await afterRestart.rpc("workspace.capabilities.get");
     const persistedMembers = await afterRestart.rpc("workspace.members.list");
     if (JSON.stringify(persistedCapabilities.workspace) !== JSON.stringify(durableCapabilities)
-        || JSON.stringify(membersOf(persistedMembers)) !== JSON.stringify(expectedMembers)) {
+        || JSON.stringify(membersOf(persistedMembers)) !== JSON.stringify(expectedMembers.map((definition) => ({ ...definition, state: "dormant" })))) {
         throw new Error("cross-client durable state did not survive daemon reconstruction");
     }
     const afterRestartMcp = await afterRestart.rpc("workspace.mcp.list");
     if (afterRestartMcp.definitions.some((definition) => definition.alias === "client-only")) {
         throw new Error("a discovered client candidate survived daemon reconstruction as durable state");
+    }
+    await afterRestart.rpc("workspace.members.enable", { alias: "cross" });
+    const activatedMembers = await afterRestart.rpc("workspace.members.list");
+    if (JSON.stringify(membersOf(activatedMembers)) !== JSON.stringify(expectedMembers)) {
+        throw new Error(`persisted membership did not activate on explicit demand: ${JSON.stringify(activatedMembers)}`);
     }
     process.stdout.write("client composition GREEN: one packed platform, CLI and TUI, success and failure journeys, shared durable state\n");
     passed = true;
