@@ -1185,11 +1185,11 @@ operation receives empty-turn recovery, not successful completion ({§empty-turn
 
 | Intent | Nominal status | Meaning |
 |---|---|---|
-| Unanswered messages or unobserved results | 102 | Continue silently |
+| Unobserved messages or results | 102 | Continue silently |
 | No authored response operations or fresh operation/parser failure, without WAIT | 102 | Recover before automatic parking |
 | WAIT | 202 | Park when a live obligation exists; otherwise continue at 102 |
 | Eligible parameterless KILL ({§kill-conclusion}), live work remains, no fresh failure | 202 | Join the held work without delivering its body |
-| Eligible parameterless KILL, results observed, no held work, messages answered or answered by its body | 200 | Deliver the answer and conclude under {§kill-conclusion}; an empty KILL need not repeat a delivered response |
+| Eligible parameterless KILL, messages and results observed, no held work | 200 | Conclude under {§kill-conclusion}; deliver a nonempty body, or finish silently without inventing or repeating a reply |
 | Other admitted program | 102 | Continue regardless of earlier replies or live work |
 | KILL own worker | 499 | Cancel unfinished work in that worker and its descendants |
 | Runtime or infrastructure failure | 5xx | Not a model-authored task status |

@@ -667,10 +667,9 @@ admission and correlation. Message representations reject mutation while remaini
 recipients. Scratch entries and protocol artifacts retain their own existing write contracts.
 
 §message-immutable-recovery An EDIT, COPY or MOVE onto, or KILL of, a message address is
-refused 405 `message-immutable`; its detail names the address as a received message that
-answering settles, and its `recovery` gives the working form with that address:
-`` Answer it with `SEND (message://tester/bde40185)` and your reply as the body, or finish your
-work with a parameterless KILL whose body is the answer. ``
+refused 405 `message-immutable`; its detail names the address as an immutable received message,
+and its `recovery` distinguishes replying from concluding the loop:
+`` Reply with `SEND (message://tester/bde40185)` and a body, or conclude the loop with parameterless KILL. ``
 
 §problems-schemes **Slicer and matcher Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 

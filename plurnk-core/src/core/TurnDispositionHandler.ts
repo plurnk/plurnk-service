@@ -48,25 +48,25 @@ export default class TurnDispositionHandler {
             : { status: 102, detail: "Nothing is in flight. Continuing." };
     }
 
-    async completion(ctx: TurnContext, eligible: boolean, hasAnswer: boolean): Promise<DispatchResult> {
+    async completion(ctx: TurnContext, eligible: boolean): Promise<DispatchResult> {
         if (!eligible) return { status: 102, detail: "Completion deferred. Conclude with KILL alone." };
-        return this.#assess(ctx, false, true, hasAnswer);
+        return this.#assess(ctx, false, true);
     }
 
     async settle(ctx: TurnContext, wait: boolean, finalResponse: boolean): Promise<number> {
         const status = await this.#lifecycle.status(ctx.loopId);
         if (![100, 102, 202].includes(status)) return status;
-        const decision = await this.#assess(ctx, wait, finalResponse, false);
+        const decision = await this.#assess(ctx, wait, finalResponse);
         if (decision.status === 202) {
             return await this.#lifecycle.park(ctx.loopId, { wakenBy: "obligations" }) ? 202 : this.#lifecycle.status(ctx.loopId);
         }
         if (decision.status !== 200 || ctx.origin !== "model") return decision.status;
         // {§completion-defers-to-messages}: recheck arrivals atomically with conclusion.
-        const finished = await this.#lifecycle.finish(ctx.loopId, TerminalResult.success(null), { requireAnswered: true });
+        const finished = await this.#lifecycle.finish(ctx.loopId, TerminalResult.success(null), { requireObserved: true });
         return finished === null ? this.#lifecycle.status(ctx.loopId) : 200;
     }
 
-    async #assess(ctx: TurnContext, wait: boolean, finalResponse: boolean, hasAnswer: boolean): Promise<DispatchResult> {
+    async #assess(ctx: TurnContext, wait: boolean, finalResponse: boolean): Promise<DispatchResult> {
         const { workerId, loopId, turnId, origin } = ctx;
         const status = await this.#lifecycle.status(loopId);
         if (![100, 102, 202].includes(status)) return { status: 102, detail: "This loop is already concluded." };
@@ -74,8 +74,6 @@ export default class TurnDispositionHandler {
         if (origin !== "model") return { status: 200 };
         const arrivals = await this.#db.drain_unpublished_messages_for_loop.all({ loop_id: loopId });
         if (arrivals.length > 0) return { status: 102, detail: "New messages await review." };
-        const unanswered = await this.#db.message_unanswered_count.get<{ count: number }>({ loop_id: loopId });
-        if (unanswered === undefined) throw new Error("The loop has no message count.");
         const recovery = await this.#unobservedFailureCount(turnId) > 0;
         if (recovery && !wait) return { status: 102, detail: "Review this turn's errors before concluding." };
         if (!wait && !finalResponse) return { status: 102 };
@@ -87,7 +85,6 @@ export default class TurnDispositionHandler {
         }
         if (wait) return { status: 102, detail: "Nothing is in flight. Continuing." };
         if (pending.length > 0 || recovery) return { status: 102, detail: "Results await review before completion." };
-        if (unanswered.count > 0 && !hasAnswer) return { status: 102, detail: "Open Messages remain unanswered." };
         return { status: 200 };
     }
 }

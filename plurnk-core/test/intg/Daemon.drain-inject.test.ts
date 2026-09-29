@@ -677,51 +677,53 @@ class GatedMock extends Mock {
     }
 }
 
-test("{§completion-defers-to-messages}: prompts that arrive during a completing turn defer it, without a strike or a second loop", async () => {
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
-    const mock = new GatedMock(gate, {
-        contextWindow: 16384,
-        responses: [
-            sendOnly("````KILL\nfirst answer, before the follow-ups\n````"),
-            sendOnly("````KILL\nanswered both follow-ups\n````"),
-        ],
-    });
-    await withDaemon(mock, async (db, _daemon, addr) => {
-        const ws = await connect(addr);
-        try {
-            await rpcCall(ws, 1, "workspace.create", { name: "defer-to-prompts" });
-            const terminated = subscribeNotifications(ws, "loop/terminated");
-            const firstPromise = rpcCall(ws, 2, "loop.run", { prompt: "kick off" });
-            // Turn 1's provider call is held open; two prompts arrive meanwhile.
-            await mock.entered;
-            let first;
+for (const silent of [false, true]) {
+    test(`{§completion-defers-to-messages}: prompts arriving during ${silent ? "silent" : "answered"} completion defer it without a strike or a second loop`, async () => {
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => { release = resolve; });
+        const mock = new GatedMock(gate, {
+            contextWindow: 16384,
+            responses: [
+                sendOnly(silent ? "````KILL\n````" : "````KILL\nfirst answer, before the follow-ups\n````"),
+                sendOnly(silent ? "````KILL\n````" : "````KILL\nanswered both follow-ups\n````"),
+            ],
+        });
+        await withDaemon(mock, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
             try {
-                for (const [id, prompt] of [[3, "the first follow-up"], [4, "the second follow-up"]] as const) {
-                    const r = await rpcCall(ws, id, "loop.run", { prompt });
-                    assert.equal((r.result as { action: string }).action, "injected_next_turn", JSON.stringify(r.result ?? r.error));
-                }
-            } finally { release(); }
-            first = await firstPromise;
-            const loopId = (first.result as { loopId: number }).loopId;
-            const done = await waitFor(
-                () => (terminated() as Array<{ loopId: number; result: { status: number } }>).filter((e) => e.loopId === loopId),
-                (events) => events.length >= 1,
-                { timeoutMs: 5000 },
-            );
-            assert.equal(done[0]!.result.status, 200, "the loop completed once the follow-ups were seen");
-            const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number | null; turn_id: number; origin: string; rx: string | null; attrs: string }>({ loop_id: loopId });
-            const replies = rows.filter((r) => r.op === "KILL" && r.origin === "model");
-            assert.deepEqual(replies.map(({ status_rx }) => status_rx), [102, 200], "the unreviewed completion is deferred, not published");
-            assert.deepEqual(replies.map(({ rx }) => JSON.parse(rx!).answers?.length ?? 0), [0, 3], "only the reviewed answer delivers, answering all observed messages");
-            const turns = (await db.test_list_turns_in_loop.all({ loop_id: loopId })).filter(({ producer }) => producer === "model");
-            assert.deepEqual(turns.map(({ status }) => status), [102, 200]);
-            const prompts = rows.filter((r) => isArrivalRow(r));
-            assert.equal(prompts.length, 3, "the initial message plus both follow-ups were published");
-            assert.ok(prompts.slice(1).every((p) => p.turn_id === replies[1]!.turn_id), "both follow-ups were published in the turn the model completed from");
-            await flush();
-            const ts = terminated() as Array<{ loopId: number; result: { status: number } }>;
-            assert.deepEqual(ts.map((event) => event.loopId), [loopId], "no orphan recovery loop was minted: the prompts were answered in place");
-        } finally { ws.close(); }
+                await rpcCall(ws, 1, "workspace.create", { name: "defer-to-prompts" });
+                const terminated = subscribeNotifications(ws, "loop/terminated");
+                const firstPromise = rpcCall(ws, 2, "loop.run", { prompt: "kick off" });
+                // Turn 1's provider call is held open; two prompts arrive meanwhile.
+                await mock.entered;
+                let first;
+                try {
+                    for (const [id, prompt] of [[3, "the first follow-up"], [4, "the second follow-up"]] as const) {
+                        const r = await rpcCall(ws, id, "loop.run", { prompt });
+                        assert.equal((r.result as { action: string }).action, "injected_next_turn", JSON.stringify(r.result ?? r.error));
+                    }
+                } finally { release(); }
+                first = await firstPromise;
+                const loopId = (first.result as { loopId: number }).loopId;
+                const done = await waitFor(
+                    () => (terminated() as Array<{ loopId: number; result: { status: number } }>).filter((e) => e.loopId === loopId),
+                    (events) => events.length >= 1,
+                    { timeoutMs: 5000 },
+                );
+                assert.equal(done[0]!.result.status, 200, "the loop completed once the follow-ups were seen");
+                const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number | null; turn_id: number; origin: string; rx: string | null; attrs: string }>({ loop_id: loopId });
+                const replies = rows.filter((r) => r.op === "KILL" && r.origin === "model");
+                assert.deepEqual(replies.map(({ status_rx }) => status_rx), [102, 200], "the unreviewed completion is deferred, not published");
+                assert.deepEqual(replies.map(({ rx }) => JSON.parse(rx!).answers?.length ?? 0), [0, silent ? 0 : 3], "silent completion does not invent delivery; a nonempty answer covers the observed messages");
+                const turns = (await db.test_list_turns_in_loop.all({ loop_id: loopId })).filter(({ producer }) => producer === "model");
+                assert.deepEqual(turns.map(({ status }) => status), [102, 200]);
+                const prompts = rows.filter((r) => isArrivalRow(r));
+                assert.equal(prompts.length, 3, "the initial message plus both follow-ups were published");
+                assert.ok(prompts.slice(1).every((p) => p.turn_id === replies[1]!.turn_id), "both follow-ups were published in the turn the model completed from");
+                await flush();
+                const ts = terminated() as Array<{ loopId: number; result: { status: number } }>;
+                assert.deepEqual(ts.map((event) => event.loopId), [loopId], "the observed follow-ups belong to the completed loop, not an orphan recovery loop");
+            } finally { ws.close(); }
+        });
     });
-});
+}

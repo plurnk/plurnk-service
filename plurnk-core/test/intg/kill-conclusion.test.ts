@@ -3,6 +3,7 @@ import test from "node:test";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock, type MockResponse } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
@@ -107,7 +108,7 @@ test("#809: parameterless SEND delivers but only KILL concludes", async () => {
     } finally { await f.db.close(); }
 });
 
-test("{§outside-text}: stray text answers nothing, so an empty KILL cannot conclude after it", async () => {
+test("{§outside-text}: stray text answers nothing; a later explicit empty KILL concludes without delivering it", async () => {
     const f = await setup([
         { assistant: { content: "42.", reasoning: null } },
         { assistant: { content: frame("KILL", ""), reasoning: null } },
@@ -116,8 +117,8 @@ test("{§outside-text}: stray text answers nothing, so an empty KILL cannot conc
         const first = await f.turn();
         assert.equal(first.status, 102);
         assert.equal(first.emptyTurn, true);
-        assert.equal((await f.turn()).status, 102, "the message is still open");
-        assert.deepEqual(await f.replies(), []);
+        assert.equal((await f.turn()).status, 200, "the authored KILL, not the stray text, concludes");
+        assert.deepEqual(await f.replies(), [], "completion never promotes outside text into an answer");
     } finally { await f.db.close(); }
 });
 
@@ -143,13 +144,54 @@ for (const completionFirst of [false, true]) {
     });
 }
 
-test("#809: empty KILL cannot discard an unanswered message", async () => {
-    const f = await setup([{ assistant: { content: frame("KILL", ""), reasoning: null } }]);
+for (const body of [null, "", " \n\t"]) test(`{§kill-conclusion}: KILL with body ${JSON.stringify(body)} concludes without inventing a reply`, async () => {
+    const f = await setup([{ assistant: { content: frame("KILL", body), reasoning: null } }]);
     try {
-        assert.equal((await f.turn()).status, 102);
+        const turn = await f.turn();
+        assert.equal(turn.status, 200);
+        assert.equal(turn.emptyTurn, false, "an explicit KILL is not an empty provider turn");
+        assert.equal(await new LoopLifecycle(f.db).status(f.loopId), 200, "completion is durable");
         assert.deepEqual(await f.replies(), []);
+        const history = await f.db.message_history.all<{ direction: string; body: string }>({
+            workspace_id: f.workspaceId, worker_id: f.workerId, loop_id: f.loopId,
+        });
+        assert.deepEqual(history.map(({ direction, body }) => ({ direction, body })), [
+            { direction: "inbound", body: "Answer the question." },
+        ], "silent completion retains the input without fabricating delivery");
+        assert.equal((await f.db.message_unanswered_count.get({ loop_id: f.loopId }))?.count, 1, "historical delivery evidence stays truthful");
     } finally { await f.db.close(); }
 });
+
+for (const stage of ["inference", "terminal transition"] as const) {
+    test(`{§completion-defers-to-messages}: empty KILL cannot skip a message arriving during ${stage}`, async (t) => {
+        const f = await setup([0, 1].map(() => ({ assistant: { content: frame("KILL", null), reasoning: null } })));
+        let injected = false;
+        const inject = async () => {
+            if (injected) return;
+            injected = true;
+            await f.engine.injectIntoLoop(f.loopId, "A later request.");
+        };
+        if (stage === "inference") {
+            const generate = f.provider.generate.bind(f.provider);
+            t.mock.method(f.provider, "generate", async (...args: Parameters<Mock["generate"]>) => {
+                await inject();
+                return generate(...args);
+            });
+        } else {
+            const finish = LoopLifecycle.prototype.finish;
+            t.mock.method(LoopLifecycle.prototype, "finish", async function (this: LoopLifecycle, ...args: Parameters<LoopLifecycle["finish"]>) {
+                if (args[0] === f.loopId) await inject();
+                return finish.apply(this, args);
+            });
+        }
+        try {
+            assert.equal((await f.turn()).status, 102, "the unseen arrival prevents completion");
+            assert.equal((await f.turn()).status, 200, "after observation, explicit silent completion is permitted");
+            assert.match(JSON.stringify(f.provider.received[1]), /A later request\./u);
+            assert.deepEqual(await f.replies(), []);
+        } finally { await f.db.close(); }
+    });
+}
 
 for (const completionFirst of [false, true]) {
     test(`#809: log curation ${completionFirst ? "after" : "before"} completion does not prevent an answered loop concluding`, async () => {

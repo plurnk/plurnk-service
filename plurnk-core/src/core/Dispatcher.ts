@@ -524,7 +524,7 @@ export default class Dispatcher {
                     result = await this.#respond(statement, schemeCtx, loopId);
                 } else if (TurnDisposition.isCompletion(statement)) {
                     result = await this.#disposition.completion({ workerId, loopId, turnId, origin },
-                        context.finalResponse === true, (statement.body ?? "").trim() !== "");
+                        context.finalResponse === true);
                     if (result.status === 200) result = await this.#respond(statement, schemeCtx, loopId);
                 } else if (statement.op === "NOTE") {
                     await Turn.recordSource(this.#db, turnId, "note", statement.body ?? "", { sequence });

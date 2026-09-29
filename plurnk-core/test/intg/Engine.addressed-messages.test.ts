@@ -189,8 +189,8 @@ test("{§message-source-scheme} native message views reject mutations without ca
         }
         // {§message-immutable-recovery} — the recorded shape (#853): a child KILLs its assignment to acknowledge it.
         const kill = JSON.parse(rows.find(({ op }) => op === "KILL")!.rx).problem;
-        assert.equal(kill.detail, `\`${path}\` is a received message; it cannot be edited, moved or killed, and answering it is what settles it.`);
-        assert.equal(kill.recovery, `Answer it with \`SEND (${path})\` and your reply as the body, or finish your work with a parameterless KILL whose body is the answer.`);
+        assert.equal(kill.detail, `\`${path}\` is a received message; it cannot be edited, moved or killed.`);
+        assert.equal(kill.recovery, `Reply with \`SEND (${path})\` and a body, or conclude the loop with parameterless KILL.`);
         const retained = await db.message_source_by_address.get<{ body: string }>({ workspace_id: workspaceId, path });
         assert.equal(retained!.body, "Immutable input.");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))!.status, 102);

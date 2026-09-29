@@ -76,6 +76,31 @@ for (const final of ["Four, precisely.", ""]) {
     });
 }
 
+test("{§kill-conclusion} {§loop-answer}: a silent child concludes successfully without a fabricated answer", async () => {
+    const { db, engine, turn, answer, ids, parentId } = await setup([said(conclude())]);
+    try {
+        assert.equal((await turn()).status, 200);
+        const outcome = await answer();
+        assert.equal(outcome.status, 200, "the loop resource retains the successful empty outcome");
+        assert.ok("content" in outcome);
+        assert.equal(outcome.content, "", "READ represents successful silence as an empty body");
+        const events = await db.test_loop_termination_events.all<{ rx: string }>({ recipient_worker_id: parentId });
+        assert.deepEqual(events.map(({ rx }) => JSON.parse(rx)), [{ status: 200 }]);
+        const loopId = await insertLoop(db, parentId, 1, "Observe the result.");
+        await engine.runTurn({ workspaceId: ids.workspaceId, workerId: parentId, loopId, messages: [],
+            provider: new Mock({ contextWindow: 100_000, responses: [said(PlurnkParser.frame("NOTE", "Observed."))] }),
+        });
+        const rows = await db.engine_render_log.all<{ source: string; op: string; rx: string }>({ worker_id: parentId });
+        const conclusions = rows.filter(({ source }) => source === "worker://alice");
+        assert.equal(conclusions.length, 1, "the parent receives one ordinary completion observation");
+        assert.equal(conclusions[0]!.op, "READ");
+        const result = JSON.parse(conclusions[0]!.rx);
+        assert.equal(result.status, 200, "silence does not become a child failure");
+        assert.ok(result.content === undefined || result.content === "", "no answer text is invented");
+        assert.equal(result.problem, undefined);
+    } finally { await db.close(); }
+});
+
 test("{§send-response-receipt}: original-message fallback cannot acknowledge an unpublished arrival", async (t) => {
     const { db, engine, provider, turn, answer, ids } = await setup([
         said("Provisional answer."), said(send("Four, precisely.")), said(conclude("The follow-up is answered too.")),
