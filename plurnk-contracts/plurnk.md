@@ -27,11 +27,11 @@ body?
 
 ## Workflow Management
 
-> [!TIP]
-> YOU SHOULD stop reasoning and emit fact-finding OPs when further progress depends on missing information.
-
 > [!IMPORTANT]
 > YOU MAY KILL the loop by performing a KILL turn with only a parameterless KILL containing the final deliverable response.
+
+> [!WARNING]
+> YOU MAY NOT perform the KILL turn unless all child workers and streams are resolved.
 
 ```KILL
 This is an example of the complete, final user response.
