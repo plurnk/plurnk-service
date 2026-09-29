@@ -16,6 +16,8 @@ Dotted interfaces are explicitly deferred.
 flowchart LR
     AGUI["AG-UI Specification"] --- PLURNK["plurnk<br/><br/>JSON Schema · RFC 9457<br/>SARIF regions · OTel<br/>RFC 3986 · WHATWG URL<br/>IANA media types"]
     MCP["MCP Specification"] --- PLURNK
+    SKILLS["Agent Skills Specification"] --- PLURNK
+    PLUGINS["Agent Plugins Specification"] --- PLURNK
     OPENAI["OpenAI Specification"] --- PLURNK
     PLUGIN["Plurnk Plugin<br/>(exec / scheme)<br/>plurnk-owned interface"] --- PLURNK
 
@@ -30,15 +32,16 @@ flowchart LR
 
 ### Which standards earn a place
 
-Seven principles govern which exterior standards PLURNK conforms to:
+Eight principles govern which exterior standards PLURNK conforms to:
 
 1. **UVP first.** Never conform away what users chose Plurnk for; the OP grammar, curated log, packet, and worker graph are the product, not a compatibility gap.
 2. **Right-fit.** Hobbyist-first: an enterprise-grade feature is acceptable only when its cost lands on the party that wants it, never on general adoption.
 3. **Traction.** Count running counterparties today; integration horizon must be shorter than the standard's expected half-life. Sockets stay configurable with no default until a candidate earns it.
-4. **POSIX app identity.** Decades-stable host-ecosystem conventions (XDG, NO_COLOR, man, completions, service units) outrank months-stable AI-pipeline fashions.
+4. **POSIX app identity.** Decades-stable host-ecosystem conventions (XDG, NO_COLOR, man, completions, service units) govern wherever a domain standard is silent. Where a domain standard names its own location for cross-client interoperability, such as `.agents/skills`, PLURNK reads it, and its XDG location beside it holds PLURNK-only entries, which shadow the global ones.
 5. **Faces, never organs.** A standard adopts as one adapter or projection behind an existing seam; if it cannot, that is the alarm, and it goes to a design gate.
-6. **Deletion is the price of admission.** A standard earns adoption by deleting bespoke surface; parallel representations, second discovery paths, and compatibility grammars are refused.
+6. **Replace, never add.** Where an open standard covers something PLURNK built, the standard's form replaces PLURNK's own, and PLURNK aims to be its reference implementation. Parallel representations, second discovery paths, adapters, importers, and compatibility grammars are refused.
 7. **Two arbiters.** Model-facing surfaces change only on measured model evidence; human-facing surfaces follow host-ecosystem convention without ceremony. Standards bodies get a vote on neither.
+8. **Open, never proprietary.** A vendor-owned convention (`CLAUDE.md`, `.claude/`, `.cursor/`, a vendor's configuration dialect) earns no place, whatever its traction.
 
 ## Ecosystem
 
