@@ -287,7 +287,7 @@ try {
     tui.write("/mcp\r");
     await tui.waitFor(/MCP servers: none/);
     tui.write("/skills\r");
-    await tui.waitFor(/plurnk\s+active\s+service/);
+    await tui.waitFor(/plurnk\s+dormant\s+service/);
     tui.write("/a2a\r");
     await tui.waitFor(/A2A agents: none/);
     tui.write("Exercise the installed interactive terminal.\r");
@@ -307,6 +307,8 @@ try {
     assertIncludes(tuiOutput, "I will complete the request through the interactive terminal.", "installed TUI reasoning");
     assertIncludes(tuiOutput, "Confirm the packed interactive terminal path.", "installed TUI NOTE aside");
     assertIncludes(tuiOutput, "The installed interactive journey is complete.", "installed TUI KILL answer");
+    tui.write("/skills\r");
+    await tui.waitFor(/plurnk\s+active\s+service/);
     await tui.exit();
     tui = undefined;
     process.stdout.write("installed interactive TUI journey GREEN: Functionality + message READ + reasoning + NOTE + KILL + status\n");
