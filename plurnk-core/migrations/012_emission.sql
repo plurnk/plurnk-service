@@ -1,4 +1,5 @@
 -- MIGRATE: 12 emission
+-- Released in 1.24.0 and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never an edit here.
 -- {§emission-row} (#907): every admitted emission is announced by one `_plurnk` log row, `/emission`,
 -- whose frozen body is the emission as the grammar admitted it. The packet projects that body as the
 -- worker's own assistant message in the row's chronological place ({§packet-wire-envelope}).

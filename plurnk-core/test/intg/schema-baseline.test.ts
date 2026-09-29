@@ -12,10 +12,12 @@ import sha256 from "../../src/core/sha256.ts";
 import { MIGRATIONS_DIR, openMigrated } from "./_db.ts";
 
 // {§db-migrations} — the released schema versions and the fingerprints of their shapes: every
-// release freezes what it shipped, and the previous release is the path an existing database takes.
+// release freezes what it shipped, the previous release is the path an existing database takes, and
+// an earlier release keeps its longer path through the versions after it.
 type Release = { readonly version: number; readonly release: string; readonly shape: string };
-const RELEASED: Release = Object.freeze({ version: 11, release: "1.22.0", shape: "e6c30907c5a19216150ed1c29b2f4ba6a8cca1ac0dd08a1a85e31cfa286aa4d3" });
-const PREVIOUS: Release = Object.freeze({ version: 8, release: "1.21.1", shape: "2d93e9044b58ba0167e3b21e9bb9f6daade6cd20221ad153f1079551f9cf9f25" });
+const RELEASED: Release = Object.freeze({ version: 12, release: "1.24.0", shape: "6e655448cb0f1cd2fbbfdd0c7a9ffab22786160483a2fee4333686a262564156" });
+const PREVIOUS: Release = Object.freeze({ version: 11, release: "1.23.0", shape: "e6c30907c5a19216150ed1c29b2f4ba6a8cca1ac0dd08a1a85e31cfa286aa4d3" });
+const EARLIER: Release = Object.freeze({ version: 8, release: "1.21.1", shape: "2d93e9044b58ba0167e3b21e9bb9f6daade6cd20221ad153f1079551f9cf9f25" });
 
 const released = async (release: Release): Promise<string> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-released-"));
@@ -51,14 +53,14 @@ test("{§db-migrations}: versions are consecutive from 1 and a fresh database la
     } finally { await db.close(); }
 });
 
-for (const release of [RELEASED, PREVIOUS]) {
+for (const release of [RELEASED, PREVIOUS, EARLIER]) {
     test(`{§db-migrations}: versions 1-${release.version} keep the ${release.release} shape`, async () => {
         assert.equal(shape(await released(release)), release.shape, `a released migration changed shape; add the next MIGRATE version instead of editing versions 1-${release.version}`);
     });
 }
 
-test(`{§db-migrations} {§emission-row}: a ${RELEASED.release} database migrates in place, keeping its log and inventing no announcement`, async () => {
-    const path = await released(RELEASED);
+test(`{§db-migrations} {§emission-row}: a ${PREVIOUS.release} database migrates in place, keeping its log and inventing no announcement`, async () => {
+    const path = await released(PREVIOUS);
     const before = new DatabaseSync(path);
     before.function("sha256", { deterministic: true }, (text) => sha256(text as string));
     try {
@@ -90,8 +92,8 @@ test(`{§db-migrations} {§emission-row}: a ${RELEASED.release} database migrate
     } finally { after.close(); }
 });
 
-test(`{§db-migrations}: a ${PREVIOUS.release} database migrates in place and keeps its rows`, async () => {
-    const path = await released(PREVIOUS);
+test(`{§db-migrations}: a ${EARLIER.release} database migrates in place and keeps its rows`, async () => {
+    const path = await released(EARLIER);
     const before = new DatabaseSync(path);
     before.function("sha256", { deterministic: true }, (text) => sha256(text as string));
     try {
