@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import HostPaths from "./HostPaths.ts";
@@ -67,6 +67,32 @@ test("{§host-path-layout} an existing config directory suppresses partial resee
     }
 });
 
+test("{§operator-config-discovery} concurrent first starts publish one complete configuration", async () => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-operator-config-concurrent-"));
+    const paths = new HostPaths({ env: {}, home: join(root, "home") });
+    const policySource = join(root, "policy.md");
+    await writeFile(policySource, "# Policy\nShared initial policy.\n");
+    try {
+        const starts = await Promise.all(Array.from({ length: 12 }, async () => {
+            const created = await OperatorConfig.ensure(paths, policySource);
+            return {
+                created,
+                config: await readFile(paths.configFile, "utf8"),
+                policy: await readFile(paths.policyFile, "utf8"),
+            };
+        }));
+        assert.equal(starts.filter(({ created }) => created).length, 1);
+        for (const start of starts) {
+            assert.equal(start.config, starts[0]!.config);
+            assert.match(start.config, /^PLURNK_AGUI_TOKEN=[A-Za-z0-9_-]{32,}$/m);
+            assert.equal(start.policy, "# Policy\nShared initial policy.\n");
+        }
+        assert.deepEqual(await readdir(paths.configHome), ["plurnk"], "losing initializers remove only their staging directories");
+    } finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});
+
 test("{§host-path-layout} a partial first-run write rolls back the owned config home", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-operator-config-rollback-"));
     const paths = new HostPaths({ env: {}, home: join(root, "home") });
@@ -77,6 +103,7 @@ test("{§host-path-layout} a partial first-run write rolls back the owned config
         await assert.rejects(() => OperatorConfig.ensure(paths, policySource), /EEXIST/);
         await assert.rejects(() => stat(paths.configDir), /ENOENT/);
         await assert.rejects(() => readFile(paths.configFile, "utf8"), /ENOENT/);
+        assert.deepEqual(await readdir(paths.configHome), [], "a failed seed leaves no partial configuration or staging directory");
     } finally {
         await rm(root, { recursive: true, force: true });
     }

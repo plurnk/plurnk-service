@@ -3750,6 +3750,10 @@ or provider request. The seeded `.env`, first-run diagnostic, service help, and
 missing-model recovery all signpost `plurnk-service config defaults` as the
 complete installed option catalog.
 
+First-run seeding publishes the complete private configuration directory atomically.
+Concurrent initializers adopt the winning seed; a failed initializer removes only
+its own staging directory. An existing operator directory is never reseeded.
+
 Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-instantiation}). `PLURNK_MODEL_<alias>=<provider>/<model-id>` optionally declares a friendly route and tuning scope; `PLURNK_MODEL=<selector>` selects either that alias or an exact provider/model route. `PLURNK_MODEL_CHILD=<selector>` uses the same vocabulary for the default child provider; unset means inherit the spawning loop's provider. Operator selections and alias declarations live in `.env`, not `.env.defaults`.
 
 Each knob's value lives on its panel and nowhere else (`plurnk-service config defaults` prints them all); this table says what the service's knobs mean.

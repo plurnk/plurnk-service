@@ -1,11 +1,15 @@
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
-import { access, mkdir, readFile, rmdir, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtempDisposable, readFile, rename, writeFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import type HostPaths from "./HostPaths.ts";
 
 const exists = async (path: string): Promise<boolean> => access(path, constants.F_OK)
     .then(() => true)
-    .catch(() => false);
+    .catch((cause: NodeJS.ErrnoException) => {
+        if (cause.code === "ENOENT") return false;
+        throw cause;
+    });
 
 // {§operator-config-discovery} — the user owns this one ordinary dotenv file.
 // Package defaults remain package-owned and are projected on demand.
@@ -72,32 +76,18 @@ export default class OperatorConfig {
     static async ensure(paths: HostPaths, policySource: string): Promise<boolean> {
         if (await exists(paths.configDir)) return false;
         const policy = await readFile(policySource, "utf8");
-        const firstCreated = await mkdir(paths.configDir, { recursive: true, mode: 0o700 });
-        const createdFiles: string[] = [];
+        await mkdir(dirname(paths.configDir), { recursive: true, mode: 0o700 });
+        await using stage = await mkdtempDisposable(join(dirname(paths.configDir), `.${basename(paths.configDir)}-`));
+        await writeFile(join(stage.path, basename(paths.configFile)), OperatorConfig.renderSeed(), { encoding: "utf8", flag: "wx", mode: 0o600 });
+        await writeFile(join(stage.path, basename(paths.policyFile)), policy, { encoding: "utf8", flag: "wx", mode: 0o600 });
+        // {§operator-config-discovery}: only a complete seed becomes visible.
         try {
-            await writeFile(paths.configFile, OperatorConfig.renderSeed(), { encoding: "utf8", flag: "wx", mode: 0o600 });
-            createdFiles.push(paths.configFile);
-            await writeFile(paths.policyFile, policy, { encoding: "utf8", flag: "wx", mode: 0o600 });
-            createdFiles.push(paths.policyFile);
-            return true;
+            await rename(stage.path, paths.configDir);
         } catch (cause) {
-            const rollbackErrors: unknown[] = [];
-            for (const file of createdFiles.toReversed()) {
-                try { await unlink(file); }
-                catch (rollbackCause) {
-                    if ((rollbackCause as NodeJS.ErrnoException).code !== "ENOENT") rollbackErrors.push(rollbackCause);
-                }
-            }
-            if (firstCreated !== undefined) {
-                try { await rmdir(paths.configDir); }
-                catch (rollbackCause) {
-                    if ((rollbackCause as NodeJS.ErrnoException).code !== "ENOENT") rollbackErrors.push(rollbackCause);
-                }
-            }
-            if (rollbackErrors.length > 0) {
-                throw new AggregateError([cause, ...rollbackErrors], "operator config bootstrap failed and rollback was incomplete");
-            }
+            const code = (cause as NodeJS.ErrnoException).code;
+            if (code === "EEXIST" || code === "ENOTEMPTY") return false;
             throw cause;
         }
+        return true;
     }
 }
