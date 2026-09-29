@@ -178,7 +178,7 @@ vocabulary of `proposals`. Capability admission precedes effect
 classification and proposal settlement.
 
 §effort-wire `Effort` is exactly `off | adaptive | low |
-medium | high`. The schema owns this shared wire vocabulary. Providers own the
+medium | high | xhigh | max`. The schema owns this shared wire vocabulary. Providers own the
 supported subset and native projection for a selected route; core owns the
 durable worker value.
 
