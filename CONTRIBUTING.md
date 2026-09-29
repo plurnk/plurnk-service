@@ -1,5 +1,11 @@
 # Contributing
 
+Questions, bug reports, and patches are welcome through
+[GitHub issues](https://github.com/plurnk/plurnk-service/issues) and
+[pull requests](https://github.com/plurnk/plurnk-service/pulls). For client-specific
+work, use the [client repository](https://github.com/plurnk/plurnk).
+Report vulnerabilities through [SECURITY.md](./SECURITY.md), not a public issue.
+
 ## Setup
 
 Use the Node 26 line and the pinned npm version.
@@ -23,6 +29,12 @@ npm test
 | `npm run test:providersPing` | Paid one-call probe of each keyed provider; retains sanitized response evidence outside the checkout. |
 | `npm run config:list` | Validate and list configuration ownership and source classes without values. |
 | `npm run candidate -- …` | Run an explicit client checkout against the source-built daemon. |
+| `npm run audit:direction` | Audit package import direction and runtime cycles. |
+| `npm run audit:unused` | Find unused files, exports, and dependencies. |
+| `npm run audit:clones` | Find duplicated code across packages. |
+
+The three `audit:*` commands run on demand, outside the ordinary gates. Their
+configuration lives in `scripts/audit/`.
 
 The deterministic gate requires Node/npm, Git, POSIX `sh`, and `pgrep`/`pkill`;
 `jq` and package-local `test:llama` coverage are capability-dependent.
@@ -35,11 +47,12 @@ The deterministic gate requires Node/npm, Git, POSIX `sh`, and `pgrep`/`pkill`;
 | Publication | `release:publish`, which repeats qualification before mutation. |
 | Model or benchmark campaign | Explicit `test:live`, `test:demo`, or canonical `plurnk-bench`; never the hot path. |
 
-## Forge workflow
+## Development workflow
 
-PossumTech Gitea is the canonical maintainer forge; GitHub is the public downstream.
-There is no hosted CI. Hooks enforce Conventional names and signed provenance,
-then run `npm test` on main pushes.
+Maintainers integrate accepted contributions in the development forge and publish
+them to GitHub; contributors do not need a separate forge account. There is no
+hosted CI. Local hooks check commit conventions and signatures, then run `npm test`
+on main pushes.
 
 ## Changes
 
@@ -80,6 +93,20 @@ systemd-run --user --scope -p MemoryMax=1G -p MemorySwapMax=0 \
 Choose a limit for the focused workload, not the entire machine. For binary
 equality, assert `actual.equals(expected)` rather than deep-diffing large
 Buffers; the byte comparison remains exact and failure diagnostics stay bounded.
+
+## Source-built candidate
+
+```sh
+PLURNK_CLIENT_CHECKOUT=/path/to/plurnk \
+PLURNK_MODEL=<configured-alias> npm run candidate -- <client arguments>
+```
+
+The launcher builds the explicitly selected client and service, creates an
+isolated database, and reports their provenance. It preserves a digest under
+`../benchmarks` unless `PLURNK_BENCHMARKS` selects another path.
+For repeated experiments, build both checkouts once and set
+`PLURNK_CANDIDATE_SKIP_BUILD=1`. Each run pins its own copy of that build for
+execution and digest export ({§candidate-pinned-runtime}).
 
 ## Metaproject readiness
 
