@@ -77,7 +77,7 @@ export default class ScheduleFunctionality {
     readonly scheme: ScheduleResources;
     readonly family = SCHEDULE_FAMILY;
     readonly namespaceOwner = SCHEDULE_OWNER;
-    readonly summary = "Manage scheduled messages";
+    readonly summary = "Manage scheduled activity";
     readonly definitionSchema: JsonSchema = DEFINITION_SCHEMA;
     readonly example = {
         alias: "standup",
