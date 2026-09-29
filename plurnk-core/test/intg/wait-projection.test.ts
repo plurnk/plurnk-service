@@ -67,7 +67,7 @@ test("{§park-202-only} {§wait-obligation-matrix} WAIT retains literal prose wi
     } finally { await db.close(); }
 });
 
-test("{§wait-obligation-matrix} a second idle WAIT says what WAIT is for, and the first does not", async () => {
+test("{§wait-obligation-matrix} every idle WAIT receives the same plain receipt, however often it repeats", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `idle-wait-${crypto.randomUUID()}`);
@@ -85,12 +85,7 @@ test("{§wait-obligation-matrix} a second idle WAIT says what WAIT is for, and t
             return JSON.parse(rows.find(({ op }) => op === "WAIT")!.rx).detail as string;
         };
 
-        assert.equal(await detailOf(), "Nothing is in flight. Continuing.", "one yield is honest and is not corrected"); // {§pinned-wording-core}
-        assert.equal(
-            await detailOf(),
-            "WAIT doesn't wait unless there's a child worker or stream to wait on. Use schedule for specific timing decisions.",
-            "the repeat is waiting on a wake nothing can send, so its own row says what to reach for",
-        );
-        assert.equal(await detailOf(), "WAIT doesn't wait unless there's a child worker or stream to wait on. Use schedule for specific timing decisions.");
+        const details = [await detailOf(), await detailOf(), await detailOf()];
+        assert.deepEqual(details, Array(3).fill("Nothing is in flight. Continuing."), "a repeated idle WAIT is never corrected"); // {§pinned-wording-core}
     } finally { await db.close(); }
 });
