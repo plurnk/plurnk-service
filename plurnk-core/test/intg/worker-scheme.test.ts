@@ -1122,35 +1122,34 @@ test("WAIT: a live obligation parks; an empty join continues without inventing c
     } finally { await db.close(); }
 });
 
-test("an empty join cannot manufacture a terminal deliverable from its inventory", async () => {
-    const db = await openMigrated();
-    try {
-        const workspaceId = await insertWorkspace(db, `drained-join-${crypto.randomUUID()}`);
-        const worker = await insertWorker(db, workspaceId, null, "req-test");
-        const wLoop = await insertLoop(db, worker, 1, "test the module");
-        const wTurn = await insertTurn(db, wLoop, 1, 200);
-        const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const waited = await engine.dispatch({ statement: dispositionStmt("WAIT", "Standing by for user input"), workspaceId, workerId: worker, loopId: wLoop, turnId: wTurn, sequence: 1, origin: "model" });
-        assert.equal(waited.status, 102, "the empty join continues");
-        assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: wLoop }))?.status, 102, "the loop remains active");
-        const reader = await insertWorker(db, workspaceId);
-        const collected = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
-        assert.equal(collected.status, 425);
-        const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "````KILL\n````", reasoning: null } },
-            { assistant: { content: "````KILL\nThe module was tested.\n````", reasoning: null } },
-        ] });
-        const completed = await engine.runTurn({ provider, workspaceId, workerId: worker, loopId: wLoop, messages: [] });
-        assert.equal(completed.status, 102, "empty completion cannot answer an open assignment");
-        assert.equal((await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }))).status, 425);
-        assert.equal((await engine.runTurn({ provider, workspaceId, workerId: worker, loopId: wLoop, messages: [] })).status, 200);
-        const done = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
-        assert.equal(done.status, 200);
-        assert.equal(done.content, "The module was tested.", "the READ returns only the actually delivered answer");
-        assert.equal(done.resource, "ops://req-test/1");
-        assert.equal((await new LoopLifecycle(db).result(wLoop))?.content ?? null, null);
-    } finally { await db.close(); }
-});
+for (const answer of ["", "The module was tested."]) {
+    test(`{§kill-conclusion}: an empty join stays active until an explicit ${answer ? "answered" : "silent"} KILL`, async () => {
+        const db = await openMigrated();
+        try {
+            const workspaceId = await insertWorkspace(db, `drained-join-${crypto.randomUUID()}`);
+            const worker = await insertWorker(db, workspaceId, null, "req-test");
+            const wLoop = await insertLoop(db, worker, 1, "test the module");
+            const wTurn = await insertTurn(db, wLoop, 1, 200);
+            const engine = new Engine({ db, schemes: new SchemeRegistry() });
+            const waited = await engine.dispatch({ statement: dispositionStmt("WAIT", "Standing by for user input"), workspaceId, workerId: worker, loopId: wLoop, turnId: wTurn, sequence: 1, origin: "model" });
+            assert.equal(waited.status, 102, "the empty join continues");
+            assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: wLoop }))?.status, 102, "the loop remains active");
+            const reader = await insertWorker(db, workspaceId);
+            const collected = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
+            assert.equal(collected.status, 425);
+            const provider = new Mock({ contextWindow: 100_000, responses: [
+                { assistant: { content: PlurnkParser.frame("KILL", answer), reasoning: null } },
+            ] });
+            const completed = await engine.runTurn({ provider, workspaceId, workerId: worker, loopId: wLoop, messages: [] });
+            assert.equal(completed.status, 200, "explicit completion is independent of answer delivery");
+            const done = await lookThroughScheme("worker", null, readStmt(workerPath("req-test")), makeSchemeCtx({ db, workspaceId, workerId: reader }));
+            assert.equal(done.status, 200);
+            assert.equal(done.content, answer, "READ preserves the actual reply or successful silence, never the WAIT body");
+            assert.equal(done.resource, "ops://req-test/1");
+            assert.equal((await new LoopLifecycle(db).result(wLoop))?.content ?? null, null);
+        } finally { await db.close(); }
+    });
+}
 
 test("an empty waiting inventory stays runnable in the same turn", async () => {
     const db = await openMigrated();
