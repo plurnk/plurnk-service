@@ -82,6 +82,7 @@ const preparation = (
     enabled: new Map(Object.entries(enabled)),
     previous: options.previous ?? null,
     failure: options.failure ?? "publish-unavailable",
+    progress: () => undefined,
     ...(options.force === undefined ? {} : { force: options.force }),
     retain: () => () => {},
 });
