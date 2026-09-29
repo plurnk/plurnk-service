@@ -220,6 +220,7 @@ test("{§module-action-registration} Daemon: module actions register once during
                 () => seam.registerModuleAction({
                     name: "",
                     scope: "worldless",
+                    residency: "none",
                     inputSchema: MODULE_INPUT_SCHEMA,
                     outputSchema: MODULE_OUTPUT_SCHEMA,
                     handler: async () => ({}),
@@ -230,6 +231,7 @@ test("{§module-action-registration} Daemon: module actions register once during
                 () => seam.registerModuleAction({
                     name: "example.invalid",
                     scope: "worldless",
+                    residency: "none",
                     inputSchema: { $ref: "https://example.invalid/Missing.json" },
                     outputSchema: MODULE_OUTPUT_SCHEMA,
                     handler: async () => ({}),
@@ -239,6 +241,7 @@ test("{§module-action-registration} Daemon: module actions register once during
             seam.registerModuleAction({
                 name: "example.inspect",
                 scope: "worldless",
+                residency: "none",
                 inputSchema: MODULE_INPUT_SCHEMA,
                 outputSchema: MODULE_OUTPUT_SCHEMA,
                 handler: async (params, context) => {
@@ -250,6 +253,7 @@ test("{§module-action-registration} Daemon: module actions register once during
                 () => seam.registerModuleAction({
                     name: "example.inspect",
                     scope: "worldless",
+                    residency: "none",
                     inputSchema: MODULE_INPUT_SCHEMA,
                     outputSchema: MODULE_OUTPUT_SCHEMA,
                     handler: async () => ({}),
@@ -305,6 +309,36 @@ test("{§module-action-registration} Daemon: module actions register once during
         await daemon.stop();
         await db.close();
     }
+});
+
+test("{§module-action-registration} passive scoped actions validate identities without activating capabilities", async (t) => {
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null });
+    let calls = 0;
+    let activations = 0;
+    daemon.registerModule({ setup: (seam) => {
+        seam.registerWorkspaceCapabilityProvider("passive fixture", {
+            activate: () => { activations++; }, deactivate: () => undefined,
+        });
+        for (const scope of ["workspace", "worker"] as const) seam.registerModuleAction({
+            name: `${scope}.passive`, scope, residency: "none",
+            inputSchema: MODULE_INPUT_SCHEMA, outputSchema: MODULE_OUTPUT_SCHEMA,
+            handler: async () => { calls++; return { inspected: true }; },
+        });
+    } });
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    const workspaceId = await insertWorkspace(db, "passive-actions");
+    const workerId = await insertWorker(db, workspaceId, null, "reader", "model");
+    for (const scope of ["workspace", "worker"] as const) {
+        const context = scope === "workspace" ? { scope, workspaceId } : { scope, workspaceId, workerId };
+        assert.deepEqual(await daemon.invokeModuleAction(`${scope}.passive`, {}, context), { inspected: true });
+        const problem = await rejectedProblem(() => daemon.invokeModuleAction(`${scope}.passive`, {}, { ...context, workspaceId: 999_999 }));
+        assert.equal(problem.status, 404);
+        assert.match(problem.detail!, /does not exist/);
+    }
+    assert.equal(calls, 2, "invalid contexts cannot reach a passive handler");
+    assert.equal(activations, 0, "identity validation never starts the workspace's capabilities");
 });
 
 test("Daemon: workspace Functionality is shared, demand-activated, and durable across restart", async () => {
@@ -442,6 +476,7 @@ test("Daemon: concurrent worker demands share one Functionality activation", asy
             seam.registerModuleAction({
                 name: "capability.probe",
                 scope: "worker",
+                residency: "required",
                 inputSchema: MODULE_INPUT_SCHEMA,
                 outputSchema: MODULE_OUTPUT_SCHEMA,
                 handler: async () => {
@@ -528,6 +563,7 @@ test("{§module-workspace-provider} Daemon cools idle capabilities, retained pro
             seam.registerModuleAction({
                 name: "capability.residency-probe",
                 scope: "worker",
+                residency: "required",
                 inputSchema: MODULE_INPUT_SCHEMA,
                 outputSchema: MODULE_OUTPUT_SCHEMA,
                 handler: async (params) => {
@@ -610,6 +646,7 @@ test("failed worker Functionality deactivation remains resident for the retry ow
             seam.registerModuleAction({
                 name: "capability.failed-cooling-probe",
                 scope: "worker",
+                residency: "required",
                 inputSchema: MODULE_INPUT_SCHEMA,
                 outputSchema: MODULE_OUTPUT_SCHEMA,
                 handler: async () => ({ ready: true }),
@@ -651,6 +688,7 @@ test("Daemon first Functionality demand reconciles generated skills for an exist
             seam.registerModuleAction({
                 name: "docs.probe",
                 scope: "worker",
+                residency: "required",
                 inputSchema: MODULE_INPUT_SCHEMA,
                 outputSchema: MODULE_OUTPUT_SCHEMA,
                 handler: async () => ({ ready: true }),

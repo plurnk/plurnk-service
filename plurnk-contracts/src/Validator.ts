@@ -41,6 +41,7 @@ import functionalityDiscoverResultSchema from "../schema/FunctionalityDiscoverRe
 import functionalityDefinitionStateSchema from "../schema/FunctionalityDefinitionState.json" with { type: "json" };
 import functionalityListResultSchema from "../schema/FunctionalityListResult.json" with { type: "json" };
 import functionalityMutationResultSchema from "../schema/FunctionalityMutationResult.json" with { type: "json" };
+import functionalityPreparationActivitySchema from "../schema/FunctionalityPreparationActivity.json" with { type: "json" };
 import modelReadinessSchema from "../schema/ModelReadiness.json" with { type: "json" };
 import modelRouteSchema from "../schema/ModelRoute.json" with { type: "json" };
 import aguiDiscoverySchema from "../schema/AguiDiscovery.json" with { type: "json" };
@@ -241,6 +242,7 @@ export default class Validator {
         functionalityDiscoverResultSchema,
         functionalityListResultSchema,
         functionalityMutationResultSchema,
+        functionalityPreparationActivitySchema,
         mcpConfigurationOverlaySchema,
         mcpServerDefinitionSchema,
         mcpServerOptionsSchema,

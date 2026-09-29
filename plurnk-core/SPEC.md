@@ -4022,7 +4022,7 @@ flowchart LR
 |---|---|
 | `registerRuntimes([{ decl, executor, availability, scheme? }, ...])` | Validates the complete canonical tag set under {§executor-runtime-declaration}, then publishes every process-wide executor and optional claimed scheme facet atomically. |
 | `registerScheme(name, handler)` | Adds one process-wide addressable scheme handler; scheme readiness and model-facing capability publication remain core-owned. |
-| §module-action-registration `registerModuleAction({ name, scope, inputSchema, outputSchema, handler })` | Adds one non-empty, extension-unique action with resolvable JSON Schemas. `scope` is exactly `worldless`, `workspace`, or `worker`; the handler receives schema-validated params and a separate matching context. Scoped contexts contain trusted bound identifiers, never client parameters. A client-interface module decides whether and how the name becomes public, validates successful output, and owns collisions with its built-ins. |
+| §module-action-registration `registerModuleAction({ name, scope, residency, inputSchema, outputSchema, handler })` | Adds one non-empty, extension-unique action with resolvable JSON Schemas. `scope` is exactly `worldless`, `workspace`, or `worker`; the handler receives schema-validated params and a separate matching context. `residency` is explicitly `required` or `none`: only the former acquires workspace capabilities and reconciles worker documents. Worldless actions require `none`. Scoped contexts contain trusted bound identifiers, never client parameters. A client-interface module decides whether and how the name becomes public, validates successful output, and owns collisions with its built-ins. |
 | §module-workspace-provider `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` | Registers one extension-unique Functionality provider. `activate({ workspaceId, retain })` reconstructs the workspace snapshot; idempotent `deactivate({ workspaceId })` releases process resources. Core coalesces demand and supplies residency leases for work that outlives its caller. |
 | §module-workspace-state `readWorkspaceModuleState(workspaceId, namespaceOwner)` | Reads one nullable JSON state value per workspace and provider. Core owns storage and lifecycle; the provider owns its schema. Store symbolic credential references, not copied secrets. A worker-scoped family's coordinator reads and replaces the same shape per worker in `worker_module_state` ({§functionality-scope}). |
 | `readWorkspaceEnvironment(workspaceId)` | Captures the workspace env layer ({§workspace-env}) and returns its composer. No argument uses admitted host values; a supplied environment supplies a module's reference-resolution context. Both apply the same captured values and masks, without worker overrides. |
@@ -4072,7 +4072,7 @@ A conflicting alias is rejected explicitly; it never produces a hidden second
 definition for the submitting client or worker.
 
 §module-workspace-residency **Persistence is not residency.** Model execution,
-capability-aware operations, scoped module actions, and retained provider work
+capability-aware operations, module actions declaring required residency, and retained provider work
 lease the workspace's Functionality. Boot, workspace or worker creation,
 attachment, listing, naming, idle clients, and parked state alone do not.
 After the last lease releases, `PLURNK_SERVICE_WORKSPACE_WARM_MS` and
@@ -4113,12 +4113,37 @@ Retryability describes the actual failed condition, not its numeric status.
 
 | Verb | Common contract |
 |---|---|
-| `list` | Project definitions, origin, enabledness, and preparation outcome: disabled, active, unavailable with its Problem, or authorization-required. No credential values. |
+| `list` | Project definitions, origin, enabledness, and published preparation outcome: disabled, dormant, active, unavailable with its Problem, or authorization-required. No credential values. |
 | `discover` | Return inert candidates. Never install, persist, enable, or execute them. |
 | `add` | Admit and persist a workspace definition, prepare it, and enable it atomically. It may override the service baseline. Reapplying the same workspace definition enables it idempotently (200); a different definition for that alias fails 409 without replacing it. |
 | `enable` | Publish an available definition; retry preparation if unavailable. |
 | `disable` | Withdraw live capability; retain its definition and saved results. |
 | `remove` | Disable and forget the workspace definition. A same-alias service baseline reappears disabled. Service definitions are disable-only. Saved results remain. |
+
+§functionality-inspection **Inspection is not demand.** `list` and `discover` do not
+acquire residency, join preparation, reconcile worker documents, or extend warm
+retention. Without a resident publication, enabled workspace definitions are
+`dormant`. During replacement the preceding publication remains authoritative;
+the candidate is never presented as active. Cooling leaves durable definitions
+inspectable. Mutations and protocol continuations retain their residency rules.
+
+§functionality-preparation-visibility **Preparation is workspace activity, not
+model context.** The coordinator owns a current `FunctionalityPreparationActivity`
+per preparing family. `workspacePreparationStatus(workspaceId)` returns that same
+state without demand; `workspace/preparation` broadcasts
+`{ workspaceId, preparation: [...] }` whenever it changes.
+
+| Boundary | Visible state |
+|---|---|
+| Preparation begins | Family, `phase: preparing`, `alias: null`, UTC `since` |
+| Adapter calls `progress(alias)` | Enabled alias being prepared; a fresh `since` |
+| Prepared candidate enters publication | `phase: publishing`, `alias: null` |
+| Commit, rejection, or rollback settles | Family removed; empty array means no preparation |
+
+Preparation reports neither definitions nor credentials, does not alter the
+publication contract, and creates no log entries or model Notices. Published
+failures retain their exact Problems in `list`. Concurrent consumers share the
+workspace activity; a client disconnect does not clear another consumer's work.
 
 §functionality-adapter **An adapter owns protocol truth.** It declares its
 family, namespace owner, definition schema, contributed defaults, discovery,
@@ -4568,6 +4593,7 @@ adding a loop to it. LOOK text anchors resolve through the same
 | §notifications-loop-proposal `loop/proposal`                 | contracts-owned `ProposalProjection` | Dispatch pauses on a durable 202 proposal. `disposition` is the sole authority for whether a client presents review UI; live and reconnect share {§proposal-projection}. |
 | §notifications-loop-interaction `loop/interaction`           | contracts-owned `ClientInteractionProjection` | An operation is paused on client input. Live delivery and reconnect discovery share {§client-interactions}; workspace scope remains the event envelope. |
 | §notifications-workspace-created `workspace/created`         | `{ id, name, projectRoot }` | A workspace is created. This is the only current global event. |
+| `workspace/preparation` | `{ workspaceId, preparation: FunctionalityPreparationActivity[] }` | Workspace capability preparation changes; snapshot and clearing semantics follow {§functionality-preparation-visibility}. |
 | §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, workerId, target, channel, state, contentLength, mimetype?, loop_seq?, turn_seq?, sequence? }` | Channel content grows or channel state transitions. `workerId` is the initiating actor used for conversation routing, never entry ownership or access control. `target` is the canonical resource URI. Optional numeric coordinates identify the causal log item, independently of that URI. Core-managed channel writes include the current stored `mimetype`, which may change per call ({§channel-mimetype}); the generic plugin notification capability does not require it. It carries metadata, not content; consumers read bytes by canonical workspace address. |
 | §notifications-stream-concluded `stream/concluded`           | `{ entryId, workerId, target, subscriptionId, scheme, result, summary, wakeAction, loop_seq?, turn_seq?, sequence? }` | A subscription closes. `workerId` identifies the initiating actor; `target` is the canonical resource URI. Optional numeric fields identify the causal log item, never parsed from `target`. Exact result truth is preserved. `wakeAction` reports `wake-pending` before settlement, `no-op-active-loop` when work is already executing, `no-loop`, or `skipped-aborted`/`skipped-cancelled` for an aborted worker scope. A pending wake predicts neither execution nor recipient count; subsequent ordinary loop events report actual progress and completion. |
 | §notifications-notice-event `notice/event`                   | `{ workerId, loopId, notice: Notice }` | A transient observation or progress notice occurs. `workerId` owns loop activity; only workspace derivation progress uses `null` with `loopId=0`. It cannot alter durable history, scheduling, recovery, or model-visible failure truth. |

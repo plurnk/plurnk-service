@@ -57,6 +57,9 @@ export interface FunctionalityPreparation extends WorkspaceCapabilityIdentity {
     // An alias whose preparation must be retried even when its definition is
     // unchanged (re-enabling an unavailable definition).
     readonly force?: string;
+    // {§functionality-preparation-visibility} Report the enabled alias currently being prepared.
+    // This never publishes a capability or changes its outcome.
+    progress(alias: string): void;
     retain(): () => void;
 }
 

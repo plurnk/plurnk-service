@@ -12,6 +12,7 @@ import type {
     FunctionalityDefinitionState,
     FunctionalityDiscoverResult,
     FunctionalityListResult,
+    FunctionalityPreparationActivity,
     JsonSchema,
 } from "@plurnk/plurnk-contracts";
 import type {
@@ -54,6 +55,7 @@ export interface FunctionalityHost {
     replaceWorkerModuleState(workerId: number, namespaceOwner: string, state: unknown | null): Promise<void>;
     mutateWorkspace<T>(workspaceId: number, namespaceOwner: string, caller: FunctionalityCaller, run: () => Promise<T>): Promise<T>;
     retainWorkspace(workspaceId: number): () => void;
+    preparationChanged(workspaceId: number, preparation: readonly FunctionalityPreparationActivity[]): void;
 }
 
 // "action": an explicit client action under user authority — publishes now,
@@ -141,6 +143,7 @@ export default class Functionality {
     readonly #schemas = new Map<string, Readonly<Record<FunctionalityVerb, JsonSchema>>>();
     readonly #families = new Map<string, WorkspaceFamily>();
     readonly #queues = new Map<string, Promise<unknown>>();
+    readonly #preparations = new Map<number, Map<string, FunctionalityPreparationActivity>>();
 
     constructor(host: FunctionalityHost) {
         this.#host = host;
@@ -205,6 +208,7 @@ export default class Functionality {
                 this.#host.registerModuleAction({
                     name: `${scope}.${family}.${verb}`,
                     scope,
+                    residency: verb === "list" || verb === "discover" ? "none" : "required",
                     inputSchema: schemas[verb],
                     outputSchema: SCHEMA(verb === "list"
                         ? "FunctionalityListResult"
@@ -464,12 +468,14 @@ export default class Functionality {
 
     async #list(adapter: FunctionalityAdapter, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityListResult> {
         const family = this.#families.get(this.#key(identity.workspaceId, adapter.family));
-        if (family === undefined) throw failure(adapter.family, "workspace-not-resident", 409, `Workspace ${identity.workspaceId} has no resident ${adapter.family} Functionality.`, { recovery: "Retry through a workspace operation, then retry.", retryable: false });
-        const effective = await this.#effective(adapter, identity, family.state);
-        const outcomes = family.prepared?.outcomes ?? new Map<string, FunctionalityOutcome>();
+        const state = family?.state ?? await this.#loadState(adapter, identity.workspaceId);
+        const effective = await this.#effective(adapter, identity, state);
+        const outcomes = family?.prepared?.outcomes;
         return Validator.assertFunctionalityListResult({
             family: adapter.family,
-            definitions: [...effective.values()].map((definition) => this.#projection(definition, outcomes.get(definition.alias))),
+            definitions: [...effective.values()].map((definition) => outcomes === undefined && definition.enabled
+                ? { alias: definition.alias, origin: definition.origin, definition: definition.definition, state: "dormant" }
+                : this.#projection(definition, outcomes?.get(definition.alias))),
         });
     }
 
@@ -632,6 +638,7 @@ export default class Functionality {
         const enabled = Functionality.#enabled(effective);
         const prepared = await adapter.prepare({
             workspaceId: identity.workspaceId, enabled, previous: null, failure: failureMode,
+            progress: () => undefined,
             retain: () => this.#host.retainWorkspace(identity.workspaceId),
         });
         try {
@@ -663,6 +670,10 @@ export default class Functionality {
     // host replacement, then commit; on any failure abort and keep the previous
     // snapshot authoritative. An execution stream stays pending until its
     // workspace publication completes; it never acknowledges a future commit.
+    preparationStatus(workspaceId: number): readonly FunctionalityPreparationActivity[] {
+        return [...(this.#preparations.get(workspaceId)?.values() ?? [])].map((activity) => ({ ...activity }));
+    }
+
     async #publish(
         adapter: FunctionalityAdapter,
         identity: WorkspaceCapabilityIdentity,
@@ -673,6 +684,35 @@ export default class Functionality {
             readonly gate: WorkspaceCapabilityGate;
             readonly forceAlias?: string | null;
         },
+    ): Promise<{ outcomes: ReadonlyMap<string, FunctionalityOutcome> }> {
+        const { workspaceId } = identity;
+        const current = this.#preparations.get(workspaceId) ?? new Map<string, FunctionalityPreparationActivity>();
+        this.#preparations.set(workspaceId, current);
+        const report = (alias: string | null, phase: FunctionalityPreparationActivity["phase"]): void => {
+            current.set(adapter.family, { family: adapter.family, alias, phase, since: new Date().toISOString() });
+            this.#host.preparationChanged(workspaceId, this.preparationStatus(workspaceId));
+        };
+        report(null, "preparing");
+        try {
+            return await this.#publishPrepared(adapter, identity, nextState, options, report);
+        } finally {
+            current.delete(adapter.family);
+            if (current.size === 0) this.#preparations.delete(workspaceId);
+            this.#host.preparationChanged(workspaceId, this.preparationStatus(workspaceId));
+        }
+    }
+
+    async #publishPrepared(
+        adapter: FunctionalityAdapter,
+        identity: WorkspaceCapabilityIdentity,
+        nextState: FamilyState,
+        options: {
+            readonly failure: "publish-unavailable" | "reject";
+            readonly retain: () => () => void;
+            readonly gate: WorkspaceCapabilityGate;
+            readonly forceAlias?: string | null;
+        },
+        report: (alias: string | null, phase: FunctionalityPreparationActivity["phase"]) => void,
     ): Promise<{ outcomes: ReadonlyMap<string, FunctionalityOutcome> }> {
         const key = this.#key(identity.workspaceId, adapter.family);
         const previous = this.#families.get(key)?.prepared ?? null;
@@ -685,9 +725,14 @@ export default class Functionality {
             enabled,
             previous: previous?.snapshot ?? null,
             failure: options.failure,
+            progress: (alias) => {
+                if (!enabled.has(alias)) throw new Error(`${adapter.family} reported preparation of unknown alias '${alias}'.`);
+                report(alias, "preparing");
+            },
             retain: options.retain,
             ...(options.forceAlias ? { force: options.forceAlias } : {}),
         });
+        report(null, "publishing");
         let runtimes: RuntimeRegistration[];
         try {
             Functionality.#checkOutcomes(adapter, enabled, prepared);

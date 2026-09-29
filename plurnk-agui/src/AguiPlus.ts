@@ -14,6 +14,7 @@ import type {
     ApplicationLoopProjection,
     ClientInteractionProjection,
     ClientInteractionResolution,
+    FunctionalityPreparationActivity,
     ModelRoute,
     ProblemDetails,
 } from "@plurnk/plurnk-contracts";
@@ -143,6 +144,7 @@ export interface AguiStatusActivity {
     readonly message: string;
 }
 export interface AguiStatusState {
+    readonly preparation: readonly FunctionalityPreparationActivity[];
     readonly lifecycle: AguiLifecycle;
     readonly model: ModelRoute | null;
     readonly loopId: number | null;
@@ -194,6 +196,7 @@ export const statusState = (
     activity: AguiStatusActivity | null = null,
     children = 0,
     descendants: AguiDescendantsState = EMPTY_DESCENDANTS,
+    preparation: AguiStatusState["preparation"] = [],
 ): AguiStatusState => ({
     // {§loop-lifecycle-vocabulary} — the one projection the worker directory shares.
     lifecycle: lifecycleOfLoopStatus(loop?.status ?? null),
@@ -203,6 +206,7 @@ export const statusState = (
     activity,
     children,
     descendants,
+    preparation,
 });
 export interface AguiBudgetState {
     readonly curationWeight: number | null;

@@ -192,6 +192,7 @@ test("worker status projects the durable model and exact packet-bearing loop cou
         loopId: 7,
         packetCount: 4,
         activity: null,
+        preparation: [],
         children: 0,
         descendants: { requests: 0, usage: null, costUsd: null },
     });
@@ -201,6 +202,7 @@ test("worker status projects the durable model and exact packet-bearing loop cou
         loopId: null,
         packetCount: 0,
         activity: null,
+        preparation: [],
         children: 0,
         descendants: { requests: 0, usage: null, costUsd: null },
     });

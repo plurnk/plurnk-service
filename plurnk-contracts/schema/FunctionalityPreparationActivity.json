@@ -1,0 +1,15 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/FunctionalityPreparationActivity.json",
+    "title": "FunctionalityPreparationActivity",
+    "description": "Current workspace capability preparation, not a published outcome. No definitions or credentials.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["family", "alias", "phase", "since"],
+    "properties": {
+        "family": { "type": "string", "minLength": 1 },
+        "alias": { "type": ["string", "null"], "minLength": 1 },
+        "phase": { "enum": ["preparing", "publishing"] },
+        "since": { "type": "string", "format": "date-time" }
+    }
+}

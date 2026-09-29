@@ -40,6 +40,7 @@ export default () => ({
         seam.registerModuleAction({
             name: "fixture.ping",
             scope: "worldless",
+            residency: "none",
             inputSchema: { type: "object", additionalProperties: false },
             outputSchema: {
                 type: "object",

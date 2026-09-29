@@ -17,6 +17,19 @@ import {
 
 const router = () => new EventRouter({ threadId: "t", runId: "r", modelWorkerId: 10, workspaceId: 3 });
 
+test("{§agui-status-preparation} workspace preparation is replaceable state, never model or transcript traffic", () => {
+    const r = router();
+    const preparation = [{ family: "mcp", alias: "search", phase: "preparing", since: "2026-09-29T12:00:00.000Z" }];
+    for (const value of [preparation, []]) {
+        assert.deepEqual(r.route("workspace/preparation", { workspaceId: 3, preparation: value }), [{
+            type: "STATE_DELTA",
+            delta: [{ op: "replace", path: "/plurnk/status/preparation", value }],
+        }]);
+    }
+    assert.throws(() => r.route("workspace/preparation", { workspaceId: 3, preparation: [{ ...preparation[0], phase: "active" }] }),
+        /workspace\/preparation notification/);
+});
+
 test("log/entry (model SEND) → assistant TEXT_MESSAGE triple", () => {
     const evs = router().route("log/entry", { entry: { id: 1, worker_id: 10, loop_id: 2, origin: "model", op: "SEND", status_rx: 200, coordinate: "1.2.3", tx: { body: "hello" }, rx: { answers: ["agui://anonymous/threads/t/messages/m"] }, turn_id: 1 } });
     const types = evs.map((e) => e.type);

@@ -16,6 +16,7 @@ const preparation = (workspaceId: number, enabled: Record<string, object>, optio
     failure: options.failure ?? "publish-unavailable",
     ...(options.force === undefined ? {} : { force: options.force }),
     retain: () => () => {},
+    progress: () => undefined,
 });
 
 const problemOf = async (run: () => Promise<unknown>): Promise<{ type: string; status: number; detail: string; diagnostic?: string }> => {

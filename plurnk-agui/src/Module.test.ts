@@ -137,6 +137,7 @@ const mockSeam = () => {
         listPrompts: async () => ["hi"],
         renameWorkspace: async (_id, name) => ({ id: 3, name }),
         workspaceDerivationStatus: () => null,
+        workspacePreparationStatus: () => [],
         readEntry: async () => ({
             status: 200,
             entry: {
@@ -251,7 +252,7 @@ for (const status of [200, 502]) {
                 ...initial.snapshot,
                 plurnk: { ...initial.snapshot.plurnk, status: {
                     lifecycle: status === 200 ? "completed" : "failed", model: null, loopId: 9,
-                    packetCount: 2, children: 1, activity: null,
+                    packetCount: 2, children: 1, activity: null, preparation: [],
                     descendants: { requests: 1, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, costUsd: "0.01" },
                 } },
                 budget: { curationWeight: 123, curationBudget: 4000, contextTokens: 900, contextCapacity: 8000 },
@@ -538,6 +539,8 @@ test("the initial AG-UI snapshot carries durable model, exact packet count, and 
         message: "Indexing repository search: 40% (4/10)",
         level: "info",
     });
+    const preparation = [{ family: "mcp", alias: "search", phase: "preparing" as const, since: "2026-09-29T12:00:00.000Z" }];
+    seam.workspacePreparationStatus = () => preparation;
     const mod = await Module.init({ host: "127.0.0.1", port: 0 }).start(seam);
     try {
         const events = await post(mod.address().port, {
@@ -548,6 +551,7 @@ test("the initial AG-UI snapshot carries durable model, exact packet count, and 
             snapshot: { plurnk: { status: Record<string, unknown> } };
         };
         assert.deepEqual(event.snapshot.plurnk.status, {
+            preparation,
             lifecycle: "queued",
             model: { alias: "deepdumb", provider: "deepseek", model: "deepseek-v4-flash" },
             loopId: 9,
@@ -2441,6 +2445,7 @@ test("{§discovery} discover returns the exact public action and notification me
             "reasoning/event",
             "stream/concluded",
             "stream/event",
+            "workspace/preparation",
         ]);
         for (const action of Object.values(r.value.result.actions)) {
             assert.ok(action.scope === "worldless" || action.scope === "workspace");

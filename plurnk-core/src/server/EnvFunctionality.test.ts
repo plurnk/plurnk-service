@@ -116,6 +116,7 @@ test("{§env-functionality} prepare publishes no runtime and marks every enabled
         enabled: new Map([["PAGER", { value: "cat" }], ["CI", { value: "1" }]]),
         previous: null,
         failure: "publish-unavailable",
+        progress: () => undefined,
     } as never);
     assert.equal("runtimes" in prepared, false, "no processes, so no resident facet");
     assert.deepEqual([...prepared.outcomes.keys()], ["PAGER", "CI"]);

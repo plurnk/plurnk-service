@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { LoopLifecycle } from "./LoopLifecycle.ts";
-import type { ProviderAccounting } from "./types.generated.ts";
+import type { FunctionalityPreparationActivity, ProviderAccounting } from "./types.generated.ts";
 import type { ApplicationMessage, MessageResource } from "./MessageResource.ts";
 import type {
     CapabilityPolicy,
@@ -275,6 +275,7 @@ export interface ApplicationPort extends HttpHost {
     // {§share} — the workspace's share, from a consistent copy of the daemon's database, into an absolute folder.
     shareWorkspace(args: { readonly workspaceId: number; readonly folder: string }): Promise<{ readonly folder: string }>;
     renameWorkspace(workspaceId: number, name: string): Promise<{ readonly id: number; readonly name: string }>;
+    workspacePreparationStatus(workspaceId: number): readonly FunctionalityPreparationActivity[];
     workspaceDerivationStatus(workspaceId: number): {
         readonly phase: "preparing" | "indexing" | "complete" | "failed";
         readonly completed: number;

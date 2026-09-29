@@ -126,7 +126,7 @@ test("{§functionality-document-body} an adapter's docs/<family>.md rides beneat
         try {
             const workspaceId = await insertWorkspace(db, `fx-docs-${crypto.randomUUID()}`);
             await insertWorker(db, workspaceId, null, "model", "model");
-            await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId));
+            await daemon.invokeModuleAction("workspace.fx.enable", { alias: "svc" }, workspaceContext(workspaceId));
             const doc = (await daemon.engine.referenceEntries(workspaceId)).find(({ pathname }) => pathname === "/_plurnk/plurnk/fx.md");
             assert.ok(doc, "the family document is a reference entry");
             assert.equal(doc.content.startsWith("# fx\n\n## Summary\n\n```fx ("), true, "the generated header owns the H1 and the summary");
@@ -159,6 +159,59 @@ const boot = async (db: Db, log: string[]): Promise<Daemon> => {
 
 const workspaceContext = (workspaceId: number) => ({ scope: "workspace" as const, workspaceId });
 
+test("{§functionality-inspection} cold and preparing workspaces remain inspectable without activating or joining preparation", { timeout: 10_000 }, async (t) => {
+    const db = await openMigrated();
+    const log: string[] = [];
+    const entered = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    const adapter = fixtureAdapter(log);
+    let hold = false;
+    const daemon = new Daemon({ db, provider: null });
+    daemon.registerModule({ setup: (seam: ModuleSetupSeam) => {
+        seam.registerFunctionalityAdapter({
+            ...adapter,
+            prepare: async (preparation) => {
+                if (hold) {
+                    preparation.progress("svc");
+                    entered.resolve();
+                    await resume.promise;
+                }
+                return adapter.prepare(preparation);
+            },
+        });
+    } });
+    await daemon.start();
+    let demand: Promise<unknown> | undefined;
+    t.after(async () => { resume.resolve(); await demand; await daemon.stop(); await db.close(); });
+    const workspaceId = await insertWorkspace(db, `passive-${crypto.randomUUID()}`);
+    const invoke = (verb: string, params = {}) => daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId));
+    const listing = async () => (await invoke("list") as { definitions: Array<{ state: string }> }).definitions;
+    assert.deepEqual((await listing()).map(({ state }) => state), ["dormant"]);
+    assert.deepEqual(log, [], "inspection must not prepare capabilities");
+    assert.deepEqual(daemon.workspacePreparationStatus(workspaceId), []);
+    const updates: unknown[] = [];
+    daemon.subscribeToEvents((id, method, params) => {
+        if (id === workspaceId && method === "workspace/preparation") updates.push(params);
+    });
+    hold = true;
+    demand = invoke("enable", { alias: "svc" });
+    await entered.promise;
+    const during = await listing();
+    assert.equal(during[0].state, "dormant", "a candidate is not yet a published capability");
+    const active = daemon.workspacePreparationStatus(workspaceId);
+    assert.equal(active.length, 1);
+    assert.equal(active[0].family, "fx");
+    assert.equal(active[0].alias, "svc");
+    assert.equal(active[0].phase, "preparing");
+    assert.ok(Number.isFinite(Date.parse(active[0].since)));
+    assert.deepEqual(updates.at(-1), { workspaceId, preparation: active }, "snapshot and events expose the same current state");
+    resume.resolve();
+    await demand;
+    assert.deepEqual((await listing()).map(({ state }) => state), ["active"]);
+    assert.deepEqual(daemon.workspacePreparationStatus(workspaceId), []);
+    assert.deepEqual(updates.at(-1), { workspaceId, preparation: [] });
+});
+
 for (const defect of ["outcome", "namespace"] as const) {
     test(`{§functionality-publication} invalid ${defect} preparation aborts its candidate and preserves the workspace`, async (t) => {
         const db = await openMigrated();
@@ -179,12 +232,13 @@ for (const defect of ["outcome", "namespace"] as const) {
         t.after(async () => { await daemon.stop(); await db.close(); });
         await daemon.start();
         const action = (verb: string, params = {}) => daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId));
-        await action("list");
+        await action("enable", { alias: "svc" });
         log.length = 0;
         await assert.rejects(() => action("add", { alias: "candidate", definition: { kind: "ok" } }),
             defect === "outcome" ? /reported no outcome for enabled alias 'candidate'/u : /prepared a runtime owned by 'wrong owner'/u);
         assert.deepEqual(log.filter((entry) => entry.startsWith("abort:")), ["abort:candidate,svc"]);
         assert.equal(log.some((entry) => entry.startsWith("commit:")), false);
+        assert.deepEqual(daemon.workspacePreparationStatus(workspaceId), [], "rejected publication clears its preparation activity");
         const result = await action("list") as { definitions: Array<{ alias: string }> };
         assert.deepEqual(result.definitions.map(({ alias }) => alias), ["svc"]);
         const workerId = await insertWorker(db, workspaceId, null, "reader", "client");
@@ -225,9 +279,9 @@ fixture
             daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("workspace.fx.")),
             ["workspace.fx.add", "workspace.fx.disable", "workspace.fx.discover", "workspace.fx.enable", "workspace.fx.list", "workspace.fx.remove"],
         );
-        // Activation publishes the service default and the manager family.
-        assert.deepEqual(await states(), ["svc:service:active"]);
+        assert.deepEqual(await states(), ["svc:service:dormant"]);
         assert.equal((await exec("svc")).status, 200, "the service definition's capability is published");
+        assert.deepEqual(await states(), ["svc:service:active"], "execution activates the service default and manager");
         assert.equal((await exec("fx")).status, 400, "the manager family is published; a missing verb is refused, not unknown");
 
         // add → active and hot.
@@ -293,8 +347,9 @@ fixture
         await daemon.stop();
         log.length = 0;
         daemon = await boot(db, log);
-        assert.deepEqual(await states(), ["keep:workspace:active", "svc:service:disabled"], "durable state reconstructs the workspace's Functionality");
+        assert.deepEqual(await states(), ["keep:workspace:dormant", "svc:service:disabled"], "inspection preserves dormant definitions after restart");
         assert.equal((await exec("keep")).status, 200);
+        assert.deepEqual(await states(), ["keep:workspace:active", "svc:service:disabled"], "execution reconstructs the workspace's Functionality");
         assert.ok(log.includes("prepare:keep"), "activation prepared exactly the enabled set");
 
         // Delegates use the same workspace environment, including subsequent changes.
@@ -346,7 +401,7 @@ test("{§functionality-publication} a management stream reports publication refu
     const log: string[] = [];
     const daemon = await boot(db, log);
     t.after(async () => { await daemon.stop(); await db.close(); });
-    await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId));
+    await daemon.invokeModuleAction("workspace.fx.enable", { alias: "svc" }, workspaceContext(workspaceId));
     const refused = Results.failure("fx:fixture", "publication-refused", 409, "Fixture publication refused.", {}, { retryable: true });
     t.mock.method(daemon, "replaceWorkspaceCapabilities", async () => {
         throw new OperationFailureError(refused);

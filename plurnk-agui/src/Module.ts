@@ -418,6 +418,7 @@ export default class Module {
             derivationActivity(this.#seam.workspaceDerivationStatus(workspaceId)),
             aliveChildren(children),
             descendantsState(descendants),
+            this.#seam.workspacePreparationStatus(workspaceId),
         );
     }
 

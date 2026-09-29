@@ -513,6 +513,9 @@ boundaries; neither closes or replaces the committed connection.
 | Disable/remove, workspace cooling, or shutdown | Retires obsolete refresh timers and invalidations. |
 
 MCP participates in core Functionality residency ({§module-workspace-residency}).
+Preparation reports the current server alias through the coordinator's activity
+contract ({§functionality-preparation-visibility}); inspection never starts a
+connection ({§functionality-inspection}).
 Every tool call and Task retains the workspace from executor entry through its
 terminal result; an interactive OAuth candidate retains it until completion,
 replacement, cancellation, or module shutdown. Catalog refresh timers are

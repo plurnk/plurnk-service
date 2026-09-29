@@ -40,6 +40,7 @@ type ModuleActionHandler = (
 export interface ModuleActionRegistration {
     readonly name: string;
     readonly scope: ModuleActionScope;
+    readonly residency: "required" | "none";
     readonly inputSchema: JsonSchema;
     readonly outputSchema: JsonSchema;
     readonly handler: ModuleActionHandler;

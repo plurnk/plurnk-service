@@ -17,6 +17,8 @@ import Daemon from "../../src/server/Daemon.ts";
 import { awaitExecOutcome } from "./_execs.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
+import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
+import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 
 type Event = Readonly<Record<string, unknown>>;
 
@@ -86,6 +88,85 @@ const actionResult = (events: readonly Event[]): {
 
 const packet = (requests: PacketCapturingMock["requests"], index: number): string =>
     requests[index]?.map(({ content }) => content).join("\n\n") ?? "";
+
+test("{§functionality-preparation-visibility} a stalled MCP catalog is visible over AG-UI before inference and inspectable on another connection", { timeout: 15_000 }, async (t) => {
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const visible = Promise.withResolvers<void>();
+    t.after(() => release.resolve());
+    const handler = createMcpHandler(() => {
+        const server = new McpServer({ name: "slow-catalog", version: "1.0.0" });
+        server.registerTool("inspect", { description: "Inspect fixture state." }, async () => ({ content: [{ type: "text", text: "fixture" }] }));
+        return server;
+    }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
+    const served = await serveMcpHttp(t, handler, async (request) => {
+        if ((await request.clone().json()).method !== "tools/list") return null;
+        entered.resolve();
+        await release.promise;
+        return null;
+    });
+    const provider = new PacketCapturingMock({ responses: [makeMockResponse("```KILL\nOK\n```")], contextWindow: 1_000_000 });
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider });
+    daemon.registerModule(McpModule.init({ env: {
+        PLURNK_MCP_CONNECT_TIMEOUT: "10000", PLURNK_MCP_REQUEST_TIMEOUT: "10000",
+        PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        PLURNK_MCP_ENABLED: '["fixture"]', PLURNK_MCP_fixture: served.url,
+    } }));
+    const started = Promise.withResolvers<AguiModule>();
+    const registration = AguiModule.init({ host: "127.0.0.1", port: 0 });
+    daemon.registerModule({ start: async (seam) => {
+        const module = await registration.start(seam);
+        started.resolve(module);
+        return module;
+    } });
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    const { port } = (await started.promise).address();
+    const workspace = "preparation-visibility";
+    await daemon.createWorkspace({ name: workspace });
+    const inspect = () => post(port, runInput(workspace, crypto.randomUUID(), {
+        forwardedProps: { plurnk: { workspace, action: { kind: "workspace.mcp.list" } } },
+    }));
+    const cold = actionResult(await inspect());
+    assert.equal(cold.ok, true);
+    assert.equal((cold.result!.definitions as { state: string }[])[0].state, "dormant");
+    assert.equal(served.requests.length, 0, "inspection never connects to the MCP server");
+    const response = await fetch(`http://127.0.0.1:${port}/`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify(runInput(workspace, "prompt", { messages: [{ id: "m", role: "user", content: "Reply OK." }] })),
+    });
+    assert.equal(response.status, 200);
+    const events: Event[] = [];
+    const finished = (async () => {
+        let buffer = "";
+        const decoder = new TextDecoder();
+        for await (const chunk of response.body!) {
+            buffer += decoder.decode(chunk, { stream: true });
+            const frames = buffer.split("\n\n");
+            buffer = frames.pop()!;
+            for (const frame of frames) {
+                for (const event of parseEvents(`${frame}\n\n`)) {
+                    events.push(event);
+                    if (event.type === "STATE_DELTA" && JSON.stringify(event.delta).includes('"alias":"fixture"')) visible.resolve();
+                }
+            }
+        }
+    })();
+    await Promise.race([entered.promise, finished.then(() => assert.fail(`The run ended before catalog preparation: ${JSON.stringify(events)}`))]);
+    await Promise.race([visible.promise, finished.then(() => assert.fail(`The run ended without preparation visibility: ${JSON.stringify(events)}`))]);
+    assert.equal(provider.requests.length, 0, "the client can see startup before the provider is called");
+    const during = await inspect();
+    assert.equal(actionResult(during).ok, true, "inspection does not join the stalled activation");
+    const snapshot = during.find((event) => event.type === "STATE_SNAPSHOT") as { snapshot: { plurnk: { status: { preparation: { family: string; alias: string | null }[] } } } };
+    assert.ok(snapshot.snapshot.plurnk.status.preparation.some(({ family, alias }) => family === "mcp" && alias === "fixture"));
+    release.resolve();
+    await finished;
+    assert.equal(provider.requests.length, 1);
+    assert.ok(events.some((event) => event.type === "STATE_DELTA" && JSON.stringify(event.delta).includes('"path":"/plurnk/status/preparation","value":[]')));
+    assert.ok(events.some((event) => event.type === "RUN_FINISHED"));
+    assert.doesNotMatch(packet(provider.requests, 0), /workspace\/preparation/);
+});
 
 test("{§functionality-model-projection} an absent MCP source has the same Problem through client actions and model execution", { timeout: 30_000 }, async (t) => {
     const sandbox = await mkdtemp(join(tmpdir(), "mcp-discovery-refusal-"));

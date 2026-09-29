@@ -111,6 +111,7 @@ interface ModuleSetupSeam {
     registerModuleAction(registration: {
         readonly name: string;
         readonly scope: "worldless" | "workspace" | "worker";
+        readonly residency: "required" | "none";
         readonly inputSchema: JsonSchema;
         readonly outputSchema: JsonSchema;
         readonly handler: (
@@ -376,6 +377,7 @@ export default class Module {
         seam.registerModuleAction({
             name: "workspace.mcp.oauth.complete",
             scope: "workspace",
+            residency: "required",
             inputSchema: actionInput({ alias: NONEMPTY_STRING, callbackUrl: NONEMPTY_STRING }, ["alias", "callbackUrl"]),
             outputSchema: MUTATION_RESULT,
             handler: (params, context) => this.#completeOAuth(workspaceIdentityOf(context), params),
@@ -383,6 +385,7 @@ export default class Module {
         seam.registerModuleAction({
             name: "workspace.mcp.complete",
             scope: "workspace",
+            residency: "required",
             inputSchema: actionInput({
                 server: NONEMPTY_STRING,
                 ref: OPEN_OBJECT,
@@ -648,6 +651,7 @@ export default class Module {
         const refreshed = new Map<string, symbol | undefined>();
         try {
             for (const [name, value] of enabled) {
+                preparation.progress(name);
                 const key = this.#pendingKey(workspaceId, name);
                 const invalidation = this.#dirty.get(key);
                 const definition = value as McpServerDefinition;

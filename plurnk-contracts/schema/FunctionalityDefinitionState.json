@@ -13,8 +13,8 @@
             "enum": ["service", "workspace", "worker"]
         },
         "state": {
-            "description": "disabled: available, model-invisible. active: enabled and prepared. unavailable: enabled but preparation has an exact Problem. authorization-required: enabled and awaiting a protocol continuation.",
-            "enum": ["disabled", "active", "unavailable", "authorization-required"]
+            "description": "disabled: available, model-invisible. dormant: enabled without a resident publication. active: enabled and prepared. unavailable: enabled but preparation has an exact Problem. authorization-required: enabled and awaiting a protocol continuation.",
+            "enum": ["disabled", "dormant", "active", "unavailable", "authorization-required"]
         },
         "definition": { "type": "object" },
         "inherited": {

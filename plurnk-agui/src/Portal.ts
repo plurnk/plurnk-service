@@ -271,6 +271,7 @@ export default class Portal {
             && workerId === thread.workerId
             && (thread.loopId === null || typeof loopId !== "number" || loopId === thread.loopId);
         switch (method) {
+            case "workspace/preparation": return true;
             case "log/entry": return owns(payload.entry?.worker_id, payload.entry?.loop_id);
             case "loop/terminated":
             case "loop/packet":

@@ -187,6 +187,10 @@ const reasoningIdentity = {
 };
 
 export const AGUI_NOTIFICATIONS = Object.freeze({
+    "workspace/preparation": notification(object({
+        workspaceId: POSITIVE,
+        preparation: array(ref("FunctionalityPreparationActivity")),
+    }, ["workspaceId", "preparation"])),
     "log/entry": notification(object({
         entry: object({
             id: POSITIVE,

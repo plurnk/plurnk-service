@@ -192,7 +192,8 @@ export default class Daemon implements ApplicationPort {
             readWorkerModuleState: (workerId, owner) => this.#residency.readWorkerModuleState(workerId, owner),
             replaceWorkerModuleState: (workerId, owner, state) => this.#residency.replaceWorkerModuleState(workerId, owner, state),
             mutateWorkspace: (workspaceId, owner, caller, run) => this.#residency.exclusively(workspaceId, owner, caller === "operation" ? "wait" : "try", run),
-            retainWorkspace: (workspaceId) => this.#residency.retain(workspaceId) });
+            retainWorkspace: (workspaceId) => this.#residency.retain(workspaceId),
+            preparationChanged: (workspaceId, preparation) => this.#broadcast({ workspaceId }, "workspace/preparation", { workspaceId, preparation }) });
         // {§skills-functionality} — Core's own family: standard Agent Skills.
         this.#skills = new SkillsFunctionality({
             db,
@@ -1200,6 +1201,12 @@ export default class Daemon implements ApplicationPort {
         const checkedWorkerId = workerId === undefined ? null : ClientInput.assertId("workspace.prompts", "workerId", workerId);
         return Envelope.listPromptsForWorkspace(this.#db, checkedWorkspaceId, checkedLimit ?? Knob.integer("PLURNK_SERVICE_PROMPTS_PAGE", 1), checkedWorkerId);
     }
+    workspacePreparationStatus(workspaceId: number) {
+        return this.#functionality.preparationStatus(
+            ClientInput.assertId("workspace preparation", "workspaceId", workspaceId),
+        );
+    }
+
     workspaceDerivationStatus(workspaceId: number) {
         return this.#engine.workspaceDerivationStatus(
             ClientInput.assertId("workspace.derivation", "workspaceId", workspaceId),
@@ -1399,6 +1406,12 @@ export default class Daemon implements ApplicationPort {
             }
         }
         if (typeof handler !== "function") throw new Error(`module action '${name}' has no handler`);
+        if (registration.residency !== "required" && registration.residency !== "none") {
+            throw new Error(`module action '${name}' must declare its residency requirement`);
+        }
+        if (scope === "worldless" && registration.residency !== "none") {
+            throw new Error(`worldless module action '${name}' cannot require workspace residency`);
+        }
         if (this.#moduleActions.has(name)) throw new Error(`module action '${name}' is already registered`);
         this.#moduleActions.set(name, registration);
     }
@@ -1426,9 +1439,7 @@ export default class Daemon implements ApplicationPort {
             );
         }
         let releaseCapabilities: WorkspaceCapabilityRelease | undefined;
-        if (context.scope === "workspace") {
-            releaseCapabilities = await this.#residency.acquire(context.workspaceId);
-        } else if (context.scope === "worker") {
+        if (context.scope === "worker") {
             const workspaceId = ClientInput.assertId(`module action '${name}'`, "workspaceId", context.workspaceId);
             const workerId = ClientInput.assertId(`module action '${name}'`, "workerId", context.workerId);
             const worker = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
@@ -1441,10 +1452,14 @@ export default class Daemon implements ApplicationPort {
                     { workspaceId, workerId, retryable: false },
                 );
             }
-            releaseCapabilities = await this.#residency.acquire(workspaceId);
+        }
+        if (registration.residency === "required" && context.scope !== "worldless") {
+            releaseCapabilities = await this.#residency.acquire(context.workspaceId);
+        } else if (context.scope === "workspace") {
+            await this.#residency.identity(context.workspaceId);
         }
         try {
-            if (context.scope === "worker") {
+            if (registration.residency === "required" && context.scope === "worker") {
                 const release = await this.#workspaceGate.acquireTurn(context.workspaceId, context.workerId);
                 try {
                     await this.#residency.reconcile(context.workspaceId);

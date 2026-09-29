@@ -693,9 +693,9 @@ alias: string
  */
 origin: ("service" | "workspace" | "worker")
 /**
- * disabled: available, model-invisible. active: enabled and prepared. unavailable: enabled but preparation has an exact Problem. authorization-required: enabled and awaiting a protocol continuation.
+ * disabled: available, model-invisible. dormant: enabled without a resident publication. active: enabled and prepared. unavailable: enabled but preparation has an exact Problem. authorization-required: enabled and awaiting a protocol continuation.
  */
-state: ("disabled" | "active" | "unavailable" | "authorization-required")
+state: ("disabled" | "dormant" | "active" | "unavailable" | "authorization-required")
 definition?: {
 
 }
@@ -756,6 +756,13 @@ removed?: true
 /**
  * PLURNK operation failure using RFC 9457 Problem Details. Extension members are permitted so an owning boundary can add structured causal and recovery facts without inventing a second error envelope.
  */
+
+export interface FunctionalityPreparationActivity {
+family: string
+alias: (string | null)
+phase: ("preparing" | "publishing")
+since: string
+}
 
 export interface LoopPolicy {
 /**
