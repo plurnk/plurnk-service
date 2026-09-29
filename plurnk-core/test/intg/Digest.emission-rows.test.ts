@@ -44,7 +44,9 @@ test("{§emission-row} {§share-packet-names}: the digest writes each request as
     const roles = (messages: WireMessage[]) => messages.map(({ role }) => role);
     const draft = await wire("analyst-1-3");
     assert.deepEqual(roles(draft), ["system", "user", "assistant", "user", "assistant", "user"], "the survey and the draft, each after its row");
-    assert.equal(draft[4]!.content, "```EDIT (worker:///a.md)\n```\n\n```NOTE\n```", "the draft rides as the worker's own header-only emission");
+    assert.equal(draft[4]!.content, ["EDIT (worker:///a.md)", "NOTE"].map((header) =>
+        `\`\`\`${header}\n> [!NOTE]\n> Body content REDACTED from history.\n\`\`\``).join("\n\n"),
+        "the wire retains the worker's headers and explicit body redaction, not authored empty bodies");
     const original = await readFile(join(digestDir, "analyst-1-2.assistant.md"), "utf8");
     assert.match(original, /\nalpha\n/u, "forensics keep the exact EDIT body");
     assert.match(original, /Wrote the first draft\./u, "forensics keep the exact NOTE body");

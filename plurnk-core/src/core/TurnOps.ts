@@ -9,7 +9,12 @@ export default class TurnOps {
     // {§emission-row} — only the assistant-history projection omits bodies; dispatch and source
     // evidence keep the original statements. The parser owns every header and fence spelling.
     static renderEmission(statements: readonly PlurnkStatement[]): string {
-        return statements.map((statement) => PlurnkParser.frame(PlurnkParser.heading(statement), null)).join("\n\n");
+        return statements.map((statement) => {
+            const body = "body" in statement ? statement.body : null;
+            const omitted = body !== null && (typeof body === "string" ? body : body.raw).length > 0;
+            return PlurnkParser.frame(PlurnkParser.heading(statement),
+                omitted ? "> [!NOTE]\n> Body content REDACTED from history." : null);
+        }).join("\n\n");
     }
 
     static renderInternal(statements: readonly InternalTurnStatement[]): string {

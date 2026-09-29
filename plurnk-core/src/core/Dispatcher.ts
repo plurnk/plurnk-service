@@ -1124,7 +1124,7 @@ export default class Dispatcher {
     }
 
     // {§emission-row} — the announcement of an admitted emission: the harness's born-folded READ of its
-    // own turn's ops source, whose frozen body is the header-only projection. The packet carries
+    // own turn's ops source, whose frozen body is the body-redacted projection. The packet carries
     // it as the worker's own assistant message; the ops source stays complete ({§packet-wire-envelope}).
     async writeEmission({ content, workerName, loopSeq, turnSeq, workerId, loopId, turnId, sequence }: {
         content: string; workerName: string; loopSeq: number; turnSeq: number;

@@ -5,7 +5,7 @@ import TurnOps from "./TurnOps.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 
-test("{§emission-row} assistant history retains complete headers without bodies or nested operations", () => {
+test("{§emission-row} assistant history marks omitted bodies while retaining complete headers and no nested operations", () => {
     const headers = [
         "READ (worker:///notes.md) <1,-1> /needle/ <!-- inspect -->",
         "EDIT (worker:///notes.md) <@abcde> <!-- replace -->",
@@ -36,9 +36,30 @@ test("{§emission-row} assistant history retains complete headers without bodies
         .map(({ statement }) => statement);
     assert.equal(statements.length, headers.length, "nested literal fences do not add operations");
     const original = structuredClone(statements);
-    assert.equal(TurnOps.renderEmission(statements), headers.map((header) => `\`\`\`${header}\n\`\`\``).join("\n\n"));
+    assert.equal(TurnOps.renderEmission(statements), headers.map((header, index) => [
+        `\`\`\`${header}`,
+        ...(bodies[index] === null ? [] : ["> [!NOTE]", "> Body content REDACTED from history."]),
+        "```",
+    ].join("\n")).join("\n\n"));
     assert.deepEqual(statements, original, "projection never changes the statements that execute");
 });
+
+for (const [name, body, omitted] of [
+    ["absent", null, false],
+    ["empty", "", false],
+    ["whitespace-only", " \t\n", true],
+    ["nonempty", "The original body.", true],
+] as const) {
+    for (const header of ["EDIT (worker:///notes.md)", "SEND (worker://helper)"]) {
+        test(`{§emission-row} ${header}: ${name} bodies are marked only when content was omitted`, () => {
+            const source = PlurnkParser.frame(header, body);
+            const statements = TurnOps.parseInternal(source);
+            assert.equal(statements.length, 1);
+            assert.equal(TurnOps.renderEmission(statements), PlurnkParser.frame(header,
+                omitted ? "> [!NOTE]\n> Body content REDACTED from history." : null));
+        });
+    }
+}
 
 test("{§op-execution-order} internal programs may omit a disposition without inventing one", () => {
     const source = "```READ (worker:///notes.md)```";
