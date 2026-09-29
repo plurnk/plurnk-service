@@ -155,7 +155,7 @@ type SplitProviderResponse = {
     finalResponse: boolean;
     // {§outside-text}: every span outside an operation, in source order, weighed by the packet's ruler.
     outside: { text: string; tokens: number } | null;
-    // {§emission-row}: the admission parse's statements re-framed ({§statement-rendering}), reasoning
+    // {§emission-row}: the admission parse's headers re-framed ({§statement-rendering}), reasoning
     // NOTEs excluded; null when no statement was admitted from the provider's content.
     admittedEmission: string | null;
 };
@@ -824,7 +824,7 @@ export default class TurnRunner {
         const result = await this.executeAdmittedTurn({
             statements: admitted,
             source,
-            emission: source.length === 0 ? null : { content: source, workerName, loopSeq: loopSequence, turnSeq: initializationTurn.sequence },
+            emission: source.length === 0 ? null : { content: TurnOps.renderEmission(admittedInitializationStatements), workerName, loopSeq: loopSequence, turnSeq: initializationTurn.sequence },
             origin: "_plurnk",
             workspaceId,
             workerId,
@@ -1903,9 +1903,9 @@ export default class TurnRunner {
             && !hasUnparsedTail && parseErrors.length === 0
             && assistant.finishReason !== "length";
         const emptyTurn = preParsedOps === undefined && contentStatementCount === 0 && !hasUnparsedTail;
-        // {§emission-row}: the emission as the grammar admitted it, before reasoning NOTEs join the
+        // {§emission-row}: the admitted content headers, before reasoning NOTEs join the
         // program; a pre-parsed Mock response has no recorded source to announce.
-        const admittedEmission = preParsedOps === undefined && contentStatementCount > 0 ? PlurnkParser.stringify(ops) : null;
+        const admittedEmission = preParsedOps === undefined && contentStatementCount > 0 ? TurnOps.renderEmission(ops) : null;
         const reasoning = assistant.reasoning ?? null;
         const notes = reasoning === null ? [] : PlurnkParser.parseReasoningNotes(reasoning);
         ops.unshift(...notes);

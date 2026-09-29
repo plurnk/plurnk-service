@@ -9,13 +9,14 @@ import Engine from "../../src/core/Engine.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { RequestPacket, StoredPacketSection } from "../../src/core/StoredPacket.ts";
+import { contentWeight } from "../../src/core/content-weight.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
-const say = (content: string) => ({ assistant: { content, reasoning: null }, usage });
-const canonical = (text: string): string => PlurnkParser.stringify(PlurnkParser.parse(text).items
+const say = (content: string, reasoning: string | null = null) => ({ assistant: { content, reasoning }, usage });
+const canonical = (text: string): string => PlurnkParser.parse(text).items
     .filter((item): item is { kind: "statement"; statement: PlurnkStatement } => item.kind === "statement")
-    .map(({ statement }) => statement));
+    .map(({ statement }) => PlurnkParser.frame(PlurnkParser.heading(statement), null)).join("\n\n");
 const roles = (request: readonly ChatMessage[]): string[] => request.map(({ role }) => role);
 const assistants = (request: readonly ChatMessage[]): string[] => request.filter(({ role }) => role === "assistant").map(chatMessageText);
 // {§packet-wire-envelope}: the user messages, joined by one blank line, are the user slot byte for byte.
@@ -66,7 +67,7 @@ test("{§emission-row}: an emission row the render pass did not announce, or ann
 const run = async (name: string, prompt: string, responses: ReturnType<typeof say>[], maxTurns: number) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, name);
-    const workerId = await insertWorker(db, workspaceId);
+    const workerId = await insertWorker(db, workspaceId, null, "analyst");
     const loopId = await insertLoop(db, workerId, 1, prompt);
     const provider = new Mock({ contextWindow: 100000, responses });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns });
@@ -74,8 +75,42 @@ const run = async (name: string, prompt: string, responses: ReturnType<typeof sa
         coordinate: string; origin: string; op: string; scheme: string; hostname: string; pathname: string;
         attrs: string; rx: string; initial_folded: string; active: number; folded: string;
     }>({ worker_id: workerId });
-    return { db, result, provider, rows };
+    return { db, result, provider, rows, workerId };
 };
+
+test("{§emission-row} {§packet-token-accounting}: headers stay stable, NOTE curation removes its text, and source READ restores exact bodies", async (t) => {
+    const body = "CURATABLE-MEMORY: retain the actual observation.\n".repeat(100);
+    const first = PlurnkParser.frame("NOTE <!-- remember -->", body);
+    const reasoning = PlurnkParser.frame("NOTE", "REASONING-MEMORY: independent reasoning note.");
+    const header = "```NOTE <!-- remember -->\n```";
+    const { db, result, provider, rows, workerId } = await run("envelope-header-history", "Work, curate, then inspect your original program.", [
+        say(first, reasoning),
+        say(PlurnkParser.frame("KILL (log:///1/2/*/NOTE)", null)),
+        say(PlurnkParser.frame("READ (ops://analyst/1/2) <1,-1>", null)),
+        say(PlurnkParser.frame("KILL", "Complete.")),
+    ], 5);
+    t.after(() => db.close());
+    assert.equal(result.result.status, 200);
+    assert.equal(provider.received.length, 4);
+    const second = provider.received[1]!;
+    assert.equal(assistants(second).at(-1), header, "assistant history contains only the authored content header");
+    assert.match(userText(second), /CURATABLE-MEMORY/u, "the content NOTE remains ordinary working memory");
+    assert.match(userText(second), /REASONING-MEMORY/u, "reasoning NOTE memory remains independent of assistant history");
+    const third = provider.received[2]!;
+    assert.doesNotMatch(third.map(chatMessageText).join("\n"), /CURATABLE-MEMORY|REASONING-MEMORY/u, "curating notes leaves no automatic assistant duplicate");
+    assert.equal(assistants(third)[1], header, "a later request does not change the retained header");
+    const last = provider.received[3]!;
+    assert.match(userText(last), /CURATABLE-MEMORY/u, "an explicit READ retrieves the omitted source body");
+    assert.doesNotMatch(assistants(last).join("\n"), /CURATABLE-MEMORY|REASONING-MEMORY/u);
+    const reads = await db.test_log_entries_by_worker_op_full.all<{ pathname: string; rx: string }>({ worker_id: workerId, op: "READ" });
+    assert.ok(reads.some(({ pathname, rx }) => pathname === "/1/2" && (JSON.parse(rx) as { content?: string }).content === first), "the source READ returns the complete original program, not the header projection");
+    const emitted = rows.find(({ coordinate }) => coordinate === "1/2/2")!;
+    assert.equal((JSON.parse(emitted.rx) as { content: string }).content, header, "the projection is frozen on first announcement");
+    const record = userText(second).split("\n\n").find((text) => text.startsWith("### log:///1/2/2/emission"))!;
+    const charged = Number(/ · (\d+)/u.exec(record)![1]);
+    assert.equal(charged, contentWeight(record) + contentWeight(header), "the row charges its record and precisely the assistant bytes it delivers");
+    assert.ok(charged < contentWeight(first), "retained source bodies are not charged as assistant history");
+});
 
 test("{§emission-row} {§packet-wire-envelope}: the survey and every admitted emission ride in place, canonical, each behind its own row", async (t) => {
     const first = `Let me look around first.\n\n${PlurnkParser.frame("NOTE", "Bearings: nothing read yet.")}\n\nDone for now.`;

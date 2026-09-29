@@ -2,6 +2,43 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { UNKNOWN_POSITION, type EditStatement, type FindStatement, type DispositionStatement } from "@plurnk/plurnk-contracts";
 import TurnOps from "./TurnOps.ts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
+
+test("{§emission-row} assistant history retains complete headers without bodies or nested operations", () => {
+    const headers = [
+        "READ (worker:///notes.md) <1,-1> /needle/ <!-- inspect -->",
+        "EDIT (worker:///notes.md) <@abcde> <!-- replace -->",
+        "COPY (worker:///a.md) <2,4> (worker:///b.md) <0>",
+        "MOVE (worker:///b.md) <1,2> (worker:///c.md) <-1>",
+        "sh [{\"env\":{\"LANG\":\"C\"}}] <!-- verify -->",
+        "gitea (list_issues)",
+        "WORK (worker://helper)",
+        "SEND (worker://helper)",
+        "NOTE",
+        "KILL",
+    ];
+    const bodies = [
+        null,
+        "A literal example:\n```KILL (worker:///not-an-operation)\n```\nReplacement text.\n",
+        null,
+        null,
+        "printf '%s\\n' verification",
+        '{"repository":"example"}',
+        "Investigate the project.",
+        "Coordinate the investigation.",
+        "Remember the conclusion.",
+        "The complete final answer.",
+    ];
+    const source = headers.map((header, index) => PlurnkParser.frame(header, bodies[index]!)).join("\n\n");
+    const parsed = PlurnkParser.parse(source, { executors: ["sh", "gitea"] });
+    const statements = parsed.items.filter((item): item is { kind: "statement"; statement: PlurnkStatement } => item.kind === "statement")
+        .map(({ statement }) => statement);
+    assert.equal(statements.length, headers.length, "nested literal fences do not add operations");
+    const original = structuredClone(statements);
+    assert.equal(TurnOps.renderEmission(statements), headers.map((header) => `\`\`\`${header}\n\`\`\``).join("\n\n"));
+    assert.deepEqual(statements, original, "projection never changes the statements that execute");
+});
 
 test("{§op-execution-order} internal programs may omit a disposition without inventing one", () => {
     const source = "```READ (worker:///notes.md)```";

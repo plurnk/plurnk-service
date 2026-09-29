@@ -105,6 +105,9 @@ When representing markdown, `~~~` notation can disambiguate nested content.
 
 ## Context Curation
 
+> [!TIP]
+> Previous emissions show headers only. Full bodies remain at their `ops://` addresses.
+
 > [!WARNING]
 > logTokensTotal must not exceed logTokensMax. Successful log KILL receipts are not shown.
 

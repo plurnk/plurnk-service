@@ -6,6 +6,12 @@ export type InternalTurnStatement = PlurnkStatement;
 
 // {§statement-rendering} — core programs use the same serializer and admission parser.
 export default class TurnOps {
+    // {§emission-row} — only the assistant-history projection omits bodies; dispatch and source
+    // evidence keep the original statements. The parser owns every header and fence spelling.
+    static renderEmission(statements: readonly PlurnkStatement[]): string {
+        return statements.map((statement) => PlurnkParser.frame(PlurnkParser.heading(statement), null)).join("\n\n");
+    }
+
     static renderInternal(statements: readonly InternalTurnStatement[]): string {
         if (statements.length === 0 || statements.some((statement, index) => TurnDisposition.is(statement) && index !== statements.length - 1)) {
             throw new TypeError("An internal turnOps program must contain operations; WAIT, when present, must be last.");
