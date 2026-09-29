@@ -65,10 +65,10 @@ test("SEND authored first: later operations run in authored order and completion
         assert.equal(result.status, 102);
         assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["EDIT", 201], ["READ", 200], [null, 400]],
             "the reply, mutations, retrieval, and bounded diagnostic retain authored order");
-        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string }>({ turn_id: result.turnId });
-        const read = rows.find(({ op }) => op === "READ");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string; attrs: string }>({ turn_id: result.turnId });
+        const read = rows.find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
         assert.ok(read);
-        assert.match(JSON.parse(read.rx).content ?? JSON.stringify(JSON.parse(read.rx)), /Created before READ/u, "the READ observed the EDIT that preceded it");
+        assert.equal(JSON.parse(read.rx).content, "Created before READ.", "the actual READ observed the EDIT that preceded it");
     } finally { await db.close(); }
 });
 
