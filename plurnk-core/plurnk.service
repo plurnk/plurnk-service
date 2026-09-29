@@ -1,0 +1,29 @@
+# plurnk-service systemd user unit. Install and enable explicitly.
+# Install:  mkdir -p ~/.config/systemd/user
+#           cp "$(npm root -g)/@plurnk/plurnk-service/plurnk.service" ~/.config/systemd/user/
+#           systemctl --user daemon-reload && systemctl --user enable --now plurnk
+# Requires: npm install -g @plurnk/plurnk-service
+# If Node/npm are outside systemd's PATH (for example, nvm), replace ExecStart
+# with the absolute paths printed by `command -v node plurnk-service`:
+# ExecStart=/absolute/path/to/node /absolute/path/to/plurnk-service start
+# Configuration and provider credentials must be available to this service;
+# systemd does not source your interactive shell. Adjust EnvironmentFile for
+# a non-default XDG_CONFIG_HOME. Preserve the file's private permissions.
+# Logs land in the user journal: journalctl --user -u plurnk -f
+[Unit]
+Description=PLURNK agentic-development daemon
+After=network.target
+StartLimitIntervalSec=5min
+StartLimitBurst=5
+
+[Service]
+Type=simple
+EnvironmentFile=-%h/.config/plurnk/.env
+ExecStart=/usr/bin/env plurnk-service start
+Restart=on-failure
+RestartSec=5s
+RestartSteps=4
+RestartMaxDelaySec=30s
+
+[Install]
+WantedBy=default.target

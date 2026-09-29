@@ -33,6 +33,7 @@ test("core package projection retains runtime-loaded modules and rejects test he
         "dist/core/content_weight.js",
         "dist/launch/Launch.js",
         "INSTALL.md",
+        "plurnk.service",
         "docs/copy-move.md",
         "dist/index.js",
     ]), []);
@@ -44,6 +45,7 @@ test("core package projection retains runtime-loaded modules and rejects test he
         "plurnk-core: required runtime artifact is absent: dist/core/content_weight.js",
         "plurnk-core: required runtime artifact is absent: dist/launch/Launch.js",
         "plurnk-core: required runtime artifact is absent: INSTALL.md",
+        "plurnk-core: required runtime artifact is absent: plurnk.service",
         "plurnk-core: required runtime artifact is absent: docs/copy-move.md",
         "plurnk-core: test-only artifact leaked into package: dist/core/world-state.js",
         "plurnk-core: test-only artifact leaked into package: dist/core/world-state.sql",

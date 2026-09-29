@@ -15,6 +15,8 @@ const projections = new Map([
             // {§daemon-launch} — the candidate driver loads the pinned runtime's launcher by exact path.
             "dist/launch/Launch.js",
             "INSTALL.md",
+            // {§systemd-user-unit} — available to npm consumers, not only source checkouts.
+            "plurnk.service",
             "docs/copy-move.md",
         ],
         forbiddenPrefixes: [

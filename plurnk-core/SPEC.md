@@ -3754,6 +3754,11 @@ First-run seeding publishes the complete private configuration directory atomica
 Concurrent initializers adopt the winning seed; a failed initializer removes only
 its own staging directory. An existing operator directory is never reseeded.
 
+§systemd-user-unit The service package ships `plurnk.service` as an example
+systemd user unit. Installation and enablement are explicit operator actions;
+package installation performs neither. The template documents executable-path
+and environment adjustments instead of introducing a service-management command.
+
 Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-instantiation}). `PLURNK_MODEL_<alias>=<provider>/<model-id>` optionally declares a friendly route and tuning scope; `PLURNK_MODEL=<selector>` selects either that alias or an exact provider/model route. `PLURNK_MODEL_CHILD=<selector>` uses the same vocabulary for the default child provider; unset means inherit the spawning loop's provider. Operator selections and alias declarations live in `.env`, not `.env.defaults`.
 
 Each knob's value lives on its panel and nowhere else (`plurnk-service config defaults` prints them all); this table says what the service's knobs mean.

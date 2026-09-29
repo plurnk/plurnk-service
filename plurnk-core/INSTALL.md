@@ -15,8 +15,12 @@ plurnk-service start
 ```
 
 First start seeds the user's configuration once. No model ships active;
-[choose a model route](https://github.com/plurnk/plurnk-service/blob/main/plurnk-providers/README.md#configure-a-model) before starting a model loop. The version-1 database
-baseline is disposable during development.
+[choose a model route](https://github.com/plurnk/plurnk-service/blob/main/plurnk-providers/README.md#configure-a-model) before starting a model loop.
+
+For an explicitly shared Linux daemon, the npm package includes an example
+[systemd user unit](./plurnk.service). Its comments cover manual installation,
+executable paths, environment, and logs. Installing the package never installs
+or enables the unit.
 
 | Resource | Default location |
 | --- | --- |

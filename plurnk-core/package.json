@@ -49,6 +49,7 @@
         "migrations/**/*.sql",
         "README.md",
         "INSTALL.md",
+        "plurnk.service",
         "SPEC.md"
     ],
     "publishConfig": {
