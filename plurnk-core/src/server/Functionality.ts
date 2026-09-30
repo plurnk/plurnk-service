@@ -8,6 +8,7 @@ import { Validator } from "@plurnk/plurnk-contracts";
 import discoverySchema from "@plurnk/plurnk-contracts/schema/FunctionalityDiscoverQuery.json" with { type: "json" };
 import { isDeepStrictEqual } from "node:util";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
+import ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
 import { DocFile } from "@plurnk/plurnk-execs";
 import type {
     FunctionalityDefinitionState,
@@ -294,10 +295,7 @@ export default class Functionality {
     configurationNotices(workspaceId: number): readonly Notice[] {
         return [...this.#adapters.keys()].flatMap((family) => {
             const cause = this.#families.get(this.#key(workspaceId, family))?.configurationError;
-            return cause == null ? [] : [{
-                source: "engine:configuration", kind: "configuration_unavailable", level: "warn" as const,
-                family, key: cause.key, message: cause.message,
-            }];
+            return cause == null ? [] : [ConfigurationDiagnostics.notice(family, cause)];
         });
     }
 

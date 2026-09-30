@@ -166,6 +166,31 @@ test("{§a2a-hosted-proposals} an inbound loop settles its own proposals, and re
     assert.throws(() => hostedAgentConfiguration(missing), /PLURNK_A2A_PROPOSALS is required when PLURNK_A2A_EXPOSE=1/);
 });
 
+test("{§configuration-repair-path} hosted A2A reports typed input failures independently of outbound configuration", () => {
+    const valid = {
+        ...floor,
+        PLURNK_A2A_EXPOSE: "1", PLURNK_A2A_ENDPOINT_PATH: "/a2a",
+        PLURNK_A2A_WORKSPACE: "research", PLURNK_A2A_NAME: "Research agent",
+        PLURNK_A2A_DESCRIPTION: "Researches questions", PLURNK_A2A_VERSION: "1.0.0",
+    };
+    for (const [key, value] of [
+        ["PLURNK_A2A_EXPOSE", "yes"],
+        ["PLURNK_A2A_ENDPOINT_PATH", "relative"],
+        ["PLURNK_A2A_PROJECT_ROOT", "relative"],
+        ["PLURNK_A2A_ENDPOINT_URL", "file:///agent"],
+        ["PLURNK_A2A_NAME", ""],
+        ["PLURNK_A2A_PROPOSALS", "review"],
+        ["PLURNK_A2A_SKILLS", "[1]"],
+        ["PLURNK_A2A_SKILLS", '[{"id":"x","name":"x","description":"x","tags":[1]}]'],
+    ]) {
+        assert.throws(() => hostedAgentConfiguration({ ...valid, [key!]: value }), {
+            name: "ConfigurationError", key, message: new RegExp(key!),
+        });
+    }
+    assert.ok(hostedAgentConfiguration({ ...valid, PLURNK_A2A_invalid_ENABLED: "bad" }) !== null,
+        "an invalid outbound resource does not poison the separate inbound exposure");
+});
+
 test("hosted exposure is disabled without identity requirements and rejects unsupported declarations", () => {
     assert.equal(hostedAgentConfiguration({ ...floor, PLURNK_A2A_EXPOSE: "0" }), null);
     assert.equal(hostedAgentConfiguration(floor), null);

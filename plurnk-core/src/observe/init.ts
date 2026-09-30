@@ -7,6 +7,7 @@ import type {
     MeterProvider as ApiMeterProvider,
     TracerProvider as ApiTracerProvider,
 } from "@opentelemetry/api";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 
 export interface ObservabilityHandle {
     shutdown(): Promise<void>;
@@ -36,7 +37,7 @@ const exporterNames = (value: string | undefined): string[] => [
 
 const selectExporters = (env: Env, signal: SignalName): ExporterName[] => exporterNames(env[signal]).map((name) => {
     if (name === "otlp" || name === "console") return name;
-    throw new Error(
+    throw new ConfigurationError(signal,
         `observe: unsupported ${signal} value ${JSON.stringify(name)} (supported: otlp, console)`,
     );
 });
@@ -54,6 +55,10 @@ const select = (env: Env): Selection | null => {
             ? SERVICE_NAME
             : configuredServiceName,
     };
+};
+
+export const validateObservabilityConfiguration = (env: Env = process.env): void => {
+    select(env);
 };
 
 let active: ObservabilityHandle | null = null;

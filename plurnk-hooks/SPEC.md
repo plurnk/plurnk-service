@@ -40,7 +40,8 @@ this adapter is not a process-tree supervisor.
 
 ## §hooks-failure-isolation Failure isolation
 
-Configuration errors fail module construction. Event dispatch never awaits
+Typed configuration errors refuse module construction; the host contains them
+according to {§configuration-repair-path}. Event dispatch never awaits
 command completion. Serialization, spawn, stdin, nonzero-exit, signal, and timeout failures are
 reported to daemon diagnostics and cannot alter loop state or event dispatch.
 Command output and exit status cannot veto or rewrite an operation. Child
@@ -52,7 +53,7 @@ diagnostic reporter preserves both errors in the fallback diagnostic.
 | Variable | Contract |
 |---|---|
 | `PLURNK_HOOKS_COMMAND` | One executable; absent disables hooks |
-| `PLURNK_HOOKS_ARGS` | Optional JSON string array; invalid JSON or non-string members fail startup |
+| `PLURNK_HOOKS_ARGS` | Optional JSON string array; invalid JSON or non-string members refuse hook configuration |
 | `PLURNK_HOOKS_EVENTS` | Required with a command; explicit comma-separated names from {§hooks-selection} |
 | `PLURNK_HOOKS_TIMEOUT_MS` | Positive integer delivery deadline including queue time |
 | `PLURNK_HOOKS_CONCURRENCY` | Positive integer simultaneous-command limit |

@@ -34,6 +34,10 @@ into this environment vocabulary.
 
 The package's offline validator composes definition, control, bound and hosted-exposure
 readers before service activation ({§operator-config-offline-validation}); it fetches no card.
+Inbound and outbound configuration are admitted independently. Invalid hosted
+input refuses only that exposure with a typed configuration error
+({§configuration-repair-path}); a malformed outbound declaration does not prevent
+hosting an otherwise valid Agent Card.
 
 ## §a2a-protocol-witness Protocol witness
 

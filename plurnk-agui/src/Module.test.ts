@@ -72,6 +72,7 @@ const mockSeam = () => {
     const effortSets: unknown[] = [];
     const handlers = new Set<(s: number | null, m: string, p: unknown) => void>();
     const seam: ApplicationPort = {
+        configurationNotices: () => [],
         // {§http-host} — the mock daemon carries no listener; a module started against it under
         // create() would mount here, and one bound privately never calls these.
         registerHttpRoute: () => {},

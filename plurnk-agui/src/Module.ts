@@ -444,6 +444,11 @@ export default class Module {
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", "connection": "keep-alive" });
         const emit = (e: AguiEvent): void => { res.write(`data: ${JSON.stringify(e)}\n\n`); };
         emit({ type: EventType.RUN_STARTED, threadId: input.threadId, runId: input.runId });
+        if (action.kind === "discover") {
+            for (const notice of this.#seam.configurationNotices()) {
+                emit({ type: EventType.CUSTOM, name: "plurnk.notice", value: notice });
+            }
+        }
         const outcome = await this.#action(action, input, null)
             .catch((err: unknown): ActionOutcome => {
                 console.error(`AG-UI action '${action.kind}' failed:`, err);

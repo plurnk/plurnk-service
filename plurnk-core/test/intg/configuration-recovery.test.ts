@@ -8,6 +8,38 @@ import ServiceModules from "../../src/server/ServiceModules.ts";
 import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
 import { makeMockResponse, userText } from "./_mock.ts";
 import { waitFor } from "./_rpc.ts";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
+import ConfigurationDiagnostics from "../../src/server/ConfigurationDiagnostics.ts";
+
+test("{§configuration-repair-path} startup diagnostics reach the model and client once while ordinary operations still execute", { timeout: 30_000 }, async (t) => {
+    const db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, `startup-repair-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId, null, "repair", "model");
+    const configuration = new ConfigurationDiagnostics();
+    const key = "PLURNK_HOOKS_ARGS";
+    await configuration.capture("hooks", () => { throw new ConfigurationError(key, `${key} must be a JSON array of strings.`); });
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [
+        makeMockResponse("````env (list)\n````"),
+        makeMockResponse("````KILL\nThe hook configuration needs repair; ordinary operations remain available.\n````"),
+    ] });
+    const daemon = new Daemon({ db, provider, configuration });
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    ServiceModules.registerWorkspaceCapabilities(daemon);
+    await daemon.start();
+    const ended: Array<{ loopId: number; result: OperationResult }> = [];
+    const notices: Notice[] = [];
+    t.after(daemon.subscribeToEvents((_id, method, params) => {
+        if (method === "loop/terminated") ended.push(params as typeof ended[number]);
+        if (method === "notice/event") notices.push((params as { notice: Notice }).notice);
+    }));
+    const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the environment and report the configuration problem.", policy: { proposals: "accept" } });
+    await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === started.loopId), { timeoutMs: 20_000 });
+    assert.equal(ended.find(({ loopId }) => loopId === started.loopId)?.result.status, 200);
+    assert.equal(provider.received.length, 2);
+    assert.ok(userText(provider.received[0]).includes(key), "the model receives the exact startup diagnostic before choosing operations");
+    assert.match(userText(provider.received[1]), /"family":\s*"env"/u, "ordinary inspection executes through the normal operation path");
+    assert.equal(notices.filter((notice) => notice.key === key).length, 1, "unchanged diagnostics do not recur every turn");
+});
 
 for (const [family, key, value] of [
     ["mcp", "PLURNK_MCP_GH_BEARER", "fixture-secret-must-not-appear"],

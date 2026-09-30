@@ -27,11 +27,12 @@ import {
 } from "@plurnk/plurnk-a2a";
 import { Module as HooksModule, hookConfig } from "@plurnk/plurnk-hooks";
 import ServiceModules from "./server/ServiceModules.ts";
+import ConfigurationDiagnostics from "./server/ConfigurationDiagnostics.ts";
 import { configurationDirectories } from "./server/AgentRoots.ts";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 import ServiceTeardown from "./core/ServiceTeardown.ts";
 import Paths from "./Paths.ts";
-import { startObservability } from "./observe/init.ts";
+import { startObservability, validateObservabilityConfiguration } from "./observe/init.ts";
 import Digest from "./digest/Digest.ts";
 import Share from "./share/Share.ts";
 
@@ -127,6 +128,7 @@ export default class Service {
         Daemon.validateWorkspaceConfiguration();
         await ServiceModules.validateConfiguration(configurationDirectories(Service.#hostPaths, process.cwd()));
         hookConfig();
+        validateObservabilityConfiguration();
     }
 
     static async #ensureOperatorConfig(): Promise<void> {
@@ -255,13 +257,14 @@ export default class Service {
             db = await Service.#openDb(dbPath, true);
             // {§observability-boundary} — config is normalized before any SDK
             // implementation loads; teardown already owns the admitted DB.
-            observability = await startObservability();
-            const hooksModule = HooksModule.init();
+            const configuration = new ConfigurationDiagnostics();
+            observability = await configuration.capture("observability", () => startObservability());
+            const hooksModule = await configuration.capture("hooks", () => HooksModule.init());
+            const a2a = await configuration.capture("a2a-hosted", () => hostedAgentConfiguration());
             const provider = route === null ? null : await ProviderInstantiate.loadActiveProvider();
-            daemon = new Daemon({ db, dbPath, provider, nodeModulesPath: Service.#pluginsNodeModules(), hostPaths: Service.#hostPaths, http: listener });
+            daemon = new Daemon({ db, dbPath, provider, nodeModulesPath: Service.#pluginsNodeModules(), hostPaths: Service.#hostPaths, http: listener, configuration });
             ServiceModules.registerWorkspaceCapabilities(daemon);
-            daemon.registerModule(hooksModule);
-            const a2a = hostedAgentConfiguration();
+            if (hooksModule !== null) daemon.registerModule(hooksModule);
             if (a2a !== null) daemon.registerModule(A2aModule.init(a2a));
             // {§rpc}: AG-UI mounts the root of the daemon's listener at activation; the
             // socket never closes or rebinds between admission and readiness.

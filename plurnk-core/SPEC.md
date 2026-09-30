@@ -133,7 +133,7 @@ package map. The default installed composition is specified in {§bundled-set}.
 
 OpenTelemetry may observe PLURNK; it never becomes product state, failure transport, scheduler input, model teaching, or client protocol. Domain and client activity remain on AG-UI. Reusable packages depend on the OTel API only; the daemon constructs only the explicitly configured trace and metric providers. An unconfigured or standards-valid disabled process loads no SDK or exporter implementation and keeps the API's no-op behavior with bounded overhead. OTel Logs have no provider or initialization path.
 
-Configuration uses the standard `OTEL_*` environment: `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` select `otlp` or `console` per signal (a missing or `none` value keeps that signal off; no SDK default selects an exporter), `OTEL_SERVICE_NAME` names the service (default `plurnk-service`), case-insensitive `true` in `OTEL_SDK_DISABLED` turns the boundary off, and OTLP exporters honor `OTEL_EXPORTER_OTLP_*`. An unknown exporter name fails daemon boot; a typo never silently disables observation. OTel Logs and direct draft semantic-convention use are excluded. HTTP spans carry only an AG-UI-owned bounded route class, never an input pathname or query. Spans otherwise carry high-cardinality identifiers; metric labels stay low-cardinality. Prompts, reasoning, file bodies, arbitrary URLs, secrets, and plugin payloads are never recorded as attributes or metric values by default. Exporter failure cannot change product results or client lifecycle. Daemon, telemetry, and database teardown are independent reverse-ownership phases; every phase runs and aggregate failure preserves every cause.
+Configuration uses the standard `OTEL_*` environment: `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` select `otlp` or `console` per signal (a missing or `none` value keeps that signal off; no SDK default selects an exporter), `OTEL_SERVICE_NAME` names the service (default `plurnk-service`), case-insensitive `true` in `OTEL_SDK_DISABLED` turns the boundary off, and OTLP exporters honor `OTEL_EXPORTER_OTLP_*`. An unknown exporter name makes observability unavailable with a configuration diagnostic ({§configuration-repair-path}); offline checking rejects the same input before loading an SDK. OTel Logs and direct draft semantic-convention use are excluded. HTTP spans carry only an AG-UI-owned bounded route class, never an input pathname or query. Spans otherwise carry high-cardinality identifiers; metric labels stay low-cardinality. Prompts, reasoning, file bodies, arbitrary URLs, secrets, and plugin payloads are never recorded as attributes or metric values by default. Exporter failure cannot change product results or client lifecycle. Daemon, telemetry, and database teardown are independent reverse-ownership phases; every phase runs and aggregate failure preserves every cause.
 
 §observability-genai-conventions **GenAI convention projection.** Provider
 request spans follow the [GenAI registry at `c88d504`](https://github.com/open-telemetry/semantic-conventions-genai/tree/c88d504ab3d9879f8e50d3cc87e69775e11db234),
@@ -4186,11 +4186,14 @@ and environment-file loading history are not tracked. Source metadata is derived
 on inspection, not persisted in the local overlay or used as runtime identity.
 
 §configuration-repair-path **Invalid optional configuration cannot remove the
-agent's repair environment.** The shared coordinator contains typed operator
-configuration errors, not arbitrary exceptions:
+agent's repair environment.** Capability owners reject typed operator input
+errors. The launcher and shared coordinator contain them at their respective
+composition boundaries, not arbitrary exceptions:
 
 | Boundary | Outcome |
 |---|---|
+| Optional startup integration (hooks, hosted A2A, observability) cannot be configured | Withhold that integration and retain its exact configuration diagnostic. Activate the client interface and unrelated capabilities; never invent a replacement setting. |
+| Offline `config check` | Validate the same inputs without activating integrations; an invalid setting remains a nonzero failure. |
 | Family configuration cannot be resolved | Keep its manager available, identify the configuration failure in its generated documentation, and preserve durable definitions. Do not publish the family's operational capabilities or pretend its catalog is empty. Other families and ordinary model work remain usable. |
 | Inspection or mutation of an unresolved family | Return the exact configuration Problem, naming the key and required correction, through both client and model paths. No silent source fallback or change to stored settings. |
 | Invalid live mutation | Reject atomically and preserve the preceding publication. |
@@ -4198,8 +4201,9 @@ configuration errors, not arbitrary exceptions:
 | Configuration is corrected | Normal resolution/publication restores the capability; no separate recovery mode or registry. Environment-file edits follow their ordinary process lifetime, not an implicit reload. |
 | Internal invariant, state, or implementation failure | Preserve the exception; never reclassify it as an operator configuration error. |
 
-The first turn of a drain, and a changed diagnostic thereafter, reports unresolved
-configuration through the existing Notice channel to both client and model. An
+Client discovery and passive synchronization report startup diagnostics through the
+existing Notice channel, even without a usable model. The first turn of a drain, and a changed diagnostic
+thereafter, reports unresolved configuration to both client and model. An
 unchanged diagnostic is not repeated every turn. Operation failures remain Problems.
 
 §functionality-inspection **Inspection is not demand.** `list` and `discover` do not

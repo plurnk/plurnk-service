@@ -1,4 +1,4 @@
-import { Knob } from "@plurnk/plurnk-meta";
+import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 
 export interface HookConfig {
     readonly command: string;
@@ -15,23 +15,23 @@ const hookArgs = (raw: string | undefined): string[] => {
     try {
         parsed = JSON.parse(raw);
     } catch (cause) {
-        throw new Error("PLURNK_HOOKS_ARGS must be a JSON array of strings.", { cause });
+        throw new ConfigurationError("PLURNK_HOOKS_ARGS", "PLURNK_HOOKS_ARGS must be a JSON array of strings.", { cause });
     }
     if (!Array.isArray(parsed) || !parsed.every((value) => typeof value === "string")) {
-        throw new Error("PLURNK_HOOKS_ARGS must be a JSON array of strings.");
+        throw new ConfigurationError("PLURNK_HOOKS_ARGS", "PLURNK_HOOKS_ARGS must be a JSON array of strings.");
     }
     return parsed;
 };
 
 const hookEvents = (raw: string | undefined): ReadonlySet<string> => {
     if (raw === undefined || raw.trim().length === 0) {
-        throw new Error("PLURNK_HOOKS_EVENTS must select at least one event.");
+        throw new ConfigurationError("PLURNK_HOOKS_EVENTS", "PLURNK_HOOKS_EVENTS must select at least one event.");
     }
     const selected = new Set<string>();
     for (const event of raw.split(",").map((value) => value.trim())) {
-        if (!/^[^\s,/*]+(?:\/[^\s,/*]+)+$/u.test(event)) throw new Error(`PLURNK_HOOKS_EVENTS requires exact event names; got '${event}'.`);
+        if (!/^[^\s,/*]+(?:\/[^\s,/*]+)+$/u.test(event)) throw new ConfigurationError("PLURNK_HOOKS_EVENTS", `PLURNK_HOOKS_EVENTS requires exact event names; got '${event}'.`);
         if (selected.has(event)) {
-            throw new Error(`PLURNK_HOOKS_EVENTS selects '${event}' more than once.`);
+            throw new ConfigurationError("PLURNK_HOOKS_EVENTS", `PLURNK_HOOKS_EVENTS selects '${event}' more than once.`);
         }
         selected.add(event);
     }
@@ -49,7 +49,7 @@ export const hookConfig = (): HookConfig | null => {
             (environment.PLURNK_HOOKS_ARGS?.length ?? 0) > 0
             || (environment.PLURNK_HOOKS_EVENTS?.length ?? 0) > 0
         ) {
-            throw new Error("PLURNK_HOOKS configuration has companions but no PLURNK_HOOKS_COMMAND.");
+            throw new ConfigurationError("PLURNK_HOOKS_COMMAND", "PLURNK_HOOKS configuration has companions but no PLURNK_HOOKS_COMMAND.");
         }
         return null;
     }

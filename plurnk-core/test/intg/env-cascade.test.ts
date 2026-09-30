@@ -11,7 +11,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Launch from "../../src/launch/Launch.ts";
 import { stdioEntry } from "./_mcp-config.ts";
-import type { FunctionalityListResult, FunctionalityMutationResult } from "@plurnk/plurnk-contracts";
+import type { FunctionalityListResult, FunctionalityMutationResult, Notice } from "@plurnk/plurnk-contracts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BIN_PATH = resolve(here, "../../src/service.ts");
@@ -361,6 +361,85 @@ for (const built of [false, true]) {
         assert.equal(daemon.child.exitCode, null, "configuration diagnostics did not terminate the process");
     });
 }
+
+for (const built of [false, true]) {
+    test(`{§configuration-repair-path} ${built ? "built executable" : "source launcher"} exposes optional startup failures without losing client discovery`, async (t) => {
+        const fx = await fixture();
+        t.after(() => rm(fx.root, { recursive: true, force: true }));
+        const invalid = {
+            PLURNK_HOOKS_COMMAND: process.execPath,
+            PLURNK_HOOKS_ARGS: "[1]",
+            PLURNK_HOOKS_EVENTS: "daemon/started",
+            PLURNK_A2A_EXPOSE: "1",
+            PLURNK_A2A_ENDPOINT_PATH: "relative",
+            OTEL_TRACES_EXPORTER: "unknown-exporter",
+        };
+        const env: NodeJS.ProcessEnv = {
+            ...process.env, ...invalid,
+            HOME: fx.home, XDG_CONFIG_HOME: fx.configHome, XDG_DATA_HOME: fx.dataHome,
+        };
+        delete env.PLURNK_MODEL;
+        delete env.PLURNK_SERVICE_DB_PATH;
+        const daemon = await Launch.start({
+            command: [process.execPath, ...(built ? [BUILT_BIN_PATH] : [...CONDITION_ARGS, BIN_PATH]), "start"],
+            cwd: fx.cwd, env, host: "127.0.0.1", port: 0, readyTimeoutMs: 15_000, stopGraceMs: 5_000,
+        });
+        t.after(() => daemon.stop());
+        const response = await fetch(daemon.url, {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+                threadId: "startup-repair", runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
+                forwardedProps: { plurnk: { action: { kind: "discover" } } },
+            }),
+        });
+        assert.equal(response.status, 200);
+        const events = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
+            .map((frame) => JSON.parse(frame.slice(6)) as { name?: string; value?: unknown });
+        const notices = events.filter(({ name }) => name === "plurnk.notice").map(({ value }) => value as Notice);
+        for (const [family, key] of [
+            ["hooks", "PLURNK_HOOKS_ARGS"],
+            ["a2a-hosted", "PLURNK_A2A_ENDPOINT_PATH"],
+            ["observability", "OTEL_TRACES_EXPORTER"],
+        ]) {
+            const notice = notices.find((item) => item.key === key);
+            assert.equal(notice?.kind, "configuration_unavailable", JSON.stringify(notices));
+            assert.equal(notice?.family, family);
+            assert.equal(notice?.level, "warn");
+            assert.ok(notice?.message?.includes(key!));
+        }
+        const result = events.find(({ name }) => name === "plurnk.action.result")?.value as { ok: boolean; result: { actions: object } };
+        assert.equal(result.ok, true);
+        assert.ok("providers.list" in result.result.actions, "model selection remains discoverable without a working default model");
+        const sync = await fetch(daemon.url, {
+            method: "POST", headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+                threadId: "repair", runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
+                forwardedProps: { plurnk: { workspace: "startup-repair", projectRoot: fx.cwd, mode: "sync" } },
+            }),
+        });
+        assert.equal(sync.status, 200);
+        const synchronized = await sync.text();
+        for (const notice of notices) assert.ok(synchronized.includes(String(notice.key)), `a client attaching without inference also sees the diagnostic: ${synchronized}`);
+        assert.match(synchronized, /RUN_FINISHED/u, "passive attachment completes normally");
+        assert.equal(daemon.child.exitCode, null);
+    });
+}
+
+test("{§configuration-repair-path} config check rejects optional startup errors without activating integrations", async (t) => {
+    const fx = await fixture();
+    t.after(() => rm(fx.root, { recursive: true, force: true }));
+    const cases: Array<{ key: string; env: Record<string, string> }> = [
+        { key: "PLURNK_HOOKS_ARGS", env: { PLURNK_HOOKS_COMMAND: process.execPath, PLURNK_HOOKS_ARGS: "[1]", PLURNK_HOOKS_EVENTS: "daemon/started" } },
+        { key: "PLURNK_A2A_ENDPOINT_PATH", env: { PLURNK_A2A_EXPOSE: "1", PLURNK_A2A_ENDPOINT_PATH: "relative" } },
+        { key: "OTEL_TRACES_EXPORTER", env: { OTEL_TRACES_EXPORTER: "unknown-exporter" } },
+    ];
+    for (const { key, env } of cases) {
+        const result = await runService(fx, ["config", "check"], { env });
+        assert.equal(result.code, 1, JSON.stringify(result));
+        assert.ok(result.stderr.includes(key), result.stderr);
+    }
+    await assert.rejects(() => stat(fx.dataHome), { code: "ENOENT" }, "validation admits no durable state");
+});
 
 test("{§operator-config-discovery} config check accepts future controls without resolving secrets or starting configured commands", async (t) => {
     const fx = await fixture();

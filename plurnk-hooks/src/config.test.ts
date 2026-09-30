@@ -10,10 +10,10 @@ test("{§hooks-config} hook configuration is absent until an exact command and e
     assert.equal(read(), null);
     assert.throws(
         () => read({ PLURNK_HOOKS_COMMAND: "notify-send" }),
-        /PLURNK_HOOKS_EVENTS must select at least one event/,
+        { name: "ConfigurationError", key: "PLURNK_HOOKS_EVENTS", message: /PLURNK_HOOKS_EVENTS must select at least one event/ },
     );
     for (const companion of [{ PLURNK_HOOKS_EVENTS: "loop/terminated" }, { PLURNK_HOOKS_ARGS: "[]" }]) {
-        assert.throws(() => read(companion), /has companions but no PLURNK_HOOKS_COMMAND/);
+        assert.throws(() => read(companion), { name: "ConfigurationError", key: "PLURNK_HOOKS_COMMAND", message: /has companions but no PLURNK_HOOKS_COMMAND/ });
     }
 });
 
@@ -40,13 +40,13 @@ test("{§hooks-selection} selection uses exact core event names without a duplic
     const names = ["loop/packet", "loop/interaction", "workspace/preparation", "outside/event", "reasoning/event", "extension/event"];
     assert.deepEqual(read({ ...selected, PLURNK_HOOKS_EVENTS: names.join(",") })?.events, new Set(names));
     for (const events of ["notice/*", "notice", "loop/terminated,", "notice/ event", "notice/event,notice/event"]) {
-        assert.throws(() => read({ ...selected, PLURNK_HOOKS_EVENTS: events }), /requires exact event names|more than once/);
+        assert.throws(() => read({ ...selected, PLURNK_HOOKS_EVENTS: events }), { name: "ConfigurationError", key: "PLURNK_HOOKS_EVENTS", message: /requires exact event names|more than once/ });
     }
 });
 
 test("{§hooks-config} malformed argv and invalid delivery bounds fail configuration", () => {
     for (const args of ["--quiet", "{}", "[42]", "null"]) {
-        assert.throws(() => read({ ...selected, PLURNK_HOOKS_ARGS: args }), /PLURNK_HOOKS_ARGS must be a JSON array of strings/);
+        assert.throws(() => read({ ...selected, PLURNK_HOOKS_ARGS: args }), { name: "ConfigurationError", key: "PLURNK_HOOKS_ARGS", message: /PLURNK_HOOKS_ARGS must be a JSON array of strings/ });
     }
     for (const [name, invalid] of [
         ["PLURNK_HOOKS_TIMEOUT_MS", ["0", "-1", "", "1.5", "never"]],
@@ -54,7 +54,7 @@ test("{§hooks-config} malformed argv and invalid delivery bounds fail configura
         ["PLURNK_HOOKS_QUEUE_LIMIT", ["-1", "", "1.5"]],
     ] as const) {
         for (const value of invalid) {
-            assert.throws(() => read({ ...selected, [name]: value }), new RegExp(`${name} must be a safe integer`));
+            assert.throws(() => read({ ...selected, [name]: value }), { name: "ConfigurationError", key: name, message: new RegExp(`${name} must be a safe integer`) });
         }
         withEnvironment(selected, () => {
             delete process.env[name];

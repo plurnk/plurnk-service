@@ -73,10 +73,10 @@ test("observe: exporter names `none` do not load the SDK", async () => {
     assert.equal(handle, null);
 });
 
-test("observe: unknown exporter names fail at boot instead of silently disabling observation", async () => {
+test("{§configuration-repair-path} unknown exporter names reject observability with a typed configuration diagnostic", async () => {
     await assert.rejects(
         startObservability({ OTEL_TRACES_EXPORTER: "otlp,jager" }),
-        /unsupported OTEL_TRACES_EXPORTER value "jager"/,
+        { name: "ConfigurationError", key: "OTEL_TRACES_EXPORTER", message: /unsupported OTEL_TRACES_EXPORTER value "jager"/ },
     );
 });
 

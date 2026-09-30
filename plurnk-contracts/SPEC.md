@@ -1596,6 +1596,11 @@ An exterior adapter owns its own protocol validation, identity binding, and
 projection while reusing the same workspace, worker, loop, operation, proposal,
 interaction, and event owners through this port.
 
+`configurationNotices` exposes current launcher-owned configuration diagnostics
+without acquiring a workspace or provider. Adapters use the existing Notice
+projection; model turns combine these with workspace diagnostics according to
+{§configuration-repair-path}.
+
 `runLoop.source` is trusted causal provenance supplied by an adapter, distinct
 from user-authored prompt content. An adapter may expose no public means to set
 it; Core validates and records it through the same prompt admission path.

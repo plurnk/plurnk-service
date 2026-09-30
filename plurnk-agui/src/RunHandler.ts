@@ -201,6 +201,9 @@ export default class RunHandler {
         // daemon's durable conversation without admitting a prompt or starting inference.
         // A live Loop remains observed; an idle one settles after its snapshot.
         if (synchronize) {
+            for (const notice of this.#seam().configurationNotices()) {
+                emit([{ type: EventType.CUSTOM, name: "plurnk.notice", value: notice }]);
+            }
             const history = await this.#seam().readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER });
             emit(this.#portal().replay(boundRun, history));
             if (finished) return;

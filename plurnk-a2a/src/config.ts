@@ -64,10 +64,10 @@ const absoluteHttpUrl = (raw: string, field: string): string => {
     try {
         url = new URL(raw);
     } catch (cause) {
-        throw new Error(`${field} must be an absolute HTTP(S) URL.`, { cause });
+        throw new ConfigurationError(field, `${field} must be an absolute HTTP(S) URL.`, { cause });
     }
     if (url.protocol !== "http:" && url.protocol !== "https:") {
-        throw new Error(`${field} must be an absolute HTTP(S) URL.`);
+        throw new ConfigurationError(field, `${field} must be an absolute HTTP(S) URL.`);
     }
     return raw;
 };
@@ -78,21 +78,21 @@ const optionalUrl = (raw: string | undefined, field: string): string | undefined
 const required = (environ: NodeJS.ProcessEnv, field: string): string => {
     const value = environ[field];
     if (value === undefined || value.length === 0) {
-        throw new Error(`${field} is required when PLURNK_A2A_EXPOSE=1.`);
+        throw new ConfigurationError(field, `${field} is required when PLURNK_A2A_EXPOSE=1.`);
     }
     return value;
 };
 
 const hostedProposals = (raw: string): HostedProposals => {
     if (!(HOSTED_PROPOSALS as readonly string[]).includes(raw)) {
-        throw new Error(`PLURNK_A2A_PROPOSALS must be one of ${HOSTED_PROPOSALS.join(", ")}; got ${JSON.stringify(raw)}.`);
+        throw new ConfigurationError("PLURNK_A2A_PROPOSALS", `PLURNK_A2A_PROPOSALS must be one of ${HOSTED_PROPOSALS.join(", ")}; got ${JSON.stringify(raw)}.`);
     }
     return raw as HostedProposals;
 };
 
 const stringArray = (value: unknown, field: string): string[] => {
     if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
-        throw new Error(`${field} must be an array of strings.`);
+        throw new ConfigurationError("PLURNK_A2A_SKILLS", `${field} must be an array of strings.`);
     }
     return value;
 };
@@ -103,30 +103,30 @@ const skills = (raw: string | undefined): AgentSkill[] => {
     try {
         parsed = JSON.parse(raw ?? "[]");
     } catch (cause) {
-        throw new Error(`${field} must be a JSON array of Agent Skill objects.`, { cause });
+        throw new ConfigurationError(field, `${field} must be a JSON array of Agent Skill objects.`, { cause });
     }
-    if (!Array.isArray(parsed)) throw new Error(`${field} must be a JSON array of Agent Skill objects.`);
+    if (!Array.isArray(parsed)) throw new ConfigurationError(field, `${field} must be a JSON array of Agent Skill objects.`);
     const ids = new Set<string>();
     return parsed.map((candidate, index) => {
         const at = `${field}[${index}]`;
         if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) {
-            throw new Error(`${at} must be an Agent Skill object.`);
+            throw new ConfigurationError(field, `${at} must be an Agent Skill object.`);
         }
         const skill = candidate as Record<string, unknown>;
         const text = (name: string): string => {
             const value = skill[name];
             if (typeof value !== "string" || value.length === 0) {
-                throw new Error(`${at}.${name} must be a non-empty string.`);
+                throw new ConfigurationError(field, `${at}.${name} must be a non-empty string.`);
             }
             return value;
         };
         const id = text("id");
-        if (ids.has(id)) throw new Error(`${field} contains duplicate Agent Skill id '${id}'.`);
+        if (ids.has(id)) throw new ConfigurationError(field, `${field} contains duplicate Agent Skill id '${id}'.`);
         ids.add(id);
         if (skill.securityRequirements !== undefined) {
             const security = skill.securityRequirements;
             if (!Array.isArray(security) || security.length > 0) {
-                throw new Error(`${at}.securityRequirements must be absent or empty; security is the exposure's, card-wide.`);
+                throw new ConfigurationError(field, `${at}.securityRequirements must be absent or empty; security is the exposure's, card-wide.`);
             }
         }
         return {
@@ -167,20 +167,20 @@ export const hostedAgentConfiguration = (
 ): HostedAgentConfiguration | null => {
     const enabled = environ.PLURNK_A2A_EXPOSE;
     if (enabled === undefined || enabled.length === 0 || enabled === "0") return null;
-    if (enabled !== "1") throw new Error(`PLURNK_A2A_EXPOSE must be 0 or 1; got ${JSON.stringify(enabled)}.`);
-    parseEnvironment(environ);
+    if (enabled !== "1") throw new ConfigurationError("PLURNK_A2A_EXPOSE", `PLURNK_A2A_EXPOSE must be 0 or 1; got ${JSON.stringify(enabled)}.`);
+    shedRetiredListener(environ);
     const endpointPath = required(environ, "PLURNK_A2A_ENDPOINT_PATH");
     if (!endpointPath.startsWith("/") || endpointPath.includes("?") || endpointPath.includes("#")) {
-        throw new Error("PLURNK_A2A_ENDPOINT_PATH must be an absolute URL pathname without query or fragment.");
+        throw new ConfigurationError("PLURNK_A2A_ENDPOINT_PATH", "PLURNK_A2A_ENDPOINT_PATH must be an absolute URL pathname without query or fragment.");
     }
     const projectRoot = environ.PLURNK_A2A_PROJECT_ROOT;
     if (projectRoot !== undefined && projectRoot.length > 0 && !isAbsolute(projectRoot)) {
-        throw new Error("PLURNK_A2A_PROJECT_ROOT must be empty or an absolute filesystem path.");
+        throw new ConfigurationError("PLURNK_A2A_PROJECT_ROOT", "PLURNK_A2A_PROJECT_ROOT must be empty or an absolute filesystem path.");
     }
     const providerOrganization = environ.PLURNK_A2A_PROVIDER_ORGANIZATION;
     const providerUrl = environ.PLURNK_A2A_PROVIDER_URL;
     if ((providerOrganization?.length ?? 0) > 0 !== ((providerUrl?.length ?? 0) > 0)) {
-        throw new Error("PLURNK_A2A_PROVIDER_ORGANIZATION and PLURNK_A2A_PROVIDER_URL must be set together.");
+        throw new ConfigurationError("PLURNK_A2A_PROVIDER_ORGANIZATION", "PLURNK_A2A_PROVIDER_ORGANIZATION and PLURNK_A2A_PROVIDER_URL must be set together.");
     }
     const endpointUrl = optionalUrl(environ.PLURNK_A2A_ENDPOINT_URL, "PLURNK_A2A_ENDPOINT_URL");
     // {§operator-config-only-home} — an absent key is a broken floor, never a silent "no

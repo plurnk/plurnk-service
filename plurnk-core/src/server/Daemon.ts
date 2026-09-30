@@ -68,6 +68,7 @@ import { listModelCatalog } from "./model-catalog.ts";
 import { daemonFailure, modelRouteLabel } from "./daemon-results.ts";
 import WorkerModelResolver from "./WorkerModelResolver.ts";
 import ClientReads from "./ClientReads.ts";
+import ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
 
 const clientActionFailure = (error: unknown): SchemeResult => {
     if (error instanceof OperationFailureError) return error.result;
@@ -148,9 +149,11 @@ export default class Daemon implements ApplicationPort {
     readonly #workerModels: WorkerModelResolver;
     readonly #reads: ClientReads;
     readonly #storage: WorkspaceStorage;
+    readonly #configuration: ConfigurationDiagnostics;
 
     constructor({
-        db, schemes, mimetypes, provider, nodeModulesPath, hostPaths = new HostPaths(), http = null, dbPath }: {
+        db, schemes, mimetypes, provider, nodeModulesPath, hostPaths = new HostPaths(), http = null, dbPath,
+        configuration = new ConfigurationDiagnostics() }: {
         db: Db;
         schemes?: SchemeRegistry;
         mimetypes?: Mimetypes;
@@ -160,12 +163,14 @@ export default class Daemon implements ApplicationPort {
         // {§share} — the database file this daemon serves; a share snapshots it.
         dbPath?: string;
         http?: HttpListener | null;
+        configuration?: ConfigurationDiagnostics;
         // {§skills-functionality} — standard skill machinery, replaceable in tests.
     }) {
         this.#db = db;
         this.#hostPaths = hostPaths;
         this.#dbPath = dbPath;
         this.#http = http;
+        this.#configuration = configuration;
         this.#storage = new WorkspaceStorage(db, hostPaths);
         this.#lifecycle = new LoopLifecycle(db);
         this.#schemes = schemes ?? new SchemeRegistry();
@@ -312,7 +317,7 @@ export default class Daemon implements ApplicationPort {
             // the first subsequent model turn sees their exact result.
             workspaceTurnStarting: async ({ workspaceId }) => {
                 await this.#functionality.refreshChanged({ workspaceId });
-                return this.#functionality.configurationNotices(workspaceId);
+                return [...this.configurationNotices(), ...this.#functionality.configurationNotices(workspaceId)];
             },
             // worker:// KILL (terminate) — cancel the addressed worker subtree and
             // tear down its held streams before the operation completes.
@@ -1550,6 +1555,7 @@ export default class Daemon implements ApplicationPort {
     }
 
     get engine(): Engine { return this.#engine; }
+    configurationNotices(): readonly Notice[] { return this.#configuration.notices(); }
     get provider(): Provider | null { return this.#provider; }
     get schemes(): SchemeRegistry { return this.#schemes; }
     get mimetypes(): Mimetypes { return this.#mimetypes; }

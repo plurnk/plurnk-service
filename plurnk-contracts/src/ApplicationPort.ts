@@ -17,6 +17,7 @@ import type {
     OperationResult,
     PlurnkStatement,
     ProposalProjection,
+    Notice,
     Effort,
 } from "./types.ts";
 
@@ -156,6 +157,7 @@ export interface HttpHost {
 
 /** {§application-port} The transport-neutral application contract consumed by exterior adapters. */
 export interface ApplicationPort extends HttpHost {
+    configurationNotices(): readonly Notice[];
     listClientDisplayCapabilities(): Promise<ClientDisplayCapabilities>;
     listModuleActions(): ApplicationActionDescriptor[];
     invokeModuleAction(
