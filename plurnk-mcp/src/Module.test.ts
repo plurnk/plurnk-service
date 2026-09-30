@@ -107,6 +107,7 @@ const harness = (env: Record<string, string> = {}) => {
         return prepared;
     };
     const seam = {
+        workspaceConfigurationDirectories: async () => [],
         workspaceStateDirectory: async (workspaceId: number, owner: string) => {
             const directory = stateDirectory(workspaceId, owner);
             mkdirSync(directory, { recursive: true });

@@ -3761,12 +3761,12 @@ complete installed option catalog.
 owning configuration readers, with different failure boundaries.** An offline
 check rejects invalid configuration with a nonzero exit. Runtime contains
 optional-family errors according to {§configuration-repair-path}. Failure
-names the offending variable and retains its cause.
+names the offending variable or file/entry and retains its cause.
 
 | Owner | Offline validation |
 |---|---|
 | Core | Model selection, file-creation/effect/loop policy, members definitions and controls, skill-fetch settings and root selection |
-| MCP | Whole definitions, future-alias controls, catalog settings, timeouts, retry pacing and registry URL |
+| MCP | Whole definitions from the environment and selected files (cwd is the project for this check), future-alias controls, catalog settings, timeouts, retry pacing and registry URL |
 | A2A | Whole outbound definitions and controls, timeout/diagnostic bounds, configured inbound exposure |
 | Schedule | Whole definitions and controls, recurrence syntax, time zone and preview count |
 | Hooks | Command/argument/event configuration and delivery bounds |
@@ -4177,6 +4177,7 @@ preserves it through inheritance, enabledness changes, and every readiness state
 |---|---|
 | Assembled environment | `kind: environment`, `source`: exact definition key; never its value or an inferred dotenv filename. |
 | Discovered skill root | `kind: file`, `source`: the winning `SKILL.md` path. |
+| Standalone MCP file | `kind: file`, `source`: the winning `mcp.json` path; `reference`: its entry's JSON Pointer. |
 | Local workspace/worker definition or host-provided tree with no configuration input | No fabricated provenance; `origin` identifies ownership and the family definition describes the resource. |
 | Local override | Replaces inherited provenance with the local definition; removal restores the current inherited provenance. |
 
@@ -4269,12 +4270,15 @@ exactly when a plugin, its manifest, its MCP configuration, or its skills change
 not install or delete plugins. MCP's own lifecycle is independent ({§mcp-definitions}).
 
 §agent-roots **A daemon reads the roots `PLURNK_SERVICE_ROOTS` names.** A comma list drawn from
-`project`, `plurnk` and `global`, nearest first, selects which Agent Skills and Agent Plugins roots a
+`project`, `plurnk` and `global`, nearest first, selects which Agent Skills, Agent Plugins and standalone MCP roots a
 daemon reads; the default names all three. The real-model gate profile selects
 its discovery roots explicitly ({§operator-config-real-model-profile}), so
 operator roots do not shape a gate. Root selection does not restrict explicit
 source definitions. Skills mutations change workspace bindings, not these roots
-({§skills-functionality}); MCP definitions do not select an installation root.
+({§skills-functionality}); MCP mutations likewise remain workspace-owned. The module setup seam's
+`workspaceConfigurationDirectories` supplies selected `<project>/.agents`,
+`$XDG_CONFIG_HOME/plurnk`, and `~/.agents` directories in precedence order, omitting
+project when no project is bound. Modules own their file formats; core owns discovery roots.
 
 An adapter may expose a `scheme` facet beneath its family's runtime namespace
 ({§runtime-resource-binding}). A facet claims a path subtree and is the scheme's

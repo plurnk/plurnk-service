@@ -14,8 +14,24 @@ revision.
 
 ## Configure servers
 
-Declare complete definitions in the normal environment cascade
-({§mcp-configuration}); live additions persist in the workspace.
+Put shared servers in `~/.agents/mcp.json` ({§mcp-file-configuration}):
+
+```json
+{
+  "mcpServers": {
+    "files": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/project/path"] },
+    "forge": { "type": "streamable-http", "url": "https://forge.example/mcp", "headers": { "Authorization": "Bearer ${FORGE_TOKEN}" } }
+  }
+}
+```
+
+Project `.agents/mcp.json` overrides `$XDG_CONFIG_HOME/plurnk/mcp.json`, which
+overrides that shared global file, by complete server entry. The existing
+`PLURNK_SERVICE_ROOTS` selection applies. Files stay read-only; no plugin is required.
+`list` identifies the winning file and entry; file changes are read before the next turn.
+
+Environment-only configuration remains available and overrides file definitions
+({§mcp-configuration}); live additions persist in the workspace and override both.
 
 ```dotenv
 PLURNK_MCP_brave={"name":"brave","type":"stdio","command":"npx","args":["-y","@brave/brave-search-mcp-server@2.1.0"]}

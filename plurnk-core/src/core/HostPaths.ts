@@ -31,6 +31,7 @@ export default class HostPaths {
     readonly configFile: string;
     readonly policyFile: string;
     readonly databaseFile: string;
+    readonly globalAgentsDir: string;
     readonly plurnkSkillsDir: string;
     readonly globalSkillsDir: string;
     readonly plurnkPluginsDir: string;
@@ -94,19 +95,24 @@ export default class HostPaths {
         // root is shared across agents and rooted independently of application
         // config and of any state root: a private daemon still reads the user's skills.
         this.plurnkSkillsDir = join(this.configDir, "skills");
-        this.globalSkillsDir = join(this.home, ".agents", "skills");
+        this.globalAgentsDir = join(this.home, ".agents");
+        this.globalSkillsDir = join(this.globalAgentsDir, "skills");
         // {§agent-plugins-hosting} — plugins are configuration, found like skills; their data is data.
         this.plurnkPluginsDir = join(this.configDir, "plugins");
-        this.globalPluginsDir = join(this.home, ".agents", "plugins");
+        this.globalPluginsDir = join(this.globalAgentsDir, "plugins");
         this.legacyDir = join(this.home, ".plurnk");
     }
 
     projectSkillsDir(projectRoot: string): string {
-        return join(resolve(projectRoot), ".agents", "skills");
+        return join(this.projectAgentsDir(projectRoot), "skills");
     }
 
     projectPluginsDir(projectRoot: string): string {
-        return join(resolve(projectRoot), ".agents", "plugins");
+        return join(this.projectAgentsDir(projectRoot), "plugins");
+    }
+
+    projectAgentsDir(projectRoot: string): string {
+        return join(resolve(projectRoot), ".agents");
     }
 
     // {§agent-plugins-hosting} — one plugin's PLUGIN_DATA, kept across its updates.

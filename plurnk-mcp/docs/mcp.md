@@ -41,6 +41,14 @@ A tool marked `readOnlyHint` runs as a read; other tools retain the `host` effec
 
 ## Environment
 
+Shared definitions may come from `~/.agents/mcp.json`,
+`$XDG_CONFIG_HOME/plurnk/mcp.json`, or the project's `.agents/mcp.json`, each
+containing a `mcpServers` map. Nearer files override farther ones; environment
+definitions override files. `list` reports the winning file and entry.
+Live management changes the workspace, never those files. File edits are
+picked up before the next turn; enabledness and tool filters still use
+`PLURNK_MCP_<alias>_ENABLED` and `PLURNK_MCP_<alias>_TOOLS`.
+
 A local server inherits the operator's environment, which is where it reads
 its credentials, without plurnk's own settings or model provider keys.
 Workspace variables set with the `env` family (`env.md`) apply on top at

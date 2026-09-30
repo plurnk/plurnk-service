@@ -10,6 +10,7 @@ export {
 } from "./protocol.ts";
 export {
     serviceDefinitions,
+    configuredDefinitions,
     connectTimeoutMs,
     expandReferences,
     requestTimeoutMs,

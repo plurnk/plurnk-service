@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 import {
     serviceDefinitions,
+    configuredDefinitions,
     connectTimeoutMs,
     expandedServerNames,
     requestTimeoutMs,
@@ -27,6 +32,74 @@ test("{§mcp-configuration} whole definitions and independent controls use the s
     const replacement = { name: "code-search", type: "streamable-http", url: "https://example.com/mcp" };
     assert.deepEqual(serviceDefinitions({ ...env, PLURNK_MCP_code_search: JSON.stringify(replacement) }), [{ alias: "code-search", definition: replacement, enabled: false, provenance }]);
     assert.deepEqual(serviceDefinitions(floor), []);
+});
+
+test("{§mcp-file-configuration} files compose whole entries beneath environment definitions and independent controls", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-sources-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const directories = ["project", "plurnk", "global"].map((name) => join(root, name));
+    for (const directory of directories) await mkdir(directory);
+    const save = (index: number, mcpServers: object) => writeFile(join(directories[index], "mcp.json"), JSON.stringify({ mcpServers }));
+    await save(2, { tool: { command: "global", args: ["must-not-leak"], env: { SOURCE: "global" } }, other: { command: "other" } });
+    await save(1, { tool: { command: "plurnk" } });
+    await save(0, { tool: { url: "http://project.internal/mcp" } });
+    const env = { ...floor, PLURNK_MCP_ENABLED: "0", PLURNK_MCP_tool_ENABLED: "1", PLURNK_MCP_tool_TOOLS: '["inspect"]' };
+    const definitions = await configuredDefinitions(directories, env);
+    assert.deepEqual(definitions, [
+        { alias: "other", enabled: false, definition: { name: "other", type: "stdio", command: "other" }, provenance: { kind: "file", source: join(directories[2], "mcp.json"), reference: "/mcpServers/other" } },
+        { alias: "tool", enabled: true, definition: { name: "tool", type: "streamable-http", url: "http://project.internal/mcp" }, provenance: { kind: "file", source: join(directories[0], "mcp.json"), reference: "/mcpServers/tool" } },
+    ]);
+    assert.deepEqual(serverSettings("tool", env), { tools: ["inspect"] });
+    const override = { name: "tool", type: "stdio", command: "environment" };
+    assert.deepEqual((await configuredDefinitions(directories, { ...env, PLURNK_MCP_tool: JSON.stringify(override) })).find(({ alias }) => alias === "tool"), {
+        alias: "tool", enabled: true, definition: override, provenance: { kind: "environment", source: "PLURNK_MCP_tool" },
+    });
+    await rm(join(directories[0], "mcp.json"));
+    assert.deepEqual((await configuredDefinitions(directories, env))[1].definition, { name: "tool", type: "stdio", command: "plurnk" });
+    await rm(join(directories[1], "mcp.json"));
+    assert.deepEqual((await configuredDefinitions(directories, env))[1].definition, { name: "tool", type: "stdio", command: "global", args: ["must-not-leak"], env: { SOURCE: "global" } });
+    assert.deepEqual(await configuredDefinitions([], floor), [], "unselected roots are never read");
+});
+
+test("{§mcp-file-configuration} invalid selected entries identify their file and pointer without leaking values or falling back", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-invalid-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const file = join(root, "mcp.json");
+    for (const entry of [null, {}, { command: "node", type: null }, { command: "node", url: "http://example.com" },
+        { type: "sse", url: "http://example.com" }, { name: "tool", command: "node" }, { type: "stdio", args: ["private-value"] }]) {
+        await writeFile(file, JSON.stringify({ mcpServers: { tool: entry } }));
+        await assert.rejects(configuredDefinitions([root], floor), (error: unknown) => {
+            assert.ok(error instanceof ConfigurationError);
+            assert.equal(error.key, `${file}#/mcpServers/tool`);
+            assert.doesNotMatch(error.message, /private-value/u);
+            return true;
+        });
+        const env = { ...floor, PLURNK_MCP_tool: '{"name":"tool","type":"stdio","command":"valid"}' };
+        assert.equal((await configuredDefinitions([root], env))[0].definition.name, "tool", "a shadowed entry is not the effective definition");
+    }
+    await writeFile(file, '{"mcpServers":{"UpperCase":{"command":"node"}}}');
+    await assert.rejects(configuredDefinitions([root], floor), (error: unknown) => error instanceof ConfigurationError && error.key === `${file}#/mcpServers/UpperCase`);
+});
+
+test("{§mcp-file-configuration} missing files are inert, malformed and unreadable files remain inspectable configuration errors", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-document-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const file = join(root, "mcp.json");
+    assert.deepEqual(await configuredDefinitions([root], floor), []);
+    for (const contents of ["private-value", "null", "[]", "{}", '{"mcpServers":[]}', '{"mcpServers":{},"other":1}', '{"mcpServers":{},"$schema":null}']) {
+        await writeFile(file, contents);
+        await assert.rejects(configuredDefinitions([root], floor), (error: unknown) => {
+            assert.ok(error instanceof ConfigurationError);
+            assert.equal(error.key, file);
+            assert.doesNotMatch(error.message, /private-value/u);
+            return true;
+        });
+    }
+    await writeFile(file, '{"mcpServers":{},"$schema":"https://example.invalid/schema.json"}');
+    assert.deepEqual(await configuredDefinitions([root], floor), [], "an editor hint performs no remote lookup");
+    await rm(file);
+    await mkdir(file);
+    await assert.rejects(configuredDefinitions([root], floor), (error: unknown) => error instanceof ConfigurationError && error.key === file && error.message.endsWith("could not be read."));
 });
 
 test("{§mcp-configuration} invalid definitions and controls fail even when no server is enabled", () => {

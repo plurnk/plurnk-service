@@ -33,7 +33,7 @@ import ClientInput from "./client-input.ts";
 import Turn from "../core/Turn.ts";
 import SkillsFunctionality from "./SkillsFunctionality.ts";
 import WorkspacePlugins, { type WorkspacePluginSet } from "./WorkspacePlugins.ts";
-import { agentRootScopes } from "./AgentRoots.ts";
+import { agentRootScopes, configurationDirectories } from "./AgentRoots.ts";
 import ExecEnv from "../schemes/exec-env.ts";
 import PlurnkSkill from "./PlurnkSkill.ts";
 import Skill from "../schemes/Skill.ts";
@@ -115,6 +115,7 @@ export default class Daemon implements ApplicationPort {
 
     #db: Db;
     readonly #dbPath: string | undefined;
+    readonly #hostPaths: HostPaths;
     #engine: Engine;
     #workspaceGate: WorkspaceGate;
     #lifecycle: LoopLifecycle;
@@ -162,6 +163,7 @@ export default class Daemon implements ApplicationPort {
         // {§skills-functionality} — standard skill machinery, replaceable in tests.
     }) {
         this.#db = db;
+        this.#hostPaths = hostPaths;
         this.#dbPath = dbPath;
         this.#http = http;
         this.#storage = new WorkspaceStorage(db, hostPaths);
@@ -1511,6 +1513,11 @@ export default class Daemon implements ApplicationPort {
 
     workspaceStateDirectory(workspaceId: number, namespaceOwner: string): Promise<string> {
         return this.#storage.directory(workspaceId, namespaceOwner);
+    }
+
+    async workspaceConfigurationDirectories(workspaceId: number): Promise<readonly string[]> {
+        const workspace = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
+        return configurationDirectories(this.#hostPaths, workspace?.project_root ?? null);
     }
 
     // {§agent-plugins-hosting}

@@ -214,10 +214,41 @@ originating distinction in its canonical Problem/result path.
 
 ## §mcp-configuration Configuration
 
-MCP servers are complete connection definitions ({§mcp-server-definition}). Environment declarations
-supply the service baseline; live additions belong to the workspace. Both use the common resolution
+MCP servers are complete connection definitions ({§mcp-server-definition}). Standalone files and environment declarations
+supply the service baseline; live additions belong to the workspace. All use the common resolution
 and lifecycle ({§configuration-definition-resolution}, {§functionality-coordinator}). Disabled definitions remain
 client-visible but contribute no connection, Registry, documentation, or resource authority.
+
+§mcp-file-configuration **Standalone `mcp.json` files are read-only configuration inputs, not plugins.**
+The module reads `mcp.json` in the directories supplied by {§agent-roots}. Definitions resolve
+by alias, highest precedence first:
+
+| Source | Location |
+|---|---|
+| Workspace overlay | Ordinary `mcp (add)` state |
+| Environment | `PLURNK_MCP_<alias>` |
+| Project file | `<project>/.agents/mcp.json` |
+| Plurnk-only file | `$XDG_CONFIG_HOME/plurnk/mcp.json` |
+| Shared global file | `~/.agents/mcp.json` |
+
+- The document is an object with required `mcpServers`, an object keyed by server alias,
+  and an optional string `$schema` editor hint. No schema is fetched. No other top-level fields.
+- Each entry is the owning connection definition without `name`; its map key supplies the name.
+  An omitted `type` is inferred from `command` (stdio) or `url` (Streamable HTTP).
+  Ambiguous, unsupported, or incomplete entries fail the same definition validator as environment/live inputs.
+- Select the whole winning entry before validating it; never merge fields or fall back from an invalid winner.
+  Environment enabledness and tool controls apply independently to file-backed aliases.
+- Missing files contribute nothing. Invalid/unreadable files or selected entries produce a named
+  configuration diagnostic under {§configuration-repair-path}, not a daemon exit or an empty catalog.
+- Inspection reports `kind: file`, the absolute file `source`, and the entry's JSON Pointer `reference`.
+  Normal pre-turn refresh observes file edits and deletion; `list` never starts a server or writes a file.
+  Workspace removal restores the current inherited definition and controls.
+- File entries retain {§mcp-launch-directory} and {§mcp-launch-environment}; a file's location is
+  not a subprocess working directory. Plugin-root configuration and packaging are separate.
+
+`mcpServers` follows the common MCP catalog shape, also used by
+[MCP Inspector](https://github.com/modelcontextprotocol/inspector/blob/main/docs/mcp-server-configuration.md).
+The discovery locations are Plurnk's supported cross-client convention, not an MCP wire requirement.
 
 §mcp-activation-isolation **Cold endpoint failure is capability-local.** An enabled server
 that cannot connect or complete discovery during workspace activation remains

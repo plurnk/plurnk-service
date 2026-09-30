@@ -27,6 +27,7 @@ import {
 } from "@plurnk/plurnk-a2a";
 import { Module as HooksModule, hookConfig } from "@plurnk/plurnk-hooks";
 import ServiceModules from "./server/ServiceModules.ts";
+import { configurationDirectories } from "./server/AgentRoots.ts";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 import ServiceTeardown from "./core/ServiceTeardown.ts";
 import Paths from "./Paths.ts";
@@ -121,10 +122,10 @@ export default class Service {
         return route.alias === undefined ? exact : `${route.alias}=${exact}`;
     }
 
-    static #validateConfiguration(): void {
+    static async #validateConfiguration(): Promise<void> {
         Daemon.validateConfiguration();
         Daemon.validateWorkspaceConfiguration();
-        ServiceModules.validateConfiguration();
+        await ServiceModules.validateConfiguration(configurationDirectories(Service.#hostPaths, process.cwd()));
         hookConfig();
     }
 
@@ -327,7 +328,7 @@ export default class Service {
                 `relative XDG variable(s) are invalid and ignored: ${Service.#hostPaths.invalidXdg.join(", ")}`,
             );
         }
-        Service.#validateConfiguration();
+        await Service.#validateConfiguration();
         const { aliases, active } = Service.#modelConfiguration();
         process.stdout.write([
             "configuration valid",

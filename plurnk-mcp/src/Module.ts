@@ -38,7 +38,7 @@ import ServerConnection, {
     McpRedirectError,
 } from "./client.ts";
 import {
-    serviceDefinitions,
+    configuredDefinitions,
     connectTimeoutMs,
     expandedServerNames,
     retryDelayMs,
@@ -109,6 +109,7 @@ interface FunctionalityAdapter {
 }
 
 interface ModuleSetupSeam {
+    workspaceConfigurationDirectories(workspaceId: number): Promise<readonly string[]>;
     readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
     // {§mcp-launch-environment} The operator's environment without plurnk's own secrets.
     operatorEnvironment(): NodeJS.ProcessEnv;
@@ -350,6 +351,7 @@ export default class Module {
     #workspaceEnvironment!: ModuleSetupSeam["readWorkspaceEnvironment"];
     #operatorEnvironment!: ModuleSetupSeam["operatorEnvironment"];
     #stateDirectory!: ModuleSetupSeam["workspaceStateDirectory"];
+    #configurationDirectories!: ModuleSetupSeam["workspaceConfigurationDirectories"];
     // The committed attachments per workspace: the adapter's mirror of the snapshot
     // the coordinator holds, for continuations and refresh.
     readonly #attachments = new Map<number, ReadonlyMap<string, Attachment>>();
@@ -375,6 +377,7 @@ export default class Module {
         this.#workspaceEnvironment = (workspaceId) => seam.readWorkspaceEnvironment(workspaceId);
         this.#operatorEnvironment = () => seam.operatorEnvironment();
         this.#stateDirectory = (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner);
+        this.#configurationDirectories = (workspaceId) => seam.workspaceConfigurationDirectories(workspaceId);
         this.#handle = seam.registerFunctionalityAdapter({
             family: FAMILY,
             namespaceOwner: OWNER,
@@ -385,7 +388,7 @@ export default class Module {
             discovery: {
                 details: "`query` searches the MCP Registry by server name; each candidate carries the exact definition to add.",
             },
-            available: () => this.#available(),
+            available: (identity) => this.#available(identity),
             discover: (query) => this.#discover(query),
             admit: (input) => this.#admit(input),
             prepare: (preparation) => this.#prepare(preparation),
@@ -416,9 +419,9 @@ export default class Module {
         });
     }
 
-    async #available(): Promise<ReturnType<typeof serviceDefinitions>> {
+    async #available(identity: WorkspaceCapabilityIdentity): ReturnType<typeof configuredDefinitions> {
         expandedServerNames(this.#env);
-        return serviceDefinitions(this.#env);
+        return configuredDefinitions(await this.#configurationDirectories(identity.workspaceId), this.#env);
     }
 
     // {§functionality-hotload} — a server's definition is complete, so the coordinator's

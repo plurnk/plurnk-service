@@ -1,5 +1,6 @@
-// {§agent-roots} — the Agent Skills and Agent Plugins roots this daemon reads, nearest first.
+// {§agent-roots} — configuration roots this daemon reads, nearest first.
 import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
+import type HostPaths from "../core/HostPaths.ts";
 
 export const AGENT_ROOT_SCOPES = ["project", "plurnk", "global"] as const;
 export type AgentRootScope = typeof AGENT_ROOT_SCOPES[number];
@@ -13,4 +14,14 @@ export const agentRootScopes = (): ReadonlySet<AgentRootScope> => {
         throw new ConfigurationError("PLURNK_SERVICE_ROOTS", `PLURNK_SERVICE_ROOTS names ${unknown.map((scope) => `'${scope}'`).join(", ")}; each root is one of ${AGENT_ROOT_SCOPES.join(", ")}.`);
     }
     return new Set(listed.filter(isScope));
+};
+
+export const configurationDirectories = (paths: HostPaths, projectRoot: string | null): readonly string[] => {
+    const selected = agentRootScopes();
+    return AGENT_ROOT_SCOPES.flatMap((scope) => {
+        if (!selected.has(scope)) return [];
+        if (scope === "global") return [paths.globalAgentsDir];
+        if (scope === "plurnk") return [paths.configDir];
+        return projectRoot === null ? [] : [paths.projectAgentsDir(projectRoot)];
+    });
 };

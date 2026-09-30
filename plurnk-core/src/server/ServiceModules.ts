@@ -1,12 +1,13 @@
 import { OutboundModule as A2aOutboundModule, validateConfiguration as validateA2a } from "@plurnk/plurnk-a2a";
-import { Module as McpModule, validateConfiguration as validateMcp } from "@plurnk/plurnk-mcp";
+import { Module as McpModule, configuredDefinitions, validateConfiguration as validateMcp } from "@plurnk/plurnk-mcp";
 import { Module as ScheduleModule, validateConfiguration as validateSchedule } from "@plurnk/plurnk-schedule";
 import type Daemon from "./Daemon.ts";
 
 // {§service-worker-composition} — listeners and host hooks remain launcher-owned.
 export default class ServiceModules {
-    static validateConfiguration(): void {
+    static async validateConfiguration(directories: readonly string[]): Promise<void> {
         validateMcp();
+        await configuredDefinitions(directories);
         validateA2a();
         validateSchedule();
     }

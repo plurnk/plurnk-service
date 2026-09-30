@@ -2,6 +2,8 @@
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type { FunctionalityServiceDefinition, McpServerDefinition } from "@plurnk/plurnk-contracts";
 import { readDefinition } from "./definition.ts";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
 export type { McpAuthorization } from "@plurnk/plurnk-contracts";
 
@@ -71,6 +73,53 @@ export const serviceDefinitions = (environ: NodeJS.ProcessEnv = process.env): Ar
         if (definition.name !== alias) throw new ConfigurationError(key, `${key} must define name '${alias}'.`);
         return { alias, definition, enabled: resources.enabled(alias), provenance: { kind: "environment", source: key } };
     });
+};
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null && !Array.isArray(value);
+
+// {§mcp-file-configuration} Files supply definitions, not installations or another lifecycle.
+export const configuredDefinitions = async (
+    directories: readonly string[],
+    environ: NodeJS.ProcessEnv = process.env,
+): Promise<Array<FunctionalityServiceDefinition & { definition: McpServerDefinition }>> => {
+    const { resources } = configuration(environ);
+    const selected = new Map(serviceDefinitions(environ).map((entry) => [entry.alias, entry]));
+    for (const directory of directories) {
+        const file = join(directory, "mcp.json");
+        let contents: string;
+        try {
+            contents = await readFile(file, "utf8");
+        } catch (cause) {
+            if ((cause as NodeJS.ErrnoException).code === "ENOENT") continue;
+            throw new ConfigurationError(file, `${file} could not be read.`, { cause });
+        }
+        let document: unknown;
+        try { document = JSON.parse(contents); } catch (cause) {
+            throw new ConfigurationError(file, `${file} must contain valid JSON.`, { cause });
+        }
+        if (!isObject(document) || !isObject(document.mcpServers)
+            || Object.keys(document).some((key) => key !== "mcpServers" && key !== "$schema")
+            || (document.$schema !== undefined && typeof document.$schema !== "string")) {
+            throw new ConfigurationError(file, `${file} must contain a mcpServers object and, optionally, a string $schema.`);
+        }
+        for (const [alias, entry] of Object.entries(document.mcpServers)) {
+            if (selected.has(alias)) continue;
+            const reference = `/mcpServers/${alias.replaceAll("~", "~0").replaceAll("/", "~1")}`;
+            const key = `${file}#${reference}`;
+            let definition: McpServerDefinition;
+            try {
+                if (!isObject(entry)) throw new TypeError("A server entry must be an object.");
+                if (Object.hasOwn(entry, "name")) throw new TypeError("The map key supplies the server name; omit name from the entry.");
+                const type = Object.hasOwn(entry, "type") ? entry.type : (Object.hasOwn(entry, "command") ? "stdio" : "streamable-http");
+                definition = readDefinition({ ...entry, name: alias, type });
+            } catch (cause) {
+                throw new ConfigurationError(key, `${key} must be a complete MCP server definition without name.`, { cause });
+            }
+            selected.set(alias, { alias, definition, enabled: resources.enabled(alias), provenance: { kind: "file", source: file, reference } });
+        }
+    }
+    return [...selected.values()].toSorted((left, right) => left.alias.localeCompare(right.alias));
 };
 
 // {§mcp-configuration} — the servers whose every tool turn zero surveys.

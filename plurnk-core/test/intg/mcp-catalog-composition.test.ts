@@ -58,6 +58,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     } });
     daemon.registerModule({
         setup: (seam) => mcp.setup({
+            workspaceConfigurationDirectories: (workspaceId) => seam.workspaceConfigurationDirectories(workspaceId),
             readWorkspaceEnvironment: (workspaceId) => seam.readWorkspaceEnvironment(workspaceId),
             operatorEnvironment: () => seam.operatorEnvironment(),
             workspaceStateDirectory: (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner),

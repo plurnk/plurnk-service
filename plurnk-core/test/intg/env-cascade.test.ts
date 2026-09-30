@@ -10,6 +10,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Launch from "../../src/launch/Launch.ts";
+import { stdioEntry } from "./_mcp-config.ts";
+import type { FunctionalityListResult, FunctionalityMutationResult } from "@plurnk/plurnk-contracts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BIN_PATH = resolve(here, "../../src/service.ts");
@@ -261,6 +263,66 @@ test("{§operator-config-discovery} config check validates capability definition
     }
     await assert.rejects(() => stat(fx.dataHome), { code: "ENOENT" }, "validation creates no database or runtime state");
 });
+
+for (const built of [false, true]) {
+    test(`{§mcp-file-configuration} ${built ? "built" : "source"} config check reads selected standalone files without starting servers`, async (t) => {
+        const fx = await fixture();
+        t.after(() => rm(fx.root, { recursive: true, force: true }));
+        const directory = join(fx.home, ".agents");
+        await mkdir(directory, { recursive: true });
+        const file = join(directory, "mcp.json");
+        await writeFile(file, "not JSON");
+        const env = { PLURNK_SERVICE_ROOTS: "global" };
+        const bad = await runService(fx, ["config", "check"], { env, built });
+        assert.equal(bad.code, 1, bad.stderr);
+        assert.ok(bad.stderr.includes(file));
+        assert.match(bad.stderr, /must contain valid JSON/u);
+        const ignored = await runService(fx, ["config", "check"], { env: { PLURNK_SERVICE_ROOTS: "project" }, built });
+        assert.equal(ignored.code, 0, ignored.stderr);
+        await writeFile(file, JSON.stringify({ mcpServers: { fixture: { command: "nonexistent-mcp-command", env: { TOKEN: "${UNSET_TOKEN}" } } } }));
+        const valid = await runService(fx, ["config", "check"], { env, built });
+        assert.equal(valid.code, 0, valid.stderr);
+        assert.match(valid.stdout, /configuration valid/u);
+        await assert.rejects(() => stat(fx.dataHome), { code: "ENOENT" }, "validation creates no database or server state");
+
+        const contents = JSON.stringify({ mcpServers: { fixture: stdioEntry("echo-server.mjs") } });
+        await writeFile(file, contents);
+        const launchEnv: NodeJS.ProcessEnv = {
+            ...process.env, ...env, HOME: fx.home, XDG_CONFIG_HOME: fx.configHome, XDG_DATA_HOME: fx.dataHome,
+            PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0", PLURNK_MCP_ENABLED: "1",
+        };
+        delete launchEnv.PLURNK_MODEL;
+        delete launchEnv.PLURNK_SERVICE_DB_PATH;
+        const daemon = await Launch.start({
+            command: [process.execPath, ...(built ? [BUILT_BIN_PATH] : [...CONDITION_ARGS, BIN_PATH]), "start"],
+            cwd: fx.cwd, env: launchEnv, host: "127.0.0.1", port: 0, readyTimeoutMs: 15_000, stopGraceMs: 5_000,
+        });
+        t.after(() => daemon.stop());
+        const action = async (kind: string, params = {}) => {
+            const response = await fetch(daemon.url, {
+                method: "POST", headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                    threadId: "file-configuration", runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
+                    forwardedProps: { plurnk: { workspace: "file-configuration", projectRoot: fx.cwd, action: { kind, ...params } } },
+                }),
+            });
+            assert.equal(response.status, 200);
+            const events = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
+                .map((frame) => JSON.parse(frame.slice(6)) as { name?: string; value?: { ok: boolean; result: unknown } });
+            const value = events.find(({ name }) => name === "plurnk.action.result")?.value;
+            assert.equal(value?.ok, true, JSON.stringify(value));
+            return value?.result;
+        };
+        const listed = await action("workspace.mcp.list") as FunctionalityListResult;
+        assert.equal(listed.definitions[0]?.alias, "fixture");
+        assert.equal(listed.definitions[0]?.state, "dormant");
+        assert.deepEqual(listed.definitions[0]?.provenance, { kind: "file", source: file, reference: "/mcpServers/fixture" });
+        const enabled = await action("workspace.mcp.enable", { alias: "fixture" }) as FunctionalityMutationResult;
+        assert.equal(enabled.definition?.state, "active", "the assembled product starts and discovers the file-backed MCP server");
+        assert.equal(await readFile(file, "utf8"), contents);
+        assert.equal(daemon.child.exitCode, null);
+    });
+}
 
 for (const built of [false, true]) {
     test(`{§configuration-repair-path} ${built ? "built executable" : "source launcher"} starts its client interface with invalid optional configuration`, async (t) => {

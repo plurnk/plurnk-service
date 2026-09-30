@@ -1,15 +1,16 @@
 // {§mcp-configuration} {§functionality-hotload}
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { FunctionalityListResult, PlurnkStatement } from "@plurnk/plurnk-contracts";
+import { Problems } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
-import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
+import { fixtureExecutors, makeMockResponse, userText } from "./_mock.ts";
 import { waitFor } from "./_rpc.ts";
 import { awaitExecOutcome } from "./_execs.ts";
 import { mcpFixture, stdioEntry } from "./_mcp-config.ts";
@@ -20,6 +21,128 @@ const parseOne = (input: string): PlurnkStatement => {
     if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
     return item.statement;
 };
+
+test("{§mcp-file-configuration} a global mcp.json supplies callable servers without a plugin or environment definition", { timeout: 30_000 }, async (t) => {
+    const roots = process.env.PLURNK_SERVICE_ROOTS;
+    process.env.PLURNK_SERVICE_ROOTS = "global";
+    t.after(() => { if (roots === undefined) delete process.env.PLURNK_SERVICE_ROOTS; else process.env.PLURNK_SERVICE_ROOTS = roots; });
+    const { hostPaths, env } = await mcpFixture(t, {});
+    const directory = join(hostPaths.home, ".agents");
+    await mkdir(directory, { recursive: true });
+    const file = join(directory, "mcp.json");
+    const contents = JSON.stringify({ mcpServers: { fixture: stdioEntry("echo-server.mjs") } });
+    await writeFile(file, contents);
+    const db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, `mcp-file-${crypto.randomUUID()}`);
+    const client = await insertWorker(db, workspaceId, null, "client", "client");
+    const daemon = new Daemon({ db, provider: null, hostPaths });
+    daemon.registerModule(McpModule.init({ env }));
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    const list = await daemon.invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult;
+    assert.deepEqual(list.definitions.map(({ alias, origin, state, provenance }) => ({ alias, origin, state, provenance })), [{
+        alias: "fixture", origin: "service", state: "dormant",
+        provenance: { kind: "file", source: file, reference: "/mcpServers/fixture" },
+    }]);
+    const result = await daemon.dispatchAsClient({ workspaceId, workerId: client, statement: parseOne("````fixture (echo)\n{\"message\":\"file-backed\"}\n````") });
+    assert.equal(result.status, 200);
+    const output = await awaitExecOutcome(db, { workspaceId, scheme: "fixture", channel: "json", after: 0 });
+    assert.deepEqual(output.content, [{ type: "text", text: "file-backed" }]);
+    assert.equal(await readFile(file, "utf8"), contents, "loading and invoking never rewrite operator configuration");
+});
+
+test("{§mcp-file-configuration} workspace and environment overrides restore the current file definition and enabledness", async (t) => {
+    const { hostPaths, env } = await mcpFixture(t, {});
+    const project = join(hostPaths.home, "project");
+    const directories = [join(project, ".agents"), hostPaths.configDir, join(hostPaths.home, ".agents")];
+    for (const directory of directories) await mkdir(directory, { recursive: true });
+    for (const [index, directory] of directories.entries()) {
+        await writeFile(join(directory, "mcp.json"), JSON.stringify({ mcpServers: { fixture: stdioEntry("echo-server.mjs", { SOURCE: String(index) }) } }));
+    }
+    env.PLURNK_MCP_ENABLED = "0";
+    const db = await openMigrated();
+    let daemon = new Daemon({ db, provider: null, hostPaths });
+    daemon.registerModule(McpModule.init({ env }));
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    const workspace = await daemon.createWorkspace({ name: "file-cascade", projectRoot: project });
+    const headless = await daemon.createWorkspace({ name: "file-headless", projectRoot: null });
+    const invoke = (verb: string, params = {}, workspaceId = workspace.workspaceId) =>
+        daemon.invokeModuleAction(`workspace.mcp.${verb}`, params, { scope: "workspace", workspaceId });
+    const list = async (workspaceId?: number) => (await invoke("list", {}, workspaceId) as FunctionalityListResult).definitions;
+    assert.equal((await list())[0].provenance?.source, join(directories[0], "mcp.json"));
+    assert.equal((await list(headless.workspaceId))[0].provenance?.source, join(directories[1], "mcp.json"));
+    assert.equal((await list())[0].state, "disabled");
+    env.PLURNK_MCP_fixture = JSON.stringify({ name: "fixture", ...stdioEntry("echo-server.mjs", { SOURCE: "environment" }) });
+    assert.deepEqual((await list())[0].provenance, { kind: "environment", source: "PLURNK_MCP_fixture" });
+    const local = { name: "fixture", ...stdioEntry("echo-server.mjs", { SOURCE: "local" }) };
+    await invoke("add", { alias: "fixture", definition: local });
+    assert.equal((await list())[0].origin, "workspace");
+    assert.equal((await list())[0].provenance, undefined);
+    delete env.PLURNK_MCP_fixture;
+    await rm(join(directories[0], "mcp.json"));
+    await invoke("remove", { alias: "fixture" });
+    const restored = (await list())[0];
+    assert.equal(restored.state, "disabled");
+    assert.equal(restored.provenance?.source, join(directories[1], "mcp.json"));
+    assert.deepEqual(restored.definition, { name: "fixture", ...stdioEntry("echo-server.mjs", { SOURCE: "1" }) });
+    await daemon.stop();
+    daemon = new Daemon({ db, provider: null, hostPaths });
+    daemon.registerModule(McpModule.init({ env }));
+    await daemon.start();
+    assert.equal((await list())[0].state, "disabled", "restart preserves inherited enabledness without a local mask");
+    await rm(join(directories[1], "mcp.json"));
+    assert.equal((await list())[0].provenance?.source, join(directories[2], "mcp.json"));
+    assert.deepEqual(await readdir(directories[2]), ["mcp.json"], "workspace mutations never manufacture plugin files");
+});
+
+test("{§mcp-file-configuration} malformed files leave chat usable and normal turns publish repairs, changes, and removal", { timeout: 30_000 }, async (t) => {
+    const { hostPaths, env } = await mcpFixture(t, {});
+    const directory = join(hostPaths.home, ".agents");
+    await mkdir(directory, { recursive: true });
+    const file = join(directory, "mcp.json");
+    await writeFile(file, "not json");
+    const db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, `mcp-file-repair-${crypto.randomUUID()}`);
+    const model = await insertWorker(db, workspaceId, null, "conversation", "model");
+    const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 5 }, () => makeMockResponse("````KILL\nConfiguration checked.\n````")) });
+    const daemon = new Daemon({ db, provider, hostPaths });
+    daemon.registerModule(McpModule.init({ env }));
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    const ended: number[] = [];
+    const unsubscribe = daemon.subscribeToEvents((_w, method, params) => { if (method === "loop/terminated") ended.push((params as { loopId: number }).loopId); });
+    t.after(unsubscribe);
+    await daemon.start();
+    const turn = async () => {
+        const started = await daemon.runLoop({ workspaceId, workerId: model, prompt: "Inspect configuration.", policy: { proposals: "accept" } });
+        await waitFor(() => ended, (ids) => ids.includes(started.loopId), { timeoutMs: 10_000 });
+    };
+    const list = async () => (await daemon.invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult).definitions;
+    const rejectsConfiguration = () => assert.rejects(list(), (cause: unknown) => {
+        const problem = Problems.fromError(cause);
+        assert.equal(problem?.type, "https://problems.plurnk.xyz/functionality/configuration-invalid");
+        assert.ok(problem.detail?.includes(file));
+        return true;
+    });
+    await rejectsConfiguration();
+    await turn();
+    assert.ok(userText(provider.received[0]).includes(file), "the model can locate and repair the malformed file");
+    const save = (name: string) => writeFile(file, JSON.stringify({ mcpServers: { [name]: stdioEntry("echo-server.mjs") } }));
+    await save("first");
+    await turn();
+    assert.deepEqual((await list()).map(({ alias, state }) => [alias, state]), [["first", "active"]]);
+    await save("second");
+    assert.equal((await list())[0].state, "dormant", "inspection does not pretend a changed definition is already active");
+    await turn();
+    assert.deepEqual((await list()).map(({ alias, state }) => [alias, state]), [["second", "active"]]);
+    await writeFile(file, "not json again");
+    await turn();
+    await rejectsConfiguration();
+    await rm(file);
+    await turn();
+    assert.deepEqual(await list(), []);
+    assert.equal(provider.received.length, 5, "every configuration state left inference usable");
+});
 
 test("{§mcp-configuration} configured servers and workspace additions are callable without altering plugin installations", { timeout: 60_000 }, async (t) => {
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs") });

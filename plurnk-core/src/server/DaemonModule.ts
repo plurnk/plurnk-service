@@ -153,6 +153,8 @@ export interface WorkspaceCapabilityPublication {
 }
 
 export interface ModuleSetupSeam {
+    // {§agent-roots} Read-only configuration sources in highest-precedence-first order.
+    workspaceConfigurationDirectories(workspaceId: number): Promise<readonly string[]>;
     // {§agent-plugins-hosting} The workspace's installed Agent Plugins, in root precedence order.
     readWorkspacePlugins(workspaceId: number): Promise<WorkspacePluginSet>;
     // {§mcp-launch-environment} What an MCP subprocess inherits: the operator's
