@@ -26,11 +26,9 @@ const FORMS: readonly {
     expected: string;
     // A seed long enough that rewriting it is the unnatural choice.
     seed?: string;
-    // The file is opened for the prompt, so the READ shows anchors and the taught address is the hash.
-    open?: boolean;
 }[] = [
     { form: "line", prompt: "Replace line 2 of worker:///notes.md with `beta prime`.", expected: "alpha\nbeta prime\ngamma\ndelta" },
-    { form: "hash", open: true, prompt: "In worker:///notes.md, replace the line that says `gamma` with `gamma prime`.", expected: "alpha\nbeta\ngamma prime\ndelta" },
+    { form: "hash", prompt: "In worker:///notes.md, replace the line that says `gamma` with `gamma prime`.", expected: "alpha\nbeta\ngamma prime\ndelta" },
     { form: "range", prompt: "Replace lines 2 through 3 of worker:///notes.md with the single line `middle`.", expected: "alpha\nmiddle\ndelta" },
     { form: "insert", prompt: "Insert a new line `beta-and-a-half` immediately before line 3 of worker:///notes.md; every existing line stays.", expected: "alpha\nbeta\nbeta-and-a-half\ngamma\ndelta" },
     { form: "column", prompt: "In worker:///notes.md, on line 1 replace only the characters from column 1 up to but not including column 3 with `AL`.", expected: "ALpha\nbeta\ngamma\ndelta" },
@@ -44,7 +42,7 @@ for (const kind of FORMS) test(`live: EDIT by ${kind.form} — one taught EDIT l
     const s = await liveWorkspace({ name: `live-edit-${kind.form}-${crypto.randomUUID()}` });
     try {
         await seedEntry(s.db, s.workspaceId, { pathname: "notes.md", content: kind.seed ?? SEED });
-        const loop = await liveLoop(s, 2, { prompt: kind.prompt, maxTurns: 6, ...(kind.open ? { openPaths: ["worker:///notes.md"] } : {}) }, { signal: t.signal });
+        const loop = await liveLoop(s, 2, { prompt: kind.prompt, maxTurns: 6 }, { signal: t.signal });
         assert.equal(loop.finalStatus, 200);
         assert.equal(await readBody(s.db, "notes.md"), kind.expected, "the edit landed exactly");
         const edits = await editForms(s, loop.modelWorkerId);
