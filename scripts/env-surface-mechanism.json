@@ -9,7 +9,7 @@
     "plurnk-core/src/core/LoopDriver.ts:HOLD_POLL_MS": "how often a held turn re-checks its spawns; the hold's length is PLURNK_SERVICE_EXEC_HOLD_MS",
     "plurnk-core/src/core/TokenCalibration.ts:MIN_SAMPLES": "statistical floor of the calibration estimator; changing it is changing the algorithm",
     "plurnk-core/src/launch/Launch.ts:LOG_POLL_MS": "how often a shared daemon's log is re-read for the readiness line; how long readiness may take is the caller's readyTimeoutMs",
-    "plurnk-core/src/server/SkillsFunctionality.ts:CLI_OUTPUT_BYTES": "child-process output buffer ceiling; the run's deadline is PLURNK_SERVICE_SKILLS_CLI_TIMEOUT_MS",
+    "plurnk-core/src/server/SkillSource.ts:TOOL_OUTPUT_BYTES": "child-process output buffer ceiling; the fetch's deadline is PLURNK_SERVICE_SKILLS_FETCH_TIMEOUT_MS",
     "plurnk-core/src/server/WorkspaceCapabilities.ts:COOLING_RETRY_MS": "internal retry cadence of a deferred cool-down; residency itself is PLURNK_SERVICE_WORKSPACE_WARM_MS",
     "plurnk-mcp/src/inputRequired.ts:INPUT_REQUIRED_MAX_ROUNDS": "the adapter's statement of the MCP SDK's multi-round bound; protocol resilience, not a deployment choice",
     "plurnk-mcp/src/inputRequired.ts:REQUEST_STATE_ONLY_PACING_MS": "protocol pacing between state-only rounds",

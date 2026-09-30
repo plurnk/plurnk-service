@@ -3687,7 +3687,7 @@ and is ignored rather than resolved against the working directory.
 
 | Class | Base | Plurnk member |
 |---|---|---|
-| Configuration | `$XDG_CONFIG_HOME` (default `~/.config`) | `plurnk/.env`, `plurnk/AGENTS.md` |
+| Configuration | `$XDG_CONFIG_HOME` (default `~/.config`) | `plurnk/.env`, `plurnk/AGENTS.md`, and plurnk-only Agent Skills `plurnk/skills/<name>/SKILL.md` |
 | Durable user data | `$XDG_DATA_HOME` (default `~/.local/share`) | `plurnk/plurnk.db` and SQLite sidecars |
 | Persistent operational state | `$XDG_STATE_HOME` (default `~/.local/state`) | On-demand workspace/module directories ({§module-workspace-directory}). |
 | Reproducible cache | `$XDG_CACHE_HOME` (default `~/.cache`) | Reserved; no directory is created without an owned artifact. |
@@ -5392,53 +5392,78 @@ verbs are these verbs.
 §skills-functionality **Agent Skills are one workspace Functionality family.**
 Core registers the `skills` family with the coordinator ({§functionality-coordinator});
 its adapter owns protocol truth for standard Agent Skills and nothing else. A
-definition is `SkillDefinition` — the standard skill `name`, its source
-`scope` (`project` = `<projectRoot>/.agents/skills`, `global` =
-`~/.agents/skills`, `service` = a host-provided resource tree), and for a workspace-installed skill the standard installer
-`source` that provides it. Plurnk seeds no universal root and mutates none
-absent an explicit `add`/`remove`.
+definition is `SkillDefinition`: the standard skill `name`, its `scope`
+(`project` = `<projectRoot>/.agents/skills`, `plurnk` =
+`$XDG_CONFIG_HOME/plurnk/skills`, `global` = `~/.agents/skills`, `service` = a
+host-provided resource tree), and, for a skill a workspace added, the `source` it
+came from ({§skills-sources}). Plurnk seeds no root and mutates none absent an
+explicit `add`/`remove`.
 
 *Available definitions.* The filesystem is the only truth about installation:
-every `<root>/<name>/SKILL.md` directory under the project then the global
-root is one service-origin definition, enabled by default, project shadowing
-global and then host-provided trees by name; when the standard installer's `skills-lock.json` records a
-source it rides the definition. The workspace's durable state owns enablement
-({§functionality-state}); a disabled skill stays client-visible and leaves no
-model-facing trace.
+every `<root>/<name>/SKILL.md` directory under the project, plurnk, then global
+root is one service-origin definition, enabled by default, a nearer root
+shadowing a farther one and all of them shadowing host-provided trees by name.
+A skill found on disk records no source. The workspace's durable state owns
+enablement ({§functionality-state}); a disabled skill stays client-visible and
+leaves no model-facing trace.
 
-*Discovery is inert.* `discover {query}` searches the ecosystem registry
-(`PLURNK_SERVICE_SKILLS_REGISTRY_URL`; empty disables it
-with 501 `registry-not-configured`) and returns one candidate per hit with
-`registry` provenance and the exact `owner/repo` source. `discover {source}`
-lists the skills one standard package reference contains with `source`
-provenance. Neither installs, persists, or enables. Client `configuration`
-contributes nothing and is refused with 400.
+*Discovery is inert.* `discover {source}` lists the standard skills one source
+carries, each a candidate with `source` provenance and the exact definition to
+add; it never installs, persists, or enables. Agent Skills have no standard
+registry, so `discover {query}` is 400 `query-unsupported`, naming the source
+forms. Client `configuration` contributes nothing and is refused with 400.
 
-*Admission.* `add {alias, definition}` requires `alias = name`, a `source`,
-and a project root when `scope` is `project`; the workspace definition may
-shadow a service skill of the same name. The family's aliases use the standard
-skill-name grammar ({§agent-skills-name}), including digit-leading and Unicode
-names, rather than the coordinator's generic default.
+*Admission.* `add {alias, definition}` requires `alias = name`, a `source`, and
+a project root when `scope` is `project`; the workspace definition may shadow a
+service skill of the same name. A local source is recorded as its absolute path.
+A git source records the `commit` its `ref` names at admission, or its default
+branch's when no `ref` is given; `ref` belongs to git sources, and a supplied
+`commit` is refused because the service records it. The family's aliases use
+the standard skill-name grammar ({§agent-skills-name}), including digit-leading
+and Unicode names, rather than the coordinator's generic default.
 
 *Preparation.* For each enabled alias the adapter selects the host-provided
-tree for `service` scope or locates the directory at the filesystem scope;
-a workspace definition whose directory is absent is installed
-through the standard CLI (`PLURNK_SERVICE_SKILLS_CLI`, invoked as
-`<cli> add <source> --agent universal --skill <name> --yes [--global]`, run with
-`HOME` set to the service's user home so the installer's `~` is the global
-root) and the installed `SKILL.md` — never the installer's output — is the
-evidence.
+tree for `service` scope or locates the directory at the filesystem scope; a
+workspace definition whose directory is absent is installed from its source
+({§skills-sources}), and the installed `SKILL.md` is the evidence.
 Each admitted skill requires standard `name` and `description` frontmatter
 with `name` matching its directory. A missing, uninstallable, or invalid skill
-is `unavailable` with its exact Problem (`skill-missing`, `install-failed`,
-`skill-invalid`) under the coordinator's failure policy
-({§functionality-model-mutation}); one bad skill never fails the family.
+is `unavailable` with its exact Problem ({§problems-functionality}) under the
+coordinator's failure policy ({§functionality-model-mutation}); one bad skill
+never fails the family.
 
-Installer provenance follows the upstream lock locations: project
-`skills-lock.json`; global `$XDG_STATE_HOME/skills/.skill-lock.json` when
-configured, otherwise `~/.agents/.skill-lock.json`. A lock's source belongs to
-its scope, never a same-named installation in another root. Missing locks mean
-unknown provenance; malformed or unreadable locks surface their cause.
+Service-provided skills are never added or removed; service definitions are
+disable-only under {§skills-remove}.
+
+§skills-sources **A source is a git remote, a folder, or a file, read with standard tools.**
+Fetching runs nothing it fetched, and an installed skill holds nothing that
+points out of it.
+
+| Source | How it is read |
+|---|---|
+| Git remote: a full `https://` or `ssh://` URL, or `user@host:path` | `git ls-remote` resolves the ref at admission; preparation shallow-clones it with hooks and submodules off, and a checkout at any other commit is 409 `source-moved` |
+| Folder: absolute, `~/`, or relative to the project root | Read in place |
+| A file named `SKILL.md` | One skill, named by its frontmatter |
+| A `.zip`, `.tar`, `.tgz`, `.tar.gz`, `.tar.bz2`, `.tar.xz`, or `.tar.zst` archive | Unpacked into private staging with `unzip` or `tar`; a lone top-level directory is the source's root |
+
+Any other scheme, plain `http`, `owner/repo` shorthand, and an https URL carrying
+credentials are refused with `source-invalid` or `source-missing`: shorthand names no
+forge, and a recorded source is listed to every client. Git runs with the
+operator's configuration, credentials, and SSH agent, never plurnk's secrets, and
+never prompts; `PLURNK_SERVICE_SKILLS_FETCH_TIMEOUT_MS` bounds each fetch. The
+retired vendor-installer knobs (`PLURNK_SERVICE_SKILLS_CLI`, `_CLI_TIMEOUT_MS`,
+`_REGISTRY_URL`, `_REGISTRY_LIMIT`, `_REGISTRY_TIMEOUT_MS`) fail boot when set,
+each naming what replaced it.
+
+A source's skills are the directories holding a `SKILL.md`, found by walking
+from its root without entering `.git` or a skill already found. A skill at the
+root is named by its frontmatter ({§agent-skills-name}); below the root the
+standard folder rule applies. A source with `plugin.json` at its root is an
+Agent Plugin and is refused with 422 `source-is-plugin`, so its skills keep the
+plugin's identity. Installation copies the named skill beside its destination
+and renames it to `<root>/<name>`; a copy that holds a link out of the skill, or
+anything but files, directories, and inward links, is refused with 422
+`source-unsafe` and leaves nothing behind.
 
 §skills-resources **A skill is a resource tree, not a rewritten document.**
 The family exposes enabled, available {§agent-skills-tree} sources through
@@ -5461,7 +5486,7 @@ serialized URI address the same resource, not separate skill identities.
 
 Explicit skill URIs address these resources; bare operation paths still address
 project files, with no implicit current-skill directory. Source resolution follows
-{§agent-skills-directory}, including installer symlinks and containment of references.
+{§agent-skills-directory}, including symlinked skill directories and containment of references.
 An uninstalled Git skill is not manufactured by repository detection.
 
 §plurnk-skill **Plurnk's own reference is an ordinary service-provided skill.**
@@ -5477,17 +5502,16 @@ shared workspace visibility, and project/global shadowing use the ordinary Skill
 Service-provided skills are not installer targets; service definitions are
 disable-only under {§skills-remove}.
 
-§skills-remove **`remove` uninstalls the workspace definition's installation.** Before the
-coordinator forgets a workspace-origin skill definition the adapter removes that
-skill from the definition's scope through the standard CLI (`remove <name>
---yes [--global]`), verified by the directory's absence; a failed removal
-rejects the mutation. A same-named skill at a lower-precedence root is then
+§skills-remove **`remove` deletes the workspace definition's copy.** Before the
+coordinator forgets a workspace-origin skill definition the adapter deletes
+`<root>/<name>` at the definition's scope; a failed deletion rejects the
+mutation with `uninstall-failed`. A same-named skill at a lower-precedence root is then
 revealed as a service definition, disabled ({§functionality-coordinator}).
 Service definitions are disable-only.
 
-§skills-hotload **Out-of-band installers are admitted at the next turn.** The
-family keeps one signature of both installed roots, source locations, frontmatter
-sources, and installer provenance per resident workspace; turn
+§skills-hotload **Skills placed out of band are admitted at the next turn.** The
+family keeps one signature of the three installed roots, source locations, and
+frontmatter sources per resident workspace; turn
 admission recomputes it under the workspace gate before packet assembly and
 republishes the family through the coordinator when it changed, so a skill
 installed or removed by any other tool is discoverable in the first subsequent
@@ -5957,14 +5981,21 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 | `headless` | 409 | The workspace has no project root, so there are no file members. Recovery: Open the workspace on a project root. |
 | `definition-invalid` | 400 | A members definition is { glob }: a gitignore-style pattern, `!glob` to exclude; a skill definition names an installable skill. |
 | `model-scope` | 403 | The model may not change membership here: the members scope is none. Recovery: `git add` the file so git tracks it, or ask the operator to add it (/members add) or raise PLURNK_SERVICE_MEMBERS_MODEL_SCOPE. |
-| `registry-unreachable` | 502 | Skills registry *url* could not be reached. |
-| `registry-rejected` | 502 | Skills registry *url* answered *status*. |
-| `registry-invalid` | 502 | Skills registry *url* returned no skills array. |
-| `discover-failed` | 502 | Agent Skills source '*source*' could not be listed: *cause*. |
+| `query-unsupported` | 400 | Agent Skills have no standard registry to search; discover takes a source: a git remote as a full https or ssh URL, a folder, a lone SKILL.md, or a zip or tar archive. |
+| `source-invalid` | 400 | '*source*' is not a valid git remote URL; an https source carries no credentials (git's credential helper supplies them); is not a source: a git remote is a full https or ssh URL; is relative, and this workspace has no project root to resolve it against; or is neither a folder, a SKILL.md, nor a zip or tar archive. |
+| `source-missing` | 404 | No folder or file is at '*source*' (; owner/repo shorthand names no forge, so give the repository's full https or ssh URL). |
+| `source-unreadable` | 422 | '*source*' cannot be read: *cause*; or '*path*' could not be unpacked: *reason*. |
+| `source-unreachable` | 502 | git could not reach '*remote*', or fetch it (at '*ref*'): *reason*. |
+| `ref-missing` | 404 | '*remote*' has no branch or tag '*ref*', or names no default branch. |
+| `source-moved` | 409 | '*source*' *ref* now names *current*; this skill was added at *commit*. Recovery: Remove the skill and add it again to take the current commit. |
+| `source-is-plugin` | 422 | '*source*' is an Agent Plugin; install it as a plugin, so its skills keep the plugin's identity and servers. |
+| `source-unsafe` | 422 | '*path*' links outside its skill, or is neither a file, a directory, nor an inward link. |
+| `skill-not-found` | 404 | '*source*' carries no Agent Skill named '*name*'. |
+| `skill-ambiguous` | 409 | '*source*' carries *count* skills named '*name*'. |
 | `alias-mismatch` | 400 | Alias '*alias*' must equal the skill name '*name*'. |
-| `scope-not-installable` | 400 | Service-provided skills can be enabled or disabled; adding a skill requires project or global scope. Recovery: Add it with scope "global" or open a workspace rooted in a project. |
-| `source-required` | 400 | Adding '*alias*' requires the standard installer source that provides it. |
-| `uninstall-failed` | 502 | Agent Skill '*name*' could not be removed from its *scope* root: *cause*. |
+| `scope-not-installable` | 400 | Service-provided skills can be enabled or disabled; adding a skill requires the project, plurnk, or global scope. |
+| `source-required` | 400 | Adding '*alias*' requires the source that provides it. |
+| `uninstall-failed` | 500 | Agent Skill '*name*' could not be removed from its *scope* root: *cause*. |
 | `workspace-not-found` | 404 | Workspace *id* does not exist. |
 | `state-not-json` | 400 | Worker module state is not JSON-serializable. |
 | `workspace-busy` | 409 | Workspace *id* is running an operation or another capability change. Recovery: Settle the current operation and retry the capability change. |
@@ -5977,8 +6008,7 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 | `loop-policy-invalid` | 400 | An unattended loop cannot hold a proposal for review: nobody is present to answer. Recovery: State proposals accept or reject, or attend the loop. |
 | `scope-cancelled` | 499 | The worker scope was cancelled: *reason*. |
 | `range-not-satisfiable` | 416 | `Range <0,-1>` starts at 0, which is not a line; lines are numbered from 1. Recovery: Write `<1,-1>` to trim every line of the body; `KILL (log:///…/READ)` with no scope retires the item. |
-| `registry-not-configured` | 501 | Skills registry search is disabled; PLURNK_SERVICE_SKILLS_REGISTRY_URL is empty. |
-| `install-failed` | 502 | Agent Skill '*name*' could not be installed from '*source*': *cause* (or the installer reported it but its SKILL.md does not exist). |
+| `install-failed` | 500 | Agent Skill '*name*' could not be placed under *root*: *cause*. |
 | `skill-missing` | 404 | Agent Skill '*alias*' is not installed under its *scope* root, or is not provided by this service. |
 | `skill-invalid` | 422 | Agent Skill '*alias*' is not a valid standard skill: *cause*. |
 

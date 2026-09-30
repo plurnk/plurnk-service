@@ -31,8 +31,8 @@ export default class HostPaths {
     readonly configFile: string;
     readonly policyFile: string;
     readonly databaseFile: string;
+    readonly plurnkSkillsDir: string;
     readonly globalSkillsDir: string;
-    readonly globalSkillsLockFile: string;
     readonly legacyDir: string;
 
     constructor({ env = process.env, home = homedir() }: HostPathsOptions = {}) {
@@ -59,11 +59,9 @@ export default class HostPaths {
 
         // Configuration is operator input and is never moved under a state root.
         this.configHome = base("XDG_CONFIG_HOME", ".config");
-        let xdgStateHome: string;
         if (this.stateRoot === null) {
             this.dataHome = base("XDG_DATA_HOME", join(".local", "share"));
             this.stateHome = base("XDG_STATE_HOME", join(".local", "state"));
-            xdgStateHome = this.stateHome;
             this.cacheHome = base("XDG_CACHE_HOME", ".cache");
             const runtime = env.XDG_RUNTIME_DIR;
             if (runtime === undefined || runtime.length === 0) {
@@ -75,7 +73,6 @@ export default class HostPaths {
                 this.runtimeHome = null;
             }
         } else {
-            xdgStateHome = base("XDG_STATE_HOME", join(".local", "state"));
             this.dataHome = join(this.stateRoot, "data");
             this.stateHome = join(this.stateRoot, "state");
             this.cacheHome = join(this.stateRoot, "cache");
@@ -91,13 +88,11 @@ export default class HostPaths {
         this.configFile = join(this.configDir, ".env");
         this.policyFile = join(this.configDir, "AGENTS.md");
         this.databaseFile = join(this.dataDir, "plurnk.db");
-        // The upstream `skills` CLI's universal global target is deliberately
-        // shared across agents and is rooted independently of application config
-        // and of any state root: a private daemon still reads the user's skills.
+        // {§skills-functionality} — plurnk-only skills are configuration; the global
+        // root is shared across agents and rooted independently of application
+        // config and of any state root: a private daemon still reads the user's skills.
+        this.plurnkSkillsDir = join(this.configDir, "skills");
         this.globalSkillsDir = join(this.home, ".agents", "skills");
-        this.globalSkillsLockFile = env.XDG_STATE_HOME
-            ? join(xdgStateHome, "skills", ".skill-lock.json")
-            : join(this.home, ".agents", ".skill-lock.json");
         this.legacyDir = join(this.home, ".plurnk");
     }
 

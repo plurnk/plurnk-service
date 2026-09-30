@@ -31,6 +31,9 @@ consumer; this package neither installs skills nor grants execution authority.
 | `description` | Nonblank string, at most 1024 Unicode code points. |
 | Other frontmatter | Preserve without interpreting or enforcing unused authoring constraints. Unknown fields, ordinary YAML aliases and flow mappings remain available in the original source. |
 
+`skillName` reads and admits `name` alone, for a consumer that names the directory itself: a
+skill at the root of a fetched source. The directory-name match then holds by construction.
+
 The loader is not an authoring linter. The `skills-ref` demonstration's NFKC
 rewriting, lowercase `skill.md` fallback, unknown-field rejection and StrictYAML
 restrictions do not replace the source-preserving contract above.

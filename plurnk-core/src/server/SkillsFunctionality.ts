@@ -1,23 +1,17 @@
 // {§skills-functionality} — standard Agent Skills as one workspace Functionality
-// family. Universal roots and host-provided trees own resources;
-// workspace state owns enablement; the standard
-// `skills` CLI is the deterministic installer beneath `add`/`remove` and the
-// registry behind `discover`, and neither is the model's or a client's contract.
-import { execFile } from "node:child_process";
-import ExecEnv from "../schemes/exec-env.ts";
+// family. The skill roots and host-provided trees own resources; workspace
+// state owns enablement; {§skills-sources} fetch what `add` names, and no
+// installer or registry stands between a source and its root.
 import { createHash } from "node:crypto";
-import { readdir, readFile, realpath, stat } from "node:fs/promises";
+import { readdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { promisify, stripVTControlCharacters } from "node:util";
 import { SkillDirectory, type SkillTree } from "@plurnk/plurnk-agent-skills";
 import {
-    Problems,
     SKILL_NAME,
     Validator,
     type FunctionalityCandidate,
     type FunctionalityDiscoverQuery,
     type JsonSchema,
-    type ProblemDetails,
     type SkillDefinition,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
@@ -36,14 +30,22 @@ import type {
 import type {
     FunctionalityAdapter,
 } from "./DaemonModule.ts";
-
-const execFileP = promisify(execFile);
+import SkillSource from "./SkillSource.ts";
+import { SkillsActionError, actionError, messageOf } from "./skills-problems.ts";
 
 const SKILLS_FAMILY = "skills";
 const SKILLS_OWNER = "@plurnk/plurnk-core/skills";
 const DEFINITION = { $ref: "https://schemas.plurnk.xyz/v0/SkillDefinition.json" } as const satisfies JsonSchema;
-// The ceiling of one skills CLI run's captured output: a bound on a child process, not a choice.
-const CLI_OUTPUT_BYTES = 8 * 1024 * 1024;
+// {§skills-sources} — the vendor installer's knobs; each names what replaced it.
+const RETIRED_KNOBS: Readonly<Record<string, string>> = Object.freeze({
+    PLURNK_SERVICE_SKILLS_CLI: "add fetches git, folder and file sources itself",
+    PLURNK_SERVICE_SKILLS_CLI_TIMEOUT_MS: "PLURNK_SERVICE_SKILLS_FETCH_TIMEOUT_MS bounds each fetch",
+    PLURNK_SERVICE_SKILLS_REGISTRY_URL: "discover takes a source; Agent Skills have no standard registry",
+    PLURNK_SERVICE_SKILLS_REGISTRY_LIMIT: "discover takes a source; Agent Skills have no standard registry",
+    PLURNK_SERVICE_SKILLS_REGISTRY_TIMEOUT_MS: "discover takes a source; Agent Skills have no standard registry",
+});
+// Installed roots in precedence order: a nearer root shadows a farther one by name.
+const ROOTS = ["project", "plurnk", "global"] as const;
 
 type Scope = SkillDefinition["scope"];
 
@@ -63,58 +65,8 @@ interface Snapshot {
     readonly unavailable: readonly string[];
 }
 
-export interface RegistrySkill {
-    readonly name: string;
-    readonly id: string;
-    readonly source: string;
-    readonly installs: number | null;
-    // Where the registry that answered the search describes this skill — the configured registry,
-    // never a fixed one.
-    readonly reference: string;
-}
-
-// The deterministic machinery beneath the adapter: the standard `skills` CLI
-// and the ecosystem registry. Tests substitute both.
-export interface SkillsToolchain {
-    // `home` is the host's user home: the standard CLI's `~` must agree with
-    // the service's global Agent Skills root.
-    run(args: readonly string[], cwd: string, home: string): Promise<string>;
-    search(query: string): Promise<readonly RegistrySkill[]>;
-}
-
-class SkillsActionError extends Error {
-    readonly problem: ProblemDetails;
-
-    constructor(problem: ProblemDetails, cause?: unknown) {
-        super(problem.detail, cause === undefined ? undefined : { cause });
-        this.name = "SkillsActionError";
-        this.problem = problem;
-    }
-}
-
-const problem = (
-    code: string,
-    status: number,
-    detail: string,
-    extensions: Readonly<Record<string, unknown>> = {},
-): ProblemDetails => Problems.create("skills:functionality", code, status, detail, {
-    stage: "skills-functionality",
-    retryable: status === 409 || status >= 500,
-    ...extensions,
-});
-
-const actionError = (
-    code: string,
-    status: number,
-    detail: string,
-    extensions: Readonly<Record<string, unknown>> = {},
-    cause?: unknown,
-): SkillsActionError => new SkillsActionError(problem(code, status, detail, extensions), cause);
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null && !Array.isArray(value);
-
-const messageOf = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
 
 const missing = (cause: unknown): false => {
     if ((cause as NodeJS.ErrnoException)?.code === "ENOENT") return false;
@@ -123,119 +75,41 @@ const missing = (cause: unknown): false => {
 const isFile = (path: string): Promise<boolean> => stat(path).then((info) => info.isFile(), missing);
 const exists = (path: string): Promise<boolean> => stat(path).then(() => true, missing);
 
-// `skills add <source> --list` prints, after an "Available Skills" heading,
-// each skill name at one indentation and its description at a deeper one,
-// behind the CLI's box-drawing gutter. Only that structure is read.
-export const parseListing = (output: string): Array<{ name: string; description: string }> => {
-    const lines = stripVTControlCharacters(output).split(/\r?\n/u);
-    const start = lines.findIndex((line) => /Available Skills\s*$/u.test(line));
-    if (start === -1) return [];
-    const skills: Array<{ name: string; description: string }> = [];
-    for (const line of lines.slice(start + 1)) {
-        const match = /^[^\s\p{L}\p{N}]*( +)(\S.*)$/u.exec(line);
-        if (match === null) continue;
-        const indent = match[1]!.length;
-        const text = match[2]!.trim();
-        if (indent === 4) {
-            if (SKILL_NAME.test(text)) skills.push({ name: text, description: "" });
-            continue;
-        }
-        const last = skills.at(-1);
-        if (last === undefined || indent < 6) continue;
-        skills[skills.length - 1] = { name: last.name, description: last.description.length === 0 ? text : `${last.description} ${text}` };
-    }
-    return skills;
-};
-
-export class StandardSkillsToolchain implements SkillsToolchain {
-    readonly #command: readonly string[];
-    readonly #registry: string | null;
-
-    constructor(env: NodeJS.ProcessEnv = process.env) {
-        // {§operator-config-only-home} — the panel states both values; an unset key is a broken floor.
-        const cli = env.PLURNK_SERVICE_SKILLS_CLI;
-        if (cli === undefined) throw new Error("PLURNK_SERVICE_SKILLS_CLI is missing from the assembled environment floor.");
-        if (cli.trim().length === 0) throw new Error("PLURNK_SERVICE_SKILLS_CLI must name the Agent Skills installer command.");
-        this.#command = cli.trim().split(/\s+/u);
-        const registry = env.PLURNK_SERVICE_SKILLS_REGISTRY_URL;
-        if (registry === undefined) throw new Error("PLURNK_SERVICE_SKILLS_REGISTRY_URL is missing from the assembled environment floor.");
-        this.#registry = registry.trim().length === 0 ? null : registry.trim().replace(/\/+$/u, "");
-    }
-
-    get registry(): string | null {
-        return this.#registry;
-    }
-
-    async run(args: readonly string[], cwd: string, home: string): Promise<string> {
-        const [command, ...prefix] = this.#command;
-        const { stdout, stderr } = await execFileP(command!, [...prefix, ...args], {
-            cwd,
-            // {§exec-env-scoped} — the registry CLI is plurnk's own tooling, so it keeps the
-            // operator's environment (npm config, proxies) but never plurnk's secrets. NO_COLOR
-            // and CI arrive as declared floors from @plurnk/plurnk-execs rather than inline.
-            env: { ...ExecEnv.withoutOwnSecrets(), HOME: home },
-            timeout: Knob.integer("PLURNK_SERVICE_SKILLS_CLI_TIMEOUT_MS", 1),
-            maxBuffer: CLI_OUTPUT_BYTES,
-        });
-        return `${stdout}\n${stderr}`;
-    }
-
-    async search(query: string): Promise<readonly RegistrySkill[]> {
-        if (this.#registry === null) {
-            throw actionError("registry-not-configured", 501, "Skills registry search is disabled; PLURNK_SERVICE_SKILLS_REGISTRY_URL is empty.", { query, retryable: false });
-        }
-        const url = `${this.#registry}/api/search?${new URLSearchParams({ q: query, limit: String(Knob.integer("PLURNK_SERVICE_SKILLS_REGISTRY_LIMIT", 1)) })}`;
-        let response: Response;
-        try {
-            response = await fetch(url, { signal: AbortSignal.timeout(Knob.integer("PLURNK_SERVICE_SKILLS_REGISTRY_TIMEOUT_MS", 1)) });
-        } catch (cause) {
-            throw actionError("registry-unreachable", 502, `Skills registry ${this.#registry} could not be reached.`, { query, registry: this.#registry, retryable: true }, cause);
-        }
-        if (!response.ok) throw actionError("registry-rejected", 502, `Skills registry ${this.#registry} answered ${response.status}.`, { query, registry: this.#registry, status: response.status, retryable: true });
-        const body = await response.json() as { skills?: unknown };
-        if (!Array.isArray(body.skills)) throw actionError("registry-invalid", 502, `Skills registry ${this.#registry} returned no skills array.`, { query, registry: this.#registry, retryable: true });
-        return body.skills.flatMap((skill): RegistrySkill[] => {
-            if (!isRecord(skill) || typeof skill.name !== "string" || typeof skill.id !== "string") return [];
-            return [{
-                name: skill.name,
-                id: skill.id,
-                source: typeof skill.source === "string" && skill.source.length > 0 ? skill.source : skill.id.split("/").slice(0, 2).join("/"),
-                installs: typeof skill.installs === "number" ? skill.installs : null,
-                reference: `${this.#registry}/${skill.id}`,
-            }];
-        });
-    }
-}
-
 export default class SkillsFunctionality implements FunctionalityAdapter {
     readonly family = SKILLS_FAMILY;
     readonly aliasPattern = SKILL_NAME;
     readonly namespaceOwner = SKILLS_OWNER;
     readonly summary = "Manage Agent Skills";
     readonly definitionSchema: JsonSchema = DEFINITION;
-    readonly example = { alias: "sql-formatter", definition: { name: "sql-formatter", scope: "project", source: "example/skills" } };
+    readonly example = { alias: "sql-formatter", definition: { name: "sql-formatter", scope: "project", source: "https://git.example/acme/skills.git" } };
     readonly docsDir = Paths.packageRoot;
     readonly discovery = {
-        details: "`query` searches the standard skills registry; `source` inspects one installer package reference (`owner/repo`, a git URL, or a local path). A candidate carries the exact definition to add.",
+        details: "`source` lists the Agent Skills one source carries: a git remote as a full https or ssh URL, a folder, a lone SKILL.md, or a zip or tar archive. A candidate carries the exact definition to add.",
     };
 
     readonly #db: Db;
     readonly #hostPaths: HostPaths;
-    readonly #toolchain: SkillsToolchain;
     readonly #provided: () => Promise<ReadonlyMap<string, SkillTree>>;
     readonly #snapshots = new Map<number, Snapshot>();
     #handle: FunctionalityFamilyHandle | null = null;
 
-    constructor({ db, hostPaths = new HostPaths(), toolchain = new StandardSkillsToolchain(), provided = async () => new Map() }: {
+    constructor({ db, hostPaths = new HostPaths(), provided = async () => new Map() }: {
         readonly db: Db;
         readonly hostPaths?: HostPaths;
-        readonly toolchain?: SkillsToolchain;
         readonly provided?: () => Promise<ReadonlyMap<string, SkillTree>>;
     }) {
         this.#db = db;
         this.#hostPaths = hostPaths;
-        this.#toolchain = toolchain;
         this.#provided = provided;
+    }
+
+    // Refuses the vendor installer's retired knobs, naming what replaced each, and reads the fetch deadline.
+    static validateConfiguration(): void {
+        for (const [knob, successor] of Object.entries(RETIRED_KNOBS)) {
+            const stale = process.env[knob];
+            if (stale !== undefined && stale.length > 0) throw new Error(`${knob} is retired: ${successor}.`);
+        }
+        Knob.integer("PLURNK_SERVICE_SKILLS_FETCH_TIMEOUT_MS", 1);
     }
 
     attach(handle: FunctionalityFamilyHandle): void {
@@ -252,13 +126,10 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
     }
 
     #rootFor(scope: Scope, projectRoot: string | null): string | null {
-        if (scope === "service") throw new TypeError("A service-provided skill has no installer root.");
+        if (scope === "service") throw new TypeError("A service-provided skill has no root.");
         if (scope === "global") return this.#hostPaths.globalSkillsDir;
+        if (scope === "plurnk") return this.#hostPaths.plurnkSkillsDir;
         return projectRoot === null ? null : this.#hostPaths.projectSkillsDir(projectRoot);
-    }
-
-    #cwdFor(scope: Scope, projectRoot: string | null): string {
-        return scope === "global" || projectRoot === null ? this.#hostPaths.home : projectRoot;
     }
 
     async #installedIn(scope: Scope, dir: string): Promise<Installed[]> {
@@ -277,10 +148,10 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         return installed.toSorted((left, right) => left.name.localeCompare(right.name));
     }
 
-    // The effective installed union: project shadows global by name.
+    // The effective installed union: project shadows plurnk shadows global, by name.
     async #scan(projectRoot: string | null): Promise<Map<string, Installed>> {
         const union = new Map<string, Installed>();
-        for (const scope of ["project", "global"] as const) {
+        for (const scope of ROOTS) {
             const dir = this.#rootFor(scope, projectRoot);
             if (dir === null) continue;
             for (const installed of await this.#installedIn(scope, dir)) {
@@ -290,35 +161,12 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         return union;
     }
 
-    // The standard installer's lock files record each installed skill's source.
-    async #lockSources(projectRoot: string | null): Promise<Map<string, string>> {
-        const sources = new Map<string, string>();
-        for (const [scope, file] of [
-            ["project", projectRoot === null ? null : join(projectRoot, "skills-lock.json")],
-            ["global", this.#hostPaths.globalSkillsLockFile],
-        ] as const) {
-            if (file === null) continue;
-            let lock: unknown;
-            try {
-                lock = JSON.parse(await readFile(file, "utf8"));
-            } catch (cause) {
-                if ((cause as NodeJS.ErrnoException)?.code === "ENOENT") continue;
-                throw new Error(`Cannot read Agent Skills lock ${file}.`, { cause });
-            }
-            if (!isRecord(lock) || !isRecord(lock.skills)) throw new TypeError(`Invalid Agent Skills lock ${file}: expected a skills object.`);
-            for (const [name, entry] of Object.entries(lock.skills)) {
-                if (isRecord(entry) && typeof entry.source === "string") sources.set(`${scope}:${name}`, entry.source);
-            }
-        }
-        return sources;
-    }
-
     async #signature(projectRoot: string | null): Promise<string> {
         const hash = createHash("sha256");
         for (const [name, tree] of await this.#provided()) {
             hash.update(JSON.stringify([name, "service", tree.document.source]));
         }
-        for (const scope of ["project", "global"] as const) {
+        for (const scope of ROOTS) {
             const root = this.#rootFor(scope, projectRoot);
             if (root === null) continue;
             for (const installed of await this.#installedIn(scope, root)) {
@@ -327,12 +175,11 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
                 hash.update(JSON.stringify([installed.name, scope, ...identity]));
             }
         }
-        hash.update(JSON.stringify([...(await this.#lockSources(projectRoot))]));
         return hash.digest("hex");
     }
 
-    // {§skills-hotload} — filesystem installers operate out of band; before a
-    // turn assembles its packet the family republishes when the roots changed.
+    // {§skills-hotload} — skills placed or deleted out of band are admitted before
+    // a turn assembles its packet: the family republishes when the roots changed.
     async refreshIfChanged(identity: WorkspaceCapabilityIdentity): Promise<void> {
         const published = this.#snapshots.get(identity.workspaceId)?.signature;
         if (published === undefined) return;
@@ -343,14 +190,12 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
     }
 
     async available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]> {
-        const projectRoot = await this.#projectRoot(identity.workspaceId);
-        const sources = await this.#lockSources(projectRoot);
-        const installedSkills = await this.#scan(projectRoot);
-        const native = [...installedSkills.values()].map((installed) => {
-            const source = sources.get(`${installed.scope}:${installed.name}`);
-            const definition: SkillDefinition = { name: installed.name, scope: installed.scope, ...(source === undefined ? {} : { source }) };
-            return { alias: installed.name, definition, enabled: true };
-        });
+        const installedSkills = await this.#scan(await this.#projectRoot(identity.workspaceId));
+        const native = [...installedSkills.values()].map((installed) => ({
+            alias: installed.name,
+            definition: { name: installed.name, scope: installed.scope } satisfies SkillDefinition,
+            enabled: true,
+        }));
         const provided = [...(await this.#provided()).keys()]
             .filter((name) => !installedSkills.has(name))
             .map((name) => ({ alias: name, definition: { name, scope: "service" } satisfies SkillDefinition, enabled: true }));
@@ -359,35 +204,25 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
 
     async discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]> {
         if (query.configuration !== undefined) {
-            throw actionError("configuration-unsupported", 400, "Agent Skills discovery takes a registry query or an explicit source; client configuration contributes nothing.", { retryable: false });
+            throw actionError("configuration-unsupported", 400, "Agent Skills discovery takes a source; client configuration contributes nothing.", { retryable: false });
         }
-        if (query.source !== undefined) {
-            const source = query.source;
-            const cwd = this.#cwdFor("project", await this.#projectRoot(identity.workspaceId));
-            let output: string;
-            try {
-                output = await this.#toolchain.run(["add", source, "--list"], cwd, this.#hostPaths.home);
-            } catch (cause) {
-                throw actionError("discover-failed", 502, `Agent Skills source '${source}' could not be listed: ${messageOf(cause)}`, { source, retryable: true }, cause);
-            }
-            return parseListing(output).map((skill): FunctionalityCandidate => ({
+        if (query.query !== undefined) {
+            throw actionError("query-unsupported", 400, "Agent Skills have no standard registry to search; discover takes a source: a git remote as a full https or ssh URL, a folder, a lone SKILL.md, or a zip or tar archive.", { query: query.query, retryable: false });
+        }
+        if (query.source === undefined) return [];
+        const source = query.source;
+        const located = await SkillSource.locate(source, { projectRoot: await this.#projectRoot(identity.workspaceId), home: this.#hostPaths.home });
+        const opened = await SkillSource.open(located);
+        try {
+            return opened.skills.map((skill): FunctionalityCandidate => ({
                 alias: skill.name,
-                ...(skill.description.length === 0 ? {} : { summary: skill.description }),
+                summary: skill.description,
                 definition: { name: skill.name, scope: "project", source } satisfies SkillDefinition,
                 provenance: { kind: "source", source },
             }));
+        } finally {
+            await opened.close();
         }
-        if (query.query === undefined) return [];
-        const registry = await this.#toolchain.search(query.query);
-        return registry.flatMap((skill): FunctionalityCandidate[] => {
-            if (!SKILL_NAME.test(skill.name)) return [];
-            return [{
-                alias: skill.name,
-                ...(skill.installs === null ? {} : { summary: `${skill.installs} installs` }),
-                definition: { name: skill.name, scope: "project", source: skill.source } satisfies SkillDefinition,
-                provenance: { kind: "registry", source: skill.source, reference: skill.reference },
-            }];
-        });
     }
 
     async admit(input: unknown, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource> {
@@ -403,47 +238,80 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
             throw actionError("alias-mismatch", 400, `Alias '${alias}' must equal the skill name '${definition.name}'.`, { alias, name: definition.name, retryable: false });
         }
         if (definition.scope === "service") {
-            throw actionError("scope-not-installable", 400, "Service-provided skills can be enabled or disabled; adding a skill requires project or global scope.", { alias, retryable: false });
+            throw actionError("scope-not-installable", 400, "Service-provided skills can be enabled or disabled; adding a skill requires the project, plurnk, or global scope.", { alias, retryable: false });
+        }
+        if (definition.commit !== undefined) {
+            throw actionError("definition-invalid", 400, "The service records the commit a skill was added at; name a ref instead.", { alias, retryable: false });
         }
         if (definition.source === undefined) {
-            throw actionError("source-required", 400, `Adding '${alias}' requires the standard installer source that provides it.`, { alias, retryable: false });
+            throw actionError("source-required", 400, `Adding '${alias}' requires the source that provides it.`, { alias, retryable: false });
         }
-        if (definition.scope === "project" && await this.#projectRoot(identity.workspaceId) === null) {
-            throw actionError("project-root-required", 400, `'${alias}' targets the project scope, but this workspace has no project root.`, { alias, recovery: "Add it with scope \"global\" or open a workspace rooted in a project.", retryable: false });
+        const projectRoot = await this.#projectRoot(identity.workspaceId);
+        if (definition.scope === "project" && projectRoot === null) {
+            throw actionError("project-root-required", 400, `'${alias}' targets the project scope, but this workspace has no project root.`, { alias, recovery: "Add it with scope \"plurnk\" or \"global\", or open a workspace rooted in a project.", retryable: false });
         }
-        return { alias, definition };
+        const located = await SkillSource.locate(definition.source, { projectRoot, home: this.#hostPaths.home });
+        if (located.kind !== "git") {
+            if (definition.ref !== undefined) throw actionError("definition-invalid", 400, "A ref names a branch or tag of a git source.", { alias, retryable: false });
+            return { alias, definition: { ...definition, source: located.location } };
+        }
+        return { alias, definition: { ...definition, commit: await SkillSource.resolveCommit(located.location, definition.ref) } };
     }
 
-    async #install(definition: SkillDefinition, root: string, cwd: string): Promise<Installed> {
-        const args = ["add", definition.source!, "--agent", "universal", "--skill", definition.name, "--yes", ...(definition.scope === "global" ? ["--global"] : [])];
-        let output: string;
+    // {§skills-sources} — materializes a workspace definition's skill from its source into its root.
+    async #install(definition: SkillDefinition, root: string, projectRoot: string | null): Promise<Installed> {
+        const located = await SkillSource.locate(definition.source!, { projectRoot, home: this.#hostPaths.home });
+        const opened = await SkillSource.open(located, {
+            ...(definition.ref === undefined ? {} : { ref: definition.ref }),
+            ...(definition.commit === undefined ? {} : { commit: definition.commit }),
+        });
         try {
-            output = await this.#toolchain.run(args, cwd, this.#hostPaths.home);
-        } catch (cause) {
-            throw actionError("install-failed", 502, `Agent Skill '${definition.name}' could not be installed from '${definition.source}': ${messageOf(cause)}`, { name: definition.name, source: definition.source, scope: definition.scope, retryable: true }, cause);
+            const matches = opened.skills.filter(({ name }) => name === definition.name);
+            if (matches.length > 1) {
+                throw actionError("skill-ambiguous", 409, `'${definition.source}' carries ${matches.length} skills named '${definition.name}'.`, {
+                    name: definition.name, source: definition.source, retryable: false,
+                });
+            }
+            const match = matches[0];
+            if (match === undefined) {
+                const broken = opened.invalid.find(({ dir }) => dir.endsWith(`/${definition.name}`));
+                if (broken !== undefined) {
+                    throw actionError("skill-invalid", 422, `Agent Skill '${definition.name}' in '${definition.source}' is not a valid standard skill: ${broken.reason}`, {
+                        name: definition.name, source: definition.source, retryable: false,
+                    });
+                }
+                throw actionError("skill-not-found", 404, `'${definition.source}' carries no Agent Skill named '${definition.name}'.`, {
+                    name: definition.name, source: definition.source, retryable: false,
+                });
+            }
+            let dir: string;
+            try {
+                dir = await SkillSource.install(match, root);
+            } catch (cause) {
+                if (cause instanceof SkillsActionError) throw cause;
+                throw actionError("install-failed", 500, `Agent Skill '${definition.name}' could not be placed under ${root}: ${messageOf(cause)}`, {
+                    name: definition.name, scope: definition.scope, retryable: false,
+                }, cause);
+            }
+            return { name: definition.name, scope: definition.scope, dir, file: join(dir, "SKILL.md") };
+        } finally {
+            await opened.close();
         }
-        const file = join(root, definition.name, "SKILL.md");
-        if (!(await isFile(file))) {
-            throw actionError("install-failed", 502, `The installer reported '${definition.name}' from '${definition.source}' but ${file} does not exist.`, { name: definition.name, source: definition.source, scope: definition.scope, output: stripVTControlCharacters(output).trim().slice(-2000), retryable: true });
-        }
-        return { name: definition.name, scope: definition.scope, dir: join(root, definition.name), file };
     }
 
     // {§skills-remove} — the coordinator forgets the workspace definition;
-    // the adapter uninstalls what that definition installed at its scope.
+    // the adapter deletes the skill that definition placed at its scope.
     async forget(source: FunctionalityDefinitionSource, identity: WorkspaceCapabilityIdentity): Promise<void> {
         const definition = source.definition as SkillDefinition;
-        const projectRoot = await this.#projectRoot(identity.workspaceId);
-        const root = this.#rootFor(definition.scope, projectRoot);
+        const root = this.#rootFor(definition.scope, await this.#projectRoot(identity.workspaceId));
         if (root === null) return;
         const dir = join(root, definition.name);
         if (!(await exists(dir))) return;
         try {
-            await this.#toolchain.run(["remove", definition.name, "--yes", ...(definition.scope === "global" ? ["--global"] : [])], this.#cwdFor(definition.scope, projectRoot), this.#hostPaths.home);
+            await rm(dir, { recursive: true, force: true });
         } catch (cause) {
-            throw actionError("uninstall-failed", 502, `Agent Skill '${definition.name}' could not be removed from its ${definition.scope} root: ${messageOf(cause)}`, { name: definition.name, scope: definition.scope, retryable: true }, cause);
+            throw actionError("uninstall-failed", 500, `Agent Skill '${definition.name}' could not be removed from its ${definition.scope} root: ${messageOf(cause)}`, { name: definition.name, scope: definition.scope, retryable: true }, cause);
         }
-        if (await exists(dir)) throw actionError("uninstall-failed", 502, `The installer reported removal of '${definition.name}' but ${dir} still exists.`, { name: definition.name, scope: definition.scope, retryable: true });
     }
 
     async #locate(alias: string, definition: SkillDefinition, installed: Map<string, Installed>, projectRoot: string | null): Promise<Installed | undefined> {
@@ -463,7 +331,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
             const root = this.#rootFor(definition.scope, projectRoot);
             if (root === null) throw actionError("project-root-required", 409, `'${alias}' targets the project scope, but this workspace has no project root.`, { name: alias, retryable: false });
             if (definition.source === undefined) throw actionError("skill-missing", 404, `Agent Skill '${alias}' is not installed under its ${definition.scope} root.`, { name: alias, scope: definition.scope, root, retryable: false });
-            located = await this.#install(definition, root, this.#cwdFor(definition.scope, projectRoot));
+            located = await this.#install(definition, root, projectRoot);
         }
         try {
             return await SkillDirectory.load(located.dir);

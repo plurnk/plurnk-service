@@ -1247,13 +1247,21 @@ export interface SkillDefinition {
  */
 name: string
 /**
- * Source: project `.agents/skills`, global `~/.agents/skills`, or a service-provided resource tree. Service sources are not installer targets.
+ * Root: project `.agents/skills`, plurnk `$XDG_CONFIG_HOME/plurnk/skills`, global `~/.agents/skills`, or a service-provided resource tree. Service skills are never added or removed.
  */
-scope: ("project" | "global" | "service")
+scope: ("project" | "plurnk" | "global" | "service")
 /**
- * The standard installer package reference (`owner/repo`, a git URL, or a local path) that provides the skill; required to add a skill that is not yet installed.
+ * Where an added skill comes from: a git remote as a full https or ssh URL, a folder, a lone SKILL.md, or a zip or tar archive. Required to add a skill.
  */
 source?: string
+/**
+ * The branch or tag of a git source; the remote's default branch when absent.
+ */
+ref?: string
+/**
+ * The commit a git source's ref named when the skill was added. The service records it; a client never supplies it.
+ */
+commit?: string
 }
 
 export interface TextRegion {

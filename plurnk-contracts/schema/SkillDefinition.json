@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/SkillDefinition.json",
     "title": "SkillDefinition",
-    "description": "One standard Agent Skill: its name, source scope, and — for a workspace-installed skill — the standard installer package reference.",
+    "description": "One standard Agent Skill: its name, its root, and — for a skill a workspace added — the source it came from.",
     "type": "object",
     "additionalProperties": false,
     "required": ["name", "scope"],
@@ -14,13 +14,23 @@
             "maxLength": 64
         },
         "scope": {
-            "description": "Source: project `.agents/skills`, global `~/.agents/skills`, or a service-provided resource tree. Service sources are not installer targets.",
-            "enum": ["project", "global", "service"]
+            "description": "Root: project `.agents/skills`, plurnk `$XDG_CONFIG_HOME/plurnk/skills`, global `~/.agents/skills`, or a service-provided resource tree. Service skills are never added or removed.",
+            "enum": ["project", "plurnk", "global", "service"]
         },
         "source": {
-            "description": "The standard installer package reference (`owner/repo`, a git URL, or a local path) that provides the skill; required to add a skill that is not yet installed.",
+            "description": "Where an added skill comes from: a git remote as a full https or ssh URL, a folder, a lone SKILL.md, or a zip or tar archive. Required to add a skill.",
             "type": "string",
             "minLength": 1
+        },
+        "ref": {
+            "description": "The branch or tag of a git source; the remote's default branch when absent.",
+            "type": "string",
+            "minLength": 1
+        },
+        "commit": {
+            "description": "The commit a git source's ref named when the skill was added. The service records it; a client never supplies it.",
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$"
         }
     }
 }

@@ -31,7 +31,7 @@ import HttpListener from "./HttpListener.ts";
 import Envelope, { projectWorkerRow } from "./envelope.ts";
 import ClientInput from "./client-input.ts";
 import Turn from "../core/Turn.ts";
-import SkillsFunctionality, { type SkillsToolchain } from "./SkillsFunctionality.ts";
+import SkillsFunctionality from "./SkillsFunctionality.ts";
 import PlurnkSkill from "./PlurnkSkill.ts";
 import Skill from "../schemes/Skill.ts";
 import MembersFunctionality from "./MembersFunctionality.ts";
@@ -131,7 +131,7 @@ export default class Daemon implements ApplicationPort {
     readonly #storage: WorkspaceStorage;
 
     constructor({
-        db, schemes, mimetypes, provider, nodeModulesPath, hostPaths = new HostPaths(), skills, http = null, dbPath }: {
+        db, schemes, mimetypes, provider, nodeModulesPath, hostPaths = new HostPaths(), http = null, dbPath }: {
         db: Db;
         schemes?: SchemeRegistry;
         mimetypes?: Mimetypes;
@@ -142,7 +142,6 @@ export default class Daemon implements ApplicationPort {
         dbPath?: string;
         http?: HttpListener | null;
         // {§skills-functionality} — standard skill machinery, replaceable in tests.
-        skills?: { toolchain?: SkillsToolchain };
     }) {
         this.#db = db;
         this.#dbPath = dbPath;
@@ -198,7 +197,6 @@ export default class Daemon implements ApplicationPort {
         this.#skills = new SkillsFunctionality({
             db,
             hostPaths,
-            ...skills,
             provided: async () => {
                 const tree = await PlurnkSkill.load(this.#nodeModulesPath);
                 return new Map([[tree.document.name, tree]]);
@@ -1563,6 +1561,7 @@ export default class Daemon implements ApplicationPort {
         // {§effect-policy-tunable} — invalid operator policy fails boot, not the first execution.
         EffectPolicy.validateConfiguration();
         LoopPolicies.validateConfiguration();
+        SkillsFunctionality.validateConfiguration();
         // {§exec} — mint a scheme per runtime tag so exec output entries address by tag
         // authority (sh:///l/t/s). The "exec" scheme stays for execution dispatch.
         this.#schemes.registerRuntimeSchemes(executors);

@@ -10,7 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Validator } from "@plurnk/plurnk-contracts";
@@ -20,7 +20,6 @@ import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { OutboundModule as A2aOutboundModule } from "@plurnk/plurnk-a2a";
 import Daemon from "../../src/server/Daemon.ts";
 import HostPaths from "../../src/core/HostPaths.ts";
-import { StandardSkillsToolchain } from "../../src/server/SkillsFunctionality.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { startDemoAgent } from "../../../plurnk-a2a/test/fixtures/DemoAgent.ts";
 import { awaitExecOutcome } from "./_execs.ts";
@@ -132,7 +131,6 @@ const skillsFamily = async (): Promise<Family> => {
     await skill(hostPaths.projectSkillsDir(project), "grep", "Find text");
     await skill(sourceA, "extra", "Extra from source A");
     await skill(sourceB, "extra", "Extra from source B");
-    const toolchain = new StandardSkillsToolchain({ PLURNK_SERVICE_SKILLS_CLI: `${process.execPath} ${resolve(import.meta.dirname, "_skills-cli.mjs")}`, PLURNK_SERVICE_SKILLS_REGISTRY_URL: "" });
     const doc = (alias: string) => `skill://${alias}/SKILL.md`;
     const probe = (alias: string) => (context: Context) => documentPresent(context, doc(alias));
     return {
@@ -145,7 +143,7 @@ const skillsFamily = async (): Promise<Family> => {
         unreachable: { alias: "ghost", definition: { name: "ghost", scope: "project", source: sourceA }, probe: probe("ghost") },
         discover: { source: sourceA },
         boot: async (db, provider) => {
-            const daemon = new Daemon({ db, provider, hostPaths, skills: { toolchain } });
+            const daemon = new Daemon({ db, provider, hostPaths });
             return { daemon };
         },
         close: () => rm(base, { recursive: true, force: true }),
