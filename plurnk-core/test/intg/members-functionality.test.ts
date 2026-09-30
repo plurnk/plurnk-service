@@ -1,9 +1,4 @@
-// {§members-functionality} — file membership as one Functionality family, proven through the
-// daemon: the client's `workspace.members.<verb>` and the model's `### EXEC_ [members] (<verb>)` are
-// one owner over one workspace overlay; the model's add is admitted only under the operator's
-// ceiling ({§members-model-scope}); inclusions union and an exclusion wins across workers
-// ({§members-projection}); a model definition never passes the repository's ignore rules; `list`
-// says what every glob resolved to and `discover` explains one file or previews one glob.
+// {§members-functionality} {§members-model-scope} {§members-projection}
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -78,6 +73,31 @@ const memberOf = async (db: Db, workspaceId: number, pathname: string): Promise<
 const rows = async (db: Db, workspaceId: number): Promise<string[]> =>
     (await db.crud_list_workspace_constraints.all<{ effect: string; glob: string; source: string }>({ workspace_id: workspaceId }))
         .map(({ effect, glob, source }) => `${effect} ${glob} ${source}`);
+
+test("{§members-configuration} workspace inspection rejects ambiguous inherited aliases without publishing a winner", async () => {
+    await withEnv({
+        PLURNK_MEMBERS_DOCS: "docs/**",
+        PLURNK_MEMBERS_docs: "src/**",
+        PLURNK_MEMBERS_ENABLED: "[]",
+    }, async () => {
+        const db = await openMigrated();
+        const daemon = new Daemon({ db, provider: null });
+        try {
+            await daemon.start();
+            const workspaceId = await insertWorkspace(db, "ambiguous-members");
+            await assert.rejects(() => daemon.invokeModuleAction(
+                "workspace.members.list", {}, workspaceContext(workspaceId),
+            ), {
+                name: "Error",
+                message: "PLURNK_MEMBERS_DOCS and PLURNK_MEMBERS_docs both derive the members alias 'docs'.",
+            });
+            assert.deepEqual(await rows(db, workspaceId), [], "neither ambiguous definition changes membership");
+        } finally {
+            await daemon.stop();
+            await db.close();
+        }
+    });
+});
 
 test("{§members-functionality} client and model share one surface; the ceiling, the union, exclusion, ignore, list, and discover hold", async () => {
     const root = await gitProject();

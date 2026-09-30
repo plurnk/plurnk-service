@@ -28,6 +28,27 @@ test("serviceMembers fails hard on an unknown enabled alias, an empty glob, or a
     assert.throws(() => serviceMembers({ PLURNK_MEMBERS_DOCS: "docs/**", PLURNK_MEMBERS_ENABLED: "docs" }), /must be a JSON array/u);
 });
 
+test("{§members-configuration} normalized alias collisions name both declarations, regardless of order", async (t) => {
+    const pairs = [
+        ["PLURNK_MEMBERS_DOCS", "PLURNK_MEMBERS_docs", "docs"],
+        ["PLURNK_MEMBERS_NO_LOCKS", "PLURNK_MEMBERS_no-locks", "no-locks"],
+    ] as const;
+    for (const [left, right, alias] of pairs) {
+        for (const [first, second] of [[left, right], [right, left]] as const) {
+            await t.test(`${first} then ${second}`, () => {
+                assert.throws(() => serviceMembers({
+                    PLURNK_MEMBERS_ENABLED: "[]",
+                    [first]: "docs/**",
+                    [second]: "src/**",
+                }), {
+                    name: "Error",
+                    message: `${first} and ${second} both derive the members alias '${alias}'.`,
+                });
+            });
+        }
+    }
+});
+
 test("aliasOf suggests a legal alias from any glob; an exclusion is prefixed no-", () => {
     assert.equal(aliasOf("docs/**"), "docs");
     assert.equal(aliasOf(".env.local"), "env-local");
@@ -42,4 +63,3 @@ test("{§members-model-scope} modelScope is the panel's word in the lattice, and
     assert.equal(modelScope({ PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "root" }), "root");
     assert.throws(() => modelScope({ PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "wide" }), /PLURNK_SERVICE_MEMBERS_MODEL_SCOPE/u);
 });
-

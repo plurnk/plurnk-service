@@ -118,7 +118,10 @@ export const serviceMembers = (environ: NodeJS.ProcessEnv = process.env): Functi
     const targets = new Map<string, { key: string; glob: string }>();
     for (const [key, value] of Object.entries(environ)) {
         if (!key.startsWith(PREFIX) || value === undefined || key === ENABLED_KEY) continue;
-        targets.set(foldAlias(key.slice(PREFIX.length)), { key, glob: value.trim() });
+        const alias = foldAlias(key.slice(PREFIX.length));
+        const existing = targets.get(alias);
+        if (existing !== undefined) throw new Error(`${existing.key} and ${key} both derive the members alias '${alias}'.`);
+        targets.set(alias, { key, glob: value.trim() });
     }
     const enabled = new Set(jsonStrings(environ[ENABLED_KEY], ENABLED_KEY));
     for (const alias of enabled) {

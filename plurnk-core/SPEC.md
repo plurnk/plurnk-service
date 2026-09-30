@@ -5391,8 +5391,10 @@ content; nothing is added.
 
 §members-configuration *Available definitions.* The operator's `PLURNK_MEMBERS_<ALIAS>=<glob>`
 (`!glob` excludes) and `PLURNK_MEMBERS_ENABLED=[…]` (`[]` enables none) are the
-service-origin definitions, the shape `PLURNK_MCP_*` already has; an empty glob, a bare `!`,
-or an unknown enabled alias fails the daemon at boot.
+service-origin definitions. Alias suffixes are lowercased and underscores become
+hyphens. Two keys resolving to the same alias are rejected naming both keys;
+declaration order cannot select a winner. An empty glob, a bare `!`, or an
+unknown enabled alias also fails boot.
 
 §members-model-scope *The model's authority.* A model's `add` is admitted against
 `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` in the file-creation lattice `none < root <
