@@ -32,7 +32,7 @@ Eight principles govern which exterior standards PLURNK conforms to:
 3. **Traction.** Count running counterparties today; integration horizon must be shorter than the standard's expected half-life. Sockets stay configurable with no default until a candidate earns it.
 4. **POSIX app identity.** Decades-stable host-ecosystem conventions (XDG, NO_COLOR, man, completions, service units) govern wherever a domain standard is silent. Where a domain standard names its own location for cross-client interoperability, such as `.agents/skills`, PLURNK reads it, and its XDG location beside it holds PLURNK-only entries, which shadow the global ones.
 5. **Faces, never organs.** A standard adopts as one adapter or projection behind an existing seam; if it cannot, that is the alarm, and it goes to a design gate.
-6. **Replace, never add.** Where an open standard covers something PLURNK built, the standard's form replaces PLURNK's own, and PLURNK aims to be its reference implementation. Parallel representations, second discovery paths, adapters, importers, and compatibility grammars are refused. A standard replaces a form (a format, schema, or file layout), never an organ: the subsystems of principle 1 stay and manage the standard's artifacts, as `mcp (add)` writes an Agent Plugin.
+6. **One system, multiple sources.** Standard files, the cascading environment, and scoped live changes feed the same owning contracts. Standards alignment must not withdraw environment-only configuration or turn workspace management into a global installer. Resource formats remain standard; configuration resolution, capability policy, and publication remain the shared system's responsibility.
 7. **Two arbiters.** Model-facing surfaces change only on measured model evidence; human-facing surfaces follow host-ecosystem convention without ceremony. Standards bodies get a vote on neither.
 8. **Open, never proprietary.** A vendor-owned convention (`CLAUDE.md`, `.claude/`, `.cursor/`, a vendor's configuration dialect) earns no place, whatever its traction.
 
@@ -165,6 +165,13 @@ a second home for a choice, and it will eventually disagree with the first.
   invocation and nothing more; the service's flags are generated from its panel.
 - **A definition is not a knob.** A schedule's rule or an MCP server's address
   is data with its own lifecycle, not a choice of behaviour.
+- **A source is not a scope.** A standard file supplies definitions; its format
+  does not choose where live changes persist. Workspace management must not
+  silently rewrite project or user-global installations. Subsystem commands,
+  environment declarations, and supported standard sources converge on the
+  family's owning schema and lifecycle, not separate registries. Inspection
+  must distinguish the effective configuration from runtime readiness and
+  identify where the configuration came from.
 - **A daemon is one trust domain.** Everything holding a daemon's credential is
   one principal. A different security situation is a different daemon with a
   different panel — ideally inside a sandbox, which is somebody else's project:

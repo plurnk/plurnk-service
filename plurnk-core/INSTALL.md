@@ -27,8 +27,8 @@ or enables the unit.
 | User configuration | `$XDG_CONFIG_HOME/plurnk/.env` (`~/.config/plurnk/.env`) |
 | Operating policy | `$XDG_CONFIG_HOME/plurnk/AGENTS.md` |
 | Database | `$XDG_DATA_HOME/plurnk/plurnk.db` (`~/.local/share/plurnk/plurnk.db`) |
-| Project configuration | `.env` in the service's working directory |
 | Project / global Agent Skills | `.agents/skills/` / `~/.agents/skills/` |
+| Plurnk-only Agent Skills | `$XDG_CONFIG_HOME/plurnk/skills/` |
 
 Use `plurnk-service config` for paths and precedence, `config edit` to edit the
 user file, and `config check` to validate it. An old `~/.plurnk` is not read
@@ -83,14 +83,16 @@ a model cannot widen their ceiling by changing its policy prose.
 
 ## Skills
 
-Project names shadow global names, which shadow service-provided skills.
+Project names shadow Plurnk-only names, then user-global names, then
+service-provided skills.
 Plurnk's own skill uses the same discovery, READ, and workspace enablement as
 installed skills. It is not copied into a universal root.
 
 Clients use `workspace.skills.{list,discover,add,enable,disable,remove}`; models use
 the generated `skills` executor. `discover` returns candidates without
-installation. `add` installs through the standard skills CLI into the chosen
-project or global scope; `remove` uninstalls a workspace-origin installation.
+installation. `add` installs from a Git remote, directory, `SKILL.md`, or archive
+into the chosen project, Plurnk-only, or global root; `remove` uninstalls a
+workspace-origin installation.
 Service-provided entries can be disabled, not uninstalled through that action.
 An external installer changes the available catalog at the next turn.
 

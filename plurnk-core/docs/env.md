@@ -72,9 +72,8 @@ command, so `add` refuses them and tells you why.
 
 ## Finding a name
 
-`discover` is this installation's configuration catalog: every knob an installed
-package declares, with the declaring package as its provenance and its own
-comment as the summary. It is not a permissions list — you may set any name —
-it tells you which names have a consumer, and it is how you learn the name of a
-value only the operator can supply. Such a value is referenced by its name; the
-value itself never appears.
+`discover` lists the names installed packages declare that `env` may set, with
+the declaring package as provenance and its comment as the summary. Undeclared,
+non-reserved names are also allowed. Plurnk's own configuration and provider
+credential names are excluded; READ `skill://plurnk/.env.defaults` for the full
+configuration reference. Discovery shows declarations, not effective values.
