@@ -101,6 +101,8 @@ by default; `<alias>_ENABLED=0` retains a rule without arming it. The family
 validates every definition, including disabled rules, at construction. A service
 definition is disable-only in a workspace ({§functionality-coordinator}); live
 definitions and state compose through {§configuration-definition-resolution}.
+Offline validation uses the same rule normalization as construction, without arming
+or persisting a rule ({§operator-config-offline-validation}).
 
 §problems-schedule **Schedule Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 

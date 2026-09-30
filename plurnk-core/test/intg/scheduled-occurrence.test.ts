@@ -22,7 +22,7 @@ test("{§functionality-state} schedule startup rejects malformed persisted enabl
         } } }),
     });
     const timers: SchedulerTimers = { set: () => assert.fail("malformed state must not arm a timer"), clear: () => {} };
-    const module = Module.init({ env: { TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1" }, clock: () => INITIAL, timers });
+    const module = Module.init({ env: { ...process.env, TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1" }, clock: () => INITIAL, timers });
     const daemon = new Daemon({ db, provider: null });
     daemon.registerModule(module);
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -41,7 +41,7 @@ test("{§schedule-residency} restart arms the coordinator's complete definitions
     const instances: Daemon[] = [];
     const start = async () => {
         const module = Module.init({
-            env: { TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1", PLURNK_SCHEDULE_beat: JSON.stringify(baseline) },
+            env: { ...process.env, TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1", PLURNK_SCHEDULE_beat: JSON.stringify(baseline) },
             clock: () => INITIAL, timers: { set: () => Symbol("occurrence"), clear: () => {} },
         });
         const daemon = new Daemon({ db, provider: null });
@@ -93,7 +93,7 @@ test("{§schedule-delivery}: an occurrence runs its own loop; no WAIT holds a lo
         set: (callback, delay) => { const id = ++serial; timers.set(id, { callback, due: now + delay }); return id; },
         clear: (id) => { timers.delete(id as number); },
     };
-    const module = Module.init({ env: { TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1" }, clock: () => now, timers: timerApi });
+    const module = Module.init({ env: { ...process.env, TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1" }, clock: () => now, timers: timerApi });
     const daemon = new Daemon({ db, provider });
     daemon.registerModule(module);
     await daemon.start();

@@ -9,6 +9,7 @@ import {
     retryDelayMs,
     retryPacing,
     serverSettings,
+    validateConfiguration,
 } from "./config.ts";
 
 const floor = {
@@ -82,6 +83,18 @@ test("timeouts are required positive integers owned by .env.defaults", () => {
         }),
         /safe integer of at least 1/,
     );
+});
+
+test("{§operator-config-offline-validation} MCP validation checks every independent control without starting a connection", () => {
+    const env = { ...floor, PLURNK_MCP_REGISTRY_URL: "", PLURNK_MCP_REGISTRY_LIMIT: "10", PLURNK_MCP_future_TOOLS: '["search"]' };
+    assert.doesNotThrow(() => validateConfiguration(env));
+    for (const [key, value] of Object.entries({
+        PLURNK_MCP_CONNECT_TIMEOUT: "0", PLURNK_MCP_REQUEST_TIMEOUT: "0", PLURNK_MCP_RETRY_FLOOR_MS: "0",
+        PLURNK_MCP_RETRY_CEILING_MS: "1", PLURNK_MCP_REGISTRY_URL: "file:///registry", PLURNK_MCP_REGISTRY_LIMIT: "0",
+        PLURNK_MCP_EXPANDED: '["BAD"]', PLURNK_MCP_future_TOOLS: "[1]",
+    })) {
+        assert.throws(() => validateConfiguration({ ...env, [key]: value }), (error: Error) => error.message.includes(key));
+    }
 });
 
 test("{§mcp-retry-pacing} one pacing, stated on the panel, doubles from its floor to its ceiling", () => {

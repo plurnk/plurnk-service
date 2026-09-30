@@ -137,6 +137,8 @@ that package's `*_ERROR_DETAIL_LIMIT` knob, read through {§env-knob}:
 (or a value's string form) and marks the cut with `...`. The bound is read at
 each preview; an unset or invalid bound crashes by name at the first
 diagnostic, never degrades into an unbounded one.
+`limit(environment?)` validates the same bound without rendering a diagnostic;
+an explicitly supplied environment is complete and never falls back to the process.
 
 ### §plugin-manifest-read One package.json read
 

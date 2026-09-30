@@ -134,3 +134,12 @@ export const registrySettings = (environ: NodeJS.ProcessEnv = process.env): Regi
 
 export const requestTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number =>
     Knob.integer("PLURNK_MCP_REQUEST_TIMEOUT", 1, environ);
+
+export const validateConfiguration = (environ: NodeJS.ProcessEnv = process.env): void => {
+    serviceDefinitions(environ);
+    expandedServerNames(environ);
+    connectTimeoutMs(environ);
+    requestTimeoutMs(environ);
+    retryPacing(environ);
+    registrySettings(environ);
+};

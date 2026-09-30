@@ -25,13 +25,12 @@ import {
     Module as A2aModule,
     hostedAgentConfiguration,
 } from "@plurnk/plurnk-a2a";
-import { Module as HooksModule } from "@plurnk/plurnk-hooks";
+import { Module as HooksModule, hookConfig } from "@plurnk/plurnk-hooks";
 import ServiceModules from "./server/ServiceModules.ts";
 import { formatBuildInfo, getBuildInfo } from "./build-info.ts";
 import ServiceTeardown from "./core/ServiceTeardown.ts";
 import Paths from "./Paths.ts";
 import { startObservability } from "./observe/init.ts";
-import FileCreationPolicy from "./core/file-creation-policy.ts";
 import Digest from "./digest/Digest.ts";
 import Share from "./share/Share.ts";
 
@@ -120,6 +119,12 @@ export default class Service {
         if (route === null) return "not selected";
         const exact = `${route.provider}/${route.model}`;
         return route.alias === undefined ? exact : `${route.alias}=${exact}`;
+    }
+
+    static #validateConfiguration(): void {
+        Daemon.validateConfiguration();
+        ServiceModules.validateConfiguration();
+        hookConfig();
     }
 
     static async #ensureOperatorConfig(): Promise<void> {
@@ -217,7 +222,7 @@ export default class Service {
 
     // {§startup-admission} — listener, database, provider, daemon, in that order; a failure unwinds what it holds.
     static async #start(): Promise<void> {
-        FileCreationPolicy.serviceScope();
+        Service.#validateConfiguration();
         const dbPath = Service.#databasePath();
         const host = Service.#requireEnv("PLURNK_HOST");
         // PLURNK_PORT is THE client surface — the AG-UI+ listener (the agui plugin module binds
@@ -321,7 +326,7 @@ export default class Service {
                 `relative XDG variable(s) are invalid and ignored: ${Service.#hostPaths.invalidXdg.join(", ")}`,
             );
         }
-        FileCreationPolicy.serviceScope();
+        Service.#validateConfiguration();
         const { aliases, active } = Service.#modelConfiguration();
         process.stdout.write([
             "configuration valid",

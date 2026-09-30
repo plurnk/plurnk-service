@@ -11,6 +11,7 @@ export {
     hostedAgentConfiguration,
     outboundDefinitions,
     requestTimeoutMs,
+    validateConfiguration,
     type HostedAgentConfiguration,
     type OutboundAgentDefinition,
 } from "./config.ts";

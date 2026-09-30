@@ -17,7 +17,7 @@ import {
     type ProblemDetails,
     type WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
-import { previewOccurrences, serviceDefinitions } from "./config.ts";
+import { previewOccurrences, validateConfiguration } from "./config.ts";
 import { DEFINITION_SCHEMA, DefinitionError, readDefinition, type ScheduleDefinition } from "./definition.ts";
 import { describeRule, nextOccurrence, normalizeRule, parseRule, ScheduleRuleError, upcoming, type ParsedRule } from "./rules.ts";
 import Scheduler, { type ScheduledRule, type SchedulerOptions } from "./Scheduler.ts";
@@ -110,18 +110,7 @@ export default class ScheduleFunctionality {
             const listing = await this.#handle.invoke("list", {}, { workspaceId });
             return (listing.body as { definitions: Array<{ alias: string; state: string }> }).definitions;
         });
-        const zone = env.TZ;
-        if (zone === undefined || zone.length === 0) throw new Error("TZ is unset; @plurnk/plurnk-schedule declares its default in .env.defaults.");
-        const now = this.#scheduler.now();
-        this.#service = new Map([...serviceDefinitions(env)].map(([alias, { definition, enabled }]) => {
-            let parsed: ParsedRule;
-            try {
-                parsed = normalizeRule(definition.rule, zone, now);
-            } catch (cause) {
-                throw new Error(`PLURNK_SCHEDULE_${alias.replaceAll("-", "_")}: ${messageOf(cause)}`, { cause });
-            }
-            return [alias, { definition: { ...definition, rule: parsed.text }, enabled }];
-        }));
+        this.#service = validateConfiguration(env, this.#scheduler.now());
     }
 
     attach(handle: FunctionalityFamilyHandle, environment: EnvironmentSeam): void {

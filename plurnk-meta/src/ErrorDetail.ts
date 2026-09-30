@@ -9,8 +9,8 @@ export default class ErrorDetail {
         this.#knob = knob;
     }
 
-    limit(): number {
-        return Knob.integer(this.#knob, 0);
+    limit(environ: NodeJS.ProcessEnv = process.env): number {
+        return Knob.integer(this.#knob, 0, environ);
     }
 
     preview(value: unknown): string {

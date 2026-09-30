@@ -2,6 +2,7 @@ import type { A2AAgentDefinition as A2aAgentDefinition } from "@plurnk/plurnk-co
 import { Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import { isAbsolute } from "node:path";
 import { readDefinition } from "./definition.ts";
+import errorDetail from "./ErrorDetail.ts";
 import {
     A2A_PROTOCOL_VERSION,
     AgentCard,
@@ -240,3 +241,11 @@ export const connectTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): numb
 
 export const requestTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number =>
     Knob.integer("PLURNK_A2A_REQUEST_TIMEOUT", 1, environ);
+
+export const validateConfiguration = (environ: NodeJS.ProcessEnv = process.env): void => {
+    outboundDefinitions(environ);
+    hostedAgentConfiguration(environ);
+    connectTimeoutMs(environ);
+    requestTimeoutMs(environ);
+    errorDetail.limit(environ);
+};

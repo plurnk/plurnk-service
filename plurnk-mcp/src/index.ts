@@ -14,5 +14,6 @@ export {
     expandReferences,
     requestTimeoutMs,
     serverSettings,
+    validateConfiguration,
 } from "./config.ts";
 export type { McpAuthorization, ToolPolicy } from "./config.ts";

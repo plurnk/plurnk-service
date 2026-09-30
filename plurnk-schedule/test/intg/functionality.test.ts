@@ -137,8 +137,11 @@ test("{§schedule-discovery-preview} the panel says how many occurrences a readi
     assert.match(String(daily!.summary), /; next 2026-09-16T12:30:16\+00:00\[UTC\]; unbounded/u, "one occurrence, not three");
     assert.deepEqual(await one.available(), [], "the control key declares no rule");
     const time = new FakeTime();
-    const unset = new ScheduleFunctionality({ TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1" }, { clock: time.clock, timers: time.api });
-    await assert.rejects(unset.discover({ source: "FREQ=DAILY" }, { workspaceId: 1 }), /PLURNK_SCHEDULE_PREVIEW_OCCURRENCES is missing from the assembled environment floor/u);
+    assert.throws(
+        () => new ScheduleFunctionality({ TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1" }, { clock: time.clock, timers: time.api }),
+        /PLURNK_SCHEDULE_PREVIEW_OCCURRENCES is missing from the assembled environment floor/u,
+        "invalid settings are rejected during construction, before discovery",
+    );
 });
 
 test("{§schedule-clock} discovery tells the time beside the rule it reads, in the effective zone, and persists nothing", async () => {

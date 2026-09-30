@@ -74,30 +74,35 @@ const rows = async (db: Db, workspaceId: number): Promise<string[]> =>
     (await db.crud_list_workspace_constraints.all<{ effect: string; glob: string; source: string }>({ workspace_id: workspaceId }))
         .map(({ effect, glob, source }) => `${effect} ${glob} ${source}`);
 
-test("{§members-configuration} workspace inspection rejects noncanonical inherited aliases without publishing a winner", async () => {
-    await withEnv({
-        PLURNK_MEMBERS_DOCS: "docs/**",
-        PLURNK_MEMBERS_docs: "src/**",
-        PLURNK_MEMBERS_ENABLED: "1",
-    }, async () => {
+for (const boundary of ["startup", "workspace inspection"] as const) {
+    test(`{§members-configuration} ${boundary} rejects noncanonical inherited aliases without publishing a winner`, async () => {
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider: null });
         try {
-            await daemon.start();
             const workspaceId = await insertWorkspace(db, "ambiguous-members");
-            await assert.rejects(() => daemon.invokeModuleAction(
-                "workspace.members.list", {}, workspaceContext(workspaceId),
-            ), {
-                name: "Error",
-                message: "PLURNK_MEMBERS_DOCS is not a declared control; use a lowercase resource alias with underscores for hyphens and uppercase setting names.",
+            if (boundary === "workspace inspection") await daemon.start();
+            await withEnv({
+                PLURNK_MEMBERS_DOCS: "docs/**",
+                PLURNK_MEMBERS_docs: "src/**",
+                PLURNK_MEMBERS_ENABLED: "1",
+            }, async () => {
+                await assert.rejects(
+                    () => boundary === "startup" ? daemon.start() : daemon.invokeModuleAction(
+                        "workspace.members.list", {}, workspaceContext(workspaceId),
+                    ),
+                    {
+                        name: "Error",
+                        message: "PLURNK_MEMBERS_DOCS is not a declared control; use a lowercase resource alias with underscores for hyphens and uppercase setting names.",
+                    },
+                );
+                assert.deepEqual(await rows(db, workspaceId), [], "neither ambiguous definition changes membership");
             });
-            assert.deepEqual(await rows(db, workspaceId), [], "neither ambiguous definition changes membership");
         } finally {
             await daemon.stop();
             await db.close();
         }
     });
-});
+}
 
 test("{§members-functionality} client and model share one surface; the ceiling, the union, exclusion, ignore, list, and discover hold", async () => {
     const root = await gitProject();

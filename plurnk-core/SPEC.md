@@ -3757,6 +3757,23 @@ or provider request. The seeded `.env`, first-run diagnostic, service help, and
 missing-model recovery all signpost `plurnk-service config defaults` as the
 complete installed option catalog.
 
+§operator-config-offline-validation **`config check` and startup compose the same
+owning configuration readers.** Validation precedes service activation; failure
+names the offending variable and retains its cause.
+
+| Owner | Offline validation |
+|---|---|
+| Core | Model selection, file-creation/effect/loop policy, members definitions and controls, skill-fetch settings and root selection |
+| MCP | Whole definitions, future-alias controls, catalog settings, timeouts, retry pacing and registry URL |
+| A2A | Whole outbound definitions and controls, timeout/diagnostic bounds, configured inbound exposure |
+| Schedule | Whole definitions and controls, recurrence syntax, time zone and preview count |
+| Hooks | Command/argument/event configuration and delivery bounds |
+
+Disabled definitions and controls without a resource are validated, not skipped.
+Checking creates no database, starts no process or listener, arms no schedule,
+and contacts no provider or endpoint. Symbolic credential references remain
+symbolic: availability belongs to workspace preparation, not offline validation.
+
 First-run seeding publishes the complete private configuration directory atomically.
 Concurrent initializers adopt the winning seed; a failed initializer removes only
 its own staging directory. An existing operator directory is never reseeded.

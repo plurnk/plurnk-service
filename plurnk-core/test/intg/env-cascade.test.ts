@@ -3,6 +3,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { createServer } from "node:http";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -10,6 +12,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BIN_PATH = resolve(here, "../../src/service.ts");
+const BUILT_BIN_PATH = resolve(here, "../../dist/service.js");
 const CONDITION_ARGS = process.execArgv.filter((arg) => arg.startsWith("--conditions"));
 
 interface Fixture {
@@ -44,7 +47,7 @@ const fixture = async (): Promise<Fixture> => {
 const runService = (
     fx: Fixture,
     args: readonly string[],
-    opts: { env?: Readonly<Record<string, string>>; nodeArgs?: readonly string[] } = {},
+    opts: { env?: Readonly<Record<string, string>>; nodeArgs?: readonly string[]; built?: boolean } = {},
 ): Promise<{ code: number | null; stdout: string; stderr: string }> => new Promise((resolvePromise, rejectPromise) => {
     const env: NodeJS.ProcessEnv = {
         ...process.env,
@@ -58,7 +61,7 @@ const runService = (
     Object.assign(env, opts.env);
     const child = spawn(
         process.execPath,
-        [...(opts.nodeArgs ?? []), ...CONDITION_ARGS, BIN_PATH, ...args],
+        [...(opts.nodeArgs ?? []), ...(opts.built ? [BUILT_BIN_PATH] : [...CONDITION_ARGS, BIN_PATH]), ...args],
         { cwd: fx.cwd, env, stdio: ["ignore", "pipe", "pipe"] },
     );
     let stdout = "";
@@ -221,6 +224,100 @@ test("config discovery is provider-free, on-demand, and does not create a second
     } finally {
         await rm(fx.root, { recursive: true, force: true });
     }
+});
+
+test("{§operator-config-discovery} config check validates capability definitions and controls before activation", async (t) => {
+    const fx = await fixture();
+    t.after(() => rm(fx.root, { recursive: true, force: true }));
+    const invalid: Array<Record<string, string>> = [
+        { PLURNK_MCP_future_TOOLS: "[1]" },
+        { PLURNK_MCP_disabled: "{}", PLURNK_MCP_disabled_ENABLED: "0" },
+        { PLURNK_MCP_REQUEST_TIMEOUT: "0" },
+        { PLURNK_A2A_disabled: "{}", PLURNK_A2A_disabled_ENABLED: "0" },
+        { PLURNK_A2A_future_ENABLED: "yes" },
+        { PLURNK_A2A_REQUEST_TIMEOUT: "0" },
+        { PLURNK_A2A_EXPOSE: "yes" },
+        { PLURNK_SCHEDULE_disabled: '{"rule":"FREQ=NEVER","target":"worker://bot","prompt":"hello"}', PLURNK_SCHEDULE_disabled_ENABLED: "0" },
+        { PLURNK_SCHEDULE_future_ENABLED: "yes" },
+        { PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "0" },
+        { PLURNK_MEMBERS_disabled: "!", PLURNK_MEMBERS_disabled_ENABLED: "0" },
+        { PLURNK_MEMBERS_future_ENABLED: "yes" },
+        { PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "invalid" },
+        { PLURNK_SERVICE_ROOTS: "invalid" },
+        { PLURNK_HOOKS_COMMAND: "", PLURNK_HOOKS_ARGS: "[]" },
+    ];
+    for (const env of invalid) {
+        const key = Object.keys(env)[0]!;
+        await t.test(key, async () => {
+            const result = await runService(fx, ["config", "check"], { env });
+            assert.equal(result.code, 1, `${key}: ${result.stdout} ${result.stderr}`);
+            assert.ok(result.stderr.includes(key), `${key}: ${result.stderr}`);
+            assert.doesNotMatch(result.stdout, /configuration valid/u);
+        });
+    }
+    await assert.rejects(() => stat(fx.dataHome), { code: "ENOENT" }, "validation creates no database or runtime state");
+});
+
+test("{§operator-config-offline-validation} startup refuses invalid definitions before database or listener activation", async (t) => {
+    const fx = await fixture();
+    t.after(() => rm(fx.root, { recursive: true, force: true }));
+    const result = await runService(fx, ["start"], { env: {
+        PLURNK_A2A_broken: "{}", PLURNK_A2A_broken_ENABLED: "0",
+    } });
+    assert.equal(result.code, 1, result.stderr);
+    assert.match(result.stderr, /PLURNK_A2A_broken must be an A2A agent definition/u);
+    assert.doesNotMatch(result.stdout, /agui=/u);
+    await assert.rejects(() => stat(fx.dataHome), { code: "ENOENT" }, "invalid configuration cannot create a database");
+});
+
+test("{§operator-config-discovery} config check accepts future controls without resolving secrets or starting configured commands", async (t) => {
+    const fx = await fixture();
+    t.after(() => rm(fx.root, { recursive: true, force: true }));
+    const marker = join(fx.root, "must-not-run");
+    const args = ["--eval", `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "ran")`];
+    let requests = 0;
+    const server = createServer((_request, response) => {
+        requests += 1;
+        response.writeHead(503).end();
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    t.after(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
+    const address = server.address();
+    assert.ok(address !== null && typeof address !== "string");
+    const url = `http://127.0.0.1:${address.port}`;
+    const result = await runService(fx, ["config", "check"], { env: {
+        PLURNK_MCP_probe: JSON.stringify({ name: "probe", type: "stdio", command: process.execPath, args, env: { TOKEN: "${UNSET_AT_CHECK}" } }),
+        PLURNK_MCP_probe_ENABLED: "1",
+        PLURNK_MCP_remote: JSON.stringify({ name: "remote", type: "streamable-http", url }),
+        PLURNK_MCP_remote_ENABLED: "1",
+        PLURNK_MCP_future_TOOLS: '["search"]',
+        PLURNK_A2A_peer: JSON.stringify({ name: "peer", url }),
+        PLURNK_A2A_peer_ENABLED: "1",
+        PLURNK_A2A_future_ENABLED: "0",
+        PLURNK_SCHEDULE_future_ENABLED: "1",
+        PLURNK_MEMBERS_future_ENABLED: "0",
+        PLURNK_HOOKS_COMMAND: process.execPath,
+        PLURNK_HOOKS_ARGS: JSON.stringify(args),
+        PLURNK_HOOKS_EVENTS: "daemon/started",
+    } });
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /configuration valid/u);
+    assert.equal(requests, 0, "neither MCP discovery nor A2A card fetching occurs");
+    await assert.rejects(() => stat(marker), { code: "ENOENT" }, "neither MCP nor hooks start");
+    await assert.rejects(() => stat(fx.dataHome), { code: "ENOENT" }, "no database, skill or attachment state is created");
+});
+
+test("{§operator-config-offline-validation} the built executable validates the installed package composition", async (t) => {
+    const fx = await fixture();
+    t.after(() => rm(fx.root, { recursive: true, force: true }));
+    const valid = await runService(fx, ["config", "check"], { built: true, env: { PLURNK_MCP_future_TOOLS: '["search"]' } });
+    assert.equal(valid.code, 0, valid.stderr);
+    assert.match(valid.stdout, /configuration valid/u);
+    const invalid = await runService(fx, ["config", "check"], { built: true, env: { PLURNK_MCP_future_TOOLS: "[1]" } });
+    assert.equal(invalid.code, 1, invalid.stderr);
+    assert.match(invalid.stderr, /PLURNK_MCP_future_TOOLS must be a JSON array of strings/u);
+    await assert.rejects(() => stat(fx.dataHome), { code: "ENOENT" });
 });
 
 test("config edit preserves editor arguments and an XDG path containing spaces", async () => {

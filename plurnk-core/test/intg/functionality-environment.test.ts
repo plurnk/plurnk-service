@@ -24,6 +24,7 @@ test("{§resource-environment} disabled definitions stay inspectable through wor
         }));
         const schedule = ScheduleModule.init({
             env: {
+                ...process.env,
                 TZ: "UTC",
                 PLURNK_SCHEDULE_other: JSON.stringify(definitions.schedule),
                 PLURNK_SCHEDULE_ENABLED: "1",

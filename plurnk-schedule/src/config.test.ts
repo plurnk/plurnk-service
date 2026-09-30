@@ -1,8 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { previewOccurrences, serviceDefinitions } from "./config.ts";
+import { previewOccurrences, serviceDefinitions, validateConfiguration } from "./config.ts";
 
 const HEARTBEAT = '{"rule":"FREQ=HOURLY","target":"worker://bot","prompt":"Check in."}';
+
+test("{§operator-config-offline-validation} schedule validation normalizes rules at the supplied instant without arming them", () => {
+    const env = { TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1", PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "3", PLURNK_SCHEDULE_heartbeat: HEARTBEAT };
+    const checked = validateConfiguration(env, Date.UTC(2026, 0, 1));
+    assert.equal(checked.get("heartbeat")?.definition.rule, "DTSTART;TZID=UTC:20260101T000001\nRRULE:FREQ=HOURLY");
+    assert.equal(checked.get("heartbeat")?.enabled, true);
+    for (const [key, value] of Object.entries({
+        TZ: "Not/A_Zone", PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "0", PLURNK_SCHEDULE_future_ENABLED: "bad",
+        PLURNK_SCHEDULE_heartbeat: '{"rule":"FREQ=NEVER","target":"worker://bot","prompt":"hello"}',
+    })) {
+        assert.throws(() => validateConfiguration({ ...env, [key]: value, PLURNK_SCHEDULE_heartbeat_ENABLED: "0" }, 0), (error: Error) => error.message.includes(key));
+    }
+});
 
 test("{§schedule-environment} complete declarations sort by canonical alias and default enabled", () => {
     const definitions = serviceDefinitions({

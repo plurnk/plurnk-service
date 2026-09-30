@@ -37,7 +37,8 @@ import { agentRootScopes } from "./AgentRoots.ts";
 import ExecEnv from "../schemes/exec-env.ts";
 import PlurnkSkill from "./PlurnkSkill.ts";
 import Skill from "../schemes/Skill.ts";
-import MembersFunctionality from "./MembersFunctionality.ts";
+import MembersFunctionality, { modelScope, serviceMembers } from "./MembersFunctionality.ts";
+import FileCreationPolicy from "../core/file-creation-policy.ts";
 import EnvFunctionality, { ENV_OWNER } from "./EnvFunctionality.ts";
 import type { WorkspaceCapabilityPublication } from "./DaemonModule.ts";
 import HostPaths from "../core/HostPaths.ts";
@@ -99,6 +100,16 @@ type LoopGenerationPolicy = {
 };
 
 export default class Daemon implements ApplicationPort {
+    static validateConfiguration(): void {
+        FileCreationPolicy.serviceScope();
+        EffectPolicy.validateConfiguration();
+        LoopPolicies.validateConfiguration();
+        SkillsFunctionality.validateConfiguration();
+        agentRootScopes();
+        serviceMembers();
+        modelScope();
+    }
+
     #db: Db;
     readonly #dbPath: string | undefined;
     #engine: Engine;
@@ -1538,6 +1549,7 @@ export default class Daemon implements ApplicationPort {
 
     async start(): Promise<void> {
         if (this.#started) throw new Error("daemon already started");
+        Daemon.validateConfiguration();
         this.#started = true;
         // {§db-space-reclamation} — the file is brought to the policy's auto-vacuum mode before any work.
         const storage = await this.#retention.prepareStorage();
@@ -1573,11 +1585,6 @@ export default class Daemon implements ApplicationPort {
                 details: questionRuntimeDecl.details ?? "",
                 available: true,
                 detail: "in-process" } }]);
-        // {§effect-policy-tunable} — invalid operator policy fails boot, not the first execution.
-        EffectPolicy.validateConfiguration();
-        LoopPolicies.validateConfiguration();
-        SkillsFunctionality.validateConfiguration();
-        agentRootScopes();
         // {§exec} — mint a scheme per runtime tag so exec output entries address by tag
         // authority (sh:///l/t/s). The "exec" scheme stays for execution dispatch.
         this.#schemes.registerRuntimeSchemes(executors);

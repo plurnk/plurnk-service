@@ -32,6 +32,9 @@ environment references until connection admission. A remote Agent Card remains
 the authority for that remote agent; its discovered contents are never copied
 into this environment vocabulary.
 
+The package's offline validator composes definition, control, bound and hosted-exposure
+readers before service activation ({§operator-config-offline-validation}); it fetches no card.
+
 ## §a2a-protocol-witness Protocol witness
 
 The integration witness places a discovery-first client and an independent

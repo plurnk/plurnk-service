@@ -1,6 +1,7 @@
 // {§schedule-environment}
 import { Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import { readDefinition, DefinitionError, type ScheduleDefinition } from "./definition.ts";
+import { assertZone, normalizeRule } from "./rules.ts";
 
 const PREFIX = "PLURNK_SCHEDULE_";
 const PREVIEW_OCCURRENCES = `${PREFIX}PREVIEW_OCCURRENCES`;
@@ -30,4 +31,23 @@ export const serviceDefinitions = (env: NodeJS.ProcessEnv): ReadonlyMap<string, 
         definitions.set(alias, { definition, enabled: environment.enabled(alias) });
     }
     return definitions;
+};
+
+export const validateConfiguration = (env: NodeJS.ProcessEnv = process.env, nowMs = Date.now()): ReturnType<typeof serviceDefinitions> => {
+    const zone = env.TZ;
+    if (zone === undefined || zone.length === 0) throw new Error("TZ is unset; @plurnk/plurnk-schedule declares its default in .env.defaults.");
+    try {
+        assertZone(zone);
+    } catch (cause) {
+        throw new Error("TZ must name a supported time zone.", { cause });
+    }
+    previewOccurrences(env);
+    return new Map([...serviceDefinitions(env)].map(([alias, { definition, enabled }]) => {
+        try {
+            const parsed = normalizeRule(definition.rule, zone, nowMs);
+            return [alias, { definition: { ...definition, rule: parsed.text }, enabled }];
+        } catch (cause) {
+            throw new Error(`PLURNK_SCHEDULE_${alias.replaceAll("-", "_")}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+        }
+    }));
 };

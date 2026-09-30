@@ -5,6 +5,7 @@ import {
     hostedAgentConfiguration,
     outboundDefinitions,
     requestTimeoutMs,
+    validateConfiguration,
 } from "./config.ts";
 
 const floor = {
@@ -15,6 +16,16 @@ const floor = {
     PLURNK_A2A_PROPOSALS: "reject",
     PLURNK_A2A_TOKEN: "",
 };
+
+test("{§operator-config-offline-validation} A2A validation checks definitions, exposure and bounds without discovery", () => {
+    assert.doesNotThrow(() => validateConfiguration({ ...floor, PLURNK_A2A_future_ENABLED: "0" }));
+    for (const [key, value] of Object.entries({
+        PLURNK_A2A_CONNECT_TIMEOUT: "0", PLURNK_A2A_REQUEST_TIMEOUT: "0", PLURNK_A2A_ERROR_DETAIL_LIMIT: "-1",
+        PLURNK_A2A_EXPOSE: "yes", PLURNK_A2A_future_ENABLED: "bad", PLURNK_A2A_invalid: "{}",
+    })) {
+        assert.throws(() => validateConfiguration({ ...floor, [key]: value }), (error: Error) => error.message.includes(key));
+    }
+});
 
 test("{§a2a-environment-projection} whole definitions preserve discovery targets and symbolic credentials", () => {
     const definition = {
