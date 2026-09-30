@@ -13,6 +13,7 @@ import { spawn } from "node:child_process";
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import HostPaths from "../src/core/HostPaths.ts";
+import { gateResourceEnvironment } from "../../scripts/gate-environment.mjs";
 import { collectLiveTestNames } from "../test/live-test.ts";
 
 const workspace = resolve(import.meta.dirname, "..");
@@ -41,7 +42,8 @@ export const demoInvocation = async (pattern) => {
     const files = await demoFiles();
     if (files.length === 0) throw new Error("no demo stories found under test/demo");
     if (pattern !== undefined) matchingStories(pattern, await collectLiveTestNames(files));
-    const operatorEnv = [`--env-file-if-exists=${new HostPaths().configFile}`];
+    const configFile = new HostPaths().configFile;
+    const operatorEnv = [`--env-file-if-exists=${configFile}`];
     return {
         args: [
             "--conditions=plurnk-dev",
@@ -54,7 +56,7 @@ export const demoInvocation = async (pattern) => {
             ...(pattern === undefined ? [] : ["--test-name-pattern", pattern]),
             ...files,
         ],
-        env: { PLURNK_SERVICE_POLICY: "../plurnk-meta/POLICY.md" },
+        env: { ...await gateResourceEnvironment(configFile), PLURNK_SERVICE_POLICY: "../plurnk-meta/POLICY.md" },
     };
 };
 

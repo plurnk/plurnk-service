@@ -821,61 +821,48 @@ export type McpServerDefinition = (McpStdioServerDefinition | McpStreamableHttpS
 
 export type McpServerName = string
 /**
- * The plugin root: project `.agents/plugins`, plurnk `$XDG_CONFIG_HOME/plurnk/plugins`, or global `~/.agents/plugins`.
+ * This endpoint's bearer or OAuth configuration. Secrets remain symbolic environment references.
  */
 
-export type McpServerScope = ("project" | "plurnk" | "global")
+export type McpAuthorization = ({
+type: "bearer"
+/**
+ * An operator environment variable reference such as ${GITEA_TOKEN}, never a literal secret.
+ */
+token: string
+} | McpOAuth)
+/**
+ * OAuth configuration within one Streamable HTTP MCP server definition. Every secret is a ${NAME} reference to the operator environment.
+ */
 
 export interface McpStdioServerDefinition {
 name: McpServerName
-scope: McpServerScope
-plugin?: McpServerPlugin
 /**
  * A local server: a subprocess speaking MCP over its standard input and output.
  */
 type: "stdio"
 /**
- * One executable token: a bare name, or a path beginning with ./ that resolves against the plugin root.
+ * An executable name or path, without a shell. Relative paths resolve against the working directory.
  */
 command: string
 /**
- * Arguments passed to the executable; ${PLUGIN_ROOT} and ${PLUGIN_DATA} expand.
+ * Exact arguments; ${NAME} environment references expand once.
  */
 args?: string[]
 /**
- * Environment variables supplied to the process; ${PLUGIN_ROOT} and ${PLUGIN_DATA} expand.
+ * Process environment additions; ${NAME} references resolve against the workspace-composed operator environment.
  */
 env?: {
 [k: string]: string
 }
 /**
- * The working directory: ./, ${PLUGIN_ROOT} or ${PLUGIN_DATA} rooted; the plugin root when absent.
+ * An absolute working directory, optionally using ${NAME} references. When absent the host supplies a workspace-owned state directory outside the project.
  */
 cwd?: string
-}
-/**
- * The installed Agent Plugin that declares the server. The service records it; a client never supplies it.
- */
-
-export interface McpServerPlugin {
-/**
- * The plugin's manifest name.
- */
-name: string
-/**
- * PLUGIN_ROOT: the plugin's filesystem-resolved directory.
- */
-root: string
-/**
- * PLUGIN_DATA: the plugin's persistent data directory.
- */
-data: string
 }
 
 export interface McpStreamableHttpServerDefinition {
 name: McpServerName
-scope: McpServerScope
-plugin?: McpServerPlugin
 /**
  * A remote server: an MCP endpoint over Streamable HTTP.
  */
@@ -885,11 +872,12 @@ type: "streamable-http"
  */
 url: string
 /**
- * Literal headers sent to the endpoint's own origin; a header the client generates overrides one of the same name.
+ * Headers sent only to this endpoint; ${NAME} references expand at connection time. Protocol-owned headers are supplied by the client. Authorization cannot also be declared as a header when authorization is configured.
  */
 headers?: {
 [k: string]: string
 }
+authorization?: McpAuthorization
 }
 
 export interface ModelCatalogPage {

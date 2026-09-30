@@ -14,6 +14,11 @@
 import { join } from "node:path";
 import { testArtifactPath } from "../../scripts/test-artifacts.ts";
 
+// Mock fixtures declare their own resources after bootstrap, never operator services or schedules.
+for (const key of Object.keys(process.env)) {
+    if (/^PLURNK_(?:MCP|A2A|SCHEDULE|MEMBERS)_/u.test(key)) delete process.env[key];
+}
+
 const fixture = {
     // A fake alias — never dialed (the tests inject Mock providers); it only gives the
     // alias-scoped machinery a stable name whose bare partition (below) governs.

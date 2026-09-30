@@ -9,7 +9,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";
-import { httpEntry, mcpPluginHome, stdioEntry } from "./_mcp-plugin.ts";
+import { httpEntry, mcpFixture, stdioEntry } from "./_mcp-config.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { taskHandler, taskId, wireRequest } from "../../../plurnk-mcp/test/task-fixture.ts";
 
@@ -32,10 +32,10 @@ const setup = async (
         makeMockResponse(`${operation}\n\n${step("WAIT")}`),
         makeMockResponse(PlurnkParser.frame("KILL", "MCP result observed.")),
     ] });
-    const hostPaths = await mcpPluginHome(t, servers);
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, servers);
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths });
-    daemon.registerModule(McpModule.init({ env: {
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
         PLURNK_MCP_CONNECT_TIMEOUT: "5000",
         PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         ...env,

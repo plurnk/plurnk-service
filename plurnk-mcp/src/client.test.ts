@@ -1,13 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
-import { realpath, rm, stat } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ServerConnection from "./client.ts";
 import { MCP_PROTOCOL_VERSION } from "./protocol.ts";
-import { FIXTURES, fixturePlugin, stdioServer } from "../test/definitions.ts";
+import { FIXTURES, stdioServer } from "../test/definitions.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
 const env = {
@@ -79,30 +78,28 @@ test("active request accounting retires a cancelled request", async () => {
     }
 });
 
-test("{§mcp-plugin-servers} a stdio server starts in its plugin root with PLUGIN_ROOT and PLUGIN_DATA, and PLUGIN_DATA exists first", async () => {
-    const data = join(tmpdir(), `plurnk-mcp-plugin-data-${randomUUID()}`);
-    const definition = { ...stdioServer("where", [fixture], { env: { PLURNK_MCP_TEST_WHERE: "1" } }), plugin: { ...fixturePlugin, data } };
-    const connection = new ServerConnection(definition, env);
+test("{§mcp-launch-directory} an unconfigured cwd is supplied by the host, never materialized into the definition", async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "plurnk-mcp-cwd-"));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    const { cwd: _cwd, ...definition } = stdioServer("where", [fixture], { env: { PLURNK_MCP_TEST_WHERE: "1" } });
+    const connection = new ServerConnection({ ...definition, command: process.execPath }, env, { cwd: directory });
     try {
         const result = await connection.callTool("where", {}) as { content: Array<{ text: string }> };
-        const reported = JSON.parse(result.content[0]!.text) as { cwd: string; root: string; data: string };
-        assert.equal(reported.cwd, await realpath(FIXTURES), "the working directory defaults to the plugin root");
-        assert.equal(reported.root, FIXTURES);
-        assert.equal(reported.data, data);
-        assert.ok((await stat(data)).isDirectory(), "PLUGIN_DATA was created before the launch");
-    } finally {
-        await connection.close();
-        await rm(data, { recursive: true, force: true });
-    }
+        assert.deepEqual(JSON.parse(result.content[0]!.text), { cwd: await realpath(directory) });
+        assert.deepEqual(connection.definition, { ...definition, command: process.execPath });
+        assert.throws(() => new ServerConnection(definition, env), /requires an absolute working directory from its definition or host/u);
+    } finally { await connection.close(); }
 });
 
-test("{§mcp-plugin-servers} a working directory that resolves out of its plugin fails before launch", async () => {
-    const connection = new ServerConnection(stdioServer("escape", [fixture], { cwd: "${PLUGIN_ROOT}/.." }), env);
+test("{§mcp-launch-directory} an explicit absolute cwd and executable are not confined to a plugin root", async () => {
+    const definition = { ...stdioServer("where", ["${SCRIPT}"], { cwd: "${SERVER_DIR}", env: { PLURNK_MCP_TEST_WHERE: "1" } }), command: process.execPath };
+    const connection = new ServerConnection(definition, { ...env, SCRIPT: fixture, SERVER_DIR: FIXTURES }, { cwd: "/unused-host-directory" });
     try {
-        await assert.rejects(connection.connect(), /resolves outside the plugin's root/u);
-    } finally {
-        await connection.close();
-    }
+        const result = await connection.callTool("where", {}) as { content: Array<{ text: string }> };
+        assert.deepEqual(JSON.parse(result.content[0]!.text), { cwd: await realpath(FIXTURES) });
+        assert.deepEqual(connection.definition, definition, "resolved references remain outside durable configuration");
+    } finally { await connection.close(); }
+    assert.throws(() => new ServerConnection(stdioServer("relative", [fixture], { cwd: "./relative" }), env), /requires an absolute working directory/u);
 });
 
 test("concurrent callers share one launch and one connection", async () => {

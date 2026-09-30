@@ -162,7 +162,7 @@ export default class McpExecutor extends BaseExecutor {
 
     readonly #connection: ServerConnection;
     readonly #tools: readonly string[] | null;
-    // {§mcp-plugin-servers} — the enabled tools whose annotations.readOnlyHint is true.
+    // {§mcp-model-projection} — the enabled tools whose annotations.readOnlyHint is true.
     #read: ReadonlySet<string> = new Set();
     #registry: RuntimeToolRegistry | null = null;
     readonly #retainWorkspace: () => () => void;

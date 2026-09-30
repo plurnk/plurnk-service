@@ -180,7 +180,7 @@ process forcibly terminates the group, including descendants.
 §mcp-redirect-refused **An HTTP endpoint is never redirected.** Every Streamable HTTP request,
 authorization discovery included, sets `redirect: "manual"`; a 301, 302, 303, 307, or 308 fails the
 connection naming the `Location`. Configured headers therefore never reach another origin
-(Agent Plugins 1.0 §7.2.1), and the endpoint URL is corrected where it is configured.
+and the endpoint URL is corrected where it is configured.
 
 At the pinned revision, HTTP requests carry matching `MCP-Protocol-Version` and `Mcp-Method`
 headers. Named requests also carry `Mcp-Name`; declared primitive tool
@@ -209,8 +209,9 @@ originating distinction in its canonical Problem/result path.
 
 ## §mcp-configuration Configuration
 
-MCP servers come from installed Agent Plugins, the family's own `add` included ({§mcp-plugin-servers}).
-The environment holds only the host's controls and each alias's operator settings ({§mcp-server-settings}). Disabled definitions remain
+MCP servers are complete connection definitions ({§mcp-server-definition}). Environment declarations
+supply the service baseline; live additions belong to the workspace. Both use the common resolution
+and lifecycle ({§configuration-definition-resolution}, {§functionality-coordinator}). Disabled definitions remain
 client-visible but contribute no connection, Registry, documentation, or resource authority.
 
 §mcp-activation-isolation **Cold endpoint failure is capability-local.** An enabled server
@@ -224,45 +225,36 @@ without changing durable state.
 
 | Variable | Contract |
 |---|---|
-| `PLURNK_MCP_<ALIAS>_TOOLS` | Optional JSON array of exact enabled tool names; absent or empty enables every listed tool, and `[]` enables none |
-| `PLURNK_MCP_<ALIAS>_BEARER` | A fixed bearer for a Streamable HTTP server: one `${NAME}` reference, resolved only while preparing a connection |
-| `PLURNK_MCP_<ALIAS>_OAUTH` | Client-managed OAuth for a Streamable HTTP server, as `McpOAuth` JSON ({§mcp-oauth}) |
-| `PLURNK_MCP_EXPANDED` | JSON array of aliases whose every tool is surveyed at turn 0: one FIND row per executable block of the family document, with aside and signature ({§tools-resource-materialization}); never a document delivered unasked; absent or `[]` expands none |
-| `PLURNK_MCP_CONNECT_TIMEOUT` | Positive integer milliseconds |
-| `PLURNK_MCP_REQUEST_TIMEOUT` | Positive integer milliseconds |
-| `PLURNK_MCP_REGISTRY_URL` | The MCP Registry `discover` searches: an https URL, or http on a loopback host; empty turns registry search off ({§mcp-registry-discovery}) |
-| `PLURNK_MCP_REGISTRY_LIMIT` | Positive integer: the most servers one registry search returns |
+| `PLURNK_MCP_<alias>` | Complete `McpServerDefinition` JSON; transport and authentication replace together |
+| `PLURNK_MCP_ENABLED`, `PLURNK_MCP_<alias>_ENABLED` | Shared default and per-alias flags ({§resource-environment}); declared servers default enabled |
+| `PLURNK_MCP_<alias>_TOOLS` | Optional JSON array of exact enabled tool names; absent or empty enables every listed tool, and `[]` enables none |
+| `PLURNK_MCP_EXPANDED` | JSON array of aliases whose tool invocations are surveyed at turn 0 ({§tools-resource-materialization}); absent or `[]` expands none |
+| `PLURNK_MCP_CONNECT_TIMEOUT` | Positive integer milliseconds for setup and each complete catalog walk |
+| `PLURNK_MCP_REQUEST_TIMEOUT` | Positive integer milliseconds for the whole operation |
+| `PLURNK_MCP_REGISTRY_URL` | Registry discovery endpoint; HTTPS or loopback HTTP; empty disables registry search |
+| `PLURNK_MCP_REGISTRY_LIMIT` | Positive integer result bound |
 
-`<ALIAS>` is the server alias uppercased, with its hyphens as underscores. A retired variable with a
-non-empty value fails boot, naming what replaced it:
+Aliases and controls follow {§resource-environment}. Malformed definitions or controls fail
+configuration by variable name, even when disabled or not yet associated with a resource.
+Authentication belongs in the definition, never in separate bearer/OAuth environment companions.
 
-| Retired | Successor |
+§mcp-definitions **A server is not a plugin installation.** `add` persists a workspace
+connection definition; `remove` removes that definition through the common coordinator.
+Neither writes nor deletes project, user or global configuration files. MCP management
+and preparation do not enumerate or install Agent Plugins. Plugin integration is a separate
+configuration-source concern, not an MCP definition or lifecycle.
+
+| Transport | Launch or connection |
 |---|---|
-| `PLURNK_MCP_<server>` and its `_ARGS`, `_CWD`, `_ENV`, `_HEADERS` | the server entry of an Agent Plugin's `mcp.json`, or `add` |
-| `_READ` | the tool's `annotations.readOnlyHint` |
-| `_SUMMARY`, `_<tool>_SUMMARY` | the server's own description fields |
-| `PLURNK_MCP_ENABLED` | installing the plugin; `disable` withdraws a server |
+| `stdio` | Spawn `command` with `args`, without a shell. Bare executable names use PATH; relative executable paths use the working directory. `args`, `env` and explicit `cwd` expand `${NAME}` references once against the workspace-composed operator environment. |
+| `streamable-http` | Connect to `url` with `headers` and `authorization` from that same definition. Header references expand at connection time. Protocol-generated headers are transport-owned; application authentication headers are retained. Declaring both structured authorization and an Authorization header is invalid. No redirect is followed ({§mcp-redirect-refused}). |
 
-§mcp-plugin-servers **An MCP server is a component of an installed Agent Plugin.** Every server entry
-of every plugin Core reports for the workspace ({§agent-plugins-hosting}) is one service definition,
-enabled: installing the plugin is consent, and `disable` withdraws the server. The alias is the
-`mcpServers` member name, which becomes the server's fence and scheme. A name outside
-`[a-z][a-z0-9-]*`, an `sse` entry, and an alias an earlier plugin in root precedence already declares
-are skipped, each reported once per plugin-set change in daemon diagnostics. A changed plugin set
-republishes the family before the next turn ({§functionality-hotload}).
-
-A server the workspace adds is a one-server plugin named for it, `<root>/<name>/` with `plugin.json`
-and `mcp.json` at its `scope`'s root, written by Core while the server is prepared
-({§agent-plugins-hosting}). `add` admits only a standard entry the Agent Plugins loader accepts, and its
-`command` is a bare name, since the plugin carries nothing else. The same plugin already in place is
-reused; a different plugin at that name makes the server unavailable as `409 plugin-occupied`; a plugin
-an abandoned preparation wrote is deleted. `remove` deletes the plugin `add` wrote before the
-coordinator forgets the definition, and a server from any other plugin is disable-only.
-
-| Transport | Launch or connection (Agent Plugins 1.0 §7.2.1, §9) |
-|---|---|
-| `stdio` | `command` is one token: a bare name resolves through the executable search, a `./` path against the plugin root, and nothing expands in it. `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` expand once in `args`, `env`, and `cwd`. `cwd` defaults to the plugin root and must resolve inside the root (`./`, `${PLUGIN_ROOT}`) or inside `PLUGIN_DATA` (`${PLUGIN_DATA}`), and a `./` command must resolve inside the root. `PLUGIN_DATA` is created before the launch. The environment is the operator's beneath the workspace layer ({§mcp-launch-environment}), then the entry's `env`, then `PLUGIN_ROOT` and `PLUGIN_DATA`. |
-| `streamable-http` | `url` and literal `headers` as declared. A header the client generates (`Authorization`, `Accept`, `Content-Type`, `Last-Event-ID`, any `Mcp-*`) replaces a configured one of the same name; authorization comes from the alias's settings; no redirect is followed ({§mcp-redirect-refused}). |
+§mcp-launch-directory **An implicit working directory is workspace-owned state, not the project.**
+Core's {§module-workspace-directory} supplies a stable directory isolated by workspace and MCP alias.
+An explicit `cwd` must resolve to an absolute path and overrides that directory; it is not confined
+to an installation root. The caller owns provisioning an explicit directory. Runtime paths and
+resolved environment values are never copied back into a stored definition. Disabling or removing
+a server closes its connection, not its retained state directory or saved results.
 
 A tool whose `annotations.readOnlyHint` is true takes the `read` effect; every other tool keeps the
 conservative `host` effect ({§mcp-model-projection}).
@@ -287,22 +279,21 @@ doc's Summary section IS the invocation form
 ```` ```server (tool) <!-- one-liner --> ````, so the discovery row teaches the
 call ({§tools-resource-materialization}).
 
-§mcp-server-settings **An alias's operator settings are client-managed, outside its plugin.** `_TOOLS`
-narrows the enabled tools. `_BEARER` or `_OAUTH`, never both, authorizes a Streamable HTTP server, and a
-secret is only ever a `${NAME}` reference to the operator environment, expanded while preparing a
-connection. Interactive OAuth tokens, PKCE verifier, issuer-bound discovery state, and authorization
-callback state remain process-memory credentials; a restart reconstructs the attachment as
-authorization-required instead of writing secrets into SQLite. An invalid setting makes only its own
-server unavailable, as `422 server-settings-invalid`.
+§mcp-server-settings **Independent behavior settings do not change connection definitions.**
+`<alias>_TOOLS` narrows the effective tool catalog. A valid control may precede its definition,
+without creating a server; all control values are validated immediately ({§resource-environment}).
+Bearer and OAuth settings belong to the whole HTTP definition. Secrets in structured authorization
+are `${NAME}` references expanded only while preparing the connection. Interactive tokens,
+PKCE verifiers and callback state remain in memory; restart reconstructs an authorization-required
+attachment, never a stored credential.
 
 ### §mcp-module The MCP family beneath the coordinator
 
-§mcp-launch-environment **An installed server inherits the operator's environment.** A stdio server
+§mcp-launch-environment **A server inherits the operator's environment.** A stdio server
 starts with the operator's environment without plurnk's own secrets ({§exec-env-scoped}), as every MCP
 client launches one: stdio servers read their credentials from the environment. The model's command
 ceiling is not its base. The workspace layer ({§workspace-env}) applies on top, its values and
-withholdings included, never the invoking worker's overrides; the entry's `env` and then the plugin
-variables follow. Settings references resolve against the operator environment with the same workspace
+withholdings included, never the invoking worker's overrides; the definition's `env` follows. Definition references resolve against the operator environment with the same workspace
 entries and masks applied, and resolved ambient values are never copied into definitions. A running server keeps its launch environment:
 `disable` and `enable` restart it after an environment change, and there is no automatic restart or
 stale-configuration state. HTTP servers have no local process environment.
@@ -310,8 +301,7 @@ stale-configuration state. HTTP servers have no local process environment.
 §mcp-management-actions MCP is one family of workspace Functionality ({§functionality-coordinator}). The
 coordinator publishes `workspace.mcp.list | discover | add | enable | disable | remove` and the model's
 `mcp` executable fence family with the common semantics, durable state, and publication; this module
-registers the family adapter and owns protocol truth beneath it. `available` is the installed plugins'
-servers, `add` and `remove` install and uninstall a one-server plugin ({§mcp-plugin-servers}), and
+registers the family adapter and owns protocol truth beneath it. `available` is the configured service baseline; `add` and `remove` change workspace state ({§mcp-definitions}), and
 `discover` searches the MCP Registry ({§mcp-registry-discovery}). `prepare` connects the enabled set, reusing
 unchanged live attachments, and returns one executor family and resource facet per connected server,
 one outcome per alias (`active` with catalog detail — negotiated protocol version, server identity,
@@ -325,21 +315,18 @@ its latest version, whose names match. Each npm, PyPI, NuGet or OCI package with
 becomes a stdio entry run as the registry's own examples run it (`npx -y`, `uvx`, `dnx`, or
 `docker run -i --rm` passing each declared variable through), and each Streamable HTTP remote becomes a
 URL entry with its non-secret literal headers. An entry that needs a person's input first, such as a
-template variable or a required argument with no value, has none. A candidate's definition is exact at
-the nearest root the workspace has; its summary names the environment variables and headers the
+template variable or a required argument with no value, has none. A candidate is a complete definition;
+its summary names the environment variables and headers the
 server needs, and its provenance names the registry and the server's `name@version`. `source` and
-`configuration` are refused, since a server inside a plugin arrives with its plugin.
+`configuration` are not registry queries and are refused.
 
 | Discovery, admission, or installation condition | Problem | Status |
 |---|---|---|
 | No registry is configured | `registry-not-configured` | 501 |
 | The registry is unreachable, fails, or answers malformed | `discover-failed`, retryable | 502 |
 | `discover` names a `source` or client `configuration` | `source-unsupported`, `configuration-unsupported` | 400 |
-| The definition is not a standard entry at a scope, names a `plugin`, or has a `./` command | `definition-invalid` | 400 |
+| The complete connection definition is invalid | `definition-invalid` | 400 |
 | The alias differs from the definition's name | `alias-mismatch` | 400 |
-| The scope's root is one the workspace does not have ({§agent-roots}) | `scope-unavailable` | 400 at admission, 409 at preparation |
-| A different plugin occupies the added server's name | `plugin-occupied` | 409 |
-| Core cannot write or delete the plugin | `install-failed`, `uninstall-failed` (retryable) | 500 |
 
 Two protocol continuations remain MCP-registered workspace actions beneath the
 common grammar:
@@ -359,7 +346,6 @@ Worker's own accepted mutation publishes them as unavailable
 | Cannot connect or complete discovery/catalog preparation at the negotiated revision | `502 server-unavailable`, retryable; names the server and its `type` without exposing credentials |
 | The endpoint answers with a redirect | `502 server-redirected`, non-retryable ({§mcp-redirect-refused}) |
 | An operator setting of the alias is invalid | `422 server-settings-invalid`, non-retryable ({§mcp-server-settings}) |
-| A different plugin occupies an added server's name | `409 plugin-occupied`, non-retryable ({§mcp-plugin-servers}) |
 | Client-credentials grant rejected by the authorization server | `502 oauth-client-credentials-failed`, non-retryable; names the server and client id, never the secret ({§oauth-client-credentials}) |
 
 Resource and prompt failures retain one caught remote diagnostic only through
@@ -403,14 +389,14 @@ as an accidental failure.
 | Token expiry | An expired access token surfaces as one unauthorized response; the SDK re-acquires via `refresh_token` when one was issued, otherwise re-enters interactive authorization. |
 | Refresh | Happens only against the issuer bound during the original authorization; the refreshed token replaces the in-memory token. |
 | Workspace disable/remove | Closes the attachment and clears its pending candidate; no durable secret deletion is needed because nothing secret is durable. |
-| Server replacement | Completion compares the pending candidate's expected definition with the current one; drift of the same server fails `409 oauth-target-conflict` instead of replaying a stale snapshot. |
+| Server replacement | Publication discards any superseded pending connection and releases its residency, including replacement by a definition without OAuth. Completion of an unpublished configuration drift fails `409 oauth-target-conflict` instead of replaying a stale snapshot. |
 | Cross-authorization protection | Candidates are keyed by `(workspace, alias)`; callback state, PKCE, and issuer are validated by the SDK against the attempt that created them, so no other workspace, alias, or attempt can complete this authorization. |
 
 ## §oauth-client-credentials Client-credentials grant adoption
 
 The `client-credentials` arm of `McpServerDefinition.authorization` adopts the
 official `io.modelcontextprotocol/oauth-client-credentials` extension's
-client-secret form faithfully: an MCP connection whose alias's `_OAUTH` setting holds a
+client-secret form faithfully: a connection whose definition holds a
 client-credentials grant ({§mcp-server-settings}) advertises the extension capability in
 `clientCapabilities.extensions`; connections without one never claim it. The
 grant uses `client_secret_basic` authentication with `grant_type
@@ -680,8 +666,8 @@ contain resources and resource templates, never tools. Tool results become
 ordinary Plurnk entries and channels, so slicing, tags, curation, notices, and
 Problems need no MCP-specific parallel mechanism.
 
-A server arrives in a plugin its operator installed, so its tools' `annotations.readOnlyHint` is
-trusted as installed: a tool marked read-only takes the executor `read` effect; every other enabled
+A configured server's `annotations.readOnlyHint` supplies its tool's declared effect:
+a tool marked read-only takes the executor `read` effect; every other enabled
 tool remains `host` and therefore uses the ordinary proposal policy. Effect classification receiving an unregistered
 target is an internal contract violation rather than a conservative guess.
 

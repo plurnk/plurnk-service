@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { createHash } from "node:crypto";
-import { join } from "node:path";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
@@ -12,13 +11,12 @@ import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { taskHandler } from "../../../plurnk-mcp/test/task-fixture.ts";
-import { httpEntry, mcpPluginHome } from "./_mcp-plugin.ts";
+import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 
 type Event = Record<string, unknown>;
 type ActionResult = { ok: boolean; result?: Record<string, unknown>; problem?: { type: string; status: number } };
 
-// {§mcp-plugin-servers} — the daemon's servers are one installed plugin's; `settings` are the operator's
-// per-alias settings and the variables they reference ({§mcp-server-settings}).
+// {§mcp-configuration} {§mcp-server-settings}
 const setup = async (
     t: TestContext,
     servers: Readonly<Record<string, object>>,
@@ -26,10 +24,10 @@ const setup = async (
     settings: Readonly<Record<string, string>> = {},
 ) => {
     const provider = new Mock({ contextWindow: 1_000_000, responses });
-    const hostPaths = await mcpPluginHome(t, servers);
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, servers);
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, hostPaths });
-    daemon.registerModule(McpModule.init({ env: {
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
         PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         ...settings,
     } }));
@@ -109,7 +107,7 @@ test("{§mcp-management-actions}: AG-UI completion preserves prompt and resource
         const { _meta, ...received } = (request.body as { params: Record<string, unknown> }).params;
         assert.deepEqual(received, params, "the standard argument context reaches the actual server unchanged");
     }
-    // Every workspace has the installed plugin's server; one that disabled it has no attachment to complete through.
+    // Every workspace has the configured server; one that disabled it has no attachment to complete through.
     const withdrawn = await action("other-workspace", "workspace.mcp.disable", { alias: "fixture" });
     assert.equal(withdrawn.ok, true, JSON.stringify(withdrawn));
     const unavailable = await action("other-workspace", "workspace.mcp.complete", {
@@ -158,12 +156,13 @@ test("{§oauth-continuation}: AG-UI authorization activates the same workspace a
         return new Response(null, { status: 404 });
     });
     origin = new URL(served.url).origin;
-    const { action, post, provider } = await setup(t, { fixture: httpEntry(served.url) }, [
+    const { action, post, provider } = await setup(t, { fixture: {
+        ...httpEntry(served.url),
+        authorization: { type: "oauth", redirectUrl: `${origin}/callback`, clientMetadataUrl: "https://client.example.test/oauth.json" },
+    } }, [
         makeMockResponse("````fixture (echo)\n{\"message\":\"management proof\"}\n````\n\n````WAIT\nObserve the result.\n````"),
         makeMockResponse("````KILL\nObserved the authorized result.\n````"),
-    ], {
-        PLURNK_MCP_FIXTURE_OAUTH: JSON.stringify({ type: "oauth", redirectUrl: `${origin}/callback`, clientMetadataUrl: "https://client.example.test/oauth.json" }),
-    });
+    ]);
     const enabled = await action("authorization", "workspace.mcp.enable", { alias: "fixture" });
     assert.equal(enabled.ok, true, JSON.stringify(enabled));
     const definition = enabled.result?.definition as { state: string; authorization: { url: string } } | undefined;
@@ -177,7 +176,7 @@ test("{§oauth-continuation}: AG-UI authorization activates the same workspace a
     callback.searchParams.set("state", authorization.searchParams.get("state")!);
     callback.searchParams.set("iss", origin);
     const complete = (workspace: string, callbackUrl = callback.href) => action(workspace, "workspace.mcp.oauth.complete", { alias: "fixture", callbackUrl });
-    // Every workspace prepares the plugin's server itself: another workspace's own attempt rejects this callback's state.
+    // Every workspace prepares the configured server itself: another workspace's own attempt rejects this callback's state.
     const wrongWorkspace = await complete("other-authorization");
     assert.equal(wrongWorkspace.ok, false);
     assert.equal(wrongWorkspace.problem?.type, "https://problems.plurnk.xyz/mcp/management/oauth-callback-invalid");
@@ -257,12 +256,12 @@ const applicationServer = async (t: TestContext, rejectGrant = false) => {
 
 test("{§oauth-client-credentials}: AG-UI application credentials and SDK refresh deliver an authorized result to the model", { timeout: 20000 }, async (t) => {
     const served = await applicationServer(t);
-    const { action, post, provider, hostPaths } = await setup(t, { fixture: httpEntry(served.url) }, [
+    const authorization = { type: "client-credentials", clientId: "fixture-app", clientSecret: "${MCP_APP_SECRET}", issuer: served.issuer, scope: "mcp:read" };
+    const { action, post, provider } = await setup(t, { fixture: { ...httpEntry(served.url), authorization } }, [
         makeMockResponse("````fixture (echo)\n{\"message\":\"application proof\"}\n````\n\n````WAIT\nObserve the result.\n````"),
         makeMockResponse("````KILL\nObserved the application result.\n````"),
     ], {
         MCP_APP_SECRET: "fixture-app-secret",
-        PLURNK_MCP_FIXTURE_OAUTH: JSON.stringify({ type: "client-credentials", clientId: "fixture-app", clientSecret: "${MCP_APP_SECRET}", issuer: served.issuer, scope: "mcp:read" }),
     });
     const workspace = "application-authorization";
     const enabled = await action(workspace, "workspace.mcp.enable", { alias: "fixture" });
@@ -283,9 +282,8 @@ test("{§oauth-client-credentials}: AG-UI application credentials and SDK refres
     const definitions = listed.result?.definitions as { definition: unknown }[] | undefined;
     assert.ok(definitions);
     assert.deepEqual(definitions[0]?.definition, {
-        name: "fixture", scope: "plurnk", plugin: { name: "fixtures", root: join(hostPaths.plurnkPluginsDir, "fixtures"), data: hostPaths.pluginDataDir("fixtures") },
-        type: "streamable-http", url: served.url,
-    }, "the listed definition is the plugin's entry; the authorization stays the operator's setting");
+        name: "fixture", type: "streamable-http", url: served.url, authorization,
+    }, "the complete definition retains symbolic authorization, never the resolved credential");
     assert.doesNotMatch(JSON.stringify([enabled, events, listed]), /fixture-app-secret|fixture-app-access-/);
     const request = served.requests.findLast(({ body }) => (body as { method?: string })?.method === "tools/call");
     assert.ok(request);
@@ -296,11 +294,11 @@ test("{§oauth-client-credentials}: AG-UI application credentials and SDK refres
 for (const mode of ["rejected grant", "wrong issuer"] as const) {
     test(`{§oauth-client-credentials}: AG-UI ${mode} fails atomically without publishing or echoing credentials`, { timeout: 20000 }, async (t) => {
         const served = await applicationServer(t, mode === "rejected grant");
-        const { action, provider } = await setup(t, { fixture: httpEntry(served.url) }, [], {
-            MCP_APP_SECRET: "fixture-app-secret",
-            PLURNK_MCP_FIXTURE_OAUTH: JSON.stringify({ type: "client-credentials", clientId: "fixture-app", clientSecret: "${MCP_APP_SECRET}",
-                issuer: mode === "wrong issuer" ? "https://other-issuer.invalid" : served.issuer, scope: "mcp:read" }),
-        });
+        const { action, provider } = await setup(t, { fixture: {
+            ...httpEntry(served.url),
+            authorization: { type: "client-credentials", clientId: "fixture-app", clientSecret: "${MCP_APP_SECRET}",
+                issuer: mode === "wrong issuer" ? "https://other-issuer.invalid" : served.issuer, scope: "mcp:read" },
+        } }, [], { MCP_APP_SECRET: "fixture-app-secret" });
         const workspace = "rejected-application";
         const enabled = await action(workspace, "workspace.mcp.enable", { alias: "fixture" });
         assert.equal(enabled.ok, false);
@@ -314,7 +312,7 @@ for (const mode of ["rejected grant", "wrong issuer"] as const) {
         const definitions = listed.result?.definitions as { alias: string; state: string; problem?: { type: string } }[] | undefined;
         assert.deepEqual(definitions?.map(({ alias, state, problem }) => ({ alias, state, type: problem?.type })),
             [{ alias: "fixture", state: "unavailable", type: "https://problems.plurnk.xyz/mcp/management/oauth-client-credentials-failed" }],
-            "failed preparation publishes no attachment; the plugin's server stays listed as unavailable ({§mcp-activation-isolation})");
+            "failed preparation publishes no attachment; the configured server stays listed as unavailable ({§mcp-activation-isolation})");
         assert.doesNotMatch(JSON.stringify(listed), /fixture-app-secret|fixture-provider-detail|fixture-app-access-/);
         assert.equal(served.calls(), 0);
         assert.equal(provider.received.length, 0);

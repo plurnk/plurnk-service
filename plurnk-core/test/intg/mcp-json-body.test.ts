@@ -9,7 +9,7 @@ import StreamMock from "./_stream-mock.ts";
 import { openMigrated } from "./_db.ts";
 import { connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
-import { httpEntry, mcpPluginHome } from "./_mcp-plugin.ts";
+import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 
 // {§pairing-objective} — the shape: an MCP call closed at once, then prose that later
 // shows a bare block. The runtime declares an application/json body, so the call ends at its own closer
@@ -30,14 +30,14 @@ for (const [name, source] of [
         });
         return server;
     }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
-    const hostPaths = await mcpPluginHome(t, { fixture: httpEntry(served.url) });
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
     const provider = new StreamMock({ contextWindow: 100_000, responses: [
         makeRawMockResponse(source, 10),
         makeMockResponse(PlurnkParser.frame("KILL", "Checked.")),
     ] });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, hostPaths });
-    daemon.registerModule(McpModule.init({ env: {
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
         PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     } }));
     t.after(async () => { await daemon.stop(); await db.close(); });

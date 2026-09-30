@@ -1,5 +1,4 @@
-// {§mcp-plugin-servers} — an installed plugin's stdio server runs in its plugin root with PLUGIN_ROOT and
-// PLUGIN_DATA, and its launch writes nothing into the workspace's project.
+// {§mcp-launch-directory}
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
@@ -13,9 +12,9 @@ import { awaitExecOutcome } from "./_execs.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { openMigrated } from "./_db.ts";
 import { waitFor } from "./_rpc.ts";
-import { MCP_CONTROLS, mcpPluginHome, stdioEntry } from "./_mcp-plugin.ts";
+import { MCP_CONTROLS, mcpFixture, stdioEntry } from "./_mcp-config.ts";
 
-type Placement = { cwd: string; root: string; data: string };
+type Placement = { cwd: string };
 
 // An empty project directory for the workspace, removed with the test.
 const projectDirectory = async (t: TestContext): Promise<string> => {
@@ -26,12 +25,12 @@ const projectDirectory = async (t: TestContext): Promise<string> => {
     return project;
 };
 
-test("{§mcp-plugin-servers} a stdio tool runs in its plugin root with PLUGIN_ROOT and PLUGIN_DATA and writes nothing into the project", { timeout: 30000 }, async (t) => {
+test("{§mcp-launch-directory} a stdio tool runs in retained workspace state and writes nothing into the project", { timeout: 30000 }, async (t) => {
     const project = await projectDirectory(t);
-    const hostPaths = await mcpPluginHome(t, { fixture: stdioEntry("echo-server.mjs", { PLURNK_MCP_TEST_WHERE: "1" }) });
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs", { PLURNK_MCP_TEST_WHERE: "1" }) });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null, hostPaths });
-    daemon.registerModule(McpModule.init({ env: { ...MCP_CONTROLS } }));
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }));
     const proposals: number[] = [];
     const unsubscribe = daemon.subscribeToEvents((_workspace, method, params) => {
         if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);
@@ -48,11 +47,11 @@ test("{§mcp-plugin-servers} a stdio tool runs in its plugin root with PLUGIN_RO
         daemon.resolveProposal(proposals[0]!, { decision: "accept" });
         assert.equal((await pending).status, 200);
         const placed = await awaitExecOutcome(db, { workspaceId, scheme: "fixture", channel: "body", timeoutMs: 10000 }) as Placement;
-        const root = join(hostPaths.plurnkPluginsDir, "fixtures");
-        assert.equal(placed.cwd, await realpath(root), "the working directory is the plugin root, not the daemon's or the project's");
-        assert.equal(placed.root, root);
-        assert.equal(placed.data, hostPaths.pluginDataDir("fixtures"));
-        assert.equal((await stat(placed.data)).mode & 0o777, 0o700, "PLUGIN_DATA is created, private, before the launch");
+        const directory = await daemon.workspaceStateDirectory(workspaceId, "@plurnk/plurnk-mcp/fixture");
+        assert.deepEqual(placed, { cwd: await realpath(directory) });
+        assert.equal((await stat(directory)).mode & 0o777, 0o700, "workspace state is private and created before launch");
+        await daemon.invokeModuleAction("workspace.mcp.disable", { alias: "fixture" }, { scope: "workspace", workspaceId });
+        assert.ok((await stat(directory)).isDirectory(), "disabling the connection retains its state directory");
         assert.deepEqual(await readdir(project), [], "the launch and the tool write nothing into the project");
     } finally {
         unsubscribe();
@@ -61,18 +60,18 @@ test("{§mcp-plugin-servers} a stdio tool runs in its plugin root with PLUGIN_RO
     }
 });
 
-test("{§mcp-plugin-servers} a PLUGIN_DATA that cannot be created leaves the server unavailable and never falls back to the project", { timeout: 15000 }, async (t) => {
+test("{§mcp-launch-directory} an inaccessible state directory leaves the server unavailable and never falls back to the project", { timeout: 15000 }, async (t) => {
     const project = await projectDirectory(t);
     const marker = join(dirname(project), "starts.txt");
-    const hostPaths = await mcpPluginHome(t, { fixture: stdioEntry("echo-server.mjs", { PLURNK_MCP_TEST_START_MARKER: marker }) });
-    await mkdir(hostPaths.dataDir, { recursive: true });
-    await writeFile(join(hostPaths.dataDir, "plugins"), "occupied");
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs", { PLURNK_MCP_TEST_START_MARKER: marker }) });
+    await mkdir(hostPaths.stateDir, { recursive: true });
+    await writeFile(join(hostPaths.stateDir, "workspaces"), "occupied");
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null, hostPaths });
-    daemon.registerModule(McpModule.init({ env: { ...MCP_CONTROLS } }));
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }));
     try {
         await daemon.start();
-        const { workspaceId } = await daemon.createWorkspace({ name: "blocked-plugin-data", projectRoot: project });
+        const { workspaceId } = await daemon.createWorkspace({ name: "blocked-mcp-state", projectRoot: project });
         const invoke = (verb: string, params: Record<string, unknown> = {}) => daemon.invokeModuleAction(`workspace.mcp.${verb}`, params, { scope: "workspace", workspaceId });
         await assert.rejects(invoke("enable", { alias: "fixture" }), (error: unknown) => {
             assert.ok(error instanceof Error);
@@ -83,7 +82,7 @@ test("{§mcp-plugin-servers} a PLUGIN_DATA that cannot be created leaves the ser
             return true;
         });
         assert.equal((await invoke("list") as FunctionalityListResult).definitions[0]?.state, "unavailable");
-        await assert.rejects(stat(marker), { code: "ENOENT" }, "the subprocess never starts without its PLUGIN_DATA");
+        await assert.rejects(stat(marker), { code: "ENOENT" }, "the subprocess never starts without its state directory");
         assert.deepEqual(await readdir(project), [], "nothing falls back to the project");
     } finally {
         await daemon.stop();

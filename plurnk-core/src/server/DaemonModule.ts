@@ -27,9 +27,7 @@ import type {
     SchemeResult,
 } from "@plurnk/plurnk-schemes";
 import type { Executor } from "../core/ExecutorRegistry.ts";
-import type { McpServerEntry } from "@plurnk/plurnk-agent-plugins";
-import type { AgentRootScope } from "./AgentRoots.ts";
-import type { ServerPluginWrite, WorkspacePluginSet } from "./WorkspacePlugins.ts";
+import type { WorkspacePluginSet } from "./WorkspacePlugins.ts";
 
 type ModuleActionScope = "worldless" | "workspace" | "worker";
 
@@ -157,13 +155,9 @@ export interface WorkspaceCapabilityPublication {
 export interface ModuleSetupSeam {
     // {§agent-plugins-hosting} The workspace's installed Agent Plugins, in root precedence order.
     readWorkspacePlugins(workspaceId: number): Promise<WorkspacePluginSet>;
-    // {§mcp-plugin-servers} Write the one-server plugin an added MCP server is, at its scope's root, or
-    // find exactly that plugin already there; and delete it when the server is removed.
-    writeServerPlugin(workspaceId: number, request: { readonly scope: AgentRootScope; readonly name: string; readonly entry: McpServerEntry }): Promise<ServerPluginWrite>;
-    deleteServerPlugin(workspaceId: number, request: { readonly scope: AgentRootScope; readonly name: string }): Promise<void>;
-    // {§mcp-launch-environment} What an installed plugin's subprocess inherits: the operator's
+    // {§mcp-launch-environment} What an MCP subprocess inherits: the operator's
     // environment without plurnk's own secrets ({§exec-env-scoped}), not the model's command ceiling.
-    pluginEnvironment(): NodeJS.ProcessEnv;
+    operatorEnvironment(): NodeJS.ProcessEnv;
     // {§workspace-env} Apply the workspace layer to admitted ambient values, or to
     // a provider's own reference-resolution environment. Never includes worker overrides.
     readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;

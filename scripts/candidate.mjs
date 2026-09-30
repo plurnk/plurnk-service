@@ -6,6 +6,7 @@ import { pinRuntime } from "./candidate-runtime.mjs";
 import { resolveCandidateTopology } from "./project-topology.mjs";
 import { parseCandidateClientEnv } from "./candidate-env.mjs";
 import { pathToFileURL } from "node:url";
+import { gateResourceEnvironment } from "./gate-environment.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const { clientRoot, benchmarks, candidateDir } = resolveCandidateTopology(root, process.env);
@@ -34,6 +35,7 @@ if (process.env.PLURNK_CANDIDATE_SKIP_BUILD !== "1") {
 const runtime = pinRuntime(root, resolve(stateDir, "runtime"));
 // {§candidate-pinned-runtime} — the launcher is the pinned service's own, never the checkout's.
 const { default: Launch } = await import(pathToFileURL(resolve(runtime, "plurnk-core", "dist", "launch", "Launch.js")).href);
+const { default: HostPaths } = await import(pathToFileURL(resolve(runtime, "plurnk-core", "dist", "core", "HostPaths.js")).href);
 
 // {§daemon-launch} — the pinned runtime through the service's own launcher; the database stays
 // exactly where this driver retains its evidence.
@@ -85,7 +87,7 @@ try {
     daemon = await Launch.start({
         command: [process.execPath, ...candidateDaemonArgs(root, runtime)],
         cwd: root,
-        env: { ...process.env, PLURNK_SERVICE_DB_PATH: dbPath },
+        env: { ...await gateResourceEnvironment(new HostPaths().configFile), ...process.env, PLURNK_SERVICE_DB_PATH: dbPath },
         host: "127.0.0.1", port: 0,
         readyTimeoutMs: 30_000, stopGraceMs: 5_000,
         onOutput: (stream, chunk) => process.stderr.write(chunk),

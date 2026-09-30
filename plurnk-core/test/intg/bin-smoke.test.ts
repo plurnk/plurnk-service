@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { insertWorkspace, openMigrated } from "./_db.ts";
-import { stdioEntry, writePlugin } from "./_mcp-plugin.ts";
+import { mcpEnvironment, stdioEntry } from "./_mcp-config.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BIN_PATH = resolve(here, "../../src/service.ts");
@@ -163,13 +163,14 @@ const action = async (
     return outcome?.result;
 };
 
-// {§mcp-plugin-servers} — the booted daemon's MCP server is an installed plugin in its own configuration
-// home; the returned environment points the daemon at that home.
-const installEchoPlugin = async (dir: string, env: Readonly<Record<string, string>>): Promise<NodeJS.ProcessEnv> => {
-    const configHome = join(dir, ".config");
-    await writePlugin(join(configHome, "plurnk", "plugins", "echo"), "echo", { echo: stdioEntry("echo-server.mjs", env) });
-    return { HOME: dir, XDG_CONFIG_HOME: configHome };
-};
+// {§mcp-configuration}
+const echoEnvironment = (dir: string, env: Readonly<Record<string, string>>): NodeJS.ProcessEnv => ({
+    HOME: dir,
+    XDG_CONFIG_HOME: join(dir, ".config"),
+    XDG_DATA_HOME: join(dir, ".local", "share"),
+    XDG_STATE_HOME: join(dir, ".local", "state"),
+    ...mcpEnvironment({ echo: stdioEntry("echo-server.mjs", env) }),
+});
 
 const markerLines = async (path: string): Promise<string[]> => {
     try {
@@ -250,7 +251,7 @@ test("bin: persisted and attached workspaces stay cold until capability demand",
             await db.close();
         }
         startMarker = join(dir, "mcp-starts.txt");
-        return installEchoPlugin(dir, { PLURNK_MCP_TEST_START_MARKER: startMarker });
+        return echoEnvironment(dir, { PLURNK_MCP_TEST_START_MARKER: startMarker });
     });
     try {
         assert.deepEqual(
@@ -293,7 +294,7 @@ test("bin: SIGTERM interrupts capability-demand activation and reaps its MCP pro
             await db.close();
         }
         startMarker = join(dir, "mcp-starts.txt");
-        return installEchoPlugin(dir, {
+        return echoEnvironment(dir, {
             PLURNK_MCP_TEST_START_MARKER: startMarker,
             PLURNK_MCP_TEST_START_DELAY_MS: "30000",
         });

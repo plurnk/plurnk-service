@@ -4,7 +4,6 @@ import type { Tool } from "@modelcontextprotocol/client";
 import type {
     ClientInteractionRequest,
     ClientInteractionResolution,
-    McpServerDefinition,
 } from "@plurnk/plurnk-contracts";
 import ServerConnection, { AuthorizationRequiredError } from "../src/client.ts";
 import type { McpAuthorization } from "../src/config.ts";
@@ -29,7 +28,7 @@ const context = process.env.MCP_CONFORMANCE_CONTEXT === undefined
     ? {} satisfies ConformanceContext
     : JSON.parse(process.env.MCP_CONFORMANCE_CONTEXT) as ConformanceContext;
 
-const definition = (): McpServerDefinition => httpServer("conformance", serverUrl);
+const definition = () => httpServer("conformance", serverUrl);
 
 const interaction = async (
     request: ClientInteractionRequest,
@@ -209,11 +208,11 @@ const runClientCredentials = async (): Promise<void> => {
         throw new Error(`Conformance scenario '${scenario}' omitted client credentials.`);
     }
     const environment = { ...process.env, MCP_CONFORMANCE_CLIENT_SECRET: context.client_secret };
-    const connection = new ServerConnection(definition(), environment, { authorization: {
+    const connection = new ServerConnection({ ...definition(), authorization: {
         type: "client-credentials",
         clientId: context.client_id,
         clientSecret: "${MCP_CONFORMANCE_CLIENT_SECRET}",
-    } });
+    } }, environment);
     await withConnection(connection, async () => {
         await connection.tools();
     });
@@ -236,7 +235,7 @@ const runOAuth = async (): Promise<void> => {
             redirectUrl: "http://localhost:3000/callback",
             clientMetadataUrl: "https://conformance-test.local/client-metadata.json",
         };
-    const connection = new ServerConnection(definition(), environment, { authorization });
+    const connection = new ServerConnection({ ...definition(), authorization }, environment);
     await withConnection(connection, async () => {
         const tools = await withInteractiveAuthorization(connection, () => connection.tools());
         const tool = tools.find((candidate) => candidate.name === "test-tool");

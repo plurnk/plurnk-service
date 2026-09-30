@@ -2,7 +2,9 @@
 // stdio packages become self-contained standard entries and its Streamable HTTP remotes become URL
 // entries; anything that needs a person's input first (a template variable, a required argument with
 // no value) has no entry. Nothing here installs, launches, or connects.
-import type { McpServerEntry } from "@plurnk/plurnk-agent-plugins";
+import type { McpStdioServerDefinition, McpStreamableHttpServerDefinition } from "@plurnk/plurnk-contracts";
+
+type McpServerEntry = Omit<McpStdioServerDefinition, "name"> | Omit<McpStreamableHttpServerDefinition, "name">;
 
 interface Argument {
     readonly type?: unknown;

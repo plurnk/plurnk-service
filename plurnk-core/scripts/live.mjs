@@ -5,6 +5,7 @@ import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { collectLiveTestNames } from "../test/live-test.ts";
 import HostPaths from "../src/core/HostPaths.ts";
+import { gateResourceEnvironment } from "../../scripts/gate-environment.mjs";
 
 const workspace = resolve(import.meta.dirname, "..");
 const liveDirectory = resolve(workspace, "test/live");
@@ -28,7 +29,8 @@ export const liveInvocation = async (requested) => {
     const pattern = requested === undefined
         ? undefined
         : exactSpecimen(requested, await collectLiveTestNames(files));
-    const operatorEnv = [`--env-file-if-exists=${new HostPaths().configFile}`];
+    const configFile = new HostPaths().configFile;
+    const operatorEnv = [`--env-file-if-exists=${configFile}`];
     return {
         args: [
             "--conditions=plurnk-dev",
@@ -41,7 +43,7 @@ export const liveInvocation = async (requested) => {
             ...(pattern === undefined ? [] : ["--test-name-pattern", pattern]),
             ...files,
         ],
-        env: { PLURNK_SERVICE_POLICY: "../plurnk-meta/POLICY.md" },
+        env: { ...await gateResourceEnvironment(configFile), PLURNK_SERVICE_POLICY: "../plurnk-meta/POLICY.md" },
     };
 };
 

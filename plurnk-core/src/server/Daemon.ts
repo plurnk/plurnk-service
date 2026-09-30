@@ -32,9 +32,8 @@ import Envelope, { projectWorkerRow } from "./envelope.ts";
 import ClientInput from "./client-input.ts";
 import Turn from "../core/Turn.ts";
 import SkillsFunctionality from "./SkillsFunctionality.ts";
-import WorkspacePlugins, { type ServerPluginWrite, type WorkspacePluginSet } from "./WorkspacePlugins.ts";
-import { agentRootScopes, type AgentRootScope } from "./AgentRoots.ts";
-import type { McpServerEntry } from "@plurnk/plurnk-agent-plugins";
+import WorkspacePlugins, { type WorkspacePluginSet } from "./WorkspacePlugins.ts";
+import { agentRootScopes } from "./AgentRoots.ts";
 import ExecEnv from "../schemes/exec-env.ts";
 import PlurnkSkill from "./PlurnkSkill.ts";
 import Skill from "../schemes/Skill.ts";
@@ -1503,17 +1502,8 @@ export default class Daemon implements ApplicationPort {
         return this.#plugins.read(workspaceId);
     }
 
-    // {§mcp-plugin-servers}
-    writeServerPlugin(workspaceId: number, request: { readonly scope: AgentRootScope; readonly name: string; readonly entry: McpServerEntry }): Promise<ServerPluginWrite> {
-        return this.#plugins.writeServer(workspaceId, request);
-    }
-
-    deleteServerPlugin(workspaceId: number, request: { readonly scope: AgentRootScope; readonly name: string }): Promise<void> {
-        return this.#plugins.deleteServer(workspaceId, request);
-    }
-
     // {§mcp-launch-environment}
-    pluginEnvironment(): NodeJS.ProcessEnv {
+    operatorEnvironment(): NodeJS.ProcessEnv {
         return ExecEnv.withoutOwnSecrets();
     }
 

@@ -9,7 +9,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_db.ts";
 import { connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
-import { MCP_CONTROLS, mcpPluginHome, stdioEntry } from "./_mcp-plugin.ts";
+import { MCP_CONTROLS, mcpFixture, stdioEntry } from "./_mcp-config.ts";
 
 test("a bare execution of a tool's name fails with a receipt that names the tool's real invocation", { timeout: 60_000 }, async (t) => {
     const provider = new Mock({
@@ -19,10 +19,10 @@ test("a bare execution of a tool's name fails with a receipt that names the tool
             makeMockResponse("````KILL\nseen\n````", 10),
         ],
     });
-    const hostPaths = await mcpPluginHome(t, { fixture: stdioEntry("echo-server.mjs") });
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs") });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, hostPaths });
-    daemon.registerModule(McpModule.init({ env: { ...MCP_CONTROLS } }));
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }));
     try {
         await daemon.start();
         const ws = await connect({ daemon });

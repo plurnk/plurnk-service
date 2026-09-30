@@ -197,7 +197,7 @@ test("HTTP bearer credentials expand only while preparing a connection", async (
         request.headers.get("authorization") === "Bearer secret"
             ? null
             : new Response("unauthorized", { status: 401 }));
-    const connection = new ServerConnection(httpServer("private", served.url), { ...floor, MCP_TEST_TOKEN: "secret" }, { authorization: { type: "bearer", token: "${MCP_TEST_TOKEN}" } });
+    const connection = new ServerConnection({ ...httpServer("private", served.url), authorization: { type: "bearer", token: "${MCP_TEST_TOKEN}" } }, { ...floor, MCP_TEST_TOKEN: "secret" });
     t.after(() => connection.close());
 
     assert.deepEqual((await connection.tools()).map(({ name }) => name), ["echo"]);
@@ -206,20 +206,19 @@ test("HTTP bearer credentials expand only while preparing a connection", async (
         headers.get("authorization") === "Bearer secret"));
 });
 
-test("{§mcp-plugin-servers} a configured header never overrides one the client generates", async (t) => {
+test("{§mcp-transports} application headers are retained and protocol headers remain client-owned", async (t) => {
     const served = await serveMcpHttp(t, handler(), (request) =>
         request.headers.get("authorization") === "Bearer secret"
             ? null
             : new Response("unauthorized", { status: 401 }));
     const connection = new ServerConnection(
-        httpServer("tenant", served.url, { Authorization: "Bearer configured", "MCP-Protocol-Version": "1999-01-01", "X-Tenant": "public" }),
+        httpServer("tenant", served.url, { Authorization: "Bearer ${MCP_TEST_TOKEN}", "MCP-Protocol-Version": "1999-01-01", "X-Tenant": "public" }),
         { ...floor, MCP_TEST_TOKEN: "secret" },
-        { authorization: { type: "bearer", token: "${MCP_TEST_TOKEN}" } },
     );
     t.after(() => connection.close());
     assert.deepEqual((await connection.tools()).map(({ name }) => name), ["echo"]);
     for (const { headers } of served.requests) {
-        assert.equal(headers.get("authorization"), "Bearer secret", "the client's authorization wins");
+        assert.equal(headers.get("authorization"), "Bearer secret", "application authentication reaches the endpoint");
         assert.equal(headers.get("mcp-protocol-version"), MCP_PROTOCOL_VERSION, "the client's protocol header wins");
         assert.equal(headers.get("x-tenant"), "public", "a header the client does not generate is sent as configured");
     }
@@ -258,19 +257,19 @@ test("{§oauth-client-credentials} the extension capability is advertised only o
     });
     servedUrl = served.url;
 
-    const granted = new ServerConnection(httpServer("grant", served.url), { ...floor, MCP_TEST_SECRET: "client-secret-value" }, { authorization: {
+    const granted = new ServerConnection({ ...httpServer("grant", served.url), authorization: {
             type: "client-credentials",
             clientId: "app-id",
             clientSecret: "${MCP_TEST_SECRET}",
             issuer: served.url,
-        } });
+        } }, { ...floor, MCP_TEST_SECRET: "client-secret-value" });
     t.after(() => granted.close());
     assert.deepEqual((await granted.tools()).map(({ name }) => name), ["echo"]);
     assert.ok(served.requests.some(({ headers, body }) =>
         headers.get("authorization") === "Bearer granted-access-token" &&
         (body as { method?: string }).method === "server/discover"));
 
-    const bearer = new ServerConnection(httpServer("private", served.url), { ...floor, MCP_TEST_TOKEN: "secret" }, { authorization: { type: "bearer", token: "${MCP_TEST_TOKEN}" } });
+    const bearer = new ServerConnection({ ...httpServer("private", served.url), authorization: { type: "bearer", token: "${MCP_TEST_TOKEN}" } }, { ...floor, MCP_TEST_TOKEN: "secret" });
     t.after(() => bearer.close());
     assert.deepEqual((await bearer.tools()).map(({ name }) => name), ["echo"]);
 
@@ -330,12 +329,12 @@ test("{§oauth-client-credentials} a declared issuer withholds the credential fr
     });
     servedUrl = served.url;
 
-    const connection = new ServerConnection(httpServer("bound", served.url), { ...floor, MCP_TEST_SECRET: "client-secret-value" }, { authorization: {
+    const connection = new ServerConnection({ ...httpServer("bound", served.url), authorization: {
             type: "client-credentials",
             clientId: "app-id",
             clientSecret: "${MCP_TEST_SECRET}",
             issuer: "https://different-issuer.invalid/",
-        } });
+        } }, { ...floor, MCP_TEST_SECRET: "client-secret-value" });
     t.after(() => connection.close());
 
     await assert.rejects(() => connection.tools());
@@ -461,12 +460,12 @@ test("interactive HTTP OAuth preserves discovery, PKCE, state, issuer, and resou
     });
     origin = new URL(served.url).origin;
     const clientMetadataUrl = "https://client.example.test/oauth/metadata.json";
-    const connection = new ServerConnection(httpServer("oauth", served.url), floor, { authorization: {
+    const connection = new ServerConnection({ ...httpServer("oauth", served.url), authorization: {
             type: "oauth",
             redirectUrl: `${origin}/callback`,
             clientMetadataUrl,
             scope: "mcp:read",
-        } });
+        } }, floor);
     t.after(() => connection.close());
 
     let authorizationUrl = "";
@@ -579,12 +578,12 @@ test("{§oauth-lifetime} an expired access token refreshes with the stored grant
         return new Response("not found", { status: 404 });
     });
     origin = new URL(served.url).origin;
-    const connection = new ServerConnection(httpServer("oauth", served.url), floor, { authorization: {
+    const connection = new ServerConnection({ ...httpServer("oauth", served.url), authorization: {
             type: "oauth",
             redirectUrl: `${origin}/callback`,
             clientMetadataUrl: "https://client.example.test/oauth/metadata.json",
             scope: "mcp:read",
-        } });
+        } }, floor);
     t.after(() => connection.close());
 
     let authorizationUrl = "";
@@ -647,10 +646,10 @@ test("{§mcp-exclusions} unavailable deprecated DCR is attributed without probin
         return new Response("not found", { status: 404 });
     });
     origin = new URL(served.url).origin;
-    const connection = new ServerConnection(httpServer("dcr-unavailable", served.url), floor, { authorization: {
+    const connection = new ServerConnection({ ...httpServer("dcr-unavailable", served.url), authorization: {
             type: "oauth",
             redirectUrl: `${origin}/callback`,
-        } });
+        } }, floor);
     t.after(() => connection.close());
 
     await assert.rejects(
@@ -688,10 +687,10 @@ test("{§mcp-exclusions} OAuth rejects legacy endpoint inference without metadat
         return new Response("not found", { status: 404 });
     });
     origin = new URL(served.url).origin;
-    const connection = new ServerConnection(httpServer("missing-auth-metadata", served.url), floor, { authorization: {
+    const connection = new ServerConnection({ ...httpServer("missing-auth-metadata", served.url), authorization: {
             type: "oauth",
             redirectUrl: `${origin}/callback`,
-        } });
+        } }, floor);
     t.after(() => connection.close());
 
     await assert.rejects(

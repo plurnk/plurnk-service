@@ -1,11 +1,11 @@
 // {§mcp-module} — the MCP family as a workspace Functionality adapter. These tests
-// drive the adapter contract directly (plugin-provided definitions, two-phase
+// drive the adapter contract directly (configured definitions, two-phase
 // preparation, OAuth continuation, isolation, refresh, hot reload, teardown). The lifecycle verbs, durable state, and both projections belong to
 // the coordinator and are covered where it composes with this module.
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
 import { createServer, type RequestListener } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -24,11 +24,12 @@ import { serveMcpHttp } from "../test/http-fixture.ts";
 import type McpExecutor from "./McpExecutor.ts";
 import { getDefaultEnvironment } from "@modelcontextprotocol/client/stdio";
 import Module, { closeConnections } from "./Module.ts";
-import { fixturePlugin, httpServer, stdioServer as stdio } from "../test/definitions.ts";
+import { httpServer, stdioServer as stdio } from "../test/definitions.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
 const legacyFixture = fileURLToPath(new URL("./fixtures/legacy-server.mjs", import.meta.url));
 const floor = {
+    PLURNK_MCP_ENABLED: "1",
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
     PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
@@ -61,7 +62,6 @@ interface Adapter {
     readonly example?: { readonly alias: string; readonly definition: object };
     discover(query: { query?: string; source?: string; configuration?: object }, identity: { workspaceId: number }): Promise<readonly { alias?: string; summary?: string; definition: object; provenance: object }[]>;
     admit(input: unknown, identity: { workspaceId: number }): Promise<{ alias: string; definition: object }>;
-    forget(source: { alias: string; definition: object }, identity: { workspaceId: number }): Promise<void>;
     refreshIfChanged(identity: { workspaceId: number }): Promise<void>;
     prepare(preparation: {
         workspaceId: number;
@@ -80,24 +80,12 @@ interface ActionRegistration {
 // A harness that stands where the coordinator stands: it holds each workspace's
 // enabled set and committed snapshot and calls the adapter's two phases. It
 // decides nothing about lifecycle semantics — tests choose the enabled set.
-// One installed plugin as the seam reports it: its identity and the mcp.json servers it declares.
-type HarnessPlugin = { readonly scope: string; readonly root: string; readonly data: string; readonly manifest: { readonly name: string }; readonly mcpServers: ReadonlyMap<string, object> | null };
-const plugin = (name: string, servers: Record<string, object>): HarnessPlugin => ({
-    scope: "global", root: fixturePlugin.root, data: fixturePlugin.data, manifest: { name }, mcpServers: new Map(Object.entries(servers)),
-});
-type Scope = "project" | "plurnk" | "global";
-
-// The plugin roots core owns, under one temporary directory; `project: null` is a workspace without one.
-const pluginRoots = (options: { project?: boolean } = {}): Record<Scope, string | null> => {
-    const base = mkdtempSync(join(tmpdir(), "plurnk-mcp-roots-"));
-    const root = (scope: Scope): string => { const dir = join(base, scope); mkdirSync(dir, { recursive: true }); return dir; };
-    return { project: options.project === false ? null : root("project"), plurnk: root("plurnk"), global: root("global") };
-};
-
-const harness = (env: Record<string, string> = {}, installed: readonly HarnessPlugin[] = [], roots: Record<Scope, string | null> = pluginRoots()) => {
-    const module = Module.init({ env: { ...floor, ...env } });
-    let plugins = installed;
-    const written: Array<{ scope: Scope; name: string }> = [];
+const harness = (env: Record<string, string> = {}) => {
+    const environment: Record<string, string> = { ...floor, ...env };
+    const module = Module.init({ env: environment });
+    const stateRoot = mkdtempSync(join(tmpdir(), "plurnk-mcp-state-"));
+    const stateDirectory = (workspaceId: number, owner: string): string => join(stateRoot, String(workspaceId), encodeURIComponent(owner));
+    after(async () => { await module.stop(); await rm(stateRoot, { recursive: true, force: true }); });
     let refreshes = 0;
     const refreshOptions: unknown[] = [];
     const actions = new Map<string, ActionRegistration>();
@@ -119,33 +107,13 @@ const harness = (env: Record<string, string> = {}, installed: readonly HarnessPl
         return prepared;
     };
     const seam = {
-        readWorkspacePlugins: async () => ({
-            plugins,
-            signature: JSON.stringify(plugins.map((entry) => [entry.root, entry.manifest.name, entry.mcpServers === null ? null : [...entry.mcpServers]])),
-            roots,
-        }),
-        // Core's write, as the seam promises it: the one-server plugin, or exactly that plugin already there.
-        writeServerPlugin: async (_workspaceId: number, { scope, name, entry }: { scope: Scope; name: string; entry: object }) => {
-            const root = roots[scope];
-            if (root === null) return { kind: "unrooted" };
-            const directory = join(root, name);
-            const declaration = JSON.stringify({ mcpServers: { [name]: entry } });
-            if (existsSync(directory)) {
-                const present = existsSync(join(directory, "mcp.json")) ? JSON.stringify({ mcpServers: JSON.parse(readFileSync(join(directory, "mcp.json"), "utf8")).mcpServers }) : null;
-                return present === declaration ? { kind: "written", root: directory, data: fixturePlugin.data, created: false } : { kind: "occupied", directory };
-            }
+        workspaceStateDirectory: async (workspaceId: number, owner: string) => {
+            const directory = stateDirectory(workspaceId, owner);
             mkdirSync(directory, { recursive: true });
-            writeFileSync(join(directory, "plugin.json"), JSON.stringify({ name }));
-            writeFileSync(join(directory, "mcp.json"), JSON.stringify({ mcpServers: { [name]: entry } }));
-            written.push({ scope, name });
-            return { kind: "written", root: directory, data: fixturePlugin.data, created: true };
-        },
-        deleteServerPlugin: async (_workspaceId: number, { scope, name }: { scope: Scope; name: string }) => {
-            const root = roots[scope];
-            if (root !== null) rmSync(join(root, name), { recursive: true, force: true });
+            return directory;
         },
         readWorkspaceEnvironment: async () => (ambient = getDefaultEnvironment()) => ({ ...ambient }),
-        pluginEnvironment: () => ({ ...getDefaultEnvironment() }),
+        operatorEnvironment: () => ({ ...getDefaultEnvironment() }),
         registerModuleAction: (registration: ActionRegistration): void => { actions.set(registration.name, registration); },
         registerFunctionalityAdapter: (candidate: Adapter) => {
             adapter = candidate;
@@ -177,9 +145,8 @@ const harness = (env: Record<string, string> = {}, installed: readonly HarnessPl
         snapshots,
         leases: () => leases,
         setup: () => module.setup(seam as never),
-        install: (next: readonly HarnessPlugin[]) => { plugins = next; },
-        roots,
-        written,
+        environment,
+        stateDirectory,
         refreshes: () => refreshes,
         refreshOptions: () => refreshOptions,
         adapter: () => { if (adapter === undefined) throw new Error("adapter not registered"); return adapter; },
@@ -264,16 +231,15 @@ const interactiveOAuthFixture = async (
     return { origin, served };
 };
 
-// {§mcp-server-settings} — the interactive OAuth an operator states for the `oauth` alias.
-const oauthSettings = (origin: string): Record<string, string> => ({
-    PLURNK_MCP_OAUTH_OAUTH: JSON.stringify({
+const oauthDefinition = (served: { url: string }): McpServerDefinition => ({
+    ...httpServer("oauth", served.url),
+    authorization: {
         type: "oauth",
-        redirectUrl: `${origin}/callback`,
+        redirectUrl: `${new URL(served.url).origin}/callback`,
         clientMetadataUrl: "https://client.example.test/oauth/metadata.json",
         scope: "mcp:read",
-    }),
+    },
 });
-const oauthDefinition = (served: { url: string }): McpServerDefinition => httpServer("oauth", served.url);
 
 test("{§mcp-connection-shutdown} environment resolution cannot open a connection after producer stop", async (t) => {
     for (const operation of ["prepare"] as const) {
@@ -307,69 +273,40 @@ test("{§mcp-connection-shutdown} environment resolution cannot open a connectio
     }
 });
 
-test("{§mcp-plugin-servers} the family has every lifecycle verb, and every installed plugin's server is available, enabled, at its root's scope", async () => {
-    const h = harness({}, [
-        plugin("tools", { echo: { type: "stdio", command: "node", args: [fixture] }, remote: { type: "streamable-http", url: "https://mcp.example.test/mcp" } }),
-    ]);
+test("{§mcp-definitions} configured servers are inspectable without installation or connection", async () => {
+    const echo = stdio("echo");
+    const remote = httpServer("remote", "https://mcp.example.test/mcp");
+    const h = harness({ PLURNK_MCP_echo: JSON.stringify(echo), PLURNK_MCP_remote: JSON.stringify(remote), PLURNK_MCP_remote_ENABLED: "0" });
     await h.setup();
     try {
         assert.equal(h.adapter().family, "mcp");
-        assert.equal(h.adapter().namespaceOwner, "@plurnk/plurnk-mcp");
-        for (const verb of ["discover", "admit", "forget"] as const) assert.equal(typeof h.adapter()[verb], "function", `the adapter implements ${verb}`);
         assert.deepEqual([...h.actions.keys()].toSorted(), ["workspace.mcp.complete", "workspace.mcp.oauth.complete"]);
-        const available = await h.adapter().available(h.identity(1));
-        assert.deepEqual(available.map(({ alias, enabled }) => ({ alias, enabled })), [{ alias: "echo", enabled: true }, { alias: "remote", enabled: true }]);
-        assert.deepEqual(available[0]!.definition, { name: "echo", scope: "global", plugin: { name: "tools", root: fixturePlugin.root, data: fixturePlugin.data }, type: "stdio", command: "node", args: [fixture] });
-        assert.equal((available[1]!.definition as McpServerDefinition).type, "streamable-http");
+        assert.deepEqual(await h.adapter().available(h.identity(1)), [
+            { alias: "echo", definition: echo, enabled: true },
+            { alias: "remote", definition: remote, enabled: false },
+        ]);
+        assert.equal(h.snapshots.size, 0, "inspection does not prepare a connection");
     } finally { await h.module.stop(); }
 });
 
-test("{§mcp-plugin-servers} an sse entry, an unrepresentable name, and an alias an earlier plugin declares are skipped", async (t) => {
-    const reports: string[] = [];
-    t.mock.method(console, "error", (...args: unknown[]) => { reports.push(args.map(String).join(" ")); });
-    const h = harness({}, [
-        plugin("first", { echo: { type: "stdio", command: "node", args: [fixture] }, legacy: { type: "sse", url: "https://legacy.example.test/sse" }, Bad_Name: { type: "stdio", command: "node" } }),
-        plugin("second", { echo: { type: "stdio", command: "node" } }),
-    ]);
-    await h.setup();
-    try {
-        assert.deepEqual((await h.adapter().available(h.identity(1))).map(({ alias }) => alias), ["echo"]);
-        assert.ok(reports.some((line) => line.includes("'legacy'") && line.includes("HTTP+SSE")));
-        assert.ok(reports.some((line) => line.includes("'Bad_Name'") && line.includes("[a-z][a-z0-9-]*")));
-        assert.ok(reports.some((line) => line.includes("'echo' of plugin 'second'") && line.includes("plugin 'first' declares it first")));
-        const before = reports.length;
-        await h.adapter().available(h.identity(1));
-        assert.equal(reports.length, before, "an unchanged plugin set is reported once");
-    } finally { await h.module.stop(); }
-});
-
-test("{§functionality-hotload} out-of-band plugin changes go to the coordinator's comparison, inside the held turn", async () => {
-    const h = harness({}, []);
+test("{§functionality-hotload} changed definitions use the coordinator's comparison inside the held turn", async () => {
+    const h = harness();
     await h.setup();
     try {
         assert.deepEqual(await h.adapter().available(h.identity(1)), []);
         await h.adapter().refreshIfChanged(h.identity(1));
-        assert.deepEqual(h.refreshOptions(), [{ gate: "none", ifChanged: true }],
-            "the coordinator, which alone knows what it published, decides whether anything changed");
-        h.install([plugin("tools", { echo: { type: "stdio", command: "node", args: [fixture] } })]);
-        assert.deepEqual((await h.adapter().available(h.identity(1))).map(({ alias }) => alias), ["echo"], "what is available is read fresh");
-    } finally { if (h.snapshots.has(1)) await h.teardown(1); await h.module.stop(); }
+        assert.deepEqual(h.refreshOptions(), [{ gate: "none", ifChanged: true }]);
+        h.environment.PLURNK_MCP_echo = JSON.stringify(stdio("echo"));
+        assert.deepEqual((await h.adapter().available(h.identity(1))).map(({ alias }) => alias), ["echo"]);
+    } finally { await h.module.stop(); }
 });
 
-test("{§mcp-server-settings} an invalid operator setting isolates its server as unavailable", async () => {
-    const h = harness({ PLURNK_MCP_BROKEN_TOOLS: "not json" });
-    await h.setup();
-    try {
-        const prepared = await h.lane(1, new Map([["echo", stdio("echo", [fixture])], ["broken", stdio("broken", [fixture])]]));
-        assert.equal(prepared.outcomes.get("echo")?.state, "active");
-        const broken = prepared.outcomes.get("broken");
-        assert.equal(broken?.state, "unavailable");
-        assert.equal((broken as { problem: ProblemDetails }).problem.type, "https://problems.plurnk.xyz/mcp/management/server-settings-invalid");
-    } finally { await h.teardown(1); await h.module.stop(); }
+test("{§mcp-server-settings} malformed controls fail before any server can be prepared", () => {
+    assert.throws(() => harness({ PLURNK_MCP_future_TOOLS: "not json" }), /PLURNK_MCP_future_TOOLS must be a JSON array of strings/u);
 });
 
 test("{§mcp-server-settings} a tool allowlist narrows the published tools", async () => {
-    const h = harness({ PLURNK_MCP_ECHO_TOOLS: JSON.stringify(["echo"]) });
+    const h = harness({ PLURNK_MCP_echo_TOOLS: JSON.stringify(["echo"]) });
     await h.setup();
     try {
         const prepared = await h.lane(1, new Map([["echo", stdio("echo", [fixture])]]));
@@ -377,8 +314,8 @@ test("{§mcp-server-settings} a tool allowlist narrows the published tools", asy
     } finally { await h.teardown(1); await h.module.stop(); }
 });
 
-test("{§mcp-configuration} a retired variable fails the module at boot", () => {
-    assert.throws(() => Module.init({ env: { ...floor, PLURNK_MCP_GITEA: "npx" } }), /PLURNK_MCP_GITEA is retired/u);
+test("{§mcp-configuration} a noncanonical declaration fails the module at boot", () => {
+    assert.throws(() => Module.init({ env: { ...floor, PLURNK_MCP_GITEA: "npx" } }), /PLURNK_MCP_GITEA is not a declared control/u);
 });
 
 test("{§mcp-setup} preparation publishes one executor family and resource facet per enabled server, with catalog detail", async () => {
@@ -432,7 +369,7 @@ test("{§mcp-catalog-deadline} activation publishes a stalled catalog as unavail
     const h = harness({ PLURNK_MCP_CONNECT_TIMEOUT: "500", PLURNK_MCP_REQUEST_TIMEOUT: "3000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000" });
     await h.setup();
     try {
-        const enabled = new Map([
+        const enabled = new Map<string, McpServerDefinition>([
             ["stall", httpServer("stall", served.url)],
             ["echo", stdio("echo")],
         ]);
@@ -485,7 +422,7 @@ test("{§mcp-setup} commit closes connections the next snapshot no longer uses; 
 
 test("{§oauth-lifetime} an interactive OAuth server publishes authorization-required, holds Worker residency, and the callback re-enables it through the coordinator", async (t) => {
     const { origin, served } = await interactiveOAuthFixture(t);
-    const h = harness(oauthSettings(origin));
+    const h = harness();
     await h.setup();
     try {
         const prepared = await h.lane(1, new Map([["oauth", oauthDefinition(served)]]));
@@ -509,7 +446,7 @@ test("{§oauth-lifetime} an interactive OAuth server publishes authorization-req
 
 test("{§oauth-lifetime} withdrawing a server with a pending authorization clears the attempt and releases its residency", async (t) => {
     const { origin, served } = await interactiveOAuthFixture(t);
-    const h = harness(oauthSettings(origin));
+    const h = harness();
     await h.setup();
     try {
         const prepared = await h.lane(1, new Map([["oauth", oauthDefinition(served)]]));
@@ -528,14 +465,14 @@ test("{§oauth-lifetime} withdrawing a server with a pending authorization clear
 
 test("{§oauth-lifetime} a superseded authorization attempt cannot complete a replacement, and a changed target conflicts", async (t) => {
     const { origin, served } = await interactiveOAuthFixture(t);
-    const h = harness(oauthSettings(origin));
+    const h = harness();
     await h.setup();
     try {
         const first = await h.lane(1, new Map([["oauth", oauthDefinition(served)]]));
         const firstUrl = (first.outcomes.get("oauth") as { authorization: { url: string } }).authorization.url;
         // The definition changes underneath the pending authorization: the new
         // challenge supersedes the old one and holds the single lease.
-        const changed = httpServer("oauth", served.url, { "X-Changed": "1" });
+        const changed = { ...oauthDefinition(served), headers: { "X-Changed": "1" } };
         await h.lane(1, new Map([["oauth", changed]]));
         assert.equal(h.leases(), 1, "the superseded attempt released its lease; the replacement holds one");
         const staleState = new URL(firstUrl).searchParams.get("state")!;
@@ -554,6 +491,22 @@ test("{§oauth-lifetime} a superseded authorization attempt cannot complete a re
         assert.deepEqual(h.runtimeTags(1), ["echo", "oauth"]);
         assert.equal(h.leases(), 0);
     } finally { await h.teardown(1).catch(() => undefined); await h.module.stop(); }
+});
+
+test("{§oauth-lifetime} a replacement without authorization discards the pending credential flow", async (t) => {
+    const { origin, served } = await interactiveOAuthFixture(t);
+    const h = harness();
+    await h.setup();
+    try {
+        const first = await h.lane(1, new Map([["oauth", oauthDefinition(served)]]));
+        const firstUrl = (first.outcomes.get("oauth") as { authorization: { url: string } }).authorization.url;
+        const replacement = await h.lane(1, new Map([["oauth", httpServer("oauth", served.url)]]));
+        assert.equal(replacement.outcomes.get("oauth")?.state, "unavailable", "the replacement does not inherit authorization");
+        assert.equal(h.leases(), 0, "a superseded flow cannot retain the workspace");
+        await rejectsManagementProblem(() => h.action(1, "workspace.mcp.oauth.complete", {
+            alias: "oauth", callbackUrl: `${origin}/callback?code=fixture-code&state=${encodeURIComponent(new URL(firstUrl).searchParams.get("state")!)}`,
+        }), "oauth-not-pending", 404);
+    } finally { await h.module.stop(); }
 });
 
 test("{§mcp-authority} a legacy peer negotiates below the pin and serves its standard catalog", async () => {
@@ -668,64 +621,40 @@ test("{§mcp-catalog-refresh-in-place} withdrawing an attachment retires its pen
     assert.deepEqual(h.runtimeTags(1), []);
 });
 
-test("{§mcp-plugin-servers} an added server is written as a one-server plugin at its scope's root, launches from it, and remove deletes it", async () => {
+test("{§mcp-launch-directory} direct servers use workspace-owned state and retain their exact definitions", async () => {
     const h = harness();
     await h.setup();
     try {
-        const definition = { name: "added", scope: "plurnk", type: "stdio", command: "node", args: [fixture] };
+        const definition = { name: "added", type: "stdio", command: process.execPath, args: [fixture] };
         const admitted = await h.adapter().admit({ definition }, h.identity(1));
         assert.deepEqual(admitted, { alias: "added", definition });
-        assert.equal((await h.lane(1, new Map([["added", admitted.definition]]))).outcomes.get("added")?.state, "active");
-        const directory = join(h.roots.plurnk!, "added");
-        assert.equal(JSON.parse(readFileSync(join(directory, "plugin.json"), "utf8")).name, "added");
-        assert.deepEqual(JSON.parse(readFileSync(join(directory, "mcp.json"), "utf8")).mcpServers, { added: { type: "stdio", command: "node", args: [fixture] } },
-            "the plugin declares exactly the standard entry, without plurnk's alias, scope, or provenance");
-        assert.equal((await h.lane(1, new Map([["added", admitted.definition]]), { force: "added" })).outcomes.get("added")?.state, "active");
-        assert.equal(h.written.length, 1, "the same plugin already in place is reused, never rewritten");
+        for (const workspaceId of [1, 2]) {
+            const prepared = await h.lane(workspaceId, new Map([["added", admitted.definition]]));
+            assert.equal(prepared.outcomes.get("added")?.state, "active");
+            assert.ok(existsSync(h.stateDirectory(workspaceId, "@plurnk/plurnk-mcp/added")));
+            assert.deepEqual((prepared.snapshot as Map<string, { definition: unknown }>).get("added")?.definition, definition);
+        }
+        assert.notEqual(h.stateDirectory(1, "@plurnk/plurnk-mcp/added"), h.stateDirectory(2, "@plurnk/plurnk-mcp/added"));
         await h.teardown(1);
-        await h.adapter().forget(admitted, h.identity(1));
-        assert.equal(existsSync(directory), false, "remove deletes the plugin add wrote");
+        assert.ok(existsSync(h.stateDirectory(1, "@plurnk/plurnk-mcp/added")), "withdrawal retains state, not a plugin installation");
     } finally { await h.module.stop(); }
 });
 
-test("{§mcp-plugin-servers} an add whose server cannot start deletes the plugin it wrote", async () => {
+test("{§mcp-server-definition} add admits a complete connection without installation scope or provenance", async () => {
     const h = harness();
-    await h.setup();
-    try {
-        const definition = { name: "broken", scope: "plurnk", type: "stdio", command: "plurnk-no-such-command" };
-        await assert.rejects(() => h.lane(1, new Map([["broken", definition]]), { failure: "reject" }));
-        assert.equal(existsSync(join(h.roots.plurnk!, "broken")), false);
-    } finally { await h.module.stop(); }
-});
-
-test("{§mcp-plugin-servers} a different plugin at an added server's name is never overwritten", async () => {
-    const h = harness();
-    await h.setup();
-    try {
-        const directory = join(h.roots.plurnk!, "taken");
-        mkdirSync(directory, { recursive: true });
-        writeFileSync(join(directory, "plugin.json"), JSON.stringify({ name: "taken" }));
-        writeFileSync(join(directory, "mcp.json"), JSON.stringify({ mcpServers: { taken: { type: "stdio", command: "other" } } }));
-        const outcome = (await h.lane(1, new Map([["taken", { name: "taken", scope: "plurnk", type: "stdio", command: "node", args: [fixture] }]]))).outcomes.get("taken");
-        assert.equal(outcome?.state, "unavailable");
-        assert.equal((outcome as { problem: ProblemDetails }).problem.type, "https://problems.plurnk.xyz/mcp/management/plugin-occupied");
-        assert.equal(JSON.parse(readFileSync(join(directory, "mcp.json"), "utf8")).mcpServers.taken.command, "other");
-    } finally { await h.module.stop(); }
-});
-
-test("{§mcp-plugin-servers} add admits exactly a standard entry, named by its alias, at a root the workspace has", async () => {
-    const h = harness({}, [], pluginRoots({ project: false }));
     await h.setup();
     try {
         const admit = (definition: object, alias?: string) => h.adapter().admit({ definition, ...(alias === undefined ? {} : { alias }) }, h.identity(1));
         const refused = (definition: object, code: string, alias?: string) => rejectsManagementProblem(() => admit(definition, alias), code, 400);
-        await refused({ name: "echo", scope: "plurnk", type: "stdio", command: "node" }, "alias-mismatch", "other");
-        await refused({ name: "echo", scope: "plurnk", plugin: { ...fixturePlugin }, type: "stdio", command: "node" }, "definition-invalid");
-        await refused({ name: "echo", scope: "plurnk", type: "stdio", command: "./bin/server" }, "definition-invalid");
-        await refused({ name: "echo", scope: "plurnk", type: "stdio", command: "/usr/bin/node" }, "definition-invalid");
-        await refused({ name: "echo", scope: "plurnk", transport: "stdio", command: "node" }, "definition-invalid");
-        await refused({ name: "echo", scope: "project", type: "stdio", command: "node" }, "scope-unavailable");
-        const remote = { name: "remote", scope: "global", type: "streamable-http", url: "https://mcp.example.test/mcp" };
+        await refused({ name: "echo", type: "stdio", command: "node" }, "alias-mismatch", "other");
+        await refused({ name: "echo", scope: "project", type: "stdio", command: "node" }, "definition-invalid");
+        await refused({ name: "echo", plugin: {}, type: "stdio", command: "node" }, "definition-invalid");
+        await refused({ name: "echo", transport: "stdio", command: "node" }, "definition-invalid");
+        for (const command of ["node", "./bin/server", "/usr/bin/node"]) {
+            const definition = { name: "echo", type: "stdio", command };
+            assert.deepEqual(await admit(definition), { alias: "echo", definition });
+        }
+        const remote = httpServer("remote", "https://mcp.example.test/mcp");
         assert.deepEqual(await admit(remote), { alias: "remote", definition: remote });
     } finally { await h.module.stop(); }
 });
@@ -738,7 +667,7 @@ const serveRegistry = async (t: { after(fn: () => unknown): void }, listener: Re
     return `http://127.0.0.1:${(registry.address() as AddressInfo).port}`;
 };
 
-test("{§mcp-registry-discovery} discover searches the registry by query and offers each server's entries as exact definitions at the nearest root", async (t) => {
+test("{§mcp-registry-discovery} discover searches the registry by query and offers each server's entries as complete workspace definitions", async (t) => {
     const requests: string[] = [];
     const url = await serveRegistry(t, (request, response) => {
         requests.push(request.url ?? "");
@@ -748,13 +677,13 @@ test("{§mcp-registry-discovery} discover searches the registry by query and off
             metadata: { count: 1 },
         }));
     });
-    const h = harness({ PLURNK_MCP_REGISTRY_URL: url, PLURNK_MCP_REGISTRY_LIMIT: "5" }, [], pluginRoots({ project: false }));
+    const h = harness({ PLURNK_MCP_REGISTRY_URL: url, PLURNK_MCP_REGISTRY_LIMIT: "5" });
     await h.setup();
     try {
         assert.deepEqual(await h.adapter().discover({ query: "example" }, h.identity(1)), [{
             alias: "example-server",
             summary: "Search the example index. — npx -y @example/server@1.2.3",
-            definition: { name: "example-server", scope: "plurnk", type: "stdio", command: "npx", args: ["-y", "@example/server@1.2.3"] },
+            definition: { name: "example-server", type: "stdio", command: "npx", args: ["-y", "@example/server@1.2.3"] },
             provenance: { kind: "registry", source: url, reference: "io.github.example/example-server@1.2.3" },
         }]);
         assert.deepEqual(requests, ["/v0.1/servers?search=example&version=latest&limit=5"]);

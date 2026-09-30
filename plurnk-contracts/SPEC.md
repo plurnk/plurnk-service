@@ -1554,17 +1554,16 @@ model-language syntax or model packet teaching.
 ### §mcp-server-definition 13.8 MCP server definitions
 
 `McpServerDefinition` is the one definition the workspace `mcp` Functionality family
-accepts and persists: the standard `mcp.json` server entry (Agent Plugins 1.0 §7.2.1)
-with its alias `name` and the `scope` of the plugin root that carries it (`project`,
-`plurnk` or `global`). It is a closed union of the two supported transports, `stdio`
+accepts and persists: one complete connection definition with its alias `name`.
+It is a closed union of the two supported transports, `stdio`
 (`command`, optional `args`, `env`, `cwd`) and `streamable-http` (`url`, optional
-literal `headers`). The service records `plugin` (`name`, `root` as `PLUGIN_ROOT`,
-`data` as `PLUGIN_DATA`) on a server an installed plugin declares; a client never
-supplies it. It carries no workspace identifier, connection state, catalog, or
-credential.
+`headers` and `authorization`). Source provenance, workspace scope, connection
+state, catalog and resolved credentials are not definition fields. Adding or
+removing a definition does not install or remove a plugin. Transport and
+authentication fields replace together ({§configuration-definition-resolution}).
 
 §mcp-oauth `McpOAuth` is the client-managed OAuth plurnk holds for one Streamable
-HTTP server, outside its plugin. Interactive OAuth always requires a callback URL, and
+HTTP server, included in that server's `authorization`. Interactive OAuth always requires a callback URL, and
 its structurally exclusive identity modes are an HTTPS Client ID Metadata Document URL,
 a pre-registered client ID with a symbolic secret, or neither for server-advertised
 Dynamic Client Registration. A client-credentials grant names its client ID and

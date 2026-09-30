@@ -1,70 +1,54 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-    assertNoRetiredVariables,
+    serviceDefinitions,
     connectTimeoutMs,
     expandedServerNames,
     requestTimeoutMs,
     retryDelayMs,
     retryPacing,
     serverSettings,
-    settingName,
 } from "./config.ts";
 
 const floor = {
+    PLURNK_MCP_ENABLED: "1",
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
     PLURNK_MCP_REQUEST_TIMEOUT: "86400000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
-test("{§mcp-configuration} a retired server variable fails boot naming what replaced it; an empty one states nothing", () => {
-    assert.doesNotThrow(() => assertNoRetiredVariables({
-        ...floor,
-        PLURNK_MCP_EXPANDED: '["forge"]',
-        PLURNK_MCP_FORGE_TOOLS: '["issue_read"]',
-        PLURNK_MCP_FORGE_BEARER: "${FORGE_TOKEN}",
-        PLURNK_MCP_LOCAL_VALIDATOR_OAUTH: '{"type":"oauth","redirectUrl":"http://127.0.0.1:8765/callback"}',
-        PLURNK_MCP_GITEA: "",
-        PLURNK_MCP_ENABLED: "",
-    }), "controls, settings and empty retired names pass");
-    for (const [key, value, successor] of [
-        ["PLURNK_MCP_GITEA", "npx", /MCP servers come from an installed Agent Plugin's mcp\.json/u],
-        ["PLURNK_MCP_GITEA_ARGS", '["-y"]', /mcp\.json declares args/u],
-        ["PLURNK_MCP_GITEA_CWD", "/srv", /mcp\.json declares cwd/u],
-        ["PLURNK_MCP_GITEA_ENV", "{}", /mcp\.json declares env/u],
-        ["PLURNK_MCP_GITEA_HEADERS", "{}", /mcp\.json declares headers/u],
-        ["PLURNK_MCP_GITEA_READ", '["issue_read"]', /annotations\.readOnlyHint/u],
-        ["PLURNK_MCP_GITEA_SUMMARY", "Forge.", /the server's own fields/u],
-        ["PLURNK_MCP_GITEA_ISSUE_READ_SUMMARY", "One issue.", /the server's own fields/u],
-        ["PLURNK_MCP_ENABLED", '["gitea"]', /installed plugin's servers are enabled/u],
-    ] as const) {
-        assert.throws(() => assertNoRetiredVariables({ ...floor, [key]: value }), (error: Error) =>
-            error.message.startsWith(`${key} is retired: `) && successor.test(error.message), key);
+test("{§mcp-configuration} whole definitions and independent controls use the shared resource dialect", () => {
+    const definition = { name: "code-search", type: "stdio", command: "node", args: ["server.mjs"] };
+    const env = { ...floor, PLURNK_MCP_code_search: JSON.stringify(definition), PLURNK_MCP_code_search_ENABLED: "0" };
+    assert.deepEqual(serviceDefinitions(env), [{ alias: "code-search", definition, enabled: false }]);
+    assert.deepEqual(serviceDefinitions({ ...env, PLURNK_MCP_code_search_ENABLED: "1" }), [{ alias: "code-search", definition, enabled: true }]);
+    const replacement = { name: "code-search", type: "streamable-http", url: "https://example.com/mcp" };
+    assert.deepEqual(serviceDefinitions({ ...env, PLURNK_MCP_code_search: JSON.stringify(replacement) }), [{ alias: "code-search", definition: replacement, enabled: false }]);
+    assert.deepEqual(serviceDefinitions(floor), []);
+});
+
+test("{§mcp-configuration} invalid definitions and controls fail even when no server is enabled", () => {
+    for (const key of ["PLURNK_MCP_FORGE", "PLURNK_MCP_Forge", "PLURNK_MCP_forge_BEARER", "PLURNK_MCP_forge_OAUTH", "PLURNK_MCP_forge_ARGS"]) {
+        assert.throws(() => serviceDefinitions({ ...floor, [key]: "private-value" }), (error: Error) => error.message.startsWith(key) && !error.message.includes("private-value"));
     }
+    assert.throws(() => serviceDefinitions({ ...floor, PLURNK_MCP_forge: "", PLURNK_MCP_forge_ENABLED: "0" }), /PLURNK_MCP_forge must contain a definition/u);
+    assert.throws(() => serviceDefinitions({ ...floor, PLURNK_MCP_forge: '{"name":"forge","type":"stdio"}', PLURNK_MCP_forge_ENABLED: "0" }), /PLURNK_MCP_forge must be an MCP server definition/u);
+    assert.throws(() => serviceDefinitions({ ...floor, PLURNK_MCP_forge: '{"name":"other","type":"stdio","command":"node"}' }), /PLURNK_MCP_forge must define name 'forge'/u);
+    assert.throws(() => serviceDefinitions({}), /PLURNK_MCP_ENABLED is missing from the assembled environment floor/u);
+    assert.throws(() => serviceDefinitions({ ...floor, PLURNK_MCP_future_ENABLED: "yes" }), /PLURNK_MCP_future_ENABLED must be 0 or 1/u);
 });
 
-test("{§mcp-server-settings} a setting's variable is the alias uppercased, its hyphens as underscores", () => {
-    assert.equal(settingName("forge", "_TOOLS"), "PLURNK_MCP_FORGE_TOOLS");
-    assert.equal(settingName("local-validator", "_BEARER"), "PLURNK_MCP_LOCAL_VALIDATOR_BEARER");
-    assert.equal(settingName("x2", "_OAUTH"), "PLURNK_MCP_X2_OAUTH");
-});
-
-test("{§mcp-server-settings} tools narrow by exact name, a bearer is one reference, OAuth is McpOAuth, and they exclude each other", () => {
-    assert.deepEqual(serverSettings("forge", floor), { tools: null }, "absent settings enable every tool and no authorization");
-    assert.deepEqual(serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_TOOLS: "" }), { tools: null }, "an empty allowlist states nothing");
-    assert.deepEqual(serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_TOOLS: "[]" }), { tools: [] }, "[] enables none");
-    assert.deepEqual(serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_TOOLS: '["issue_read","issue_search"]' }).tools, ["issue_read", "issue_search"]);
-    assert.throws(() => serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_TOOLS: '["a","a"]' }), /duplicate tool name 'a'/u);
-    assert.throws(() => serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_TOOLS: '"a"' }), /JSON array of strings/u);
-
-    assert.deepEqual(serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_BEARER: "${FORGE_TOKEN}" }).authorization, { type: "bearer", token: "${FORGE_TOKEN}" },
-        "the reference is kept; the token is read only while preparing a connection");
-    assert.throws(() => serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_BEARER: "literal-token" }), /one \$\{NAME\} reference/u);
-
-    const oauth = { type: "client-credentials", clientId: "worker", clientSecret: "${WORKER_SECRET}" };
-    assert.deepEqual(serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_OAUTH: JSON.stringify(oauth) }).authorization, oauth);
-    assert.throws(() => serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_OAUTH: '{"type":"client-credentials","clientId":"w","clientSecret":"plain"}' }), /invalid MCP OAuth settings/u);
-    assert.throws(() => serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_OAUTH: "{" }), /PLURNK_MCP_FORGE_OAUTH must be McpOAuth JSON/u);
-    assert.throws(() => serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_BEARER: "${T}", PLURNK_MCP_FORGE_OAUTH: JSON.stringify(oauth) }), /are exclusive/u);
+test("{§mcp-server-settings} controls precede declarations without making resources; every value is validated", () => {
+    const env = { ...floor, PLURNK_MCP_future_TOOLS: '["issue_read","issue_search"]', PLURNK_MCP_future_ENABLED: "0" };
+    assert.deepEqual(serviceDefinitions(env), []);
+    assert.deepEqual(serverSettings("future", env), { tools: ["issue_read", "issue_search"] });
+    assert.deepEqual(serverSettings("other", env), { tools: null });
+    assert.deepEqual(serverSettings("future", { ...env, PLURNK_MCP_future_TOOLS: "" }), { tools: null });
+    assert.deepEqual(serverSettings("future", { ...env, PLURNK_MCP_future_TOOLS: "[]" }), { tools: [] });
+    assert.throws(() => serviceDefinitions({ ...env, PLURNK_MCP_future_TOOLS: '["a","a"]' }), /PLURNK_MCP_future_TOOLS contains duplicate tool name 'a'/u);
+    assert.throws(() => serviceDefinitions({ ...env, PLURNK_MCP_future_TOOLS: '"a"' }), /PLURNK_MCP_future_TOOLS must be a JSON array of strings/u);
+    assert.throws(() => serviceDefinitions({ ...env, PLURNK_MCP_future_UNSUPPORTED: "anything" }), /PLURNK_MCP_future_UNSUPPORTED names unsupported resource setting/u);
+    const definition = { name: "future", type: "stdio", command: "node" };
+    assert.deepEqual(serviceDefinitions({ ...env, PLURNK_MCP_future: JSON.stringify(definition) }), [{ alias: "future", definition, enabled: false }]);
 });
 
 test("{§mcp-configuration} EXPANDED names server aliases", () => {
@@ -82,7 +66,7 @@ test("timeouts are required positive integers owned by .env.defaults", () => {
             ...floor,
             PLURNK_MCP_CONNECT_TIMEOUT: "0",
         }),
-        /positive integer/,
+        /safe integer of at least 1/,
     );
 });
 
@@ -90,8 +74,8 @@ test("{§mcp-retry-pacing} one pacing, stated on the panel, doubles from its flo
     const pacing = retryPacing({ PLURNK_MCP_RETRY_FLOOR_MS: "100", PLURNK_MCP_RETRY_CEILING_MS: "450" });
     assert.deepEqual(pacing, { floorMs: 100, ceilingMs: 450 });
     assert.deepEqual([0, 1, 2, 3, 9].map((attempt) => retryDelayMs(pacing, attempt)), [100, 200, 400, 450, 450]);
-    assert.throws(() => retryPacing({ PLURNK_MCP_RETRY_CEILING_MS: "450" }), /PLURNK_MCP_RETRY_FLOOR_MS must be a positive integer; got undefined/u);
-    assert.throws(() => retryPacing({ PLURNK_MCP_RETRY_FLOOR_MS: "0", PLURNK_MCP_RETRY_CEILING_MS: "450" }), /PLURNK_MCP_RETRY_FLOOR_MS must be a positive integer; got "0"/u);
+    assert.throws(() => retryPacing({ PLURNK_MCP_RETRY_CEILING_MS: "450" }), /PLURNK_MCP_RETRY_FLOOR_MS is missing from the assembled environment floor/u);
+    assert.throws(() => retryPacing({ PLURNK_MCP_RETRY_FLOOR_MS: "0", PLURNK_MCP_RETRY_CEILING_MS: "450" }), /PLURNK_MCP_RETRY_FLOOR_MS must be a safe integer of at least 1; got "0"/u);
     assert.throws(
         () => retryPacing({ PLURNK_MCP_RETRY_FLOOR_MS: "500", PLURNK_MCP_RETRY_CEILING_MS: "450" }),
         /PLURNK_MCP_RETRY_CEILING_MS \(450\) must be at least PLURNK_MCP_RETRY_FLOOR_MS \(500\)/u,

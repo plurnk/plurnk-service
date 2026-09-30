@@ -1,5 +1,4 @@
-import { mkdir, realpath } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { isAbsolute } from "node:path";
 import {
     OAuthClientFlowError,
     OAuthError,
@@ -44,10 +43,8 @@ import {
     expandReferences,
     requestTimeoutMs,
     retryPacing,
-    settingName,
-    type McpAuthorization,
 } from "./config.ts";
-import { expandPlaceholders } from "@plurnk/plurnk-agent-plugins";
+import { readDefinition } from "./definition.ts";
 import {
     INPUT_REQUIRED_MAX_ROUNDS,
     runInputRequiredRequest,
@@ -93,9 +90,6 @@ interface ResolvedStdioDefinition {
     readonly args: string[];
     readonly cwd: string;
     readonly env: Record<string, string>;
-    // {§mcp-plugin-servers} — what the launch creates and what it must stay inside.
-    readonly plugin: { readonly root: string; readonly data: string };
-    readonly cwdWithin: "root" | "data";
 }
 
 interface ResolvedHttpDefinition {
@@ -115,8 +109,8 @@ type ResolvedDefinition = ResolvedStdioDefinition | ResolvedHttpDefinition;
 export interface ServerConnectionOptions {
     // {§mcp-launch-environment} Exact admitted environment, separate from reference resolution.
     readonly environment?: NodeJS.ProcessEnv;
-    // {§mcp-server-settings} The operator's client-managed authorization for this alias.
-    readonly authorization?: McpAuthorization;
+    // {§mcp-launch-directory} Host-owned cwd when the definition does not select one.
+    readonly cwd?: string;
     readonly onCatalogChanged?: (error: Error | null) => void;
     readonly onInfrastructureError?: (error: Error) => void;
 }
@@ -146,42 +140,34 @@ export const isClientCredentialsRejection = (error: unknown): boolean => errorsO
     return false;
 });
 
-// {§mcp-plugin-servers} — headers the client generates for HTTP, MCP, or authorization take precedence
-// over a configured header of the same name (Agent Plugins 1.0 §7.2.1); the SDK would let it win.
+// {§mcp-transports} Protocol headers are transport-owned; application authentication is not.
 const clientOwnedHeader = (name: string): boolean =>
-    ["authorization", "accept", "content-type", "last-event-id"].includes(name.toLowerCase()) || name.toLowerCase().startsWith("mcp-");
+    ["accept", "content-type", "last-event-id"].includes(name.toLowerCase()) || name.toLowerCase().startsWith("mcp-");
 
 const resolveDefinition = (
     source: McpServerDefinition,
-    authorization: McpAuthorization | undefined,
     environ: NodeJS.ProcessEnv,
+    defaultCwd: string | undefined,
 ): ResolvedDefinition => {
-    const definition = Validator.assertMcpServerDefinition(source);
+    const definition = readDefinition(source);
+    const field = `MCP server '${definition.name}'`;
     if (definition.type === "stdio") {
-        // A stdio server launches from its plugin; an added server's is written before it launches.
-        if (definition.plugin === undefined) throw new TypeError(`MCP server '${definition.name}' has no plugin to launch from.`);
-        const { root, data } = definition.plugin;
-        const expand = (value: string): string => expandPlaceholders(value, { root, data });
-        const cwd = definition.cwd === undefined ? root : resolve(root, expand(definition.cwd));
+        const expand = (value: string): string => expandReferences(value, environ, field);
+        const cwd = definition.cwd === undefined ? defaultCwd : expand(definition.cwd);
+        if (cwd === undefined || !isAbsolute(cwd)) throw new TypeError(`${field} requires an absolute working directory from its definition or host.`);
         return {
             type: "stdio",
-            // A bare name resolves through the executable search; a ./ path against the plugin root.
-            command: definition.command.startsWith("./") ? resolve(root, definition.command) : definition.command,
+            command: definition.command,
             args: (definition.args ?? []).map(expand),
             cwd,
-            env: {
-                ...Object.fromEntries(Object.entries(definition.env ?? {}).map(([name, value]) => [name, expand(value)])),
-                PLUGIN_ROOT: root,
-                PLUGIN_DATA: data,
-            },
-            plugin: { root, data },
-            cwdWithin: definition.cwd?.startsWith("${PLUGIN_DATA}") === true ? "data" : "root",
+            env: Object.fromEntries(Object.entries(definition.env ?? {}).map(([name, value]) => [name, expand(value)])),
         };
     }
 
     const configured = Object.entries(definition.headers ?? {}).filter(([name]) => !clientOwnedHeader(name));
-    const headers = configured.length === 0 ? undefined : Object.fromEntries(configured);
+    const headers = configured.length === 0 ? undefined : Object.fromEntries(configured.map(([name, value]) => [name, expandReferences(value, environ, `${field}.headers.${name}`)]));
     const url = definition.url;
+    const authorization = definition.authorization;
     if (authorization === undefined) {
         return {
             type: "streamable-http",
@@ -191,7 +177,7 @@ const resolveDefinition = (
         };
     }
     if (authorization.type === "bearer") {
-        const field = settingName(definition.name, "_BEARER");
+        const field = `MCP server '${definition.name}'.authorization.token`;
         const token = expandReferences(authorization.token, environ, field);
         if (token.length === 0) throw new Error(`${field} resolved empty.`);
         return {
@@ -202,7 +188,6 @@ const resolveDefinition = (
             cachePartition: `bearer:${authorization.token}`,
         };
     }
-    const field = settingName(definition.name, "_OAUTH");
     if (authorization.type === "client-credentials") {
         const secret = expandReferences(authorization.clientSecret, environ, `${field}.clientSecret`);
         if (secret.length === 0) throw new Error(`${field}.clientSecret resolved empty.`);
@@ -246,25 +231,6 @@ const resolveDefinition = (
         oauthProvider,
         cachePartition,
     };
-};
-
-const inside = (root: string, candidate: string): boolean => {
-    const path = relative(root, candidate);
-    return path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path);
-};
-
-// {§mcp-plugin-servers} — PLUGIN_DATA exists before the launch, and a ./ command and the working
-// directory stay inside the filesystem-resolved directory they are rooted in (§4.1, §7.2.1).
-const prepareLaunch = async (definition: ResolvedStdioDefinition): Promise<void> => {
-    await mkdir(definition.plugin.data, { recursive: true, mode: 0o700 });
-    const root = await realpath(definition.plugin.root);
-    const base = definition.cwdWithin === "data" ? await realpath(definition.plugin.data) : root;
-    if (!inside(base, await realpath(definition.cwd))) {
-        throw new Error(`The working directory ${definition.cwd} resolves outside the plugin's ${definition.cwdWithin === "data" ? "PLUGIN_DATA" : "root"}.`);
-    }
-    if (isAbsolute(definition.command) && !inside(root, await realpath(definition.command))) {
-        throw new Error(`The command ${definition.command} resolves outside the plugin root.`);
-    }
 };
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
@@ -591,7 +557,7 @@ export default class ServerConnection {
         options: ServerConnectionOptions = {},
     ) {
         this.#definition = structuredClone(Validator.assertMcpServerDefinition(definition));
-        this.#resolved = resolveDefinition(this.#definition, options.authorization, environ);
+        this.#resolved = resolveDefinition(this.#definition, environ, options.cwd);
         this.#environ = environ;
         this.#options = options;
     }
@@ -617,7 +583,6 @@ export default class ServerConnection {
         let transport: StdioClientTransport | StreamableHTTPClientTransport | undefined;
         const pending = (async () => {
             const definition = this.#resolved;
-            if (definition.type === "stdio") await prepareLaunch(definition);
             if (this.#closed) throw new Error(`MCP server '${this.#definition.name}' connection is closed.`);
             transport = openTransport(definition, this.#options.environment);
             this.#openingTransport = transport;

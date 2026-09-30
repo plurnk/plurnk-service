@@ -10,7 +10,7 @@ import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { insertWorker, openMigrated } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
-import { MCP_CONTROLS, httpEntry, mcpPluginHome } from "./_mcp-plugin.ts";
+import { MCP_CONTROLS, httpEntry, mcpFixture } from "./_mcp-config.ts";
 
 test("{§workspace-environment-sharing}: MCP definitions belong to the workspace without any conversation worker", async (t) => {
     const server = await serveMcpHttp(t, createMcpHandler(() => {
@@ -24,11 +24,11 @@ test("{§workspace-environment-sharing}: MCP definitions belong to the workspace
         }));
         return mcp;
     }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
-    const hostPaths = await mcpPluginHome(t, { shared: httpEntry(server.url) });
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, { shared: httpEntry(server.url) });
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 1_000_000, responses: [] });
     const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths });
-    daemon.registerModule(McpModule.init({ env: { ...MCP_CONTROLS } }));
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }));
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "shared-functionality" });

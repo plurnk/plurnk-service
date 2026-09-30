@@ -10,7 +10,7 @@ import { logEntries } from "./_packet.ts";
 import { openMigrated } from "./_db.ts";
 import { connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
-import { httpEntry, mcpPluginHome } from "./_mcp-plugin.ts";
+import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 
 // {§exec-stream-page} {§stream-observation-result} — the complete MCP transport →
 // execution → invocation receipt → automatic observation → explicit recovery path.
@@ -30,7 +30,7 @@ for (const body of [null, '{"query":"fixture"}']) {
             });
             return server;
         }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
-        const hostPaths = await mcpPluginHome(t, { fixture: httpEntry(served.url) });
+        const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
         const frame = PlurnkParser.frame;
         const provider = new StreamMock({ contextWindow: 100_000, responses: [
             frame("fixture (inspect)", body),
@@ -40,7 +40,7 @@ for (const body of [null, '{"query":"fixture"}']) {
         ].map(makeMockResponse) });
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider, hostPaths });
-        daemon.registerModule(McpModule.init({ env: {
+        daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
             PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         } }));
         t.after(async () => { await daemon.stop(); await db.close(); });

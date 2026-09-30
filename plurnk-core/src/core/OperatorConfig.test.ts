@@ -13,7 +13,9 @@ test("{§operator-config-discovery} the seed is one dotenv front door with exact
     assert.match(seed, /PLURNK_MODEL_openrouter="openrouter\/qwen\/qwen3-coder"/);
     assert.match(seed, /PLURNK_MODEL_local="openai\/qwen"/);
     assert.match(seed, /PLURNK_PROVIDERS_GBNF_local=~\/\.config\/plurnk\/local\.gbnf/);
-    assert.match(seed, /MCP SERVERS — they come from installed Agent Plugins/);
+    assert.match(seed, /MCP SERVERS — complete definitions/);
+    assert.match(seed, /PLURNK_MCP_brave=\{"name":"brave","type":"stdio"/);
+    assert.match(seed, /PLURNK_MCP_brave_ENABLED=0/);
     assert.match(seed, /PLURNK_SCHEMES_HTTP_MATERIALIZER=tavily-extract/);
     assert.match(seed, /AGENT SKILLS — project skills live in \.agents\/skills/);
     assert.doesNotMatch(seed, /^(?!#).*PLURNK_MODEL=/m, "no model ships selected");

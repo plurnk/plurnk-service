@@ -3886,7 +3886,7 @@ the policy renders in exactly one packet section. Every other tier runs the
 test cascade, so shipped-default regressions are otherwise invisible by
 construction.
 
-§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to gate-wide service posture that is identical on every machine: complete catalog orientation, automatic Git membership when the operator ceiling permits Git, ambient operator-file docs/packet notes cleared, the operator's installed skills and plugins left unread ({§agent-roots}), ambient MCP expansion and schedules disabled, and `PLURNK_EXECS_QUESTION=0` for unattended runs. The ordinary executor switch removes the question tool and its teaching; an explicit override can opt into an attended drill. Configuration with a narrower or variable owner stays outside it:
+§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to gate-wide service posture that is identical on every machine: complete catalog orientation, automatic Git membership when the operator ceiling permits Git, ambient operator-file docs/packet notes cleared, the operator's installed skills and plugins left unread ({§agent-roots}), ambient MCP/A2A and schedules default disabled, and `PLURNK_EXECS_QUESTION=0` for unattended runs. The ordinary executor switch removes the question tool and its teaching; an explicit override can opt into an attended drill. The drivers also project per-alias `ENABLED=0` overrides for named MCP, A2A, schedule and membership resources in the operator's config file. Definitions remain inspectable; explicit shell/benchmark controls win. Mock-tier bootstrap clears these ambient families before loading its fixture floor. No operator file is rewritten. Configuration with a narrower or variable owner stays outside it:
 
 | Owner | Configuration |
 |---|---|
@@ -4212,16 +4212,15 @@ plugin of the same name. A plugin's `PLUGIN_DATA` is `$XDG_DATA_HOME/plurnk/plug
 across its updates and moved with a state root ({§state-root}). Modules receive a workspace's plugins,
 in precedence order, through the setup seam's `readWorkspacePlugins`, with one signature that changes
 exactly when a plugin, its manifest, its MCP configuration, or its skills change
-({§functionality-hotload}), and the roots the workspace has. The one plugin Core writes is the
-one-server plugin an added MCP server is ({§mcp-plugin-servers}): `writeServerPlugin` places it at
-its scope's root, or finds exactly that plugin already there, and `deleteServerPlugin` removes it.
+({§functionality-hotload}), and the roots the workspace has. This read-only source loader does
+not install or delete plugins. MCP's own lifecycle is independent ({§mcp-definitions}).
 
 §agent-roots **A daemon reads the roots `PLURNK_SERVICE_ROOTS` names.** A comma list drawn from
 `project`, `plurnk` and `global`, nearest first, selects which Agent Skills and Agent Plugins roots a
 daemon reads and writes; the default names all three. The real-model gate profile names `project`
 alone ({§operator-config-real-model-profile}), so the operator's installed skills and plugins never
-shape a gate. Adding at a root the daemon does not read is refused, naming the roots it does: a skill as
-`scope-unread` ({§skills-functionality}), an MCP server as its family's `scope-unavailable`.
+shape a gate. Adding a skill at a root the daemon does not read is refused as
+`scope-unread`, naming the roots it does ({§skills-functionality}). MCP definitions do not select an installation root.
 
 An adapter may expose a `scheme` facet beneath its family's runtime namespace
 ({§runtime-resource-binding}). A facet claims a path subtree and is the scheme's

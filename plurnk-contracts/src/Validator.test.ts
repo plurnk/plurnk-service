@@ -201,23 +201,26 @@ test("{§client-interaction-wire} client interactions carry one generic tool con
     );
 });
 
-test("{§mcp-server-definition}: an MCP server definition is a standard stdio or Streamable HTTP entry at a plugin root's scope", () => {
-    const plugin = { name: "devtools", root: "/home/ada/.agents/plugins/devtools", data: "/home/ada/.local/share/plurnk/plugins/devtools" };
+test("{§mcp-server-definition}: MCP definitions contain transport and authorization, not installation or runtime state", () => {
     const definitions: McpServerDefinition[] = [
-        { name: "local-validator", scope: "global", plugin, type: "stdio", command: "./bin/validator", args: ["--data", "${PLUGIN_DATA}/validator"], env: { CONFIG: "${PLUGIN_ROOT}/config.json" }, cwd: "${PLUGIN_ROOT}" },
-        { name: "npx-server", scope: "project", type: "stdio", command: "npx", args: ["-y", "example-server@1.0.0"] },
-        { name: "deployment-api", scope: "plurnk", type: "streamable-http", url: "https://deploy.example.com/mcp", headers: { "X-Tenant": "public-tenant" } },
+        { name: "local-validator", type: "stdio", command: "./bin/validator", args: ["--config", "${CONFIG}"], env: { TOKEN: "${VALIDATOR_TOKEN}" }, cwd: "/srv/validator" },
+        { name: "npx-server", type: "stdio", command: "npx", args: ["-y", "example-server@1.0.0"] },
+        { name: "deployment-api", type: "streamable-http", url: "https://deploy.example.com/mcp", headers: { "X-Tenant": "${TENANT}" } },
+        { name: "creds", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "bearer", token: "${TOKEN}" } },
+        { name: "oauth", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "oauth", redirectUrl: "http://localhost/callback" } },
+        { name: "client", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "client-credentials", clientId: "worker", clientSecret: "${SECRET}" } },
     ];
     for (const definition of definitions) assert.equal(Validator.assertMcpServerDefinition(definition), definition);
     for (const invalid of [
-        { name: "legacy", scope: "project", type: "sse", url: "https://legacy.example.com/sse" },
-        { name: "old", scope: "project", transport: "stdio", command: "npx" },
-        { name: "unscoped", plugin, type: "stdio", command: "npx" },
-        { name: "service", scope: "service", type: "stdio", command: "npx" },
-        { name: "mixed", scope: "project", type: "stdio", command: "npx", url: "https://example.com/mcp" },
-        { name: "creds", scope: "project", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "bearer", token: "${T}" } },
-        { name: "Upper", scope: "project", type: "stdio", command: "npx" },
-        { name: "scheme", scope: "project", type: "streamable-http", url: "ftp://example.com/mcp" },
+        { name: "legacy", type: "sse", url: "https://legacy.example.com/sse" },
+        { name: "old", transport: "stdio", command: "npx" },
+        { name: "plugin", plugin: { name: "tools", root: "/srv/tools", data: "/srv/data" }, type: "stdio", command: "npx" },
+        { name: "scoped", scope: "project", type: "stdio", command: "npx" },
+        { name: "mixed", type: "stdio", command: "npx", url: "https://example.com/mcp" },
+        { name: "local", type: "stdio", command: "npx", authorization: { type: "bearer", token: "${T}" } },
+        { name: "secret", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "bearer", token: "literal-secret" } },
+        { name: "Upper", type: "stdio", command: "npx" },
+        { name: "scheme", type: "streamable-http", url: "ftp://example.com/mcp" },
     ]) {
         assert.throws(() => Validator.assertMcpServerDefinition(invalid as never), InvalidMcpServerDefinitionError, JSON.stringify(invalid));
     }

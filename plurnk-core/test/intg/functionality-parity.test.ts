@@ -33,7 +33,7 @@ import { parseLogRecords } from "../LogRecords.ts";
 import { waitFor, waitForDb } from "./_rpc.ts";
 import { sendStmt } from "./_dsl.ts";
 import type { Db } from "../../src/core/Db.ts";
-import { MCP_CONTROLS, stdioEntry, writePlugin } from "./_mcp-plugin.ts";
+import { mcpEnvironment, stdioEntry } from "./_mcp-config.ts";
 
 type Definition = { readonly alias: string; readonly definition: object; readonly probe: (context: Context) => Promise<number> };
 
@@ -157,10 +157,9 @@ const skillsFamily = async (): Promise<Family> => {
 const mcpFamily = async (): Promise<Family> => {
     const echo = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures/echo-server.mjs", import.meta.url));
     const legacy = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures/legacy-server.mjs", import.meta.url));
-    // {§mcp-plugin-servers} — the service server arrives in a plugin installed under the daemon's own home.
+    // {§mcp-configuration}
     const home = await mkdtemp(join(tmpdir(), "plurnk-parity-mcp-"));
     const hostPaths = new HostPaths({ home, env: {} });
-    await writePlugin(join(hostPaths.plurnkPluginsDir, "fixtures"), "fixtures", { fixture: stdioEntry("echo-server.mjs") });
     // {§mcp-registry-discovery} — a registry answering exactly as the MCP Registry does.
     const registry = createServer((_request, response) => {
         response.setHeader("content-type", "application/json");
@@ -191,7 +190,7 @@ const mcpFamily = async (): Promise<Family> => {
         return status;
     };
     // The echo tool declares readOnlyHint, so a client execution of it runs ungated; the legacy one proposes.
-    const server = (name: string, file: string) => ({ name, scope: "plurnk", type: "stdio", command: "node", args: [file] });
+    const server = (name: string, file: string) => ({ name, type: "stdio", command: "node", args: [file] });
     return {
         family: "mcp",
         teaching: /## discover, then add/u,
@@ -204,7 +203,7 @@ const mcpFamily = async (): Promise<Family> => {
         collidingAlias: "sh",
         boot: async (db, provider) => {
             const daemon = new Daemon({ db, provider, hostPaths });
-            daemon.registerModule(McpModule.init({ env: { ...MCP_CONTROLS, PLURNK_MCP_REGISTRY_URL: registryUrl, PLURNK_MCP_REGISTRY_LIMIT: "5" } }));
+            daemon.registerModule(McpModule.init({ env: { ...mcpEnvironment({ fixture: stdioEntry("echo-server.mjs") }), PLURNK_MCP_REGISTRY_URL: registryUrl, PLURNK_MCP_REGISTRY_LIMIT: "5" } }));
             return { daemon };
         },
         close: async () => {

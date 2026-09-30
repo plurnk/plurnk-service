@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/McpOAuth.json",
     "title": "McpOAuth",
-    "description": "The client-managed OAuth plurnk holds for one Streamable HTTP MCP server, outside its plugin. Every secret is a ${NAME} reference to the operator environment.",
+    "description": "OAuth configuration within one Streamable HTTP MCP server definition. Every secret is a ${NAME} reference to the operator environment.",
     "oneOf": [
         {
             "type": "object",

@@ -7,18 +7,18 @@ import { fileURLToPath } from "node:url";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { McpServer, createMcpHandler, fromJsonSchema } from "@modelcontextprotocol/server";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import type { FunctionalityListResult } from "@plurnk/plurnk-contracts";
+import { Validator, type FunctionalityListResult, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { awaitExecOutcome } from "./_execs.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { waitFor } from "./_rpc.ts";
-import { MCP_CONTROLS, httpEntry, mcpPluginHome } from "./_mcp-plugin.ts";
+import { MCP_CONTROLS, httpEntry, mcpFixture } from "./_mcp-config.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/environment-mcp.mjs", import.meta.url));
-// A plugin's stdio entry for the environment fixture, which records each launch's environment in its marker.
+// A stdio definition for the environment fixture, which records each launch's environment in its marker.
 const environmentEntry = (env: Readonly<Record<string, string>>): object => ({ type: "stdio", command: "node", args: [fixture], env: { ...env } });
 type Start = { witness: string | null; private: string | null; bound: string | null; plurnk: string | null; reference: string | null; home: string | null; pid: number };
 
@@ -34,11 +34,11 @@ const withOperatorEnvironment = (t: TestContext, values: Readonly<Record<string,
     });
 };
 
-test("{§mcp-launch-environment} a plugin's stdio server starts with the operator's environment beneath the workspace layer, never a worker's, and picks up changes only on restart", { timeout: 30000 }, async (t) => {
+test("{§mcp-launch-environment} a configured stdio server starts with the operator's environment beneath the workspace layer, never a worker's, and picks up changes only on restart", { timeout: 30000 }, async (t) => {
     const scratch = await mkdtemp(join(tmpdir(), "plurnk-mcp-env-"));
     t.after(() => rm(scratch, { recursive: true, force: true }));
     withOperatorEnvironment(t, {
-        // Outside the model's command ceiling ({§exec-env-scoped}), which is not a plugin server's base.
+        // Outside the model's command ceiling ({§exec-env-scoped}), which is not an MCP server's base.
         REF_VALUE: "operator",
         // A credential the operator's provider declaration names: plurnk's own, never a subprocess's.
         BOUND_VALUE: "operator-credential",
@@ -46,14 +46,14 @@ test("{§mcp-launch-environment} a plugin's stdio server starts with the operato
     });
     const marker = (server: string) => join(scratch, `${server}.jsonl`);
     const explicitEnv = { MCP_ENV_MARKER: marker("explicit"), ENV_WITNESS: "explicit" };
-    const hostPaths = await mcpPluginHome(t, {
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, {
         fixture: environmentEntry({ MCP_ENV_MARKER: marker("fixture") }),
         explicit: environmentEntry(explicitEnv),
     });
     const db = await openMigrated();
     const boot = () => {
         const instance = new Daemon({ db, provider: null, schemes: new SchemeRegistry(), hostPaths });
-        instance.registerModule(McpModule.init({ env: { ...MCP_CONTROLS } }));
+        instance.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }));
         return instance;
     };
     let daemon = boot();
@@ -116,7 +116,7 @@ test("{§mcp-launch-environment} a plugin's stdio server starts with the operato
             const listed = await invoke("mcp", "list") as FunctionalityListResult;
             const retained = listed.definitions.find(({ alias }) => alias === "explicit");
             assert.ok(retained);
-            assert.deepEqual((retained.definition as { env: object }).env, explicitEnv, "the definition is the plugin's entry; no resolved or ambient value is copied into it");
+            assert.deepEqual((retained.definition as { env: object }).env, explicitEnv, "the definition stays symbolic; no resolved or ambient value is copied into it");
         } finally { unsubscribe(); }
 
         await invoke("env", "disable", { alias: "HOME" });
@@ -155,10 +155,12 @@ test("{§mcp-launch-environment} {§mcp-server-settings} a bearer setting resolv
         received.push(authorization);
         return authorization === "Bearer workspace-token" ? null : new Response("incorrect fixture authorization", { status: 401 });
     });
-    const hostPaths = await mcpPluginHome(t, { authorized: httpEntry(served.url) });
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, { authorized: {
+        ...httpEntry(served.url), authorization: { type: "bearer", token: "${ENV_AUTH}" },
+    } });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null, hostPaths });
-    daemon.registerModule(McpModule.init({ env: { ...MCP_CONTROLS, PLURNK_MCP_AUTHORIZED_BEARER: "${ENV_AUTH}", ENV_AUTH: "operator-token" } }));
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS, ENV_AUTH: "operator-token" } }));
     await daemon.start();
     try {
         const workspaceId = await insertWorkspace(db, `http-env-${crypto.randomUUID()}`);
@@ -175,7 +177,15 @@ test("{§mcp-launch-environment} {§mcp-server-settings} a bearer setting resolv
         await invoke("mcp", "disable", { alias: "authorized" });
         await invoke("env", "disable", { alias: "ENV_AUTH" });
         const before = received.length;
-        await assert.rejects(invoke("mcp", "enable", { alias: "authorized" }), /missing environment variable ENV_AUTH/u);
+        await assert.rejects(invoke("mcp", "enable", { alias: "authorized" }), (error: unknown) => {
+            assert.ok(error instanceof Error && "problem" in error);
+            const problem = Validator.assertProblemDetails(error.problem as ProblemDetails);
+            assert.equal(problem.type, "https://problems.plurnk.xyz/mcp/management/server-unavailable");
+            assert.equal(problem.status, 502);
+            assert.ok(error.cause instanceof Error);
+            assert.match(error.cause.message, /missing environment variable ENV_AUTH/u);
+            return true;
+        });
         assert.equal(received.length, before, "a workspace mask cannot fall back to the operator's reference value");
     } finally {
         await daemon.stop();

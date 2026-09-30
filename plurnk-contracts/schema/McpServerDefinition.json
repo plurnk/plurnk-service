@@ -2,10 +2,14 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/McpServerDefinition.json",
     "title": "McpServerDefinition",
-    "description": "One MCP server: the standard mcp.json server entry with its alias and the scope of the root whose Agent Plugin carries it. A server the workspace adds is written as a one-server plugin at that scope.",
+    "description": "One complete MCP connection definition. Configuration sources supply it; workspace management persists it without installing a plugin.",
     "oneOf": [
-        { "$ref": "#/$defs/stdio" },
-        { "$ref": "#/$defs/streamableHttp" }
+        {
+            "$ref": "#/$defs/stdio"
+        },
+        {
+            "$ref": "#/$defs/streamableHttp"
+        }
     ],
     "$defs": {
         "name": {
@@ -14,51 +18,103 @@
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]*$"
         },
-        "scope": {
-            "title": "McpServerScope",
-            "description": "The plugin root: project `.agents/plugins`, plurnk `$XDG_CONFIG_HOME/plurnk/plugins`, or global `~/.agents/plugins`.",
-            "enum": ["project", "plurnk", "global"]
-        },
-        "plugin": {
-            "title": "McpServerPlugin",
-            "description": "The installed Agent Plugin that declares the server. The service records it; a client never supplies it.",
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["name", "root", "data"],
-            "properties": {
-                "name": { "description": "The plugin's manifest name.", "type": "string", "minLength": 1 },
-                "root": { "description": "PLUGIN_ROOT: the plugin's filesystem-resolved directory.", "type": "string", "minLength": 1 },
-                "data": { "description": "PLUGIN_DATA: the plugin's persistent data directory.", "type": "string", "minLength": 1 }
-            }
-        },
         "stdio": {
             "title": "McpStdioServerDefinition",
             "type": "object",
             "additionalProperties": false,
-            "required": ["name", "scope", "type", "command"],
+            "required": [
+                "name",
+                "type",
+                "command"
+            ],
             "properties": {
-                "name": { "$ref": "#/$defs/name" },
-                "scope": { "$ref": "#/$defs/scope" },
-                "plugin": { "$ref": "#/$defs/plugin" },
-                "type": { "description": "A local server: a subprocess speaking MCP over its standard input and output.", "const": "stdio" },
-                "command": { "description": "One executable token: a bare name, or a path beginning with ./ that resolves against the plugin root.", "type": "string", "minLength": 1 },
-                "args": { "description": "Arguments passed to the executable; ${PLUGIN_ROOT} and ${PLUGIN_DATA} expand.", "type": "array", "items": { "type": "string" } },
-                "env": { "description": "Environment variables supplied to the process; ${PLUGIN_ROOT} and ${PLUGIN_DATA} expand.", "type": "object", "additionalProperties": { "type": "string" } },
-                "cwd": { "description": "The working directory: ./, ${PLUGIN_ROOT} or ${PLUGIN_DATA} rooted; the plugin root when absent.", "type": "string", "minLength": 1 }
+                "name": {
+                    "$ref": "#/$defs/name"
+                },
+                "type": {
+                    "description": "A local server: a subprocess speaking MCP over its standard input and output.",
+                    "const": "stdio"
+                },
+                "command": {
+                    "description": "An executable name or path, without a shell. Relative paths resolve against the working directory.",
+                    "type": "string",
+                    "minLength": 1
+                },
+                "args": {
+                    "description": "Exact arguments; ${NAME} environment references expand once.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "env": {
+                    "description": "Process environment additions; ${NAME} references resolve against the workspace-composed operator environment.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "cwd": {
+                    "description": "An absolute working directory, optionally using ${NAME} references. When absent the host supplies a workspace-owned state directory outside the project.",
+                    "type": "string",
+                    "minLength": 1
+                }
             }
         },
         "streamableHttp": {
             "title": "McpStreamableHttpServerDefinition",
             "type": "object",
             "additionalProperties": false,
-            "required": ["name", "scope", "type", "url"],
+            "required": [
+                "name",
+                "type",
+                "url"
+            ],
             "properties": {
-                "name": { "$ref": "#/$defs/name" },
-                "scope": { "$ref": "#/$defs/scope" },
-                "plugin": { "$ref": "#/$defs/plugin" },
-                "type": { "description": "A remote server: an MCP endpoint over Streamable HTTP.", "const": "streamable-http" },
-                "url": { "description": "The MCP endpoint: HTTPS, or HTTP on a loopback host.", "type": "string", "pattern": "^https?://" },
-                "headers": { "description": "Literal headers sent to the endpoint's own origin; a header the client generates overrides one of the same name.", "type": "object", "additionalProperties": { "type": "string" } }
+                "name": {
+                    "$ref": "#/$defs/name"
+                },
+                "type": {
+                    "description": "A remote server: an MCP endpoint over Streamable HTTP.",
+                    "const": "streamable-http"
+                },
+                "url": {
+                    "description": "The MCP endpoint: HTTPS, or HTTP on a loopback host.",
+                    "type": "string",
+                    "pattern": "^https?://"
+                },
+                "headers": {
+                    "description": "Headers sent only to this endpoint; ${NAME} references expand at connection time. Protocol-owned headers are supplied by the client. Authorization cannot also be declared as a header when authorization is configured.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "authorization": {
+                    "title": "McpAuthorization",
+                    "description": "This endpoint's bearer or OAuth configuration. Secrets remain symbolic environment references.",
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                                "type",
+                                "token"
+                            ],
+                            "properties": {
+                                "type": {
+                                    "const": "bearer"
+                                },
+                                "token": {
+                                    "$ref": "https://schemas.plurnk.xyz/v0/McpOAuth.json#/$defs/environmentReference"
+                                }
+                            }
+                        },
+                        {
+                            "$ref": "https://schemas.plurnk.xyz/v0/McpOAuth.json"
+                        }
+                    ]
+                }
             }
         }
     }

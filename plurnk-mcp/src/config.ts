@@ -1,52 +1,19 @@
-// {§mcp-configuration} — MCP servers come only from installed Agent Plugins ({§mcp-plugin-servers});
-// the environment holds the operator's per-alias settings and the host's controls, nothing else.
-import { Validator, type McpOAuth } from "@plurnk/plurnk-contracts";
+// {§mcp-configuration} Definitions and independent controls share the resource environment dialect.
+import { Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
+import type { McpServerDefinition } from "@plurnk/plurnk-contracts";
+import { readDefinition } from "./definition.ts";
+
+export type { McpAuthorization } from "@plurnk/plurnk-contracts";
 
 const PREFIX = "PLURNK_MCP_";
-const CONTROLS = new Set(["CONNECT_TIMEOUT", "REQUEST_TIMEOUT", "RETRY_FLOOR_MS", "RETRY_CEILING_MS", "EXPANDED", "REGISTRY_URL", "REGISTRY_LIMIT"]);
-const SETTINGS = ["_TOOLS", "_BEARER", "_OAUTH"] as const;
-// Each retired server variable names what replaced it.
-const RETIRED_SUFFIXES: ReadonlyArray<readonly [string, string]> = [
-    ["_ARGS", "an Agent Plugin's mcp.json declares args"],
-    ["_CWD", "an Agent Plugin's mcp.json declares cwd"],
-    ["_ENV", "an Agent Plugin's mcp.json declares env"],
-    ["_HEADERS", "an Agent Plugin's mcp.json declares headers"],
-    ["_READ", "a tool's annotations.readOnlyHint marks it read-only"],
-    ["_SUMMARY", "descriptions come from the server's own fields"],
-];
+const CONTROLS = ["CONNECT_TIMEOUT", "REQUEST_TIMEOUT", "RETRY_FLOOR_MS", "RETRY_CEILING_MS", "EXPANDED", "REGISTRY_URL", "REGISTRY_LIMIT"];
 const SERVER_NAME = /^[a-z][a-z0-9-]*$/;
 const ENV_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/gu;
-const SYMBOLIC_REFERENCE = /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/u;
 
 export interface ToolPolicy {
     // Exact enabled tool names; null enables every tool the server lists.
     readonly tools: readonly string[] | null;
 }
-
-// Client-managed authorization for one Streamable HTTP server ({§mcp-server-settings}).
-export type McpAuthorization = { readonly type: "bearer"; readonly token: string } | McpOAuth;
-
-export interface ServerSettings extends ToolPolicy {
-    readonly authorization?: McpAuthorization;
-}
-
-// A setting's variable for one alias: uppercase, with the alias's hyphens as underscores.
-export const settingName = (alias: string, suffix: typeof SETTINGS[number]): string =>
-    `${PREFIX}${alias.toUpperCase().replaceAll("-", "_")}${suffix}`;
-
-// {§mcp-configuration} — a retired variable fails boot, naming what replaced it; an empty one states nothing.
-export const assertNoRetiredVariables = (environ: NodeJS.ProcessEnv = process.env): void => {
-    for (const [key, value] of Object.entries(environ)) {
-        if (!key.startsWith(PREFIX) || value === undefined || value.length === 0) continue;
-        const rest = key.slice(PREFIX.length).toUpperCase();
-        if (CONTROLS.has(rest) || SETTINGS.some((suffix) => rest.endsWith(suffix) && rest.length > suffix.length)) continue;
-        if (rest === "ENABLED") {
-            throw new Error(`${key} is retired: an installed plugin's servers are enabled, and /mcp disable withdraws one.`);
-        }
-        const retired = RETIRED_SUFFIXES.find(([suffix]) => rest.endsWith(suffix));
-        throw new Error(`${key} is retired: ${retired?.[1] ?? "MCP servers come from an installed Agent Plugin's mcp.json, or mcp add"}.`);
-    }
-};
 
 export const expandReferences = (value: string, environ: NodeJS.ProcessEnv, field: string): string =>
     value.replaceAll(ENV_REFERENCE, (_match, name: string) => {
@@ -78,33 +45,32 @@ const uniqueNames = (values: readonly string[], field: string, what: string): st
     return [...unique];
 };
 
-// {§mcp-server-settings} — one alias's operator settings. Absent or empty _TOOLS enables every tool;
-// _BEARER is one ${NAME} reference; _OAUTH is McpOAuth JSON; a server takes at most one of the two.
-export const serverSettings = (alias: string, environ: NodeJS.ProcessEnv = process.env): ServerSettings => {
-    const toolsKey = settingName(alias, "_TOOLS");
-    const bearerKey = settingName(alias, "_BEARER");
-    const oauthKey = settingName(alias, "_OAUTH");
-    const toolsRaw = environ[toolsKey];
-    const tools = toolsRaw === undefined || toolsRaw.length === 0 ? null : uniqueNames(jsonStrings(toolsRaw, toolsKey), toolsKey, "tool name");
-    const bearer = environ[bearerKey];
-    const oauth = environ[oauthKey];
-    const hasBearer = bearer !== undefined && bearer.length > 0;
-    const hasOAuth = oauth !== undefined && oauth.length > 0;
-    if (hasBearer && hasOAuth) throw new Error(`${bearerKey} and ${oauthKey} are exclusive: a server takes one authorization.`);
-    if (hasBearer) {
-        if (!SYMBOLIC_REFERENCE.test(bearer)) throw new Error(`${bearerKey} must be one \${NAME} reference, so the token stays in the environment.`);
-        return { tools, authorization: { type: "bearer", token: bearer } };
-    }
-    if (hasOAuth) {
-        let parsed: unknown;
+const configuration = (environ: NodeJS.ProcessEnv) => {
+    const resources = new ResourceEnvironment(PREFIX, { controls: CONTROLS, settings: ["TOOLS"] }, environ);
+    const tools = new Map([...resources.settings("TOOLS")].map(([alias, { key, value }]) => [
+        alias,
+        value.length === 0 ? null : uniqueNames(jsonStrings(value, key), key, "tool name"),
+    ] as const));
+    return { resources, tools };
+};
+
+// Settings are validated even before their resource exists ({§resource-environment}).
+export const serverSettings = (alias: string, environ: NodeJS.ProcessEnv = process.env): ToolPolicy => ({
+    tools: configuration(environ).tools.get(alias) ?? null,
+});
+
+export const serviceDefinitions = (environ: NodeJS.ProcessEnv = process.env): Array<{ alias: string; definition: McpServerDefinition; enabled: boolean }> => {
+    const { resources } = configuration(environ);
+    return [...resources.definitions].map(([alias, { key, value }]) => {
+        let definition: McpServerDefinition;
         try {
-            parsed = JSON.parse(oauth);
+            definition = readDefinition(JSON.parse(value));
         } catch (cause) {
-            throw new Error(`${oauthKey} must be McpOAuth JSON.`, { cause });
+            throw new Error(`${key} must be an MCP server definition.`, { cause });
         }
-        return { tools, authorization: Validator.assertMcpOAuth(parsed as McpOAuth) };
-    }
-    return { tools };
+        if (definition.name !== alias) throw new Error(`${key} must define name '${alias}'.`);
+        return { alias, definition, enabled: resources.enabled(alias) };
+    });
 };
 
 // {§mcp-configuration} — the servers whose every tool turn zero surveys.
@@ -121,15 +87,8 @@ export const expandedServerNames = (environ: NodeJS.ProcessEnv = process.env): s
 
 export const isServerName = (name: string): boolean => SERVER_NAME.test(name);
 
-export const connectTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number => {
-    const raw = environ.PLURNK_MCP_CONNECT_TIMEOUT;
-    const value = Number(raw);
-    if (!Number.isInteger(value) || value < 1) {
-        throw new Error(`PLURNK_MCP_CONNECT_TIMEOUT must be a positive integer; got ${JSON.stringify(raw)}.`);
-    }
-    return value;
-};
-
+export const connectTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number =>
+    Knob.integer("PLURNK_MCP_CONNECT_TIMEOUT", 1, environ);
 // {§mcp-retry-pacing} — every retry the adapter schedules doubles its delay from the floor to the ceiling.
 export interface RetryPacing {
     readonly floorMs: number;
@@ -137,13 +96,10 @@ export interface RetryPacing {
 }
 
 export const retryPacing = (environ: NodeJS.ProcessEnv = process.env): RetryPacing => {
-    const read = (name: "PLURNK_MCP_RETRY_FLOOR_MS" | "PLURNK_MCP_RETRY_CEILING_MS"): number => {
-        const raw = environ[name];
-        const value = Number(raw);
-        if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer; got ${JSON.stringify(raw)}.`);
-        return value;
+    const pacing = {
+        floorMs: Knob.integer("PLURNK_MCP_RETRY_FLOOR_MS", 1, environ),
+        ceilingMs: Knob.integer("PLURNK_MCP_RETRY_CEILING_MS", 1, environ),
     };
-    const pacing = { floorMs: read("PLURNK_MCP_RETRY_FLOOR_MS"), ceilingMs: read("PLURNK_MCP_RETRY_CEILING_MS") };
     if (pacing.ceilingMs < pacing.floorMs) {
         throw new Error(`PLURNK_MCP_RETRY_CEILING_MS (${pacing.ceilingMs}) must be at least PLURNK_MCP_RETRY_FLOOR_MS (${pacing.floorMs}).`);
     }
@@ -174,19 +130,9 @@ export const registrySettings = (environ: NodeJS.ProcessEnv = process.env): Regi
         const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
         if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) throw new Error(refusal);
     }
-    const limitRaw = environ.PLURNK_MCP_REGISTRY_LIMIT;
-    const limit = Number(limitRaw);
-    if (!Number.isInteger(limit) || limit < 1) {
-        throw new Error(`PLURNK_MCP_REGISTRY_LIMIT must be a positive integer; got ${JSON.stringify(limitRaw)}.`);
-    }
+    const limit = Knob.integer("PLURNK_MCP_REGISTRY_LIMIT", 1, environ);
     return { url: raw.length === 0 ? null : raw, limit };
 };
 
-export const requestTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number => {
-    const raw = environ.PLURNK_MCP_REQUEST_TIMEOUT;
-    const value = Number(raw);
-    if (!Number.isInteger(value) || value < 1) {
-        throw new Error(`PLURNK_MCP_REQUEST_TIMEOUT must be a positive integer; got ${JSON.stringify(raw)}.`);
-    }
-    return value;
-};
+export const requestTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number =>
+    Knob.integer("PLURNK_MCP_REQUEST_TIMEOUT", 1, environ);

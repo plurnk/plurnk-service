@@ -57,7 +57,7 @@
     },
     "dependencies": {
         "@modelcontextprotocol/client": "2.0.0",
-        "@plurnk/plurnk-agent-plugins": "1.24.0",
+        "@plurnk/plurnk-meta": "1.24.0",
         "@plurnk/plurnk-contracts": "1.24.0"
     },
     "devDependencies": {

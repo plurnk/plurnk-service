@@ -51,8 +51,10 @@ export default class ResourceEnvironment {
         return this.#enabled.get(alias) ?? this.#defaultEnabled;
     }
 
-    setting(alias: string, name: string): EnvironmentValue | undefined {
-        return this.#settings.get(alias)?.get(name);
+    settings(name: string): ReadonlyMap<string, EnvironmentValue> {
+        return new Map([...this.#settings].flatMap(([alias, settings]) => {
+            const field = settings.get(name);
+            return field === undefined ? [] : [[alias, field] as const];
+        }));
     }
-
 }

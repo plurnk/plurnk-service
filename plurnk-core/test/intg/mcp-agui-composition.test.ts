@@ -17,7 +17,7 @@ import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
-import { httpEntry, mcpPluginHome, stdioEntry } from "./_mcp-plugin.ts";
+import { httpEntry, mcpFixture, stdioEntry } from "./_mcp-config.ts";
 
 type Event = Readonly<Record<string, unknown>>;
 
@@ -98,10 +98,10 @@ test("{§functionality-preparation-visibility} a stalled MCP catalog is visible 
         return null;
     });
     const provider = new PacketCapturingMock({ responses: [makeMockResponse("```KILL\nOK\n```")], contextWindow: 1_000_000 });
-    const hostPaths = await mcpPluginHome(t, { fixture: httpEntry(served.url) });
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, hostPaths });
-    daemon.registerModule(McpModule.init({ env: {
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
         PLURNK_MCP_CONNECT_TIMEOUT: "10000", PLURNK_MCP_REQUEST_TIMEOUT: "10000",
         PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     } }));
@@ -160,7 +160,7 @@ test("{§functionality-preparation-visibility} a stalled MCP catalog is visible 
     assert.doesNotMatch(packet(provider.requests, 0), /workspace\/preparation/);
 });
 
-test("{§mcp-plugin-servers} AG-UI composes an installed plugin's MCP servers: execution, review, failure, and recovery", { timeout: 30_000 }, async (t) => {
+test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, review, failure, and recovery", { timeout: 30_000 }, async (t) => {
     const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     const provider = new PacketCapturingMock({
@@ -177,7 +177,7 @@ test("{§mcp-plugin-servers} AG-UI composes an installed plugin's MCP servers: e
             makeMockResponse("````KILL\nThe MCP server reported its expected tool error; recovery is complete.\n````"),
         ],
     });
-    const hostPaths = await mcpPluginHome(t, {
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, {
         fixture: stdioEntry("echo-server.mjs", {
             PLURNK_MCP_TEST_TITLE: "Transport fixture",
             PLURNK_MCP_TEST_INSTRUCTIONS: "Echo tools for transport testing.\n\n## Usage\nPass the message field unchanged.",
@@ -193,9 +193,10 @@ test("{§mcp-plugin-servers} AG-UI composes an installed plugin's MCP servers: e
     });
     daemon.registerModule(McpModule.init({
         env: {
+            ...mcpEnv,
             PLURNK_MCP_CONNECT_TIMEOUT: "30000",
             PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
-            PLURNK_MCP_FIXTURE_TOOLS: '["echo","fail"]',
+            PLURNK_MCP_fixture_TOOLS: '["echo","fail"]',
         },
     }));
     const aguiRegistration = AguiModule.init({ host: "127.0.0.1", port: 0 });
@@ -444,8 +445,8 @@ test(
             "    user: {}",
             "",
         ].join("\n"));
-        // {§mcp-plugin-servers} — the representative servers arrive in an installed plugin.
-        const hostPaths = await mcpPluginHome(t, {
+        // {§mcp-configuration}
+        const { hostPaths, env: mcpEnv } = await mcpFixture(t, {
             kubernetes: {
                 type: "stdio",
                 command: "npx",
@@ -470,10 +471,11 @@ test(
         });
         daemon.registerModule(McpModule.init({
             env: {
+                ...mcpEnv,
                 PLURNK_MCP_CONNECT_TIMEOUT: "30000",
                 PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
-                PLURNK_MCP_KUBERNETES_TOOLS: '["configuration_view"]',
-                PLURNK_MCP_GOJI_TOOLS: '["goji_explain_term"]',
+                PLURNK_MCP_kubernetes_TOOLS: '["configuration_view"]',
+                PLURNK_MCP_goji_TOOLS: '["goji_explain_term"]',
             },
         }));
         const aguiRegistration = AguiModule.init({ host: "127.0.0.1", port: 0 });

@@ -1,17 +1,10 @@
 // {§agent-plugins-hosting} — a workspace's installed Agent Plugins: the project, plurnk and global
 // roots this daemon reads ({§agent-roots}) in precedence order, each plugin with the PLUGIN_DATA
-// directory its subprocesses receive; and the one-server plugins the workspace's own MCP servers are.
+// directory its subprocesses receive.
 import { createHash } from "node:crypto";
-import { lstat, mkdir, realpath, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { isDeepStrictEqual } from "node:util";
 import {
-    MCP_SCHEMA,
-    PLUGIN_SCHEMA,
-    PluginDirectory,
     PluginRoots,
     type DiscoveredPlugin,
-    type McpServerEntry,
     type PluginReport,
 } from "@plurnk/plurnk-agent-plugins";
 import type { Db } from "../core/Db.ts";
@@ -32,12 +25,6 @@ export interface WorkspacePluginSet {
     // project, or the root is not among {§agent-roots}.
     readonly roots: Readonly<Record<AgentRootScope, string | null>>;
 }
-
-// {§mcp-plugin-servers} — writing the one-server plugin an added server is.
-export type ServerPluginWrite =
-    | { readonly kind: "written"; readonly root: string; readonly data: string; readonly created: boolean }
-    | { readonly kind: "occupied"; readonly directory: string }
-    | { readonly kind: "unrooted" };
 
 export default class WorkspacePlugins {
     readonly #db: Db;
@@ -78,36 +65,4 @@ export default class WorkspacePlugins {
         return { plugins: installed, reports, signature, roots };
     }
 
-    // The plugin is named for its one server and declares nothing else; finding exactly that plugin
-    // already in place is the same write.
-    async writeServer(
-        workspaceId: number,
-        { scope, name, entry }: { readonly scope: AgentRootScope; readonly name: string; readonly entry: McpServerEntry },
-    ): Promise<ServerPluginWrite> {
-        const root = (await this.#roots(workspaceId))[scope];
-        if (root === null) return { kind: "unrooted" };
-        const directory = join(root, name);
-        const data = this.#hostPaths.pluginDataDir(name);
-        const present = await lstat(directory).then(() => true, (cause: NodeJS.ErrnoException) => {
-            if (cause.code === "ENOENT") return false;
-            throw cause;
-        });
-        if (present) {
-            const { plugin } = await PluginDirectory.load(directory);
-            const same = plugin !== null && plugin.manifest.name === name && plugin.mcpServers?.size === 1
-                && isDeepStrictEqual(plugin.mcpServers.get(name), entry);
-            return same ? { kind: "written", root: plugin.root, data, created: false } : { kind: "occupied", directory };
-        }
-        // {§host-path-layout} — a configuration directory plurnk creates is private.
-        await mkdir(directory, { recursive: true, ...(scope === "plurnk" ? { mode: 0o700 } : {}) });
-        await writeFile(join(directory, "plugin.json"), `${JSON.stringify({ $schema: PLUGIN_SCHEMA, name }, null, 4)}\n`);
-        await writeFile(join(directory, "mcp.json"), `${JSON.stringify({ $schema: MCP_SCHEMA, mcpServers: { [name]: entry } }, null, 4)}\n`);
-        return { kind: "written", root: await realpath(directory), data, created: true };
-    }
-
-    async deleteServer(workspaceId: number, { scope, name }: { readonly scope: AgentRootScope; readonly name: string }): Promise<void> {
-        const root = (await this.#roots(workspaceId))[scope];
-        if (root === null) return;
-        await rm(join(root, name), { recursive: true, force: true });
-    }
 }

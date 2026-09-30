@@ -11,7 +11,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { openMigrated } from "./_db.ts";
 import { waitForDb } from "./_rpc.ts";
-import { httpEntry, mcpPluginHome } from "./_mcp-plugin.ts";
+import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "Media inspected.");
@@ -55,10 +55,10 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             turn(step("NOTE")),
             turn(step("KILL")),
         ] });
-        const hostPaths = await mcpPluginHome(t, { fixture: httpEntry(served.url) });
+        const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths });
-        daemon.registerModule(McpModule.init({ env: {
+        daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
             PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         } }));
         let identity: { workspaceId: number; workerId: number } | undefined;

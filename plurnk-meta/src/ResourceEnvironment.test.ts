@@ -23,7 +23,7 @@ test("{§resource-environment} lowercase declarations and uppercase controls are
         ]);
         assert.equal(environment.enabled("code-search"), false);
         assert.equal(environment.enabled("enabled"), true);
-        assert.deepEqual(environment.setting("code-search", "TOOLS"), { key: "PLURNK_FIXTURE_code_search_TOOLS", value: '["find"]' });
+        assert.deepEqual([...environment.settings("TOOLS")], [["code-search", { key: "PLURNK_FIXTURE_code_search_TOOLS", value: '["find"]' }]]);
     }
 });
 

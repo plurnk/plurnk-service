@@ -11,7 +11,7 @@ import { insertWorker, openMigrated } from "./_db.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
-import { httpEntry, mcpPluginHome } from "./_mcp-plugin.ts";
+import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 
 process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "60000";
 process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
@@ -50,19 +50,17 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
         "````fixture (third)\n{}\n````\n\n````WAIT\nObserve the result.\n````",
         "````KILL\nCatalog tool result observed.\n````",
     ].map(makeMockResponse) });
-    const hostPaths = await mcpPluginHome(t, { fixture: httpEntry(served.url) });
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, hostPaths });
-    const mcp = McpModule.init({ env: {
+    const mcp = McpModule.init({ env: { ...mcpEnv,
         PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     } });
     daemon.registerModule({
         setup: (seam) => mcp.setup({
             readWorkspaceEnvironment: (workspaceId) => seam.readWorkspaceEnvironment(workspaceId),
-            pluginEnvironment: () => seam.pluginEnvironment(),
-            readWorkspacePlugins: (workspaceId) => seam.readWorkspacePlugins(workspaceId),
-            writeServerPlugin: (workspaceId, request) => seam.writeServerPlugin(workspaceId, request),
-            deleteServerPlugin: (workspaceId, request) => seam.deleteServerPlugin(workspaceId, request),
+            operatorEnvironment: () => seam.operatorEnvironment(),
+            workspaceStateDirectory: (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner),
             registerModuleAction: (registration) => seam.registerModuleAction(registration),
             registerFunctionalityAdapter: (adapter) => {
                 const handle = seam.registerFunctionalityAdapter(adapter);
@@ -91,7 +89,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
         assert.equal(typeof document.content, "string");
         return document.content as string;
     };
-    // {§mcp-plugin-servers} The first read makes the workspace resident, connecting the installed plugin's server.
+    // {§mcp-configuration} The first read makes the workspace resident.
     assert.match(await toolsDocument(), /fixture \(first\)/);
     const catalog = async () => (await daemon.invokeModuleAction("workspace.mcp.list", {}, {
         scope: "workspace", workspaceId,

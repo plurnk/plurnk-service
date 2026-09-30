@@ -93,10 +93,8 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     }
 };
 
-// {§mcp-plugin-servers} — the story adds the search server as a client does. It lands as a one-server
-// plugin in the fixture project, the one root a gate reads ({§agent-roots}), and reads BRAVE_API_KEY
-// from the inherited environment ({§mcp-launch-environment}).
-const BRAVE_SEARCH = { name: "brave", scope: "project", type: "stdio", command: "npx", args: ["-y", "@brave/brave-search-mcp-server@2.1.0"] };
+// {§mcp-configuration} {§mcp-launch-environment}
+const BRAVE_SEARCH = { name: "brave", type: "stdio", command: "npx", args: ["-y", "@brave/brave-search-mcp-server@2.1.0"] };
 const addMcp = (definition: { readonly name: string }) => async (workspace: LiveWorkspace): Promise<void> => {
     const added = await workspace.invokeWorkspaceAction("workspace.mcp.add", { definition }) as { status?: number };
     assert.equal(added.status, 201, `the ${definition.name} server is added and attached before the model loop`);

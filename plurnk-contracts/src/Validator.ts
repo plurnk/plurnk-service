@@ -144,10 +144,7 @@ export default class Validator {
         clientDisplayCapabilitiesSchema as Schema,
         "2020-12",
     );
-    static #mcpServerDefinition = new CfValidator(
-        mcpServerDefinitionSchema as unknown as Schema,
-        "2020-12",
-    );
+    static #mcpServerDefinition = Validator.#withRefs(mcpServerDefinitionSchema, [mcpOAuthSchema]);
     static #a2aAgentDefinition = new CfValidator(
         a2aAgentDefinitionSchema as unknown as Schema,
         "2020-12",

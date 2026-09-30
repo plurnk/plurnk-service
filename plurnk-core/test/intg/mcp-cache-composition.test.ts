@@ -9,7 +9,7 @@ import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { insertWorker, openMigrated } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
-import { httpEntry, mcpPluginHome } from "./_mcp-plugin.ts";
+import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 
 process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "60000";
 const uri = "fixture://private-document";
@@ -31,13 +31,13 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
             contents: [{ uri, mimeType: "text/plain", text: `Document for ${identity}.` }],
         } });
     });
-    const hostPaths = await mcpPluginHome(t, { fixture: httpEntry(served.url) });
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: {
+        ...httpEntry(served.url), authorization: { type: "bearer", token: "${ENV_AUTH}" },
+    } });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null, hostPaths });
-    daemon.registerModule(McpModule.init({ env: {
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
         PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
-        // {§mcp-server-settings} The operator's bearer is one reference each workspace's environment resolves.
-        PLURNK_MCP_FIXTURE_BEARER: "${ENV_AUTH}",
     } }));
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
@@ -79,10 +79,10 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
     for (const workspace of workspaces) {
         const listed = await workspace.action("mcp", "list") as FunctionalityListResult;
         const [listedFixture] = listed.definitions;
-        assert.ok(listedFixture !== undefined, "the plugin's server is listed");
-        const { plugin, ...declared } = listedFixture.definition as McpServerDefinition;
-        assert.equal(plugin?.name, "fixtures");
-        assert.deepEqual(declared, { name: "fixture", scope: "plurnk", type: "streamable-http", url: served.url },
-            "the listed definition is the plugin's declaration; the operator's bearer never enters it");
+        assert.ok(listedFixture !== undefined, "the configured server is listed");
+        assert.deepEqual(listedFixture.definition as McpServerDefinition, {
+            name: "fixture", type: "streamable-http", url: served.url,
+            authorization: { type: "bearer", token: "${ENV_AUTH}" },
+        }, "the definition retains its symbolic reference, never the resolved credential");
     }
 });

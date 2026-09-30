@@ -9,7 +9,7 @@ import { logEntries, packetSection } from "./_packet.ts";
 import { openMigrated } from "./_db.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
-import { MCP_CONTROLS, mcpPluginHome, stdioEntry } from "./_mcp-plugin.ts";
+import { MCP_CONTROLS, mcpFixture, stdioEntry } from "./_mcp-config.ts";
 import { isExecution } from "@plurnk/plurnk-contracts";
 
 test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodies in interpreter summaries", { timeout: 30_000 }, async () => {
@@ -51,10 +51,10 @@ test("{§tools-resource-materialization} turn 0 surveys an expanded server's too
     const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("````KILL\nsurveyed\n````")] });
-    const hostPaths = await mcpPluginHome(t, { fixture: stdioEntry("echo-server.mjs") });
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs") });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules"), hostPaths });
-    daemon.registerModule(McpModule.init({ env: { ...MCP_CONTROLS, PLURNK_MCP_EXPANDED: JSON.stringify(["fixture"]) } }));
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS, PLURNK_MCP_EXPANDED: JSON.stringify(["fixture"]) } }));
     await daemon.start();
     try {
         const ws = await connect({ daemon });

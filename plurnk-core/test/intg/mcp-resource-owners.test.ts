@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { McpServer, createMcpHandler, fromJsonSchema, inputRequired, inputResponse } from "@modelcontextprotocol/server";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { type CapabilityPolicy, type FunctionalityListResult } from "@plurnk/plurnk-contracts";
@@ -15,7 +15,7 @@ import { OperationFailureError } from "../../src/core/results.ts";
 import { insertWorker, openMigrated } from "./_db.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";
-import { httpEntry, mcpPluginHome, writePlugin } from "./_mcp-plugin.ts";
+import { httpEntry, mcpFixture, mcpEnvironment } from "./_mcp-config.ts";
 
 process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "0";
 process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
@@ -71,16 +71,15 @@ const fixture = async (t: TestContext, responses: string[] = []) => {
         }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
         return { name, ...served };
     }));
-    // {§mcp-plugin-servers} One installed plugin declares alice's server as `shared` and bob's as `other`.
-    const hostPaths = await mcpPluginHome(t, Object.fromEntries(servers.map(({ name, url }) => [name === "alice" ? "shared" : "other", httpEntry(url)])));
+    // {§mcp-configuration}
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, Object.fromEntries(servers.map(({ name, url }) => [name === "alice" ? "shared" : "other", httpEntry(url)])));
+    const environment: Record<string, string> = { ...mcpEnv, PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000" };
     const db = await openMigrated();
     let schemes = new SchemeRegistry();
     const provider = new Mock({ contextWindow: 1_000_000, responses: responses.map(makeMockResponse) });
     const createDaemon = () => {
         const instance = new Daemon({ db, schemes, provider, nodeModulesPath: resolve("node_modules"), hostPaths });
-        instance.registerModule(McpModule.init({ env: {
-            PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
-        } }));
+        instance.registerModule(McpModule.init({ env: environment }));
         return instance;
     };
     let daemon = createDaemon();
@@ -97,9 +96,12 @@ const fixture = async (t: TestContext, responses: string[] = []) => {
     );
     const cool = () => waitForDb(async () => !schemes.has("shared", workspaceId) && !schemes.has("other", workspaceId), Boolean);
     await cool();
-    // {§functionality-hotload} Rewrite the installed plugin's servers; the cooled workspace reads them when it next activates.
+    // {§functionality-hotload}
     const reinstall = async (entries: Readonly<Record<string, object>>) => {
-        await writePlugin(join(hostPaths.plurnkPluginsDir, "fixtures"), "fixtures", entries);
+        for (const key of Object.keys(environment)) {
+            if (/^PLURNK_MCP_[a-z]/u.test(key)) delete environment[key];
+        }
+        Object.assign(environment, mcpEnvironment(entries));
         await cool();
     };
     const read = (target: string, workerId = client) => daemon.look({
@@ -215,7 +217,7 @@ for (const transition of ["enabled", "disabled", "removed", "producer-removed", 
         if (transition === "removed") {
             await f.reinstall({ other: httpEntry(f.servers[1]!.url) });
             const listed = await f.action("list", {}) as FunctionalityListResult;
-            assert.deepEqual(listed.definitions.map(({ alias }) => alias), ["other"], "the plugin no longer declares shared");
+            assert.deepEqual(listed.definitions.map(({ alias }) => alias), ["other"], "the baseline no longer declares shared");
         }
         if (transition === "replaced") {
             await f.reinstall({ shared: httpEntry(f.servers[1]!.url), other: httpEntry(f.servers[1]!.url) });

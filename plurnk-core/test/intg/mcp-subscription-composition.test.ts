@@ -12,7 +12,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { insertWorker, openMigrated } from "./_db.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";
-import { httpEntry, mcpPluginHome } from "./_mcp-plugin.ts";
+import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 
 process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
 process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "60000";
@@ -40,7 +40,7 @@ test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource upd
         return server;
     }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
     const served = await serveMcpHttp(t, handler);
-    const hostPaths = await mcpPluginHome(t, { fixture: httpEntry(served.url) });
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         `${read(alpha)}\n\n${read(beta)}\n\n${step("NOTE")}`,
         step("KILL"),
@@ -50,7 +50,7 @@ test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource upd
     ].map(makeMockResponse) });
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths });
-    daemon.registerModule(McpModule.init({ env: {
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
         PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     } }));
     t.after(async () => { await daemon.stop(); await db.close(); });

@@ -131,7 +131,7 @@ test("MCP executor publishes exact enabled targets as one immutable registry", a
     }
 });
 
-test("{§mcp-plugin-servers} a tool's annotations.readOnlyHint alone makes its effect read", async () => {
+test("{§mcp-model-projection} a tool's annotations.readOnlyHint alone makes its effect read", async () => {
     const { connection } = configured();
     const executor = new McpExecutor(
         { runtime: "echo", glyph: "🔌" },
