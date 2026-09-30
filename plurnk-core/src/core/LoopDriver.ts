@@ -3,6 +3,8 @@ import type SchemeRegistry from "./SchemeRegistry.ts";
 import type { Db } from "./Db.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
 import { setTimeout as delay } from "node:timers/promises";
+import { isDeepStrictEqual } from "node:util";
+import type { Notice } from "@plurnk/plurnk-contracts";
 import Results, { type SchemeResult } from "./results.ts";
 import NoticeChannel from "./NoticeChannel.ts";
 import StrikeRail from "./StrikeRail.ts";
@@ -90,6 +92,7 @@ export default class LoopDriver {
         const turnIds = await this.#lifecycle.turnIds(loopId);
         let modelTurnCount = await this.#lifecycle.modelTurnCount(loopId);
         let invalidEmissionRecoveryEntryId: number | null = null;
+        let workspaceNotices: readonly Notice[] = [];
         const loopAbort = new AbortController();
         // Native composition retains worker cancellation for streams surviving a wait
         // without leaving one caller-signal listener per execution segment.
@@ -212,7 +215,11 @@ export default class LoopDriver {
                 const releaseWorkspace = await this.#acquireWorkspaceTurn(workspaceId, workerId, executionSignal);
                 try {
                     executionSignal.throwIfAborted();
-                    await this.#workspaceTurnStarting?.({ workspaceId, workerId, loopId });
+                    const notices = await this.#workspaceTurnStarting?.({ workspaceId, workerId, loopId }) ?? [];
+                    if (!isDeepStrictEqual(notices, workspaceNotices)) {
+                        for (const notice of notices) this.#notices.push(workspaceId, workerId, loopId, notice);
+                        workspaceNotices = notices;
+                    }
                     turn = await observed( // {§observability-boundary}
                         "loop.turn",
                         { workerId, "loop.id": loopId },

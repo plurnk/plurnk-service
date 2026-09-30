@@ -1,4 +1,5 @@
 import Knob from "./Knob.ts";
+import ConfigurationError from "./ConfigurationError.ts";
 
 interface EnvironmentValue {
     readonly key: string;
@@ -28,18 +29,18 @@ export default class ResourceEnvironment {
             if (controls.has(suffix)) continue;
             const match = /^(.+?)(?:_([A-Z][A-Z0-9_]*))?$/u.exec(suffix);
             if (match === null || /[A-Z-]/u.test(match[1]) || !aliasPattern.test(match[1].replaceAll("_", "-"))) {
-                throw new Error(`${key} is not a declared control; use a lowercase resource alias with underscores for hyphens and uppercase setting names.`);
+                throw new ConfigurationError(key, `${key} is not a declared control; use a lowercase resource alias with underscores for hyphens and uppercase setting names.`);
             }
             const alias = match[1].replaceAll("_", "-");
             const setting = match[2];
             if (setting === undefined) {
                 if (value.trim().length === 0) {
-                    throw new Error(`${key} must contain a definition; use ${key}_ENABLED=0 to disable a defined resource.`);
+                    throw new ConfigurationError(key, `${key} must contain a definition; use ${key}_ENABLED=0 to disable a defined resource.`);
                 }
                 definitions.set(alias, { key, value });
                 continue;
             }
-            if (!settings.has(setting)) throw new Error(`${key} names unsupported resource setting '${setting}'.`);
+            if (!settings.has(setting)) throw new ConfigurationError(key, `${key} names unsupported resource setting '${setting}'.`);
             const fields = this.#settings.get(alias) ?? new Map<string, EnvironmentValue>();
             fields.set(setting, { key, value });
             this.#settings.set(alias, fields);

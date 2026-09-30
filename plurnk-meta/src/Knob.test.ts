@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Knob from "./Knob.ts";
+import ConfigurationError from "./ConfigurationError.ts";
 
 const withEnv = (name: string, value: string | undefined, body: () => void): void => {
     const prior = process.env[name];
@@ -24,13 +25,22 @@ test("{§env-knob} a knob is the panel's value, read from the system environment
     withEnv("PLURNK_TEST_KNOB", "12.5%", () => assert.equal(Knob.percent("PLURNK_TEST_KNOB"), 0.125));
 });
 
-test("{§env-knob} an unset key is a broken floor and an invalid one is the operator's mistake: both crash by name", () => {
+test("{§env-knob} missing floor and invalid operator input have distinct typed failures naming the key", () => {
     withEnv("PLURNK_TEST_KNOB", undefined, () => {
-        assert.throws(() => Knob.text("PLURNK_TEST_KNOB"), /PLURNK_TEST_KNOB is missing from the assembled environment floor/);
+        assert.throws(() => Knob.text("PLURNK_TEST_KNOB"), (error: unknown) => {
+            assert.ok(error instanceof Error && !(error instanceof ConfigurationError));
+            assert.match(error.message, /PLURNK_TEST_KNOB is missing from the assembled environment floor/u);
+            return true;
+        });
         assert.throws(() => Knob.integer("PLURNK_TEST_KNOB", 0), /missing from the assembled environment floor/);
     });
     for (const bad of ["banana", "", " ", "1.5", "9007199254740993"]) {
-        withEnv("PLURNK_TEST_KNOB", bad, () => assert.throws(() => Knob.integer("PLURNK_TEST_KNOB", 0), /PLURNK_TEST_KNOB must be a safe integer of at least 0/, JSON.stringify(bad)));
+        withEnv("PLURNK_TEST_KNOB", bad, () => assert.throws(() => Knob.integer("PLURNK_TEST_KNOB", 0), (error: unknown) => {
+            assert.ok(error instanceof ConfigurationError);
+            assert.equal(error.key, "PLURNK_TEST_KNOB");
+            assert.match(error.message, /PLURNK_TEST_KNOB must be a safe integer of at least 0/u);
+            return true;
+        }));
     }
     // A bound limits what the operator may say; it is never a value used in the operator's place.
     withEnv("PLURNK_TEST_KNOB", "0", () => assert.throws(() => Knob.integer("PLURNK_TEST_KNOB", 1), /at least 1; got "0"/));

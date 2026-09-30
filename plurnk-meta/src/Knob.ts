@@ -1,8 +1,9 @@
 // {§env-knob} — a knob is read from the assembled environment, and its value lives on the panel and
 // nowhere else ({§operator-config-only-home}). The floor guarantees every declared key, so an unset
-// key is a broken deployment and an invalid one is the operator's mistake: both crash by name, never
-// degrade. No reader here accepts a value, because a signature that could carry one is a second home
+// key is a broken deployment; an invalid one is typed operator input for the owning boundary.
+// No reader here accepts a value, because a signature that could carry one is a second home
 // for a choice. This is the one reader; a package that spells its own has a second home for the rule.
+import ConfigurationError from "./ConfigurationError.ts";
 type Environment = Readonly<Record<string, string | undefined>>;
 
 export default class Knob {
@@ -20,7 +21,7 @@ export default class Knob {
     // The house switch: exactly 0 or 1.
     static flag(name: string, environment: Environment = process.env): boolean {
         const raw = Knob.text(name, environment);
-        if (raw !== "0" && raw !== "1") throw new Error(`${name} must be 0 or 1; got ${JSON.stringify(raw)}.`);
+        if (raw !== "0" && raw !== "1") throw new ConfigurationError(name, `${name} must be 0 or 1; got ${JSON.stringify(raw)}.`);
         return raw === "1";
     }
 
@@ -28,7 +29,7 @@ export default class Knob {
     static choice<T extends string>(name: string, options: readonly T[], environment: Environment = process.env): T {
         const raw = Knob.text(name, environment);
         if (!(options as readonly string[]).includes(raw)) {
-            throw new Error(`${name} must be one of ${options.join(", ")}; got ${JSON.stringify(raw)}.`);
+            throw new ConfigurationError(name, `${name} must be one of ${options.join(", ")}; got ${JSON.stringify(raw)}.`);
         }
         return raw as T;
     }
@@ -38,7 +39,7 @@ export default class Knob {
         const raw = Knob.text(name, environment);
         const percent = Number(/^([0-9]+(?:\.[0-9]+)?)%$/u.exec(raw)?.[1]);
         if (!Number.isFinite(percent) || percent <= 0 || percent >= 100) {
-            throw new Error(`${name} must be a percentage in (0, 100); got ${JSON.stringify(raw)}.`);
+            throw new ConfigurationError(name, `${name} must be a percentage in (0, 100); got ${JSON.stringify(raw)}.`);
         }
         return percent / 100;
     }
@@ -48,7 +49,7 @@ export default class Knob {
         const raw = Knob.text(name, environment);
         const value = Number(raw);
         if (raw.trim().length === 0 || !Number.isSafeInteger(value) || value < floor) {
-            throw new Error(`${name} must be a safe integer of at least ${floor}; got ${JSON.stringify(raw)}.`);
+            throw new ConfigurationError(name, `${name} must be a safe integer of at least ${floor}; got ${JSON.stringify(raw)}.`);
         }
         return value;
     }

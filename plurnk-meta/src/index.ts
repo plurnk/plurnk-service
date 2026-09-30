@@ -31,6 +31,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export { default as Knob } from "./Knob.ts";
+export { default as ConfigurationError } from "./ConfigurationError.ts";
 export { default as ResourceEnvironment } from "./ResourceEnvironment.ts";
 export { default as ErrorDetail } from "./ErrorDetail.ts";
 

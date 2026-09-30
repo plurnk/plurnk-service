@@ -1,4 +1,5 @@
 import type { FunctionalityFamilyHandle, FunctionalityListResult } from "@plurnk/plurnk-contracts";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 // {§schedule-family} — the daemon module: registers the family at setup, arms every workspace's
 // enabled rules at start from the coordinator's persisted state ({§schedule-residency}), and
 // disarms during producer stop ({§module-shutdown-order}).
@@ -55,7 +56,14 @@ export default class Module {
         this.#started = true;
         this.#functionality.scheduler.start(seam);
         for (const workspace of await seam.listWorkspaces()) {
-            const listing = await handle.invoke("list", {}, { workspaceId: workspace.id });
+            let listing;
+            try {
+                listing = await handle.invoke("list", {}, { workspaceId: workspace.id });
+            } catch (cause) {
+                if (!(cause instanceof Error) || !(cause.cause instanceof ConfigurationError)) throw cause;
+                this.#report(`schedules in workspace ${workspace.id} remain disarmed`, cause.message);
+                continue;
+            }
             const rules = new Map<string, ScheduledRule>();
             for (const { alias, definition, state } of (listing.body as FunctionalityListResult).definitions) {
                 if (state === "disabled") continue;

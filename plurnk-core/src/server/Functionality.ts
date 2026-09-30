@@ -7,6 +7,7 @@
 import { Validator } from "@plurnk/plurnk-contracts";
 import discoverySchema from "@plurnk/plurnk-contracts/schema/FunctionalityDiscoverQuery.json" with { type: "json" };
 import { isDeepStrictEqual } from "node:util";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 import { DocFile } from "@plurnk/plurnk-execs";
 import type {
     FunctionalityDefinitionState,
@@ -15,6 +16,7 @@ import type {
     FunctionalityPreparationActivity,
     FunctionalityProvenance,
     JsonSchema,
+    Notice,
 } from "@plurnk/plurnk-contracts";
 import type {
     FunctionalityCaller,
@@ -108,6 +110,7 @@ interface WorkspaceFamily {
     prepared: FunctionalityPrepared<RuntimeRegistration> | null;
     // The enabled definitions that publication prepared ({§functionality-hotload}).
     enabled: ReadonlyMap<string, object>;
+    configurationError: ConfigurationError | null;
 }
 
 const STATE_VERSION = 1;
@@ -251,9 +254,17 @@ export default class Functionality {
         await this.#serialize(this.#key(identity.workspaceId, family), async () => {
             const current = this.#families.get(this.#key(identity.workspaceId, family));
             if (current === undefined) return;
-            if (options.ifChanged === true && Functionality.#sameDefinitions(await this.#publishable(adapter, identity, current.state), current.enabled)) return;
+            if (options.ifChanged === true && current.configurationError === null) {
+                try {
+                    if (Functionality.#sameDefinitions(await this.#publishable(adapter, identity, current.state), current.enabled)) return;
+                } catch (cause) {
+                    if (!(cause instanceof ConfigurationError)) throw cause;
+                    // The normal publication below withdraws the invalid family's capabilities.
+                }
+            }
             await this.#publish(adapter, identity, current.state, {
                 failure: "publish-unavailable",
+                configurationFailure: "contain",
                 retain: () => this.#host.retainWorkspace(identity.workspaceId),
                 gate: options.gate ?? "wait",
             });
@@ -266,7 +277,28 @@ export default class Functionality {
 
     // {§functionality-hotload} — every family that reads out-of-band state republishes it if it changed.
     async refreshChanged(identity: WorkspaceCapabilityIdentity): Promise<void> {
-        for (const adapter of this.#adapters.values()) await adapter.refreshIfChanged?.(identity);
+        for (const adapter of this.#adapters.values()) {
+            if (this.#families.get(this.#key(identity.workspaceId, adapter.family))?.configurationError != null) {
+                await this.refresh(adapter.family, identity, { gate: "none" });
+                continue;
+            }
+            try {
+                await adapter.refreshIfChanged?.(identity);
+            } catch (cause) {
+                if (!(cause instanceof ConfigurationError)) throw cause;
+                await this.refresh(adapter.family, identity, { gate: "none" });
+            }
+        }
+    }
+
+    configurationNotices(workspaceId: number): readonly Notice[] {
+        return [...this.#adapters.keys()].flatMap((family) => {
+            const cause = this.#families.get(this.#key(workspaceId, family))?.configurationError;
+            return cause == null ? [] : [{
+                source: "engine:configuration", kind: "configuration_unavailable", level: "warn" as const,
+                family, key: cause.key, message: cause.message,
+            }];
+        });
     }
 
     // Join outstanding invocations before inspecting or closing durable state.
@@ -317,6 +349,31 @@ export default class Functionality {
         identity: FunctionalityIdentity,
         caller: FunctionalityCaller,
         options: FunctionalityOptions = {},
+    ): Promise<FunctionalityInvocation> {
+        try {
+            return await this.#invoke(family, verb, params, identity, caller, options);
+        } catch (cause) {
+            if (!(cause instanceof ConfigurationError)) throw cause;
+            throw Functionality.#configurationFailure(family, cause);
+        }
+    }
+
+    static #configurationFailure(family: string, cause: ConfigurationError): OperationFailureError {
+        return new OperationFailureError(Results.failure("functionality", "configuration-invalid", 503, cause.message, {}, {
+            family,
+            key: cause.key,
+            retryable: false,
+            recovery: "Correct the named configuration input. Other capabilities remain available.",
+        }), { cause });
+    }
+
+    async #invoke(
+        family: string,
+        verb: FunctionalityVerb,
+        params: unknown,
+        identity: FunctionalityIdentity,
+        caller: FunctionalityCaller,
+        options: FunctionalityOptions,
     ): Promise<FunctionalityInvocation> {
         const adapter = this.#adapter(family);
         const schema = this.#schemas.get(family)![verb];
@@ -387,7 +444,7 @@ export default class Functionality {
         const identity = { workspaceId: context.workspaceId };
         await this.#serialize(this.#key(identity.workspaceId, adapter.family), async () => {
             const state = await this.#loadState(adapter, identity.workspaceId);
-            await this.#publish(adapter, identity, state, { failure: "publish-unavailable", retain: context.retain, gate: "none" });
+            await this.#publish(adapter, identity, state, { failure: "publish-unavailable", configurationFailure: "contain", retain: context.retain, gate: "none" });
         });
     }
 
@@ -491,6 +548,7 @@ export default class Functionality {
         const family = this.#families.get(this.#key(identity.workspaceId, adapter.family));
         const state = family?.state ?? await this.#loadState(adapter, identity.workspaceId);
         const effective = await this.#effective(adapter, identity, state);
+        if (family?.configurationError != null) throw family.configurationError;
         const outcomes = family?.prepared?.outcomes;
         // {§functionality-inspection} — an enabled definition no resident publication has prepared, whether
         // the family is cold or the definition arrived out of band since, is dormant.
@@ -604,6 +662,7 @@ export default class Functionality {
         const retry = verb === "enable" && family.prepared?.outcomes.get(transition.alias)?.state !== "active";
         const publication = await this.#publish(adapter, identity, nextState, {
             failure: caller === "action" ? "reject" : "publish-unavailable",
+            configurationFailure: "reject",
             retain: () => this.#host.retainWorkspace(identity.workspaceId),
             gate: "none",
             forceAlias: retry ? transition.alias : null,
@@ -717,6 +776,7 @@ export default class Functionality {
         nextState: FamilyState,
         options: {
             readonly failure: "publish-unavailable" | "reject";
+            readonly configurationFailure: "contain" | "reject";
             readonly retain: () => () => void;
             readonly gate: WorkspaceCapabilityGate;
             readonly forceAlias?: string | null;
@@ -745,6 +805,7 @@ export default class Functionality {
         nextState: FamilyState,
         options: {
             readonly failure: "publish-unavailable" | "reject";
+            readonly configurationFailure: "contain" | "reject";
             readonly retain: () => () => void;
             readonly gate: WorkspaceCapabilityGate;
             readonly forceAlias?: string | null;
@@ -753,39 +814,52 @@ export default class Functionality {
     ): Promise<{ outcomes: ReadonlyMap<string, FunctionalityOutcome> }> {
         const key = this.#key(identity.workspaceId, adapter.family);
         const previous = this.#families.get(key)?.prepared ?? null;
-        const enabled = await this.#publishable(adapter, identity, nextState);
-        const prepared = await adapter.prepare({
-            workspaceId: identity.workspaceId,
-            enabled,
-            previous: previous?.snapshot ?? null,
-            failure: options.failure,
-            progress: (alias) => {
-                if (!enabled.has(alias)) throw new Error(`${adapter.family} reported preparation of unknown alias '${alias}'.`);
-                report(alias, "preparing");
-            },
-            retain: options.retain,
-            ...(options.forceAlias ? { force: options.forceAlias } : {}),
-        });
+        let enabled = new Map<string, object>();
+        let prepared: FunctionalityPrepared<RuntimeRegistration> | null = null;
+        let configurationError: ConfigurationError | null = null;
+        try {
+            enabled = await this.#publishable(adapter, identity, nextState);
+            prepared = await adapter.prepare({
+                workspaceId: identity.workspaceId,
+                enabled,
+                previous: previous?.snapshot ?? null,
+                failure: options.failure,
+                progress: (alias) => {
+                    if (!enabled.has(alias)) throw new Error(`${adapter.family} reported preparation of unknown alias '${alias}'.`);
+                    report(alias, "preparing");
+                },
+                retain: options.retain,
+                ...(options.forceAlias ? { force: options.forceAlias } : {}),
+            });
+        } catch (cause) {
+            if (!(cause instanceof ConfigurationError) || options.configurationFailure === "reject") throw cause;
+            configurationError = cause;
+            enabled = new Map();
+        }
         report(null, "publishing");
         let runtimes: RuntimeRegistration[];
         try {
-            Functionality.#checkOutcomes(adapter, enabled, prepared);
-            for (const runtime of prepared.runtimes ?? []) {
+            if (prepared !== null) Functionality.#checkOutcomes(adapter, enabled, prepared);
+            for (const runtime of prepared?.runtimes ?? []) {
                 if (runtime.namespaceOwner !== adapter.namespaceOwner) {
                     throw new Error(`${adapter.family} prepared a runtime owned by '${runtime.namespaceOwner}' instead of '${adapter.namespaceOwner}'.`);
                 }
             }
+            const details = await this.#documentBody(adapter);
+            const diagnostic = configurationError === null ? "" : `> [!WARNING]\n> ${configurationError.message}\n\n`;
             const manager: RuntimeRegistration = {
                 namespaceOwner: adapter.namespaceOwner,
-                decl: functionalityRuntimeDecl(adapter.family, adapter.summary, await this.#documentBody(adapter)),
+                decl: functionalityRuntimeDecl(adapter.family,
+                    configurationError === null ? adapter.summary : `${adapter.summary} — configuration unavailable; inspect with list`,
+                    diagnostic + details),
                 executor: new FunctionalityManager({
                     family: adapter.family, workspaceId: identity.workspaceId, coordinator: this,
                     traits: adapter.traits, inputSchemas: this.#schemas.get(adapter.family)!, example: adapter.example, discovery: adapter.discovery,
                 }),
                 availability: { available: true, detail: "workspace Functionality manager" },
-                ...(adapter.scheme === undefined ? {} : { scheme: adapter.scheme }),
+                ...(adapter.scheme === undefined || configurationError !== null ? {} : { scheme: adapter.scheme }),
             };
-            runtimes = [manager, ...(prepared.runtimes ?? [])];
+            runtimes = [manager, ...(prepared?.runtimes ?? [])];
         } catch (cause) {
             return Functionality.#abort(prepared, cause);
         }
@@ -800,7 +874,7 @@ export default class Functionality {
                 }, {
                     gate: options.gate,
                     publish: () => {
-                        this.#families.set(key, { state: nextState, prepared, enabled });
+                        this.#families.set(key, { state: nextState, prepared, enabled, configurationError });
                         return () => {
                             if (before === undefined) this.#families.delete(key);
                             else this.#families.set(key, before);
@@ -810,14 +884,15 @@ export default class Functionality {
             } catch (cause) {
                 return Functionality.#abort(prepared, cause);
             }
-            await prepared.commit();
+            if (prepared !== null) await prepared.commit();
+            else if (previous !== null) await adapter.teardown(previous.snapshot, identity);
         };
         await commit();
-        return { outcomes: prepared.outcomes };
+        return { outcomes: prepared?.outcomes ?? new Map() };
     }
 
-    static async #abort(prepared: FunctionalityPrepared<RuntimeRegistration>, cause: unknown): Promise<never> {
-        try { await prepared.abort(); }
+    static async #abort(prepared: FunctionalityPrepared<RuntimeRegistration> | null, cause: unknown): Promise<never> {
+        try { await prepared?.abort(); }
         catch (abortCause) { throw new AggregateError([cause, abortCause], "Functionality publication and candidate cleanup failed"); }
         throw cause;
     }

@@ -75,7 +75,7 @@ const rows = async (db: Db, workspaceId: number): Promise<string[]> =>
         .map(({ effect, glob, source }) => `${effect} ${glob} ${source}`);
 
 for (const boundary of ["startup", "workspace inspection"] as const) {
-    test(`{§members-configuration} ${boundary} rejects noncanonical inherited aliases without publishing a winner`, async () => {
+    test(`{§configuration-repair-path} ${boundary} preserves inspection of invalid members without publishing a winner`, async () => {
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider: null });
         try {
@@ -86,13 +86,16 @@ for (const boundary of ["startup", "workspace inspection"] as const) {
                 PLURNK_MEMBERS_docs: "src/**",
                 PLURNK_MEMBERS_ENABLED: "1",
             }, async () => {
+                if (boundary === "startup") await daemon.start();
                 await assert.rejects(
-                    () => boundary === "startup" ? daemon.start() : daemon.invokeModuleAction(
+                    () => daemon.invokeModuleAction(
                         "workspace.members.list", {}, workspaceContext(workspaceId),
                     ),
-                    {
-                        name: "Error",
-                        message: "PLURNK_MEMBERS_DOCS is not a declared control; use a lowercase resource alias with underscores for hyphens and uppercase setting names.",
+                    (error: unknown) => {
+                        assert.ok(error instanceof OperationFailureError);
+                        assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/functionality/configuration-invalid");
+                        assert.equal(error.result.problem.detail, "PLURNK_MEMBERS_DOCS is not a declared control; use a lowercase resource alias with underscores for hyphens and uppercase setting names.");
+                        return true;
                     },
                 );
                 assert.deepEqual(await rows(db, workspaceId), [], "neither ambiguous definition changes membership");

@@ -350,7 +350,6 @@ export default class Module {
     #workspaceEnvironment!: ModuleSetupSeam["readWorkspaceEnvironment"];
     #operatorEnvironment!: ModuleSetupSeam["operatorEnvironment"];
     #stateDirectory!: ModuleSetupSeam["workspaceStateDirectory"];
-    readonly #expanded: Set<string>;
     // The committed attachments per workspace: the adapter's mirror of the snapshot
     // the coordinator holds, for continuations and refresh.
     readonly #attachments = new Map<number, ReadonlyMap<string, Attachment>>();
@@ -369,9 +368,7 @@ export default class Module {
     }
 
     private constructor(environ: NodeJS.ProcessEnv) {
-        serviceDefinitions(environ);
         this.#env = environ;
-        this.#expanded = new Set(expandedServerNames(environ));
     }
 
     async setup(seam: ModuleSetupSeam): Promise<void> {
@@ -420,6 +417,7 @@ export default class Module {
     }
 
     async #available(): Promise<ReturnType<typeof serviceDefinitions>> {
+        expandedServerNames(this.#env);
         return serviceDefinitions(this.#env);
     }
 
@@ -569,7 +567,7 @@ export default class Module {
                     decl: runtimeDecl(
                         definition.name,
                         runtimeServerSummary(definition.name, executor.catalog),
-                        this.#expanded.has(definition.name),
+                        expandedServerNames(this.#env).includes(definition.name),
                         executor.catalog.instructions,
                     ),
                     executor,

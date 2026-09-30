@@ -1,5 +1,5 @@
 import type { A2AAgentDefinition as A2aAgentDefinition, FunctionalityServiceDefinition } from "@plurnk/plurnk-contracts";
-import { Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
+import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import { isAbsolute } from "node:path";
 import { readDefinition } from "./definition.ts";
 import errorDetail from "./ErrorDetail.ts";
@@ -46,7 +46,7 @@ export type HostedProposals = typeof HOSTED_PROPOSALS[number];
 const shedRetiredListener = (environ: NodeJS.ProcessEnv): void => {
     for (const name of ["PLURNK_A2A_HOST", "PLURNK_A2A_PORT"] as const) {
         if (environ[name] !== undefined) {
-            throw new Error(
+            throw new ConfigurationError(name,
                 `${name} is retired: the A2A exposure is mounted on the service listener, whose address is PLURNK_HOST and PLURNK_PORT ({§http-host}); remove it.`,
             );
         }
@@ -155,9 +155,9 @@ export const outboundDefinitions = (
         try {
             definition = readDefinition(JSON.parse(value));
         } catch (cause) {
-            throw new Error(`${key} must be an A2A agent definition.`, { cause });
+            throw new ConfigurationError(key, `${key} must be an A2A agent definition.`, { cause });
         }
-        if (definition.name !== alias) throw new Error(`${key} must define name '${alias}'.`);
+        if (definition.name !== alias) throw new ConfigurationError(key, `${key} must define name '${alias}'.`);
         return { alias, definition, enabled: environment.enabled(alias), provenance: { kind: "environment", source: key } };
     });
 };

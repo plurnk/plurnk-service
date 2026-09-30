@@ -15,7 +15,7 @@ import {
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import HostPaths from "../core/HostPaths.ts";
-import { Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
+import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import Paths from "../Paths.ts";
 import type {
     FunctionalityDefinitionSource,
@@ -84,16 +84,16 @@ export const serviceSkills = (env: NodeJS.ProcessEnv = process.env): ReadonlyMap
         try {
             definition = Validator.assertSkillDefinition(JSON.parse(value));
         } catch (cause) {
-            throw new Error(`${key} must contain a complete SkillDefinition.`, { cause });
+            throw new ConfigurationError(key, `${key} must contain a complete SkillDefinition.`, { cause });
         }
-        if (definition.name !== alias) throw new Error(`${key}: the definition name must equal '${alias}'.`);
-        if (definition.source === undefined) throw new Error(`${key}: a configured skill requires a source.`);
-        if (definition.commit !== undefined) throw new Error(`${key}: commit is service-recorded; configure a Git ref instead.`);
+        if (definition.name !== alias) throw new ConfigurationError(key, `${key}: the definition name must equal '${alias}'.`);
+        if (definition.source === undefined) throw new ConfigurationError(key, `${key}: a configured skill requires a source.`);
+        if (definition.commit !== undefined) throw new ConfigurationError(key, `${key}: commit is service-recorded; configure a Git ref instead.`);
         try {
             const remote = SkillSource.remote(definition.source);
             if (definition.ref !== undefined && remote === null) throw new Error("A ref names a branch or tag of a git source.");
         } catch (cause) {
-            throw new Error(`${key}: invalid skill source or ref.`, { cause });
+            throw new ConfigurationError(key, `${key}: invalid skill source or ref.`, { cause });
         }
         definitions.set(alias, definition);
     }
@@ -135,7 +135,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
     static validateConfiguration(): void {
         for (const [knob, successor] of Object.entries(RETIRED_KNOBS)) {
             const stale = process.env[knob];
-            if (stale !== undefined && stale.length > 0) throw new Error(`${knob} is retired: ${successor}.`);
+            if (stale !== undefined && stale.length > 0) throw new ConfigurationError(knob, `${knob} is retired: ${successor}.`);
         }
         Knob.integer("PLURNK_SERVICE_SKILLS_FETCH_TIMEOUT_MS", 1);
         serviceSkills();
@@ -240,6 +240,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
     }
 
     async available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]> {
+        SkillsFunctionality.validateConfiguration();
         const installedSkills = await this.#scan(await this.#projectRoot(identity.workspaceId));
         const settings = environment();
         const definitions = new Map<string, FunctionalityServiceDefinition>();

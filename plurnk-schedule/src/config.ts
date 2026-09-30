@@ -1,5 +1,5 @@
 // {§schedule-environment}
-import { Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
+import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type { FunctionalityProvenance } from "@plurnk/plurnk-contracts";
 import { readDefinition, DefinitionError, type ScheduleDefinition } from "./definition.ts";
 import { assertZone, normalizeRule } from "./rules.ts";
@@ -11,7 +11,7 @@ const parseJson = (key: string, value: string): unknown => {
     try {
         return JSON.parse(value);
     } catch (cause) {
-        throw new Error(`${key} is not JSON.`, { cause });
+        throw new ConfigurationError(key, `${key} is not JSON.`, { cause });
     }
 };
 
@@ -27,7 +27,7 @@ export const serviceDefinitions = (env: NodeJS.ProcessEnv): ReadonlyMap<string, 
             definition = readDefinition(parseJson(key, value));
         } catch (cause) {
             if (!(cause instanceof DefinitionError)) throw cause;
-            throw new Error(`${key} must be a schedule definition: {"rule", "target", "prompt", "policy"?}.`, { cause });
+            throw new ConfigurationError(key, `${key} must be a schedule definition: {"rule", "target", "prompt", "policy"?}.`, { cause });
         }
         definitions.set(alias, { definition, enabled: environment.enabled(alias), provenance: { kind: "environment", source: key } });
     }
@@ -40,7 +40,7 @@ export const validateConfiguration = (env: NodeJS.ProcessEnv = process.env, nowM
     try {
         assertZone(zone);
     } catch (cause) {
-        throw new Error("TZ must name a supported time zone.", { cause });
+        throw new ConfigurationError("TZ", "TZ must name a supported time zone.", { cause });
     }
     previewOccurrences(env);
     return new Map([...serviceDefinitions(env)].map(([alias, { definition, enabled, provenance }]) => {
@@ -48,7 +48,8 @@ export const validateConfiguration = (env: NodeJS.ProcessEnv = process.env, nowM
             const parsed = normalizeRule(definition.rule, zone, nowMs);
             return [alias, { definition: { ...definition, rule: parsed.text }, enabled, provenance }];
         } catch (cause) {
-            throw new Error(`PLURNK_SCHEDULE_${alias.replaceAll("-", "_")}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+            const key = `PLURNK_SCHEDULE_${alias.replaceAll("-", "_")}`;
+            throw new ConfigurationError(key, `${key}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
         }
     }));
 };

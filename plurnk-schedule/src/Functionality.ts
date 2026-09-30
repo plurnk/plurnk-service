@@ -96,9 +96,9 @@ export default class ScheduleFunctionality {
     readonly #env: NodeJS.ProcessEnv;
     readonly #scheduler: Scheduler;
     readonly #report: (message: string, cause: unknown) => void;
-    // {§schedule-environment} — the service's rules, canonical from construction: a rule without a
-    // DTSTART starts when it is read, and a service rule is read once, when the daemon starts.
-    readonly #service: ReturnType<typeof validateConfiguration>;
+    // {§schedule-environment} — lazily validate without moving the service rules' DTSTART epoch.
+    #service: ReturnType<typeof validateConfiguration> | null = null;
+    readonly #readAt: number;
     #handle: FunctionalityFamilyHandle | null = null;
     #environment: EnvironmentSeam | null = null;
 
@@ -111,7 +111,7 @@ export default class ScheduleFunctionality {
             const listing = await this.#handle.invoke("list", {}, { workspaceId });
             return (listing.body as { definitions: Array<{ alias: string; state: string }> }).definitions;
         });
-        this.#service = validateConfiguration(env, this.#scheduler.now());
+        this.#readAt = this.#scheduler.now();
     }
 
     attach(handle: FunctionalityFamilyHandle, environment: EnvironmentSeam): void {
@@ -124,6 +124,7 @@ export default class ScheduleFunctionality {
     }
 
     async available(): Promise<readonly FunctionalityServiceDefinition[]> {
+        this.#service ??= validateConfiguration(this.#env, this.#readAt);
         return [...this.#service].map(([alias, entry]) => ({ alias, ...entry }));
     }
 

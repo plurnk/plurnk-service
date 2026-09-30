@@ -12,7 +12,6 @@ export default class ServiceModules {
     }
 
     static registerWorkspaceCapabilities(daemon: Pick<Daemon, "registerModule">): void {
-        ServiceModules.validateConfiguration();
         daemon.registerModule(McpModule.init());
         daemon.registerModule(A2aOutboundModule.init());
         daemon.registerModule(ScheduleModule.init());

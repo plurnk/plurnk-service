@@ -9,6 +9,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import Launch from "../../src/launch/Launch.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BIN_PATH = resolve(here, "../../src/service.ts");
@@ -261,17 +262,43 @@ test("{§operator-config-discovery} config check validates capability definition
     await assert.rejects(() => stat(fx.dataHome), { code: "ENOENT" }, "validation creates no database or runtime state");
 });
 
-test("{§operator-config-offline-validation} startup refuses invalid definitions before database or listener activation", async (t) => {
-    const fx = await fixture();
-    t.after(() => rm(fx.root, { recursive: true, force: true }));
-    const result = await runService(fx, ["start"], { env: {
-        PLURNK_A2A_broken: "{}", PLURNK_A2A_broken_ENABLED: "0",
-    } });
-    assert.equal(result.code, 1, result.stderr);
-    assert.match(result.stderr, /PLURNK_A2A_broken must be an A2A agent definition/u);
-    assert.doesNotMatch(result.stdout, /agui=/u);
-    await assert.rejects(() => stat(fx.dataHome), { code: "ENOENT" }, "invalid configuration cannot create a database");
-});
+for (const built of [false, true]) {
+    test(`{§configuration-repair-path} ${built ? "built executable" : "source launcher"} starts its client interface with invalid optional configuration`, async (t) => {
+        const fx = await fixture();
+        t.after(() => rm(fx.root, { recursive: true, force: true }));
+        const env: NodeJS.ProcessEnv = {
+            ...process.env,
+            HOME: fx.home, XDG_CONFIG_HOME: fx.configHome, XDG_DATA_HOME: fx.dataHome,
+            PLURNK_A2A_broken: "{}", PLURNK_A2A_broken_ENABLED: "0",
+            PLURNK_MCP_GH_BEARER: "fixture-secret",
+        };
+        delete env.PLURNK_MODEL;
+        delete env.PLURNK_SERVICE_DB_PATH;
+        const daemon = await Launch.start({
+            command: [process.execPath, ...(built ? [BUILT_BIN_PATH] : [...CONDITION_ARGS, BIN_PATH]), "start"],
+            cwd: fx.cwd, env, host: "127.0.0.1", port: 0, readyTimeoutMs: 15_000, stopGraceMs: 5_000,
+        });
+        t.after(() => daemon.stop());
+        assert.equal(daemon.route, "no model");
+        const response = await fetch(daemon.url, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+                threadId: "configuration-repair", runId: crypto.randomUUID(),
+                state: {}, messages: [], tools: [], context: [],
+                forwardedProps: { plurnk: { action: { kind: "discover" } } },
+            }),
+        });
+        assert.equal(response.status, 200, "the actual client interface remains available for repair");
+        const events = (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
+            .map((frame) => JSON.parse(frame.slice(6)) as { name?: string; value?: { ok: boolean; result: { actions: object } } });
+        const result = events.find(({ name }) => name === "plurnk.action.result")?.value;
+        assert.equal(result?.ok, true);
+        assert.ok(result?.result.actions && "workspace.mcp.list" in result.result.actions,
+            "the broken family's inspection action is still advertised to the client");
+        assert.equal(daemon.child.exitCode, null, "configuration diagnostics did not terminate the process");
+    });
+}
 
 test("{§operator-config-discovery} config check accepts future controls without resolving secrets or starting configured commands", async (t) => {
     const fx = await fixture();

@@ -242,8 +242,10 @@ without changing durable state.
 Aliases and controls follow {§resource-environment}. Malformed definitions or controls fail
 configuration by variable name, even when disabled or not yet associated with a resource.
 Authentication belongs in the definition, never in separate bearer/OAuth environment companions.
-The package's offline validator composes these same readers before service activation
+The package's offline validator composes these same readers
 ({§operator-config-offline-validation}); it performs no connection or secret resolution.
+Runtime configuration errors leave the manager inspectable without publishing MCP
+capabilities or preventing unrelated model work ({§configuration-repair-path}).
 
 §mcp-definitions **A server is not a plugin installation.** `add` persists a workspace
 connection definition; `remove` removes that definition through the common coordinator.

@@ -144,9 +144,16 @@ a second home for a choice, and it will eventually disagree with the first.
   or that guarantee is a fiction where the code is exercised.
 - **A read never carries a value.** Because the floor is guaranteed, a fallback
   beside a read can only disagree with the panel. An unset key is a broken
-  deployment and an invalid value is the operator's mistake: both crash by name.
+  deployment; an invalid operator value is a configuration diagnostic, not an
+  instruction to terminate the application. Neither permits a reader-local fallback.
   Unset may mean "off", or "the dependency's own default applies and plurnk
   makes no choice" — never a literal.
+- **Configuration errors must preserve a repair path.** Reject the invalid
+  configuration at its owning capability boundary and expose the diagnostic
+  through ordinary client/model inspection. An optional capability must not
+  prevent unrelated work or require another agent to repair Plurnk. Internal
+  invariant failures remain distinct; inability to start the core requires a
+  concrete dependency failure, not merely the existence of an invalid setting.
 - **One knob per choice.** Independent behavior choices override independently
   through the environment cascade.
 - **A knob earns its place.** PLURNK is as configurable as is practical, and the

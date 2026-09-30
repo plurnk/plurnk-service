@@ -1,5 +1,5 @@
 // {§mcp-configuration} Definitions and independent controls share the resource environment dialect.
-import { Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
+import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type { FunctionalityServiceDefinition, McpServerDefinition } from "@plurnk/plurnk-contracts";
 import { readDefinition } from "./definition.ts";
 
@@ -27,10 +27,10 @@ const jsonStrings = (raw: string, field: string): string[] => {
     try {
         parsed = JSON.parse(raw);
     } catch (cause) {
-        throw new Error(`${field} must be a JSON array of strings.`, { cause });
+        throw new ConfigurationError(field, `${field} must be a JSON array of strings.`, { cause });
     }
     if (!Array.isArray(parsed) || !parsed.every((value) => typeof value === "string")) {
-        throw new Error(`${field} must be a JSON array of strings.`);
+        throw new ConfigurationError(field, `${field} must be a JSON array of strings.`);
     }
     return parsed;
 };
@@ -38,8 +38,8 @@ const jsonStrings = (raw: string, field: string): string[] => {
 const uniqueNames = (values: readonly string[], field: string, what: string): string[] => {
     const unique = new Set<string>();
     for (const value of values) {
-        if (value.length === 0) throw new Error(`${field} contains an empty ${what}.`);
-        if (unique.has(value)) throw new Error(`${field} contains duplicate ${what} '${value}'.`);
+        if (value.length === 0) throw new ConfigurationError(field, `${field} contains an empty ${what}.`);
+        if (unique.has(value)) throw new ConfigurationError(field, `${field} contains duplicate ${what} '${value}'.`);
         unique.add(value);
     }
     return [...unique];
@@ -66,9 +66,9 @@ export const serviceDefinitions = (environ: NodeJS.ProcessEnv = process.env): Ar
         try {
             definition = readDefinition(JSON.parse(value));
         } catch (cause) {
-            throw new Error(`${key} must be an MCP server definition.`, { cause });
+            throw new ConfigurationError(key, `${key} must be an MCP server definition.`, { cause });
         }
-        if (definition.name !== alias) throw new Error(`${key} must define name '${alias}'.`);
+        if (definition.name !== alias) throw new ConfigurationError(key, `${key} must define name '${alias}'.`);
         return { alias, definition, enabled: resources.enabled(alias), provenance: { kind: "environment", source: key } };
     });
 };
@@ -80,7 +80,7 @@ export const expandedServerNames = (environ: NodeJS.ProcessEnv = process.env): s
     if (raw === undefined || raw.length === 0) return [];
     const names = uniqueNames(jsonStrings(raw, field), field, "MCP server");
     for (const name of names) {
-        if (!SERVER_NAME.test(name)) throw new Error(`${field} names '${name}', which is not an MCP server alias ([a-z][a-z0-9-]*).`);
+        if (!SERVER_NAME.test(name)) throw new ConfigurationError(field, `${field} names '${name}', which is not an MCP server alias ([a-z][a-z0-9-]*).`);
     }
     return names.toSorted();
 };
@@ -101,7 +101,7 @@ export const retryPacing = (environ: NodeJS.ProcessEnv = process.env): RetryPaci
         ceilingMs: Knob.integer("PLURNK_MCP_RETRY_CEILING_MS", 1, environ),
     };
     if (pacing.ceilingMs < pacing.floorMs) {
-        throw new Error(`PLURNK_MCP_RETRY_CEILING_MS (${pacing.ceilingMs}) must be at least PLURNK_MCP_RETRY_FLOOR_MS (${pacing.floorMs}).`);
+        throw new ConfigurationError("PLURNK_MCP_RETRY_CEILING_MS", `PLURNK_MCP_RETRY_CEILING_MS (${pacing.ceilingMs}) must be at least PLURNK_MCP_RETRY_FLOOR_MS (${pacing.floorMs}).`);
     }
     return pacing;
 };
@@ -124,9 +124,9 @@ export const registrySettings = (environ: NodeJS.ProcessEnv = process.env): Regi
         try {
             url = new URL(raw);
         } catch (cause) {
-            throw new Error(refusal, { cause });
+            throw new ConfigurationError("PLURNK_MCP_REGISTRY_URL", refusal, { cause });
         }
-        if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error(refusal);
+        if (url.protocol !== "https:" && url.protocol !== "http:") throw new ConfigurationError("PLURNK_MCP_REGISTRY_URL", refusal);
     }
     const limit = Knob.integer("PLURNK_MCP_REGISTRY_LIMIT", 1, environ);
     return { url: raw.length === 0 ? null : raw, limit };

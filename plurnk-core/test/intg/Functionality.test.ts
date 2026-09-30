@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Problems } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { FunctionalityFamilyHandle, FunctionalityListResult, FunctionalityOutcome, FunctionalityProvenance, PlurnkStatement, ProblemDetails } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import type {
@@ -158,6 +159,79 @@ const boot = async (db: Db, log: string[]): Promise<Daemon> => {
 };
 
 const workspaceContext = (workspaceId: number) => ({ scope: "workspace" as const, workspaceId });
+
+for (const boundary of ["available", "prepare"] as const) {
+    test(`{§configuration-repair-path} a warm ${boundary} failure withdraws capabilities, preserves definitions, and recovers normally`, async (t) => {
+        const db = await openMigrated();
+        const workspaceId = await insertWorkspace(db, `repair-${boundary}`);
+        const log: string[] = [];
+        const adapter = fixtureAdapter(log);
+        const daemon = new Daemon({ db, provider: null });
+        let broken = false;
+        let handle!: FunctionalityFamilyHandle;
+        const error = new ConfigurationError("PLURNK_FX_bad", "PLURNK_FX_bad must contain a complete definition.");
+        daemon.registerModule({ setup: (seam) => { handle = seam.registerFunctionalityAdapter({
+            ...adapter,
+            available: async (identity) => {
+                if (broken && boundary === "available") throw error;
+                return adapter.available(identity);
+            },
+            prepare: async (input) => {
+                if (broken && boundary === "prepare") throw error;
+                return adapter.prepare(input);
+            },
+        }); } });
+        t.after(async () => { await daemon.stop(); await db.close(); });
+        await daemon.start();
+        await daemon.invokeModuleAction("workspace.fx.add", { alias: "local", definition: { kind: "doc" } }, workspaceContext(workspaceId));
+        assert.equal(daemon.schemes.has("local", workspaceId), true);
+        const durable = await daemon.readWorkspaceModuleState(workspaceId, OWNER);
+        broken = true;
+        await handle.refresh({ workspaceId });
+        assert.equal(daemon.schemes.has("local", workspaceId), false, "an invalid family has no operational runtimes");
+        assert.equal(daemon.schemes.has("fx", workspaceId), true, "the manager remains available");
+        assert.deepEqual(await daemon.readWorkspaceModuleState(workspaceId, OWNER), durable, "withdrawal does not erase operator state");
+        assert.ok(log.includes("teardown:local,svc"), "the previous snapshot is released");
+        const problem = await rejectedProblem(() => daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)));
+        assert.equal(problem.type, "https://problems.plurnk.xyz/functionality/configuration-invalid");
+        assert.equal(problem.detail, error.message, "a prepare failure cannot masquerade as an empty or dormant catalog");
+        broken = false;
+        await handle.refresh({ workspaceId });
+        const recovered = await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)) as FunctionalityListResult;
+        assert.deepEqual(recovered.definitions.map(({ alias, state }) => [alias, state]), [["local", "active"], ["svc", "active"]]);
+        assert.equal(daemon.schemes.has("local", workspaceId), true);
+        assert.deepEqual(await daemon.readWorkspaceModuleState(workspaceId, OWNER), durable);
+    });
+}
+
+test("{§configuration-repair-path} invalid model mutations preserve the previous publication and internal failures remain exceptions", async (t) => {
+    const db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, "repair-atomic");
+    const adapter = fixtureAdapter([]);
+    const daemon = new Daemon({ db, provider: null });
+    let handle!: FunctionalityFamilyHandle;
+    let defect: Error | null = null;
+    daemon.registerModule({ setup: (seam) => { handle = seam.registerFunctionalityAdapter({
+        ...adapter,
+        prepare: async (input) => {
+            if (defect !== null) throw defect;
+            return adapter.prepare(input);
+        },
+    }); } });
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    await daemon.invokeModuleAction("workspace.fx.enable", { alias: "svc" }, workspaceContext(workspaceId));
+    const durable = await daemon.readWorkspaceModuleState(workspaceId, OWNER);
+    defect = new ConfigurationError("PLURNK_FX_bad", "PLURNK_FX_bad must contain a complete definition.");
+    const problem = await rejectedProblem(() => handle.invoke("add", { alias: "candidate", definition: { kind: "ok" } }, workspaceContext(workspaceId)));
+    assert.equal(problem.type, "https://problems.plurnk.xyz/functionality/configuration-invalid");
+    assert.deepEqual(await daemon.readWorkspaceModuleState(workspaceId, OWNER), durable);
+    assert.equal(daemon.schemes.has("svc", workspaceId), true);
+    assert.equal(daemon.schemes.has("candidate", workspaceId), false);
+    defect = new Error("fixture internal invariant violated");
+    await assert.rejects(handle.refresh({ workspaceId }), (cause) => cause === defect);
+    assert.equal(daemon.schemes.has("svc", workspaceId), true);
+});
 
 test("{§functionality-inspection} cold and preparing workspaces remain inspectable without activating or joining preparation", { timeout: 10_000 }, async (t) => {
     const db = await openMigrated();

@@ -301,8 +301,10 @@ test("{§functionality-hotload} changed definitions use the coordinator's compar
     } finally { await h.module.stop(); }
 });
 
-test("{§mcp-server-settings} malformed controls fail before any server can be prepared", () => {
-    assert.throws(() => harness({ PLURNK_MCP_future_TOOLS: "not json" }), /PLURNK_MCP_future_TOOLS must be a JSON array of strings/u);
+test("{§mcp-server-settings} malformed controls remain inspectable after module setup and reject resolution", async () => {
+    const h = harness({ PLURNK_MCP_future_TOOLS: "not json" });
+    await h.setup();
+    await assert.rejects(h.adapter().available(h.identity(1)), /PLURNK_MCP_future_TOOLS must be a JSON array of strings/u);
 });
 
 test("{§mcp-server-settings} a tool allowlist narrows the published tools", async () => {
@@ -314,8 +316,10 @@ test("{§mcp-server-settings} a tool allowlist narrows the published tools", asy
     } finally { await h.teardown(1); await h.module.stop(); }
 });
 
-test("{§mcp-configuration} a noncanonical declaration fails the module at boot", () => {
-    assert.throws(() => Module.init({ env: { ...floor, PLURNK_MCP_GITEA: "npx" } }), /PLURNK_MCP_GITEA is not a declared control/u);
+test("{§configuration-repair-path} a noncanonical declaration does not prevent registration of the MCP manager", async () => {
+    const h = harness({ PLURNK_MCP_GITEA: "npx" });
+    await h.setup();
+    await assert.rejects(h.adapter().available(h.identity(1)), /PLURNK_MCP_GITEA is not a declared control/u);
 });
 
 test("{§mcp-setup} preparation publishes one executor family and resource facet per enabled server, with catalog detail", async () => {

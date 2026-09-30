@@ -9,7 +9,7 @@ import { stat } from "node:fs/promises";
 import { matchesGlob, resolve } from "node:path";
 import { Validator, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type JsonSchema } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
-import { Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
+import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type Engine from "../core/Engine.ts";
 import FileCreationPolicy, { type FileCreateScope } from "../core/file-creation-policy.ts";
 import GitMembership, { type OverlayResolution, type OverlayRow } from "../core/git-membership.ts";
@@ -103,8 +103,8 @@ export const serviceMembers = (environ: NodeJS.ProcessEnv = process.env): Functi
     const environment = new ResourceEnvironment(PREFIX, { controls: [], settings: [] }, environ);
     return [...environment.definitions].map(([alias, { key, value }]) => {
         const glob = value.trim();
-        if (!ALIAS.test(alias)) throw new Error(`${key} names an invalid members alias '${alias}'.`);
-        if (patternOf(glob).length === 0) throw new Error(`${key} names no pattern.`);
+        if (!ALIAS.test(alias)) throw new ConfigurationError(key, `${key} names an invalid members alias '${alias}'.`);
+        if (patternOf(glob).length === 0) throw new ConfigurationError(key, `${key} names no pattern.`);
         return {
             alias,
             definition: { glob, provenance: { kind: "service-configuration" } } satisfies MembersDefinition,

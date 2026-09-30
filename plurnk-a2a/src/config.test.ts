@@ -231,11 +231,11 @@ test("{§a2a-hosted-bearer} the token is the floor's to state: empty is open, a 
     assert.deepEqual(outboundDefinitions({ ...floor, PLURNK_A2A_TOKEN: "s3cret" }), [], "the token is a reserved global, never an alias");
 });
 
-test("{§a2a-environment-projection} a key that once named the exposure's own listener fails hard, naming the service listener", () => {
+test("{§a2a-environment-projection} a retired listener key produces a configuration error naming the service listener", () => {
     for (const key of ["PLURNK_A2A_HOST", "PLURNK_A2A_PORT"]) {
         assert.throws(
             () => outboundDefinitions({ ...floor, [key]: "4100" }),
-            new RegExp(`^Error: ${key} is retired: .*PLURNK_HOST and PLURNK_PORT .*remove it\\.$`, "u"),
+            { name: "ConfigurationError", key, message: new RegExp(`^${key} is retired: .*PLURNK_HOST and PLURNK_PORT .*remove it\\.$`, "u") },
             key,
         );
     }

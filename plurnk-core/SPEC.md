@@ -3757,8 +3757,10 @@ or provider request. The seeded `.env`, first-run diagnostic, service help, and
 missing-model recovery all signpost `plurnk-service config defaults` as the
 complete installed option catalog.
 
-§operator-config-offline-validation **`config check` and startup compose the same
-owning configuration readers.** Validation precedes service activation; failure
+§operator-config-offline-validation **`config check` and runtime use the same
+owning configuration readers, with different failure boundaries.** An offline
+check rejects invalid configuration with a nonzero exit. Runtime contains
+optional-family errors according to {§configuration-repair-path}. Failure
 names the offending variable and retains its cause.
 
 | Owner | Offline validation |
@@ -4181,6 +4183,23 @@ preserves it through inheritance, enabledness changes, and every readiness state
 Only the winning definition's source is reported. Shadowed definitions, secrets,
 and environment-file loading history are not tracked. Source metadata is derived
 on inspection, not persisted in the local overlay or used as runtime identity.
+
+§configuration-repair-path **Invalid optional configuration cannot remove the
+agent's repair environment.** The shared coordinator contains typed operator
+configuration errors, not arbitrary exceptions:
+
+| Boundary | Outcome |
+|---|---|
+| Family configuration cannot be resolved | Keep its manager available, identify the configuration failure in its generated documentation, and preserve durable definitions. Do not publish the family's operational capabilities or pretend its catalog is empty. Other families and ordinary model work remain usable. |
+| Inspection or mutation of an unresolved family | Return the exact configuration Problem, naming the key and required correction, through both client and model paths. No silent source fallback or change to stored settings. |
+| Invalid live mutation | Reject atomically and preserve the preceding publication. |
+| Previously valid family becomes invalid | Withdraw its operational capabilities at normal publication, then release the old snapshot. Keep the manager and diagnostic. |
+| Configuration is corrected | Normal resolution/publication restores the capability; no separate recovery mode or registry. Environment-file edits follow their ordinary process lifetime, not an implicit reload. |
+| Internal invariant, state, or implementation failure | Preserve the exception; never reclassify it as an operator configuration error. |
+
+The first turn of a drain, and a changed diagnostic thereafter, reports unresolved
+configuration through the existing Notice channel to both client and model. An
+unchanged diagnostic is not repeated every turn. Operation failures remain Problems.
 
 §functionality-inspection **Inspection is not demand.** `list` and `discover` do not
 acquire residency, join preparation, reconcile worker documents, or extend warm
@@ -5555,8 +5574,8 @@ forge, and a recorded source is listed to every client. Git runs with the
 operator's configuration, credentials, and SSH agent, never plurnk's secrets, and
 never prompts; `PLURNK_SERVICE_SKILLS_FETCH_TIMEOUT_MS` bounds each fetch. The
 retired vendor-installer knobs (`PLURNK_SERVICE_SKILLS_CLI`, `_CLI_TIMEOUT_MS`,
-`_REGISTRY_URL`, `_REGISTRY_LIMIT`, `_REGISTRY_TIMEOUT_MS`) fail boot when set,
-each naming what replaced it.
+`_REGISTRY_URL`, `_REGISTRY_LIMIT`, `_REGISTRY_TIMEOUT_MS`) make the skills family
+unavailable when set, each naming what replaced it ({§configuration-repair-path}).
 
 A source's skills are the directories holding a `SKILL.md`, found by walking
 from its root without entering `.git` or a skill already found. A fetched skill at
@@ -6076,6 +6095,7 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 |---|---:|---|
 | `service-starting` | 503 | The PLURNK service owns this listener but has not admitted its client interface yet. |
 | `configuration-unsupported` | 400 | Environment discovery reads this installation's declared configuration; client configuration contributes nothing. |
+| `configuration-invalid` | 503 | The owning configuration reader's diagnostic, naming the invalid key. Recovery: Correct the named configuration input. Other capabilities remain available. |
 | `name-reserved` | 400 | '*alias*' is plurnk's own: PLURNK_* configuration and provider credential names never reach a subprocess. |
 | `value-invalid` | 400 | '*alias*' needs a string value. |
 | `env-invalid` | 400 | `env` must be an object of string values; '*name*' is not a name a shell can export. |

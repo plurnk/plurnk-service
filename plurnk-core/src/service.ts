@@ -123,6 +123,7 @@ export default class Service {
 
     static #validateConfiguration(): void {
         Daemon.validateConfiguration();
+        Daemon.validateWorkspaceConfiguration();
         ServiceModules.validateConfiguration();
         hookConfig();
     }
@@ -222,7 +223,7 @@ export default class Service {
 
     // {§startup-admission} — listener, database, provider, daemon, in that order; a failure unwinds what it holds.
     static async #start(): Promise<void> {
-        Service.#validateConfiguration();
+        Daemon.validateConfiguration();
         const dbPath = Service.#databasePath();
         const host = Service.#requireEnv("PLURNK_HOST");
         // PLURNK_PORT is THE client surface — the AG-UI+ listener (the agui plugin module binds

@@ -100,7 +100,9 @@ supplied assembled environment: `text`, `list`, `flag` (exactly `0` or `1`), `ch
 vocabulary), `percent` (`80%` is 0.8) and `integer(name, floor)` (a safe
 integer of at least the floor, which bounds what the operator may say and is
 never a value used in the operator's place). An unset key is a broken floor
-and an invalid value is the operator's mistake; both crash naming the key.
+and remains an internal error. Invalid operator values raise a
+`ConfigurationError` naming the key; the owning capability contains that
+diagnostic without inventing a value ({§configuration-repair-path}).
 No reader accepts a fallback: a signature that could carry one is a second
 home for a choice. A supplied environment is authoritative: missing keys do not
 fall through to the process, and reading never mutates either environment.
