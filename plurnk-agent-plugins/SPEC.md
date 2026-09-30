@@ -80,4 +80,4 @@ Each finding is one report: the plugin directory, the path within it (`plugin.js
 Each `test/conformance/<case>/` holds one plugin root under test and an `expected.json` naming the section, the
 normative requirement and the expected outcome: `accepted` or `rejected`, the discovered skills, the MCP
 servers (`null` when MCP is absent or disabled) and the reports by path, section and outcome. The corpus is
-the loader's test and is written to be offered upstream.
+the loader's test.

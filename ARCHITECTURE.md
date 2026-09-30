@@ -10,7 +10,6 @@ own behavior; design history belongs in Git and forge issues.
 PLURNK is an engine between standards. Nodes outside PLURNK are interface
 specifications; standards named inside PLURNK govern internal contracts.
 Boundary adapters implement their owning standards rather than restate them.
-Dotted interfaces are explicitly deferred.
 
 ```mermaid
 flowchart LR
@@ -22,12 +21,6 @@ flowchart LR
     PLUGIN["Plurnk Plugin<br/>(exec / scheme)<br/>plurnk-owned interface"] --- PLURNK
 
     PLURNK --- A2A["A2A Specification"]
-    PLURNK -.-> X402["x402 Specification<br/>(deferred)"]
-    PLURNK -.-> AP2["AP2 Specification<br/>(deferred)"]
-    PLURNK -.-> DID["W3C DID Specification<br/>(deferred)"]
-
-    classDef deferred stroke-dasharray: 6 4;
-    class X402,AP2,DID deferred;
 ```
 
 ### Which standards earn a place
