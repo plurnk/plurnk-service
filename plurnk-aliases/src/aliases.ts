@@ -16,14 +16,19 @@ import type { ProviderAlias, ProviderSpec } from "./types.ts";
 // to match PLURNK_MODEL_<alias>. Lets two aliases on the same provider name target
 // different self-hosted boxes (openai/ollama), the one thing a per-name base-URL
 // var can't express.
-const parseBaseUrls = (env: NodeJS.ProcessEnv): Map<string, string> => {
-    const out = new Map<string, string>();
+const parseBaseUrls = (env: NodeJS.ProcessEnv): Map<string, { key: string; value: string }> => {
+    const out = new Map<string, { key: string; value: string }>();
     for (const [key, value] of Object.entries(env)) {
         if (value === undefined || value.length === 0) continue;
         if (!key.startsWith("PLURNK_BASEURL_")) continue;
         const aliasRaw = key.slice("PLURNK_BASEURL_".length);
         if (aliasRaw.length === 0) continue;
-        out.set(aliasRaw.toLowerCase(), value);
+        const alias = aliasRaw.toLowerCase();
+        const existing = out.get(alias);
+        if (existing !== undefined) {
+            throw new Error(`Duplicate base-URL override "${alias}": ${existing.key} and ${key} case-fold to the same alias.`);
+        }
+        out.set(alias, { key, value });
     }
     return out;
 };
@@ -45,7 +50,7 @@ export const parseAliasesFromEnv = (env: NodeJS.ProcessEnv = process.env): Provi
         // collide. Surface the ambiguity rather than silently picking one.
         if (seen.has(alias)) throw new Error(`Duplicate provider alias "${alias}": multiple PLURNK_MODEL_* keys case-fold to the same alias. Rename one.`);
         seen.add(alias);
-        const baseUrl = baseUrls.get(alias);
+        const baseUrl = baseUrls.get(alias)?.value;
         out.push({ alias, provider: value.slice(0, slash), model: value.slice(slash + 1), ...(baseUrl !== undefined ? { baseUrl } : {}) });
     }
     // A base-URL override with no matching alias is a typo, not a silent no-op.

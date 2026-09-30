@@ -55,11 +55,14 @@ alias-scoped tuning applies only when that real alias is present.
 
 ## Fail-hard rules
 
-- **Case-folding collision** — two `PLURNK_MODEL_*` keys that downcase to the
-  same alias throw (`Duplicate provider alias "<alias>"`). No silent pick.
+- §alias-case-collisions **Case-folding collision** — two nonempty `PLURNK_MODEL_*`
+  declarations or two nonempty `PLURNK_BASEURL_*` overrides that downcase to the
+  same alias throw (`Duplicate provider alias "<alias>"` or
+  `Duplicate base-URL override "<alias>"`). Identical values do not excuse
+  duplicate spelling; declaration order never selects a winner.
 - **Dangling override** — a `PLURNK_BASEURL_*` whose alias has no matching
   `PLURNK_MODEL_*` throws (a typo, not a silent no-op).
 - **Unresolved active selector** — a non-empty `PLURNK_MODEL` that is neither a
   declared alias nor a complete exact route throws.
 
-Both are contract violations surfaced loudly, never recovered.
+These are contract violations surfaced loudly, never recovered.

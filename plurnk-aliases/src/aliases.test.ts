@@ -69,6 +69,22 @@ test("parseAliasesFromEnv: PLURNK_BASEURL_<alias> attaches a per-alias endpoint 
     assert.equal("baseUrl" in (aliases.find((a) => a.alias === "plain") ?? {}), false);
 });
 
+for (const sameValue of [false, true]) {
+    for (const keys of [["PLURNK_BASEURL_demo", "PLURNK_BASEURL_DEMO"], ["PLURNK_BASEURL_DEMO", "PLURNK_BASEURL_demo"]]) {
+        test(`{§alias-case-collisions} endpoint overrides reject ${keys.join(" / ")} with ${sameValue ? "identical" : "different"} values`, () => {
+            const env = {
+                PLURNK_MODEL_demo: "openai/fixture",
+                [keys[0]]: "http://127.0.0.1:8001/v1",
+                [keys[1]]: sameValue ? "http://127.0.0.1:8001/v1" : "http://127.0.0.1:8002/v1",
+            };
+            assert.throws(() => parseAliasesFromEnv(env), {
+                name: "Error",
+                message: `Duplicate base-URL override "demo": ${keys[0]} and ${keys[1]} case-fold to the same alias.`,
+            });
+        });
+    }
+}
+
 test("parseAliasesFromEnv: a PLURNK_BASEURL_* override with no matching alias fails hard", () => {
     const env = { PLURNK_MODEL_a: "openai/m", PLURNK_BASEURL_typo: "http://nope" } as NodeJS.ProcessEnv;
     assert.throws(() => parseAliasesFromEnv(env), /PLURNK_BASEURL_\* override\(s\) with no matching PLURNK_MODEL_\* alias: typo/);
