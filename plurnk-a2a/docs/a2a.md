@@ -20,7 +20,8 @@ policy.
 Authentication is the definition's (headers or a token the operator
 configured), never a body's. An agent whose card is unreachable is listed
 `unavailable` with its exact Problem. `disable` and `remove` follow the family
-lifecycle; operator-configured agents (`PLURNK_A2A_*`) are disable-only.
+lifecycle; operator-configured agents (`PLURNK_A2A_*`) can be enabled or disabled,
+but their inherited definitions cannot be removed here.
 
 ## Working with an added agent
 

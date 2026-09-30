@@ -99,7 +99,7 @@ malformed state fails there. An unreadable recurrence is reported and stays disa
 {§resource-environment}. `PLURNK_SCHEDULE_ENABLED=1` arms declared service rules
 by default; `<alias>_ENABLED=0` retains a rule without arming it. The family
 validates every definition, including disabled rules, at construction. A service
-definition is disable-only in a workspace ({§functionality-coordinator}); live
+definition cannot be removed in a workspace ({§functionality-coordinator}); live
 definitions and state compose through {§configuration-definition-resolution}.
 Offline validation uses the same rule normalization as construction, without arming
 or persisting a rule ({§operator-config-offline-validation}).

@@ -30,7 +30,7 @@ Your `add` is admitted against the operator's ceiling
 | `namespace` | those plus canonical `../` paths outside the root |
 
 The scope refuses an `add` you author from a turn; a client's `/members add`
-and the operator's `PLURNK_MEMBERS_<ALIAS>=<glob>` definitions are not bound
+and the operator's `PLURNK_MEMBERS_<alias>=<glob>` definitions are not bound
 by it. `discover` always works: a path answers why it is or is not visible; a
 glob previews what `add` would resolve to.
 
@@ -82,7 +82,8 @@ it (`KILL`) retires the record.
 
 `list` shows every definition with its origin (`service` from the operator's
 environment, `workspace` from an `add`) and whether it is enabled. `enable` and
-`disable` flip one shared alias; `remove` deletes a workspace-added definition
-(service definitions can only be disabled). Changes apply to every worker.
+`disable` flip one shared alias; `remove` forgets a workspace override and
+restores inheritance. Inherited definitions cannot be removed here. Changes
+apply to every worker.
 Each enabled definition is projected as
 `worker:///_plurnk/members/<alias>.md` showing what its glob resolved to.

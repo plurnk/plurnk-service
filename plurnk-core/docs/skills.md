@@ -67,5 +67,5 @@ An unavailable skill retains its exact Problem in `list`; other skills remain
 usable. `disable` suppresses a skill without forgetting its definition. `remove`
 forgets a workspace override and restores any inherited definition and enabled
 state. It never deletes a local source; fetched copies remain workspace state,
-but confer no availability without a definition. Service definitions are
-disable-only.
+but confer no availability without a definition. Inherited skills can be enabled
+or disabled here; their definitions cannot be removed from this workspace.

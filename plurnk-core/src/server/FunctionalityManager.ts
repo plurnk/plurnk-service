@@ -41,7 +41,7 @@ const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; detai
     },
     remove: {
         summary: "Forget the local definition and restore inheritance.",
-        details: "A host effect. Any inherited definition resumes with its inherited enabledness. Inherited definitions can be disabled, not removed at this scope.",
+        details: "A host effect. Any inherited definition resumes with its inherited enabledness. Inherited definitions cannot be removed at this scope.",
     },
 });
 
