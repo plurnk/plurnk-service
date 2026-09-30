@@ -13,7 +13,7 @@ export const gateResourceEnvironment = async (configFile, environment = process.
     }
     const overrides = {};
     for (const key of Object.keys(parseEnv(source))) {
-        const match = /^(PLURNK_(?:MCP|A2A|SCHEDULE|MEMBERS)_[a-z][a-z0-9_]*)(?:_[A-Z][A-Z0-9_]*)?$/u.exec(key);
+        const match = /^(PLURNK_(?:MCP|A2A|SCHEDULE|MEMBERS|SKILLS)_[\p{Ll}\p{Lo}\p{Lm}\p{N}][\p{Ll}\p{Lo}\p{Lm}\p{N}_]*)(?:_[A-Z][A-Z0-9_]*)?$/u.exec(key);
         if (match === null) continue;
         const enabled = `${match[1]}_ENABLED`;
         if (environment[enabled] === undefined) overrides[enabled] = "0";

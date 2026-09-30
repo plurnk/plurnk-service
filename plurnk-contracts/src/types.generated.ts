@@ -1180,11 +1180,7 @@ export interface SkillDefinition {
  */
 name: string
 /**
- * Root: project `.agents/skills`, plurnk `$XDG_CONFIG_HOME/plurnk/skills`, global `~/.agents/skills`, or a service-provided resource tree. Service skills are never added or removed.
- */
-scope: ("project" | "plurnk" | "global" | "service")
-/**
- * Where an added skill comes from: a git remote as a full https or ssh URL, a folder, a lone SKILL.md, or a zip or tar archive. Required to add a skill.
+ * A local skill folder or its SKILL.md (read in place), a Git remote, or an archive (materialized into workspace storage). Required for configured and added skills; omitted only for a host-provided tree.
  */
 source?: string
 /**

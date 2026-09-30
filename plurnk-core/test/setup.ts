@@ -16,7 +16,7 @@ import { testArtifactPath } from "../../scripts/test-artifacts.ts";
 
 // Mock fixtures declare their own resources after bootstrap, never operator services or schedules.
 for (const key of Object.keys(process.env)) {
-    if (/^PLURNK_(?:MCP|A2A|SCHEDULE|MEMBERS)_/u.test(key)) delete process.env[key];
+    if (/^PLURNK_(?:MCP|A2A|SCHEDULE|MEMBERS|SKILLS)_/u.test(key)) delete process.env[key];
 }
 
 const fixture = {

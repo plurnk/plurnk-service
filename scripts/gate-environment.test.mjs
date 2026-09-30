@@ -18,6 +18,10 @@ test("{§operator-config-real-model-profile} personal resources stay inspectable
         'PLURNK_A2A_peer={"name":"peer","url":"https://example.com"}',
         'PLURNK_SCHEDULE_check={"unused":"fixture"}',
         "PLURNK_MEMBERS_docs=docs/**",
+        'PLURNK_SKILLS_3d_tools={"name":"3d-tools","source":"/srv/3d-tools"}',
+        'PLURNK_SKILLS_分析={"name":"分析","source":"/srv/分析"}',
+        "PLURNK_SKILLS_分析_ENABLED=1",
+        "PLURNK_SKILLS_ENABLED=1",
         "PLURNK_MODEL=selected",
         "PLURNK_PROVIDERS_OUTPUT_BUDGET=16384",
         "PROVIDER_API_KEY=fixture-secret",
@@ -30,6 +34,8 @@ test("{§operator-config-real-model-profile} personal resources stay inspectable
         PLURNK_A2A_peer_ENABLED: "0",
         PLURNK_SCHEDULE_check_ENABLED: "0",
         PLURNK_MEMBERS_docs_ENABLED: "0",
+        PLURNK_SKILLS_3d_tools_ENABLED: "0",
+        PLURNK_SKILLS_分析_ENABLED: "0",
     });
     assert.deepEqual(environment, { PLURNK_MCP_web_search_ENABLED: "1", PLURNK_MODEL: "explicit" });
     const personal = parseEnv(source);

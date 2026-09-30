@@ -4,7 +4,7 @@
 import { execFile } from "node:child_process";
 import { cp, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rename, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { parseSkill, skillName } from "@plurnk/plurnk-agent-skills";
 import { Knob } from "@plurnk/plurnk-meta";
@@ -79,8 +79,8 @@ const tool = async (command: string, args: readonly string[]): Promise<string> =
 };
 
 export default class SkillSource {
-    // Reads a source's form without fetching it. A relative path is the project's.
-    static async locate(source: string, context: { readonly projectRoot: string | null; readonly home: string }): Promise<LocatedSource> {
+    // URL admission is independent of filesystem and network availability.
+    static remote(source: string): (LocatedSource & { readonly kind: "git" }) | null {
         if (/^(?:https|ssh):\/\//iu.test(source)) {
             let url: URL | null = null;
             try { url = new URL(source); } catch { /* reported below */ }
@@ -97,6 +97,13 @@ export default class SkillSource {
         if (URL_SCHEME.test(source)) {
             throw actionError("source-invalid", 400, `'${source}' is not a source: a git remote is a full https or ssh URL.`, { source, retryable: false });
         }
+        return null;
+    }
+
+    // Reads a source's form without fetching it. A relative path is the project's.
+    static async locate(source: string, context: { readonly projectRoot: string | null; readonly home: string }): Promise<LocatedSource> {
+        const remote = SkillSource.remote(source);
+        if (remote !== null) return remote;
         const expanded = source === "~" || source.startsWith("~/") ? join(context.home, source.slice(1)) : source;
         if (!isAbsolute(expanded) && context.projectRoot === null) {
             throw actionError("source-invalid", 400, `'${source}' is relative, and this workspace has no project root to resolve it against.`, { source, retryable: false });
@@ -144,8 +151,13 @@ export default class SkillSource {
         return commit;
     }
 
-    // Fetches a located source into private staging and finds its skills; close() discards the staging.
+    // Local trees stay in place; fetched sources own private staging released by close().
     static async open(located: LocatedSource, pin: { readonly ref?: string; readonly commit?: string } = {}): Promise<OpenedSource> {
+        if (located.kind === "folder" || located.kind === "skill-file") {
+            const root = located.kind === "folder" ? located.location : dirname(located.location);
+            await SkillSource.#assertSkillSource(root, located.location);
+            return { ...await SkillSource.#find(root, false), close: async () => {} };
+        }
         const staging = await mkdtemp(join(tmpdir(), "plurnk-skill-source-"));
         const close = (): Promise<void> => rm(staging, { recursive: true, force: true });
         try {
@@ -173,22 +185,6 @@ export default class SkillSource {
                     }
                     break;
                 }
-                case "folder":
-                    root = located.location;
-                    break;
-                case "skill-file": {
-                    const document = await readFile(located.location, "utf8");
-                    let name: string;
-                    try {
-                        name = skillName(located.location, document);
-                    } catch (cause) {
-                        throw actionError("skill-invalid", 422, `'${located.location}' is not a standard Agent Skill: ${messageOf(cause)}`, { path: located.location, retryable: false }, cause);
-                    }
-                    root = join(staging, name);
-                    await mkdir(root);
-                    await cp(located.location, join(root, "SKILL.md"));
-                    break;
-                }
                 case "archive": {
                     const into = join(staging, "archive");
                     await mkdir(into);
@@ -205,12 +201,8 @@ export default class SkillSource {
                     break;
                 }
             }
-            if (await isFile(join(root, "plugin.json"))) {
-                throw actionError("source-is-plugin", 422, `'${located.location}' is an Agent Plugin; install it as a plugin, so its skills keep the plugin's identity and servers.`, {
-                    source: located.location, retryable: false,
-                });
-            }
-            const { skills, invalid } = await SkillSource.#find(root);
+            await SkillSource.#assertSkillSource(root, located.location);
+            const { skills, invalid } = await SkillSource.#find(root, true);
             return { skills, invalid, ...(commit === undefined ? {} : { commit }), close };
         } catch (error) {
             await close();
@@ -218,9 +210,17 @@ export default class SkillSource {
         }
     }
 
+    static async #assertSkillSource(root: string, source: string): Promise<void> {
+        if (await isFile(join(root, "plugin.json"))) {
+            throw actionError("source-is-plugin", 422, `'${source}' is an Agent Plugin; install it as a plugin, so its skills keep the plugin's identity and servers.`, {
+                source, retryable: false,
+            });
+        }
+    }
+
     // Every directory holding a SKILL.md, not descending into a skill or into .git. A skill at the
-    // source's root is named by its frontmatter; below the root the standard folder rule applies.
-    static async #find(root: string): Promise<{ skills: FoundSkill[]; invalid: Array<{ dir: string; reason: string }> }> {
+    // fetched root is named by its frontmatter; live folders retain the standard folder rule.
+    static async #find(root: string, fetched: boolean): Promise<{ skills: FoundSkill[]; invalid: Array<{ dir: string; reason: string }> }> {
         const canonicalRoot = await realpath(root);
         const skills: FoundSkill[] = [];
         const invalid: Array<{ dir: string; reason: string }> = [];
@@ -230,7 +230,7 @@ export default class SkillSource {
                 try {
                     if (!inside(canonicalRoot, await realpath(file))) throw new Error(`${file} resolves outside the source`);
                     const document = await readFile(file, "utf8");
-                    const parsed = parseSkill(file, atRoot ? skillName(file, document) : basename(dir), document);
+                    const parsed = parseSkill(file, atRoot && fetched ? skillName(file, document) : basename(dir), document);
                     skills.push({ name: parsed.name, description: parsed.description, dir });
                 } catch (cause) {
                     invalid.push({ dir, reason: messageOf(cause) });
@@ -253,7 +253,7 @@ export default class SkillSource {
         try {
             const staged = join(holding, skill.name);
             await cp(skill.dir, staged, { recursive: true, verbatimSymlinks: true, errorOnExist: true, force: false, filter: (path) => basename(path) !== ".git" });
-            await SkillSource.#assertInward(staged);
+            await SkillSource.assertInward(staged);
             const target = join(root, skill.name);
             await rename(staged, target);
             return target;
@@ -262,7 +262,7 @@ export default class SkillSource {
         }
     }
 
-    static async #assertInward(root: string): Promise<void> {
+    static async assertInward(root: string): Promise<void> {
         const walk = async (dir: string): Promise<void> => {
             for (const entry of await readdir(dir, { withFileTypes: true })) {
                 const path = join(dir, entry.name);

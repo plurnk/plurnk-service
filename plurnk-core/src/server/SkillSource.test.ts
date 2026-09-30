@@ -52,15 +52,22 @@ test("{§skills-sources} a local source is a folder, a SKILL.md, or a zip or tar
     assert.deepEqual(await SkillSource.locate("~/mine", { projectRoot: null, home: join(base, "home") }), { kind: "folder", location: join(base, "home", "mine") });
 });
 
-test("{§skills-sources} skills are found below a source's root, a root skill is named by its frontmatter, and .git is never read", async (t) => {
+test("{§skills-sources} local skills retain their standard folder identity; nested examples and .git are not skills", async (t) => {
     const base = await fixture(t);
-    const source = join(base, "checkout-dir");
+    const source = join(base, "root-skill");
     await mkdir(join(source, "skills", "alpha", "examples", "inner"), { recursive: true });
     await writeFile(join(source, "SKILL.md"), skill("root-skill"));
     const opened = await SkillSource.open({ kind: "folder", location: source });
     t.after(() => opened.close());
     assert.deepEqual(opened.skills.map(({ name, dir }) => ({ name, dir })), [{ name: "root-skill", dir: source }],
         "a skill at the root is the source; nothing below it is walked");
+    const misnamed = join(base, "checkout-dir");
+    await mkdir(misnamed);
+    await writeFile(join(misnamed, "SKILL.md"), skill("root-skill"));
+    const rejected = await SkillSource.open({ kind: "skill-file", location: join(misnamed, "SKILL.md") });
+    assert.deepEqual(rejected.skills, [], "a SKILL.md is read in its actual directory, not renamed in a temporary copy");
+    assert.match(rejected.invalid[0]!.reason, /must match folder "checkout-dir"/u);
+    await rejected.close();
 
     const tree = join(base, "tree");
     await mkdir(join(tree, "skills", "alpha", "examples", "inner"), { recursive: true });

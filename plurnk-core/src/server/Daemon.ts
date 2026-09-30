@@ -212,6 +212,7 @@ export default class Daemon implements ApplicationPort {
         this.#plugins = new WorkspacePlugins({ db, hostPaths });
         this.#skills = new SkillsFunctionality({
             db,
+            storage: this.#storage,
             hostPaths,
             provided: async () => {
                 const tree = await PlurnkSkill.load(this.#nodeModulesPath);

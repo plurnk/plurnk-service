@@ -139,11 +139,11 @@ const skillsFamily = async (): Promise<Family> => {
     return {
         family: "skills",
         documentOf: doc,
-        teaching: /## Installing/u,
-        service: { alias: "grep", definition: { name: "grep", scope: "project" }, probe: probe("grep") },
-        addable: { alias: "extra", definition: { name: "extra", scope: "project", source: sourceA }, probe: probe("extra") },
-        conflicting: { alias: "extra", definition: { name: "extra", scope: "global", source: sourceB }, probe: probe("extra") },
-        unreachable: { alias: "ghost", definition: { name: "ghost", scope: "project", source: sourceA }, probe: probe("ghost") },
+        teaching: /## Adding/u,
+        service: { alias: "grep", definition: { name: "grep", source: join(hostPaths.projectSkillsDir(project), "grep") }, probe: probe("grep") },
+        addable: { alias: "extra", definition: { name: "extra", source: sourceA }, probe: probe("extra") },
+        conflicting: { alias: "extra", definition: { name: "extra", source: sourceB }, probe: probe("extra") },
+        unreachable: { alias: "ghost", definition: { name: "ghost", source: sourceA }, probe: probe("ghost") },
         discover: { source: sourceA },
         boot: async (db, provider) => {
             const daemon = new Daemon({ db, provider, hostPaths });

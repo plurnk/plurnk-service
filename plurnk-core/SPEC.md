@@ -4204,7 +4204,7 @@ actions from model operations where the family contract requires it
 outcomes, and a snapshot with `commit`/`abort`. Successful publication commits;
 failure aborts; cooling tears down. Protocol continuations remain ordinary
 module actions. Optional `forget` releases an installed or provisioned
-definition before removal; failure rejects removal ({§skills-remove}). The
+definition before removal; failure rejects removal. The
 seam's shapes — the identity a verb acts under, its options, definition
 sources, outcomes, preparation, the prepared result and the family handle —
 are declared once in `plurnk-contracts` and imported by core and every
@@ -4234,10 +4234,11 @@ not install or delete plugins. MCP's own lifecycle is independent ({§mcp-defini
 
 §agent-roots **A daemon reads the roots `PLURNK_SERVICE_ROOTS` names.** A comma list drawn from
 `project`, `plurnk` and `global`, nearest first, selects which Agent Skills and Agent Plugins roots a
-daemon reads and writes; the default names all three. The real-model gate profile names `project`
-alone ({§operator-config-real-model-profile}), so the operator's installed skills and plugins never
-shape a gate. Adding a skill at a root the daemon does not read is refused as
-`scope-unread`, naming the roots it does ({§skills-functionality}). MCP definitions do not select an installation root.
+daemon reads; the default names all three. The real-model gate profile selects
+its discovery roots explicitly ({§operator-config-real-model-profile}), so
+operator roots do not shape a gate. Root selection does not restrict explicit
+source definitions. Skills mutations change workspace bindings, not these roots
+({§skills-functionality}); MCP definitions do not select an installation root.
 
 An adapter may expose a `scheme` facet beneath its family's runtime namespace
 ({§runtime-resource-binding}). A facet claims a path subtree and is the scheme's
@@ -5453,20 +5454,35 @@ verbs are these verbs.
 §skills-functionality **Agent Skills are one workspace Functionality family.**
 Core registers the `skills` family with the coordinator ({§functionality-coordinator});
 its adapter owns protocol truth for standard Agent Skills and nothing else. A
-definition is `SkillDefinition`: the standard skill `name`, its `scope`
-(`project` = `<projectRoot>/.agents/skills`, `plurnk` =
-`$XDG_CONFIG_HOME/plurnk/skills`, `global` = `~/.agents/skills`, `service` = a
-host-provided resource tree), and, for a skill a workspace added, the `source` it
-came from ({§skills-sources}). Plurnk seeds no root and mutates none absent an
-explicit `add`/`remove`.
+definition is `SkillDefinition`: the standard skill `name`, its `source`, and
+optional Git `ref`/resolved `commit` ({§skills-sources}). Only a host-provided
+resource tree omits `source`. Source location is not mutation ownership: standard
+project/global roots are read-only configuration inputs; live changes belong to
+the workspace. Plurnk neither installs into nor deletes from those roots.
 
 *Available definitions.* The filesystem is the only truth about installation:
 every `<root>/<name>/SKILL.md` directory under the project, plurnk, then global
-root is one service-origin definition, enabled by default, a nearer root
-shadowing a farther one and all of them shadowing host-provided trees by name.
-A skill found on disk records no source. The workspace's durable state owns
+root is one service-origin definition, a nearer root shadowing a farther one and
+all of them shadowing host-provided trees by name. Each filesystem definition
+names its actual source directory. The workspace's durable state owns
 enablement ({§functionality-state}); a disabled skill stays client-visible and
 leaves no model-facing trace.
+
+§skills-configuration **Skills use the shared definition cascade.**
+
+| Layer, low to high | Definition source |
+|---|---|
+| Service | Host-provided trees |
+| Standard locations | Global, plurnk, then project roots selected by {§agent-roots} |
+| Cascading environment | `PLURNK_SKILLS_<name>={"name":"<name>","source":"…","ref"?:"…"}` replaces the complete definition |
+| Live workspace | `skills (add)` creates a workspace definition through {§functionality-coordinator} |
+
+`PLURNK_SKILLS_ENABLED` supplies default enabledness; `<name>_ENABLED` overrides
+it independently ({§resource-environment}). The decoded environment alias must
+equal the standard skill name, including digit-leading and Unicode names.
+Blank definitions are invalid; controls may precede a definition. Environment
+validation checks shape, names, remote URL rules, and Git-only `ref` without
+fetching or opening a source; `commit` is service-recorded, not an input.
 
 *Discovery is inert.* `discover {source}` lists the standard skills one source
 carries, each a candidate with `source` provenance and the exact definition to
@@ -5474,9 +5490,10 @@ add; it never installs, persists, or enables. Agent Skills have no standard
 registry, so `discover {query}` is 400 `query-unsupported`, naming the source
 forms. Client `configuration` contributes nothing and is refused with 400.
 
-*Admission.* `add {alias, definition}` requires `alias = name`, a `source`, and
-a project root when `scope` is `project`; the workspace definition may shadow a
-service skill of the same name. A local source is recorded as its absolute path.
+*Admission.* `add {alias, definition}` requires `alias = name` and a `source`;
+the workspace definition may shadow a service skill of the same name. Relative
+sources require a project root; absolute sources work in headless workspaces.
+A local source is recorded as its absolute path.
 A git source records the `commit` its `ref` names at admission, or its default
 branch's when no `ref` is given; `ref` belongs to git sources, and a supplied
 `commit` is refused because the service records it. The family's aliases use
@@ -5484,27 +5501,31 @@ the standard skill-name grammar ({§agent-skills-name}), including digit-leading
 and Unicode names, rather than the coordinator's generic default.
 
 *Preparation.* For each enabled alias the adapter selects the host-provided
-tree for `service` scope or locates the directory at the filesystem scope; a
-workspace definition whose directory is absent is installed from its source
-({§skills-sources}), and the installed `SKILL.md` is the evidence.
+tree or resolves the complete source definition ({§skills-sources}). Local
+folders and their `SKILL.md` files remain live references, including supporting
+resources and symlink retargeting. Git/archive sources are materialized only
+inside {§module-workspace-directory}; different workspaces and complete source
+definitions cannot reuse each other's materializations accidentally.
+The first fetched Git/archive copy remains stable across enable, cooling, and
+restart until the complete source definition changes. In particular, an
+operator-configured symbolic Git ref is not an implicit update subscription.
 Each admitted skill requires standard `name` and `description` frontmatter
 with `name` matching its directory. A missing, uninstallable, or invalid skill
 is `unavailable` with its exact Problem ({§problems-functionality}) under the
 coordinator's failure policy ({§functionality-model-mutation}); one bad skill
 never fails the family.
 
-Service-provided skills are never added or removed; service definitions are
-disable-only under {§skills-remove}.
+Service-origin definitions are disable-only under {§skills-remove}.
 
 §skills-sources **A source is a git remote, a folder, or a file, read with standard tools.**
-Fetching runs nothing it fetched, and an installed skill holds nothing that
-points out of it.
+Fetching runs nothing it fetched. Materialized copies cannot contain references
+outside their skill; live resources retain {§agent-skills-directory} containment.
 
 | Source | How it is read |
 |---|---|
 | Git remote: a full `https://` or `ssh://` URL, or `user@host:path` | `git ls-remote` resolves the ref at admission; preparation shallow-clones it with hooks and submodules off, and a checkout at any other commit is 409 `source-moved` |
-| Folder: absolute, `~/`, or relative to the project root | Read in place |
-| A file named `SKILL.md` | One skill, named by its frontmatter |
+| Folder: absolute, `~/`, or relative to the project root | Live reference; standard directory/name matching applies |
+| A file named `SKILL.md` | Live reference to its skill directory and supporting resources |
 | A `.zip`, `.tar`, `.tgz`, `.tar.gz`, `.tar.bz2`, `.tar.xz`, or `.tar.zst` archive | Unpacked into private staging with `unzip` or `tar`; a lone top-level directory is the source's root |
 
 Any other scheme, plain `http`, `owner/repo` shorthand, and an https URL carrying
@@ -5517,11 +5538,11 @@ retired vendor-installer knobs (`PLURNK_SERVICE_SKILLS_CLI`, `_CLI_TIMEOUT_MS`,
 each naming what replaced it.
 
 A source's skills are the directories holding a `SKILL.md`, found by walking
-from its root without entering `.git` or a skill already found. A skill at the
-root is named by its frontmatter ({§agent-skills-name}); below the root the
-standard folder rule applies. A source with `plugin.json` at its root is an
+from its root without entering `.git` or a skill already found. A fetched skill at
+the root is named by its frontmatter ({§agent-skills-name}); local references and
+directories below the root use the standard folder rule. A source with `plugin.json` at its root is an
 Agent Plugin and is refused with 422 `source-is-plugin`, so its skills keep the
-plugin's identity. Installation copies the named skill beside its destination
+plugin's identity. Materialization copies the named skill beside its workspace-owned destination
 and renames it to `<root>/<name>`; a copy that holds a link out of the skill, or
 anything but files, directories, and inward links, is refused with 422
 `source-unsafe` and leaves nothing behind.
@@ -5541,7 +5562,7 @@ serialized URI address the same resource, not separate skill identities.
 | `READ (skill://<name>/SKILL.md)` | Original frontmatter and Markdown, unchanged; relative links remain relative to the source layout. |
 | `READ` / `FIND` below the authority | References, scripts, and assets retain their source paths and ordinary pattern, channel, byte, and multimodal semantics. Acquisition observes current source contents, including disappearance. |
 | ```` ```runtime (skill://<name>/scripts/program.ext) ```` | Ordinary resource execution and proposal policy; preserve the native file and its siblings under {§exec-source-temporary}. Discovery and READ never execute scripts. |
-| Model mutation | Read-only; no EDIT, SEND, or KILL of installed resources. Manage installation and enablement through ```` ```skills ````. |
+| Model mutation | Read-only; no EDIT, SEND, or KILL of skill resources. Manage definitions and enablement through ```` ```skills ````. |
 | Disable / unavailable / remove | Withdraw the authority from new resource access and discovery. Existing log receipts remain historical evidence. |
 | WORK / FORK | Use the same workspace Functionality, not copied definitions or resource caches. |
 
@@ -5563,15 +5584,15 @@ shared workspace visibility, and project/global shadowing use the ordinary Skill
 Service-provided skills are not installer targets; service definitions are
 disable-only under {§skills-remove}.
 
-§skills-remove **`remove` deletes the workspace definition's copy.** Before the
-coordinator forgets a workspace-origin skill definition the adapter deletes
-`<root>/<name>` at the definition's scope; a failed deletion rejects the
-mutation with `uninstall-failed`. A same-named skill at a lower-precedence root is then
-revealed with its inherited enabledness ({§functionality-coordinator}).
+§skills-remove **`remove` forgets the workspace binding, not the source.**
+It withdraws that definition and restores any inherited definition and enabledness
+({§functionality-coordinator}). External folders are never deleted. Fetched
+materializations remain workspace-owned operational state, reusable only for the
+same complete definition; they confer no availability without a definition.
 Service definitions are disable-only.
 
 §skills-hotload **Skills placed out of band are admitted at the next turn** ({§functionality-hotload}). The
-family keeps one signature of the three installed roots, source locations, and `SKILL.md` sources
+family keeps one signature of the discovered roots, configured definitions, source locations, and `SKILL.md` sources
 per resident workspace, read before a publication loads the skills it describes. Turn admission
 recomputes it under the workspace gate before packet assembly: a changed signature republishes the
 family, and an unchanged one republishes only when the skills the coordinator would publish differ
@@ -6054,9 +6075,7 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 | `skill-not-found` | 404 | '*source*' carries no Agent Skill named '*name*'. |
 | `skill-ambiguous` | 409 | '*source*' carries *count* skills named '*name*'. |
 | `alias-mismatch` | 400 | Alias '*alias*' must equal the skill name '*name*'. |
-| `scope-not-installable` | 400 | Service-provided skills can be enabled or disabled; adding a skill requires the project, plurnk, or global scope. |
 | `source-required` | 400 | Adding '*alias*' requires the source that provides it. |
-| `uninstall-failed` | 500 | Agent Skill '*name*' could not be removed from its *scope* root: *cause*. |
 | `workspace-not-found` | 404 | Workspace *id* does not exist. |
 | `state-not-json` | 400 | Worker module state is not JSON-serializable. |
 | `workspace-busy` | 409 | Workspace *id* is running an operation or another capability change. Recovery: Settle the current operation and retry the capability change. |
@@ -6070,7 +6089,7 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 | `scope-cancelled` | 499 | The worker scope was cancelled: *reason*. |
 | `range-not-satisfiable` | 416 | `Range <0,-1>` starts at 0, which is not a line; lines are numbered from 1. Recovery: Write `<1,-1>` to trim every line of the body; `KILL (log:///…/READ)` with no scope retires the item. |
 | `install-failed` | 500 | Agent Skill '*name*' could not be placed under *root*: *cause*. |
-| `skill-missing` | 404 | Agent Skill '*alias*' is not installed under its *scope* root, or is not provided by this service. |
+| `skill-missing` | 404 | Agent Skill '*alias*' is not provided by this service. |
 | `skill-invalid` | 422 | Agent Skill '*alias*' is not a valid standard skill: *cause*. |
 
 §pinned-wording-core **Pinned wording.** Verbatim sentences tests pin: each is contract, and a change here is a change of contract.

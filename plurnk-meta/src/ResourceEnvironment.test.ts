@@ -37,6 +37,27 @@ test("{§resource-environment} settings may precede definitions without manufact
     assert.deepEqual([...defined.definitions.keys()], ["imported"]);
 });
 
+test("{§resource-environment} a family's alias grammar preserves digit-leading and Unicode identities", () => {
+    const extended = { ...vocabulary, aliasPattern: /^(?:3d-tools|分析|café)$/u };
+    const environment = new ResourceEnvironment("PLURNK_FIXTURE_", extended, {
+        PLURNK_FIXTURE_ENABLED: "1",
+        PLURNK_FIXTURE_3d_tools: "three dimensions",
+        PLURNK_FIXTURE_café: "coffee",
+        PLURNK_FIXTURE_分析_ENABLED: "0",
+    });
+    assert.deepEqual([...environment.definitions.keys()], ["3d-tools", "café"]);
+    assert.equal(environment.enabled("分析"), false, "a Unicode control does not manufacture a definition");
+    assert.equal(environment.enabled("café"), true);
+    for (const suffix of ["CAFÉ", "3d-tools", "cafe", "分析__", "_分析"]) {
+        const key = `PLURNK_FIXTURE_${suffix}`;
+        assert.throws(() => new ResourceEnvironment("PLURNK_FIXTURE_", extended, {
+            PLURNK_FIXTURE_ENABLED: "1", [key]: "private-definition",
+        }), {
+            message: `${key} is not a declared control; use a lowercase resource alias with underscores for hyphens and uppercase setting names.`,
+        });
+    }
+});
+
 test("{§resource-environment} empty definitions are invalid even when disabled; absent definitions remain absent", () => {
     for (const enabled of ["0", "1"]) {
         for (const value of ["", " \t\r\n"]) {

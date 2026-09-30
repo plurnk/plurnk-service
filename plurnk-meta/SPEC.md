@@ -110,12 +110,13 @@ have one home for runtime and offline configuration checks.
 ### §resource-environment Named resource environment projection
 
 `ResourceEnvironment` reads one family's assembled environment without loading
-resources or changing configuration. Families declare their supported controls
-and per-resource settings; definition parsing and validation remain family-owned.
+resources or changing configuration. Families declare their supported controls,
+per-resource settings and, when required by their resource standard, an alias
+grammar. Definition parsing and validation remain family-owned.
 
 | Form | Meaning |
 |---|---|
-| `PLURNK_<FAMILY>_<alias>=<definition>` | One complete definition. Alias spelling is `[a-z][a-z0-9_]*`; `_` represents `-` in the resource name. |
+| `PLURNK_<FAMILY>_<alias>=<definition>` | One complete definition. `_` represents `-` in the resource name; validate the decoded name with the family's grammar, otherwise `[a-z][a-z0-9-]*`. |
 | `PLURNK_<FAMILY>_ENABLED=0\|1` | The family default, declared in its owning `.env.defaults`. |
 | `PLURNK_<FAMILY>_<alias>_ENABLED=0\|1` | This resource's independent override; it does not copy or modify the definition. |
 | Other uppercase controls/settings | Accepted only when the family declares them. Definition aliases are never case-folded into controls. |
@@ -128,6 +129,10 @@ Definition data remains verbatim for its owning schema; this reader neither merg
 fields nor includes those values in its diagnostics. Empty or whitespace-only
 definitions are invalid even when disabled. Absence leaves inheritance intact;
 `<alias>_ENABLED=0` suppresses activation without hiding the definition.
+Names are preserved without case folding or Unicode normalization. Standard skill
+names ({§agent-skills-name}) may lead with a digit or contain Unicode; native
+`.env` files and `env 'NAME=value' command` carry such keys even when a shell's
+assignment grammar cannot. Uppercase controls remain distinct from aliases.
 
 ### §error-detail-bound One diagnostic-preview bound
 

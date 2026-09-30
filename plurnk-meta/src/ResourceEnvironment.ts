@@ -14,19 +14,20 @@ export default class ResourceEnvironment {
 
     constructor(
         prefix: string,
-        vocabulary: { readonly controls: readonly string[]; readonly settings: readonly string[] },
+        vocabulary: { readonly controls: readonly string[]; readonly settings: readonly string[]; readonly aliasPattern?: RegExp },
         environment: Readonly<Record<string, string | undefined>> = process.env,
     ) {
         this.#defaultEnabled = Knob.flag(`${prefix}ENABLED`, environment);
         const controls = new Set(["ENABLED", ...vocabulary.controls]);
         const settings = new Set(["ENABLED", ...vocabulary.settings]);
+        const aliasPattern = vocabulary.aliasPattern ?? /^[a-z][a-z0-9-]*$/u;
         const definitions = new Map<string, EnvironmentValue>();
         for (const [key, value] of Object.entries(environment)) {
             if (value === undefined || !key.startsWith(prefix)) continue;
             const suffix = key.slice(prefix.length);
             if (controls.has(suffix)) continue;
-            const match = /^([a-z][a-z0-9_]*)(?:_([A-Z][A-Z0-9_]*))?$/u.exec(suffix);
-            if (match === null) {
+            const match = /^(.+?)(?:_([A-Z][A-Z0-9_]*))?$/u.exec(suffix);
+            if (match === null || /[A-Z-]/u.test(match[1]) || !aliasPattern.test(match[1].replaceAll("_", "-"))) {
                 throw new Error(`${key} is not a declared control; use a lowercase resource alias with underscores for hyphens and uppercase setting names.`);
             }
             const alias = match[1].replaceAll("_", "-");

@@ -2,10 +2,10 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/SkillDefinition.json",
     "title": "SkillDefinition",
-    "description": "One standard Agent Skill: its name, its root, and — for a skill a workspace added — the source it came from.",
+    "description": "One standard Agent Skill and its source. Source locations are inputs, not installation scopes.",
     "type": "object",
     "additionalProperties": false,
-    "required": ["name", "scope"],
+    "required": ["name"],
     "properties": {
         "name": {
             "description": "The standard Agent Skills name: Unicode lowercase or uncased letters and numbers joined by single hyphens, equal to the skill's directory name.",
@@ -13,12 +13,8 @@
             "pattern": "^(?!.*[\\p{Uppercase}\\p{Lt}])[\\p{L}\\p{N}]+(?:-[\\p{L}\\p{N}]+)*$",
             "maxLength": 64
         },
-        "scope": {
-            "description": "Root: project `.agents/skills`, plurnk `$XDG_CONFIG_HOME/plurnk/skills`, global `~/.agents/skills`, or a service-provided resource tree. Service skills are never added or removed.",
-            "enum": ["project", "plurnk", "global", "service"]
-        },
         "source": {
-            "description": "Where an added skill comes from: a git remote as a full https or ssh URL, a folder, a lone SKILL.md, or a zip or tar archive. Required to add a skill.",
+            "description": "A local skill folder or its SKILL.md (read in place), a Git remote, or an archive (materialized into workspace storage). Required for configured and added skills; omitted only for a host-provided tree.",
             "type": "string",
             "minLength": 1
         },

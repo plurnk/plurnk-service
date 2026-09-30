@@ -1571,10 +1571,11 @@ symbolic secret, optionally binding an issuer. Every secret is one complete `${N
 reference to the operator environment; `Validator.assertMcpOAuth` validates the shape.
 
 `SkillDefinition` is the one definition the workspace `skills` Functionality
-family accepts and persists: the standard `name`, its `scope`, and, for an added
-skill, its `source`, a git `ref`, and the `commit` the service recorded. `Validator.assertSkillDefinition` validates the wire shape;
+family accepts and persists: the standard `name`, its `source`, an optional git
+`ref`, and the `commit` the service recorded. Only host-provided trees omit
+`source`; installation scopes are not part of this shape. `Validator.assertSkillDefinition` validates the wire shape;
 the schema's name grammar is exposed as `SKILL_NAME` for loaders and discovery
-({§agent-skills-name}). Core owns installation truth and lifecycle
+({§agent-skills-name}). Core owns source resolution and lifecycle
 ({§skills-functionality}).
 
 `A2aAgentDefinition` is the one definition the Worker `a2a` Functionality
