@@ -1,4 +1,5 @@
 import type { A2AAgentDefinition as A2aAgentDefinition } from "@plurnk/plurnk-contracts";
+import { Knob } from "@plurnk/plurnk-meta";
 import { isAbsolute } from "node:path";
 import {
     A2A_PROTOCOL_VERSION,
@@ -212,14 +213,6 @@ const hostedProposals = (raw: string): HostedProposals => {
     return raw as HostedProposals;
 };
 
-const positiveInteger = (raw: string | undefined, field: string): number => {
-    const value = Number(raw);
-    if (!Number.isInteger(value) || value < 1) {
-        throw new Error(`${field} must be a positive integer; got ${JSON.stringify(raw)}.`);
-    }
-    return value;
-};
-
 const stringArray = (value: unknown, field: string): string[] => {
     if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
         throw new Error(`${field} must be an array of strings.`);
@@ -418,7 +411,7 @@ export const hostedAgentConfiguration = (
 };
 
 export const connectTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number =>
-    positiveInteger(environ.PLURNK_A2A_CONNECT_TIMEOUT, "PLURNK_A2A_CONNECT_TIMEOUT");
+    Knob.integer("PLURNK_A2A_CONNECT_TIMEOUT", 1, environ);
 
 export const requestTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number =>
-    positiveInteger(environ.PLURNK_A2A_REQUEST_TIMEOUT, "PLURNK_A2A_REQUEST_TIMEOUT");
+    Knob.integer("PLURNK_A2A_REQUEST_TIMEOUT", 1, environ);

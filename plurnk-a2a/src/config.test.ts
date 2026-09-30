@@ -216,13 +216,19 @@ test("hosted exposure is disabled without identity requirements and rejects unsu
     );
 });
 
-test("timeouts are positive integer configuration", () => {
+test("{§env-knob} A2A timeouts use the shared safe-integer reader", () => {
     assert.equal(connectTimeoutMs(floor), 30_000);
     assert.equal(requestTimeoutMs(floor), 86_400_000);
     assert.throws(
         () => connectTimeoutMs({ PLURNK_A2A_CONNECT_TIMEOUT: "0" }),
-        /positive integer/,
+        { message: 'PLURNK_A2A_CONNECT_TIMEOUT must be a safe integer of at least 1; got "0".' },
     );
+    assert.throws(() => requestTimeoutMs({ PLURNK_A2A_REQUEST_TIMEOUT: "9007199254740992" }), {
+        message: 'PLURNK_A2A_REQUEST_TIMEOUT must be a safe integer of at least 1; got "9007199254740992".',
+    });
+    assert.throws(() => connectTimeoutMs({}), {
+        message: "PLURNK_A2A_CONNECT_TIMEOUT is missing from the assembled environment floor.",
+    });
 });
 
 test("{§a2a-hosted-bearer} the token is the floor's to state: empty is open, a value is the bearer, absence is a broken floor", () => {

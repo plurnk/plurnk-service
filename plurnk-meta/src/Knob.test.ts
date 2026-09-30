@@ -54,3 +54,22 @@ test("{§env-knob} no reader accepts a value: a default cannot be written at a r
     assert.equal(Knob.percent.length, 1);
     assert.equal(Knob.choice.length, 2, "a name and a vocabulary, and nothing that could stand in for the panel");
 });
+
+test("{§env-knob} a supplied assembled environment is authoritative and never falls through to the process", () => {
+    withEnv("PLURNK_TEST_KNOB", "ambient", () => {
+        const env = Object.freeze({ PLURNK_TEST_KNOB: "7" });
+        assert.equal(Knob.text("PLURNK_TEST_KNOB", env), "7");
+        assert.equal(Knob.integer("PLURNK_TEST_KNOB", 1, env), 7);
+        assert.deepEqual(Knob.list("PLURNK_TEST_KNOB", { PLURNK_TEST_KNOB: "a,b" }), ["a", "b"]);
+        assert.equal(Knob.flag("PLURNK_TEST_KNOB", { PLURNK_TEST_KNOB: "0" }), false);
+        assert.equal(Knob.choice("PLURNK_TEST_KNOB", ["review", "accept"], { PLURNK_TEST_KNOB: "review" }), "review");
+        assert.equal(Knob.percent("PLURNK_TEST_KNOB", { PLURNK_TEST_KNOB: "75%" }), 0.75);
+        assert.throws(() => Knob.text("PLURNK_TEST_KNOB", {}), {
+            message: "PLURNK_TEST_KNOB is missing from the assembled environment floor.",
+        });
+        assert.throws(() => Knob.flag("PLURNK_TEST_KNOB", { PLURNK_TEST_KNOB: "true" }), {
+            message: 'PLURNK_TEST_KNOB must be 0 or 1; got "true".',
+        });
+        assert.equal(process.env.PLURNK_TEST_KNOB, "ambient", "validation does not write into the process environment");
+    });
+});
