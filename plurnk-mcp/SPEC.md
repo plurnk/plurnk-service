@@ -172,6 +172,11 @@ conformance stays a separate named gate, never folded into a matrix row.
 | stdio | Spawn one exact executable with an explicit argument array and no shell; newline-delimited JSON-RPC is the only stdout/stdin traffic; stderr is diagnostic; shutdown closes stdin, waits, then terminates if necessary |
 | Streamable HTTP | Send one POST per request or notification; accept JSON or SSE responses; close the response stream to cancel; modern connections never open the removed general GET stream |
 
+§mcp-endpoint-security **Configured MCP and registry endpoints accept HTTP or HTTPS,
+including private-network hosts.** Transport admission does not relax OAuth:
+the SDK retains token-endpoint TLS enforcement (with its loopback exception),
+issuer/resource binding, PKCE and redirect validation. No transport-policy bypass is supplied.
+
 §mcp-stdio-process-ownership A stdio connection owns the complete process group
 created for its server. Ordinary closure forwards stdin EOF and permits a
 bounded graceful exit; an expired shutdown bound or disappearance of the host
@@ -231,7 +236,7 @@ without changing durable state.
 | `PLURNK_MCP_EXPANDED` | JSON array of aliases whose tool invocations are surveyed at turn 0 ({§tools-resource-materialization}); absent or `[]` expands none |
 | `PLURNK_MCP_CONNECT_TIMEOUT` | Positive integer milliseconds for setup and each complete catalog walk |
 | `PLURNK_MCP_REQUEST_TIMEOUT` | Positive integer milliseconds for the whole operation |
-| `PLURNK_MCP_REGISTRY_URL` | Registry discovery endpoint; HTTPS or loopback HTTP; empty disables registry search |
+| `PLURNK_MCP_REGISTRY_URL` | HTTP(S) registry discovery endpoint; empty disables registry search |
 | `PLURNK_MCP_REGISTRY_LIMIT` | Positive integer result bound |
 
 Aliases and controls follow {§resource-environment}. Malformed definitions or controls fail

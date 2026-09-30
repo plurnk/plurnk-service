@@ -119,16 +119,14 @@ export const registrySettings = (environ: NodeJS.ProcessEnv = process.env): Regi
     const raw = environ.PLURNK_MCP_REGISTRY_URL;
     if (raw === undefined) throw new Error("PLURNK_MCP_REGISTRY_URL is missing from the assembled environment floor.");
     if (raw.length > 0) {
-        // The rule an MCP endpoint follows: HTTPS, or HTTP on a loopback host.
-        const refusal = `PLURNK_MCP_REGISTRY_URL must be an https URL, or http on a loopback host; got ${JSON.stringify(raw)}.`;
+        const refusal = "PLURNK_MCP_REGISTRY_URL must be an HTTP or HTTPS URL.";
         let url: URL;
         try {
             url = new URL(raw);
         } catch (cause) {
             throw new Error(refusal, { cause });
         }
-        const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
-        if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) throw new Error(refusal);
+        if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error(refusal);
     }
     const limit = Knob.integer("PLURNK_MCP_REGISTRY_LIMIT", 1, environ);
     return { url: raw.length === 0 ? null : raw, limit };

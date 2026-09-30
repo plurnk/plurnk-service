@@ -27,6 +27,8 @@ encode hyphens as underscores. The alias names both the model's executor
 and the server's resource scheme. A higher-precedence definition replaces
 the whole connection, including authentication; it does not patch fields.
 Declaring a server enables it unless an independent control disables it.
+Explicit HTTP(S) endpoints may use private-network hosts; OAuth retains its
+TLS and authorization requirements ({§mcp-endpoint-security}).
 
 | Transport | Behaviour |
 |---|---|

@@ -5,6 +5,7 @@ import {
     connectTimeoutMs,
     expandedServerNames,
     requestTimeoutMs,
+    registrySettings,
     retryDelayMs,
     retryPacing,
     serverSettings,
@@ -56,6 +57,19 @@ test("{§mcp-configuration} EXPANDED names server aliases", () => {
     assert.deepEqual(expandedServerNames({ ...floor, PLURNK_MCP_EXPANDED: '["forge","brave"]' }), ["brave", "forge"]);
     assert.throws(() => expandedServerNames({ ...floor, PLURNK_MCP_EXPANDED: '["Forge"]' }), /not an MCP server alias/u);
     assert.throws(() => expandedServerNames({ ...floor, PLURNK_MCP_EXPANDED: '["a","a"]' }), /duplicate MCP server 'a'/u);
+});
+
+test("{§mcp-configuration} explicit HTTP endpoints and registries need not be loopback addresses", () => {
+    for (const url of ["http://mcp.internal/mcp", "http://192.0.2.1:8080/mcp", "https://example.com/mcp"]) {
+        const definition = { name: "remote", type: "streamable-http", url };
+        assert.deepEqual(serviceDefinitions({ ...floor, PLURNK_MCP_remote: JSON.stringify(definition) }), [
+            { alias: "remote", definition, enabled: true },
+        ]);
+        assert.deepEqual(registrySettings({ ...floor, PLURNK_MCP_REGISTRY_URL: url, PLURNK_MCP_REGISTRY_LIMIT: "10" }), { url, limit: 10 });
+    }
+    for (const url of ["https://", "file:///tmp/registry", "ftp://registry.example/"]) {
+        assert.throws(() => registrySettings({ ...floor, PLURNK_MCP_REGISTRY_URL: url, PLURNK_MCP_REGISTRY_LIMIT: "10" }), /PLURNK_MCP_REGISTRY_URL must be an HTTP or HTTPS URL/u);
+    }
 });
 
 test("timeouts are required positive integers owned by .env.defaults", () => {

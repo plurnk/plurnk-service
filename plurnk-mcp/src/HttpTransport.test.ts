@@ -341,6 +341,46 @@ test("{§oauth-client-credentials} a declared issuer withholds the credential fr
     assert.equal(tokenPosts, 0, "the credential never reached a token endpoint");
 });
 
+test("{§mcp-endpoint-security} HTTP transport does not permit non-TLS OAuth token exchange", async (t) => {
+    let origin = "";
+    const served = await serveMcpHttp(t, handler(), (request) => {
+        const url = new URL(request.url);
+        if (url.pathname.includes("/.well-known/oauth-protected-resource")) {
+            return Response.json({ resource: `${origin}/mcp`, authorization_servers: [origin] });
+        }
+        if (url.pathname === "/.well-known/oauth-authorization-server") {
+            return Response.json({
+                issuer: origin,
+                authorization_endpoint: `${origin}/authorize`,
+                token_endpoint: "http://auth.example.invalid/token",
+                response_types_supported: ["code"],
+            });
+        }
+        return new Response("unauthorized", { status: 401 });
+    });
+    origin = new URL(served.url).origin;
+    const fetch = globalThis.fetch;
+    let externalRequests = 0;
+    t.mock.method(globalThis, "fetch", (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(input instanceof Request ? input.url : input);
+        if (url.origin !== origin) {
+            externalRequests += 1;
+            throw new Error("The OAuth client attempted an external request.");
+        }
+        return fetch(input, init);
+    });
+    const connection = new ServerConnection({ ...httpServer("tls-required", served.url), authorization: {
+        type: "client-credentials", clientId: "app", clientSecret: "${TEST_SECRET}", issuer: origin,
+    } }, { ...floor, TEST_SECRET: "fixture-secret" });
+    t.after(() => connection.close());
+    await assert.rejects(() => connection.connect(), (error: unknown) => {
+        assert.ok(error instanceof Error && error.cause instanceof Error);
+        assert.match(error.cause.message, /Refusing to send credentials to non-https token endpoint/u);
+        return true;
+    });
+    assert.equal(externalRequests, 0, "TLS validation refuses before any token request");
+});
+
 test("HTTP progress and stream cancellation settle the same request", async (t) => {
     let startWait = (): void => undefined;
     const waitStarted = new Promise<void>((resolve) => { startWait = resolve; });
