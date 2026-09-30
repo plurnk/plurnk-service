@@ -43,6 +43,7 @@ test("{§operator-config-real-model-profile} personal resources stay inspectable
     assert.deepEqual(serviceDefinitions({ ...personal, PLURNK_MCP_ENABLED: "0", ...disabled }), [{
         alias: "web-search", enabled: false,
         definition: { name: "web-search", type: "stdio", command: "node" },
+        provenance: { kind: "environment", source: "PLURNK_MCP_web_search" },
     }]);
     assert.equal(serviceDefinitions({ ...personal, PLURNK_MCP_ENABLED: "0", ...disabled, ...environment })[0].enabled, true);
     assert.equal(await readFile(path, "utf8"), source);
