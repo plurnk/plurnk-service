@@ -124,8 +124,8 @@ test("{§schedule-environment} environment definitions are the service baseline 
         PLURNK_SCHEDULE_nightly_ENABLED: "0",
     });
     assert.deepEqual(await adapter.available(), [
-        { alias: "heartbeat", definition: { ...HEARTBEAT, rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY" }, enabled: true },
-        { alias: "nightly", definition: { rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=DAILY", target: "worker://janitor", prompt: "Tidy." }, enabled: false },
+        { alias: "heartbeat", definition: { ...HEARTBEAT, rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY" }, enabled: true, provenance: { kind: "environment", source: "PLURNK_SCHEDULE_heartbeat" } },
+        { alias: "nightly", definition: { rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=DAILY", target: "worker://janitor", prompt: "Tidy." }, enabled: false, provenance: { kind: "environment", source: "PLURNK_SCHEDULE_nightly" } },
     ]);
     assert.throws(() => family(new FakeTime(), { PLURNK_SCHEDULE_broken: JSON.stringify({ ...HEARTBEAT, rule: "FREQ=DAILY;BOGUS=1" }), PLURNK_SCHEDULE_broken_ENABLED: "0" }), /PLURNK_SCHEDULE_broken: The rule is not a readable RFC 5545 recurrence: RRULE has no part named BOGUS/u);
     assert.throws(() => new ScheduleFunctionality({}), /TZ is unset/u);

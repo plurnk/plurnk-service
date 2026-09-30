@@ -36,8 +36,8 @@ test("{§a2a-environment-projection} environment definitions are the service bas
         PLURNK_A2A_scribe_ENABLED: "0",
     });
     assert.deepEqual(await family.available(), [
-        { alias: "researcher", definition: { name: "researcher", url: "https://agent.example", authorization: { type: "bearer", token: "${RESEARCHER_TOKEN}" } }, enabled: true },
-        { alias: "scribe", definition: { name: "scribe", url: "https://scribe.example", cardPath: "/cards/scribe.json" }, enabled: false },
+        { alias: "researcher", definition: { name: "researcher", url: "https://agent.example", authorization: { type: "bearer", token: "${RESEARCHER_TOKEN}" } }, enabled: true, provenance: { kind: "environment", source: "PLURNK_A2A_researcher" } },
+        { alias: "scribe", definition: { name: "scribe", url: "https://scribe.example", cardPath: "/cards/scribe.json" }, enabled: false, provenance: { kind: "environment", source: "PLURNK_A2A_scribe" } },
     ]);
 });
 
