@@ -282,8 +282,8 @@ test("{§mcp-definitions} configured servers are inspectable without installatio
         assert.equal(h.adapter().family, "mcp");
         assert.deepEqual([...h.actions.keys()].toSorted(), ["workspace.mcp.complete", "workspace.mcp.oauth.complete"]);
         assert.deepEqual(await h.adapter().available(h.identity(1)), [
-            { alias: "echo", definition: echo, enabled: true },
-            { alias: "remote", definition: remote, enabled: false },
+            { alias: "echo", definition: echo, enabled: true, provenance: { kind: "environment", source: "PLURNK_MCP_echo" } },
+            { alias: "remote", definition: remote, enabled: false, provenance: { kind: "environment", source: "PLURNK_MCP_remote" } },
         ]);
         assert.equal(h.snapshots.size, 0, "inspection does not prepare a connection");
     } finally { await h.module.stop(); }

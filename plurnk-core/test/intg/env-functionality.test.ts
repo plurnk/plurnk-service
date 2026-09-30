@@ -81,6 +81,8 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         assert.equal(await stateOf(alice, "PATH"), "service:active", "an uppercase name is an alias for this family");
         assert.equal(await stateOf(alice, "ENV_WITNESS"), "service:active");
         assert.equal(valueOf((await listed(alice)).find((entry) => entry.alias === "ENV_WITNESS")?.definition), "ambient");
+        assert.deepEqual((await listed(alice)).find((entry) => entry.alias === "ENV_WITNESS")?.provenance,
+            { kind: "environment", source: "ENV_WITNESS" });
 
         // add → worker origin, active, for alice alone.
         const added = await invoke<FunctionalityMutationResult>(alice, "add", { alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } });
@@ -104,9 +106,12 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         assert.equal(await refusal(() => invoke(alice, "remove", { alias: "ENV_WITNESS" })), "https://problems.plurnk.xyz/functionality/alias-service-owned");
         const shadow = await invoke<FunctionalityMutationResult>(alice, "add", { alias: "ENV_WITNESS", definition: { value: "mine" } });
         assert.equal(shadow.definition?.origin, "worker");
+        assert.equal(shadow.definition?.provenance, undefined, "a worker's override is not the ambient configuration");
         assert.equal(valueOf(shadow.definition?.definition), "mine");
         assert.equal((await invoke<FunctionalityMutationResult>(alice, "remove", { alias: "ENV_WITNESS" })).removed, true);
         assert.equal(await stateOf(alice, "ENV_WITNESS"), "service:active", "removal restores inherited enabledness");
+        assert.deepEqual((await listed(alice)).find((entry) => entry.alias === "ENV_WITNESS")?.provenance,
+            { kind: "environment", source: "ENV_WITNESS" });
         assert.equal(valueOf((await listed(alice)).find((entry) => entry.alias === "ENV_WITNESS")?.definition), "ambient");
         await invoke(alice, "disable", { alias: "ENV_WITNESS" });
 

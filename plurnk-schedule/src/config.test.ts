@@ -9,6 +9,7 @@ test("{§operator-config-offline-validation} schedule validation normalizes rule
     const checked = validateConfiguration(env, Date.UTC(2026, 0, 1));
     assert.equal(checked.get("heartbeat")?.definition.rule, "DTSTART;TZID=UTC:20260101T000001\nRRULE:FREQ=HOURLY");
     assert.equal(checked.get("heartbeat")?.enabled, true);
+    assert.deepEqual(checked.get("heartbeat")?.provenance, { kind: "environment", source: "PLURNK_SCHEDULE_heartbeat" });
     for (const [key, value] of Object.entries({
         TZ: "Not/A_Zone", PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "0", PLURNK_SCHEDULE_future_ENABLED: "bad",
         PLURNK_SCHEDULE_heartbeat: '{"rule":"FREQ=NEVER","target":"worker://bot","prompt":"hello"}',
@@ -26,7 +27,7 @@ test("{§schedule-environment} complete declarations sort by canonical alias and
         UNRELATED: "1",
     });
     assert.deepEqual([...definitions.keys()], ["heart-beat", "nightly"]);
-    assert.deepEqual(definitions.get("heart-beat"), { definition: { rule: "FREQ=HOURLY", target: "worker://bot", prompt: "Check in." }, enabled: true });
+    assert.deepEqual(definitions.get("heart-beat"), { definition: { rule: "FREQ=HOURLY", target: "worker://bot", prompt: "Check in." }, enabled: true, provenance: { kind: "environment", source: "PLURNK_SCHEDULE_heart_beat" } });
     assert.deepEqual(definitions.get("nightly")?.definition.policy, { proposals: "accept" });
     assert.equal(definitions.get("nightly")?.enabled, false, "disabling retains the complete definition");
     assert.deepEqual([...serviceDefinitions({ PLURNK_SCHEDULE_ENABLED: "1" })], []);

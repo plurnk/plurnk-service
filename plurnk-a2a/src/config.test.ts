@@ -34,12 +34,13 @@ test("{§a2a-environment-projection} whole definitions preserve discovery target
         authorization: { type: "bearer", token: "${RESEARCH_TOKEN}" },
     };
     const env = { ...floor, PLURNK_A2A_code_search: JSON.stringify(definition), PLURNK_A2A_code_search_ENABLED: "0" };
-    assert.deepEqual(outboundDefinitions(env), [{ alias: "code-search", definition, enabled: false }]);
-    assert.deepEqual(outboundDefinitions({ ...env, PLURNK_A2A_code_search_ENABLED: "1" }), [{ alias: "code-search", definition, enabled: true }]);
+    const provenance = { kind: "environment", source: "PLURNK_A2A_code_search" };
+    assert.deepEqual(outboundDefinitions(env), [{ alias: "code-search", definition, enabled: false, provenance }]);
+    assert.deepEqual(outboundDefinitions({ ...env, PLURNK_A2A_code_search_ENABLED: "1" }), [{ alias: "code-search", definition, enabled: true, provenance }]);
     assert.deepEqual(outboundDefinitions(floor), []);
     const replacement = { name: "code-search", url: "https://other.example" };
     assert.deepEqual(outboundDefinitions({ ...env, PLURNK_A2A_code_search: JSON.stringify(replacement) }), [
-        { alias: "code-search", definition: replacement, enabled: false },
+        { alias: "code-search", definition: replacement, enabled: false, provenance },
     ], "a replacement cannot inherit headers, authorization or a card path from the old endpoint");
 });
 

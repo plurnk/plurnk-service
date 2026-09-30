@@ -80,7 +80,10 @@ export default class EnvFunctionality implements FunctionalityAdapter {
     // would be theatre, and would make `list` lie about the environment its commands see.
     async available(_identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]> {
         return Object.entries(ExecEnv.scoped())
-            .map(([alias, value]) => ({ alias, definition: { value: value ?? "" }, enabled: true }))
+            .map(([alias, value]) => ({
+                alias, definition: { value: value ?? "" }, enabled: true,
+                provenance: { kind: "environment", source: alias },
+            }))
             .toSorted((left, right) => left.alias.localeCompare(right.alias));
     }
 

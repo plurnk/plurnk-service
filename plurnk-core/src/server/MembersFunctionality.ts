@@ -39,7 +39,6 @@ const sampleSize = (): number => Knob.integer("PLURNK_SERVICE_MEMBERS_SAMPLE", 0
 
 type MembersProvenance = {
     readonly kind: "service-configuration" | "client-action" | "model-proposal";
-    readonly source?: string;
 };
 type MembersDefinition = {
     readonly glob: string;
@@ -75,7 +74,6 @@ const DEFINITION: JsonSchema = Object.freeze({
             required: ["kind"],
             properties: {
                 kind: { enum: ["service-configuration", "client-action", "model-proposal"] },
-                source: { type: "string" },
             },
         },
     },
@@ -109,8 +107,9 @@ export const serviceMembers = (environ: NodeJS.ProcessEnv = process.env): Functi
         if (patternOf(glob).length === 0) throw new Error(`${key} names no pattern.`);
         return {
             alias,
-            definition: { glob, provenance: { kind: "service-configuration", source: key } } satisfies MembersDefinition,
+            definition: { glob, provenance: { kind: "service-configuration" } } satisfies MembersDefinition,
             enabled: environment.enabled(alias),
+            provenance: { kind: "environment", source: key },
         };
     });
 };
@@ -155,7 +154,6 @@ const membersDocument = (alias: string, definition: MembersDefinition, resolutio
     const noun = resolution.effect === "exclude" ? "member" : "file";
     const ignored = resolution.ignored > 0 ? ` (${count(resolution.ignored, "match")} ignored)` : "";
     const kind = definition.provenance?.kind ?? "client-action";
-    const source = definition.provenance?.source === undefined ? "" : ` (${definition.provenance.source})`;
     const listed = resolution.files.map((file) => `\`${file}\``).join(", ") + (resolution.matched > resolution.files.length ? ", …" : "");
     return {
         pathname: `/members/${alias}.md`,
@@ -170,7 +168,7 @@ const membersDocument = (alias: string, definition: MembersDefinition, resolutio
             "| --- | --- |",
             `| definition | \`${JSON.stringify({ glob: definition.glob })}\` |`,
             `| origin | ${kind === "service-configuration" ? "service" : "workspace"} |`,
-            `| provenance | ${kind}${source} |`,
+            `| provenance | ${kind} |`,
             ...(resolution.files.length === 0 ? [] : ["", `${resolution.effect === "exclude" ? "Excluded" : "Included"}: ${listed}`]),
             "",
         ].join("\n"),

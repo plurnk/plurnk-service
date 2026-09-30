@@ -1,4 +1,4 @@
-import type { A2AAgentDefinition as A2aAgentDefinition } from "@plurnk/plurnk-contracts";
+import type { A2AAgentDefinition as A2aAgentDefinition, FunctionalityServiceDefinition } from "@plurnk/plurnk-contracts";
 import { Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import { isAbsolute } from "node:path";
 import { readDefinition } from "./definition.ts";
@@ -148,7 +148,7 @@ const skills = (raw: string | undefined): AgentSkill[] => {
 
 export const outboundDefinitions = (
     environ: NodeJS.ProcessEnv = process.env,
-): Array<{ alias: string; definition: OutboundAgentDefinition; enabled: boolean }> => {
+): Array<FunctionalityServiceDefinition & { definition: OutboundAgentDefinition }> => {
     const environment = parseEnvironment(environ);
     return [...environment.definitions].map(([alias, { key, value }]) => {
         let definition: OutboundAgentDefinition;
@@ -158,7 +158,7 @@ export const outboundDefinitions = (
             throw new Error(`${key} must be an A2A agent definition.`, { cause });
         }
         if (definition.name !== alias) throw new Error(`${key} must define name '${alias}'.`);
-        return { alias, definition, enabled: environment.enabled(alias) };
+        return { alias, definition, enabled: environment.enabled(alias), provenance: { kind: "environment", source: key } };
     });
 };
 

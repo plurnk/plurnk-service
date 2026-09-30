@@ -418,7 +418,7 @@ export default class Module {
         });
     }
 
-    async #available(): Promise<Array<{ alias: string; definition: McpServerDefinition; enabled: boolean }>> {
+    async #available(): Promise<ReturnType<typeof serviceDefinitions>> {
         return serviceDefinitions(this.#env);
     }
 

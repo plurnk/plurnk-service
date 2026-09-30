@@ -42,6 +42,8 @@ test("{§resource-environment} disabled definitions stay inspectable through wor
                 { alias: "other", state: "disabled", origin: "service" },
             ], family);
             assert.deepEqual(result.definitions[0]?.definition, definitions[family], "disabling preserves the complete inspectable definition");
+            assert.deepEqual(result.definitions[0]?.provenance,
+                { kind: "environment", source: `PLURNK_${family.toUpperCase()}_other` }, "the adapter carries the source through validation and projection");
             await assert.rejects(() => invoke(family, "enable", { alias: "absent" }), (error: unknown) => {
                 assert.ok(error instanceof OperationFailureError);
                 const { problem } = error.result;

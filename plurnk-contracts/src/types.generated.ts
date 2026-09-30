@@ -679,11 +679,16 @@ summary?: string
 definition: {
 
 }
-provenance: {
+provenance: FunctionalityProvenance
+}
+/**
+ * The input supplying a definition or discovery candidate, separate from ownership, preparation and authority.
+ */
+
+export interface FunctionalityProvenance {
 kind: string
 source: string
 reference?: string
-}
 }
 
 export type FunctionalityDefinitionState = {
@@ -699,6 +704,7 @@ state: ("disabled" | "dormant" | "active" | "unavailable" | "authorization-requi
 definition?: {
 
 }
+provenance?: FunctionalityProvenance
 /**
  * The Worker this entry was copied from when this Worker was created (WORK or FORK), preserved across generations until this Worker changes the entry. Absent for an entry this Worker set itself. Worker-scoped families only.
  */
@@ -716,7 +722,7 @@ url: string
 }
 
 /**
- * PLURNK operation failure using RFC 9457 Problem Details. Extension members are permitted so an owning boundary can add structured causal and recovery facts without inventing a second error envelope.
+ * The winning configuration input, when supplied by a source reader. Independent of origin and readiness; absent for locally owned definitions or host-provided resources without a configuration input.
  */
 
 export interface FunctionalityDiscoverQuery {
@@ -743,7 +749,7 @@ family: string
 definitions: FunctionalityDefinitionState[]
 }
 /**
- * PLURNK operation failure using RFC 9457 Problem Details. Extension members are permitted so an owning boundary can add structured causal and recovery facts without inventing a second error envelope.
+ * The winning configuration input, when supplied by a source reader. Independent of origin and readiness; absent for locally owned definitions or host-provided resources without a configuration input.
  */
 
 export interface FunctionalityMutationResult {
@@ -754,7 +760,7 @@ definition?: FunctionalityDefinitionState
 removed?: true
 }
 /**
- * PLURNK operation failure using RFC 9457 Problem Details. Extension members are permitted so an owning boundary can add structured causal and recovery facts without inventing a second error envelope.
+ * The winning configuration input, when supplied by a source reader. Independent of origin and readiness; absent for locally owned definitions or host-provided resources without a configuration input.
  */
 
 export interface FunctionalityPreparationActivity {

@@ -8,6 +8,7 @@ import Validator, {
     InvalidClientDisplayCapabilitiesError,
     InvalidCapabilityDescriptorError,
     InvalidCapabilityPolicyError,
+    InvalidFunctionalityListResultError,
     InvalidLoopPolicyError,
     InvalidMcpServerDefinitionError,
     InvalidMcpOAuthError,
@@ -26,6 +27,24 @@ import Validator, {
 } from "./Validator.ts";
 import Problems from "./Problems.ts";
 import type { CapabilityPolicy, ClientDisplayCapabilities, McpOAuth, McpServerDefinition, ModelCatalogPage, RangeExtent } from "./types.generated.ts";
+
+test("{§configuration-provenance} lifecycle and discovery share source identifiers independently of ownership and readiness", () => {
+    const provenance = { kind: "environment", source: "PLURNK_MCP_code_search" };
+    for (const state of ["active", "dormant", "disabled", "unavailable", "authorization-required"]) {
+        const definition = {
+            alias: "code-search", origin: "service", state, provenance,
+            ...(state === "unavailable" ? { problem: Problems.create("fixture", "offline", 503, "Unavailable.") } : {}),
+            ...(state === "authorization-required" ? { authorization: { url: "https://example.test/login" } } : {}),
+        };
+        const result = { family: "mcp", definitions: [definition] };
+        assert.deepEqual(Validator.assertFunctionalityListResult(result), result);
+        for (const invalid of [{ kind: "environment" }, { source: "" }, { ...provenance, value: "secret-value" }]) {
+            assert.throws(() => Validator.assertFunctionalityListResult({ ...result, definitions: [{ ...definition, provenance: invalid }] }), InvalidFunctionalityListResultError);
+        }
+    }
+    const discovery = { family: "mcp", candidates: [{ definition: {}, provenance }] };
+    assert.deepEqual(Validator.assertFunctionalityDiscoverResult(discovery), discovery);
+});
 
 test("{§agent-skills-name}: wire definitions admit Unicode and digit-leading names with exact identity", () => {
     for (const name of ["3d-models", "café", "分析", "𐐨-demo", "ⅳ", "ｓｋｉｌｌ", "𐐨".repeat(64)]) {

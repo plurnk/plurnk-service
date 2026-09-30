@@ -13,6 +13,7 @@ import {
     type FunctionalityOutcome,
     type FunctionalityPreparation,
     type FunctionalityPrepared,
+    type FunctionalityServiceDefinition,
     type JsonSchema,
     type ProblemDetails,
     type WorkspaceCapabilityIdentity,
@@ -97,7 +98,7 @@ export default class ScheduleFunctionality {
     readonly #report: (message: string, cause: unknown) => void;
     // {§schedule-environment} — the service's rules, canonical from construction: a rule without a
     // DTSTART starts when it is read, and a service rule is read once, when the daemon starts.
-    readonly #service: ReadonlyMap<string, { readonly definition: ScheduleDefinition; readonly enabled: boolean }>;
+    readonly #service: ReturnType<typeof validateConfiguration>;
     #handle: FunctionalityFamilyHandle | null = null;
     #environment: EnvironmentSeam | null = null;
 
@@ -122,8 +123,8 @@ export default class ScheduleFunctionality {
         return this.#scheduler;
     }
 
-    async available(): Promise<readonly { alias: string; definition: object; enabled: boolean }[]> {
-        return [...this.#service].map(([alias, { definition, enabled }]) => ({ alias, definition, enabled }));
+    async available(): Promise<readonly FunctionalityServiceDefinition[]> {
+        return [...this.#service].map(([alias, entry]) => ({ alias, ...entry }));
     }
 
     // {§schedule-clock} — the one place the time is told: on demand, beside the rule it reads.

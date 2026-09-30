@@ -1,6 +1,6 @@
 // {§mcp-configuration} Definitions and independent controls share the resource environment dialect.
 import { Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
-import type { McpServerDefinition } from "@plurnk/plurnk-contracts";
+import type { FunctionalityServiceDefinition, McpServerDefinition } from "@plurnk/plurnk-contracts";
 import { readDefinition } from "./definition.ts";
 
 export type { McpAuthorization } from "@plurnk/plurnk-contracts";
@@ -59,7 +59,7 @@ export const serverSettings = (alias: string, environ: NodeJS.ProcessEnv = proce
     tools: configuration(environ).tools.get(alias) ?? null,
 });
 
-export const serviceDefinitions = (environ: NodeJS.ProcessEnv = process.env): Array<{ alias: string; definition: McpServerDefinition; enabled: boolean }> => {
+export const serviceDefinitions = (environ: NodeJS.ProcessEnv = process.env): Array<FunctionalityServiceDefinition & { definition: McpServerDefinition }> => {
     const { resources } = configuration(environ);
     return [...resources.definitions].map(([alias, { key, value }]) => {
         let definition: McpServerDefinition;
@@ -69,7 +69,7 @@ export const serviceDefinitions = (environ: NodeJS.ProcessEnv = process.env): Ar
             throw new Error(`${key} must be an MCP server definition.`, { cause });
         }
         if (definition.name !== alias) throw new Error(`${key} must define name '${alias}'.`);
-        return { alias, definition, enabled: resources.enabled(alias) };
+        return { alias, definition, enabled: resources.enabled(alias), provenance: { kind: "environment", source: key } };
     });
 };
 

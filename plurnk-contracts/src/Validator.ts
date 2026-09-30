@@ -35,6 +35,7 @@ import effortSchema from "../schema/Effort.json" with { type: "json" };
 import modelCatalogPageSchema from "../schema/ModelCatalogPage.json" with { type: "json" };
 import modelCatalogQuerySchema from "../schema/ModelCatalogQuery.json" with { type: "json" };
 import functionalityCandidateSchema from "../schema/FunctionalityCandidate.json" with { type: "json" };
+import functionalityProvenanceSchema from "../schema/FunctionalityProvenance.json" with { type: "json" };
 import functionalityDiscoverQuerySchema from "../schema/FunctionalityDiscoverQuery.json" with { type: "json" };
 import functionalityDiscoverResultSchema from "../schema/FunctionalityDiscoverResult.json" with { type: "json" };
 import functionalityDefinitionStateSchema from "../schema/FunctionalityDefinitionState.json" with { type: "json" };
@@ -187,15 +188,15 @@ export default class Validator {
     );
     static #functionalityListResult = Validator.#withRefs(
         functionalityListResultSchema,
-        [functionalityDefinitionStateSchema, problemDetailsSchema],
+        [functionalityDefinitionStateSchema, functionalityProvenanceSchema, problemDetailsSchema],
     );
     static #functionalityDiscoverResult = Validator.#withRefs(
         functionalityDiscoverResultSchema,
-        [functionalityCandidateSchema],
+        [functionalityCandidateSchema, functionalityProvenanceSchema],
     );
     static #functionalityMutationResult = Validator.#withRefs(
         functionalityMutationResultSchema,
-        [functionalityDefinitionStateSchema, problemDetailsSchema],
+        [functionalityDefinitionStateSchema, functionalityProvenanceSchema, problemDetailsSchema],
     );
     static #modelCatalogQuery = new CfValidator(
         modelCatalogQuerySchema as unknown as Schema,
@@ -228,6 +229,7 @@ export default class Validator {
         clientInteractionResolutionSchema,
         entryReadResultSchema,
         functionalityCandidateSchema,
+        functionalityProvenanceSchema,
         functionalityDefinitionStateSchema,
         functionalityDiscoverQuerySchema,
         functionalityDiscoverResultSchema,

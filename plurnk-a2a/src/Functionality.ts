@@ -16,6 +16,7 @@ import {
     type FunctionalityOutcome,
     type FunctionalityPreparation,
     type FunctionalityPrepared,
+    type FunctionalityServiceDefinition,
     type JsonSchema,
     type ProblemDetails,
     type WorkspaceCapabilityIdentity,
@@ -162,7 +163,7 @@ export default class A2aFunctionality {
         return null;
     }
 
-    async available(): Promise<readonly { alias: string; definition: object; enabled: boolean }[]> {
+    async available(): Promise<readonly FunctionalityServiceDefinition[]> {
         return outboundDefinitions(this.#env);
     }
 

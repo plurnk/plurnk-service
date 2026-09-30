@@ -221,6 +221,8 @@ try {
         PLURNK_SERVICE_DB_PATH: db,
         PLURNK_SERVICE_MAX_TURNS: "8",
         PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
+        PLURNK_MCP_sourcecheck: JSON.stringify({ name: "sourcecheck", type: "stdio", command: "node" }),
+        PLURNK_MCP_sourcecheck_ENABLED: "0",
         ...fixture.env,
     };
     // {§daemon-launch} — the installed executable through the service's own launcher; the port is
@@ -274,6 +276,12 @@ try {
         throw new Error(`installed CLI returned the wrong semantic record\n${cli.stdout}`);
     }
     process.stdout.write("installed one-shot CLI journey GREEN: world + Turn 0 + delivered response + observed completion\n");
+    const inspected = await runClient(process.execPath, [clientBin, "--workspace", "installed-cli", "mcp"], {
+        cwd: install, env: clientEnv, timeout: 30_000,
+    });
+    if (!/sourcecheck\s+disabled\s+stdio\s+node\s+source=PLURNK_MCP_sourcecheck/u.test(inspected.stdout)) {
+        throw new Error(`installed CLI did not render the winning configuration input: ${inspected.stdout}`);
+    }
 
     tui = spawnInstalledTui(clientBin, [
         "--workspace", "installed-tui",
@@ -284,7 +292,8 @@ try {
     ], clientEnv);
     await tui.waitFor(/workspace: installed-tui/);
     tui.write("/mcp\r");
-    await tui.waitFor(/MCP servers: none/);
+    await tui.waitFor(/sourcecheck\s+disabled\s+stdio\s+node/);
+    await tui.waitFor(/source=PLURNK_MCP_sourcecheck/);
     tui.write("/skills\r");
     await tui.waitFor(/plurnk\s+dormant/);
     tui.write("/a2a\r");
@@ -366,6 +375,13 @@ try {
         const listed = await terminal.rpc(`workspace.${family}.list`);
         if (!Array.isArray(listed.definitions)) {
             throw new Error(`workspace.${family}.list returned no Functionality definitions`);
+        }
+        if (family === "mcp") {
+            const server = listed.definitions.find(({ alias }) => alias === "sourcecheck");
+            if (server?.origin !== "service" || server.state !== "disabled"
+                || server.provenance?.kind !== "environment" || server.provenance.source !== "PLURNK_MCP_sourcecheck") {
+                throw new Error(`the configured server lost its source, ownership, or disabled state: ${JSON.stringify(server)}`);
+            }
         }
         if (family === "skills") {
             const skill = listed.definitions.find(({ alias }) => alias === "plurnk");

@@ -1,0 +1,14 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/FunctionalityProvenance.json",
+    "title": "FunctionalityProvenance",
+    "description": "The input supplying a definition or discovery candidate, separate from ownership, preparation and authority.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["kind", "source"],
+    "properties": {
+        "kind": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "reference": { "type": "string", "minLength": 1 }
+    }
+}

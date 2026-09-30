@@ -41,6 +41,7 @@ test("{§skills-functionality} local additions are live, workspace-owned referen
         }) as FunctionalityMutationResult;
         assert.equal(added.status, 201);
         assert.equal(added.definition?.origin, "workspace");
+        assert.equal(added.definition?.provenance, undefined, "a local definition does not borrow its baseline's source");
         assert.deepEqual(added.definition?.definition, { name: "review", source: sources[index + 1] });
         assert.equal((await read(workspace)).content, `SOURCE_${index + 1}`);
     }
@@ -62,6 +63,8 @@ test("{§skills-functionality} local additions are live, workspace-owned referen
     }
     const listed = await action(alice.workspaceId, "list") as FunctionalityListResult;
     assert.equal(listed.definitions.find(({ alias }) => alias === "review")?.origin, "service");
+    assert.deepEqual(listed.definitions.find(({ alias }) => alias === "review")?.provenance,
+        { kind: "file", source: join(sources[0], "SKILL.md") });
 });
 
 test("{§skills-configuration} environment definitions replace standard roots; independent controls and workspace removal preserve inheritance", async (t) => {
@@ -109,6 +112,8 @@ test("{§skills-configuration} environment definitions replace standard roots; i
     });
     const before = await list();
     assert.deepEqual(before.find(({ alias }) => alias === "review")?.definition, { name: "review", source: join(sources[2], "review") });
+    assert.deepEqual(before.find(({ alias }) => alias === "review")?.provenance,
+        { kind: "environment", source: "PLURNK_SKILLS_review" });
     assert.equal(before.find(({ alias }) => alias === "plurnk")?.state, "disabled", "family default applies independently to host-provided trees");
     assert.ok(!before.some(({ alias }) => alias === "absent"), "a future control does not invent a skill");
     assert.match(String((await read("review")).content), /Layer 2/u);
@@ -125,7 +130,12 @@ test("{§skills-configuration} environment definitions replace standard roots; i
     assert.match(String((await read("review")).content), /Layer 3/u);
     await action("remove", { alias: "review" });
     assert.equal((await list()).find(({ alias }) => alias === "review")?.state, "disabled", "remove restores inherited disabledness too");
+    assert.deepEqual((await list()).find(({ alias }) => alias === "review")?.provenance,
+        { kind: "environment", source: "PLURNK_SKILLS_review" }, "disabled entries remain traceable");
     assert.equal((await read("review")).status, 404);
+    delete process.env.PLURNK_SKILLS_review;
+    assert.deepEqual((await list()).find(({ alias }) => alias === "review")?.provenance,
+        { kind: "file", source: join(sources[1], "review", "SKILL.md") }, "the next winning source replaces environment provenance");
     for (const [index, source] of sources.entries()) {
         assert.equal(await readFile(join(source, "review", "SKILL.md"), "utf8"), document(`Layer ${index}`));
     }

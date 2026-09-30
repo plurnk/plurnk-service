@@ -241,11 +241,24 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
 
     async available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]> {
         const installedSkills = await this.#scan(await this.#projectRoot(identity.workspaceId));
-        const definitions = new Map<string, SkillDefinition>([...(await this.#provided()).keys()].map((name) => [name, { name }]));
-        for (const { name, dir } of installedSkills.values()) definitions.set(name, { name, source: dir });
-        for (const [name, definition] of serviceSkills()) definitions.set(name, definition);
         const settings = environment();
-        return [...definitions].map(([alias, definition]) => ({ alias, definition, enabled: settings.enabled(alias) }));
+        const definitions = new Map<string, FunctionalityServiceDefinition>();
+        for (const name of (await this.#provided()).keys()) {
+            definitions.set(name, { alias: name, definition: { name }, enabled: settings.enabled(name) });
+        }
+        for (const { name, dir, file } of installedSkills.values()) {
+            definitions.set(name, {
+                alias: name, definition: { name, source: dir }, enabled: settings.enabled(name),
+                provenance: { kind: "file", source: file },
+            });
+        }
+        for (const [name, definition] of serviceSkills()) {
+            definitions.set(name, {
+                alias: name, definition, enabled: settings.enabled(name),
+                provenance: { kind: "environment", source: settings.definitions.get(name)!.key },
+            });
+        }
+        return [...definitions.values()];
     }
 
     async discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]> {

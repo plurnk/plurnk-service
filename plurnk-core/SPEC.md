@@ -4147,7 +4147,7 @@ Retryability describes the actual failed condition, not its numeric status.
 
 | Verb | Common contract |
 |---|---|
-| `list` | Project definitions, origin, enabledness, and published preparation outcome: disabled, dormant, active, unavailable with its Problem, or authorization-required. No credential values. |
+| `list` | Project definitions, ownership (`origin`), winning configuration source (`provenance`), enabledness, and published preparation outcome: disabled, dormant, active, unavailable with its Problem, or authorization-required. No credential values. |
 | `discover` | Return inert candidates. Never install, persist, enable, or execute them. |
 | `add` | Admit and persist a local definition, prepare it, and enable it atomically. It may override an inherited definition. Reapplying the same local definition enables it idempotently (200); a different local definition for that alias fails 409 without replacing it. |
 | `enable` | Publish an available definition; retry preparation if unavailable. |
@@ -4166,12 +4166,29 @@ overlays apply the same boundary:
 | Independently declared behavior control | Resolve its own value through its cascade. An enabledness override does not copy or patch the definition it controls. |
 | Local definition removal | Remove this scope's definition and enabledness override. Restore the current inherited definition and enabledness, or leave no entry if none exists. Do not persist a replacement or disabling mask; subsequent inherited changes remain effective. Restoration follows the same preparation and publication failure policy as other mutations ({§functionality-publication}). |
 
+§configuration-provenance **Inspection names the winning definition's input, not
+its owner or runtime.** `provenance` uses the same `{kind, source, reference?}`
+shape as discovery candidates. Source readers contribute it; the coordinator
+preserves it through inheritance, enabledness changes, and every readiness state.
+
+| Definition source | Inspection |
+|---|---|
+| Assembled environment | `kind: environment`, `source`: exact definition key; never its value or an inferred dotenv filename. |
+| Discovered skill root | `kind: file`, `source`: the winning `SKILL.md` path. |
+| Local workspace/worker definition or host-provided tree with no configuration input | No fabricated provenance; `origin` identifies ownership and the family definition describes the resource. |
+| Local override | Replaces inherited provenance with the local definition; removal restores the current inherited provenance. |
+
+Only the winning definition's source is reported. Shadowed definitions, secrets,
+and environment-file loading history are not tracked. Source metadata is derived
+on inspection, not persisted in the local overlay or used as runtime identity.
+
 §functionality-inspection **Inspection is not demand.** `list` and `discover` do not
 acquire residency, join preparation, reconcile worker documents, or extend warm
 retention. An enabled definition no resident publication has prepared is `dormant`: every one while
-the family is cold, and one that arrived out of band until the next turn publishes it
+the family is cold, and one that arrived or changed out of band until the next turn publishes it
 ({§functionality-hotload}). During replacement the preceding publication remains authoritative;
-the candidate is never presented as active. Cooling leaves durable definitions
+the candidate is never presented as active. A published outcome belongs to the
+complete definition prepared, not merely its alias. Cooling leaves durable definitions
 inspectable. Mutations and protocol continuations retain their residency rules.
 
 §functionality-preparation-visibility **Preparation is workspace activity, not
@@ -5409,8 +5426,10 @@ enable | disable | remove`, `workspace.members.<verb>` for the client,
 ```` ```members (<verb>) ```` for the model — for what the model may see, exactly as they do for skills and
 MCP servers. A definition is one gitignore-style glob, `{ glob }`, relative to the project
 root; a leading `!` excludes matching members, and an exclusion wins over every inclusion.
-The coordinator's provenance (`service-configuration`, `client-action`, `model-proposal`)
-rides the definition; its alias is a short name, suggested from the glob. `list` shows each
+Admission provenance (`service-configuration`, `client-action`, `model-proposal`)
+rides the definition to enforce {§members-model-scope}; configuration-source
+provenance belongs to the shared inspection projection ({§configuration-provenance}).
+The alias is a short name, suggested from the glob. `list` shows each
 definition with what it resolved to — `include` or `exclude`, the pattern, the members it
 admits or removes (count and a bounded sample), and for a model's inclusion the matches the
 repository's ignore rules refused — so the model sees what its glob did and adapts.
@@ -5423,7 +5442,8 @@ content; nothing is added.
 declares one service-origin rule (`!glob` excludes). The shared naming and
 enabledness dialect is {§resource-environment}; `PLURNK_MEMBERS_ENABLED` supplies
 the panel default and `PLURNK_MEMBERS_<alias>_ENABLED` overrides one rule.
-An empty glob, a bare `!`, or a control naming an unknown rule fails validation.
+An empty glob or a bare `!` fails validation. Controls may precede their rule;
+they are validated without creating a definition ({§resource-environment}).
 
 §members-model-scope *The model's authority.* A model's `add` is admitted against
 `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` in the file-creation lattice `none < root <

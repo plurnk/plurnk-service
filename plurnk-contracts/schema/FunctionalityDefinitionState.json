@@ -17,6 +17,10 @@
             "enum": ["disabled", "dormant", "active", "unavailable", "authorization-required"]
         },
         "definition": { "type": "object" },
+        "provenance": {
+            "description": "The winning configuration input, when supplied by a source reader. Independent of origin and readiness; absent for locally owned definitions or host-provided resources without a configuration input.",
+            "$ref": "https://schemas.plurnk.xyz/v0/FunctionalityProvenance.json"
+        },
         "inherited": {
             "description": "The Worker this entry was copied from when this Worker was created (WORK or FORK), preserved across generations until this Worker changes the entry. Absent for an entry this Worker set itself. Worker-scoped families only.",
             "type": "string",

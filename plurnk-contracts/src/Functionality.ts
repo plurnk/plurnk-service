@@ -1,7 +1,7 @@
 // {§functionality-adapter} — the seam between the workspace Functionality coordinator (core) and
 // a family adapter (a module). Declared once here because a module never imports core: every
 // package that meets the seam imports these shapes rather than restating them (#884).
-import type { ProblemDetails } from "./types.ts";
+import type { FunctionalityProvenance, ProblemDetails } from "./types.ts";
 
 export interface WorkspaceCapabilityIdentity {
     readonly workspaceId: number;
@@ -32,6 +32,7 @@ export interface FunctionalityDefinitionSource {
 // enabledness; a workspace's durable state may override the enabledness only.
 export interface FunctionalityServiceDefinition extends FunctionalityDefinitionSource {
     readonly enabled: boolean;
+    readonly provenance?: FunctionalityProvenance;
 }
 
 export type FunctionalityOutcome =

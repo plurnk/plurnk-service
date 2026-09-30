@@ -20,8 +20,8 @@ const READ_VERBS: ReadonlySet<FunctionalityVerb> = new Set(["list", "discover"])
 
 const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; details: string }>> = Object.freeze({
     list: {
-        summary: "Project every definition with its origin, enabledness, and current state.",
-        details: "Read-only. Unavailable definitions carry their exact Problem.",
+        summary: "Inspect definitions, ownership, configuration sources, and readiness.",
+        details: "Read-only. Unavailable definitions carry their exact Problem. Provenance identifies the winning configuration input, not a runtime or shadowed definition.",
     },
     discover: {
         summary: "Inspect a query or source and return inert candidates.",
@@ -40,8 +40,8 @@ const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; detai
         details: "A host effect. A disabled definition stays client-visible and model-invisible.",
     },
     remove: {
-        summary: "Disable and remove the workspace definition.",
-        details: "A host effect. A lower-precedence service definition may become visible again, disabled. Service definitions cannot be removed; disable them.",
+        summary: "Forget the local definition and restore inheritance.",
+        details: "A host effect. Any inherited definition resumes with its inherited enabledness. Inherited definitions can be disabled, not removed at this scope.",
     },
 });
 

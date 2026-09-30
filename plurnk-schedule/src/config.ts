@@ -1,5 +1,6 @@
 // {§schedule-environment}
 import { Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
+import type { FunctionalityProvenance } from "@plurnk/plurnk-contracts";
 import { readDefinition, DefinitionError, type ScheduleDefinition } from "./definition.ts";
 import { assertZone, normalizeRule } from "./rules.ts";
 
@@ -17,9 +18,9 @@ const parseJson = (key: string, value: string): unknown => {
 // {§schedule-discovery-preview} — how many upcoming occurrences a reading of rule text shows.
 export const previewOccurrences = (env: NodeJS.ProcessEnv): number => Knob.integer(PREVIEW_OCCURRENCES, 1, env);
 
-export const serviceDefinitions = (env: NodeJS.ProcessEnv): ReadonlyMap<string, { readonly definition: ScheduleDefinition; readonly enabled: boolean }> => {
+export const serviceDefinitions = (env: NodeJS.ProcessEnv): ReadonlyMap<string, { readonly definition: ScheduleDefinition; readonly enabled: boolean; readonly provenance: FunctionalityProvenance }> => {
     const environment = new ResourceEnvironment(PREFIX, { controls: ["PREVIEW_OCCURRENCES"], settings: [] }, env);
-    const definitions = new Map<string, { definition: ScheduleDefinition; enabled: boolean }>();
+    const definitions = new Map<string, { definition: ScheduleDefinition; enabled: boolean; provenance: FunctionalityProvenance }>();
     for (const [alias, { key, value }] of environment.definitions) {
         let definition: ScheduleDefinition;
         try {
@@ -28,7 +29,7 @@ export const serviceDefinitions = (env: NodeJS.ProcessEnv): ReadonlyMap<string, 
             if (!(cause instanceof DefinitionError)) throw cause;
             throw new Error(`${key} must be a schedule definition: {"rule", "target", "prompt", "policy"?}.`, { cause });
         }
-        definitions.set(alias, { definition, enabled: environment.enabled(alias) });
+        definitions.set(alias, { definition, enabled: environment.enabled(alias), provenance: { kind: "environment", source: key } });
     }
     return definitions;
 };
@@ -42,10 +43,10 @@ export const validateConfiguration = (env: NodeJS.ProcessEnv = process.env, nowM
         throw new Error("TZ must name a supported time zone.", { cause });
     }
     previewOccurrences(env);
-    return new Map([...serviceDefinitions(env)].map(([alias, { definition, enabled }]) => {
+    return new Map([...serviceDefinitions(env)].map(([alias, { definition, enabled, provenance }]) => {
         try {
             const parsed = normalizeRule(definition.rule, zone, nowMs);
-            return [alias, { definition: { ...definition, rule: parsed.text }, enabled }];
+            return [alias, { definition: { ...definition, rule: parsed.text }, enabled, provenance }];
         } catch (cause) {
             throw new Error(`PLURNK_SCHEDULE_${alias.replaceAll("-", "_")}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
         }

@@ -119,7 +119,7 @@ instruction. A control may precede the resource it will govern.
 | Action | Effect |
 | --- | --- |
 | Declare in configuration | Supply an inherited definition, enabled by default unless a control disables it. No workspace writes. |
-| `list` | Inspect the effective definition, origin, enabledness, and runtime readiness without starting it. |
+| `list` | Inspect the effective definition, ownership (`origin`), winning configuration input (`provenance`), enabledness, and runtime readiness without starting it. |
 | `discover` | Return inert candidates; nothing is added or enabled. |
 | `add` | Persist a workspace override and prepare it through the ordinary authorization policy. |
 | `disable` / `enable` | Change availability without forgetting the definition or updating fetched skill copies. |
@@ -128,3 +128,6 @@ instruction. A control may precede the resource it will govern.
 Use the environment cascade for daemon/CI defaults and the subsystem actions for
 live workspace changes. A declared or enabled resource never bypasses capability
 or proposal policy. Unavailable resources retain their exact Problem in `list`.
+Configuration provenance names the definition's environment key or discovered
+`SKILL.md` path, not a dotenv file or shadowed history. Local overrides are
+workspace-owned; removing one exposes its current inherited source again.

@@ -13,6 +13,7 @@ import type {
     FunctionalityDiscoverResult,
     FunctionalityListResult,
     FunctionalityPreparationActivity,
+    FunctionalityProvenance,
     JsonSchema,
 } from "@plurnk/plurnk-contracts";
 import type {
@@ -99,6 +100,7 @@ interface EffectiveDefinition {
     readonly definition: object;
     readonly enabled: boolean;
     readonly inherited?: string;
+    readonly provenance?: FunctionalityProvenance;
 }
 
 interface WorkspaceFamily {
@@ -456,7 +458,10 @@ export default class Functionality {
             const overlay = record !== undefined && record.origin !== local ? record : undefined;
             const enabled = overlay === undefined ? service.enabled : overlay.enabled && (!inheritsWorkspace || service.enabled);
             const inherited = overlay?.inherited === undefined ? {} : { inherited: overlay.inherited };
-            effective.set(service.alias, { alias: service.alias, origin: service.origin, definition: service.definition, enabled, ...inherited });
+            effective.set(service.alias, {
+                alias: service.alias, origin: service.origin, definition: service.definition, enabled, ...inherited,
+                ...(service.provenance === undefined ? {} : { provenance: service.provenance }),
+            });
         }
         for (const [alias, record] of Object.entries(state.definitions)) {
             if (record.origin !== local) continue;
@@ -466,14 +471,16 @@ export default class Functionality {
         return new Map([...effective].toSorted(([left], [right]) => left.localeCompare(right)));
     }
 
-    #projection(definition: EffectiveDefinition, outcome: FunctionalityOutcome | undefined): FunctionalityDefinitionState {
+    #projection(definition: EffectiveDefinition, outcome: FunctionalityOutcome | { readonly state: "dormant" } | undefined): FunctionalityDefinitionState {
         const base = {
             alias: definition.alias, origin: definition.origin, definition: definition.definition,
             ...(definition.inherited === undefined ? {} : { inherited: definition.inherited }),
+            ...(definition.provenance === undefined ? {} : { provenance: definition.provenance }),
         };
         if (!definition.enabled) return { ...base, state: "disabled" };
         if (outcome === undefined) throw new Error(`enabled ${definition.alias} has no preparation outcome`);
         switch (outcome.state) {
+            case "dormant": return { ...base, state: "dormant" };
             case "active": return { ...base, state: "active", ...(outcome.detail === undefined ? {} : { detail: outcome.detail }) };
             case "unavailable": return { ...base, state: "unavailable", problem: outcome.problem };
             case "authorization-required": return { ...base, state: "authorization-required", authorization: outcome.authorization };
@@ -489,9 +496,12 @@ export default class Functionality {
         // the family is cold or the definition arrived out of band since, is dormant.
         return Validator.assertFunctionalityListResult({
             family: adapter.family,
-            definitions: [...effective.values()].map((definition) => definition.enabled && outcomes?.get(definition.alias) === undefined
-                ? { alias: definition.alias, origin: definition.origin, definition: definition.definition, state: "dormant" }
-                : this.#projection(definition, outcomes?.get(definition.alias))),
+            definitions: [...effective.values()].map((definition) => {
+                const outcome = isDeepStrictEqual(family?.enabled.get(definition.alias), definition.definition)
+                    ? outcomes?.get(definition.alias)
+                    : undefined;
+                return this.#projection(definition, outcome ?? { state: "dormant" });
+            }),
         });
     }
 

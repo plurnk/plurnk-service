@@ -20,7 +20,7 @@ runtime-neutral wire envelopes; `@plurnk/plurnk-parser` implements the language 
 | Workspace MCP configuration                                                    | `McpServerDefinition`, `McpOAuth` |
 | Worker Agent Skills definition                                                 | `SkillDefinition` |
 | Worker outbound A2A agent definition                                           | `A2aAgentDefinition` |
-| Worker Functionality lifecycle projections (family-neutral)                     | `FunctionalityCandidate`, `FunctionalityDiscoverQuery`, `FunctionalityDiscoverResult`, `FunctionalityDefinitionState`, `FunctionalityListResult`, `FunctionalityMutationResult` |
+| Worker Functionality lifecycle projections (family-neutral)                     | `FunctionalityProvenance`, `FunctionalityCandidate`, `FunctionalityDiscoverQuery`, `FunctionalityDiscoverResult`, `FunctionalityDefinitionState`, `FunctionalityListResult`, `FunctionalityMutationResult` |
 | AG-UI discovery, client accounting, and shared conformance specimens           | `AguiDiscovery`, `AguiClientConformance`, `AguiConformanceKit` |
 | JSON Schemas                                                                    | `@plurnk/plurnk-contracts/schema/*.json`            |
 | Generated JSON result rendering                                                 | `renderJsonResult`                                  |

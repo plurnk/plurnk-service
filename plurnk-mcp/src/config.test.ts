@@ -21,10 +21,11 @@ const floor = {
 test("{§mcp-configuration} whole definitions and independent controls use the shared resource dialect", () => {
     const definition = { name: "code-search", type: "stdio", command: "node", args: ["server.mjs"] };
     const env = { ...floor, PLURNK_MCP_code_search: JSON.stringify(definition), PLURNK_MCP_code_search_ENABLED: "0" };
-    assert.deepEqual(serviceDefinitions(env), [{ alias: "code-search", definition, enabled: false }]);
-    assert.deepEqual(serviceDefinitions({ ...env, PLURNK_MCP_code_search_ENABLED: "1" }), [{ alias: "code-search", definition, enabled: true }]);
+    const provenance = { kind: "environment", source: "PLURNK_MCP_code_search" };
+    assert.deepEqual(serviceDefinitions(env), [{ alias: "code-search", definition, enabled: false, provenance }]);
+    assert.deepEqual(serviceDefinitions({ ...env, PLURNK_MCP_code_search_ENABLED: "1" }), [{ alias: "code-search", definition, enabled: true, provenance }]);
     const replacement = { name: "code-search", type: "streamable-http", url: "https://example.com/mcp" };
-    assert.deepEqual(serviceDefinitions({ ...env, PLURNK_MCP_code_search: JSON.stringify(replacement) }), [{ alias: "code-search", definition: replacement, enabled: false }]);
+    assert.deepEqual(serviceDefinitions({ ...env, PLURNK_MCP_code_search: JSON.stringify(replacement) }), [{ alias: "code-search", definition: replacement, enabled: false, provenance }]);
     assert.deepEqual(serviceDefinitions(floor), []);
 });
 
@@ -50,7 +51,7 @@ test("{§mcp-server-settings} controls precede declarations without making resou
     assert.throws(() => serviceDefinitions({ ...env, PLURNK_MCP_future_TOOLS: '"a"' }), /PLURNK_MCP_future_TOOLS must be a JSON array of strings/u);
     assert.throws(() => serviceDefinitions({ ...env, PLURNK_MCP_future_UNSUPPORTED: "anything" }), /PLURNK_MCP_future_UNSUPPORTED names unsupported resource setting/u);
     const definition = { name: "future", type: "stdio", command: "node" };
-    assert.deepEqual(serviceDefinitions({ ...env, PLURNK_MCP_future: JSON.stringify(definition) }), [{ alias: "future", definition, enabled: false }]);
+    assert.deepEqual(serviceDefinitions({ ...env, PLURNK_MCP_future: JSON.stringify(definition) }), [{ alias: "future", definition, enabled: false, provenance: { kind: "environment", source: "PLURNK_MCP_future" } }]);
 });
 
 test("{§mcp-configuration} EXPANDED names server aliases", () => {
@@ -64,7 +65,7 @@ test("{§mcp-configuration} explicit HTTP endpoints and registries need not be l
     for (const url of ["http://mcp.internal/mcp", "http://192.0.2.1:8080/mcp", "https://example.com/mcp"]) {
         const definition = { name: "remote", type: "streamable-http", url };
         assert.deepEqual(serviceDefinitions({ ...floor, PLURNK_MCP_remote: JSON.stringify(definition) }), [
-            { alias: "remote", definition, enabled: true },
+            { alias: "remote", definition, enabled: true, provenance: { kind: "environment", source: "PLURNK_MCP_remote" } },
         ]);
         assert.deepEqual(registrySettings({ ...floor, PLURNK_MCP_REGISTRY_URL: url, PLURNK_MCP_REGISTRY_LIMIT: "10" }), { url, limit: 10 });
     }

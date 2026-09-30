@@ -19,15 +19,6 @@
             "description": "The exact family definition, conforming to the family's definition schema.",
             "type": "object"
         },
-        "provenance": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["kind", "source"],
-            "properties": {
-                "kind": { "type": "string", "minLength": 1 },
-                "source": { "type": "string", "minLength": 1 },
-                "reference": { "type": "string", "minLength": 1 }
-            }
-        }
+        "provenance": { "$ref": "https://schemas.plurnk.xyz/v0/FunctionalityProvenance.json" }
     }
 }

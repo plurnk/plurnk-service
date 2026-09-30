@@ -12,8 +12,8 @@ test("{§members-configuration} declarations default enabled and per-alias switc
         OTHER_KEY: "x",
     });
     assert.deepEqual(definitions, [
-        { alias: "docs", definition: { glob: "docs/**", provenance: { kind: "service-configuration", source: "PLURNK_MEMBERS_docs" } }, enabled: true },
-        { alias: "no-locks", definition: { glob: "!**/*.lock", provenance: { kind: "service-configuration", source: "PLURNK_MEMBERS_no_locks" } }, enabled: false },
+        { alias: "docs", definition: { glob: "docs/**", provenance: { kind: "service-configuration" } }, enabled: true, provenance: { kind: "environment", source: "PLURNK_MEMBERS_docs" } },
+        { alias: "no-locks", definition: { glob: "!**/*.lock", provenance: { kind: "service-configuration" } }, enabled: false, provenance: { kind: "environment", source: "PLURNK_MEMBERS_no_locks" } },
     ]);
     assert.deepEqual(serviceMembers({ PLURNK_MEMBERS_ENABLED: "1" }), []);
     assert.equal(serviceMembers({ PLURNK_MEMBERS_ENABLED: "0", PLURNK_MEMBERS_docs: "docs/**" })[0].enabled, false);

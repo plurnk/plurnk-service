@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Problems } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { FunctionalityListResult, FunctionalityOutcome, PlurnkStatement, ProblemDetails } from "@plurnk/plurnk-contracts";
+import type { FunctionalityFamilyHandle, FunctionalityListResult, FunctionalityOutcome, FunctionalityProvenance, PlurnkStatement, ProblemDetails } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import type {
     FunctionalityAdapter,
@@ -210,6 +210,75 @@ test("{§functionality-inspection} cold and preparing workspaces remain inspecta
     assert.deepEqual((await listing()).map(({ state }) => state), ["active"]);
     assert.deepEqual(daemon.workspacePreparationStatus(workspaceId), []);
     assert.deepEqual(updates.at(-1), { workspaceId, preparation: [] });
+});
+
+test("{§functionality-inspection} a changed inherited definition never borrows the previous definition's preparation outcome", async (t) => {
+    const db = await openMigrated();
+    const log: string[] = [];
+    const adapter = fixtureAdapter(log);
+    let definition = { kind: "ok" };
+    let handle: FunctionalityFamilyHandle;
+    const daemon = new Daemon({ db, provider: null });
+    daemon.registerModule({ setup: (seam) => {
+        handle = seam.registerFunctionalityAdapter({ ...adapter, available: async () => [{ alias: "svc", definition, enabled: true }] });
+    } });
+    await daemon.start();
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    const workspaceId = await insertWorkspace(db, `inspection-replacement-${crypto.randomUUID()}`);
+    const invoke = (verb: string, params = {}) => daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId));
+    const listed = async () => (await invoke("list") as FunctionalityListResult).definitions[0]!;
+    await invoke("enable", { alias: "svc" });
+    assert.equal((await listed()).state, "active");
+    definition = { kind: "doc" };
+    const before = [...log];
+    assert.deepEqual(await listed(), { alias: "svc", origin: "service", definition, state: "dormant" });
+    assert.deepEqual(log, before, "inspection neither prepares the replacement nor tears down the published resource");
+    await invoke("enable", { alias: "svc" });
+    assert.deepEqual(await listed(), { alias: "svc", origin: "service", definition, state: "active" });
+    definition = { kind: "doc" };
+    assert.equal((await listed()).state, "active", "equivalent objects retain the published outcome");
+    definition = { kind: "fail" };
+    await handle!.refresh({ workspaceId });
+    assert.equal((await listed()).state, "unavailable");
+    definition = { kind: "ok" };
+    assert.deepEqual(await listed(), { alias: "svc", origin: "service", definition, state: "dormant" }, "an old failure does not describe its replacement");
+});
+
+test("{§configuration-provenance} inspection reports the winning source without persisting it or preparing it", async (t) => {
+    const db = await openMigrated();
+    const log: string[] = [];
+    let provenance: FunctionalityProvenance = { kind: "environment", source: "PLURNK_FX_svc" };
+    const adapter = { ...fixtureAdapter(log), available: async () => [{ alias: "svc", definition: { kind: "ok" }, enabled: true, provenance }] };
+    const start = async () => {
+        const daemon = new Daemon({ db, provider: null });
+        daemon.registerModule({ setup: (seam) => { seam.registerFunctionalityAdapter(adapter); } });
+        await daemon.start();
+        return daemon;
+    };
+    let daemon = await start();
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    const workspaceId = await insertWorkspace(db, `inspection-source-${crypto.randomUUID()}`);
+    const invoke = (verb: string, params = {}) => daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId));
+    const listed = async () => (await invoke("list") as FunctionalityListResult).definitions[0]!;
+    assert.deepEqual(await listed(), { alias: "svc", origin: "service", definition: { kind: "ok" }, provenance, state: "dormant" });
+    assert.deepEqual(log, [], "source inspection does not activate anything");
+    await invoke("enable", { alias: "svc" });
+    provenance = { kind: "file", source: "/project/.agents/skills/svc/SKILL.md" };
+    assert.deepEqual(await listed(), { alias: "svc", origin: "service", definition: { kind: "ok" }, provenance, state: "active" }, "source location does not change prepared identity");
+    await invoke("disable", { alias: "svc" });
+    assert.equal((await listed()).state, "disabled");
+    assert.deepEqual((await listed()).provenance, provenance);
+    await invoke("add", { alias: "svc", definition: { kind: "doc" } });
+    assert.deepEqual(await listed(), { alias: "svc", origin: "workspace", definition: { kind: "doc" }, state: "active" });
+    await daemon.stop();
+    daemon = await start();
+    assert.equal((await listed()).provenance, undefined, "restart does not attach the shadowed source to a local definition");
+    await invoke("remove", { alias: "svc" });
+    assert.deepEqual(await listed(), { alias: "svc", origin: "service", definition: { kind: "ok" }, provenance, state: "active" });
+    await daemon.stop();
+    provenance = { kind: "environment", source: "PLURNK_FX_svc" };
+    daemon = await start();
+    assert.deepEqual(await listed(), { alias: "svc", origin: "service", definition: { kind: "ok" }, provenance, state: "dormant" }, "the source is re-resolved, never a stale persisted label");
 });
 
 for (const defect of ["outcome", "namespace"] as const) {
