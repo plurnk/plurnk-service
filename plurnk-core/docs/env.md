@@ -28,8 +28,8 @@ it for all of them.
 `disable` withdraws a name from your commands while keeping the entry listed;
 `enable` restores it. For an ambient name that is how `CI=1` goes away for you
 alone, without the operator changing anything. `remove` forgets your own entry;
-a workspace or ambient name of the same alias reappears, disabled, so removal never quietly
-changes what your next command sees.
+a workspace or ambient name of the same alias reappears with its inherited value
+and enabledness. Use `disable` when you want the name absent from commands.
 
 Your worker overrides are yours: another worker's commands do not see them. A worker
 you spawn starts with a copy of them — `list` shows those as inherited from

@@ -100,13 +100,15 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         assert.equal(await refusal(() => invoke(alice, "add", { alias: "PLURNK_SERVICE_DB_PATH", definition: { value: "/tmp/steal.db" } })), "https://problems.plurnk.xyz/env/functionality/name-reserved");
         assert.equal(await refusal(() => invoke(alice, "enable", { alias: "GHOST" })), "https://problems.plurnk.xyz/functionality/alias-unknown");
 
-        // Service definitions are disable-only; a worker definition may shadow one, and removal reveals it disabled.
+        // {§configuration-definition-resolution}
         assert.equal(await refusal(() => invoke(alice, "remove", { alias: "ENV_WITNESS" })), "https://problems.plurnk.xyz/functionality/alias-service-owned");
         const shadow = await invoke<FunctionalityMutationResult>(alice, "add", { alias: "ENV_WITNESS", definition: { value: "mine" } });
         assert.equal(shadow.definition?.origin, "worker");
         assert.equal(valueOf(shadow.definition?.definition), "mine");
         assert.equal((await invoke<FunctionalityMutationResult>(alice, "remove", { alias: "ENV_WITNESS" })).removed, true);
-        assert.equal(await stateOf(alice, "ENV_WITNESS"), "service:disabled", "removal reveals the service baseline, disabled — the next spawn is not silently changed");
+        assert.equal(await stateOf(alice, "ENV_WITNESS"), "service:active", "removal restores inherited enabledness");
+        assert.equal(valueOf((await listed(alice)).find((entry) => entry.alias === "ENV_WITNESS")?.definition), "ambient");
+        await invoke(alice, "disable", { alias: "ENV_WITNESS" });
 
         // remove forgets a worker entry; discover is inert and reads a sibling package's declaration.
         assert.equal((await invoke<FunctionalityMutationResult>(alice, "remove", { alias: "CARGO_TARGET_DIR" })).removed, true);
@@ -287,6 +289,17 @@ test("{§functionality-scope} readWorkerEnvironment layers the Worker's override
         assert.equal((await daemon.readWorkspaceEnvironment(workspaceId))(ambient).TZ, "Europe/Paris", "the workspace layer over the ambient value");
         assert.equal((await daemon.readWorkerEnvironment(workspaceId, alice))(ambient).TZ, "Asia/Tokyo", "alice's own override wins for alice");
         assert.equal((await daemon.readWorkerEnvironment(workspaceId, bob))(ambient).TZ, "Europe/Paris", "bob inherits the workspace layer");
+        const workerContext = { scope: "worker" as const, workspaceId, workerId: alice };
+        const removed = await daemon.invokeModuleAction("worker.env.remove", { alias: "TZ" }, workerContext) as FunctionalityMutationResult;
+        assert.deepEqual(removed.definition, { alias: "TZ", origin: "workspace", state: "active", definition: { value: "Europe/Paris" } });
+        assert.equal((await daemon.readWorkerEnvironment(workspaceId, alice))(ambient).TZ, "Europe/Paris", "removal restores the shared value for subsequent commands");
+        await daemon.invokeModuleAction("worker.env.add", { alias: "TZ", definition: { value: "Asia/Tokyo" } }, workerContext);
+        await daemon.invokeModuleAction("workspace.env.disable", { alias: "TZ" }, { scope: "workspace", workspaceId });
+        const disabled = await daemon.invokeModuleAction("worker.env.remove", { alias: "TZ" }, workerContext) as FunctionalityMutationResult;
+        assert.deepEqual(disabled.definition, { alias: "TZ", origin: "workspace", state: "disabled", definition: { value: "Europe/Paris" } });
+        assert.equal((await daemon.readWorkerEnvironment(workspaceId, alice))(ambient).TZ, undefined, "removal also inherits a workspace mask");
+        await daemon.invokeModuleAction("workspace.env.enable", { alias: "TZ" }, { scope: "workspace", workspaceId });
+        assert.equal((await daemon.readWorkerEnvironment(workspaceId, alice))(ambient).TZ, "Europe/Paris", "no worker mask is left behind when the workspace changes");
     } finally {
         await daemon.stop();
         await db.close();

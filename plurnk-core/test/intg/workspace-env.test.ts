@@ -27,8 +27,11 @@ test("{§workspace-env} workspace defaults, worker overrides and masks share the
         assert.deepEqual((await get(alice))?.definition, { value: "alice" });
         assert.deepEqual((await get(bob))?.definition, { value: "workspace" });
         await local(alice, "remove", { alias: "ENV_WITNESS" });
-        assert.equal((await get(alice))?.state, "disabled");
+        assert.equal((await get(alice))?.state, "active");
+        assert.equal((await EnvFunctionality.resolve(db, workspaceId, alice)).env.ENV_WITNESS, "workspace", "removal restores inheritance at the command environment boundary");
         assert.equal((await get(bob))?.state, "active");
+        await local(alice, "disable", { alias: "ENV_WITNESS" });
+        assert.equal((await get(alice))?.state, "disabled");
         await local(alice, "enable", { alias: "ENV_WITNESS" });
         assert.deepEqual((await get(alice))?.definition, { value: "workspace" });
         await shared("disable", { alias: "ENV_WITNESS" });

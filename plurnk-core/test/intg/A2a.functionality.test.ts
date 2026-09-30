@@ -100,7 +100,7 @@ test("{§a2a-functionality} outbound agents are workspace Functionality: baselin
         assert.equal((await send("scribe", model)).status, 102, "the first worker uses the same agent");
         assert.match(await document("scribe", peer) ?? "", /a2a:\/\/scribe — Plurnk A2A protocol witness/u);
         assert.equal(await document("scribe", model), await document("scribe", peer));
-        // Remove forgets the workspace definition and reveals the service baseline, disabled.
+        // {§configuration-definition-resolution} The inherited baseline is disabled.
         assert.equal((await invoke<{ removed: boolean }>("remove", { alias: "scribe" })).removed, true);
         assert.deepEqual(await states(), ["researcher:service:active", "scribe:service:disabled"]);
         assert.equal((await send("scribe", peer)).status, 404);

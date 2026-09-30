@@ -299,8 +299,7 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
         assert.equal(repeated.definition.state, "active");
         assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", definition: { name: "alpha", scope: "global", source } }))).type, "https://problems.plurnk.xyz/functionality/alias-exists");
 
-        // A workspace definition shadows a service skill; removing it deletes its
-        // scope's copy and reveals the lower-precedence root, disabled.
+        // {§skills-remove}
         const shadow = await invoke<{ definition: { origin: string; definition: { scope: string }; detail: { description: string } } }>("add", { alias: "review", definition: { name: "review", scope: "project", source } });
         assert.equal(shadow.definition.origin, "workspace");
         assert.equal(shadow.definition.detail.description, "Review, project edition");
@@ -310,9 +309,9 @@ test("{§skills-functionality} {§skills-remove} installed roots are service def
         assert.equal(removed.removed, true);
         assert.equal(await exists(join(projectRoot, "review")), false, "remove deleted the workspace's project copy");
         assert.equal(await exists(join(hostPaths.globalSkillsDir, "review", "SKILL.md")), true, "the global copy was never touched");
-        assert.ok((await states()).includes("review:service:disabled:global"), "the global skill is revealed, disabled");
-        assert.equal(await document("review"), undefined);
-        assert.equal((await invoke<{ definition: { state: string; detail: { description: string } } }>("enable", { alias: "review" })).definition.detail.description, "Review a change");
+        assert.ok((await states()).includes("review:service:active:global"), "the global skill's enabledness is restored");
+        assert.match(await document("review") ?? "", /Review a change/u);
+        assert.doesNotMatch(await document("review") ?? "", /project edition/u);
         assert.equal((await rejectedProblem(() => invoke("remove", { alias: "grep" }))).type, "https://problems.plurnk.xyz/functionality/alias-service-owned");
 
         // Restart: the workspace's own definition survives and is located, not reinstalled.

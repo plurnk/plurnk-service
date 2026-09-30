@@ -523,8 +523,6 @@ export default class Functionality {
                 const admitted = await adapter.admit(input, identity, caller, options);
                 alias = admitted.alias;
                 if (!aliasPattern(adapter).test(alias)) throw failure(adapter.family, "alias-invalid", 400, `Alias '${alias}' must match ${aliasPattern(adapter)}.`, { alias, retryable: false });
-                // A local definition may shadow a service definition of the same
-                // alias; removing it reveals the service baseline again, disabled.
                 const current = effective.get(alias);
                 if (current?.origin === local && !isDeepStrictEqual(current.definition, admitted.definition)) {
                     throw failure(adapter.family, "alias-exists", 409, `'${alias}' already has a different ${local} definition.`, { alias, recovery: "Use the existing definition, or remove it before adding its replacement.", retryable: false });
@@ -551,8 +549,6 @@ export default class Functionality {
                 if (current.origin !== local) throw failure(adapter.family, "alias-workspace-owned", 409, `'${alias}' is a workspace definition; remove it in workspace scope or disable it here.`, { alias, retryable: false });
                 await adapter.forget?.({ alias, definition: current.definition }, identity);
                 delete definitions[alias];
-                const revealed = (await this.#effective(adapter, identity, EMPTY_STATE)).get(alias);
-                if (revealed) definitions[alias] = { origin: revealed.origin, enabled: false };
                 removed = true;
                 break;
             }

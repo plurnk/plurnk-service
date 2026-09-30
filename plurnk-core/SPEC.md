@@ -3233,8 +3233,8 @@ Each layer uses the same value and masking rules. A worker's list includes works
 defaults by reference with `origin: "workspace"`; worker overrides and masks remain
 worker-owned. Enabling an inherited entry clears this layer's mask, not a mask in a
 lower layer; an explicit local value can override that lower layer. A mask follows
-the name even when its lower-layer origin changes. Removing an override reveals the lower entry disabled, as for a service
-baseline. Forking copies only worker state, not the workspace defaults. Workspace edits
+the name even when its lower-layer origin changes. Removing an override restores the
+lower entry and its enabledness ({§configuration-definition-resolution}). Forking copies only worker state, not the workspace defaults. Workspace edits
 affect subsequent launches, not existing processes or other workspaces. A shared
 capability never acquires an invoking worker's overrides or ownership.
 
@@ -4135,7 +4135,7 @@ Retryability describes the actual failed condition, not its numeric status.
 | `add` | Admit and persist a workspace definition, prepare it, and enable it atomically. It may override the service baseline. Reapplying the same workspace definition enables it idempotently (200); a different definition for that alias fails 409 without replacing it. |
 | `enable` | Publish an available definition; retry preparation if unavailable. |
 | `disable` | Withdraw live capability; retain its definition and saved results. |
-| `remove` | Disable and forget the workspace definition. A same-alias service baseline reappears disabled. Service definitions are disable-only. Saved results remain. |
+| `remove` | Forget the locally owned definition and its enabledness override. Restore any inherited definition with its inherited enabledness. Inherited definitions are disable-only at this scope. Saved results remain. |
 
 §configuration-definition-resolution **Named resource definitions replace whole;
 independent behavior controls remain independent.** Source readers and scope
@@ -4146,6 +4146,7 @@ overlays apply the same boundary:
 | Named definition | Select the complete definition from the highest-precedence source or scope declaring that alias. Omitted fields, arrays and nested objects never inherit from a lower definition. |
 | Definition validity | Validate the selected definition against its family's schema. Missing required fields are errors, not requests to fill from a lower definition; rejected live changes preserve the previous publication. |
 | Independently declared behavior control | Resolve its own value through its cascade. An enabledness override does not copy or patch the definition it controls. |
+| Local definition removal | Remove this scope's definition and enabledness override. Restore the current inherited definition and enabledness, or leave no entry if none exists. Do not persist a replacement or disabling mask; subsequent inherited changes remain effective. Restoration follows the same preparation and publication failure policy as other mutations ({§functionality-publication}). |
 
 §functionality-inspection **Inspection is not demand.** `list` and `discover` do not
 acquire residency, join preparation, reconcile worker documents, or extend warm
@@ -5550,7 +5551,7 @@ disable-only under {§skills-remove}.
 coordinator forgets a workspace-origin skill definition the adapter deletes
 `<root>/<name>` at the definition's scope; a failed deletion rejects the
 mutation with `uninstall-failed`. A same-named skill at a lower-precedence root is then
-revealed as a service definition, disabled ({§functionality-coordinator}).
+revealed with its inherited enabledness ({§functionality-coordinator}).
 Service definitions are disable-only.
 
 §skills-hotload **Skills placed out of band are admitted at the next turn** ({§functionality-hotload}). The
