@@ -1,4 +1,4 @@
-// The plurnk model-alias cascade — pure env parsing, zero runtime deps.
+// The model-alias cascade imports no provider, tokenizer, or discovery machinery.
 //
 // PLURNK_MODEL_<alias>=<provider>/<model> declares an alias; PLURNK_MODEL selects
 // either one declared alias or one exact provider/model route at boot. The provider segment is the first "/"-delimited
@@ -11,6 +11,7 @@
 // from its own (always-fresh) env without pulling the provider/tokenizer machinery.
 
 import type { ProviderAlias, ProviderSpec } from "./types.ts";
+import ConfigurationError from "@plurnk/plurnk-meta/configuration-error";
 
 // PLURNK_BASEURL_<alias>: per-alias endpoint override, case-folded on the alias
 // to match PLURNK_MODEL_<alias>. Lets two aliases on the same provider name target
@@ -26,7 +27,7 @@ const parseBaseUrls = (env: NodeJS.ProcessEnv): Map<string, { key: string; value
         const alias = aliasRaw.toLowerCase();
         const existing = out.get(alias);
         if (existing !== undefined) {
-            throw new Error(`Duplicate base-URL override "${alias}": ${existing.key} and ${key} case-fold to the same alias.`);
+            throw new ConfigurationError(key, `Duplicate base-URL override "${alias}": ${existing.key} and ${key} case-fold to the same alias.`);
         }
         out.set(alias, { key, value });
     }
@@ -48,14 +49,14 @@ export const parseAliasesFromEnv = (env: NodeJS.ProcessEnv = process.env): Provi
         const alias = aliasRaw.toLowerCase();
         // Aliases are case-folded, so PLURNK_MODEL_opus and PLURNK_MODEL_OPUS
         // collide. Surface the ambiguity rather than silently picking one.
-        if (seen.has(alias)) throw new Error(`Duplicate provider alias "${alias}": multiple PLURNK_MODEL_* keys case-fold to the same alias. Rename one.`);
+        if (seen.has(alias)) throw new ConfigurationError(key, `Duplicate provider alias "${alias}": multiple PLURNK_MODEL_* keys case-fold to the same alias. Rename one.`);
         seen.add(alias);
         const baseUrl = baseUrls.get(alias)?.value;
         out.push({ alias, provider: value.slice(0, slash), model: value.slice(slash + 1), ...(baseUrl !== undefined ? { baseUrl } : {}) });
     }
     // A base-URL override with no matching alias is a typo, not a silent no-op.
     const unmatched = [...baseUrls.keys()].filter((a) => !seen.has(a));
-    if (unmatched.length > 0) throw new Error(`PLURNK_BASEURL_* override(s) with no matching PLURNK_MODEL_* alias: ${unmatched.join(", ")}. Declare the alias or remove the override.`);
+    if (unmatched.length > 0) throw new ConfigurationError(baseUrls.get(unmatched[0]!)!.key, `PLURNK_BASEURL_* override(s) with no matching PLURNK_MODEL_* alias: ${unmatched.join(", ")}. Declare the alias or remove the override.`);
     return out;
 };
 
@@ -71,15 +72,18 @@ export const resolveModelSelector = (
     return aliases.find((alias) => alias.alias === selector.toLowerCase()) ?? null;
 };
 
-export const resolveActiveRoute = (env: NodeJS.ProcessEnv = process.env): ProviderSpec | null => {
-    const selected = env.PLURNK_MODEL;
-    if (selected === undefined || selected.length === 0) return null;
-    const aliases = parseAliasesFromEnv(env);
-    const route = resolveModelSelector(selected, aliases);
+const configuredRoute = (env: NodeJS.ProcessEnv, key: "PLURNK_MODEL" | "PLURNK_MODEL_CHILD"): ProviderSpec | null => {
+    const selected = env[key];
+    if (selected === undefined || (key === "PLURNK_MODEL" && selected.length === 0)) return null;
+    const route = resolveModelSelector(selected, selected.includes("/") ? [] : parseAliasesFromEnv(env));
     if (route === null) {
-        throw new Error(
-            `PLURNK_MODEL '${selected}' is neither a declared alias nor a provider/model route.`,
+        throw new ConfigurationError(
+            key, `${key} '${selected}' is neither a declared alias nor a provider/model route.`,
         );
     }
     return route;
 };
+
+export const resolveActiveRoute = (env: NodeJS.ProcessEnv = process.env): ProviderSpec | null => configuredRoute(env, "PLURNK_MODEL");
+
+export const resolveChildRoute = (env: NodeJS.ProcessEnv = process.env): ProviderSpec | null => configuredRoute(env, "PLURNK_MODEL_CHILD");

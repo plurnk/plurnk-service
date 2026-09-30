@@ -16,9 +16,8 @@ import EnvDefaults from "./core/env-defaults.ts";
 import HostPaths from "./core/HostPaths.ts";
 import LegacyHome from "./core/LegacyHome.ts";
 import OperatorConfig from "./core/OperatorConfig.ts";
-import ProviderInstantiate from "./core/ProviderInstantiate.ts";
 import Meta from "@plurnk/plurnk-meta";
-import { parseAliasesFromEnv, resolveActiveRoute, resolveModelSelector } from "@plurnk/plurnk-providers";
+import { parseAliasesFromEnv, resolveActiveRoute, resolveChildRoute } from "@plurnk/plurnk-providers";
 import type { ProviderSpec } from "@plurnk/plurnk-providers";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import {
@@ -104,16 +103,7 @@ export default class Service {
     } {
         const aliases = parseAliasesFromEnv(process.env);
         const active = resolveActiveRoute(process.env);
-        const childSelector = process.env.PLURNK_MODEL_CHILD;
-        if (childSelector !== undefined) {
-            if (childSelector.length === 0 || resolveModelSelector(childSelector, aliases) === null) {
-                const names = aliases.map(({ alias }) => alias).join(", ");
-                throw new Error(
-                    `PLURNK_MODEL_CHILD=${childSelector} is neither a declared alias nor a provider/model route `
-                    + `(declared aliases: ${names.length > 0 ? names : "none"}). Unset it to inherit.`,
-                );
-            }
-        }
+        resolveChildRoute();
         return { aliases, active };
     }
 
@@ -224,7 +214,7 @@ export default class Service {
         finally { await db.close(); }
     }
 
-    // {§startup-admission} — listener, database, provider, daemon, in that order; a failure unwinds what it holds.
+    // {§startup-admission} — client admission does not construct providers.
     static async #start(): Promise<void> {
         Daemon.validateConfiguration();
         const dbPath = Service.#databasePath();
@@ -233,9 +223,10 @@ export default class Service {
         // it at boot via the seam). {§rpc}: production has no daemon-owned listener.
         const port = Number(Service.#requireEnv("PLURNK_PORT"));
 
-        // {§operator-config} — an explicit boot selector must resolve; only an
-        // unset selector permits modelless boot for per-request selection.
-        const { active: route } = Service.#modelConfiguration();
+        const configuration = new ConfigurationDiagnostics();
+        await configuration.capture("model-aliases", () => parseAliasesFromEnv());
+        const route = await configuration.capture("model", () => resolveActiveRoute());
+        await configuration.capture("model-child", () => resolveChildRoute());
         // {§startup-listener-admission}: the daemon's one listener wins the configured
         // address before anything may mutate durable state ({§http-host}). It answers 503
         // until the client-interface module mounts the root at daemon activation.
@@ -252,17 +243,14 @@ export default class Service {
         );
         try {
             // {§startup-admission-order}: after listener ownership, persistence
-            // and its exclusive owner are admitted before provider verification
-            // can perform external work.
+            // and its exclusive owner precede capability activation.
             db = await Service.#openDb(dbPath, true);
             // {§observability-boundary} — config is normalized before any SDK
             // implementation loads; teardown already owns the admitted DB.
-            const configuration = new ConfigurationDiagnostics();
             observability = await configuration.capture("observability", () => startObservability());
             const hooksModule = await configuration.capture("hooks", () => HooksModule.init());
             const a2a = await configuration.capture("a2a-hosted", () => hostedAgentConfiguration());
-            const provider = route === null ? null : await ProviderInstantiate.loadActiveProvider();
-            daemon = new Daemon({ db, dbPath, provider, nodeModulesPath: Service.#pluginsNodeModules(), hostPaths: Service.#hostPaths, http: listener, configuration });
+            daemon = new Daemon({ db, dbPath, nodeModulesPath: Service.#pluginsNodeModules(), hostPaths: Service.#hostPaths, http: listener, configuration });
             ServiceModules.registerWorkspaceCapabilities(daemon);
             if (hooksModule !== null) daemon.registerModule(hooksModule);
             if (a2a !== null) daemon.registerModule(A2aModule.init(a2a));
@@ -271,13 +259,15 @@ export default class Service {
             daemon.registerModule(aguiModule);
             await daemon.start();
             const aguiAddr = listener.httpAddress();
-            if (route === null) {
+            for (const notice of configuration.notices()) process.stderr.write(`plurnk-service: ${notice.message}\n`);
+            const invalidModel = route === null && Boolean(process.env.PLURNK_MODEL);
+            if (route === null && !invalidModel) {
                 process.stderr.write(
                     `plurnk-service: no model configured — choose a profile in ${Service.#hostPaths.configFile}; `
                     + "run plurnk-service config defaults for every installed option. Loops fail legibly until then.\n",
                 );
             }
-            const routeText = route === null ? "no model" : Service.#formatModelRoute(route);
+            const routeText = invalidModel ? "invalid model configuration" : route === null ? "no model" : Service.#formatModelRoute(route);
             // {§startup-readiness-line} — a URL (IPv6 in brackets), then two JSON strings: exact under spaces.
             const aguiUrl = `http://${isIPv6(aguiAddr.host) ? `[${aguiAddr.host}]` : aguiAddr.host}:${aguiAddr.port}`;
             process.stdout.write(`plurnk-service agui=${aguiUrl} db=${JSON.stringify(dbPath)} route=${JSON.stringify(routeText)}\n`);
@@ -304,7 +294,10 @@ export default class Service {
     }
 
     static async #configStatus(): Promise<void> {
-        const { aliases, active } = Service.#modelConfiguration();
+        const diagnostics = new ConfigurationDiagnostics();
+        const aliases = await diagnostics.capture("model-aliases", () => parseAliasesFromEnv());
+        const active = await diagnostics.capture("model", () => resolveActiveRoute());
+        await diagnostics.capture("model-child", () => resolveChildRoute());
         const explicitFiles = Service.#envFileArgs().map(({ path }) => resolve(Service.#hostPaths.expandUserPath(path)));
         const configFile = Service.#configFileArg();
         const lines = [
@@ -316,13 +309,14 @@ export default class Service {
             ...explicitFiles.map((path) => `  ${path}${existsSync(path) ? "" : " (absent)"}`),
             "  process environment",
             "  CLI flags",
-            `model: ${Service.#formatModelRoute(active)}`,
-            `declared aliases: ${aliases.length === 0 ? "none" : aliases.map(({ alias }) => alias).join(", ")}`,
+            `model: ${active === null && process.env.PLURNK_MODEL ? "invalid configuration" : Service.#formatModelRoute(active)}`,
+            `declared aliases: ${aliases === null ? "unavailable" : aliases.length === 0 ? "none" : aliases.map(({ alias }) => alias).join(", ")}`,
             `database: ${Service.#databasePath()}`,
             "defaults: plurnk-service config defaults",
             "validation: plurnk-service config check",
         ];
         process.stdout.write(`${lines.join("\n")}\n`);
+        for (const notice of diagnostics.notices()) process.stderr.write(`${notice.message}\n`);
     }
 
     static async #configCheck(): Promise<void> {

@@ -1,4 +1,5 @@
 import { Results as _Results } from "@plurnk/plurnk-schemes";
+import type ConfigurationError from "@plurnk/plurnk-meta/configuration-error";
 import type {
     ChannelProducerResult, EntryResult, MatchEvidence, ProblemDetails, ProposalResult, PassthroughResult, RepresentationPreparationResult, SchemeResult, SchemeResultBase,
 } from "@plurnk/plurnk-schemes";
@@ -23,6 +24,14 @@ export class OperationFailureError extends Error {
 }
 
 export default class Results {
+    // {§configuration-repair-path}: invalid configuration is unavailable, never an invented policy.
+    static configurationFailure(cause: ConfigurationError): SchemeResult {
+        return Results.failure("daemon:configuration", "configuration-invalid", 503, cause.message, {}, {
+            key: cause.key,
+            retryable: false,
+        });
+    }
+
     static isEntryResult(r: SchemeResult): r is EntryResult { return _Results.isEntry(r); }
     static isProposalResult(r: SchemeResult): r is ProposalResult { return _Results.isProposal(r); }
     static isPassthroughResult(r: SchemeResult): r is PassthroughResult { return _Results.isPassthrough(r); }

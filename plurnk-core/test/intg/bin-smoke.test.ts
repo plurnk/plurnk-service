@@ -72,7 +72,6 @@ const bootDaemon = (
             PLURNK_PORT: "0",      // the AG-UI+ surface — THE listener; OS picks a free port
             ...overrides,
         };
-        delete env.PLURNK_MODEL;
 
         // A hermetic working directory: the service reads nothing from it ({§operator-config-precedence}).
         const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH], { env, cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
@@ -482,50 +481,17 @@ test("bin: an occupied client port fails before durable storage is touched", { t
     }
 });
 
-test("bin: provider initialization failure closes the admitted database", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "plurnk-provider-startup-"));
+test("{§startup-admission-order} bin: an unavailable provider is not constructed during startup", async () => {
+    const booted = await bootDaemon(async () => ({
+        PLURNK_MODEL: "broken",
+        PLURNK_MODEL_broken: "missing/model",
+    }));
     try {
-        const dbPath = join(dir, "plurnk.db");
-        const env: NodeJS.ProcessEnv = {
-            ...process.env,
-            HOME: dir,
-            PLURNK_SERVICE_DB_PATH: dbPath,
-            PLURNK_HOST: "127.0.0.1",
-            PLURNK_PORT: "0",
-            PLURNK_MODEL: "broken",
-            PLURNK_MODEL_broken: "missing/model",
-        };
-        const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH, "start"], {
-            env,
-            cwd: dir,
-            stdio: ["ignore", "ignore", "pipe"],
-        });
-        let stderr = "";
-        child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
-        const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolvePromise, rejectPromise) => {
-            const timer = setTimeout(() => {
-                child.kill("SIGKILL");
-                rejectPromise(new Error(`provider-startup timeout; stderr=${stderr}`));
-            }, 10_000);
-            child.once("exit", (code, signal) => {
-                clearTimeout(timer);
-                resolvePromise({ code, signal });
-            });
-            child.once("error", (cause) => {
-                clearTimeout(timer);
-                rejectPromise(cause);
-            });
-        });
-        assert.equal(result.code, 1, `provider initialization fails startup (signal=${result.signal})`);
-        assert.match(stderr, /unknown provider "missing"/, "the originating provider failure is preserved");
-        await access(dbPath);
-        await assert.rejects(
-            access(`${dbPath}.lock`),
-            { code: "ENOENT" },
-            "the admitted database owner is closed and its lock released",
-        );
+        const result = await action(booted, "providers.list") as { aliases: Array<{ alias: string; active: boolean }> };
+        assert.deepEqual(result.aliases.map(({ alias, active }) => ({ alias, active })), [{ alias: "broken", active: true }]);
+        assert.equal(booted.child.exitCode, null);
     } finally {
-        await rm(dir, { recursive: true, force: true });
+        assert.equal((await stopDaemon(booted)).code, 0);
     }
 });
 
@@ -553,48 +519,4 @@ test("{§configuration-repair-path} bin: unavailable observability preserves dis
     }
 });
 
-// {§provider-resolution}: a set-but-unresolvable PLURNK_MODEL fails boot naming the value;
-// it never degrades to a silently modelless daemon.
-test("bin: a malformed exact PLURNK_MODEL route fails boot loudly", { timeout: 60_000 }, async () => {
-    const dir = await mkdtemp(join(tmpdir(), "plurnk-bin-model-"));
-    try {
-        const env: NodeJS.ProcessEnv = {
-            ...process.env,
-            HOME: dir,
-            PLURNK_SERVICE_DB_PATH: join(dir, "plurnk.db"),
-            PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0",
-            PLURNK_MODEL: "plurnk/",
-        };
-        const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH], { env, cwd: dir, stdio: ["ignore", "pipe", "pipe"] }); // cwd-isolated from ./.env like the boot smoke
-        let stderrBuf = "";
-        child.stderr?.on("data", (d: Buffer) => { stderrBuf += d.toString(); });
-        const code = await new Promise<number | null>((res) => { child.on("exit", (c) => res(c)); });
-        assert.notEqual(code, 0, "the boot FAILED — no silent modelless daemon");
-        assert.match(stderrBuf, /PLURNK_MODEL 'plurnk\/' is neither a declared alias nor a provider\/model route/, "the error names the value and selector contract");
-    } finally { await rm(dir, { recursive: true, force: true }); }
-});
-
-test("bin: PLURNK_MODEL_CHILD must resolve as an alias or exact route", { timeout: 60_000 }, async () => {
-    const dir = await mkdtemp(join(tmpdir(), "plurnk-bin-child-model-"));
-    try {
-        const missing = `missing-${crypto.randomUUID()}`;
-        const env: NodeJS.ProcessEnv = {
-            ...process.env,
-            HOME: dir,
-            PLURNK_SERVICE_DB_PATH: join(dir, "plurnk.db"),
-            PLURNK_HOST: "127.0.0.1",
-            PLURNK_PORT: "0",
-            PLURNK_MODEL_CHILD: missing,
-        };
-        delete env.PLURNK_MODEL;
-        const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH], { env, cwd: dir, stdio: ["ignore", "ignore", "pipe"] });
-        let stderr = "";
-        child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
-        const code = await new Promise<number | null>((resolvePromise) => { child.on("exit", resolvePromise); });
-        assert.notEqual(code, 0);
-        assert.match(stderr, new RegExp(`PLURNK_MODEL_CHILD=${missing} is neither a declared alias nor a provider/model route`));
-        assert.match(stderr, /Unset it to inherit\./);
-    } finally {
-        await rm(dir, { recursive: true, force: true });
-    }
-});
+// Invalid selectors are exercised through source and built discovery/sync in env-cascade.test.ts.

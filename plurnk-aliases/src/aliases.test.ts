@@ -1,6 +1,6 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import { parseAliasesFromEnv, resolveActiveRoute, resolveModelSelector } from "./index.ts";
+import { parseAliasesFromEnv, resolveActiveRoute, resolveChildRoute, resolveModelSelector } from "./index.ts";
 
 test("parseAliasesFromEnv: extracts PLURNK_MODEL_<alias>=<provider>/<model>", () => {
     const env = {
@@ -78,7 +78,8 @@ for (const sameValue of [false, true]) {
                 [keys[1]]: sameValue ? "http://127.0.0.1:8001/v1" : "http://127.0.0.1:8002/v1",
             };
             assert.throws(() => parseAliasesFromEnv(env), {
-                name: "Error",
+                name: "ConfigurationError",
+                key: keys[1],
                 message: `Duplicate base-URL override "demo": ${keys[0]} and ${keys[1]} case-fold to the same alias.`,
             });
         });
@@ -88,6 +89,17 @@ for (const sameValue of [false, true]) {
 test("parseAliasesFromEnv: a PLURNK_BASEURL_* override with no matching alias fails hard", () => {
     const env = { PLURNK_MODEL_a: "openai/m", PLURNK_BASEURL_typo: "http://nope" } as NodeJS.ProcessEnv;
     assert.throws(() => parseAliasesFromEnv(env), /PLURNK_BASEURL_\* override\(s\) with no matching PLURNK_MODEL_\* alias: typo/);
+});
+
+test("configured selectors diagnose their own key; exact routes do not depend on the alias catalog", () => {
+    for (const [resolve, key] of [[resolveActiveRoute, "PLURNK_MODEL"], [resolveChildRoute, "PLURNK_MODEL_CHILD"]] as const) {
+        assert.throws(() => resolve({ [key]: "missing" }), { name: "ConfigurationError", key });
+        const env = { [key]: "openai/direct", PLURNK_BASEURL_orphan: "http://localhost/v1" };
+        assert.deepEqual(resolve(env), { provider: "openai", model: "direct" });
+        assert.throws(() => parseAliasesFromEnv(env), { name: "ConfigurationError", key: "PLURNK_BASEURL_orphan" });
+    }
+    assert.equal(resolveChildRoute({}), null);
+    assert.throws(() => resolveChildRoute({ PLURNK_MODEL_CHILD: "" }), { name: "ConfigurationError", key: "PLURNK_MODEL_CHILD" });
 });
 
 test("resolveActiveRoute: returns null when PLURNK_MODEL unset", () => {

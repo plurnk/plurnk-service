@@ -37,6 +37,7 @@ export type { ModelRoute, ProviderAlias, ProviderSpec } from "@plurnk/plurnk-ali
 export {
     parseAliasesFromEnv,
     resolveActiveRoute,
+    resolveChildRoute,
     resolveModelSelector,
 } from "@plurnk/plurnk-aliases";
 

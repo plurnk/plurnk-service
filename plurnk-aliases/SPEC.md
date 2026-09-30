@@ -1,8 +1,8 @@
 # @plurnk/plurnk-aliases — contract
 
-The canonical runtime-free parser for Plurnk model selectors and the optional
-model-alias cascade. Zero runtime
-dependencies. `@plurnk/plurnk-providers` depends on this package and re-exports
+The canonical provider-free parser for Plurnk model selectors and the optional
+model-alias cascade. Its only runtime import is the shared configuration error.
+`@plurnk/plurnk-providers` depends on this package and re-exports
 its surface unchanged. Clients transmit selector strings and never resolve the
 daemon's environment themselves; this package is the daemon/provider runtime's
 single parsing authority.
@@ -52,6 +52,10 @@ alias-scoped tuning applies only when that real alias is present.
 - **`resolveActiveRoute(env = process.env): ProviderSpec | null`** — resolves
   `PLURNK_MODEL`, or returns `null` only when it is unset. An explicit unknown or
   malformed selector fails instead of silently disabling the provider.
+- **`resolveChildRoute(env = process.env): ProviderSpec | null`** — resolves
+  `PLURNK_MODEL_CHILD`, returning `null` only when absent (inherit).
+  An explicit empty value is invalid. Exact routes resolve independently of
+  alias declarations for both selectors.
 
 ## Fail-hard rules
 
@@ -65,4 +69,6 @@ alias-scoped tuning applies only when that real alias is present.
 - **Unresolved active selector** — a non-empty `PLURNK_MODEL` that is neither a
   declared alias nor a complete exact route throws.
 
-These are contract violations surfaced loudly, never recovered.
+These throw the shared `ConfigurationError`, naming the offending key.
+Consumers preserve the diagnostic at their composition boundary; they never
+substitute a selector or disguise an unresolved alias catalog as empty.

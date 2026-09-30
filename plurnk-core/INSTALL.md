@@ -29,10 +29,18 @@ or enables the unit.
 | Database | `$XDG_DATA_HOME/plurnk/plurnk.db` (`~/.local/share/plurnk/plurnk.db`) |
 | Project / global Agent Skills | `.agents/skills/` / `~/.agents/skills/` |
 | Plurnk-only Agent Skills | `$XDG_CONFIG_HOME/plurnk/skills/` |
+| Project / global MCP servers | `.agents/mcp.json` / `~/.agents/mcp.json` |
+| Plurnk-only MCP servers | `$XDG_CONFIG_HOME/plurnk/mcp.json` |
 
 Use `plurnk-service config` for paths and precedence, `config edit` to edit the
 user file, and `config check` to validate it. An old `~/.plurnk` is not read
 implicitly; `plurnk-service paths migrate` relocates it with the daemon stopped.
+
+Invalid optional configuration stays visible without removing the repair environment.
+`config check` is strict; ordinary startup keeps unrelated capabilities and client
+inspection available. Model providers are constructed and verified on selection or
+first use, not on startup. An invalid default never selects a different model:
+choose a valid model in the client or correct the daemon's configuration.
 
 ## Precedence
 

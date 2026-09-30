@@ -188,12 +188,13 @@ an explicitly specified subpath, not in the frozen root barrel.
 ```mermaid
 flowchart LR
     LISTENER["Bind client listener<br/>unready: HTTP 503"] --> DB["Acquire daemon lock<br/>and admit SQLite schema"]
-    DB --> PROVIDER["Resolve and verify<br/>selected provider"]
-    PROVIDER --> DAEMON["Construct and start<br/>daemon composition"]
+    DB --> DAEMON["Construct and start<br/>daemon composition"]
     DAEMON --> CLIENT["Activate client transport"]
+    CLIENT --> SELECT["Worker selects or first uses a model"]
+    SELECT --> PROVIDER["Construct and verify<br/>selected provider"]
     LISTENER -. failure .-> FAIL["Fail startup<br/>durable state untouched"]
     DB -. failure .-> CLOSE_LISTENER["Close listener"] --> FAIL
-    PROVIDER -. failure .-> CLOSE["Close database<br/>and release lock"] --> FAIL
+    PROVIDER -. failure .-> REPAIR["Return selection failure<br/>client remains available"]
     DAEMON -. failure .-> TEARDOWN["Close every started owner"] --> FAIL
 ```
 
@@ -220,14 +221,17 @@ address by URL, never by port (#641): AG-UI mounts `/` and `/agui`, A2A the
 well-known card and its endpoint path, on the same address.
 
 §startup-admission-order After listener ownership, database admission completes
-before provider or capability initialization can perform external work. Every
+before capability initialization can perform external work. Provider construction
+and endpoint verification occur on worker selection or first use, never merely
+because a default selector is configured. Startup validates selectors without
+provider I/O and retains their configuration diagnostics. Every
 later startup failure closes resources in reverse ownership order while
 preserving the originating failure: daemon, observability, database, listener.
 
 §startup-readiness-line **Readiness is one stdout line.** After the client interface is mounted
 the service prints exactly one line, `plurnk-service agui=<url> db=<json string> route=<json string>`:
 the URL brackets an IPv6 host, and the database path and the route (the active model route or
-`no model`) are JSON strings, so a path or route containing spaces is exact and a consumer parses
+`no model`, or `invalid model configuration`) are JSON strings, so a path or route containing spaces is exact and a consumer parses
 the URL as a URL and the strings as JSON; nothing else the service prints on stdout before it has
 that prefix. Before the line the listener answers `503 service-starting`; after it,
 `discover` is the identity check a launcher uses to tell this daemon from any other listener. A bind
@@ -4193,6 +4197,9 @@ composition boundaries, not arbitrary exceptions:
 | Boundary | Outcome |
 |---|---|
 | Optional startup integration (hooks, hosted A2A, observability) cannot be configured | Withhold that integration and retain its exact configuration diagnostic. Activate the client interface and unrelated capabilities; never invent a replacement setting. |
+| Invalid default model or child selector | Retain its diagnostic at startup; keep client inspection and explicit selection available. A request relying on the invalid selector fails with `daemon:configuration/configuration-invalid` (503), naming its key. Never substitute another model or silently inherit a child model. |
+| Model construction or endpoint verification fails | Reject selection/use before inference or committing the selection. Keep the client available; a later selection can retry or choose another route. |
+| Invalid model-alias catalog | Fail catalog inspection explicitly; omit its unavailable snapshot rather than report an empty catalog. Exact provider/model selection does not depend on aliases. |
 | Offline `config check` | Validate the same inputs without activating integrations; an invalid setting remains a nonzero failure. |
 | Family configuration cannot be resolved | Keep its manager available, identify the configuration failure in its generated documentation, and preserve durable definitions. Do not publish the family's operational capabilities or pretend its catalog is empty. Other families and ordinary model work remain usable. |
 | Inspection or mutation of an unresolved family | Return the exact configuration Problem, naming the key and required correction, through both client and model paths. No silent source fallback or change to stored settings. |

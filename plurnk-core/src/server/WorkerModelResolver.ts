@@ -3,23 +3,21 @@ import type { Db } from "../core/Db.ts";
 import type { Provider, ProviderSpec } from "@plurnk/plurnk-providers";
 import { routeForSpec, specForRoute } from "./model-route.ts";
 import { type Effort } from "@plurnk/plurnk-contracts";
-import { parseAliasesFromEnv, resolveActiveRoute, UnsupportedEffortError } from "@plurnk/plurnk-providers";
+import { parseAliasesFromEnv, resolveActiveRoute, resolveChildRoute, UnsupportedEffortError } from "@plurnk/plurnk-providers";
+import ConfigurationError from "@plurnk/plurnk-meta/configuration-error";
 import ProviderInstantiate from "../core/ProviderInstantiate.ts";
 import { resolveLoopRoute } from "./loop-model.ts";
-import { OperationFailureError } from "../core/results.ts";
+import Results, { OperationFailureError } from "../core/results.ts";
 import { daemonFailure, modelRouteLabel } from "./daemon-results.ts";
 import type { EffortSource, WorkerGenerationPolicyRow } from "./Daemon.ts";
 
 export default class WorkerModelResolver {
     readonly #db: Db;
-    readonly #provider: Provider | null;
 
-    constructor({ db, provider }: {
+    constructor({ db }: {
         db: Db;
-        provider: Provider | null;
     }) {
         this.#db = db;
-        this.#provider = provider;
     }
 
     async persistGenerationPolicy(workerId: number, policy: WorkerGenerationPolicyRow): Promise<readonly Effort[]> {
@@ -108,8 +106,7 @@ export default class WorkerModelResolver {
             await this.providerForPolicy(spec, worker.effort);
             return { providerSpec: spec, effort: worker.effort, effortSource: worker.effort_source };
         }
-        if (this.#provider === null) return null;
-        const spec = resolveActiveRoute();
+        const spec = this.#configured(() => resolveActiveRoute());
         if (spec !== null) {
             const effort = ProviderInstantiate.configuredEffort(spec);
             await this.persistGenerationPolicy(workerId, {
@@ -149,9 +146,7 @@ export default class WorkerModelResolver {
             }
             return spec;
         }
-        const configured = process.env.PLURNK_MODEL_CHILD;
-        if (configured === undefined || configured.length === 0) return null;
-        const spec = this.#resolveLoopProvider(configured);
+        const spec = this.#configured(() => resolveChildRoute());
         if (spec !== null) {
             await this.persistGenerationPolicy(workerId, {
                 model_route_id: worker.model_route_id,
@@ -180,6 +175,7 @@ export default class WorkerModelResolver {
             return provider;
         } catch (cause) {
             if (cause instanceof OperationFailureError) throw cause;
+            if (cause instanceof ConfigurationError) throw new OperationFailureError(Results.configurationFailure(cause), { cause });
             if (cause instanceof UnsupportedEffortError) {
                 throw daemonFailure(
                     "daemon:provider",
@@ -215,20 +211,16 @@ export default class WorkerModelResolver {
 
 
     // {§methods-loop-run-model}: resolve identity without provider setup.
-    #resolveLoopProvider(selector: string | undefined): ProviderSpec | null {
-        const requested = resolveLoopRoute(selector, parseAliasesFromEnv());
-        if (requested === null && this.#provider === null) return null;
-        const spec = requested ?? resolveActiveRoute();
-        if (spec === null) {
-            throw daemonFailure(
-                "daemon:provider",
-                "active-model-unresolved",
-                500,
-                "The active provider has no resolvable model route.",
-                { stage: "provider-selection", retryable: false },
-            );
+    #resolveLoopProvider(selector: string): ProviderSpec | null {
+        return this.#configured(() => resolveLoopRoute(selector, selector.includes("/") ? [] : parseAliasesFromEnv()));
+    }
+
+    #configured<T>(read: () => T): T {
+        try { return read(); }
+        catch (cause) {
+            if (!(cause instanceof ConfigurationError)) throw cause;
+            throw new OperationFailureError(Results.configurationFailure(cause), { cause });
         }
-        return spec;
     }
 
 }

@@ -307,7 +307,13 @@ test("loop.run still fires loop/terminated when the loop throws — no client ha
     assert.equal(logged.some((l) => /drain error/.test(l)), false, "a rail termination is clean — no swallowed-throw diagnostics needed");
 });
 
-test("loop.run without provider returns 501", async () => {
+test("loop.run without a model selection returns 501", async (t) => {
+    const selected = process.env.PLURNK_MODEL;
+    delete process.env.PLURNK_MODEL;
+    t.after(() => {
+        if (selected === undefined) delete process.env.PLURNK_MODEL;
+        else process.env.PLURNK_MODEL = selected;
+    });
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {

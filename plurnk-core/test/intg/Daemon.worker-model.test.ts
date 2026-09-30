@@ -48,6 +48,77 @@ const routeSpec = async (db: Db, routeId: number | null): Promise<ProviderSpec |
     };
 };
 
+test("{§worker-model-selection}: the configured default is selected on first use without a boot provider", async () => {
+    const spec = declaredProvider("lazy", "lazy-model");
+    declaredProviderEnv.set("PLURNK_MODEL", process.env.PLURNK_MODEL);
+    process.env.PLURNK_MODEL = spec.alias;
+    const mock = new Mock({ contextWindow: 16_384, responses: [makeMockResponse("````KILL\nready\n````")] });
+    ProviderInstantiate.registerInstance(mock, spec);
+    await withDaemon(null, async (_db, daemon, addr) => {
+        assert.equal(daemon.provider, null, "no process-wide model was constructed");
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "lazy-default" });
+            const result = await runLoopToTerminal(ws, 2, { prompt: "use the selected default" });
+            assert.equal(result.finalStatus, 200);
+            assert.equal(mock.remaining, 0, "the default was actually used, not substituted or left unconfigured");
+        } finally { ws.close(); }
+    });
+});
+
+test("{§configuration-repair-path}: an invalid default leaves client inspection and explicit model repair available", async () => {
+    const spec = declaredProvider("repair", "repair-model");
+    declaredProviderEnv.set("PLURNK_MODEL", process.env.PLURNK_MODEL);
+    process.env.PLURNK_MODEL = "missing-default";
+    const mock = new Mock({ contextWindow: 16_384, responses: [makeMockResponse("````KILL\nrepaired\n````")] });
+    ProviderInstantiate.registerInstance(mock, spec);
+    await withDaemon(null, async (db, daemon, addr) => {
+        assert.ok(daemon.listProviders().aliases.some(({ alias }) => alias === spec.alias));
+        const ws = await connect(addr);
+        try {
+            const workspace = await rpcCall(ws, 1, "workspace.create", { name: "repair-default" });
+            assert.ok(workspace.result);
+            const rejected = await rpcCall(ws, 2, "loop.run", { prompt: "do not guess a model" });
+            const failure = rejected.result as { status: number; problem: { key: string } };
+            assert.equal(failure.status, 503);
+            assert.equal(failure.problem.key, "PLURNK_MODEL");
+            assert.equal(mock.remaining, 1, "an invalid default cannot silently consume another model");
+            const result = await runLoopToTerminal(ws, 3, { prompt: "repair through explicit selection", selector: spec.alias });
+            assert.equal(result.finalStatus, 200);
+            assert.equal(mock.remaining, 0);
+            const workers = await db.test_workers_with_model.all<WorkerRow>({});
+            assert.deepEqual(await routeSpec(db, workers.find(({ id }) => id === result.modelWorkerId)!.model_route_id), spec);
+        } finally { ws.close(); }
+    });
+});
+
+test("{§configuration-repair-path}: an invalid child default refuses work until an explicit child selection repairs it", async () => {
+    const spec = declaredProvider("parent", "parent-repair-model");
+    const child = declaredProvider("child", "child-repair-model");
+    declaredProviderEnv.set("PLURNK_MODEL_CHILD", process.env.PLURNK_MODEL_CHILD);
+    process.env.PLURNK_MODEL_CHILD = "missing-child";
+    const mock = new Mock({ contextWindow: 16_384, responses: [makeMockResponse("````KILL\nrepaired child policy\n````")] });
+    ProviderInstantiate.registerInstance(mock, spec);
+    ProviderInstantiate.registerInstance(new Mock({ contextWindow: 16_384, responses: [] }), child);
+    await withDaemon(null, async (_db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "repair-child" });
+            const workspaceId = (created.result as { id: number }).id;
+            const rejected = await rpcCall(ws, 2, "loop.run", { prompt: "do not substitute the child model", selector: spec.alias });
+            const failure = rejected.result as { status: number; problem: { key: string } };
+            assert.equal(failure.status, 503);
+            assert.equal(failure.problem.key, "PLURNK_MODEL_CHILD");
+            assert.equal(mock.remaining, 1);
+            const result = await runLoopToTerminal(ws, 3, { prompt: "repair child selection", childSelector: child.alias });
+            assert.equal(result.finalStatus, 200);
+            assert.ok(result.modelWorkerId !== undefined);
+            const state = await daemon.readWorkerModel({ workspaceId, workerId: result.modelWorkerId });
+            assert.equal(state.spawnModel?.alias, child.alias);
+        } finally { ws.close(); }
+    });
+});
+
 test("{§worker-model-selection}: an explicit selection persists onto the worker and an omitted selector continues it", async () => {
     const spec = declaredProvider("durable", "durable-model");
     const mock = new Mock({

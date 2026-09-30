@@ -1,6 +1,6 @@
 # @plurnk/plurnk-aliases
 
-Runtime-free parser for Plurnk model selectors and the optional alias cascade.
+Provider-free parser for Plurnk model selectors and the optional alias cascade.
 Vendor-agnostic, MIT.
 
 Resolves `PLURNK_MODEL_<alias>=<provider>/<model>` env vars (plus per-alias

@@ -190,10 +190,18 @@ export default class RunHandler {
             ...(input.resume === undefined ? {} : { resume: input.resume }),
         });
         const status = await this.#workerStatus(workspaceId, workerId);
+        let providers;
+        let catalogProblem;
+        try { providers = this.#seam().listProviders().aliases; }
+        catch (cause) {
+            catalogProblem = Problems.fromError(cause);
+            if (catalogProblem === null) throw cause;
+        }
         emit(this.#portal().runStarted(
             boundRun,
-            stateSnapshot({ providers: this.#seam().listProviders().aliases, workspace: { id: workspaceId, name: env.workspaceName, projectRoot: env.projectRoot }, status }),
+            stateSnapshot({ ...(providers === undefined ? {} : { providers }), workspace: { id: workspaceId, name: env.workspaceName, projectRoot: env.projectRoot }, status }),
         ));
+        if (catalogProblem !== undefined) emit([{ type: EventType.CUSTOM, name: "plurnk.problem", value: catalogProblem }]);
         if (finished) return;
 
         try {

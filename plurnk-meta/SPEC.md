@@ -103,6 +103,8 @@ never a value used in the operator's place). An unset key is a broken floor
 and remains an internal error. Invalid operator values raise a
 `ConfigurationError` naming the key; the owning capability contains that
 diagnostic without inventing a value ({§configuration-repair-path}).
+The same class is available from `@plurnk/plurnk-meta/configuration-error`
+without loading discovery or observability machinery.
 No reader accepts a fallback: a signature that could carry one is a second
 home for a choice. A supplied environment is authoritative: missing keys do not
 fall through to the process, and reading never mutates either environment.

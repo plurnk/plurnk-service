@@ -4,8 +4,7 @@ import Results, { OperationFailureError } from "../core/results.ts";
 
 // {§methods-loop-run-model}: resolve a runLoop call's optional selector to the
 // ProviderSpec to instantiate, or null for "use the boot default". PURE (no env read, no
-// construction) so the precedence + parse contract is hermetically testable; the Daemon wraps it
-// with ProviderInstantiate + the #provider fallback.
+// construction) so the precedence + parse contract is hermetically testable.
 //
 // One selector accepts either a declared alias or an exact provider/model route.
 // A malformed route or undeclared alias throws legibly — the daemon must never

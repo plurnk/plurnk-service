@@ -50,6 +50,7 @@
         "prepack": "npm run build"
     },
     "dependencies": {
-        "@plurnk/plurnk-contracts": "1.24.0"
+        "@plurnk/plurnk-contracts": "1.24.0",
+        "@plurnk/plurnk-meta": "1.24.0"
     }
 }

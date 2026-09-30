@@ -224,6 +224,11 @@ test("config discovery is provider-free, on-demand, and does not create a second
         });
         assert.equal(invalid.code, 1);
         assert.match(invalid.stderr, /PLURNK_MODEL 'missing' is neither a declared alias nor a provider\/model route/);
+        const status = await runService(fx, ["config"], { env: { PLURNK_MODEL: "missing" } });
+        assert.equal(status.code, 0, "inspection still names the repair locations");
+        assert.ok(status.stdout.includes(fx.homeEnv));
+        assert.match(status.stdout, /model: invalid configuration/u);
+        assert.match(status.stderr, /PLURNK_MODEL 'missing'/u);
     } finally {
         await rm(fx.root, { recursive: true, force: true });
     }
@@ -373,12 +378,13 @@ for (const built of [false, true]) {
             PLURNK_A2A_EXPOSE: "1",
             PLURNK_A2A_ENDPOINT_PATH: "relative",
             OTEL_TRACES_EXPORTER: "unknown-exporter",
+            PLURNK_MODEL: "missing-alias",
+            PLURNK_MODEL_CHILD: "missing-child",
         };
         const env: NodeJS.ProcessEnv = {
             ...process.env, ...invalid,
             HOME: fx.home, XDG_CONFIG_HOME: fx.configHome, XDG_DATA_HOME: fx.dataHome,
         };
-        delete env.PLURNK_MODEL;
         delete env.PLURNK_SERVICE_DB_PATH;
         const daemon = await Launch.start({
             command: [process.execPath, ...(built ? [BUILT_BIN_PATH] : [...CONDITION_ARGS, BIN_PATH]), "start"],
@@ -400,6 +406,8 @@ for (const built of [false, true]) {
             ["hooks", "PLURNK_HOOKS_ARGS"],
             ["a2a-hosted", "PLURNK_A2A_ENDPOINT_PATH"],
             ["observability", "OTEL_TRACES_EXPORTER"],
+            ["model", "PLURNK_MODEL"],
+            ["model-child", "PLURNK_MODEL_CHILD"],
         ]) {
             const notice = notices.find((item) => item.key === key);
             assert.equal(notice?.kind, "configuration_unavailable", JSON.stringify(notices));
@@ -422,6 +430,69 @@ for (const built of [false, true]) {
         for (const notice of notices) assert.ok(synchronized.includes(String(notice.key)), `a client attaching without inference also sees the diagnostic: ${synchronized}`);
         assert.match(synchronized, /RUN_FINISHED/u, "passive attachment completes normally");
         assert.equal(daemon.child.exitCode, null);
+    });
+}
+
+for (const built of [false, true]) {
+    test(`{§startup-admission-order} ${built ? "built" : "source"} provider verification is lazy; a broken alias catalog cannot block direct selection`, async (t) => {
+        const fx = await fixture();
+        t.after(() => rm(fx.root, { recursive: true, force: true }));
+        const requests: string[] = [];
+        const endpoint = createServer((req, res) => {
+            requests.push(req.url!);
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ data: [{ id: "lazy-fixture", n_ctx: 16_384 }] }));
+        });
+        endpoint.listen(0, "127.0.0.1");
+        await once(endpoint, "listening");
+        t.after(() => new Promise<void>((done) => endpoint.close(() => done())));
+        const address = endpoint.address();
+        assert.ok(address !== null && typeof address !== "string");
+        const env: NodeJS.ProcessEnv = {
+            ...process.env, HOME: fx.home, XDG_CONFIG_HOME: fx.configHome, XDG_DATA_HOME: fx.dataHome,
+            PLURNK_MODEL: "openai/lazy-fixture", OPENAI_BASE_URL: `http://127.0.0.1:${address.port}/v1`,
+            PLURNK_BASEURL_orphan: "http://unused.invalid", PLURNK_PROVIDERS_CONTEXT_WINDOW: "16384",
+        };
+        delete env.PLURNK_SERVICE_DB_PATH;
+        const daemon = await Launch.start({
+            command: [process.execPath, ...(built ? [BUILT_BIN_PATH] : [...CONDITION_ARGS, BIN_PATH]), "start"],
+            cwd: fx.cwd, env, host: "127.0.0.1", port: 0, readyTimeoutMs: 15_000, stopGraceMs: 5_000,
+        });
+        t.after(() => daemon.stop());
+        const request = async (extra: object) => {
+            const response = await fetch(daemon.url, {
+                method: "POST", headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                    threadId: "lazy-model", runId: crypto.randomUUID(), state: {}, messages: [], tools: [], context: [],
+                    forwardedProps: { plurnk: { workspace: "lazy-model", projectRoot: fx.cwd, ...extra } },
+                }),
+            });
+            assert.equal(response.status, 200);
+            return (await response.text()).split("\n\n").filter((frame) => frame.startsWith("data: "))
+                .map((frame) => JSON.parse(frame.slice(6)) as {
+                    type: string; name?: string; snapshot?: { providers?: unknown }; value?: {
+                        ok: boolean; key?: string; result: unknown; problem?: { status: number; key?: string };
+                    };
+                });
+        };
+        const sync = await request({ mode: "sync" });
+        assert.ok(sync.some(({ type }) => type === "RUN_FINISHED"), "the client attaches despite alias failure");
+        assert.ok(sync.some(({ name, value }) => name === "plurnk.problem" && value?.key === "PLURNK_BASEURL_orphan"));
+        const snapshot = sync.find(({ type }) => type === "STATE_SNAPSHOT")?.snapshot;
+        assert.ok(snapshot);
+        assert.equal(Object.hasOwn(snapshot, "providers"), false, "unavailable is not a fabricated empty catalog");
+        assert.deepEqual(requests, [], "startup and passive attachment perform no provider I/O");
+        const rejected = await request({ action: { kind: "worker.model.set", selector: "missing/model" } });
+        const failure = rejected.find(({ name }) => name === "plurnk.action.result")?.value;
+        assert.equal(failure?.ok, false);
+        assert.equal(failure?.problem?.status, 503);
+        const unchanged = await request({ action: { kind: "worker.model.get" } });
+        assert.deepEqual(unchanged.find(({ name }) => name === "plurnk.action.result")?.value?.result, { model: null, spawnModel: null });
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const selected = await request({ action: { kind: "worker.model.set", selector: "openai/lazy-fixture" } });
+            assert.equal(selected.find(({ name }) => name === "plurnk.action.result")?.value?.ok, true, JSON.stringify(selected));
+        }
+        assert.deepEqual(requests, ["/v1/models"], "selection verifies once; repeated selection reuses the existing provider cache");
     });
 }
 

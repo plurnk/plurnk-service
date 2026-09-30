@@ -46,7 +46,7 @@ import WorkspaceStorage from "./WorkspaceStorage.ts";
 import Fork from "../core/fork.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
-import { Knob } from "@plurnk/plurnk-meta";
+import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 import LoopPolicies from "../core/LoopPolicies.ts";
 import LoopPolicyReader from "../core/LoopPolicyReader.ts";
 import { contentWeight } from "../core/content-weight.ts";
@@ -189,7 +189,7 @@ export default class Daemon implements ApplicationPort {
         this.#mimetypes = mimetypes ?? new Mimetypes({
             defaultMimetype: "text/markdown",
             discoverOptions: { cwd: this.#discoveryCwd } });
-        const bootSpec = resolveActiveRoute();
+        const bootSpec = this.#provider === null ? null : resolveActiveRoute();
         if (this.#provider !== null && bootSpec !== null) {
             ProviderInstantiate.registerInstance(this.#provider, bootSpec);
         }
@@ -413,7 +413,7 @@ export default class Daemon implements ApplicationPort {
             const { workspaceId, ...interaction } = event;
             this.#broadcast({ workspaceId }, "loop/interaction", interaction);
         });
-        this.#workerModels = new WorkerModelResolver({ db: this.#db, provider: this.#provider });
+        this.#workerModels = new WorkerModelResolver({ db: this.#db });
         this.#reads = new ClientReads({ db: this.#db, engine: this.#engine, workspaceGate: this.#workspaceGate, residency: this.#residency });
     }
 
@@ -1076,10 +1076,16 @@ export default class Daemon implements ApplicationPort {
     // {§methods} — the module's render surface beyond the journal. Thin delegations
     // into core's envelope / membership / provider machinery; the module fans the results into its own views.
     listProviders(): { aliases: Array<{ alias: string; provider: string; model: string; active: boolean; inputCapacity: number | null }> } {
-        const active = resolveActiveRoute();
+        const active = process.env.PLURNK_MODEL?.toLowerCase();
+        let aliases;
+        try { aliases = parseAliasesFromEnv(); }
+        catch (cause) {
+            if (!(cause instanceof ConfigurationError)) throw cause;
+            throw new OperationFailureError(Results.configurationFailure(cause), { cause });
+        }
         return {
-            aliases: parseAliasesFromEnv().map((a) => {
-                const isActive = active !== null && active.alias === a.alias;
+            aliases: aliases.map((a) => {
+                const isActive = active === a.alias;
                 return {
                     alias: a.alias, provider: a.provider, model: a.model, active: isActive,
                     inputCapacity: isActive && this.#provider !== null ? this.#provider.inputCapacity : null };

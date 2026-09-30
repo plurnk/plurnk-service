@@ -34,6 +34,11 @@
             "types": "./dist/index.d.ts",
             "default": "./dist/index.js"
         },
+        "./configuration-error": {
+            "plurnk-dev": "./src/ConfigurationError.ts",
+            "types": "./dist/ConfigurationError.d.ts",
+            "default": "./dist/ConfigurationError.js"
+        },
         "./package.json": "./package.json",
         "./POLICY.md": "./POLICY.md",
         "./recap.md": "./recap.md",

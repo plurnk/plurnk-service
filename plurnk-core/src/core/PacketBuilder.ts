@@ -24,7 +24,7 @@ import type { RequestPacket, StoredPacketSection } from "./StoredPacket.ts";
 
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
 import type { ChatMessage, Provider } from "@plurnk/plurnk-providers";
-import { scopeEnvToAlias, resolveActiveRoute } from "@plurnk/plurnk-providers";
+import { scopeEnvToAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import BudgetReadout from "./BudgetReadout.ts";
 import TokenCalibration from "./TokenCalibration.ts";
@@ -153,9 +153,7 @@ export default class PacketBuilder {
         this.#executors = executors;
         this.#capabilities = new CapabilityResolver(db, schemes, executors);
         // Retired capacity knobs fail at boot rather than silently becoming inert.
-        const bootAlias = resolveActiveRoute(process.env)?.alias ?? "";
         this.#shedRetiredCapacityKnobs();
-        this.#promptProjectionFor(bootAlias);
     }
 
     setFunctionalityDocuments(documents: (workspaceId: number) => Array<{ family: string; pathname: string; content: string }>): void {
