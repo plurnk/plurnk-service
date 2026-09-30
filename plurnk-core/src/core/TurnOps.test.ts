@@ -5,7 +5,22 @@ import TurnOps from "./TurnOps.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 
-test("{§emission-row} assistant history marks omitted bodies while retaining complete headers and no nested operations", () => {
+const SOURCE = "ops://analyst/1/2";
+const aside = `<!-- Automatically truncated op body: READ (${SOURCE}) to retrieve in full -->`;
+
+const withPreview = (t: import("node:test").TestContext, lines: string, chars: string): void => {
+    const saved = { lines: process.env.PLURNK_SERVICE_PREVIEW_LINES, chars: process.env.PLURNK_SERVICE_PREVIEW_CHARS };
+    process.env.PLURNK_SERVICE_PREVIEW_LINES = lines;
+    process.env.PLURNK_SERVICE_PREVIEW_CHARS = chars;
+    t.after(() => {
+        for (const [key, value] of [["PLURNK_SERVICE_PREVIEW_LINES", saved.lines], ["PLURNK_SERVICE_PREVIEW_CHARS", saved.chars]] as const) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+    });
+};
+
+test("{§emission-row} the frozen projection keeps every header and body within the preview bound, and adds no nested operations", () => {
     const headers = [
         "READ (worker:///notes.md) <1,-1> /needle/ <!-- inspect -->",
         "EDIT (worker:///notes.md) <@abcde> <!-- replace -->",
@@ -20,7 +35,7 @@ test("{§emission-row} assistant history marks omitted bodies while retaining co
     ];
     const bodies = [
         null,
-        "A literal example:\n```KILL (worker:///not-an-operation)\n```\nReplacement text.\n",
+        "A literal example:\n```KILL (worker:///not-an-operation)\n```\nReplacement text.",
         null,
         null,
         "printf '%s\\n' verification",
@@ -36,30 +51,64 @@ test("{§emission-row} assistant history marks omitted bodies while retaining co
         .map(({ statement }) => statement);
     assert.equal(statements.length, headers.length, "nested literal fences do not add operations");
     const original = structuredClone(statements);
-    assert.equal(TurnOps.renderEmission(statements), headers.map((header, index) => [
-        `\`\`\`${header}`,
-        ...(bodies[index] === null ? [] : ["> [!NOTE]", "> Body content REDACTED from history."]),
-        "```",
-    ].join("\n")).join("\n\n"));
+    assert.equal(TurnOps.renderEmission(statements, SOURCE), headers.map((header, index) => PlurnkParser.frame(header, bodies[index]!)).join("\n\n"),
+        "every statement is its own original operation, whole within the bound");
     assert.deepEqual(statements, original, "projection never changes the statements that execute");
 });
 
-for (const [name, body, omitted] of [
-    ["absent", null, false],
-    ["empty", "", false],
-    ["whitespace-only", " \t\n", true],
-    ["nonempty", "The original body.", true],
+for (const [name, body] of [
+    ["absent", null],
+    ["empty", ""],
+    ["nonempty", "The original body."],
 ] as const) {
     for (const header of ["EDIT (worker:///notes.md)", "SEND (worker://helper)"]) {
-        test(`{§emission-row} ${header}: ${name} bodies are marked only when content was omitted`, () => {
+        test(`{§emission-row} ${header}: an ${name} body renders as the worker wrote it`, () => {
             const source = PlurnkParser.frame(header, body);
             const statements = TurnOps.parseInternal(source);
             assert.equal(statements.length, 1);
-            assert.equal(TurnOps.renderEmission(statements), PlurnkParser.frame(header,
-                omitted ? "> [!NOTE]\n> Body content REDACTED from history." : null));
+            assert.equal(TurnOps.renderEmission(statements, SOURCE), PlurnkParser.frame(header, body === "" ? null : body));
         });
     }
 }
+
+test("{§emission-row} a body over the line bound keeps its head, and its closer names the source", (t) => {
+    withPreview(t, "3", "16000");
+    const body = Array.from({ length: 10 }, (_line, index) => `line ${index + 1}`).join("\n");
+    const statements = TurnOps.parseInternal(PlurnkParser.frame("EDIT (worker:///notes.md)", body));
+    assert.equal(TurnOps.renderEmission(statements, SOURCE), `${PlurnkParser.frame("EDIT (worker:///notes.md)", "line 1\nline 2\nline 3")} ${aside}`);
+});
+
+test("{§emission-row} a line over the character bound is cut mid-line, and the aside still rides its own closer", (t) => {
+    withPreview(t, "100", "10");
+    const statements = TurnOps.parseInternal(PlurnkParser.frame("SEND (worker://helper)", "abcdefghijklmnopqrstuvwxyz"));
+    const rendered = TurnOps.renderEmission(statements, SOURCE);
+    assert.equal(rendered, `${PlurnkParser.frame("SEND (worker://helper)", "abcdefghij")} ${aside}`);
+    assert.match(rendered.split("\n").at(-1)!, /^``` <!-- Automatically truncated op body: /u, "the aside sits on the closer's own line");
+});
+
+test("{§emission-row} a worker that copies the aside onto its own closer keeps its body; the aside is outside text", (t) => {
+    withPreview(t, "2", "16000");
+    const copied = TurnOps.renderEmission(TurnOps.parseInternal(PlurnkParser.frame("EDIT (worker:///notes.md)", "one\ntwo\nthree")), SOURCE);
+    const parsed = PlurnkParser.parse(copied);
+    const [statement] = parsed.items.filter((item) => item.kind === "statement").map((item) => (item as { statement: PlurnkStatement }).statement);
+    assert.equal(statement!.op, "EDIT");
+    assert.equal((statement as EditStatement).body, "one\ntwo");
+    assert.ok(parsed.items.some((item) => item.kind === "text" && item.content.includes("Automatically truncated op body")), "the copied aside is outside text");
+});
+
+test("{§outside-text} a worker that ends its emission with comments keeps every operation; the comments are outside text", () => {
+    const emitted = [
+        `${PlurnkParser.frame("EDIT (worker:///notes.md)", "complete body")} <!-- imitated aside -->`,
+        PlurnkParser.frame("KILL", "The answer."),
+        "<!-- a trailing comment of its own -->",
+    ].join("\n\n");
+    const parsed = PlurnkParser.parse(emitted);
+    const statements = parsed.items.filter((item) => item.kind === "statement").map((item) => (item as { statement: PlurnkStatement }).statement);
+    assert.deepEqual(statements.map(({ op }) => op), ["EDIT", "KILL"]);
+    assert.equal((statements[0] as EditStatement).body, "complete body");
+    assert.deepEqual(parsed.items.filter((item) => item.kind === "text").map((item) => (item as { content: string }).content.trim()),
+        ["<!-- imitated aside -->", "<!-- a trailing comment of its own -->"]);
+});
 
 test("{§op-execution-order} internal programs may omit a disposition without inventing one", () => {
     const source = "```READ (worker:///notes.md)```";

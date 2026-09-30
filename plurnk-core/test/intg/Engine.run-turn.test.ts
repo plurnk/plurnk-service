@@ -329,8 +329,8 @@ test("Engine.runTurn: admitted response does not change packet request-weight se
         assert.deepEqual(placed, ["1/1/1"], "the request carries turn zero's survey, never the response it is about to receive");
         const requestWeight = contentWeight(PacketWire.renderSlot(packet.sections, "system"))
             + contentWeight(PacketWire.renderSlot(packet.sections, "user"))
-            + placed.reduce((sum, coordinate) => sum + contentWeight(announced.get(coordinate)!), 0);
-        assert.equal(packet.weight, requestWeight);
+            + placed.reduce((sum, coordinate) => sum + contentWeight(PacketWire.deliveredEmission(announced.get(coordinate)!)), 0);
+        assert.equal(packet.weight, requestWeight, "an emission weighs what the wire delivers ({§emission-row})");
     } finally { await db.close(); }
 });
 

@@ -210,8 +210,8 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 assert.match(program.content, /\n```READ \(reasoning:\/\/[^/\s]+\/1\/1\)/, "initialization demonstrates its reasoning address through an ordinary READ");
                 assert.deepEqual(
                     program.content.split("\n\n").map((block) => /^```([A-Z]+)/.exec(block)?.[1]),
-                    initializationRows.slice(2).map(({ op }) => op),
-                    "{§statement-rendering}: every initialization operation is separated by a blank line",
+                    initializationRows.slice(3).map(({ op }) => op),
+                    "{§statement-rendering}: every announced initialization operation is separated by a blank line; its NOTEs live in their rows ({§emission-row})",
                 );
             } finally { ws.close(); }
         });

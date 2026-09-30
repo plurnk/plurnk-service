@@ -1,19 +1,25 @@
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import BodyPreview from "../content/body-preview.ts";
 
 export type InternalTurnStatement = PlurnkStatement;
 
 // {§statement-rendering} — core programs use the same serializer and admission parser.
 export default class TurnOps {
-    // {§emission-row} — only the assistant-history projection omits bodies; dispatch and source
-    // evidence keep the original statements. The parser owns every header and fence spelling.
-    static renderEmission(statements: readonly PlurnkStatement[]): string {
+    // {§emission-row} — each body within the shared preview bound; a longer body keeps its head and its
+    // closer names the source. Dispatch and source evidence keep the original statements.
+    static renderEmission(statements: readonly PlurnkStatement[], source: string): string {
         return statements.map((statement) => {
-            const body = "body" in statement ? statement.body : null;
-            const omitted = body !== null && (typeof body === "string" ? body : body.raw).length > 0;
-            return PlurnkParser.frame(PlurnkParser.heading(statement),
-                omitted ? "> [!NOTE]\n> Body content REDACTED from history." : null);
+            const heading = PlurnkParser.heading(statement);
+            const body = "body" in statement && statement.body !== null
+                ? (typeof statement.body === "string" ? statement.body : statement.body.raw)
+                : "";
+            if (body.length === 0) return PlurnkParser.frame(heading, null);
+            const { end } = BodyPreview.select(body);
+            if (end >= body.length) return PlurnkParser.frame(heading, body);
+            const head = body.slice(0, end).replace(/\r?\n$/u, "");
+            return `${PlurnkParser.frame(heading, head)} <!-- Automatically truncated op body: READ (${source}) to retrieve in full -->`;
         }).join("\n\n");
     }
 

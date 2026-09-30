@@ -155,9 +155,9 @@ type SplitProviderResponse = {
     finalResponse: boolean;
     // {§outside-text}: every span outside an operation, in source order, weighed by the packet's ruler.
     outside: { text: string; tokens: number } | null;
-    // {§emission-row}: the admission parse's body-redacted projection ({§statement-rendering}), reasoning
-    // NOTEs excluded; null when no statement was admitted from the provider's content.
-    admittedEmission: string | null;
+    // {§emission-row}: the statements admitted from the provider's content, reasoning NOTEs excluded;
+    // null when none was admitted. The emission site renders them against their own source.
+    emissionStatements: readonly PlurnkStatement[] | null;
 };
 
 type MaterializedModelRequest = {
@@ -824,7 +824,7 @@ export default class TurnRunner {
         const result = await this.executeAdmittedTurn({
             statements: admitted,
             source,
-            emission: source.length === 0 ? null : { content: TurnOps.renderEmission(admittedInitializationStatements), workerName, loopSeq: loopSequence, turnSeq: initializationTurn.sequence },
+            emission: source.length === 0 ? null : { content: TurnOps.renderEmission(admittedInitializationStatements, `ops://${workerName}/${loopSequence}/${initializationTurn.sequence}`), workerName, loopSeq: loopSequence, turnSeq: initializationTurn.sequence },
             origin: "_plurnk",
             workspaceId,
             workerId,
@@ -1718,8 +1718,9 @@ export default class TurnRunner {
         const executed = await this.executeAdmittedTurn({
             statements: split.packetAssistant.ops,
             source: split.sourceBacked ? split.packetAssistant.content : null,
-            emission: split.admittedEmission === null ? null : {
-                content: split.admittedEmission, workerName: request.workerName, loopSeq: request.loopSeq, turnSeq: request.seq,
+            emission: split.emissionStatements === null ? null : {
+                content: TurnOps.renderEmission(split.emissionStatements, `ops://${request.workerName}/${request.loopSeq}/${request.seq}`),
+                workerName: request.workerName, loopSeq: request.loopSeq, turnSeq: request.seq,
             },
             sourceModelCallId: emission.modelCallId,
             origin: "model",
@@ -1905,7 +1906,7 @@ export default class TurnRunner {
         const emptyTurn = preParsedOps === undefined && contentStatementCount === 0 && !hasUnparsedTail;
         // {§emission-row}: the admitted content projection, before reasoning NOTEs join the
         // program; a pre-parsed Mock response has no recorded source to announce.
-        const admittedEmission = preParsedOps === undefined && contentStatementCount > 0 ? TurnOps.renderEmission(ops) : null;
+        const emissionStatements = preParsedOps === undefined && contentStatementCount > 0 ? [...ops] : null;
         const reasoning = assistant.reasoning ?? null;
         const notes = reasoning === null ? [] : PlurnkParser.parseReasoningNotes(reasoning);
         ops.unshift(...notes);
@@ -1929,7 +1930,7 @@ export default class TurnRunner {
             parseNotices,
             emissionValid,
             outside: outside.length === 0 ? null : { text: outsideText, tokens: contentWeight(outsideText) },
-            admittedEmission,
+            emissionStatements,
         };
     }
 

@@ -138,6 +138,7 @@ export interface RenderedLog {
 // weight its row charges for it.
 export interface RenderedEmission {
     readonly coordinate: string;
+    // {§emission-row} — the row's frozen projection, and the weight of what the wire delivers of it.
     readonly content: string;
     readonly weight: number;
 }
@@ -318,8 +319,10 @@ export default class PacketWire {
             }
             for (const { content, coordinate } of PacketWire.#logRecords(rendered)) {
                 pending.push(content);
-                const emission = coordinate === null ? undefined : emissions.get(coordinate);
-                if (emission === undefined) continue;
+                const frozen = coordinate === null ? undefined : emissions.get(coordinate);
+                const emission = frozen === undefined ? "" : PacketWire.deliveredEmission(frozen);
+                // {§emission-row}: an emission of only NOTE and WAIT delivers nothing; its row stands.
+                if (emission.length === 0) continue;
                 messages.push({ role: "user", content: pending.join("\n\n") });
                 messages.push({ role: "assistant", content: emission });
                 pending = [];
@@ -329,6 +332,24 @@ export default class PacketWire {
         if (closing.length === 0 && messages.at(-1)?.role === "assistant") throw new Error("a request never ends on an emission: nothing follows the last one");
         messages.push({ role: "user", content: closing });
         return messages;
+    }
+
+    // {§emission-row} — the wire omits NOTE and WAIT blocks, whose rows show them whole; the frozen
+    // projection keeps every statement. Deliberately a text filter: the projection is TurnOps' own
+    // rendering, whose fences are longer than any backtick run inside them, so a block is read back by
+    // its fences alone, whatever era froze it.
+    static deliveredEmission(frozen: string): string {
+        const lines = frozen.split("\n");
+        const kept: string[] = [];
+        for (let index = 0; index < lines.length;) {
+            const fence = /^`{3,}/u.exec(lines[index]!)?.[0];
+            if (fence === undefined) throw new Error(`an emission block opens with a fence, not ${JSON.stringify(lines[index])}`);
+            const end = lines.findIndex((line, at) => at > index && (line === fence || line.startsWith(`${fence} <!-- `)));
+            if (end === -1) throw new Error("an emission block closes with its own fence");
+            if (!new RegExp(`^${fence}(?:NOTE|WAIT)\\b`, "u").test(lines[index]!)) kept.push(lines.slice(index, end + 1).join("\n"));
+            index = end + 2;
+        }
+        return kept.join("\n\n");
     }
 
     // {§emission-row} — the coordinates of the emission rows present in the final log section, in order.
@@ -1177,10 +1198,10 @@ export default class PacketWire {
             ? native
             : null;
         if (attachment !== null) meta.tokensAttachment = attachment.weight;
-        // {§emission-row}: an emission row carries its emission outside its record, as the worker's own
-        // message, and charges its weight exactly as a native part is charged.
+        // {§emission-row}: an emission row carries its frozen emission outside its record, and charges what
+        // the wire delivers of it, as the worker's own message, exactly as a native part is charged.
         const emission = LogEntryProjection.isEmission(e) && coordinate !== null
-            ? { coordinate, content: fullBody.content, weight: weighContent(fullBody.content) }
+            ? { coordinate, content: fullBody.content, weight: weighContent(PacketWire.deliveredEmission(fullBody.content)) }
             : null;
         for (let pass = 0; pass < 8; pass += 1) {
             const next = weighContent(renderRow()) + (attachment?.weight ?? 0) + (emission?.weight ?? 0);
