@@ -28,7 +28,7 @@ const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; detai
         details: "Read-only. Discovery never installs, persists, enables, or executes a candidate; add one explicitly.",
     },
     add: {
-        summary: "Validate one exact definition, persist it for this workspace, prepare it, and enable it atomically.",
+        summary: "Validate one exact definition, persist it at the selected scope, prepare it, and enable it atomically.",
         details: "A host effect: it proposes and runs only on acceptance. The definition must conform to the family definition schema.",
     },
     enable: {
@@ -37,7 +37,7 @@ const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; detai
     },
     disable: {
         summary: "Withdraw the effective capability while keeping the definition available.",
-        details: "A host effect. A disabled definition stays client-visible and model-invisible.",
+        details: "A host effect. The definition remains inspectable.",
     },
     remove: {
         summary: "Forget the local definition and restore inheritance.",

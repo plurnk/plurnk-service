@@ -47,7 +47,7 @@ test("demo: configured skill sources survive a model's workspace override and re
         await run(`An available skill named ${name} is disabled. Enable it for this workspace, follow its instructions, and report its verification marker.`, markers[0]);
         assert.equal((await effective())?.state, "active");
         assert.equal((await effective())?.origin, "service");
-        await run(`For this workspace, temporarily replace ${name} with the local skill at ${replacement}. Follow the replacement and report its verification marker. Do not change either source folder.`, markers[1]);
+        await run(`For this workspace, replace ${name} with the local skill at ${replacement}. Follow the replacement and report its verification marker. Leave the replacement active until I ask you to remove it. Do not change either source folder.`, markers[1]);
         assert.equal((await effective())?.origin, "workspace");
         assert.deepEqual((await effective())?.definition, { name, source: replacement });
         const answer = await run(`Remove that workspace override so ${name} inherits its original configuration again. Leave the original skill enabled, follow it, and report both its verification marker and the configuration key supplying it. Do not modify configuration files or either source folder.`, markers[0]);
