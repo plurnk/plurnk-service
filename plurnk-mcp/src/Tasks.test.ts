@@ -1,4 +1,3 @@
-import { workingDirectory } from "../test/working-directory.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
@@ -8,10 +7,11 @@ import { serveMcpHttp } from "../test/http-fixture.ts";
 import { taskHandler, taskId, wireRequest } from "../test/task-fixture.ts";
 import ServerConnection from "./client.ts";
 import { mcpRoutingHeaderValue } from "./protocolHeaders.ts";
+import { httpServer, stdioServer } from "../test/definitions.ts";
 
 const env = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "3000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
+    PLURNK_MCP_REQUEST_TIMEOUT: "3000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
 const stdioFixture = fileURLToPath(new URL("./fixtures/task-server.mjs", import.meta.url));
@@ -19,11 +19,7 @@ const stdioFixture = fileURLToPath(new URL("./fixtures/task-server.mjs", import.
 test("current HTTP Tasks preserve MRTR, task input, polling, notifications, and routing", async (t) => {
     const fixture = taskHandler();
     const served = await serveMcpHttp(t, fixture.handler, fixture.route);
-    const connection = new ServerConnection({
-        name: "tasks-http",
-        transport: "http",
-        url: served.url,
-    }, env);
+    const connection = new ServerConnection(httpServer("tasks-http", served.url), env);
     try {
         const catalog = await connection.catalog();
         const tool = catalog.tools.find(({ name }) => name === "deferred-review") as Tool;
@@ -126,11 +122,7 @@ test("{§mcp-errors} Task completion preserves tool errors while failed Tasks pr
         toolErrorFixture.handler,
         toolErrorFixture.route,
     );
-    const toolErrorConnection = new ServerConnection({
-        name: "task-tool-error",
-        transport: "http",
-        url: toolErrorServer.url,
-    }, env);
+    const toolErrorConnection = new ServerConnection(httpServer("task-tool-error", toolErrorServer.url), env);
     try {
         const tool = (await toolErrorConnection.catalog()).tools.find(
             ({ name }) => name === toolErrorFixture.toolName,
@@ -151,11 +143,7 @@ test("{§mcp-errors} Task completion preserves tool errors while failed Tasks pr
 
     const protocolFixture = taskHandler("protocol-failure");
     const protocolServer = await serveMcpHttp(t, protocolFixture.handler, protocolFixture.route);
-    const protocolConnection = new ServerConnection({
-        name: "task-protocol-error",
-        transport: "http",
-        url: protocolServer.url,
-    }, env);
+    const protocolConnection = new ServerConnection(httpServer("task-protocol-error", protocolServer.url), env);
     try {
         const tool = (await protocolConnection.catalog()).tools.find(
             ({ name }) => name === protocolFixture.toolName,
@@ -183,11 +171,7 @@ test("{§mcp-errors} Task completion preserves tool errors while failed Tasks pr
 test("unsupported Task input fails before interaction and cancels the owned Task", async (t) => {
     const fixture = taskHandler("unsupported");
     const served = await serveMcpHttp(t, fixture.handler, fixture.route);
-    const connection = new ServerConnection({
-        name: "task-unsupported-input",
-        transport: "http",
-        url: served.url,
-    }, env);
+    const connection = new ServerConnection(httpServer("task-unsupported-input", served.url), env);
     let interactions = 0;
     try {
         const tool = (await connection.catalog()).tools.find(({ name }) => name === fixture.toolName)!;
@@ -217,11 +201,7 @@ test("unsupported Task input fails before interaction and cancels the owned Task
 test("cancelling an owning operation awaits tasks/cancel before it settles", async (t) => {
     const fixture = taskHandler("cancel");
     const served = await serveMcpHttp(t, fixture.handler, fixture.route);
-    const connection = new ServerConnection({
-        name: "task-cancellation",
-        transport: "http",
-        url: served.url,
-    }, env);
+    const connection = new ServerConnection(httpServer("task-cancellation", served.url), env);
     const controller = new AbortController();
     try {
         const tool = (await connection.catalog()).tools.find(({ name }) => name === fixture.toolName)!;
@@ -270,7 +250,7 @@ test("{§mcp-connection-shutdown} concurrent close waits for Task cancellation w
         }
         return response;
     });
-    const connection = new ServerConnection({ name: "closing", transport: "http", url: served.url }, env);
+    const connection = new ServerConnection(httpServer("closing", served.url), env);
     t.after(async () => { cancelled.resolve(); await connection.close(); });
     const tool = (await connection.catalog()).tools[0]!;
     const running = connection.callTool(tool.name, { topic: "MCP" }, undefined, undefined, async (request) => {
@@ -314,8 +294,8 @@ test("{§mcp-connection-shutdown} closing during Task subscription acknowledgeme
         }
         return fixture.route(request);
     });
-    const connection = new ServerConnection({ name: "closing-listen", transport: "http", url: served.url }, {
-        ...env, PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
+    const connection = new ServerConnection(httpServer("closing-listen", served.url), {
+        ...env, PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     });
     t.after(() => connection.close());
     const tool = (await connection.catalog()).tools[0]!;
@@ -345,8 +325,8 @@ test("{§tasks-lifetime} a stalled notification acknowledgement cannot block Tas
         }
         return fixture.route(request);
     });
-    const connection = new ServerConnection({ name: "pending-listen", transport: "http", url: served.url }, {
-        ...env, PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
+    const connection = new ServerConnection(httpServer("pending-listen", served.url), {
+        ...env, PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     });
     const owner = new AbortController();
     let settled = false;
@@ -370,14 +350,7 @@ test("{§tasks-lifetime} a stalled notification acknowledgement cannot block Tas
 });
 
 test("{§tasks-lifetime} closing the owning connection abandons an in-process task instead of resuming it", async () => {
-    const paused = new ServerConnection({
-        name: "tasks-stdio",
-        transport: "stdio",
-        cwd: workingDirectory,
-        command: process.execPath,
-        args: [stdioFixture],
-        env: { PLURNK_TASK_PAUSE: "1" },
-    }, env);
+    const paused = new ServerConnection(stdioServer("tasks-stdio", [stdioFixture], { env: { PLURNK_TASK_PAUSE: "1" } }), env);
     const catalog = await paused.catalog();
     const tool = catalog.tools.find(({ name }) => name === "stdio-defer")!;
     const abandoned = paused.callTool(
@@ -394,13 +367,7 @@ test("{§tasks-lifetime} closing the owning connection abandons an in-process ta
     await abandonment;
     await assert.rejects(() => abandoned, /connection|closed|failed/u);
 
-    const fresh = new ServerConnection({
-        name: "tasks-stdio",
-        transport: "stdio",
-        cwd: workingDirectory,
-        command: process.execPath,
-        args: [stdioFixture],
-    }, env);
+    const fresh = new ServerConnection(stdioServer("tasks-stdio", [stdioFixture]), env);
     try {
         const replayed = await fresh.callTool(
             tool.name,
@@ -420,13 +387,7 @@ test("{§tasks-lifetime} closing the owning connection abandons an in-process ta
 });
 
 test("the same current Task lifecycle composes over a plain stdio endpoint", async () => {
-    const connection = new ServerConnection({
-        name: "tasks-stdio",
-        transport: "stdio",
-        cwd: workingDirectory,
-        command: process.execPath,
-        args: [stdioFixture],
-    }, env);
+    const connection = new ServerConnection(stdioServer("tasks-stdio", [stdioFixture]), env);
     try {
         const catalog = await connection.catalog();
         assert.equal(catalog.server?.name, "plain-task-stdio");

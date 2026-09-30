@@ -31,6 +31,7 @@ import type {
     FunctionalityAdapter,
 } from "./DaemonModule.ts";
 import SkillSource from "./SkillSource.ts";
+import { agentRootScopes } from "./AgentRoots.ts";
 import { SkillsActionError, actionError, messageOf } from "./skills-problems.ts";
 
 const SKILLS_FAMILY = "skills";
@@ -127,6 +128,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
 
     #rootFor(scope: Scope, projectRoot: string | null): string | null {
         if (scope === "service") throw new TypeError("A service-provided skill has no root.");
+        if (!agentRootScopes().has(scope)) return null;
         if (scope === "global") return this.#hostPaths.globalSkillsDir;
         if (scope === "plurnk") return this.#hostPaths.plurnkSkillsDir;
         return projectRoot === null ? null : this.#hostPaths.projectSkillsDir(projectRoot);
@@ -178,15 +180,15 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         return hash.digest("hex");
     }
 
-    // {§skills-hotload} — skills placed or deleted out of band are admitted before
-    // a turn assembles its packet: the family republishes when the roots changed.
+    // {§skills-hotload} — skills placed, edited or deleted out of band are admitted before a turn
+    // assembles its packet. Changed content republishes; otherwise the coordinator republishes only
+    // when the skills it would publish differ from the published ones.
     async refreshIfChanged(identity: WorkspaceCapabilityIdentity): Promise<void> {
         const published = this.#snapshots.get(identity.workspaceId)?.signature;
         if (published === undefined) return;
         const current = await this.#signature(await this.#projectRoot(identity.workspaceId));
-        if (current === published) return;
         if (this.#handle === null) throw new Error("Skills Functionality is not attached to its coordinator handle.");
-        await this.#handle.refresh(identity, { gate: "none" });
+        await this.#handle.refresh(identity, { gate: "none", ifChanged: current === published });
     }
 
     async available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]> {
@@ -245,6 +247,12 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         }
         if (definition.source === undefined) {
             throw actionError("source-required", 400, `Adding '${alias}' requires the source that provides it.`, { alias, retryable: false });
+        }
+        const read = agentRootScopes();
+        if (!read.has(definition.scope)) {
+            throw actionError("scope-unread", 400, `'${alias}' targets the ${definition.scope} root, which this daemon does not read.`, {
+                alias, scope: definition.scope, recovery: `Add it at a root this daemon reads: ${[...read].join(", ") || "none"}.`, retryable: false,
+            });
         }
         const projectRoot = await this.#projectRoot(identity.workspaceId);
         if (definition.scope === "project" && projectRoot === null) {
@@ -329,6 +337,9 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
         let located = await this.#locate(alias, definition, installed, projectRoot);
         if (located === undefined) {
             const root = this.#rootFor(definition.scope, projectRoot);
+            if (root === null && definition.scope !== "service" && !agentRootScopes().has(definition.scope)) {
+                throw actionError("scope-unread", 409, `'${alias}' is installed at the ${definition.scope} root, which this daemon does not read.`, { name: alias, scope: definition.scope, retryable: false });
+            }
             if (root === null) throw actionError("project-root-required", 409, `'${alias}' targets the project scope, but this workspace has no project root.`, { name: alias, retryable: false });
             if (definition.source === undefined) throw actionError("skill-missing", 404, `Agent Skill '${alias}' is not installed under its ${definition.scope} root.`, { name: alias, scope: definition.scope, root, retryable: false });
             located = await this.#install(definition, root, projectRoot);
@@ -342,6 +353,8 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
 
     async prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared> {
         const projectRoot = await this.#projectRoot(preparation.workspaceId);
+        // Read before the skills it describes, so content changed while they load is seen as changed.
+        const signature = await this.#signature(projectRoot);
         const installed = await this.#scan(projectRoot);
         const provided = await this.#provided();
         const previous = preparation.previous as Snapshot | null;
@@ -369,7 +382,6 @@ export default class SkillsFunctionality implements FunctionalityAdapter {
                 outcomes.set(alias, { state: "unavailable", problem: structuredClone(cause.problem) });
             }
         }
-        const signature = await this.#signature(projectRoot);
         const snapshot: Snapshot = {
             signature,
             trees,

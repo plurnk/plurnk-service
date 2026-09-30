@@ -10,10 +10,11 @@ import {
 } from "@modelcontextprotocol/server";
 import { serveMcpHttp, type ReceivedRequest } from "../test/http-fixture.ts";
 import ServerConnection from "./client.ts";
+import { httpServer } from "../test/definitions.ts";
 
 const env = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
+    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
 const bodyOf = (request: ReceivedRequest): Record<string, unknown> =>
@@ -75,11 +76,7 @@ test("resource reads maintain one overlap-replaced subscription for selected cac
         keepAliveMs: 0,
     });
     const served = await serveMcpHttp(t, handler);
-    const connection = new ServerConnection({
-        name: "resources",
-        transport: "http",
-        url: served.url,
-    }, env);
+    const connection = new ServerConnection(httpServer("resources", served.url), env);
     let cancellationsBeforeClose = 0;
     try {
         const client = await connection.connect();
@@ -177,11 +174,7 @@ test("a remotely ended unified subscription is re-established with a fresh reque
     });
     const catalogChanges: Array<Error | null> = [];
     const subscriptionErrors: Error[] = [];
-    const connection = new ServerConnection({
-        name: "recovery",
-        transport: "http",
-        url: served.url,
-    }, env, {
+    const connection = new ServerConnection(httpServer("recovery", served.url), env, {
         onCatalogChanged: (error) => catalogChanges.push(error),
         onInfrastructureError: (error) => subscriptionErrors.push(error),
     });
@@ -229,7 +222,7 @@ test("{§mcp-subscription-ownership} cancelling one resource READ does not cance
             )));
         } }), { headers: { "Content-Type": "text/event-stream" } });
     });
-    const connection = new ServerConnection({ name: "shared", transport: "http", url: served.url }, env);
+    const connection = new ServerConnection(httpServer("shared", served.url), env);
     const owner = new AbortController();
     let settled = false;
     try {

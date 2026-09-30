@@ -1,5 +1,5 @@
 // {§members-configuration} {§members-model-scope} — the members family's own truths: the
-// operator's definitions ride the PLURNK_MCP_* shape and a glob's alias is suggested from the
+// operator's definitions ride the PLURNK_A2A_* shape and a glob's alias is suggested from the
 // glob. The ceiling is witnessed through the daemon (test/intg/members-functionality.test.ts).
 import test from "node:test";
 import assert from "node:assert/strict";

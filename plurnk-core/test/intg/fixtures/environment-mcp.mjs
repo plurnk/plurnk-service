@@ -7,6 +7,7 @@ const values = {
     witness: process.env.ENV_WITNESS ?? null,
     private: process.env.WORKER_ONLY ?? null,
     bound: process.env.BOUND_VALUE ?? null,
+    plurnk: process.env.PLURNK_PROVIDERS_PROVIDER_ENVFIXTURE_API_KEY_ENV ?? null,
     reference: process.env.REF_VALUE ?? null,
     home: process.env.HOME ?? null,
     pid: process.pid,

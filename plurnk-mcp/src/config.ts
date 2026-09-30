@@ -1,133 +1,51 @@
-import {
-    Validator,
-    type McpConfigurationOverlay,
-    type McpServerDefinition,
-} from "@plurnk/plurnk-contracts";
+// {§mcp-configuration} — MCP servers come only from installed Agent Plugins ({§mcp-plugin-servers});
+// the environment holds the operator's per-alias settings and the host's controls, nothing else.
+import { Validator, type McpOAuth } from "@plurnk/plurnk-contracts";
 
 const PREFIX = "PLURNK_MCP_";
-const COMPANION_SUFFIXES = [
-    "_bearer",
-    "_args",
-    "_cwd",
-    "_env",
-    "_headers",
-    "_summary",
-    "_tools",
-    "_read",
-] as const;
-const CONTROL_KEYS = new Map([
-    ["connect_timeout", `${PREFIX}CONNECT_TIMEOUT`],
-    ["request_timeout", `${PREFIX}REQUEST_TIMEOUT`],
-    ["retry_floor_ms", `${PREFIX}RETRY_FLOOR_MS`],
-    ["retry_ceiling_ms", `${PREFIX}RETRY_CEILING_MS`],
-    ["enabled", `${PREFIX}ENABLED`],
-    ["expanded", `${PREFIX}EXPANDED`],
-]);
+const CONTROLS = new Set(["CONNECT_TIMEOUT", "REQUEST_TIMEOUT", "RETRY_FLOOR_MS", "RETRY_CEILING_MS", "EXPANDED", "REGISTRY_URL", "REGISTRY_LIMIT"]);
+const SETTINGS = ["_TOOLS", "_BEARER", "_OAUTH"] as const;
+// Each retired server variable names what replaced it.
+const RETIRED_SUFFIXES: ReadonlyArray<readonly [string, string]> = [
+    ["_ARGS", "an Agent Plugin's mcp.json declares args"],
+    ["_CWD", "an Agent Plugin's mcp.json declares cwd"],
+    ["_ENV", "an Agent Plugin's mcp.json declares env"],
+    ["_HEADERS", "an Agent Plugin's mcp.json declares headers"],
+    ["_READ", "a tool's annotations.readOnlyHint marks it read-only"],
+    ["_SUMMARY", "descriptions come from the server's own fields"],
+];
 const SERVER_NAME = /^[a-z][a-z0-9-]*$/;
-// {§mcp-summary-derivation} — a _SUMMARY companion may extend a server name
-// with one tool name (PLURNK_MCP_<server>_<tool>_SUMMARY); tool names legally
-// contain underscores, so summary keys admit them and bind to the declared
-// server in summaryOverrides.
-const SUMMARY_KEY_NAME = /^[a-z][a-z0-9_-]*$/;
 const ENV_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/gu;
-
-type CompanionSuffix = typeof COMPANION_SUFFIXES[number];
-
-interface EnvironmentVariable {
-    readonly key: string;
-    readonly value: string;
-}
+const SYMBOLIC_REFERENCE = /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/u;
 
 export interface ToolPolicy {
+    // Exact enabled tool names; null enables every tool the server lists.
     readonly tools: readonly string[] | null;
-    readonly read: readonly string[];
 }
 
-interface ParsedEnvironment {
-    readonly targets: Map<string, EnvironmentVariable>;
-    readonly companions: Map<string, Map<CompanionSuffix, EnvironmentVariable>>;
+// Client-managed authorization for one Streamable HTTP server ({§mcp-server-settings}).
+export type McpAuthorization = { readonly type: "bearer"; readonly token: string } | McpOAuth;
+
+export interface ServerSettings extends ToolPolicy {
+    readonly authorization?: McpAuthorization;
 }
 
-const assertServerName = (name: string, variable: string): void => {
-    if (!SERVER_NAME.test(name)) {
-        throw new Error(
-            `${variable} derives invalid MCP server name '${name}'; names must match [a-z][a-z0-9-]*.`,
-        );
-    }
-};
+// A setting's variable for one alias: uppercase, with the alias's hyphens as underscores.
+export const settingName = (alias: string, suffix: typeof SETTINGS[number]): string =>
+    `${PREFIX}${alias.toUpperCase().replaceAll("-", "_")}${suffix}`;
 
-const parseEnvironment = (
-    environ: NodeJS.ProcessEnv,
-    allowOrphanCompanions = false,
-): ParsedEnvironment => {
-    const targets = new Map<string, EnvironmentVariable>();
-    const companions = new Map<string, Map<CompanionSuffix, EnvironmentVariable>>();
+// {§mcp-configuration} — a retired variable fails boot, naming what replaced it; an empty one states nothing.
+export const assertNoRetiredVariables = (environ: NodeJS.ProcessEnv = process.env): void => {
     for (const [key, value] of Object.entries(environ)) {
-        if (value === undefined || !key.startsWith(PREFIX)) continue;
-        const suffix = key.slice(PREFIX.length);
-        if (suffix.length === 0) continue;
-        const folded = suffix.toLowerCase();
-        const controlKey = CONTROL_KEYS.get(folded);
-        if (controlKey !== undefined) {
-            if (key !== controlKey) {
-                throw new Error(
-                    `${key} case-folds to ${controlKey}; that name is a reserved global and must use its canonical spelling.`,
-                );
-            }
-            continue;
+        if (!key.startsWith(PREFIX) || value === undefined || value.length === 0) continue;
+        const rest = key.slice(PREFIX.length).toUpperCase();
+        if (CONTROLS.has(rest) || SETTINGS.some((suffix) => rest.endsWith(suffix) && rest.length > suffix.length)) continue;
+        if (rest === "ENABLED") {
+            throw new Error(`${key} is retired: an installed plugin's servers are enabled, and /mcp disable withdraws one.`);
         }
-        const companion = COMPANION_SUFFIXES.find((candidate) => folded.endsWith(candidate));
-        if (companion !== undefined) {
-            const name = folded.slice(0, -companion.length);
-            const reservedGlobal = CONTROL_KEYS.get(name);
-            if (reservedGlobal !== undefined) {
-                throw new Error(
-                    `${key} uses ${reservedGlobal} as a server name; reserved globals cannot have server companions.`,
-                );
-            }
-            if (companion === "_summary") {
-                if (!SUMMARY_KEY_NAME.test(name)) {
-                    throw new Error(
-                        `${key} derives invalid MCP summary name '${name}'; names must match [a-z][a-z0-9_-]*.`,
-                    );
-                }
-            } else {
-                assertServerName(name, key);
-            }
-            const bySuffix = companions.get(name) ?? new Map<CompanionSuffix, EnvironmentVariable>();
-            const existing = bySuffix.get(companion);
-            if (existing !== undefined) {
-                throw new Error(
-                    `${existing.key} and ${key} are duplicate MCP server companions after case-folding.`,
-                );
-            }
-            bySuffix.set(companion, { key, value });
-            companions.set(name, bySuffix);
-            continue;
-        }
-        assertServerName(folded, key);
-        const existing = targets.get(folded);
-        if (existing !== undefined) {
-            throw new Error(
-                `${existing.key} and ${key} both derive MCP server name '${folded}' after case-folding.`,
-            );
-        }
-        targets.set(folded, { key, value });
+        const retired = RETIRED_SUFFIXES.find(([suffix]) => rest.endsWith(suffix));
+        throw new Error(`${key} is retired: ${retired?.[1] ?? "MCP servers come from an installed Agent Plugin's mcp.json, or mcp add"}.`);
     }
-    if (!allowOrphanCompanions) {
-        for (const [name, fields] of companions) {
-            if (targets.has(name)) continue;
-            // A _SUMMARY companion may address one tool of a declared server:
-            // PLURNK_MCP_<SERVER>_<TOOL>_SUMMARY ({§mcp-summary-derivation}).
-            const toolSummaryOf = [...targets.keys()].find((target) => name.startsWith(`${target}_`));
-            if (fields.get("_summary") !== undefined && toolSummaryOf !== undefined) continue;
-            const variables = [...fields.values()].map(({ key }) => key).join(", ");
-            throw new Error(
-                `${variables} has no MCP server target ${PREFIX}${name.toUpperCase()}.`,
-            );
-        }
-    }
-    return { targets, companions };
 };
 
 export const expandReferences = (value: string, environ: NodeJS.ProcessEnv, field: string): string =>
@@ -137,11 +55,7 @@ export const expandReferences = (value: string, environ: NodeJS.ProcessEnv, fiel
         return resolved;
     });
 
-const jsonStrings = (
-    raw: string | undefined,
-    field: string,
-): string[] => {
-    if (raw === undefined || raw.length === 0) return [];
+const jsonStrings = (raw: string, field: string): string[] => {
     let parsed: unknown;
     try {
         parsed = JSON.parse(raw);
@@ -154,259 +68,58 @@ const jsonStrings = (
     return parsed;
 };
 
-const uniqueToolNames = (values: readonly string[], field: string): string[] => {
+const uniqueNames = (values: readonly string[], field: string, what: string): string[] => {
     const unique = new Set<string>();
     for (const value of values) {
-        if (value.length === 0) throw new Error(`${field} contains an empty tool name.`);
-        if (unique.has(value)) throw new Error(`${field} contains duplicate tool name '${value}'.`);
+        if (value.length === 0) throw new Error(`${field} contains an empty ${what}.`);
+        if (unique.has(value)) throw new Error(`${field} contains duplicate ${what} '${value}'.`);
         unique.add(value);
     }
     return [...unique];
 };
 
-const toolNames = (
-    raw: string | undefined,
-    field: string,
-): string[] => uniqueToolNames(jsonStrings(raw, field), field);
-
-const jsonRecord = (
-    raw: string | undefined,
-    field: string,
-): Record<string, string> | undefined => {
-    if (raw === undefined || raw.length === 0) return undefined;
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(raw);
-    } catch (cause) {
-        throw new Error(`${field} must be a JSON object with string values.`, { cause });
+// {§mcp-server-settings} — one alias's operator settings. Absent or empty _TOOLS enables every tool;
+// _BEARER is one ${NAME} reference; _OAUTH is McpOAuth JSON; a server takes at most one of the two.
+export const serverSettings = (alias: string, environ: NodeJS.ProcessEnv = process.env): ServerSettings => {
+    const toolsKey = settingName(alias, "_TOOLS");
+    const bearerKey = settingName(alias, "_BEARER");
+    const oauthKey = settingName(alias, "_OAUTH");
+    const toolsRaw = environ[toolsKey];
+    const tools = toolsRaw === undefined || toolsRaw.length === 0 ? null : uniqueNames(jsonStrings(toolsRaw, toolsKey), toolsKey, "tool name");
+    const bearer = environ[bearerKey];
+    const oauth = environ[oauthKey];
+    const hasBearer = bearer !== undefined && bearer.length > 0;
+    const hasOAuth = oauth !== undefined && oauth.length > 0;
+    if (hasBearer && hasOAuth) throw new Error(`${bearerKey} and ${oauthKey} are exclusive: a server takes one authorization.`);
+    if (hasBearer) {
+        if (!SYMBOLIC_REFERENCE.test(bearer)) throw new Error(`${bearerKey} must be one \${NAME} reference, so the token stays in the environment.`);
+        return { tools, authorization: { type: "bearer", token: bearer } };
     }
-    if (
-        typeof parsed !== "object"
-        || parsed === null
-        || Array.isArray(parsed)
-        || !Object.values(parsed).every((value) => typeof value === "string")
-    ) {
-        throw new Error(`${field} must be a JSON object with string values.`);
+    if (hasOAuth) {
+        let parsed: unknown;
+        try {
+            parsed = JSON.parse(oauth);
+        } catch (cause) {
+            throw new Error(`${oauthKey} must be McpOAuth JSON.`, { cause });
+        }
+        return { tools, authorization: Validator.assertMcpOAuth(parsed as McpOAuth) };
     }
-    return parsed as Record<string, string>;
+    return { tools };
 };
 
-export const serverNames = (environ: NodeJS.ProcessEnv = process.env): string[] =>
-    [...parseEnvironment(environ).targets]
-        .filter(([, { value }]) => value !== "")
-        .map(([name]) => name)
-        .toSorted();
-
-const definitionFromEnvironment = (
-    name: string,
-    parsed: ParsedEnvironment,
-    base?: McpServerDefinition,
-): McpServerDefinition | null => {
-    const folded = name.toLowerCase();
-    const target = parsed.targets.get(folded);
-    if (target === undefined && base === undefined) {
-        const orphaned = parsed.companions.get(folded);
-        if (orphaned === undefined) return null;
-        const variables = [...orphaned.values()].map(({ key }) => key).join(", ");
-        throw new Error(
-            `${variables} has no MCP server target ${PREFIX}${folded.toUpperCase()}.`,
-        );
+// {§mcp-configuration} — the servers whose every tool turn zero surveys.
+export const expandedServerNames = (environ: NodeJS.ProcessEnv = process.env): string[] => {
+    const field = `${PREFIX}EXPANDED`;
+    const raw = environ[field];
+    if (raw === undefined || raw.length === 0) return [];
+    const names = uniqueNames(jsonStrings(raw, field), field, "MCP server");
+    for (const name of names) {
+        if (!SERVER_NAME.test(name)) throw new Error(`${field} names '${name}', which is not an MCP server alias ([a-z][a-z0-9-]*).`);
     }
-    if (base !== undefined && base.name !== folded) {
-        throw new Error(`MCP base definition '${base.name}' cannot configure alias '${folded}'.`);
-    }
-    if (target?.value === "") return null;
-    const lower = target === undefined ? base : undefined;
-    const fields = parsed.companions.get(folded);
-    const fieldName = (suffix: CompanionSuffix): string =>
-        fields?.get(suffix)?.key ?? `${PREFIX}${folded.toUpperCase()}${suffix.toUpperCase()}`;
-    const configuredTools = fields?.get("_tools");
-    const inheritedTools = lower?.tools;
-    const tools = configuredTools === undefined
-        ? structuredClone(inheritedTools)
-        : toolNames(configuredTools.value, configuredTools.key);
-    const policy = {
-        ...(tools === undefined ? {} : { tools }),
-        read: fields?.has("_read")
-            ? toolNames(fields.get("_read")?.value, fieldName("_read"))
-            : structuredClone(lower?.read ?? []),
-    };
-    const transport = target === undefined
-        ? lower?.transport
-        : /^https?:\/\//iu.test(target.value) ? "http" : "stdio";
-    if (transport === "http") {
-        const invalid = (["_args", "_cwd", "_env"] as const)
-            .flatMap((suffix) => fields?.get(suffix)?.key ?? []);
-        if (invalid.length > 0) {
-            throw new Error(
-                `${invalid.join(", ")} cannot accompany HTTP MCP server target ${target?.key ?? folded}; transport-neutral _TOOLS/_READ and HTTP _HEADERS are valid.`,
-            );
-        }
-        const inheritedHeaders = lower?.transport === "http"
-            ? structuredClone(lower.headers)
-            : undefined;
-        const headers = fields?.has("_headers")
-            ? jsonRecord(fields.get("_headers")?.value, fieldName("_headers"))
-            : inheritedHeaders;
-        const bearer = fields?.get("_bearer");
-        const inheritedAuthorization = lower?.transport === "http"
-            ? structuredClone(lower.authorization)
-            : undefined;
-        const authorization = bearer === undefined
-            ? inheritedAuthorization
-            : { type: "bearer" as const, token: bearer.value };
-        const authorizationHeader = Object.keys(headers ?? {}).find(
-            (key) => key.toLowerCase() === "authorization",
-        );
-        if (authorization?.type === "bearer" && authorizationHeader !== undefined) {
-            throw new Error(
-                `${bearer?.key ?? "Bearer authorization"} conflicts with Authorization in the server's _HEADERS map.`,
-            );
-        }
-        const url = target?.value ?? (lower?.transport === "http" ? lower.url : undefined);
-        if (url === undefined) throw new Error(`HTTP MCP server '${folded}' has no target.`);
-        return Validator.assertMcpServerDefinition({
-            name: folded,
-            transport: "http",
-            url,
-            ...(headers === undefined ? {} : { headers }),
-            ...(authorization === undefined ? {} : { authorization }),
-            ...policy,
-        });
-    }
-    const httpOnly = (["_headers", "_bearer"] as const)
-        .flatMap((suffix) => fields?.get(suffix)?.key ?? []);
-    if (httpOnly.length > 0) {
-        throw new Error(
-            `${httpOnly.join(", ")} cannot accompany stdio MCP server target ${target?.key ?? folded}.`,
-        );
-    }
-    const inheritedStdio = lower?.transport === "stdio" ? lower : undefined;
-    const cwd = fields?.has("_cwd")
-        ? fields.get("_cwd")?.value
-        : inheritedStdio?.cwd;
-    const stdioEnvironment = fields?.has("_env")
-        ? jsonRecord(fields.get("_env")?.value, fieldName("_env"))
-        : structuredClone(inheritedStdio?.env);
-    const args = fields?.has("_args")
-        ? jsonStrings(fields.get("_args")?.value, fieldName("_args"))
-        : structuredClone(inheritedStdio?.args ?? []);
-    const command = target?.value ?? inheritedStdio?.command;
-    if (command === undefined) throw new Error(`Stdio MCP server '${folded}' has no target.`);
-    return Validator.assertMcpServerDefinition({
-        name: folded,
-        transport: "stdio",
-        command,
-        args,
-        ...(cwd === undefined ? {} : { cwd }),
-        ...(stdioEnvironment === undefined ? {} : { env: stdioEnvironment }),
-        ...policy,
-    });
+    return names.toSorted();
 };
 
-export const serverDefinition = (
-    name: string,
-    environ: NodeJS.ProcessEnv = process.env,
-): McpServerDefinition | null => definitionFromEnvironment(
-    name,
-    parseEnvironment(environ),
-);
-
-export const overlayServerDefinitions = (
-    overlay: McpConfigurationOverlay,
-    bases: ReadonlyMap<string, McpServerDefinition> = new Map(),
-): Map<string, McpServerDefinition> => {
-    const validated = Validator.assertMcpConfigurationOverlay(structuredClone(overlay));
-    const parsed = parseEnvironment(validated, true);
-    const declared = new Set([...parsed.targets.keys(), ...bases.keys()]);
-    const names = new Set([
-        ...parsed.targets.keys(),
-        ...[...parsed.companions.keys()].map((name) => declared.has(name)
-            ? name
-            : [...declared].find((server) => name.startsWith(`${server}_`)) ?? name),
-    ]);
-    return new Map(
-        [...names]
-            .toSorted()
-            .flatMap((name): [string, McpServerDefinition][] => {
-                const definition = definitionFromEnvironment(name, parsed, bases.get(name));
-                return definition === null ? [] : [[name, definition]];
-            }),
-    );
-};
-
-export const serviceDefinitions = (
-    environ: NodeJS.ProcessEnv = process.env,
-): McpServerDefinition[] => serverNames(environ).map((name) => {
-    const definition = serverDefinition(name, environ);
-    if (definition === null) throw new Error(`MCP server '${name}' disappeared during configuration.`);
-    return definition;
-});
-
-// {§mcp-summary-derivation} — authored orientation lines. A _SUMMARY companion
-// names either the whole server (PLURNK_MCP_<SERVER>_SUMMARY) or one tool
-// (PLURNK_MCP_<SERVER>_<TOOL>_SUMMARY). Values expand ${NAME} references like
-// every other companion.
-// {§tools-resource-materialization} — the turn-0 tools survey lists server
-// families; servers named here also expand their complete tool tree into the
-// turn-0 survey.
-const selectedServerNames = (
-    environ: NodeJS.ProcessEnv,
-    field: string,
-): string[] => {
-    const configured = jsonStrings(environ[field], field);
-    const { targets } = parseEnvironment(environ);
-    const selected = new Set<string>();
-    for (const name of configured) {
-        assertServerName(name, field);
-        const target = targets.get(name);
-        if (target === undefined) {
-            throw new Error(`${field} contains unknown MCP server '${name}'.`);
-        }
-        if (target.value === "") continue;
-        if (selected.has(name)) {
-            throw new Error(`${field} contains duplicate MCP server '${name}'.`);
-        }
-        selected.add(name);
-    }
-    return [...selected].toSorted();
-};
-
-export const expandedServerNames = (environ: NodeJS.ProcessEnv = process.env): string[] =>
-    selectedServerNames(environ, `${PREFIX}EXPANDED`);
-
-export const summaryOverrides = (
-    environ: NodeJS.ProcessEnv = process.env,
-): { servers: Map<string, string>; tools: Map<string, string> } => {
-    const { targets, companions } = parseEnvironment(environ);
-    const servers = new Map<string, string>();
-    const tools = new Map<string, string>();
-    for (const [name, fields] of companions) {
-        const summary = fields.get("_summary");
-        if (summary === undefined) continue;
-        if (targets.has(name)) {
-            if (targets.get(name)?.value !== "") {
-                servers.set(name, expandReferences(summary.value, environ, summary.key));
-            }
-            continue;
-        }
-        const server = [...targets.keys()].find((target) => name.startsWith(`${target}_`));
-        if (server === undefined) {
-            throw new Error(`${summary.key} has no MCP server target ${PREFIX}${name.toUpperCase()}.`);
-        }
-        if (targets.get(server)?.value === "") continue;
-        const tool = name.slice(server.length + 1);
-        tools.set(`${server}/${tool}`, expandReferences(summary.value, environ, summary.key));
-    }
-    return { servers, tools };
-};
-
-export const serviceEnabledNames = (environ: NodeJS.ProcessEnv = process.env): string[] => {
-    const field = `${PREFIX}ENABLED`;
-    if (environ[field] === undefined) throw new Error(`${field} is missing from the assembled environment floor.`);
-    if (environ[field] === "") throw new Error(`${field} must be a JSON array of strings; [] enables none.`);
-    return selectedServerNames(environ, field);
-};
+export const isServerName = (name: string): boolean => SERVER_NAME.test(name);
 
 export const connectTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number => {
     const raw = environ.PLURNK_MCP_CONNECT_TIMEOUT;
@@ -439,6 +152,35 @@ export const retryPacing = (environ: NodeJS.ProcessEnv = process.env): RetryPaci
 
 export const retryDelayMs = ({ floorMs, ceilingMs }: RetryPacing, attempt: number): number =>
     Math.min(floorMs * (2 ** attempt), ceilingMs);
+
+// {§mcp-registry-discovery} — the registry `discover` searches, or null when the operator names none.
+export interface RegistrySettings {
+    readonly url: string | null;
+    readonly limit: number;
+}
+
+export const registrySettings = (environ: NodeJS.ProcessEnv = process.env): RegistrySettings => {
+    const raw = environ.PLURNK_MCP_REGISTRY_URL;
+    if (raw === undefined) throw new Error("PLURNK_MCP_REGISTRY_URL is missing from the assembled environment floor.");
+    if (raw.length > 0) {
+        // The rule an MCP endpoint follows: HTTPS, or HTTP on a loopback host.
+        const refusal = `PLURNK_MCP_REGISTRY_URL must be an https URL, or http on a loopback host; got ${JSON.stringify(raw)}.`;
+        let url: URL;
+        try {
+            url = new URL(raw);
+        } catch (cause) {
+            throw new Error(refusal, { cause });
+        }
+        const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
+        if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) throw new Error(refusal);
+    }
+    const limitRaw = environ.PLURNK_MCP_REGISTRY_LIMIT;
+    const limit = Number(limitRaw);
+    if (!Number.isInteger(limit) || limit < 1) {
+        throw new Error(`PLURNK_MCP_REGISTRY_LIMIT must be a positive integer; got ${JSON.stringify(limitRaw)}.`);
+    }
+    return { url: raw.length === 0 ? null : raw, limit };
+};
 
 export const requestTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number => {
     const raw = environ.PLURNK_MCP_REQUEST_TIMEOUT;

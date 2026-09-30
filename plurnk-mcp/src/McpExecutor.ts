@@ -26,23 +26,17 @@ import { summaryLine } from "./Summary.ts";
 
 const CHANNEL = "body";
 
-// {§mcp-summary-derivation}: authored purpose precedes a display label.
-const authoredServerSummary = (
-    catalog: ServerCatalog | undefined,
-    override: string | undefined,
-): string | undefined => {
-    if (override !== undefined && override.trim() !== "") return override.trim();
-    return summaryLine(catalog?.server?.description)
+// {§mcp-summary-derivation}: the server's own purpose precedes a display label.
+const authoredServerSummary = (catalog: ServerCatalog | undefined): string | undefined =>
+    summaryLine(catalog?.server?.description)
         ?? summaryLine(catalog?.instructions)
         ?? summaryLine(catalog?.server?.title);
-};
 
 export const serverSummary = (
     name: string,
     catalog: ServerCatalog | undefined,
-    override: string | undefined,
 ): string => {
-    const authored = authoredServerSummary(catalog, override);
+    const authored = authoredServerSummary(catalog);
     if (authored !== undefined) return authored;
     const tools = catalog?.tools.map((tool) => tool.name).join(", ");
     return tools === undefined || tools === ""
@@ -54,9 +48,8 @@ export const serverSummary = (
 export const runtimeServerSummary = (
     name: string,
     catalog: ServerCatalog | undefined,
-    override: string | undefined,
 ): RuntimeSummaryDecl => {
-    const authored = authoredServerSummary(catalog, override);
+    const authored = authoredServerSummary(catalog);
     return (catalog?.tools.length ?? 0) === 0
         ? authored ?? `MCP server ${name}.`
         : { from: "tools", ...(authored === undefined ? {} : { description: authored }) };
@@ -169,9 +162,9 @@ export default class McpExecutor extends BaseExecutor {
 
     readonly #connection: ServerConnection;
     readonly #tools: readonly string[] | null;
-    readonly #read: ReadonlySet<string>;
+    // {§mcp-plugin-servers} — the enabled tools whose annotations.readOnlyHint is true.
+    #read: ReadonlySet<string> = new Set();
     #registry: RuntimeToolRegistry | null = null;
-    readonly #toolSummaries: ReadonlyMap<string, string>;
     readonly #retainWorkspace: () => () => void;
     #catalog: ServerCatalog | null = null;
 
@@ -180,13 +173,10 @@ export default class McpExecutor extends BaseExecutor {
         connection: ServerConnection,
         retainWorkspace: () => () => void,
         policy: Partial<ToolPolicy> = {},
-        toolSummaries?: ReadonlyMap<string, string>,
     ) {
         super(metadata);
         this.#connection = connection;
         this.#tools = policy.tools ?? null;
-        this.#read = new Set(policy.read ?? []);
-        this.#toolSummaries = toolSummaries ?? new Map();
         this.#retainWorkspace = retainWorkspace;
     }
 
@@ -221,16 +211,9 @@ export default class McpExecutor extends BaseExecutor {
                 throw new Error(`Configured MCP tool '${name}' is absent from server '${this.runtime}'.`);
             }
         }
-        const selected = this.#tools === null
+        return this.#tools === null
             ? tools
             : tools.filter((tool) => this.#tools?.includes(tool.name));
-        const enabled = new Set(selected.map((tool) => tool.name));
-        for (const name of this.#read) {
-            if (!enabled.has(name)) {
-                throw new Error(`Read-classified MCP tool '${name}' is not enabled on server '${this.runtime}'.`);
-            }
-        }
-        return selected;
     }
 
     #enabledTargets(): ReadonlySet<string> {
@@ -268,8 +251,9 @@ export default class McpExecutor extends BaseExecutor {
     async requireAvailable(signal?: AbortSignal): Promise<RuntimeAvailability> {
         const catalog = await this.#connection.catalog(signal);
         const selected = this.#selectTools(catalog.tools);
+        this.#read = new Set(selected.filter((tool) => tool.annotations?.readOnlyHint === true).map((tool) => tool.name));
         this.#registry = RuntimeInvocation.assertToolRegistry(
-            presentTools(this.runtime, selected, this.#toolSummaries),
+            presentTools(this.runtime, selected),
             "@plurnk/plurnk-mcp",
             this.runtime,
         );

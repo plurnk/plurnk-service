@@ -1,19 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { Validator } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { openMigrated } from "./_db.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
+import { MCP_CONTROLS, mcpPluginHome, stdioEntry } from "./_mcp-plugin.ts";
 import { isExecution } from "@plurnk/plurnk-contracts";
-
-const fixture = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures/echo-server.mjs", import.meta.url));
 
 test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodies in interpreter summaries", { timeout: 30_000 }, async () => {
     const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse(
@@ -50,22 +47,14 @@ test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodi
     }
 });
 
-test("{§tools-resource-materialization} turn 0 surveys an expanded server's tools without narrating its self-describing target", { timeout: 30_000 }, async () => {
+test("{§tools-resource-materialization} turn 0 surveys an expanded server's tools without narrating its self-describing target", { timeout: 30_000 }, async (t) => {
     const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("````KILL\nsurveyed\n````")] });
+    const hostPaths = await mcpPluginHome(t, { fixture: stdioEntry("echo-server.mjs") });
     const db = await openMigrated();
-    const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules") });
-    daemon.registerModule(McpModule.init({
-        env: {
-            PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-            PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
-            PLURNK_MCP_FIXTURE: process.execPath,
-            PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixture]),
-            PLURNK_MCP_ENABLED: JSON.stringify(["fixture"]),
-            PLURNK_MCP_EXPANDED: JSON.stringify(["fixture"]),
-        },
-    }));
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules"), hostPaths });
+    daemon.registerModule(McpModule.init({ env: { ...MCP_CONTROLS, PLURNK_MCP_EXPANDED: JSON.stringify(["fixture"]) } }));
     await daemon.start();
     try {
         const ws = await connect({ daemon });
@@ -94,42 +83,5 @@ test("{§tools-resource-materialization} turn 0 surveys an expanded server's too
         await db.close();
         if (previousFilesItems === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS;
         else process.env.PLURNK_SERVICE_FILES_ITEMS = previousFilesItems;
-    }
-});
-
-test("{§functionality-model-projection} the model READs the complete installed MCP add schema with its transport and auth contracts", { timeout: 30_000 }, async () => {
-    const target = "worker:///_plurnk/plurnk/mcp/add.json";
-    const provider = new Mock({ contextWindow: 1_000_000, responses: [
-        makeMockResponse(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\`
-\`\`\`\`NOTE
-Read the input schema.
-\`\`\`\``),
-        makeMockResponse("````KILL\nInspected.\n````"),
-    ] });
-    const db = await openMigrated();
-    const daemon = new Daemon({ db, provider, nodeModulesPath: join(import.meta.dirname, "../../node_modules") });
-    daemon.registerModule(McpModule.init({ env: { PLURNK_MCP_ENABLED: "[]" } }));
-    await daemon.start();
-    const ws = await connect({ daemon });
-    try {
-        await rpcCall(ws, 1, "workspace.create", { name: "tools-schema-read" });
-        const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the MCP add input schema." });
-        assert.equal(finalStatus, 200);
-        const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds!.at(-1)! });
-        const read = logEntries(JSON.parse(row!.packet)).find((entry) => entry.path === target);
-        assert.ok(read && typeof read.body === "string", "ordinary READ delivers the linked input document to the next model packet");
-        const body = read.body.replace(/^(?: *\d+:| *\d+<@[0-9A-Za-z]{5}>)/gm, "");
-        const doc = JSON.parse(body);
-        assert.deepEqual(doc.required, ["definition"]);
-        const definition = doc.$defs?.["https://schemas.plurnk.xyz/v0/McpServerDefinition.json"];
-        assert.ok(definition);
-        assert.equal(definition.properties.authorization.oneOf.length, 5);
-        assert.ok(Object.values(definition.properties).every((field: unknown) => typeof (field as { description?: unknown }).description === "string"));
-        assert.deepEqual(definition, Validator.schemaByRef("https://schemas.plurnk.xyz/v0/McpServerDefinition.json"));
-        assert.match(doc.description, /```mcp \(add\)/m, "the family's existing valid example remains on-demand");
-    } finally {
-        ws.close();
-        await daemon.stop();
-        await db.close();
     }
 });

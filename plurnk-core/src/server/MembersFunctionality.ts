@@ -113,7 +113,7 @@ const jsonStrings = (raw: string | undefined, key: string): string[] => {
 
 // {§members-configuration} — the operator's definitions: PLURNK_MEMBERS_<ALIAS>=<glob> (`!glob`
 // excludes) and PLURNK_MEMBERS_ENABLED=[…] naming the subset enabled by default ([] enables
-// none) — the shape PLURNK_MCP_* already has.
+// none) — the shape PLURNK_A2A_* has.
 export const serviceMembers = (environ: NodeJS.ProcessEnv = process.env): FunctionalityServiceDefinition[] => {
     const targets = new Map<string, { key: string; glob: string }>();
     for (const [key, value] of Object.entries(environ)) {

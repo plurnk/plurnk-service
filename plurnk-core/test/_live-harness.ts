@@ -21,6 +21,7 @@ import ProviderInstantiate from "../src/core/ProviderInstantiate.ts";
 import { contentWeight } from "../src/core/content-weight.ts";
 import EntryCrud from "../src/schemes/_entry-crud.ts";
 import Daemon from "../src/server/Daemon.ts";
+import HostPaths from "../src/core/HostPaths.ts";
 import type { Db } from "../src/core/Db.ts";
 import { openMigrated } from "./intg/_db.ts";
 import { lastReply } from "./intg/_packet.ts";
@@ -86,7 +87,10 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
     const runDir = await claimRunDir(opts.name);
     const dbPath = join(runDir, "plurnk.db");
     const db = await openMigrated(dbPath);
-    const daemon = new Daemon({ db, provider, mimetypes });
+    // {§host-path-layout} — the run keeps its own host beside its evidence, so the operator's installed
+    // plugins, skills and workspace state neither shape a gate nor receive its writes.
+    const hostPaths = new HostPaths({ home: join(runDir, "home"), env: {} });
+    const daemon = new Daemon({ db, provider, mimetypes, hostPaths });
     let ws: SeamSocket | undefined;
     let projectRoot = opts.projectRoot;
     const ownsSandbox = projectRoot === undefined;

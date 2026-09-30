@@ -4,6 +4,7 @@
 // then take the fixture server (and any grandchildren) down with it.
 import { setTimeout as delay } from "node:timers/promises";
 import ServerConnection from "../src/client.ts";
+import { fixturePlugin, stdioServer } from "./definitions.ts";
 
 // The holder may run outside the suite's env floor; the connection constructor
 // requires these knobs.
@@ -18,12 +19,8 @@ if (!fixture || !workingDirectory) {
     console.error("holder: usage: holder.mjs <fixture-path> <working-directory>");
     process.exit(64);
 }
-const conn = new ServerConnection({
-    name: "watchdog-probe",
-    transport: "stdio",
-    command: process.execPath,
-    args: [fixture],
-}, process.env, { workingDirectory: async () => workingDirectory });
+// The fixture runs in its plugin root; the directory the test owns is its PLUGIN_DATA.
+const conn = new ServerConnection({ ...stdioServer("watchdog-probe", [fixture]), plugin: { ...fixturePlugin, data: workingDirectory } }, process.env);
 try {
     const catalog = await conn.catalog();
     console.log(`HOLDER-READY tools=${catalog.tools.length} pid=${process.pid}`);

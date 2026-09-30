@@ -10,8 +10,7 @@ import Validator, {
     InvalidCapabilityPolicyError,
     InvalidLoopPolicyError,
     InvalidMcpServerDefinitionError,
-    InvalidMcpServerOptionsError,
-    InvalidMcpConfigurationOverlayError,
+    InvalidMcpOAuthError,
     InvalidModelCatalogPageError,
     InvalidModelCatalogQueryError,
     InvalidModelReadinessError,
@@ -26,7 +25,7 @@ import Validator, {
     InvalidTextRegionError,
 } from "./Validator.ts";
 import Problems from "./Problems.ts";
-import type { CapabilityPolicy, ClientDisplayCapabilities, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, RangeExtent } from "./types.generated.ts";
+import type { CapabilityPolicy, ClientDisplayCapabilities, McpOAuth, McpServerDefinition, ModelCatalogPage, RangeExtent } from "./types.generated.ts";
 
 test("{§agent-skills-name}: wire definitions admit Unicode and digit-leading names with exact identity", () => {
     for (const name of ["3d-models", "café", "分析", "𐐨-demo", "ⅳ", "ｓｋｉｌｌ", "𐐨".repeat(64)]) {
@@ -202,160 +201,43 @@ test("{§client-interaction-wire} client interactions carry one generic tool con
     );
 });
 
-test("{§mcp-definition-wire} {§mcp-server-definition}: MCP server definitions are one closed transport shape with symbolic credentials", () => {
+test("{§mcp-server-definition}: an MCP server definition is a standard stdio or Streamable HTTP entry at a plugin root's scope", () => {
+    const plugin = { name: "devtools", root: "/home/ada/.agents/plugins/devtools", data: "/home/ada/.local/share/plurnk/plugins/devtools" };
     const definitions: McpServerDefinition[] = [
-        {
-            name: "local-tools",
-            transport: "stdio",
-            command: "/opt/mcp server/bin/server",
-            args: ["--stdio"],
-            cwd: "${WORKSPACE_ROOT}",
-            env: { TOKEN: "${MCP_TOKEN}" },
-            tools: ["read_issue"],
-            read: ["read_issue"],
-        },
-        {
-            name: "gitea",
-            transport: "http",
-            url: "https://example.test/mcp",
-            authorization: { type: "bearer", token: "${GITEA_TOKEN}" },
-        },
-        {
-            name: "interactive",
-            transport: "http",
-            url: "https://example.test/mcp",
-            authorization: {
-                type: "oauth",
-                redirectUrl: "http://127.0.0.1:1066/oauth/callback",
-                clientMetadataUrl: "https://client.example.test/oauth/metadata.json",
-                scope: "issues:read",
-            },
-        },
-        {
-            name: "pre-registered",
-            transport: "http",
-            url: "https://example.test/mcp",
-            authorization: {
-                type: "oauth",
-                redirectUrl: "http://127.0.0.1:1066/oauth/callback",
-                clientId: "known-client",
-                clientSecret: "${KNOWN_CLIENT_SECRET}",
-            },
-        },
-        {
-            name: "dynamic-fallback",
-            transport: "http",
-            url: "https://example.test/mcp",
-            authorization: {
-                type: "oauth",
-                redirectUrl: "http://127.0.0.1:1066/oauth/callback",
-            },
-        },
+        { name: "local-validator", scope: "global", plugin, type: "stdio", command: "./bin/validator", args: ["--data", "${PLUGIN_DATA}/validator"], env: { CONFIG: "${PLUGIN_ROOT}/config.json" }, cwd: "${PLUGIN_ROOT}" },
+        { name: "npx-server", scope: "project", type: "stdio", command: "npx", args: ["-y", "example-server@1.0.0"] },
+        { name: "deployment-api", scope: "plurnk", type: "streamable-http", url: "https://deploy.example.com/mcp", headers: { "X-Tenant": "public-tenant" } },
     ];
-    for (const definition of definitions) {
-        assert.equal(Validator.assertMcpServerDefinition(definition), definition);
-    }
-
+    for (const definition of definitions) assert.equal(Validator.assertMcpServerDefinition(definition), definition);
     for (const invalid of [
-        { name: "Bad_Name", transport: "stdio", command: "mcp" },
-        { name: "mixed", transport: "stdio", command: "mcp", url: "https://example.test/mcp" },
-        { name: "mixed", transport: "http", url: "https://example.test/mcp", command: "mcp" },
-        { name: "missing", transport: "stdio" },
-        { name: "missing", transport: "http" },
-        {
-            name: "copied-secret",
-            transport: "http",
-            url: "https://example.test/mcp",
-            authorization: { type: "bearer", token: "secret-value" },
-        },
-        {
-            name: "stdio-oauth",
-            transport: "stdio",
-            command: "mcp",
-            authorization: {
-                type: "oauth",
-                redirectUrl: "http://127.0.0.1/callback",
-                clientMetadataUrl: "https://client.example.test/oauth/metadata.json",
-            },
-        },
-        {
-            name: "mixed-oauth-identity",
-            transport: "http",
-            url: "https://example.test/mcp",
-            authorization: {
-                type: "oauth",
-                redirectUrl: "http://127.0.0.1/callback",
-                clientMetadataUrl: "https://client.example.test/oauth/metadata.json",
-                clientId: "known-client",
-                clientSecret: "${KNOWN_CLIENT_SECRET}",
-            },
-        },
-        {
-            name: "incomplete-pre-registration",
-            transport: "http",
-            url: "https://example.test/mcp",
-            authorization: {
-                type: "oauth",
-                redirectUrl: "http://127.0.0.1/callback",
-                clientId: "known-client",
-            },
-        },
-        { name: "extra", transport: "stdio", command: "mcp", workspaceId: 7 },
+        { name: "legacy", scope: "project", type: "sse", url: "https://legacy.example.com/sse" },
+        { name: "old", scope: "project", transport: "stdio", command: "npx" },
+        { name: "unscoped", plugin, type: "stdio", command: "npx" },
+        { name: "service", scope: "service", type: "stdio", command: "npx" },
+        { name: "mixed", scope: "project", type: "stdio", command: "npx", url: "https://example.com/mcp" },
+        { name: "creds", scope: "project", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "bearer", token: "${T}" } },
+        { name: "Upper", scope: "project", type: "stdio", command: "npx" },
+        { name: "scheme", scope: "project", type: "streamable-http", url: "ftp://example.com/mcp" },
     ]) {
-        assert.throws(
-            () => Validator.assertMcpServerDefinition(invalid as never),
-            InvalidMcpServerDefinitionError,
-        );
+        assert.throws(() => Validator.assertMcpServerDefinition(invalid as never), InvalidMcpServerDefinitionError, JSON.stringify(invalid));
     }
 });
 
-test("{§mcp-server-options}: MCP add options are a closed definition supplement", () => {
-    const options: McpServerOptions[] = [
-        {},
-        {
-            args: ["--stdio"],
-            cwd: "/workspace",
-            env: { GITEA_TOKEN: "${GITEA_TOKEN}" },
-            tools: ["issue_read"],
-            read: ["issue_read"],
-        },
-        {
-            headers: { "X-Tenant": "${TENANT}" },
-            authorization: { type: "bearer", token: "${GITEA_TOKEN}" },
-        },
+test("{§mcp-oauth}: MCP OAuth takes exactly one identity mode, and every secret is a symbolic reference", () => {
+    const settings: McpOAuth[] = [
+        { type: "oauth", redirectUrl: "http://127.0.0.1:8765/callback", clientMetadataUrl: "https://plurnk.example/oauth/client.json" },
+        { type: "oauth", redirectUrl: "http://127.0.0.1:8765/callback", clientId: "plurnk", clientSecret: "${GITEA_SECRET}", scope: "read" },
+        { type: "oauth", redirectUrl: "http://127.0.0.1:8765/callback" },
+        { type: "client-credentials", clientId: "worker", clientSecret: "${WORKER_SECRET}", issuer: "https://auth.example.com" },
     ];
-    for (const option of options) {
-        assert.equal(Validator.assertMcpServerOptions(option), option);
-    }
+    for (const setting of settings) assert.equal(Validator.assertMcpOAuth(setting), setting);
     for (const invalid of [
-        { alias: "gitea" },
-        { target: "gitea-mcp" },
-        { transport: "stdio" },
-        { args: "--stdio" },
-        { authorization: { type: "bearer", token: "literal-secret" } },
+        { type: "oauth", clientMetadataUrl: "https://plurnk.example/oauth/client.json" },
+        { type: "oauth", redirectUrl: "http://127.0.0.1:8765/callback", clientMetadataUrl: "https://plurnk.example/oauth/client.json", clientId: "plurnk", clientSecret: "${S}" },
+        { type: "client-credentials", clientId: "worker", clientSecret: "literal-secret" },
+        { type: "bearer", token: "${TOKEN}" },
     ]) {
-        assert.throws(
-            () => Validator.assertMcpServerOptions(invalid as never),
-            InvalidMcpServerOptionsError,
-        );
-    }
-});
-
-test("{§mcp-configuration-overlay}: a client carries its PLURNK_MCP_* variables whole, and nothing else", () => {
-    const overlay: McpConfigurationOverlay = {
-        PLURNK_MCP_GITEA_ARGS: "[\"an-org\"]",
-        PLURNK_MCP_BRAVE: "https://mcp.example/brave",
-        PLURNK_MCP_ENABLED: "[\"gitea\"]",
-    };
-    assert.equal(Validator.assertMcpConfigurationOverlay(overlay), overlay, "which names are controls is the host's fact, not the contract's");
-    for (const invalid of [
-        { OPENAI_API_KEY: "nope" },
-        { PLURNK_MCP_GITEA_ARGS: ["an-org"] },
-    ]) {
-        assert.throws(
-            () => Validator.assertMcpConfigurationOverlay(invalid as never),
-            InvalidMcpConfigurationOverlayError,
-        );
+        assert.throws(() => Validator.assertMcpOAuth(invalid as never), InvalidMcpOAuthError, JSON.stringify(invalid));
     }
 });
 

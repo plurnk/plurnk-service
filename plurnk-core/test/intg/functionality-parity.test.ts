@@ -12,6 +12,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Validator } from "@plurnk/plurnk-contracts";
 import type { PlurnkStatement, ProblemDetails, UrlPath } from "@plurnk/plurnk-contracts";
@@ -31,6 +33,7 @@ import { parseLogRecords } from "../LogRecords.ts";
 import { waitFor, waitForDb } from "./_rpc.ts";
 import { sendStmt } from "./_dsl.ts";
 import type { Db } from "../../src/core/Db.ts";
+import { MCP_CONTROLS, stdioEntry, writePlugin } from "./_mcp-plugin.ts";
 
 type Definition = { readonly alias: string; readonly definition: object; readonly probe: (context: Context) => Promise<number> };
 
@@ -154,6 +157,20 @@ const skillsFamily = async (): Promise<Family> => {
 const mcpFamily = async (): Promise<Family> => {
     const echo = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures/echo-server.mjs", import.meta.url));
     const legacy = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures/legacy-server.mjs", import.meta.url));
+    // {§mcp-plugin-servers} — the service server arrives in a plugin installed under the daemon's own home.
+    const home = await mkdtemp(join(tmpdir(), "plurnk-parity-mcp-"));
+    const hostPaths = new HostPaths({ home, env: {} });
+    await writePlugin(join(hostPaths.plurnkPluginsDir, "fixtures"), "fixtures", { fixture: stdioEntry("echo-server.mjs") });
+    // {§mcp-registry-discovery} — a registry answering exactly as the MCP Registry does.
+    const registry = createServer((_request, response) => {
+        response.setHeader("content-type", "application/json");
+        response.end(JSON.stringify({ servers: [{ server: {
+            name: "io.github.example/example-server", version: "1.0.0", description: "An example server.",
+            packages: [{ registryType: "npm", identifier: "@example/server", version: "1.0.0", transport: { type: "stdio" } }],
+        } }] }));
+    });
+    await new Promise<void>((resolve) => registry.listen(0, "127.0.0.1", resolve));
+    const registryUrl = `http://127.0.0.1:${(registry.address() as AddressInfo).port}`;
     // A started stream is an active request; the probe waits for its results
     // channel to close so a following mutation meets a quiescent server.
     const exec = (alias: string, tool: string) => async (context: Context) => {
@@ -173,30 +190,27 @@ const mcpFamily = async (): Promise<Family> => {
         }, (closed) => closed, { timeoutMs: 20_000 });
         return status;
     };
+    // The echo tool declares readOnlyHint, so a client execution of it runs ungated; the legacy one proposes.
+    const server = (name: string, file: string) => ({ name, scope: "plurnk", type: "stdio", command: "node", args: [file] });
     return {
         family: "mcp",
         teaching: /## discover, then add/u,
         documentOf: (alias) => `/_plurnk/tools/${alias}.md`,
-        // `read` declares the probe tools read-effect so a client execution runs ungated; everything else proposes.
-        service: { alias: "fixture", definition: { name: "fixture", transport: "stdio", command: process.execPath, args: [echo], read: ["echo"] }, probe: exec("fixture", "echo") },
-        addable: { alias: "extra", definition: { name: "extra", transport: "stdio", command: process.execPath, args: [echo], tools: ["echo"], read: ["echo"] }, probe: exec("extra", "echo") },
-        conflicting: { alias: "extra", definition: { name: "extra", transport: "stdio", command: process.execPath, args: [legacy], read: ["legacy_echo"] }, probe: exec("extra", "legacy_echo") },
-        unreachable: { alias: "ghost", definition: { name: "ghost", transport: "stdio", command: process.execPath, args: [join(tmpdir(), "no-such-mcp-server.mjs")] }, probe: exec("ghost", "echo") },
-        discover: { source: `${process.execPath} ${echo}` },
+        service: { alias: "fixture", definition: server("fixture", echo), probe: exec("fixture", "echo") },
+        addable: { alias: "extra", definition: server("extra", echo), probe: exec("extra", "echo") },
+        conflicting: { alias: "extra", definition: server("extra", legacy), probe: exec("extra", "legacy_echo") },
+        unreachable: { alias: "ghost", definition: server("ghost", join(tmpdir(), "no-such-mcp-server.mjs")), probe: exec("ghost", "echo") },
+        discover: { query: "example" },
         collidingAlias: "sh",
         boot: async (db, provider) => {
-            const daemon = new Daemon({ db, provider });
-            daemon.registerModule(McpModule.init({ env: {
-                PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-                PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
-                PLURNK_MCP_FIXTURE: process.execPath,
-                PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([echo]),
-                PLURNK_MCP_FIXTURE_READ: '["echo"]',
-                PLURNK_MCP_ENABLED: '["fixture"]',
-            } }));
+            const daemon = new Daemon({ db, provider, hostPaths });
+            daemon.registerModule(McpModule.init({ env: { ...MCP_CONTROLS, PLURNK_MCP_REGISTRY_URL: registryUrl, PLURNK_MCP_REGISTRY_LIMIT: "5" } }));
             return { daemon };
         },
-        close: async () => {},
+        close: async () => {
+            await new Promise<void>((resolve) => registry.close(() => resolve()));
+            await rm(home, { recursive: true, force: true });
+        },
     };
 };
 
@@ -334,12 +348,16 @@ const matrix = async (family: Family): Promise<void> => {
         assert.equal(await documentPresent(context(), `${managerPath}/add.json`), 200,
             "the full schema is materialized in the model Worker's private namespace");
         if (family.family === "mcp") {
-            const schema = Validator.schemaByRef("https://schemas.plurnk.xyz/v0/McpServerDefinition.json");
+            type Property = { readonly description?: string; readonly $ref?: string };
+            type Definition = { readonly description?: string; readonly properties?: Readonly<Record<string, Property>> };
+            const schema = Validator.schemaByRef("https://schemas.plurnk.xyz/v0/McpServerDefinition.json") as { readonly $defs: Readonly<Record<string, Definition>> } | undefined;
             assert.ok(schema);
-            assert.deepEqual(addSchema.$defs["https://schemas.plurnk.xyz/v0/McpServerDefinition.json"], schema, "all transport/auth branches and references reach the model unchanged");
-            const properties = (schema as { properties: Record<string, { description?: string }> }).properties;
-            assert.ok(Object.values(properties).every(({ description }) => typeof description === "string" && description.length > 0),
-                "the owning MCP configuration schema describes each input field");
+            assert.deepEqual(addSchema.$defs["https://schemas.plurnk.xyz/v0/McpServerDefinition.json"], schema, "both transport branches reach the model unchanged");
+            const described = (property: Property): boolean => typeof property.description === "string"
+                || (property.$ref !== undefined && typeof schema.$defs[property.$ref.split("/").at(-1)!]?.description === "string");
+            for (const branch of ["stdio", "streamableHttp"]) {
+                assert.ok(Object.values(schema.$defs[branch]?.properties ?? {}).every(described), `every ${branch} input field is described, directly or through its definition`);
+            }
         }
         // 3. Discovery from the representative source is inert.
         const discovered = await invoke<{ candidates: Array<{ alias?: string; provenance: { kind: string; source: string } }> }>("discover", family.discover);

@@ -221,7 +221,6 @@ try {
         PLURNK_SERVICE_DB_PATH: db,
         PLURNK_SERVICE_MAX_TURNS: "8",
         PLURNK_SCHEMES_HTTP_PLAYWRIGHT_METHOD: "disabled",
-        PLURNK_MCP_ENABLED: "[]",
         ...fixture.env,
     };
     // {§daemon-launch} — the installed executable through the service's own launcher; the port is
@@ -363,22 +362,7 @@ try {
     }
     process.stdout.write(`plurnk conformance manifest matches live discovery (${Object.keys(discovery.actions).length} actions, ${Object.keys(discovery.notifications).length} notifications)\n`);
 
-    const overlay = {
-        "PLURNK_MCP_CLIENT-ONLY": process.execPath,
-        "PLURNK_MCP_CLIENT-ONLY_ARGS": JSON.stringify([
-            join(root, "plurnk-mcp/src/fixtures/echo-server.mjs"),
-        ]),
-    };
-    const projected = await terminal.rpc("workspace.mcp.discover", { configuration: overlay });
-    if (!projected.candidates.some((candidate) => candidate.alias === "client-only"
-        && candidate.provenance.kind === "client-configuration")) {
-        throw new Error("terminal client did not project its configuration as MCP candidates");
-    }
-    const durable = await terminal.rpc("workspace.mcp.list");
-    if (durable.definitions.some((definition) => definition.alias === "client-only")) {
-        throw new Error("a discovered client candidate entered the workspace's durable set");
-    }
-    for (const family of ["skills", "a2a"]) {
+    for (const family of ["mcp", "skills", "a2a"]) {
         const listed = await terminal.rpc(`workspace.${family}.list`);
         if (!Array.isArray(listed.definitions)) {
             throw new Error(`workspace.${family}.list returned no Functionality definitions`);
@@ -393,10 +377,6 @@ try {
     const observedCapabilities = await observer.rpc("workspace.capabilities.get");
     if (JSON.stringify(observedCapabilities.workspace) !== JSON.stringify(durableCapabilities)) {
         throw new Error("a second client connection did not observe the workspace's durable capabilities");
-    }
-    const observedMcp = await observer.rpc("workspace.mcp.list");
-    if (observedMcp.definitions.some((definition) => definition.alias === "client-only")) {
-        throw new Error("a terminal-discovered candidate leaked into another connection's durable set");
     }
     await observer.rpc("workspace.members.add", { alias: "cross", definition: { glob: "cross/**" } });
     // Both connections observe the same workspace definition independently of their Worker.
@@ -421,10 +401,6 @@ try {
     if (JSON.stringify(persistedCapabilities.workspace) !== JSON.stringify(durableCapabilities)
         || JSON.stringify(membersOf(persistedMembers)) !== JSON.stringify(expectedMembers.map((definition) => ({ ...definition, state: "dormant" })))) {
         throw new Error("cross-client durable state did not survive daemon reconstruction");
-    }
-    const afterRestartMcp = await afterRestart.rpc("workspace.mcp.list");
-    if (afterRestartMcp.definitions.some((definition) => definition.alias === "client-only")) {
-        throw new Error("a discovered client candidate survived daemon reconstruction as durable state");
     }
     await afterRestart.rpc("workspace.members.enable", { alias: "cross" });
     const activatedMembers = await afterRestart.rpc("workspace.members.list");

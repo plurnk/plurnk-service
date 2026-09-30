@@ -1,7 +1,6 @@
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
-import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
@@ -10,6 +9,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";
+import { httpEntry, mcpPluginHome, stdioEntry } from "./_mcp-plugin.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { taskHandler, taskId, wireRequest } from "../../../plurnk-mcp/test/task-fixture.ts";
 
@@ -21,30 +21,24 @@ interface Interrupt {
 }
 
 const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "");
-const fixturePath = (name: string): string => fileURLToPath(new URL(
-    `../../../plurnk-mcp/src/fixtures/${name}`, import.meta.url,
-));
 
 const setup = async (
     t: TestContext,
     operation: string,
-    configuration: Record<string, string> = {
-        PLURNK_MCP_FIXTURE: process.execPath,
-        PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixturePath("interaction-server.mjs")]),
-        PLURNK_MCP_FIXTURE_READ: '["batch","round-trip","url"]',
-    },
+    servers: Readonly<Record<string, object>> = { fixture: stdioEntry("interaction-server.mjs") },
+    env: Readonly<Record<string, string>> = {},
 ) => {
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse(`${operation}\n\n${step("WAIT")}`),
         makeMockResponse(PlurnkParser.frame("KILL", "MCP result observed.")),
     ] });
+    const hostPaths = await mcpPluginHome(t, servers);
     const db = await openMigrated();
-    const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules") });
+    const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths });
     daemon.registerModule(McpModule.init({ env: {
         PLURNK_MCP_CONNECT_TIMEOUT: "5000",
         PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
-        PLURNK_MCP_ENABLED: '["fixture"]',
-        ...configuration,
+        ...env,
     } }));
     const registration = AguiModule.init({ host: "127.0.0.1", port: 0 });
     let agui: AguiModule | undefined;
@@ -80,8 +74,11 @@ const setup = async (
             .filter((frame) => frame.startsWith("data: "))
             .map((frame) => JSON.parse(frame.slice(6)) as Event);
     };
+    // The Task fixtures' tools carry no readOnlyHint, so they are host effects ({§mcp-model-projection});
+    // the Run accepts its proposals, leaving each MCP input as the only client decision.
     const start = (): Promise<Event[]> => post({
         messages: [{ id: "prompt", role: "user", content: "Perform the MCP operation and report its result." }],
+        forwardedProps: { plurnk: { workspace, projectRoot: null, policy: { proposals: "accept" } } },
     });
     const reconnect = (): Promise<Event[]> => post({
         forwardedProps: { plurnk: { workspace, projectRoot: null, mode: "sync" } },
@@ -198,9 +195,7 @@ for (const { path, key, expected } of [
 
 test("{§mcp-host-composition}: a standard Task completes the same operation through AG-UI", { timeout: 20_000 }, async (t) => {
     const { provider, start } = await setup(t, '````fixture (stdio-defer)\n{"topic":"MCP"}\n````', {
-        PLURNK_MCP_FIXTURE: process.execPath,
-        PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixturePath("task-server.mjs")]),
-        PLURNK_MCP_FIXTURE_READ: '["stdio-defer"]',
+        fixture: stdioEntry("task-server.mjs"),
     });
     completed(await start(), provider, /plain stdio Task completed/u);
 });
@@ -209,8 +204,7 @@ test("{§mcp-host-composition}: HTTP MRTR and Task input return through AG-UI be
     const fixture = taskHandler();
     const served = await serveMcpHttp(t, fixture.handler, fixture.route);
     const { provider, post, start, reconnect } = await setup(t, '````fixture (deferred-review)\n{"topic":"MCP"}\n````', {
-        PLURNK_MCP_FIXTURE: served.url,
-        PLURNK_MCP_FIXTURE_READ: '["deferred-review"]',
+        fixture: httpEntry(served.url),
     });
     const first = interaction(await start(), ["preflight"]);
     const second = interaction(await post({ resume: [{ interruptId: first.id, status: "resolved", payload: {
@@ -252,7 +246,7 @@ for (const state of ["failed", "cancelled", "unsupported-input"] as const) {
             return Response.json({ ...body, result: { ...task, status: "cancelled" } });
         });
         const { provider, start, daemon } = await setup(t, `\`\`\`\`fixture (${fixture.toolName})\n{"topic":"MCP"}\n\`\`\`\``, {
-            PLURNK_MCP_FIXTURE: served.url, PLURNK_MCP_FIXTURE_READ: JSON.stringify([fixture.toolName]),
+            fixture: httpEntry(served.url),
         });
         const events = await start();
         const terminal = events.at(-1);
@@ -283,8 +277,7 @@ for (const stage of ["MRTR", "Task"] as const) {
             const fixture = taskHandler();
             const served = await serveMcpHttp(t, fixture.handler, fixture.route);
             const { provider, post, start, daemon } = await setup(t, '````fixture (deferred-review)\n{"topic":"MCP"}\n````', {
-                PLURNK_MCP_FIXTURE: served.url,
-                PLURNK_MCP_FIXTURE_READ: '["deferred-review"]',
+                fixture: httpEntry(served.url),
             });
             owner = daemon;
             const events = await start();
@@ -331,8 +324,7 @@ test("{§mcp-host-composition}: withdrawing an attachment cannot interrupt its p
     const fixture = taskHandler();
     const served = await serveMcpHttp(t, fixture.handler, fixture.route);
     const { provider, post, start, reconnect, daemon } = await setup(t, '````fixture (deferred-review)\n{"topic":"MCP"}\n````', {
-        PLURNK_MCP_FIXTURE: served.url,
-        PLURNK_MCP_FIXTURE_READ: '["deferred-review"]',
+        fixture: httpEntry(served.url),
     });
     owner = daemon;
     const first = interaction(await start(), ["preflight"]);
@@ -372,15 +364,9 @@ for (const source of ["MRTR", "Task", "resource", "prompt"] as const) {
             : source === "resource" ? "````READ (fixture:///resources/fixture%3A%2F%2Fguarded) <1,-1>````"
                 : "````READ (fixture:///prompts/guarded?topic=MCP) <1,-1>````";
         const { provider, post, start, reconnect, daemon } = await setup(t, operation, {
+            fixture: served === undefined ? stdioEntry("interaction-server.mjs") : httpEntry(served.url),
+        }, {
             PLURNK_MCP_REQUEST_TIMEOUT: "1000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
-            ...(served === undefined ? {
-                PLURNK_MCP_FIXTURE: process.execPath,
-                PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixturePath("interaction-server.mjs")]),
-                PLURNK_MCP_FIXTURE_READ: '["batch","round-trip","url"]',
-            } : {
-                PLURNK_MCP_FIXTURE: served.url,
-                PLURNK_MCP_FIXTURE_READ: '["deferred-review"]',
-            }),
         });
         owner = daemon;
         const events = await start();

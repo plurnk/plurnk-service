@@ -96,5 +96,10 @@ export interface FunctionalityFamilyHandle {
         params: unknown,
         identity: FunctionalityIdentity,
     ): Promise<{ readonly status: number; readonly body: unknown }>;
-    refresh(identity: WorkspaceCapabilityIdentity, options?: { readonly gate?: WorkspaceCapabilityGate }): Promise<void>;
+    // Republish the resident family; `ifChanged` only when its enabled definitions differ from the ones
+    // the resident publication prepared ({§functionality-hotload}).
+    refresh(
+        identity: WorkspaceCapabilityIdentity,
+        options?: { readonly gate?: WorkspaceCapabilityGate; readonly ifChanged?: boolean },
+    ): Promise<void>;
 }

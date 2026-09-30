@@ -93,12 +93,13 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
     }
 };
 
-const enableMcp = (alias: string) => async (workspace: LiveWorkspace): Promise<void> => {
-    const attached = await workspace.invokeWorkspaceAction(
-        "workspace.mcp.enable",
-        { alias },
-    ) as { status?: number };
-    assert.equal(attached.status, 200, `the declared ${alias} fixture is attached before the model loop`);
+// {§mcp-plugin-servers} — the story adds the search server as a client does. It lands as a one-server
+// plugin in the fixture project, the one root a gate reads ({§agent-roots}), and reads BRAVE_API_KEY
+// from the inherited environment ({§mcp-launch-environment}).
+const BRAVE_SEARCH = { name: "brave", scope: "project", type: "stdio", command: "npx", args: ["-y", "@brave/brave-search-mcp-server@2.1.0"] };
+const addMcp = (definition: { readonly name: string }) => async (workspace: LiveWorkspace): Promise<void> => {
+    const added = await workspace.invokeWorkspaceAction("workspace.mcp.add", { definition }) as { status?: number };
+    assert.equal(added.status, 201, `the ${definition.name} server is added and attached before the model loop`);
 };
 
 interface ChainOpts { signal: AbortSignal; label: string; prompts: string[]; maxTurns?: number; onStep?: (index: number, workspace: string) => Promise<void>;
@@ -173,8 +174,8 @@ test("story: find a single value in a JSON config", async (t) => {
 test("{§web-search-retrieval} story: answer a current question with search MCP available", async (t) => {
     // The attachment provides an option, not an oracle requirement. The independent
     // release index is never injected into the model's prompt or workspace.
-    if (process.env.PLURNK_MCP_BRAVE === undefined) {
-        test.skip("PLURNK_MCP_BRAVE is not declared in the operator environment — the search-MCP demo fixture is absent");
+    if (process.env.BRAVE_API_KEY === undefined) {
+        test.skip("BRAVE_API_KEY is not in the operator environment — the Brave Search demo plugin cannot serve");
         return;
     }
     const index = await fetch("https://nodejs.org/dist/index.json", {
@@ -188,7 +189,7 @@ test("{§web-search-retrieval} story: answer a current question with search MCP 
         label: "web-search-mcp",
         prompt: "Search the web for the newest non-prerelease Node.js release (Current, not LTS). Tell me its full major.minor.patch version in one sentence.",
         maxTurns: 8,
-        setup: enableMcp("brave"),
+        setup: addMcp(BRAVE_SEARCH),
     });
     try {
         // {§web-search-retrieval} — graded on retrieval by any first-class route (#828): search MCP results,
@@ -218,7 +219,7 @@ test("story: answer a recent general-knowledge question", async (t) => {
         label: "web-retrieve-live",
         prompt: "As of August 20, 2026, who won the 2026 Eurovision Song Contest, and with which song?",
         maxTurns: 30,
-        ...(process.env.PLURNK_MCP_BRAVE === undefined ? {} : { setup: enableMcp("brave") }),
+        ...(process.env.BRAVE_API_KEY === undefined ? {} : { setup: addMcp(BRAVE_SEARCH) }),
     });
     try {
         const ok = story.finalStatus === 200

@@ -2,171 +2,64 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/McpServerDefinition.json",
     "title": "McpServerDefinition",
-    "type": "object",
-    "additionalProperties": false,
-    "required": ["name", "transport"],
-    "properties": {
+    "description": "One MCP server: the standard mcp.json server entry with its alias and the scope of the root whose Agent Plugin carries it. A server the workspace adds is written as a one-server plugin at that scope.",
+    "oneOf": [
+        { "$ref": "#/$defs/stdio" },
+        { "$ref": "#/$defs/streamableHttp" }
+    ],
+    "$defs": {
         "name": {
-            "description": "Server alias: the runtime tag whose fence invokes it, and its resource scheme.",
+            "title": "McpServerName",
+            "description": "The server's alias: its mcpServers member name, the runtime tag whose fence invokes it, and its resource scheme.",
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]*$"
         },
-        "transport": {
-            "description": "stdio launches a local command; http connects to a remote MCP endpoint.",
-            "enum": ["stdio", "http"]
+        "scope": {
+            "title": "McpServerScope",
+            "description": "The plugin root: project `.agents/plugins`, plurnk `$XDG_CONFIG_HOME/plurnk/plugins`, or global `~/.agents/plugins`.",
+            "enum": ["project", "plurnk", "global"]
         },
-        "command": {
-            "description": "Executable to launch for stdio; arguments belong in args.",
-            "type": "string",
-            "minLength": 1
-        },
-        "args": {
-            "description": "Arguments passed to the stdio executable in order.",
-            "type": "array",
-            "items": { "type": "string" }
-        },
-        "cwd": {
-            "description": "Working directory for the stdio process.",
-            "type": "string",
-            "minLength": 1
-        },
-        "env": {
-            "description": "Environment overrides for the stdio process; values may reference ${ENV_NAME}.",
+        "plugin": {
+            "title": "McpServerPlugin",
+            "description": "The installed Agent Plugin that declares the server. The service records it; a client never supplies it.",
             "type": "object",
-            "additionalProperties": { "type": "string" }
-        },
-        "url": {
-            "description": "HTTP MCP endpoint URL.",
-            "type": "string",
-            "format": "uri",
-            "pattern": "^https?://"
-        },
-        "headers": {
-            "description": "HTTP request headers; values may reference ${ENV_NAME}. Authorization cannot also be configured here when authorization is set.",
-            "type": "object",
-            "additionalProperties": { "type": "string" }
-        },
-        "authorization": {
-            "description": "HTTP authentication. Secret fields reference the operator environment rather than embedding credentials.",
-            "oneOf": [
-                {
-                    "type": "object",
-                    "description": "Use a bearer token from the operator environment.",
-                    "additionalProperties": false,
-                    "required": ["type", "token"],
-                    "properties": {
-                        "type": { "const": "bearer" },
-                        "token": { "$ref": "#/$defs/environmentReference" }
-                    }
-                },
-                {
-                    "type": "object",
-                    "description": "Interactive OAuth using an HTTPS Client ID Metadata Document.",
-                    "additionalProperties": false,
-                    "required": ["type", "redirectUrl", "clientMetadataUrl"],
-                    "properties": {
-                        "type": { "const": "oauth" },
-                        "redirectUrl": { "type": "string", "format": "uri" },
-                        "clientMetadataUrl": {
-                            "type": "string",
-                            "format": "uri",
-                            "pattern": "^https://.+/.+"
-                        },
-                        "scope": { "type": "string", "minLength": 1 }
-                    }
-                },
-                {
-                    "type": "object",
-                    "description": "Interactive OAuth using a pre-registered client ID and secret.",
-                    "additionalProperties": false,
-                    "required": ["type", "redirectUrl", "clientId", "clientSecret"],
-                    "properties": {
-                        "type": { "const": "oauth" },
-                        "redirectUrl": { "type": "string", "format": "uri" },
-                        "clientId": { "type": "string", "minLength": 1 },
-                        "clientSecret": { "$ref": "#/$defs/environmentReference" },
-                        "scope": { "type": "string", "minLength": 1 }
-                    }
-                },
-                {
-                    "type": "object",
-                    "description": "Interactive OAuth using dynamic client registration.",
-                    "additionalProperties": false,
-                    "required": ["type", "redirectUrl"],
-                    "properties": {
-                        "type": { "const": "oauth" },
-                        "redirectUrl": { "type": "string", "format": "uri" },
-                        "scope": { "type": "string", "minLength": 1 }
-                    }
-                },
-                {
-                    "type": "object",
-                    "description": "Noninteractive OAuth client-credentials grant; issuer optionally binds the credentials to an authorization server.",
-                    "additionalProperties": false,
-                    "required": ["type", "clientId", "clientSecret"],
-                    "properties": {
-                        "type": { "const": "client-credentials" },
-                        "clientId": { "type": "string", "minLength": 1 },
-                        "clientSecret": { "$ref": "#/$defs/environmentReference" },
-                        "scope": { "type": "string", "minLength": 1 },
-                        "issuer": { "type": "string", "minLength": 1 }
-                    }
-                }
-            ]
-        },
-        "tools": {
-            "description": "Exact enabled tool names; omitted enables all tools, an empty array enables none.",
-            "type": "array",
-            "uniqueItems": true,
-            "items": { "type": "string", "minLength": 1 }
-        },
-        "read": {
-            "description": "Exact tool names the operator designates as read effects rather than host effects requiring proposal review.",
-            "type": "array",
-            "uniqueItems": true,
-            "items": { "type": "string", "minLength": 1 }
-        }
-    },
-    "$defs": {
-        "environmentReference": {
-            "description": "An operator environment variable reference such as ${GITEA_TOKEN}, never a literal secret.",
-            "type": "string",
-            "pattern": "^\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}$"
-        }
-    },
-    "allOf": [
-        {
-            "if": {
-                "properties": { "transport": { "const": "stdio" } },
-                "required": ["transport"]
-            },
-            "then": {
-                "required": ["command"],
-                "not": {
-                    "anyOf": [
-                        { "required": ["url"] },
-                        { "required": ["headers"] },
-                        { "required": ["authorization"] }
-                    ]
-                }
+            "additionalProperties": false,
+            "required": ["name", "root", "data"],
+            "properties": {
+                "name": { "description": "The plugin's manifest name.", "type": "string", "minLength": 1 },
+                "root": { "description": "PLUGIN_ROOT: the plugin's filesystem-resolved directory.", "type": "string", "minLength": 1 },
+                "data": { "description": "PLUGIN_DATA: the plugin's persistent data directory.", "type": "string", "minLength": 1 }
             }
         },
-        {
-            "if": {
-                "properties": { "transport": { "const": "http" } },
-                "required": ["transport"]
-            },
-            "then": {
-                "required": ["url"],
-                "not": {
-                    "anyOf": [
-                        { "required": ["command"] },
-                        { "required": ["args"] },
-                        { "required": ["cwd"] },
-                        { "required": ["env"] }
-                    ]
-                }
+        "stdio": {
+            "title": "McpStdioServerDefinition",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "scope", "type", "command"],
+            "properties": {
+                "name": { "$ref": "#/$defs/name" },
+                "scope": { "$ref": "#/$defs/scope" },
+                "plugin": { "$ref": "#/$defs/plugin" },
+                "type": { "description": "A local server: a subprocess speaking MCP over its standard input and output.", "const": "stdio" },
+                "command": { "description": "One executable token: a bare name, or a path beginning with ./ that resolves against the plugin root.", "type": "string", "minLength": 1 },
+                "args": { "description": "Arguments passed to the executable; ${PLUGIN_ROOT} and ${PLUGIN_DATA} expand.", "type": "array", "items": { "type": "string" } },
+                "env": { "description": "Environment variables supplied to the process; ${PLUGIN_ROOT} and ${PLUGIN_DATA} expand.", "type": "object", "additionalProperties": { "type": "string" } },
+                "cwd": { "description": "The working directory: ./, ${PLUGIN_ROOT} or ${PLUGIN_DATA} rooted; the plugin root when absent.", "type": "string", "minLength": 1 }
+            }
+        },
+        "streamableHttp": {
+            "title": "McpStreamableHttpServerDefinition",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "scope", "type", "url"],
+            "properties": {
+                "name": { "$ref": "#/$defs/name" },
+                "scope": { "$ref": "#/$defs/scope" },
+                "plugin": { "$ref": "#/$defs/plugin" },
+                "type": { "description": "A remote server: an MCP endpoint over Streamable HTTP.", "const": "streamable-http" },
+                "url": { "description": "The MCP endpoint: HTTPS, or HTTP on a loopback host.", "type": "string", "pattern": "^https?://" },
+                "headers": { "description": "Literal headers sent to the endpoint's own origin; a header the client generates overrides one of the same name.", "type": "object", "additionalProperties": { "type": "string" } }
             }
         }
-    ]
+    }
 }

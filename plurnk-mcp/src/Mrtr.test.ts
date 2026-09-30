@@ -1,4 +1,3 @@
-import { workingDirectory } from "../test/working-directory.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -7,20 +6,15 @@ import type {
     ClientInteractionResolution,
 } from "@plurnk/plurnk-contracts";
 import ServerConnection, { type ClientInteractionHandler } from "./client.ts";
+import { stdioServer } from "../test/definitions.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/interaction-server.mjs", import.meta.url));
 const env = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
+    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
-const configured = (): ServerConnection => new ServerConnection({
-    name: "interaction",
-    transport: "stdio",
-    cwd: workingDirectory,
-    command: process.execPath,
-    args: [fixture],
-}, env);
+const configured = (): ServerConnection => new ServerConnection(stdioServer("interaction", [fixture]), env);
 
 const resolved = (payload: unknown): ClientInteractionResolution => ({
     status: "resolved",

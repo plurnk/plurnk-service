@@ -369,6 +369,31 @@ test("{§skills-functionality} a headless workspace exposes its service skill bu
     }
 });
 
+test("{§agent-roots} skills at a root the daemon does not read are neither listed nor addable there", async (t) => {
+    const previous = process.env.PLURNK_SERVICE_ROOTS;
+    process.env.PLURNK_SERVICE_ROOTS = "project";
+    t.after(() => {
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_ROOTS;
+        else process.env.PLURNK_SERVICE_ROOTS = previous;
+    });
+    const base = await mkdtemp(join(tmpdir(), "plurnk-skills-unread-"));
+    t.after(() => rm(base, { recursive: true, force: true }));
+    const hostPaths = new HostPaths({ home: join(base, "home"), env: {} });
+    await mkdir(join(hostPaths.plurnkSkillsDir, "beta"), { recursive: true });
+    await writeFile(join(hostPaths.plurnkSkillsDir, "beta", "SKILL.md"), "---\nname: beta\ndescription: Installed at an unread root.\n---\nBody.\n");
+    const db: Db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, `skills-unread-${crypto.randomUUID()}`);
+    const daemon = new Daemon({ db, provider: null, hostPaths });
+    await daemon.start();
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    const context = { scope: "workspace" as const, workspaceId };
+    const list = await daemon.invokeModuleAction("workspace.skills.list", {}, context) as { definitions: Array<{ alias: string }> };
+    assert.deepEqual(list.definitions.map(({ alias }) => alias), ["plurnk"], "the plurnk root's skill is not read");
+    const refused = await rejectedProblem(() => daemon.invokeModuleAction("workspace.skills.add", { definition: { name: "gamma", scope: "plurnk", source: "acme/kit" } }, context));
+    assert.equal(refused.type, "https://problems.plurnk.xyz/skills/functionality/scope-unread");
+    assert.match(String(refused.recovery), /a root this daemon reads: project/u);
+});
+
 // A workspace rooted in a fresh project with a private home; the daemon slot restarts in place.
 const skillsWorkspace = async (t: test.TestContext, label: string) => {
     const base = await mkdtemp(join(tmpdir(), `plurnk-skills-${label}-`));

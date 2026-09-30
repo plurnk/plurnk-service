@@ -17,7 +17,7 @@ runtime-neutral wire envelopes; `@plurnk/plurnk-parser` implements the language 
 | Client-owned interaction contract                                               | `ClientInteractionRequest`, `ClientInteractionProjection`, `ClientInteractionResolution` |
 | Client capability presentation                                                 | `ClientDisplayCapabilities`                         |
 | Exterior adapter application calls                                             | `ApplicationPort`                                   |
-| Workspace MCP configuration                                                    | `McpServerDefinition`, `McpServerOptions`, `McpConfigurationOverlay` |
+| Workspace MCP configuration                                                    | `McpServerDefinition`, `McpOAuth` |
 | Worker Agent Skills definition                                                 | `SkillDefinition` |
 | Worker outbound A2A agent definition                                           | `A2aAgentDefinition` |
 | Worker Functionality lifecycle projections (family-neutral)                     | `FunctionalityCandidate`, `FunctionalityDiscoverQuery`, `FunctionalityDiscoverResult`, `FunctionalityDefinitionState`, `FunctionalityListResult`, `FunctionalityMutationResult` |
@@ -1553,40 +1553,27 @@ model-language syntax or model packet teaching.
 
 ### §mcp-server-definition 13.8 MCP server definitions
 
-`McpServerDefinition` is the transport-neutral normalized definition of one
-workspace MCP server. It is a closed `stdio`/`http` union. The schema
-owns transport-specific fields, enabled/read tool sets, supported HTTP
-authorization choices, and symbolic credential references; it carries no
-workspace identifier, connection state, discovered catalog, or secret value.
-`Validator.assertMcpServerDefinition` is the MCP host's admission boundary
-before persistence or connection work.
+`McpServerDefinition` is the one definition the workspace `mcp` Functionality family
+accepts and persists: the standard `mcp.json` server entry (Agent Plugins 1.0 §7.2.1)
+with its alias `name` and the `scope` of the plugin root that carries it (`project`,
+`plurnk` or `global`). It is a closed union of the two supported transports, `stdio`
+(`command`, optional `args`, `env`, `cwd`) and `streamable-http` (`url`, optional
+literal `headers`). The service records `plugin` (`name`, `root` as `PLUGIN_ROOT`,
+`data` as `PLUGIN_DATA`) on a server an installed plugin declares; a client never
+supplies it. It carries no workspace identifier, connection state, catalog, or
+credential.
 
-§mcp-server-options `McpServerOptions` is the closed client/daemon-shared
-supplement accepted when adding an MCP server by alias and target. It reuses
-only `McpServerDefinition` option fields and cannot repeat identity, target, or
-transport. The target determines the transport; normalization through
-`McpServerDefinition` rejects options belonging to the other transport.
-
-Interactive OAuth always requires a callback URL. Its structurally exclusive
-identity modes are an HTTPS Client ID Metadata Document URL, a pre-registered
-client ID plus symbolic secret, or neither for server-advertised Dynamic Client
-Registration fallback. A definition cannot combine those identity modes.
-
-§mcp-configuration-overlay `McpConfigurationOverlay` is the bounded raw
-configuration projection a client may carry to MCP list and enable actions: its
-string-valued `PLURNK_MCP_*` variables, whole. Which of those names are the
-host's own controls is the host's fact alone — its parser skips every control
-it owns, so a carried timeout or enabled list has no effect and no client or
-contract restates that vocabulary.
-The client does not interpret this map. The MCP host composes it over the
-lower normalized definition through the same parser that admits service
-environment declarations, then validates the resulting
-`McpServerDefinition`. Carrying the overlay does not connect, persist, or
-expand credentials by itself.
+§mcp-oauth `McpOAuth` is the client-managed OAuth plurnk holds for one Streamable
+HTTP server, outside its plugin. Interactive OAuth always requires a callback URL, and
+its structurally exclusive identity modes are an HTTPS Client ID Metadata Document URL,
+a pre-registered client ID with a symbolic secret, or neither for server-advertised
+Dynamic Client Registration. A client-credentials grant names its client ID and
+symbolic secret, optionally binding an issuer. Every secret is one complete `${NAME}`
+reference to the operator environment; `Validator.assertMcpOAuth` validates the shape.
 
 `SkillDefinition` is the one definition the workspace `skills` Functionality
-family accepts and persists: the standard `name`, source `scope`, and optional
-installer `source`. `Validator.assertSkillDefinition` validates the wire shape;
+family accepts and persists: the standard `name`, its `scope`, and, for an added
+skill, its `source`, a git `ref`, and the `commit` the service recorded. `Validator.assertSkillDefinition` validates the wire shape;
 the schema's name grammar is exposed as `SKILL_NAME` for loaders and discovery
 ({§agent-skills-name}). Core owns installation truth and lifecycle
 ({§skills-functionality}).

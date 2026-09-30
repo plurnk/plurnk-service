@@ -3,12 +3,13 @@ import test from "node:test";
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import type { FunctionalityListResult } from "@plurnk/plurnk-contracts";
+import type { FunctionalityListResult, McpServerDefinition } from "@plurnk/plurnk-contracts";
 import { resourcePath } from "../../../plurnk-mcp/src/McpResources.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { insertWorker, openMigrated } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
+import { httpEntry, mcpPluginHome } from "./_mcp-plugin.ts";
 
 process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "60000";
 const uri = "fixture://private-document";
@@ -30,15 +31,16 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
             contents: [{ uri, mimeType: "text/plain", text: `Document for ${identity}.` }],
         } });
     });
+    const hostPaths = await mcpPluginHome(t, { fixture: httpEntry(served.url) });
     const db = await openMigrated();
-    const daemon = new Daemon({ db, provider: null });
+    const daemon = new Daemon({ db, provider: null, hostPaths });
     daemon.registerModule(McpModule.init({ env: {
-        PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
+        PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        // {§mcp-server-settings} The operator's bearer is one reference each workspace's environment resolves.
+        PLURNK_MCP_FIXTURE_BEARER: "${ENV_AUTH}",
     } }));
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
-    const definition = { name: "fixture", transport: "http", url: served.url,
-        authorization: { type: "bearer", token: "${ENV_AUTH}" } };
     const workspaces = await Promise.all(["alpha", "beta"].map(async (name) => {
         const { workspaceId } = await daemon.createWorkspace({ name });
         const workerId = await insertWorker(db, workspaceId, null, "reader", "client");
@@ -46,7 +48,9 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
         const action = (family: string, verb: string, params: Record<string, unknown> = {}) =>
             daemon.invokeModuleAction(`workspace.${family}.${verb}`, params, { scope: "workspace", workspaceId });
         await action("env", "add", { alias: "ENV_AUTH", definition: { value: `fixture-${name}` } });
-        await action("mcp", "add", { alias: "fixture", definition });
+        // The workspace became resident before it held its token; enabling the unavailable server
+        // reconnects it ({§mcp-activation-isolation}).
+        await action("mcp", "enable", { alias: "fixture" });
         const source = PlurnkParser.frame(`READ (fixture://${resourcePath(uri)}) <1,-1>`, null);
         const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
         const item = parsed.items[0];
@@ -74,6 +78,11 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
         "rotation uses a fresh cache without invalidating the other attachment");
     for (const workspace of workspaces) {
         const listed = await workspace.action("mcp", "list") as FunctionalityListResult;
-        assert.deepEqual(listed.definitions[0]?.definition, definition, "the retained definition stays symbolic");
+        const [listedFixture] = listed.definitions;
+        assert.ok(listedFixture !== undefined, "the plugin's server is listed");
+        const { plugin, ...declared } = listedFixture.definition as McpServerDefinition;
+        assert.equal(plugin?.name, "fixtures");
+        assert.deepEqual(declared, { name: "fixture", scope: "plurnk", type: "streamable-http", url: served.url },
+            "the listed definition is the plugin's declaration; the operator's bearer never enters it");
     }
 });

@@ -32,6 +32,10 @@ import Envelope, { projectWorkerRow } from "./envelope.ts";
 import ClientInput from "./client-input.ts";
 import Turn from "../core/Turn.ts";
 import SkillsFunctionality from "./SkillsFunctionality.ts";
+import WorkspacePlugins, { type ServerPluginWrite, type WorkspacePluginSet } from "./WorkspacePlugins.ts";
+import { agentRootScopes, type AgentRootScope } from "./AgentRoots.ts";
+import type { McpServerEntry } from "@plurnk/plurnk-agent-plugins";
+import ExecEnv from "../schemes/exec-env.ts";
 import PlurnkSkill from "./PlurnkSkill.ts";
 import Skill from "../schemes/Skill.ts";
 import MembersFunctionality from "./MembersFunctionality.ts";
@@ -121,6 +125,7 @@ export default class Daemon implements ApplicationPort {
     // {§retention-policy} — the operator's retention, run on a cadence and at shutdown.
     readonly #retention: Retention;
     readonly #skills: SkillsFunctionality;
+    readonly #plugins: WorkspacePlugins;
     readonly #members: MembersFunctionality;
     // {§methods-event-subscribe} — the broadcast's in-process event source. A transport
     // module (plurnk-agui) subscribes and fans out to its OWN clients; core emits, never owns
@@ -194,6 +199,7 @@ export default class Daemon implements ApplicationPort {
             retainWorkspace: (workspaceId) => this.#residency.retain(workspaceId),
             preparationChanged: (workspaceId, preparation) => this.#broadcast({ workspaceId }, "workspace/preparation", { workspaceId, preparation }) });
         // {§skills-functionality} — Core's own family: standard Agent Skills.
+        this.#plugins = new WorkspacePlugins({ db, hostPaths });
         this.#skills = new SkillsFunctionality({
             db,
             hostPaths,
@@ -285,11 +291,11 @@ export default class Daemon implements ApplicationPort {
                 return { action, loopId };
             },
             acquireWorkspaceTurn: async (workspaceId, workerId, signal) => this.#workspaceGate.acquireTurn(workspaceId, workerId, signal),
-            // {§skills-hotload} — filesystem installers operate out of band.
+            // {§functionality-hotload} — skills and plugins change out of band.
             // Republish under the workspace turn gate before packet assembly so
             // the first subsequent model turn sees their exact result.
             workspaceTurnStarting: async ({ workspaceId }) => {
-                await this.#skills.refreshIfChanged({ workspaceId });
+                await this.#functionality.refreshChanged({ workspaceId });
             },
             // worker:// KILL (terminate) — cancel the addressed worker subtree and
             // tear down its held streams before the operation completes.
@@ -1492,6 +1498,25 @@ export default class Daemon implements ApplicationPort {
         return this.#storage.directory(workspaceId, namespaceOwner);
     }
 
+    // {§agent-plugins-hosting}
+    readWorkspacePlugins(workspaceId: number): Promise<WorkspacePluginSet> {
+        return this.#plugins.read(workspaceId);
+    }
+
+    // {§mcp-plugin-servers}
+    writeServerPlugin(workspaceId: number, request: { readonly scope: AgentRootScope; readonly name: string; readonly entry: McpServerEntry }): Promise<ServerPluginWrite> {
+        return this.#plugins.writeServer(workspaceId, request);
+    }
+
+    deleteServerPlugin(workspaceId: number, request: { readonly scope: AgentRootScope; readonly name: string }): Promise<void> {
+        return this.#plugins.deleteServer(workspaceId, request);
+    }
+
+    // {§mcp-launch-environment}
+    pluginEnvironment(): NodeJS.ProcessEnv {
+        return ExecEnv.withoutOwnSecrets();
+    }
+
     async readWorkerEnvironment(workspaceId: number, workerId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv> {
         await this.#assertWorkerOwned(workspaceId, workerId);
         const shared = await EnvFunctionality.workspace(this.#db, workspaceId);
@@ -1562,6 +1587,7 @@ export default class Daemon implements ApplicationPort {
         EffectPolicy.validateConfiguration();
         LoopPolicies.validateConfiguration();
         SkillsFunctionality.validateConfiguration();
+        agentRootScopes();
         // {§exec} — mint a scheme per runtime tag so exec output entries address by tag
         // authority (sh:///l/t/s). The "exec" scheme stays for execution dispatch.
         this.#schemes.registerRuntimeSchemes(executors);

@@ -16,10 +16,11 @@ import {
     MCP_PROTOCOL_VERSION,
     MCP_TASKS_EXTENSION_ID,
 } from "./protocol.ts";
+import { httpServer } from "../test/definitions.ts";
 
 const floor = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
+    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
 test("{§mcp-connection-shutdown} closing a connection interrupts unfinished negotiation", { timeout: 5_000 }, async (t) => {
@@ -31,9 +32,7 @@ test("{§mcp-connection-shutdown} closing a connection interrupts unfinished neg
         await new Promise<void>((resolve) => request.signal.addEventListener("abort", () => resolve(), { once: true }));
         return new Response(null, { status: 503 });
     });
-    const connection = new ServerConnection({ name: "opening", transport: "http", url: served.url }, floor, {
-        workingDirectory: async () => { throw new Error("HTTP must not allocate local process storage"); },
-    });
+    const connection = new ServerConnection(httpServer("opening", served.url), floor);
     t.after(() => connection.close());
     const rejected = assert.rejects(() => connection.catalog(), /connection failed/u);
     await negotiating.promise;
@@ -148,11 +147,7 @@ const interactionHandler = (): McpHttpHandler => createMcpHandler(() => {
 
 test("Streamable HTTP carries the current envelope and ordinary tool calls", async (t) => {
     const served = await serveMcpHttp(t, handler());
-    const connection = new ServerConnection({
-        name: "http",
-        transport: "http",
-        url: served.url,
-    }, floor);
+    const connection = new ServerConnection(httpServer("http", served.url), floor);
     t.after(() => connection.close());
 
     const catalog = await connection.catalog();
@@ -184,12 +179,7 @@ test("Streamable HTTP carries the current envelope and ordinary tool calls", asy
 test("{§mcp-redirect-refused} a redirected endpoint fails naming its target, and no configured header reaches the other origin", async (t) => {
     const elsewhere = await serveMcpHttp(t, handler());
     const moved = await serveMcpHttp(t, handler(), () => new Response(null, { status: 307, headers: { location: elsewhere.url } }));
-    const connection = new ServerConnection({
-        name: "moved",
-        transport: "http",
-        url: moved.url,
-        headers: { "x-api-key": "KEY" },
-    }, floor);
+    const connection = new ServerConnection(httpServer("moved", moved.url, { "x-api-key": "KEY" }), floor);
     t.after(() => connection.close());
     const redirected = (error: unknown): McpRedirectError | undefined => {
         if (error === null || typeof error !== "object") return undefined;
@@ -207,21 +197,31 @@ test("HTTP bearer credentials expand only while preparing a connection", async (
         request.headers.get("authorization") === "Bearer secret"
             ? null
             : new Response("unauthorized", { status: 401 }));
-    const connection = new ServerConnection({
-        name: "private",
-        transport: "http",
-        url: served.url,
-        authorization: { type: "bearer", token: "${MCP_TEST_TOKEN}" },
-    }, { ...floor, MCP_TEST_TOKEN: "secret" });
+    const connection = new ServerConnection(httpServer("private", served.url), { ...floor, MCP_TEST_TOKEN: "secret" }, { authorization: { type: "bearer", token: "${MCP_TEST_TOKEN}" } });
     t.after(() => connection.close());
 
     assert.deepEqual((await connection.tools()).map(({ name }) => name), ["echo"]);
     assert.ok(served.requests.length > 0);
     assert.ok(served.requests.every(({ headers }) =>
         headers.get("authorization") === "Bearer secret"));
-    assert.equal(connection.definition.authorization?.type, "bearer");
-    if (connection.definition.authorization?.type === "bearer") {
-        assert.equal(connection.definition.authorization.token, "${MCP_TEST_TOKEN}");
+});
+
+test("{§mcp-plugin-servers} a configured header never overrides one the client generates", async (t) => {
+    const served = await serveMcpHttp(t, handler(), (request) =>
+        request.headers.get("authorization") === "Bearer secret"
+            ? null
+            : new Response("unauthorized", { status: 401 }));
+    const connection = new ServerConnection(
+        httpServer("tenant", served.url, { Authorization: "Bearer configured", "MCP-Protocol-Version": "1999-01-01", "X-Tenant": "public" }),
+        { ...floor, MCP_TEST_TOKEN: "secret" },
+        { authorization: { type: "bearer", token: "${MCP_TEST_TOKEN}" } },
+    );
+    t.after(() => connection.close());
+    assert.deepEqual((await connection.tools()).map(({ name }) => name), ["echo"]);
+    for (const { headers } of served.requests) {
+        assert.equal(headers.get("authorization"), "Bearer secret", "the client's authorization wins");
+        assert.equal(headers.get("mcp-protocol-version"), MCP_PROTOCOL_VERSION, "the client's protocol header wins");
+        assert.equal(headers.get("x-tenant"), "public", "a header the client does not generate is sent as configured");
     }
 });
 
@@ -258,29 +258,19 @@ test("{§oauth-client-credentials} the extension capability is advertised only o
     });
     servedUrl = served.url;
 
-    const granted = new ServerConnection({
-        name: "grant",
-        transport: "http",
-        url: served.url,
-        authorization: {
+    const granted = new ServerConnection(httpServer("grant", served.url), { ...floor, MCP_TEST_SECRET: "client-secret-value" }, { authorization: {
             type: "client-credentials",
             clientId: "app-id",
             clientSecret: "${MCP_TEST_SECRET}",
             issuer: served.url,
-        },
-    }, { ...floor, MCP_TEST_SECRET: "client-secret-value" });
+        } });
     t.after(() => granted.close());
     assert.deepEqual((await granted.tools()).map(({ name }) => name), ["echo"]);
     assert.ok(served.requests.some(({ headers, body }) =>
         headers.get("authorization") === "Bearer granted-access-token" &&
         (body as { method?: string }).method === "server/discover"));
 
-    const bearer = new ServerConnection({
-        name: "private",
-        transport: "http",
-        url: served.url,
-        authorization: { type: "bearer", token: "${MCP_TEST_TOKEN}" },
-    }, { ...floor, MCP_TEST_TOKEN: "secret" });
+    const bearer = new ServerConnection(httpServer("private", served.url), { ...floor, MCP_TEST_TOKEN: "secret" }, { authorization: { type: "bearer", token: "${MCP_TEST_TOKEN}" } });
     t.after(() => bearer.close());
     assert.deepEqual((await bearer.tools()).map(({ name }) => name), ["echo"]);
 
@@ -340,17 +330,12 @@ test("{§oauth-client-credentials} a declared issuer withholds the credential fr
     });
     servedUrl = served.url;
 
-    const connection = new ServerConnection({
-        name: "bound",
-        transport: "http",
-        url: served.url,
-        authorization: {
+    const connection = new ServerConnection(httpServer("bound", served.url), { ...floor, MCP_TEST_SECRET: "client-secret-value" }, { authorization: {
             type: "client-credentials",
             clientId: "app-id",
             clientSecret: "${MCP_TEST_SECRET}",
             issuer: "https://different-issuer.invalid/",
-        },
-    }, { ...floor, MCP_TEST_SECRET: "client-secret-value" });
+        } });
     t.after(() => connection.close());
 
     await assert.rejects(() => connection.tools());
@@ -363,11 +348,7 @@ test("HTTP progress and stream cancellation settle the same request", async (t) 
     let recordCancellation = (): void => undefined;
     const waitCancelled = new Promise<void>((resolve) => { recordCancellation = resolve; });
     const served = await serveMcpHttp(t, lifecycleHandler(startWait, recordCancellation));
-    const connection = new ServerConnection({
-        name: "lifecycle",
-        transport: "http",
-        url: served.url,
-    }, floor);
+    const connection = new ServerConnection(httpServer("lifecycle", served.url), floor);
     t.after(() => connection.close());
 
     const progress: unknown[] = [];
@@ -390,11 +371,7 @@ test("HTTP progress and stream cancellation settle the same request", async (t) 
 
 test("Streamable HTTP retries MRTR with a fresh ID and exact private continuation state", async (t) => {
     const served = await serveMcpHttp(t, interactionHandler());
-    const connection = new ServerConnection({
-        name: "interaction",
-        transport: "http",
-        url: served.url,
-    }, floor);
+    const connection = new ServerConnection(httpServer("interaction", served.url), floor);
     t.after(() => connection.close());
 
     let projectedRequest = "";
@@ -484,17 +461,12 @@ test("interactive HTTP OAuth preserves discovery, PKCE, state, issuer, and resou
     });
     origin = new URL(served.url).origin;
     const clientMetadataUrl = "https://client.example.test/oauth/metadata.json";
-    const connection = new ServerConnection({
-        name: "oauth",
-        transport: "http",
-        url: served.url,
-        authorization: {
+    const connection = new ServerConnection(httpServer("oauth", served.url), floor, { authorization: {
             type: "oauth",
             redirectUrl: `${origin}/callback`,
             clientMetadataUrl,
             scope: "mcp:read",
-        },
-    }, floor);
+        } });
     t.after(() => connection.close());
 
     let authorizationUrl = "";
@@ -607,17 +579,12 @@ test("{§oauth-lifetime} an expired access token refreshes with the stored grant
         return new Response("not found", { status: 404 });
     });
     origin = new URL(served.url).origin;
-    const connection = new ServerConnection({
-        name: "oauth",
-        transport: "http",
-        url: served.url,
-        authorization: {
+    const connection = new ServerConnection(httpServer("oauth", served.url), floor, { authorization: {
             type: "oauth",
             redirectUrl: `${origin}/callback`,
             clientMetadataUrl: "https://client.example.test/oauth/metadata.json",
             scope: "mcp:read",
-        },
-    }, floor);
+        } });
     t.after(() => connection.close());
 
     let authorizationUrl = "";
@@ -680,15 +647,10 @@ test("{§mcp-exclusions} unavailable deprecated DCR is attributed without probin
         return new Response("not found", { status: 404 });
     });
     origin = new URL(served.url).origin;
-    const connection = new ServerConnection({
-        name: "dcr-unavailable",
-        transport: "http",
-        url: served.url,
-        authorization: {
+    const connection = new ServerConnection(httpServer("dcr-unavailable", served.url), floor, { authorization: {
             type: "oauth",
             redirectUrl: `${origin}/callback`,
-        },
-    }, floor);
+        } });
     t.after(() => connection.close());
 
     await assert.rejects(
@@ -726,15 +688,10 @@ test("{§mcp-exclusions} OAuth rejects legacy endpoint inference without metadat
         return new Response("not found", { status: 404 });
     });
     origin = new URL(served.url).origin;
-    const connection = new ServerConnection({
-        name: "missing-auth-metadata",
-        transport: "http",
-        url: served.url,
-        authorization: {
+    const connection = new ServerConnection(httpServer("missing-auth-metadata", served.url), floor, { authorization: {
             type: "oauth",
             redirectUrl: `${origin}/callback`,
-        },
-    }, floor);
+        } });
     t.after(() => connection.close());
 
     await assert.rejects(
@@ -770,7 +727,7 @@ test("a catalog whose pagination never converges is an error, never a partial li
         { tools: ["page_0"], nextCursor: "1" },
         { tools: ["page_1"], nextCursor: "1" },
     ]));
-    const connection = new ServerConnection({ name: "paged", transport: "http", url: served.url }, floor);
+    const connection = new ServerConnection(httpServer("paged", served.url), floor);
     t.after(() => connection.close());
     await assert.rejects(connection.catalog(), {
         name: "CatalogNonConvergenceError",
@@ -784,7 +741,7 @@ test("a converging paginated catalog aggregates every page", async (t) => {
         { tools: ["page_1"], nextCursor: "2" },
         { tools: ["page_2"] },
     ]));
-    const connection = new ServerConnection({ name: "paged", transport: "http", url: served.url }, floor);
+    const connection = new ServerConnection(httpServer("paged", served.url), floor);
     t.after(() => connection.close());
     const catalog = await connection.catalog();
     assert.deepEqual(catalog.tools.map(({ name }) => name), ["page_0", "page_1", "page_2"]);

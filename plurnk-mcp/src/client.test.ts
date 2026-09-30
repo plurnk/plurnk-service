@@ -1,24 +1,22 @@
-import { workingDirectory } from "../test/working-directory.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { realpath, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ServerConnection from "./client.ts";
 import { MCP_PROTOCOL_VERSION } from "./protocol.ts";
+import { FIXTURES, fixturePlugin, stdioServer } from "../test/definitions.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
 const env = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
+    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
 test("client pins the current MCP revision and exercises tools and resources", async () => {
-    const connection = new ServerConnection({
-        name: "echo",
-        transport: "stdio",
-        cwd: workingDirectory,
-        command: process.execPath,
-        args: [fixture],
-    }, env);
+    const connection = new ServerConnection(stdioServer("echo", [fixture]), env);
     try {
         const client = await connection.connect();
         assert.equal(client.getProtocolEra(), "modern");
@@ -67,14 +65,7 @@ test("client pins the current MCP revision and exercises tools and resources", a
 });
 
 test("active request accounting retires a cancelled request", async () => {
-    const connection = new ServerConnection({
-        name: "echo",
-        transport: "stdio",
-        cwd: workingDirectory,
-        command: process.execPath,
-        args: [fixture],
-        env: { PLURNK_MCP_TEST_EXTENDED: "1" },
-    }, env);
+    const connection = new ServerConnection(stdioServer("echo", [fixture], { env: { PLURNK_MCP_TEST_EXTENDED: "1" } }), env);
     const controller = new AbortController();
     try {
         await connection.catalog();
@@ -88,50 +79,37 @@ test("active request accounting retires a cancelled request", async () => {
     }
 });
 
-test("{§mcp-working-storage} stdio cannot inherit the host CWD by omission", async () => {
-    const connection = new ServerConnection({ name: "echo", transport: "stdio", command: process.execPath, args: [fixture] }, env);
+test("{§mcp-plugin-servers} a stdio server starts in its plugin root with PLUGIN_ROOT and PLUGIN_DATA, and PLUGIN_DATA exists first", async () => {
+    const data = join(tmpdir(), `plurnk-mcp-plugin-data-${randomUUID()}`);
+    const definition = { ...stdioServer("where", [fixture], { env: { PLURNK_MCP_TEST_WHERE: "1" } }), plugin: { ...fixturePlugin, data } };
+    const connection = new ServerConnection(definition, env);
     try {
-        await assert.rejects(connection.connect(), /requires an absolute working directory/);
+        const result = await connection.callTool("where", {}) as { content: Array<{ text: string }> };
+        const reported = JSON.parse(result.content[0]!.text) as { cwd: string; root: string; data: string };
+        assert.equal(reported.cwd, await realpath(FIXTURES), "the working directory defaults to the plugin root");
+        assert.equal(reported.root, FIXTURES);
+        assert.equal(reported.data, data);
+        assert.ok((await stat(data)).isDirectory(), "PLUGIN_DATA was created before the launch");
+    } finally {
+        await connection.close();
+        await rm(data, { recursive: true, force: true });
+    }
+});
+
+test("{§mcp-plugin-servers} a working directory that resolves out of its plugin fails before launch", async () => {
+    const connection = new ServerConnection(stdioServer("escape", [fixture], { cwd: "${PLUGIN_ROOT}/.." }), env);
+    try {
+        await assert.rejects(connection.connect(), /resolves outside the plugin's root/u);
     } finally {
         await connection.close();
     }
 });
 
-test("{§mcp-working-storage} concurrent callers share directory preparation and one connection", async () => {
-    let preparations = 0;
-    const ready = Promise.withResolvers<string>();
-    const connection = new ServerConnection({ name: "echo", transport: "stdio", command: process.execPath, args: [fixture] }, env, {
-        workingDirectory: () => { preparations++; return ready.promise; },
-    });
+test("concurrent callers share one launch and one connection", async () => {
+    const connection = new ServerConnection(stdioServer("echo", [fixture]), env);
     try {
-        const calls = [connection.connect(), connection.connect()];
-        assert.equal(preparations, 1);
-        ready.resolve(workingDirectory);
-        const [first, second] = await Promise.all(calls);
+        const [first, second] = await Promise.all([connection.connect(), connection.connect()]);
         assert.equal(first, second);
-    } finally {
-        await connection.close();
-    }
-});
-
-test("{§mcp-working-storage} closing during directory preparation prevents launch", async () => {
-    const ready = Promise.withResolvers<string>();
-    const connection = new ServerConnection({ name: "echo", transport: "stdio", command: process.execPath, args: [fixture] }, env, {
-        workingDirectory: () => ready.promise,
-    });
-    const connecting = connection.connect();
-    const rejected = assert.rejects(connecting, /connection is closed/);
-    const closing = connection.close();
-    ready.resolve(workingDirectory);
-    await Promise.all([closing, rejected]);
-});
-
-test("{§mcp-working-storage} explicit CWD bypasses host directory allocation", async () => {
-    const connection = new ServerConnection({ name: "echo", transport: "stdio", command: process.execPath, args: [fixture], cwd: workingDirectory }, env, {
-        workingDirectory: async () => { throw new Error("explicit CWD must not allocate managed state"); },
-    });
-    try {
-        assert.equal((await connection.catalog()).server?.name, "current-echo");
     } finally {
         await connection.close();
     }

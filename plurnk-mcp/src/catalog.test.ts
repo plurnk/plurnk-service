@@ -7,10 +7,11 @@ import { z } from "zod/v4";
 import { serveMcpHttp } from "../test/http-fixture.ts";
 import ServerConnection from "./client.ts";
 import McpExecutor from "./McpExecutor.ts";
+import { httpServer } from "../test/definitions.ts";
 
 const floor = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
+    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
 const lists = [
@@ -37,7 +38,7 @@ const handler = () => createMcpHandler(() => {
     return server;
 }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
 
-const discoveryFloor = { PLURNK_MCP_CONNECT_TIMEOUT: "250", PLURNK_MCP_REQUEST_TIMEOUT: "3000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]" };
+const discoveryFloor = { PLURNK_MCP_CONNECT_TIMEOUT: "250", PLURNK_MCP_REQUEST_TIMEOUT: "3000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000" };
 const isTimeout = (error: unknown): boolean => {
     assert.ok(error instanceof DOMException && error.name === "TimeoutError"
         || SdkError.isInstance(error) && error.code === SdkErrorCode.RequestTimeout, String(error));
@@ -52,7 +53,7 @@ for (const [method] of lists) {
             if (stalled && body.method === method) await delay(750, undefined, { signal: request.signal });
             return null;
         });
-        const connection = new ServerConnection({ name: "catalog", transport: "http", url: served.url }, discoveryFloor);
+        const connection = new ServerConnection(httpServer("catalog", served.url), discoveryFloor);
         t.after(() => connection.close());
         await connection.connect();
         await assert.rejects(connection.catalog(), isTimeout);
@@ -74,7 +75,7 @@ test("{§mcp-catalog-deadline}: pagination shares one deadline rather than renew
             ...(page < 6 ? { nextCursor: String(page + 1) } : {}), ttlMs: 0, cacheScope: "private",
         } });
     });
-    const connection = new ServerConnection({ name: "catalog", transport: "http", url: served.url }, discoveryFloor);
+    const connection = new ServerConnection(httpServer("catalog", served.url), discoveryFloor);
     t.after(() => connection.close());
     await connection.connect();
     await assert.rejects(connection.resources(), isTimeout);
@@ -90,7 +91,7 @@ test("{§mcp-catalog-deadline}: caller cancellation stays identifiable and does 
         if (body.method === "tools/list") owner.abort(cause);
         return null;
     });
-    const connection = new ServerConnection({ name: "catalog", transport: "http", url: served.url }, floor);
+    const connection = new ServerConnection(httpServer("catalog", served.url), floor);
     t.after(() => connection.close());
     await assert.rejects(connection.tools(owner.signal), (error) => {
         assert.ok(SdkError.isInstance(error));
@@ -109,7 +110,7 @@ test("{§mcp-catalog-deadline}: a real tool operation may outlast the discovery 
         if (body.method === "tools/call") await delay(500, undefined, { signal: request.signal });
         return null;
     });
-    const connection = new ServerConnection({ name: "catalog", transport: "http", url: served.url }, discoveryFloor);
+    const connection = new ServerConnection(httpServer("catalog", served.url), discoveryFloor);
     t.after(() => connection.close());
     await connection.catalog();
     assert.deepEqual((await connection.callTool("echo", {})).content, [{ type: "text", text: "still callable" }]);
@@ -124,7 +125,7 @@ for (const [method, collection] of lists) {
                 ? Response.json({ jsonrpc: "2.0", id: body.id, error: { code: -32601, message: "not implemented" } })
                 : null;
         });
-        const connection = new ServerConnection({ name: "catalog", transport: "http", url: served.url }, floor);
+        const connection = new ServerConnection(httpServer("catalog", served.url), floor);
         t.after(() => connection.close());
         const executor = new McpExecutor({ runtime: "catalog", glyph: "" }, connection, () => () => undefined);
         const availability = await executor.requireAvailable();
@@ -158,7 +159,7 @@ for (const code of [-32602, -32603]) {
                 ? Response.json({ jsonrpc: "2.0", id: body.id, error: { code, message: "templates failed" } })
                 : null;
         });
-        const connection = new ServerConnection({ name: "catalog", transport: "http", url: served.url }, floor);
+        const connection = new ServerConnection(httpServer("catalog", served.url), floor);
         t.after(() => connection.close());
         await assert.rejects(connection.catalog(), (error) => {
             assert.ok(ProtocolError.isInstance(error), String(error));
@@ -180,7 +181,7 @@ test("a method disappearing after the first page fails instead of publishing a p
                 : { error: { code: -32601, message: "method disappeared" } }),
         });
     });
-    const connection = new ServerConnection({ name: "catalog", transport: "http", url: served.url }, floor);
+    const connection = new ServerConnection(httpServer("catalog", served.url), floor);
     t.after(() => connection.close());
     for (let attempt = 0; attempt < 2; attempt += 1) {
         await assert.rejects(connection.catalog(), (error) => {
@@ -199,7 +200,7 @@ test("method-not-found on a tool call remains an operation error", async (t) => 
             ? Response.json({ jsonrpc: "2.0", id: body.id, error: { code: -32601, message: "call unavailable" } })
             : null;
     });
-    const connection = new ServerConnection({ name: "catalog", transport: "http", url: served.url }, floor);
+    const connection = new ServerConnection(httpServer("catalog", served.url), floor);
     t.after(() => connection.close());
     await connection.catalog();
     await assert.rejects(connection.callTool("echo", {}), (error) => {

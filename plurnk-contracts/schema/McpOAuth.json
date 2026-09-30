@@ -1,0 +1,64 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/McpOAuth.json",
+    "title": "McpOAuth",
+    "description": "The client-managed OAuth plurnk holds for one Streamable HTTP MCP server, outside its plugin. Every secret is a ${NAME} reference to the operator environment.",
+    "oneOf": [
+        {
+            "type": "object",
+            "description": "Interactive OAuth identified by an HTTPS Client ID Metadata Document.",
+            "additionalProperties": false,
+            "required": ["type", "redirectUrl", "clientMetadataUrl"],
+            "properties": {
+                "type": { "const": "oauth" },
+                "redirectUrl": { "type": "string", "format": "uri" },
+                "clientMetadataUrl": { "type": "string", "format": "uri", "pattern": "^https://.+/.+" },
+                "scope": { "type": "string", "minLength": 1 }
+            }
+        },
+        {
+            "type": "object",
+            "description": "Interactive OAuth with a pre-registered client ID and secret.",
+            "additionalProperties": false,
+            "required": ["type", "redirectUrl", "clientId", "clientSecret"],
+            "properties": {
+                "type": { "const": "oauth" },
+                "redirectUrl": { "type": "string", "format": "uri" },
+                "clientId": { "type": "string", "minLength": 1 },
+                "clientSecret": { "$ref": "#/$defs/environmentReference" },
+                "scope": { "type": "string", "minLength": 1 }
+            }
+        },
+        {
+            "type": "object",
+            "description": "Interactive OAuth through server-advertised Dynamic Client Registration.",
+            "additionalProperties": false,
+            "required": ["type", "redirectUrl"],
+            "properties": {
+                "type": { "const": "oauth" },
+                "redirectUrl": { "type": "string", "format": "uri" },
+                "scope": { "type": "string", "minLength": 1 }
+            }
+        },
+        {
+            "type": "object",
+            "description": "A noninteractive client-credentials grant; issuer optionally binds the credentials to one authorization server.",
+            "additionalProperties": false,
+            "required": ["type", "clientId", "clientSecret"],
+            "properties": {
+                "type": { "const": "client-credentials" },
+                "clientId": { "type": "string", "minLength": 1 },
+                "clientSecret": { "$ref": "#/$defs/environmentReference" },
+                "scope": { "type": "string", "minLength": 1 },
+                "issuer": { "type": "string", "minLength": 1 }
+            }
+        }
+    ],
+    "$defs": {
+        "environmentReference": {
+            "description": "An operator environment variable reference such as ${GITEA_TOKEN}, never a literal secret.",
+            "type": "string",
+            "pattern": "^\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}$"
+        }
+    }
+}

@@ -723,7 +723,7 @@ export interface FunctionalityDiscoverQuery {
 query?: string
 source?: string
 /**
- * Caller-supplied configuration material the family interprets as candidates (a client's own PLURNK_MCP_* environment, a local directory list). It contributes candidates with client-configuration provenance; it never becomes durable authority.
+ * Caller-supplied configuration material the family interprets as candidates (a client's own PLURNK_A2A_* environment, a local directory list). It contributes candidates with client-configuration provenance; it never becomes durable authority.
  */
 configuration?: {
 
@@ -786,54 +786,7 @@ proposals?: ("review" | "accept" | "reject")
 attended?: boolean
 }
 
-export interface McpConfigurationOverlay {
-[k: string]: string
-}
-
-export type McpServerDefinition = {
-/**
- * Server alias: the runtime tag whose fence invokes it, and its resource scheme.
- */
-name: string
-/**
- * stdio launches a local command; http connects to a remote MCP endpoint.
- */
-transport: ("stdio" | "http")
-/**
- * Executable to launch for stdio; arguments belong in args.
- */
-command?: string
-/**
- * Arguments passed to the stdio executable in order.
- */
-args?: string[]
-/**
- * Working directory for the stdio process.
- */
-cwd?: string
-/**
- * Environment overrides for the stdio process; values may reference ${ENV_NAME}.
- */
-env?: {
-[k: string]: string
-}
-/**
- * HTTP MCP endpoint URL.
- */
-url?: string
-/**
- * HTTP request headers; values may reference ${ENV_NAME}. Authorization cannot also be configured here when authorization is set.
- */
-headers?: {
-[k: string]: string
-}
-/**
- * HTTP authentication. Secret fields reference the operator environment rather than embedding credentials.
- */
-authorization?: ({
-type: "bearer"
-token: EnvironmentReference
-} | {
+export type McpOAuth = ({
 type: "oauth"
 redirectUrl: string
 clientMetadataUrl: string
@@ -855,96 +808,88 @@ clientSecret: EnvironmentReference
 scope?: string
 issuer?: string
 })
-/**
- * Exact enabled tool names; omitted enables all tools, an empty array enables none.
- */
-tools?: string[]
-/**
- * Exact tool names the operator designates as read effects rather than host effects requiring proposal review.
- */
-read?: string[]
-}
 /**
  * An operator environment variable reference such as ${GITEA_TOKEN}, never a literal secret.
  */
 
 export type EnvironmentReference = string
 
-export type McpServerArguments = string[]
+export type McpServerDefinition = (McpStdioServerDefinition | McpStreamableHttpServerDefinition)
 /**
- * HTTP authentication. Secret fields reference the operator environment rather than embedding credentials.
+ * The server's alias: its mcpServers member name, the runtime tag whose fence invokes it, and its resource scheme.
  */
 
-export type McpServerAuthorization = ({
-type: "bearer"
+export type McpServerName = string
 /**
- * An operator environment variable reference such as ${GITEA_TOKEN}, never a literal secret.
- */
-token: string
-} | {
-type: "oauth"
-redirectUrl: string
-clientMetadataUrl: string
-scope?: string
-} | {
-type: "oauth"
-redirectUrl: string
-clientId: string
-/**
- * An operator environment variable reference such as ${GITEA_TOKEN}, never a literal secret.
- */
-clientSecret: string
-scope?: string
-} | {
-type: "oauth"
-redirectUrl: string
-scope?: string
-} | {
-type: "client-credentials"
-clientId: string
-/**
- * An operator environment variable reference such as ${GITEA_TOKEN}, never a literal secret.
- */
-clientSecret: string
-scope?: string
-issuer?: string
-})
-/**
- * Exact enabled tool names; omitted enables all tools, an empty array enables none.
+ * The plugin root: project `.agents/plugins`, plurnk `$XDG_CONFIG_HOME/plurnk/plugins`, or global `~/.agents/plugins`.
  */
 
-export type McpServerToolNames = string[]
+export type McpServerScope = ("project" | "plurnk" | "global")
+
+export interface McpStdioServerDefinition {
+name: McpServerName
+scope: McpServerScope
+plugin?: McpServerPlugin
 /**
- * Exact tool names the operator designates as read effects rather than host effects requiring proposal review.
+ * A local server: a subprocess speaking MCP over its standard input and output.
  */
-
-export type McpServerReadTools = string[]
-
-export interface McpServerOptions {
-args?: McpServerArguments
+type: "stdio"
 /**
- * Working directory for the stdio process.
+ * One executable token: a bare name, or a path beginning with ./ that resolves against the plugin root.
+ */
+command: string
+/**
+ * Arguments passed to the executable; ${PLUGIN_ROOT} and ${PLUGIN_DATA} expand.
+ */
+args?: string[]
+/**
+ * Environment variables supplied to the process; ${PLUGIN_ROOT} and ${PLUGIN_DATA} expand.
+ */
+env?: {
+[k: string]: string
+}
+/**
+ * The working directory: ./, ${PLUGIN_ROOT} or ${PLUGIN_DATA} rooted; the plugin root when absent.
  */
 cwd?: string
-env?: McpServerEnvironment
-headers?: McpServerHeaders
-authorization?: McpServerAuthorization
-tools?: McpServerToolNames
-read?: McpServerReadTools
 }
 /**
- * Environment overrides for the stdio process; values may reference ${ENV_NAME}.
+ * The installed Agent Plugin that declares the server. The service records it; a client never supplies it.
  */
 
-export interface McpServerEnvironment {
+export interface McpServerPlugin {
+/**
+ * The plugin's manifest name.
+ */
+name: string
+/**
+ * PLUGIN_ROOT: the plugin's filesystem-resolved directory.
+ */
+root: string
+/**
+ * PLUGIN_DATA: the plugin's persistent data directory.
+ */
+data: string
+}
+
+export interface McpStreamableHttpServerDefinition {
+name: McpServerName
+scope: McpServerScope
+plugin?: McpServerPlugin
+/**
+ * A remote server: an MCP endpoint over Streamable HTTP.
+ */
+type: "streamable-http"
+/**
+ * The MCP endpoint: HTTPS, or HTTP on a loopback host.
+ */
+url: string
+/**
+ * Literal headers sent to the endpoint's own origin; a header the client generates overrides one of the same name.
+ */
+headers?: {
 [k: string]: string
 }
-/**
- * HTTP request headers; values may reference ${ENV_NAME}. Authorization cannot also be configured here when authorization is set.
- */
-
-export interface McpServerHeaders {
-[k: string]: string
 }
 
 export interface ModelCatalogPage {

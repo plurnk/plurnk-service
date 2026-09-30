@@ -11,6 +11,7 @@ import { isDeepStrictEqual } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 import SqlRiteSync from "@possumtech/sqlrite/sync";
 import { Policy } from "@plurnk/plurnk-execs";
+import { MCP_SCHEMA, PLUGIN_SCHEMA } from "@plurnk/plurnk-agent-plugins";
 import { installSandbox, uninstallSandbox, sandbox } from "./install-sandbox.mjs";
 import { installedGrammars } from "./installed-grammars.mjs";
 
@@ -569,14 +570,19 @@ ok(
 
 const mcpStartMarker = resolve(sandbox, "packed-mcp-starts.txt");
 const mcpFixture = resolve(import.meta.dirname, "../../plurnk-mcp/src/fixtures/echo-server.mjs");
-const dormantMcpEnv = {
-    PLURNK_SERVICE_DB_PATH: packedSkillDb,
-    PLURNK_MCP_BROKEN: resolve(sandbox, "missing-mcp-server"),
-    PLURNK_MCP_ECHO: process.execPath,
-    PLURNK_MCP_ECHO_ARGS: JSON.stringify([mcpFixture]),
-    PLURNK_MCP_ECHO_ENV: JSON.stringify({ PLURNK_MCP_TEST_START_MARKER: mcpStartMarker }),
-    PLURNK_MCP_ENABLED: JSON.stringify(["broken", "echo"]),
-};
+// {§mcp-plugin-servers} — the project's installed plugin declares a server whose command is missing
+// beside a healthy peer; installing it enables both.
+const packedMcpPlugin = resolve(packedSkillProject, ".agents", "plugins", "packed-mcp");
+mkdirSync(packedMcpPlugin, { recursive: true });
+writeFileSync(resolve(packedMcpPlugin, "plugin.json"), JSON.stringify({ $schema: PLUGIN_SCHEMA, name: "packed-mcp" }));
+writeFileSync(resolve(packedMcpPlugin, "mcp.json"), JSON.stringify({
+    $schema: MCP_SCHEMA,
+    mcpServers: {
+        broken: { type: "stdio", command: "./missing-mcp-server" },
+        echo: { type: "stdio", command: "node", args: [mcpFixture], env: { PLURNK_MCP_TEST_START_MARKER: mcpStartMarker } },
+    },
+}));
+const dormantMcpEnv = { PLURNK_SERVICE_DB_PATH: packedSkillDb };
 const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
     const before = markerCount(mcpStartMarker);
     const attached = await aguiAction(address, "workspace.attach", { id: dormantWorkspaceId });

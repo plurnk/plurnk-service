@@ -11,6 +11,7 @@ import { insertWorker, openMigrated } from "./_db.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
+import { httpEntry, mcpPluginHome } from "./_mcp-plugin.ts";
 
 process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "60000";
 process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
@@ -49,15 +50,19 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
         "````fixture (third)\n{}\n````\n\n````WAIT\nObserve the result.\n````",
         "````KILL\nCatalog tool result observed.\n````",
     ].map(makeMockResponse) });
+    const hostPaths = await mcpPluginHome(t, { fixture: httpEntry(served.url) });
     const db = await openMigrated();
-    const daemon = new Daemon({ db, provider });
+    const daemon = new Daemon({ db, provider, hostPaths });
     const mcp = McpModule.init({ env: {
-        PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
+        PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     } });
     daemon.registerModule({
         setup: (seam) => mcp.setup({
             readWorkspaceEnvironment: (workspaceId) => seam.readWorkspaceEnvironment(workspaceId),
-            workspaceStateDirectory: (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner),
+            pluginEnvironment: () => seam.pluginEnvironment(),
+            readWorkspacePlugins: (workspaceId) => seam.readWorkspacePlugins(workspaceId),
+            writeServerPlugin: (workspaceId, request) => seam.writeServerPlugin(workspaceId, request),
+            deleteServerPlugin: (workspaceId, request) => seam.deleteServerPlugin(workspaceId, request),
             registerModuleAction: (registration) => seam.registerModuleAction(registration),
             registerFunctionalityAdapter: (adapter) => {
                 const handle = seam.registerFunctionalityAdapter(adapter);
@@ -75,9 +80,19 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "catalog-race" });
     const workerId = await insertWorker(db, workspaceId, null, "reader", "model");
-    await daemon.invokeModuleAction("workspace.mcp.add", {
-        alias: "fixture", definition: { name: "fixture", transport: "http", url: served.url },
-    }, { scope: "workspace", workspaceId });
+    const source = PlurnkParser.frame("READ (worker:///_plurnk/tools/fixture.md) <1,-1>", null);
+    const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
+    const item = parsed.items[0];
+    assert.equal(item?.kind, "statement");
+    if (item?.kind !== "statement") throw new Error("Expected one READ");
+    const toolsDocument = async (): Promise<string> => {
+        const document = await daemon.look({ workspaceId, workerId, statement: item.statement });
+        assert.equal(document.status, 200);
+        assert.equal(typeof document.content, "string");
+        return document.content as string;
+    };
+    // {§mcp-plugin-servers} The first read makes the workspace resident, connecting the installed plugin's server.
+    assert.match(await toolsDocument(), /fixture \(first\)/);
     const catalog = async () => (await daemon.invokeModuleAction("workspace.mcp.list", {}, {
         scope: "workspace", workspaceId,
     })) as { definitions: { alias: string; detail: { tools: string[] } }[] };
@@ -114,16 +129,9 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
 
     assert.deepEqual((await catalog()).definitions.find(({ alias }) => alias === "fixture")?.detail.tools, ["third"],
         "the second invalidation must not disappear when the earlier catalog commits");
-    const source = PlurnkParser.frame("READ (worker:///_plurnk/tools/fixture.md) <1,-1>", null);
-    const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
-    const item = parsed.items[0];
-    assert.equal(item?.kind, "statement");
-    if (item?.kind !== "statement") throw new Error("Expected one READ");
-    const document = await daemon.look({ workspaceId, workerId, statement: item.statement });
-    assert.equal(document.status, 200);
-    assert.equal(typeof document.content, "string");
-    assert.match(document.content as string, /fixture \(third\)/);
-    assert.doesNotMatch(document.content as string, /fixture \((?:first|second)\)/);
+    const document = await toolsDocument();
+    assert.match(document, /fixture \(third\)/);
+    assert.doesNotMatch(document, /fixture \((?:first|second)\)/);
     assert.equal(provider.received.length, 0, "catalog updates do not invoke the model");
     const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Use the current tool.", policy: { proposals: "accept" } });
     const lifecycle = new LoopLifecycle(db);

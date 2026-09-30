@@ -7,6 +7,8 @@ import type {
     McpServerDefinition,
 } from "@plurnk/plurnk-contracts";
 import ServerConnection, { AuthorizationRequiredError } from "../src/client.ts";
+import type { McpAuthorization } from "../src/config.ts";
+import { httpServer } from "./definitions.ts";
 
 interface ConformanceContext {
     readonly client_id?: string;
@@ -27,14 +29,7 @@ const context = process.env.MCP_CONFORMANCE_CONTEXT === undefined
     ? {} satisfies ConformanceContext
     : JSON.parse(process.env.MCP_CONFORMANCE_CONTEXT) as ConformanceContext;
 
-const definition = (
-    authorization?: McpServerDefinition["authorization"],
-): McpServerDefinition => ({
-    name: "conformance",
-    transport: "http",
-    url: serverUrl,
-    ...(authorization === undefined ? {} : { authorization }),
-});
+const definition = (): McpServerDefinition => httpServer("conformance", serverUrl);
 
 const interaction = async (
     request: ClientInteractionRequest,
@@ -214,11 +209,11 @@ const runClientCredentials = async (): Promise<void> => {
         throw new Error(`Conformance scenario '${scenario}' omitted client credentials.`);
     }
     const environment = { ...process.env, MCP_CONFORMANCE_CLIENT_SECRET: context.client_secret };
-    const connection = new ServerConnection(definition({
+    const connection = new ServerConnection(definition(), environment, { authorization: {
         type: "client-credentials",
         clientId: context.client_id,
         clientSecret: "${MCP_CONFORMANCE_CLIENT_SECRET}",
-    }), environment);
+    } });
     await withConnection(connection, async () => {
         await connection.tools();
     });
@@ -229,7 +224,7 @@ const runOAuth = async (): Promise<void> => {
     const environment = preRegistered && context.client_secret !== undefined
         ? { ...process.env, MCP_CONFORMANCE_CLIENT_SECRET: context.client_secret }
         : process.env;
-    const authorization: McpServerDefinition["authorization"] = preRegistered
+    const authorization: McpAuthorization = preRegistered
         ? {
             type: "oauth",
             redirectUrl: "http://localhost:3000/callback",
@@ -241,7 +236,7 @@ const runOAuth = async (): Promise<void> => {
             redirectUrl: "http://localhost:3000/callback",
             clientMetadataUrl: "https://conformance-test.local/client-metadata.json",
         };
-    const connection = new ServerConnection(definition(authorization), environment);
+    const connection = new ServerConnection(definition(), environment, { authorization });
     await withConnection(connection, async () => {
         const tools = await withInteractiveAuthorization(connection, () => connection.tools());
         const tool = tools.find((candidate) => candidate.name === "test-tool");

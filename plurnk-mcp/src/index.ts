@@ -9,12 +9,11 @@ export {
     MCP_TASKS_SPECIFICATION_COMMIT,
 } from "./protocol.ts";
 export {
+    assertNoRetiredVariables,
     connectTimeoutMs,
     expandReferences,
     requestTimeoutMs,
-    serverDefinition,
-    serverNames,
-    serviceDefinitions,
-    serviceEnabledNames,
+    serverSettings,
+    settingName,
 } from "./config.ts";
-export type { ToolPolicy } from "./config.ts";
+export type { McpAuthorization, ServerSettings, ToolPolicy } from "./config.ts";

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { McpServer, createMcpHandler, fromJsonSchema, inputRequired, inputResponse } from "@modelcontextprotocol/server";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { type CapabilityPolicy } from "@plurnk/plurnk-contracts";
+import { type CapabilityPolicy, type FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
@@ -15,6 +15,7 @@ import { OperationFailureError } from "../../src/core/results.ts";
 import { insertWorker, openMigrated } from "./_db.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";
+import { httpEntry, mcpPluginHome, writePlugin } from "./_mcp-plugin.ts";
 
 process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "0";
 process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
@@ -70,13 +71,15 @@ const fixture = async (t: TestContext, responses: string[] = []) => {
         }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
         return { name, ...served };
     }));
+    // {§mcp-plugin-servers} One installed plugin declares alice's server as `shared` and bob's as `other`.
+    const hostPaths = await mcpPluginHome(t, Object.fromEntries(servers.map(({ name, url }) => [name === "alice" ? "shared" : "other", httpEntry(url)])));
     const db = await openMigrated();
     let schemes = new SchemeRegistry();
     const provider = new Mock({ contextWindow: 1_000_000, responses: responses.map(makeMockResponse) });
     const createDaemon = () => {
-        const instance = new Daemon({ db, schemes, provider, nodeModulesPath: resolve("node_modules") });
+        const instance = new Daemon({ db, schemes, provider, nodeModulesPath: resolve("node_modules"), hostPaths });
         instance.registerModule(McpModule.init({ env: {
-            PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
+            PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         } }));
         return instance;
     };
@@ -92,15 +95,13 @@ const fixture = async (t: TestContext, responses: string[] = []) => {
     const action = (operation: string, params: Record<string, unknown>) => daemon.invokeModuleAction(
         `workspace.mcp.${operation}`, params, { scope: "workspace", workspaceId },
     );
-    for (const { name, url } of servers) {
-        const alias = name === "alice" ? "shared" : "other";
-        const added = await action("add", {
-            alias, definition: { name: alias, transport: "http", url, read: ["snapshot"] },
-        }) as { status: number };
-        assert.equal(added.status, 201);
-    }
     const cool = () => waitForDb(async () => !schemes.has("shared", workspaceId) && !schemes.has("other", workspaceId), Boolean);
     await cool();
+    // {§functionality-hotload} Rewrite the installed plugin's servers; the cooled workspace reads them when it next activates.
+    const reinstall = async (entries: Readonly<Record<string, object>>) => {
+        await writePlugin(join(hostPaths.plurnkPluginsDir, "fixtures"), "fixtures", entries);
+        await cool();
+    };
     const read = (target: string, workerId = client) => daemon.look({
         workspaceId, workerId, statement: statement(PlurnkParser.frame(`READ (${target}) <1,-1>`, null)),
     });
@@ -123,7 +124,7 @@ const fixture = async (t: TestContext, responses: string[] = []) => {
         daemon = createDaemon();
         await daemon.start();
     };
-    return { db, get daemon() { return daemon; }, provider, get schemes() { return schemes; }, servers, restart, workspaceId, alice, bob, carol, client, client2, read, reads, paused, action, cool, setPolicy };
+    return { db, get daemon() { return daemon; }, provider, get schemes() { return schemes; }, servers, restart, workspaceId, alice, bob, carol, client, client2, read, reads, paused, action, cool, reinstall, setPolicy };
 };
 
 test("{§runtime-resource-binding}: shared cold MCP resources, catalog links, caller policy, and concurrent connection leases", { timeout: 20_000 }, async (t) => {
@@ -207,15 +208,17 @@ for (const transition of ["enabled", "disabled", "removed", "producer-removed", 
         }, (channel) => channel?.content.includes("/resources/snapshot.txt") === true);
         const address = /<(shared:\/\/[^>]+)>/u.exec(published!.content)?.[1];
         assert.ok(address, published!.content);
-        if (transition === "disabled" || transition === "removed") {
-            const changed = await f.action(transition === "disabled" ? "disable" : "remove", { alias: "shared" }) as { status: number };
+        if (transition === "disabled") {
+            const changed = await f.action("disable", { alias: "shared" }) as { status: number };
             assert.equal(changed.status, 200, JSON.stringify(changed));
         }
+        if (transition === "removed") {
+            await f.reinstall({ other: httpEntry(f.servers[1]!.url) });
+            const listed = await f.action("list", {}) as FunctionalityListResult;
+            assert.deepEqual(listed.definitions.map(({ alias }) => alias), ["other"], "the plugin no longer declares shared");
+        }
         if (transition === "replaced") {
-            assert.equal((await f.action("remove", { alias: "shared" }) as { status: number }).status, 200);
-            assert.equal((await f.action("add", {
-                alias: "shared", definition: { name: "shared", transport: "http", url: f.servers[1]!.url, read: ["snapshot"] },
-            }) as { status: number }).status, 201);
+            await f.reinstall({ shared: httpEntry(f.servers[1]!.url), other: httpEntry(f.servers[1]!.url) });
             assert.equal((await f.read(`shared://${path}`, f.client2)).content, "bob's resource");
         }
         if (transition === "restarted") {

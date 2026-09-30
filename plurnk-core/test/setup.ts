@@ -42,6 +42,10 @@ const fixture = {
     // Retained module files belong with this tier's database evidence, in the run's own
     // directory under PLURNK_BENCHMARKS ({§test-artifact-retention}).
     XDG_STATE_HOME: join(testArtifactPath("core"), "host-state"),
+    // {§agent-plugins-hosting} — the operator's own plugins, skills and configuration never reach a
+    // test daemon: the home and configuration roots are this tier's, empty unless a test fills them.
+    HOME: join(testArtifactPath("core"), "home"),
+    XDG_CONFIG_HOME: join(testArtifactPath("core"), "config"),
     PLURNK_PORT: "3045",
 } as const;
 

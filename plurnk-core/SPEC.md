@@ -3687,11 +3687,13 @@ and is ignored rather than resolved against the working directory.
 
 | Class | Base | Plurnk member |
 |---|---|---|
-| Configuration | `$XDG_CONFIG_HOME` (default `~/.config`) | `plurnk/.env`, `plurnk/AGENTS.md`, and plurnk-only Agent Skills `plurnk/skills/<name>/SKILL.md` |
+| Configuration | `$XDG_CONFIG_HOME` (default `~/.config`) | `plurnk/.env`, `plurnk/AGENTS.md`, plurnk-only Agent Skills `plurnk/skills/<name>/SKILL.md`, and plurnk-only Agent Plugins `plurnk/plugins/<plugin>/` |
 | Durable user data | `$XDG_DATA_HOME` (default `~/.local/share`) | `plurnk/plurnk.db` and SQLite sidecars |
 | Persistent operational state | `$XDG_STATE_HOME` (default `~/.local/state`) | On-demand workspace/module directories ({§module-workspace-directory}). |
 | Reproducible cache | `$XDG_CACHE_HOME` (default `~/.cache`) | Reserved; no directory is created without an owned artifact. |
 | Shared global Agent Skills | User home | `.agents/skills/<name>/SKILL.md` |
+| Shared global Agent Plugins | User home | `.agents/plugins/<plugin>/` ({§agent-plugins-hosting}) |
+| A plugin's `PLUGIN_DATA` | `$XDG_DATA_HOME` | `plurnk/plugins/<plugin>/` |
 
 §state-root **A private daemon has one root.** `PLURNK_SERVICE_STATE_ROOT` (absolute; a leading
 `~/` expands; a relative value fails hard by name) replaces the data, state, cache and runtime homes
@@ -3884,7 +3886,7 @@ the policy renders in exactly one packet section. Every other tier runs the
 test cascade, so shipped-default regressions are otherwise invisible by
 construction.
 
-§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to gate-wide service posture that is identical on every machine: complete catalog orientation, automatic Git membership when the operator ceiling permits Git, ambient operator-file docs/packet notes cleared, ambient MCP selections and schedules disabled, and `PLURNK_EXECS_QUESTION=0` for unattended runs. The ordinary executor switch removes the question tool and its teaching; an explicit override can opt into an attended drill. Configuration with a narrower or variable owner stays outside it:
+§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to gate-wide service posture that is identical on every machine: complete catalog orientation, automatic Git membership when the operator ceiling permits Git, ambient operator-file docs/packet notes cleared, the operator's installed skills and plugins left unread ({§agent-roots}), ambient MCP expansion and schedules disabled, and `PLURNK_EXECS_QUESTION=0` for unattended runs. The ordinary executor switch removes the question tool and its teaching; an explicit override can opt into an attended drill. Configuration with a narrower or variable owner stays outside it:
 
 | Owner | Configuration |
 |---|---|
@@ -4137,8 +4139,9 @@ Retryability describes the actual failed condition, not its numeric status.
 
 §functionality-inspection **Inspection is not demand.** `list` and `discover` do not
 acquire residency, join preparation, reconcile worker documents, or extend warm
-retention. Without a resident publication, enabled workspace definitions are
-`dormant`. During replacement the preceding publication remains authoritative;
+retention. An enabled definition no resident publication has prepared is `dormant`: every one while
+the family is cold, and one that arrived out of band until the next turn publishes it
+({§functionality-hotload}). During replacement the preceding publication remains authoritative;
 the candidate is never presented as active. Cooling leaves durable definitions
 inspectable. Mutations and protocol continuations retain their residency rules.
 
@@ -4178,6 +4181,35 @@ sources, outcomes, preparation, the prepared result and the family handle —
 are declared once in `plurnk-contracts` and imported by core and every
 module; core adds only its own face of the seam, the runtime registration a
 resident family prepares and the scheme facet it may expose.
+
+§functionality-hotload **Out-of-band state is admitted before the next turn.** An adapter whose
+`available` reads state that changes outside the daemon, such as skill roots ({§skills-hotload}) or
+installed plugins ({§agent-plugins-hosting}), implements `refreshIfChanged`. Turn admission calls it
+for every family under the workspace gate before packet assembly. The family handle's `refresh` with
+`ifChanged` republishes a resident family only when the enabled definitions it would prepare differ
+from the ones its publication prepared. The coordinator makes that comparison because it alone knows
+what it published, so a change `list` saw first is still published at the next turn. A family whose
+definitions do not capture its published content, such as a skill's files, republishes
+unconditionally when that content changed. An unchanged family dispatches nothing.
+
+§agent-plugins-hosting **Installed Agent Plugins are found like skills.** A workspace's plugins are
+the immediate child directories of its project's `.agents/plugins`, then
+`$XDG_CONFIG_HOME/plurnk/plugins` (plurnk alone), then `~/.agents/plugins` (every agent), loaded and
+validated by `@plurnk/plurnk-agent-plugins` ({§agent-plugins-roots}); an earlier root shadows a later
+plugin of the same name. A plugin's `PLUGIN_DATA` is `$XDG_DATA_HOME/plurnk/plugins/<name>`, kept
+across its updates and moved with a state root ({§state-root}). Modules receive a workspace's plugins,
+in precedence order, through the setup seam's `readWorkspacePlugins`, with one signature that changes
+exactly when a plugin, its manifest, its MCP configuration, or its skills change
+({§functionality-hotload}), and the roots the workspace has. The one plugin Core writes is the
+one-server plugin an added MCP server is ({§mcp-plugin-servers}): `writeServerPlugin` places it at
+its scope's root, or finds exactly that plugin already there, and `deleteServerPlugin` removes it.
+
+§agent-roots **A daemon reads the roots `PLURNK_SERVICE_ROOTS` names.** A comma list drawn from
+`project`, `plurnk` and `global`, nearest first, selects which Agent Skills and Agent Plugins roots a
+daemon reads and writes; the default names all three. The real-model gate profile names `project`
+alone ({§operator-config-real-model-profile}), so the operator's installed skills and plugins never
+shape a gate. Adding at a root the daemon does not read is refused, naming the roots it does: a skill as
+`scope-unread` ({§skills-functionality}), an MCP server as its family's `scope-unavailable`.
 
 An adapter may expose a `scheme` facet beneath its family's runtime namespace
 ({§runtime-resource-binding}). A facet claims a path subtree and is the scheme's
@@ -5509,13 +5541,13 @@ mutation with `uninstall-failed`. A same-named skill at a lower-precedence root 
 revealed as a service definition, disabled ({§functionality-coordinator}).
 Service definitions are disable-only.
 
-§skills-hotload **Skills placed out of band are admitted at the next turn.** The
-family keeps one signature of the three installed roots, source locations, and
-frontmatter sources per resident workspace; turn
-admission recomputes it under the workspace gate before packet assembly and
-republishes the family through the coordinator when it changed, so a skill
-installed or removed by any other tool is discoverable in the first subsequent
-model turn while an unchanged set dispatches nothing. The model manages skills
+§skills-hotload **Skills placed out of band are admitted at the next turn** ({§functionality-hotload}). The
+family keeps one signature of the three installed roots, source locations, and `SKILL.md` sources
+per resident workspace, read before a publication loads the skills it describes. Turn admission
+recomputes it under the workspace gate before packet assembly: a changed signature republishes the
+family, and an unchanged one republishes only when the skills the coordinator would publish differ
+from the published ones. A skill installed, edited or removed by any other tool is therefore
+discoverable in the first subsequent model turn, while an unchanged set dispatches nothing. The model manages skills
 only through the generated ```` ```skills ```` family
 ({§functionality-model-projection}); it is never taught a package manager.
 

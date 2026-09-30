@@ -10,6 +10,7 @@ import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { insertWorker, openMigrated } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
+import { MCP_CONTROLS, httpEntry, mcpPluginHome } from "./_mcp-plugin.ts";
 
 test("{§workspace-environment-sharing}: MCP definitions belong to the workspace without any conversation worker", async (t) => {
     const server = await serveMcpHttp(t, createMcpHandler(() => {
@@ -23,12 +24,11 @@ test("{§workspace-environment-sharing}: MCP definitions belong to the workspace
         }));
         return mcp;
     }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
+    const hostPaths = await mcpPluginHome(t, { shared: httpEntry(server.url) });
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 1_000_000, responses: [] });
-    const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules") });
-    daemon.registerModule(McpModule.init({ env: {
-        PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
-    } }));
+    const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths });
+    daemon.registerModule(McpModule.init({ env: { ...MCP_CONTROLS } }));
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "shared-functionality" });
@@ -36,22 +36,16 @@ test("{§workspace-environment-sharing}: MCP definitions belong to the workspace
     const action = (id: number, verb: string, params: Record<string, unknown> = {}) => daemon.invokeModuleAction(
         `workspace.mcp.${verb}`, params, { scope: "workspace", workspaceId: id },
     );
-    const added = await action(workspaceId, "add", {
-        alias: "shared", definition: { name: "shared", transport: "http", url: server.url, read: ["echo"] },
-    }) as { status: number };
-    assert.equal(added.status, 201);
+    const enabled = await action(workspaceId, "enable", { alias: "shared" }) as { definition: { state: string } };
+    assert.equal(enabled.definition.state, "active", "the workspace connects its installed server with no worker");
     const listed = await action(workspaceId, "list") as FunctionalityListResult;
     assert.equal(listed.definitions.find(({ alias }) => alias === "shared")?.state, "active");
-    assert.equal((await action(other.workspaceId, "list") as FunctionalityListResult).definitions.length, 0,
-        "the workspace boundary remains real");
+    assert.deepEqual((await action(other.workspaceId, "list") as FunctionalityListResult).definitions.map(({ alias, state }) => ({ alias, state })),
+        [{ alias: "shared", state: "dormant" }], "the workspace boundary remains real: another workspace holds no connection of this one's");
     const alice = await insertWorker(db, workspaceId, null, "alice", "model");
     const bob = await insertWorker(db, workspaceId, null, "bob", "model");
     assert.deepEqual((await action(workspaceId, "list") as FunctionalityListResult).definitions, listed.definitions,
         "creating workers neither copies nor redefines the shared environment");
-    const repeated = await action(workspaceId, "add", {
-        alias: "shared", definition: { name: "shared", transport: "http", url: server.url, read: ["echo"] },
-    }) as { status: number };
-    assert.equal(repeated.status, 200, "a second client's identical configuration reuses the workspace definition");
     const read = PlurnkParser.parseStatements(PlurnkParser.frame("READ (shared:///resources) <1,-1>", null), { executors: fixtureExecutors(PlurnkParser.frame("READ (shared:///resources) <1,-1>", null)) }).items[0];
     assert.equal(read?.kind, "statement");
     if (read?.kind !== "statement") throw new Error("Expected one READ");
@@ -62,17 +56,11 @@ test("{§workspace-environment-sharing}: MCP definitions belong to the workspace
         assert.equal(catalog.status, 200, JSON.stringify(catalog));
         assert.match(String(catalog.content), /fixture:\/\/shared\/item/u);
     }
-    await assert.rejects(() => action(workspaceId, "add", {
-        alias: "shared", definition: { name: "shared", transport: "http", url: `${server.url}?different` },
-    }), (cause: unknown) => {
-        assert.ok(cause instanceof Error && "result" in cause);
-        assert.equal((cause.result as { status: number }).status, 409);
-        assert.match(JSON.stringify(cause.result), /alias-exists/);
-        return true;
-    });
     await action(workspaceId, "disable", { alias: "shared" });
     assert.equal((await action(workspaceId, "list") as FunctionalityListResult).definitions[0]?.state, "disabled");
     const docs = await daemon.engine.referenceEntries(workspaceId);
     assert.equal(docs.some(({ content }) => content.includes("shared (echo)")), false, "disable changes the one shared discovery surface");
+    assert.equal((await action(other.workspaceId, "list") as FunctionalityListResult).definitions[0]?.state, "dormant",
+        "disabling a server in one workspace leaves it enabled in another");
     assert.equal(provider.received.length, 0, "environment management never invokes a model");
 });

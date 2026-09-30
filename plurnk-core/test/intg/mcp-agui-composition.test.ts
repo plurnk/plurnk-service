@@ -1,5 +1,5 @@
 // {§mcp-model-projection} {§agui-proposal-resolve} — the assembled daemon proof:
-// a client specializes and enables a cold MCP server through AG-UI, ordinary Plurnk
+// an installed plugin's cold MCP server composes through AG-UI, ordinary Plurnk
 // resource discovery reaches its exact tools, read effects execute directly,
 // and host effects remain behind the standard terminate/resume review boundary.
 
@@ -8,17 +8,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { awaitExecOutcome } from "./_execs.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
+import { httpEntry, mcpPluginHome, stdioEntry } from "./_mcp-plugin.ts";
 
 type Event = Readonly<Record<string, unknown>>;
 
@@ -30,13 +29,6 @@ class PacketCapturingMock extends Mock {
         return super.generate(...args);
     }
 }
-
-const fixture = fileURLToPath(
-    new URL("../../../plurnk-mcp/src/fixtures/echo-server.mjs", import.meta.url),
-);
-const legacyFixture = fileURLToPath(
-    new URL("../../../plurnk-mcp/src/fixtures/legacy-server.mjs", import.meta.url),
-);
 
 const parseEvents = (body: string): Event[] => body
     .split("\n\n")
@@ -106,12 +98,12 @@ test("{§functionality-preparation-visibility} a stalled MCP catalog is visible 
         return null;
     });
     const provider = new PacketCapturingMock({ responses: [makeMockResponse("```KILL\nOK\n```")], contextWindow: 1_000_000 });
+    const hostPaths = await mcpPluginHome(t, { fixture: httpEntry(served.url) });
     const db = await openMigrated();
-    const daemon = new Daemon({ db, provider });
+    const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env: {
         PLURNK_MCP_CONNECT_TIMEOUT: "10000", PLURNK_MCP_REQUEST_TIMEOUT: "10000",
         PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
-        PLURNK_MCP_ENABLED: '["fixture"]', PLURNK_MCP_fixture: served.url,
     } }));
     const started = Promise.withResolvers<AguiModule>();
     const registration = AguiModule.init({ host: "127.0.0.1", port: 0 });
@@ -168,65 +160,7 @@ test("{§functionality-preparation-visibility} a stalled MCP catalog is visible 
     assert.doesNotMatch(packet(provider.requests, 0), /workspace\/preparation/);
 });
 
-test("{§functionality-model-projection} an absent MCP source has the same Problem through client actions and model execution", { timeout: 30_000 }, async (t) => {
-    const sandbox = await mkdtemp(join(tmpdir(), "mcp-discovery-refusal-"));
-    const source = join(sandbox, "absent-executable");
-    const provider = new PacketCapturingMock({
-        contextWindow: 1_000_000,
-        responses: [
-            makeMockResponse(`\`\`\`\`mcp (discover)\n${JSON.stringify({ source })}
-\`\`\`\`
-\`\`\`\`NOTE
-Inspect the discovery outcome.
-\`\`\`\``),
-            makeMockResponse("````KILL\nThe source could not be inspected.\n````"),
-        ],
-    });
-    const db = await openMigrated();
-    const daemon = new Daemon({ db, provider });
-    daemon.registerModule(McpModule.init({ env: {
-        PLURNK_MCP_CONNECT_TIMEOUT: "1000", PLURNK_MCP_REQUEST_TIMEOUT: "1000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
-    } }));
-    const started = Promise.withResolvers<AguiModule>();
-    const registration = AguiModule.init({ host: "127.0.0.1", port: 0 });
-    daemon.registerModule({ start: async (seam) => {
-        const module = await registration.start(seam);
-        started.resolve(module);
-        return module;
-    } });
-    t.after(async () => {
-        await daemon.stop();
-        await db.close();
-        await rm(sandbox, { recursive: true, force: true });
-    });
-    await daemon.start();
-    const { port } = (await started.promise).address();
-    const workspace = "mcp-discovery-refusal";
-    const { workspaceId } = await daemon.createWorkspace({ name: workspace, projectRoot: sandbox });
-    const direct = actionResult(await post(port, runInput(workspace, "discover-client", {
-        forwardedProps: { plurnk: { workspace, action: { kind: "workspace.mcp.discover", source } } },
-    })));
-    const problem = {
-        type: "https://problems.plurnk.xyz/mcp/management/discover-failed",
-        title: "Discover failed", status: 502,
-        detail: `MCP target '${source}' could not be inspected.`,
-        stage: "mcp-management", source, retryable: true,
-    };
-    assert.equal(direct.ok, false);
-    assert.deepEqual(direct.problem, problem);
-    const events = await post(port, runInput(workspace, "discover-model", {
-        messages: [{ id: "discover", role: "user", content: "Inspect the configured source and report the outcome." }],
-    }));
-    assert.equal((events.at(-1)?.outcome as { type?: string })?.type, "success");
-    assert.equal(provider.requests.length, 2);
-    assert.match(packet(provider.requests, 1), /"type":"https:\/\/problems\.plurnk\.xyz\/mcp\/management\/discover-failed"/u,
-        "the next model packet preserves the source-owned failure, not executor-threw");
-    assert.match(packet(provider.requests, 1), /"status":502/u);
-    const result = await awaitExecOutcome(db, { workspaceId, scheme: "mcp" });
-    assert.deepEqual(result, { status: 502, problem }, "the durable execution output preserves the complete Problem");
-});
-
-test("AG-UI configuration cascade composes MCP discovery, execution, review, failure, and recovery", { timeout: 30_000 }, async () => {
+test("{§mcp-plugin-servers} AG-UI composes an installed plugin's MCP servers: execution, review, failure, and recovery", { timeout: 30_000 }, async (t) => {
     const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     const provider = new PacketCapturingMock({
@@ -243,17 +177,25 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
             makeMockResponse("````KILL\nThe MCP server reported its expected tool error; recovery is complete.\n````"),
         ],
     });
+    const hostPaths = await mcpPluginHome(t, {
+        fixture: stdioEntry("echo-server.mjs", {
+            PLURNK_MCP_TEST_TITLE: "Transport fixture",
+            PLURNK_MCP_TEST_INSTRUCTIONS: "Echo tools for transport testing.\n\n## Usage\nPass the message field unchanged.",
+        }),
+        legacy: stdioEntry("legacy-server.mjs"),
+    });
     const db = await openMigrated();
     const daemon = new Daemon({
         db,
         provider,
         nodeModulesPath: join(import.meta.dirname, "../../node_modules"),
+        hostPaths,
     });
     daemon.registerModule(McpModule.init({
         env: {
             PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-            PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
-            PLURNK_MCP_FIXTURE: process.execPath,
+            PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+            PLURNK_MCP_FIXTURE_TOOLS: '["echo","fail"]',
         },
     }));
     const aguiRegistration = AguiModule.init({ host: "127.0.0.1", port: 0 });
@@ -272,37 +214,6 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         const port = (agui as AguiModule).address().port;
         const workspace = `mcp-composition-${crypto.randomUUID()}`;
 
-        // {§functionality-coordinator} — a client's own configuration contributes
-        // inert candidates; the workspace's durable set is listed separately.
-        const discovered = actionResult(await post(port, runInput(workspace, "discover", {
-            forwardedProps: {
-                plurnk: {
-                    workspace,
-                    projectRoot,
-                    action: {
-                        kind: "workspace.mcp.discover",
-                        configuration: {
-                            PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixture]),
-                            PLURNK_MCP_FIXTURE_ENV: JSON.stringify({
-                                PLURNK_MCP_TEST_TITLE: "Transport fixture",
-                                PLURNK_MCP_TEST_INSTRUCTIONS: "Echo tools for transport testing.\n\n## Usage\nPass the message field unchanged.",
-                            }),
-                            "PLURNK_MCP_CLIENT-ONLY": process.execPath,
-                            "PLURNK_MCP_CLIENT-ONLY_ARGS": JSON.stringify([fixture]),
-                        },
-                    },
-                },
-            },
-        })));
-        assert.equal(discovered.ok, true, JSON.stringify(discovered.problem));
-        const candidates = discovered.result?.candidates as Array<{ alias: string; definition: Record<string, unknown>; provenance: { kind: string } }>;
-        assert.deepEqual(
-            candidates.map(({ alias, provenance }) => ({ alias, kind: provenance.kind })),
-            [
-                { alias: "client-only", kind: "client-configuration" },
-                { alias: "fixture", kind: "client-configuration" },
-            ],
-        );
         const listed = actionResult(await post(port, runInput(workspace, "list", {
             forwardedProps: { plurnk: { workspace, projectRoot, action: { kind: "workspace.mcp.list" } } },
         })));
@@ -310,30 +221,16 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
         if (listed.result === undefined) throw new Error("workspace.mcp.list returned no result");
         assert.deepEqual(
             (listed.result.definitions as Array<{ alias: string; origin: string; state: string }>).map(({ alias, origin, state }) => ({ alias, origin, state })),
-            [{ alias: "fixture", origin: "service", state: "disabled" }],
-            "discovery persisted nothing; the service baseline is available and disabled",
+            [{ alias: "fixture", origin: "service", state: "dormant" }, { alias: "legacy", origin: "service", state: "dormant" }],
+            "the installed plugin's servers are available and enabled, dormant until first use",
         );
-
-        // Adding the discovered candidate under the service alias shadows the baseline.
-        const fixtureCandidate = candidates.find(({ alias }) => alias === "fixture");
-        if (fixtureCandidate === undefined) throw new Error("fixture candidate missing");
-        const attached = actionResult(await post(port, runInput(workspace, "add", {
-            forwardedProps: {
-                plurnk: {
-                    workspace,
-                    projectRoot,
-                    action: {
-                        kind: "workspace.mcp.add",
-                        alias: "fixture",
-                        definition: { ...fixtureCandidate.definition, tools: ["echo", "fail"], read: ["echo"] },
-                    },
-                },
-            },
+        // Enabling the installed server activates the workspace, registering its tools before any turn.
+        const enabled = actionResult(await post(port, runInput(workspace, "enable", {
+            forwardedProps: { plurnk: { workspace, projectRoot, action: { kind: "workspace.mcp.enable", alias: "fixture" } } },
         })));
-        assert.equal(attached.ok, true, JSON.stringify(attached.problem));
-        assert.equal(attached.result?.status, 201);
-        assert.equal((attached.result?.definition as { state?: string; origin?: string } | undefined)?.state, "active");
-        assert.equal((attached.result?.definition as { origin?: string } | undefined)?.origin, "workspace");
+        assert.equal(enabled.ok, true, JSON.stringify(enabled.problem));
+        assert.equal((enabled.result?.definition as { state?: string } | undefined)?.state, "active");
+        assert.equal((enabled.result?.definition as { origin?: string } | undefined)?.origin, "service");
 
         // {§capability-admission} — exact MCP tools occupy the same selector
         // space as every other capability. One workspace restriction removes only
@@ -481,21 +378,8 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
             .join("");
         assert.match(recoveredSpeech, /reported its expected tool error; recovery is complete/);
 
-        const legacy = actionResult(await post(port, runInput(workspace, "legacy-add", {
-            forwardedProps: {
-                plurnk: {
-                    workspace,
-                    action: {
-                        kind: "workspace.mcp.add",
-                        alias: "legacy",
-                        definition: { name: "legacy", transport: "stdio", command: process.execPath, args: [legacyFixture] },
-                    },
-                },
-            },
-        })));
         // {§mcp-authority} — a legacy peer negotiates below the pin and serves its
         // standard catalog instead of being rejected.
-        assert.equal(legacy.ok, true);
         const legacyList = actionResult(await post(port, runInput(workspace, "legacy-list", {
             forwardedProps: {
                 plurnk: {
@@ -521,10 +405,10 @@ test("AG-UI configuration cascade composes MCP discovery, execution, review, fai
 test(
     "current third-party stdio and HTTP servers compose through the assembled product",
     {
-        skip: process.env.PLURNK_MCP_DOGFOOD !== "1",
+        skip: process.env.PLURNK_TEST_MCP_DOGFOOD !== "1",
         timeout: 120_000,
     },
-    async () => {
+    async (t) => {
         const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
         process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
         const provider = new PacketCapturingMock({
@@ -539,26 +423,6 @@ test(
                 makeMockResponse("\n````goji (goji_explain_term)\n{\"term\":\"AEO\"}\n````\n\n````READ (goji:///resources/goji%3A%2F%2Fabout)````\n````NOTE\nInspect both remote results.\n````"),
                 makeMockResponse("````KILL\nGOJI defines AEO as Answer Engine Optimisation and identifies itself as a Melbourne digital agency.\n````"),
             ],
-        });
-        const db = await openMigrated();
-        const daemon = new Daemon({
-            db,
-            provider,
-            nodeModulesPath: join(import.meta.dirname, "../../node_modules"),
-        });
-        daemon.registerModule(McpModule.init({
-            env: {
-                PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-                PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
-            },
-        }));
-        const aguiRegistration = AguiModule.init({ host: "127.0.0.1", port: 0 });
-        let agui: AguiModule | null = null;
-        daemon.registerModule({
-            start: async (seam) => {
-                agui = await aguiRegistration.start(seam);
-                return agui;
-            },
         });
         const projectRoot = await mkdtemp(join(tmpdir(), "plurnk-mcp-dogfood-"));
         const kubeconfig = join(projectRoot, "kubeconfig");
@@ -580,6 +444,46 @@ test(
             "    user: {}",
             "",
         ].join("\n"));
+        // {§mcp-plugin-servers} — the representative servers arrive in an installed plugin.
+        const hostPaths = await mcpPluginHome(t, {
+            kubernetes: {
+                type: "stdio",
+                command: "npx",
+                args: [
+                    "--yes",
+                    "kubernetes-mcp-server@0.0.66",
+                    "--kubeconfig",
+                    kubeconfig,
+                    "--read-only",
+                    "--log-file",
+                    join(projectRoot, "kubernetes.log"),
+                ],
+            },
+            goji: httpEntry("https://mcp.goji.agency/mcp"),
+        });
+        const db = await openMigrated();
+        const daemon = new Daemon({
+            db,
+            provider,
+            nodeModulesPath: join(import.meta.dirname, "../../node_modules"),
+            hostPaths,
+        });
+        daemon.registerModule(McpModule.init({
+            env: {
+                PLURNK_MCP_CONNECT_TIMEOUT: "30000",
+                PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+                PLURNK_MCP_KUBERNETES_TOOLS: '["configuration_view"]',
+                PLURNK_MCP_GOJI_TOOLS: '["goji_explain_term"]',
+            },
+        }));
+        const aguiRegistration = AguiModule.init({ host: "127.0.0.1", port: 0 });
+        let agui: AguiModule | null = null;
+        daemon.registerModule({
+            start: async (seam) => {
+                agui = await aguiRegistration.start(seam);
+                return agui;
+            },
+        });
 
         try {
             await daemon.start();
@@ -587,61 +491,33 @@ test(
             const port = (agui as AguiModule).address().port;
             const workspace = `mcp-dogfood-${crypto.randomUUID()}`;
 
-            const kubernetes = actionResult(await post(port, runInput(workspace, "add-kubernetes", {
+            const kubernetes = actionResult(await post(port, runInput(workspace, "enable-kubernetes", {
                 forwardedProps: {
                     plurnk: {
                         workspace,
                         projectRoot,
-                        action: {
-                            kind: "workspace.mcp.add",
-                            alias: "kubernetes",
-                            definition: {
-                                name: "kubernetes",
-                                transport: "stdio",
-                                command: "npx",
-                                args: [
-                                    "--yes",
-                                    "kubernetes-mcp-server@0.0.66",
-                                    "--kubeconfig",
-                                    kubeconfig,
-                                    "--read-only",
-                                    "--log-file",
-                                    join(projectRoot, "kubernetes.log"),
-                                ],
-                                tools: ["configuration_view"],
-                                read: ["configuration_view"],
-                            },
-                        },
+                        action: { kind: "workspace.mcp.enable", alias: "kubernetes" },
                     },
                 },
             })));
             assert.equal(kubernetes.ok, true, JSON.stringify(kubernetes.problem));
             const kubernetesSummary = kubernetes.result?.definition as {
-                readonly definition?: { readonly tools?: readonly string[] };
                 readonly detail?: { readonly tools?: readonly string[] };
             } | undefined;
-            assert.deepEqual(kubernetesSummary?.definition?.tools, ["configuration_view"]);
             assert.equal(kubernetesSummary?.detail?.tools?.length, 14, "the real server advertises a larger catalog");
 
-            const goji = actionResult(await post(port, runInput(workspace, "add-goji", {
+            const goji = actionResult(await post(port, runInput(workspace, "enable-goji", {
                 forwardedProps: {
                     plurnk: {
                         workspace,
-                        action: {
-                            kind: "workspace.mcp.add",
-                            alias: "goji",
-                            definition: {
-                                name: "goji",
-                                transport: "http",
-                                url: "https://mcp.goji.agency/mcp",
-                                tools: ["goji_explain_term"],
-                                read: ["goji_explain_term"],
-                            },
-                        },
+                        action: { kind: "workspace.mcp.enable", alias: "goji" },
                     },
                 },
             })));
             assert.equal(goji.ok, true, JSON.stringify(goji.problem));
+            // A tool's read effect is its server's own readOnlyHint ({§mcp-model-projection}); these Runs
+            // accept proposals so the composition does not depend on third-party annotations.
+            const policy = { proposals: "accept" };
 
             const kubernetesRun = await post(port, runInput(workspace, "call-kubernetes", {
                 messages: [{
@@ -649,6 +525,7 @@ test(
                     role: "user",
                     content: "Use the attached Kubernetes configuration tool and report the current context.",
                 }],
+                forwardedProps: { plurnk: { workspace, policy } },
             }));
             assert.equal((kubernetesRun.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
             const familyCatalog = packet(provider.requests, 0);
@@ -669,6 +546,7 @@ test(
                     role: "user",
                     content: "Ask GOJI to explain AEO and read its about resource.",
                 }],
+                forwardedProps: { plurnk: { workspace, policy } },
             }));
             assert.equal((gojiRun.at(-1)?.outcome as { type?: string } | undefined)?.type, "success");
             assert.match(packet(provider.requests, 5), /worker:\/\/\/_plurnk\/tools\/goji\/goji_explain_term\.md/);

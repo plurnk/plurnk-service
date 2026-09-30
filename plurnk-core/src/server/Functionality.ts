@@ -104,6 +104,8 @@ interface EffectiveDefinition {
 interface WorkspaceFamily {
     state: FamilyState;
     prepared: FunctionalityPrepared<RuntimeRegistration> | null;
+    // The enabled definitions that publication prepared ({§functionality-hotload}).
+    enabled: ReadonlyMap<string, object>;
 }
 
 const STATE_VERSION = 1;
@@ -236,11 +238,18 @@ export default class Functionality {
     // `gate: "none"` publishes inside the caller's own held turn (turn admission
     // refreshing a family before packet assembly) instead of contending for
     // workspace exclusivity it could never win.
-    async refresh(family: string, identity: WorkspaceCapabilityIdentity, options: { readonly gate?: WorkspaceCapabilityGate } = {}): Promise<void> {
+    // `ifChanged` republishes only when the enabled definitions differ from the ones the resident
+    // publication prepared ({§functionality-hotload}).
+    async refresh(
+        family: string,
+        identity: WorkspaceCapabilityIdentity,
+        options: { readonly gate?: WorkspaceCapabilityGate; readonly ifChanged?: boolean } = {},
+    ): Promise<void> {
         const adapter = this.#adapter(family);
         await this.#serialize(this.#key(identity.workspaceId, family), async () => {
             const current = this.#families.get(this.#key(identity.workspaceId, family));
             if (current === undefined) return;
+            if (options.ifChanged === true && Functionality.#sameDefinitions(await this.#publishable(adapter, identity, current.state), current.enabled)) return;
             await this.#publish(adapter, identity, current.state, {
                 failure: "publish-unavailable",
                 retain: () => this.#host.retainWorkspace(identity.workspaceId),
@@ -251,6 +260,11 @@ export default class Functionality {
 
     families(): string[] {
         return [...this.#adapters.keys()].toSorted();
+    }
+
+    // {§functionality-hotload} — every family that reads out-of-band state republishes it if it changed.
+    async refreshChanged(identity: WorkspaceCapabilityIdentity): Promise<void> {
+        for (const adapter of this.#adapters.values()) await adapter.refreshIfChanged?.(identity);
     }
 
     // Join outstanding invocations before inspecting or closing durable state.
@@ -471,9 +485,11 @@ export default class Functionality {
         const state = family?.state ?? await this.#loadState(adapter, identity.workspaceId);
         const effective = await this.#effective(adapter, identity, state);
         const outcomes = family?.prepared?.outcomes;
+        // {§functionality-inspection} — an enabled definition no resident publication has prepared, whether
+        // the family is cold or the definition arrived out of band since, is dormant.
         return Validator.assertFunctionalityListResult({
             family: adapter.family,
-            definitions: [...effective.values()].map((definition) => outcomes === undefined && definition.enabled
+            definitions: [...effective.values()].map((definition) => definition.enabled && outcomes?.get(definition.alias) === undefined
                 ? { alias: definition.alias, origin: definition.origin, definition: definition.definition, state: "dormant" }
                 : this.#projection(definition, outcomes?.get(definition.alias))),
         });
@@ -531,7 +547,7 @@ export default class Functionality {
                 alias = input.alias as string;
                 const current = effective.get(alias);
                 if (current === undefined) throw failure(adapter.family, "alias-unknown", 404, `'${alias}' is not available to ${here}.`, { alias, retryable: false });
-                if (current.origin === "service") throw failure(adapter.family, "alias-service-owned", 409, `'${alias}' is a service definition and cannot be removed here.`, { alias, recovery: `Disable it, or change the service configuration that contributes it.`, retryable: false });
+                if (current.origin === "service") throw failure(adapter.family, "alias-service-owned", 409, `'${alias}' is provided to ${here}, not added by it, so it cannot be removed here.`, { alias, recovery: "Disable it here; it leaves when what provides it does: an installed plugin or skill, or the operator's configuration.", retryable: false });
                 if (current.origin !== local) throw failure(adapter.family, "alias-workspace-owned", 409, `'${alias}' is a workspace definition; remove it in workspace scope or disable it here.`, { alias, retryable: false });
                 await adapter.forget?.({ alias, definition: current.definition }, identity);
                 delete definitions[alias];
@@ -651,6 +667,22 @@ export default class Functionality {
         return prepared;
     }
 
+    // The enabled definitions a workspace publication of `state` prepares. A worker-scoped family's
+    // workspace publication carries only its manager: what is enabled is decided per Worker, at each
+    // verb and each spawn ({§functionality-scope}).
+    async #publishable(adapter: FunctionalityAdapter, identity: WorkspaceCapabilityIdentity, state: FamilyState): Promise<Map<string, object>> {
+        if (!scopesOf(adapter).includes("workspace")) return new Map();
+        return Functionality.#enabled(await this.#effective(adapter, { ...identity, scope: "workspace" }, state));
+    }
+
+    static #sameDefinitions(left: ReadonlyMap<string, object>, right: ReadonlyMap<string, object>): boolean {
+        if (left.size !== right.size) return false;
+        for (const [alias, definition] of left) {
+            if (!right.has(alias) || !isDeepStrictEqual(definition, right.get(alias))) return false;
+        }
+        return true;
+    }
+
     static #enabled(effective: ReadonlyMap<string, EffectiveDefinition>): Map<string, object> {
         const enabled = new Map<string, object>();
         for (const definition of effective.values()) {
@@ -715,10 +747,7 @@ export default class Functionality {
     ): Promise<{ outcomes: ReadonlyMap<string, FunctionalityOutcome> }> {
         const key = this.#key(identity.workspaceId, adapter.family);
         const previous = this.#families.get(key)?.prepared ?? null;
-        // A worker-scoped family's workspace publication carries only its manager: what is enabled
-        // is decided per Worker, at each verb and each spawn ({§functionality-scope}).
-        const effective = !scopesOf(adapter).includes("workspace") ? new Map<string, EffectiveDefinition>() : await this.#effective(adapter, { ...identity, scope: "workspace" }, nextState);
-        const enabled = Functionality.#enabled(effective);
+        const enabled = await this.#publishable(adapter, identity, nextState);
         const prepared = await adapter.prepare({
             workspaceId: identity.workspaceId,
             enabled,
@@ -765,7 +794,7 @@ export default class Functionality {
                 }, {
                     gate: options.gate,
                     publish: () => {
-                        this.#families.set(key, { state: nextState, prepared });
+                        this.#families.set(key, { state: nextState, prepared, enabled });
                         return () => {
                             if (before === undefined) this.#families.delete(key);
                             else this.#families.set(key, before);

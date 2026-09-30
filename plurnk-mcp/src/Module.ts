@@ -1,12 +1,10 @@
 // {§mcp-module} — the MCP family beneath the shared workspace Functionality
 // coordinator ({§functionality-adapter}). This module owns MCP protocol truth:
-// definitions from the POSIX cascade, inert discovery, connection preparation
-// with OAuth continuation, tool/resource publication, catalog refresh, and
-// teardown. The coordinator owns the lifecycle, durable workspace state, atomic
+// definitions from installed Agent Plugins, connection preparation with OAuth
+// continuation, tool/resource publication, catalog refresh, and teardown. The coordinator owns the lifecycle, durable workspace state, atomic
 // publication, and both the client and model projections.
 import { fileURLToPath } from "node:url";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { MCP_SCHEMA, validateMcpConfiguration, type McpServerEntry } from "@plurnk/plurnk-agent-plugins";
 import type {
     RuntimeAvailability,
     RuntimeDecl,
@@ -22,14 +20,14 @@ import {
     Problems,
     Validator,
     type FunctionalityCandidate,
+    type FunctionalityDefinitionSource,
     type FunctionalityDiscoverQuery,
     type FunctionalityFamilyHandle,
-    type FunctionalityOptions,
     type FunctionalityOutcome,
     type FunctionalityPreparation,
     type FunctionalityPrepared,
-    type McpConfigurationOverlay,
     type McpServerDefinition,
+    type McpServerScope,
     type JsonSchema,
     type ProblemDetails,
     type WorkspaceCapabilityIdentity,
@@ -41,15 +39,20 @@ import ServerConnection, {
     McpRedirectError,
 } from "./client.ts";
 import {
+    assertNoRetiredVariables,
+    connectTimeoutMs,
     expandedServerNames,
-    overlayServerDefinitions,
+    isServerName,
     retryDelayMs,
     retryPacing,
-    serviceDefinitions,
-    serviceEnabledNames,
-    summaryOverrides,
+    registrySettings,
+    serverSettings,
+    type McpAuthorization,
+    type RegistrySettings,
+    type ServerSettings,
 } from "./config.ts";
-import McpExecutor, { runtimeDecl, runtimeServerSummary, serverSummary } from "./McpExecutor.ts";
+import { RegistryError, registryEntries, searchRegistry, type RegistryServer } from "./registry.ts";
+import McpExecutor, { runtimeDecl, runtimeServerSummary } from "./McpExecutor.ts";
 import McpResources from "./McpResources.ts";
 
 const OWNER = "@plurnk/plurnk-mcp";
@@ -96,19 +99,42 @@ interface FunctionalityAdapter {
     readonly namespaceOwner: string;
     readonly summary: string;
     readonly definitionSchema: JsonSchema;
+    readonly docsDir?: string;
     readonly example?: { readonly alias: string; readonly definition: object };
     readonly discovery?: { readonly details: string };
-    readonly docsDir?: string;
     available(identity: WorkspaceCapabilityIdentity): Promise<readonly { alias: string; definition: object; enabled: boolean }[]>;
-    discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity, options?: FunctionalityOptions): Promise<readonly FunctionalityCandidate[]>;
-    admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller?: "action" | "operation", options?: FunctionalityOptions): Promise<{ alias: string; definition: object }>;
+    discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]>;
+    admit(input: unknown, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource>;
     prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared<RuntimeRegistration>>;
     teardown(snapshot: unknown, identity: WorkspaceCapabilityIdentity): Promise<void>;
+    forget(definition: FunctionalityDefinitionSource, identity: WorkspaceCapabilityIdentity): Promise<void>;
+    refreshIfChanged(identity: WorkspaceCapabilityIdentity): Promise<void>;
 }
+
+type ServerPluginWrite =
+    | { readonly kind: "written"; readonly root: string; readonly data: string; readonly created: boolean }
+    | { readonly kind: "occupied"; readonly directory: string }
+    | { readonly kind: "unrooted" };
 
 interface ModuleSetupSeam {
     readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
-    workspaceStateDirectory(workspaceId: number, namespaceOwner: string): Promise<string>;
+    // {§mcp-launch-environment} The operator's environment without plurnk's own secrets.
+    pluginEnvironment(): NodeJS.ProcessEnv;
+    // {§agent-plugins-hosting} The workspace's installed Agent Plugins, in root precedence order.
+    readWorkspacePlugins(workspaceId: number): Promise<{
+        readonly plugins: ReadonlyArray<{
+            readonly scope: string;
+            readonly root: string;
+            readonly data: string;
+            readonly manifest: { readonly name: string };
+            readonly mcpServers: ReadonlyMap<string, McpServerEntry> | null;
+        }>;
+        readonly signature: string;
+        readonly roots: Readonly<Record<McpServerScope, string | null>>;
+    }>;
+    // {§mcp-plugin-servers} The one-server plugin an added server is, written at its scope's root.
+    writeServerPlugin(workspaceId: number, request: { readonly scope: McpServerScope; readonly name: string; readonly entry: McpServerEntry }): Promise<ServerPluginWrite>;
+    deleteServerPlugin(workspaceId: number, request: { readonly scope: McpServerScope; readonly name: string }): Promise<void>;
     registerModuleAction(registration: {
         readonly name: string;
         readonly scope: "worldless" | "workspace" | "worker";
@@ -210,6 +236,7 @@ const causeOf = <T>(error: unknown, type: abstract new (...args: never[]) => T, 
 
 const preparationError = (
     definition: McpServerDefinition,
+    authorization: McpAuthorization | undefined,
     cause: unknown,
     closeCause?: unknown,
 ): ModuleActionError => {
@@ -221,18 +248,18 @@ const preparationError = (
         );
     // {§oauth-client-credentials} — a rejected grant is an authorization fact,
     // never a generic unavailability.
-    if (definition.authorization?.type === "client-credentials" && isClientCredentialsRejection(cause)) {
+    if (authorization?.type === "client-credentials" && isClientCredentialsRejection(cause)) {
         return actionError(
             "oauth-client-credentials-failed",
             502,
             `MCP server '${definition.name}' rejected the client-credentials grant; check the configured client credentials and issuer.`,
             {
                 server: definition.name,
-                transport: definition.transport,
-                clientId: definition.authorization.clientId,
-                ...(definition.authorization.issuer === undefined
+                type: definition.type,
+                clientId: authorization.clientId,
+                ...(authorization.issuer === undefined
                     ? {}
-                    : { issuer: definition.authorization.issuer }),
+                    : { issuer: authorization.issuer }),
                 retryable: false,
             },
             completeCause,
@@ -255,7 +282,7 @@ const preparationError = (
         `Configured MCP server '${definition.name}' is unavailable.`,
         {
             server: definition.name,
-            transport: definition.transport,
+            type: definition.type,
             retryable: true,
         },
         completeCause,
@@ -275,6 +302,20 @@ export const closeConnections = async (
         throw new AggregateError(errors, "MCP connection shutdown failed");
     }
 };
+
+const SCOPES: readonly McpServerScope[] = ["project", "plurnk", "global"];
+
+// The standard mcp.json entry a definition carries, without plurnk's alias, scope, and provenance.
+const entryOf = (definition: McpServerDefinition): McpServerEntry => definition.type === "stdio"
+    ? {
+        type: "stdio", command: definition.command,
+        ...(definition.args === undefined ? {} : { args: [...definition.args] }),
+        ...(definition.env === undefined ? {} : { env: { ...definition.env } }),
+        ...(definition.cwd === undefined ? {} : { cwd: definition.cwd }),
+    }
+    : { type: "streamable-http", url: definition.url, ...(definition.headers === undefined ? {} : { headers: { ...definition.headers } }) };
+
+const messageOf = (error: unknown): string => error instanceof Error ? error.message : String(error);
 
 const objectOf = (value: unknown): Record<string, unknown> | null =>
     typeof value === "object" && value !== null && !Array.isArray(value)
@@ -343,11 +384,13 @@ const catalogDetail = (executor: McpExecutor): object => {
 export default class Module {
     readonly #env: NodeJS.ProcessEnv;
     #workspaceEnvironment!: ModuleSetupSeam["readWorkspaceEnvironment"];
-    #workspaceDirectory!: (workspaceId: number) => Promise<string>;
-    readonly #summaries: { servers: Map<string, string>; tools: Map<string, string> };
+    #workspacePlugins!: ModuleSetupSeam["readWorkspacePlugins"];
+    #writeServerPlugin!: ModuleSetupSeam["writeServerPlugin"];
+    #deleteServerPlugin!: ModuleSetupSeam["deleteServerPlugin"];
+    #pluginEnvironment!: ModuleSetupSeam["pluginEnvironment"];
     readonly #expanded: Set<string>;
-    readonly #defaults: ReadonlyMap<string, McpServerDefinition>;
-    readonly #defaultEnabled: ReadonlySet<string>;
+    // {§mcp-plugin-servers} — the plugin signature each workspace's skipped entries were last reported for.
+    readonly #reported = new Map<number, string>();
     // The committed attachments per workspace: the adapter's mirror of the snapshot
     // the coordinator holds, for continuations and refresh.
     readonly #attachments = new Map<number, ReadonlyMap<string, Attachment>>();
@@ -366,37 +409,34 @@ export default class Module {
     }
 
     private constructor(environ: NodeJS.ProcessEnv) {
+        assertNoRetiredVariables(environ);
         this.#env = environ;
-        this.#defaults = new Map(
-            serviceDefinitions(environ).map((definition) => [definition.name, definition]),
-        );
-        this.#defaultEnabled = new Set(serviceEnabledNames(environ));
-        this.#summaries = summaryOverrides(environ);
         this.#expanded = new Set(expandedServerNames(environ));
     }
 
     async setup(seam: ModuleSetupSeam): Promise<void> {
         this.#workspaceEnvironment = (workspaceId) => seam.readWorkspaceEnvironment(workspaceId);
-        this.#workspaceDirectory = (workspaceId) => seam.workspaceStateDirectory(workspaceId, OWNER);
+        this.#workspacePlugins = (workspaceId) => seam.readWorkspacePlugins(workspaceId);
+        this.#writeServerPlugin = (workspaceId, request) => seam.writeServerPlugin(workspaceId, request);
+        this.#deleteServerPlugin = (workspaceId, request) => seam.deleteServerPlugin(workspaceId, request);
+        this.#pluginEnvironment = () => seam.pluginEnvironment();
         this.#handle = seam.registerFunctionalityAdapter({
             family: FAMILY,
             namespaceOwner: OWNER,
             summary: "Manage MCP servers",
             definitionSchema: MCP_DEFINITION,
-            example: { alias: "files", definition: { name: "files", transport: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/project/path"] } },
+            example: { alias: "example-server", definition: { name: "example-server", scope: "project", type: "stdio", command: "npx", args: ["-y", "example-mcp-server@1.0.0"] } },
             docsDir: fileURLToPath(new URL("..", import.meta.url)),
             discovery: {
-                details: "`source` is one MCP server URL or command line; the server is inspected without being attached, and the candidate carries the exact definition to add.",
+                details: "`query` searches the MCP Registry by server name; each candidate carries the exact definition to add.",
             },
-            available: async () => [...this.#defaults].map(([name, definition]) => ({
-                alias: name,
-                definition: structuredClone(definition),
-                enabled: this.#defaultEnabled.has(name),
-            })),
-            discover: (query, identity, options) => this.#discover(query, identity, options),
-            admit: async (input, _identity, _caller, options) => this.#admit(input, options),
+            available: (identity) => this.#available(identity),
+            discover: (query, identity) => this.#discover(query, identity),
+            admit: (input, identity) => this.#admit(input, identity),
             prepare: (preparation) => this.#prepare(preparation),
             teardown: (snapshot, identity) => this.#teardown(snapshot, identity),
+            forget: (source, identity) => this.#forget(source, identity),
+            refreshIfChanged: (identity) => this.#refreshIfChanged(identity),
         });
         // Protocol continuations beneath the common grammar.
         seam.registerModuleAction({
@@ -420,6 +460,170 @@ export default class Module {
             outputSchema: OPEN_OBJECT,
             handler: (params, context) => this.#complete(workspaceIdentityOf(context).workspaceId, params),
         });
+    }
+
+    // {§mcp-plugin-servers} — every server an installed plugin declares, in root precedence, enabled:
+    // installing a plugin is consent. An unsupported transport, a name plurnk cannot represent, and an
+    // alias an earlier plugin already declares are skipped with a report.
+    async #available(identity: WorkspaceCapabilityIdentity): Promise<Array<{ alias: string; definition: McpServerDefinition; enabled: boolean }>> {
+        const { plugins, signature } = await this.#workspacePlugins(identity.workspaceId);
+        const reported = this.#reported.get(identity.workspaceId) === signature;
+        this.#reported.set(identity.workspaceId, signature);
+        const definitions: Array<{ alias: string; definition: McpServerDefinition; enabled: boolean }> = [];
+        const owners = new Map<string, string>();
+        const skip = (plugin: string, server: string, reason: string): void => {
+            if (!reported) console.error(`MCP server '${server}' of plugin '${plugin}' is skipped: ${reason}`);
+        };
+        for (const plugin of plugins) {
+            for (const [name, entry] of plugin.mcpServers ?? []) {
+                if (!isServerName(name)) {
+                    skip(plugin.manifest.name, name, "plurnk names a server [a-z][a-z0-9-]*, the fence and scheme it becomes.");
+                    continue;
+                }
+                const owner = owners.get(name);
+                if (owner !== undefined) {
+                    skip(plugin.manifest.name, name, `plugin '${owner}' declares it first.`);
+                    continue;
+                }
+                const pluginIdentity = { name: plugin.manifest.name, root: plugin.root, data: plugin.data };
+                const scope = plugin.scope as McpServerScope;
+                let definition: McpServerDefinition;
+                if (entry.type === "stdio") {
+                    definition = {
+                        name, scope, plugin: pluginIdentity, type: "stdio", command: entry.command,
+                        ...(entry.args === undefined ? {} : { args: [...entry.args] }),
+                        ...(entry.env === undefined ? {} : { env: { ...entry.env } }),
+                        ...(entry.cwd === undefined ? {} : { cwd: entry.cwd }),
+                    };
+                } else if (entry.type === "streamable-http") {
+                    definition = { name, scope, plugin: pluginIdentity, type: "streamable-http", url: entry.url, ...(entry.headers === undefined ? {} : { headers: structuredClone(entry.headers) }) };
+                } else {
+                    skip(plugin.manifest.name, name, "the deprecated HTTP+SSE transport is not supported.");
+                    continue;
+                }
+                owners.set(name, plugin.manifest.name);
+                definitions.push({ alias: name, definition: Validator.assertMcpServerDefinition(definition), enabled: true });
+            }
+        }
+        return definitions;
+    }
+
+    // {§functionality-hotload} — a server's definition is its whole plugin entry, so the coordinator's
+    // comparison of what it would prepare with what it published is the change test.
+    async #refreshIfChanged(identity: WorkspaceCapabilityIdentity): Promise<void> {
+        await this.#handleOrThrow().refresh(identity, { gate: "none", ifChanged: true });
+    }
+
+    // {§mcp-registry-discovery} — candidates from the MCP Registry, each an exact definition to add at the
+    // nearest plugin root the workspace has.
+    async #discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityCandidate[]> {
+        if (query.configuration !== undefined) {
+            throw actionError("configuration-unsupported", 400, "MCP discovery searches the MCP Registry by query; client configuration contributes nothing.", { retryable: false });
+        }
+        if (query.source !== undefined) {
+            throw actionError("source-unsupported", 400, "MCP discovery searches the MCP Registry by query; a server inside an Agent Plugin arrives with its plugin.", {
+                source: query.source, retryable: false,
+            });
+        }
+        if (query.query === undefined) return [];
+        const { url, limit }: RegistrySettings = registrySettings(this.#env);
+        if (url === null) {
+            throw actionError("registry-not-configured", 501, "MCP registry search is off: the operator names no registry.", { query: query.query, retryable: false });
+        }
+        let servers: RegistryServer[];
+        try {
+            servers = await searchRegistry({ url, query: query.query, limit, timeoutMs: connectTimeoutMs(this.#env) });
+        } catch (cause) {
+            throw actionError("discover-failed", 502, cause instanceof RegistryError ? cause.message : `The MCP Registry search for '${query.query}' failed.`, {
+                query: query.query, retryable: true,
+            }, cause);
+        }
+        const { roots } = await this.#workspacePlugins(identity.workspaceId);
+        const scope = SCOPES.find((candidate) => roots[candidate] !== null) ?? "project";
+        return servers.flatMap(registryEntries).map((found): FunctionalityCandidate => ({
+            alias: found.alias,
+            summary: found.summary,
+            definition: Validator.assertMcpServerDefinition({ name: found.alias, scope, ...structuredClone(found.entry) } as McpServerDefinition),
+            provenance: { kind: "registry", source: url, reference: found.reference },
+        }));
+    }
+
+    // {§mcp-plugin-servers} — an added server becomes a standard one-server plugin: its entry must pass
+    // the loader every Agent Plugins host uses, at a root the workspace has.
+    async #admit(input: unknown, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource> {
+        const params = objectOf(input) ?? {};
+        let definition: McpServerDefinition;
+        try {
+            definition = structuredClone(Validator.assertMcpServerDefinition(structuredClone(params.definition) as McpServerDefinition));
+        } catch (cause) {
+            throw actionError("definition-invalid", 400, "The MCP server definition is invalid.", { retryable: false }, cause);
+        }
+        const alias = typeof params.alias === "string" ? params.alias : definition.name;
+        if (alias !== definition.name) {
+            throw actionError("alias-mismatch", 400, `Alias '${alias}' must equal the definition's name '${definition.name}'.`, { alias, name: definition.name, retryable: false });
+        }
+        if (definition.plugin !== undefined) {
+            throw actionError("definition-invalid", 400, "The service records the plugin that carries a server; name the scope of the root to add it at instead.", { alias, retryable: false });
+        }
+        if (definition.type === "stdio" && definition.command.startsWith("./")) {
+            throw actionError("definition-invalid", 400, "An added server's plugin holds only its declaration, so its command is a bare name found on the executable search path.", {
+                alias, command: definition.command, retryable: false,
+            });
+        }
+        const checked = validateMcpConfiguration({ $schema: MCP_SCHEMA, mcpServers: { [alias]: entryOf(definition) } });
+        const finding = "disabled" in checked ? checked.disabled : checked.skipped.find(({ server }) => server === alias);
+        if (finding !== undefined) {
+            throw actionError("definition-invalid", 400, `The server entry is not a standard mcp.json entry: ${finding.message}`, { alias, section: finding.section, retryable: false });
+        }
+        const { roots } = await this.#workspacePlugins(identity.workspaceId);
+        if (roots[definition.scope] === null) {
+            const usable = SCOPES.filter((scope) => roots[scope] !== null);
+            throw actionError("scope-unavailable", 400, `'${alias}' targets the ${definition.scope} plugin root, which this workspace does not have.`, {
+                alias, scope: definition.scope,
+                recovery: usable.length === 0 ? "This workspace has no plugin root to add a server at." : `Add it with scope ${usable.map((scope) => `"${scope}"`).join(" or ")}.`,
+                retryable: false,
+            });
+        }
+        return { alias, definition };
+    }
+
+    // {§mcp-plugin-servers} — `remove` deletes the plugin `add` wrote, before the coordinator forgets it.
+    async #forget(source: FunctionalityDefinitionSource, identity: WorkspaceCapabilityIdentity): Promise<void> {
+        const definition = source.definition as McpServerDefinition;
+        try {
+            await this.#deleteServerPlugin(identity.workspaceId, { scope: definition.scope, name: definition.name });
+        } catch (cause) {
+            throw actionError("uninstall-failed", 500, `MCP server '${definition.name}' could not be removed from its ${definition.scope} plugin root: ${messageOf(cause)}`, {
+                server: definition.name, scope: definition.scope, retryable: true,
+            }, cause);
+        }
+    }
+
+    // {§mcp-plugin-servers} — an added server launches from the one-server plugin written for it at its
+    // scope's root; the same plugin already there is reused, and one this attempt wrote is recorded so
+    // an abandoned attempt can delete it.
+    async #launchable(workspaceId: number, definition: McpServerDefinition, written: Array<{ scope: McpServerScope; name: string }>): Promise<McpServerDefinition> {
+        if (definition.plugin !== undefined) return definition;
+        let result: ServerPluginWrite;
+        try {
+            result = await this.#writeServerPlugin(workspaceId, { scope: definition.scope, name: definition.name, entry: entryOf(definition) });
+        } catch (cause) {
+            throw actionError("install-failed", 500, `MCP server '${definition.name}' could not be written as a plugin at its ${definition.scope} root: ${messageOf(cause)}`, {
+                server: definition.name, scope: definition.scope, retryable: false,
+            }, cause);
+        }
+        if (result.kind === "unrooted") {
+            throw actionError("scope-unavailable", 409, `MCP server '${definition.name}' targets the ${definition.scope} plugin root, which this workspace does not have.`, {
+                server: definition.name, scope: definition.scope, retryable: false,
+            });
+        }
+        if (result.kind === "occupied") {
+            throw actionError("plugin-occupied", 409, `A different plugin already occupies ${result.directory}.`, {
+                server: definition.name, recovery: "Remove that plugin, or add the server under another name.", retryable: false,
+            });
+        }
+        if (result.created) written.push({ scope: definition.scope, name: definition.name });
+        return { ...definition, plugin: { name: definition.name, root: result.root, data: result.data } };
     }
 
     #assertOpen(): void {
@@ -459,135 +663,31 @@ export default class Module {
         if (errors.length > 0) throw new AggregateError(errors, "MCP connection shutdown failed");
     }
 
-    // {§mcp-discovery} — inert: a direct target is probed and disconnected;
-    // caller configuration is parsed into candidates; registry search waits for
-    // a configured downstream registry.
-    async #discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity, options: FunctionalityOptions = {}): Promise<FunctionalityCandidate[]> {
-        this.#assertOpen();
-        const candidates: FunctionalityCandidate[] = [];
-        if (query.configuration !== undefined) {
-            let definitions: Map<string, McpServerDefinition>;
-            try {
-                definitions = overlayServerDefinitions(
-                    structuredClone(query.configuration) as McpConfigurationOverlay,
-                    this.#defaults,
-                );
-            } catch (cause) {
-                throw actionError("configuration-invalid", 400, "The supplied MCP configuration is invalid.", { retryable: false }, cause);
-            }
-            for (const [name, definition] of definitions) {
-                candidates.push({
-                    alias: name,
-                    definition: Module.#launchOptions(definition, options),
-                    provenance: { kind: "client-configuration", source: `PLURNK_MCP_${name.toUpperCase().replaceAll("-", "_")}` },
-                    summary: `${definition.transport} ${definition.transport === "http" ? definition.url : definition.command}`,
-                });
-            }
-        }
-        if (query.source !== undefined) {
-            // A URL is a Streamable HTTP target; anything else is a command line
-            // split on whitespace (exact paths with spaces are added, not probed).
-            const source = query.source;
-            const [command = "", ...args] = source.trim().split(/\s+/u);
-            const definition = Module.#launchOptions(/^https?:\/\//u.test(source)
-                ? { name: "discovered", transport: "http", url: source }
-                : { name: "discovered", transport: "stdio", command, args }, options);
-            Validator.assertMcpServerDefinition(definition);
-            const environment = await this.#workspaceEnvironment(identity.workspaceId);
-            this.#assertOpen();
-            let directory: string | undefined;
-            const connection = new ServerConnection(definition, environment(this.#env), {
-                environment: environment(),
-                workingDirectory: async () => directory ??= await mkdtemp(join(await this.#workspaceDirectory(identity.workspaceId), "discover-")),
-                onCatalogChanged: () => undefined,
-                onInfrastructureError: () => undefined,
-            });
-            this.#connections.add(connection);
-            const executor = new McpExecutor({ runtime: "discovered", glyph: "🔌" }, connection, () => () => undefined);
-            let failure: unknown;
-            try {
-                await executor.requireAvailable();
-                const catalog = executor.catalog;
-                const name = catalog.server?.name?.toLowerCase().replaceAll(/[^a-z0-9]+/gu, "-").replace(/^-+|-+$/gu, "") || "discovered";
-                candidates.push({
-                    alias: name,
-                    definition: { ...definition, name },
-                    provenance: { kind: "direct-target", source },
-                    summary: serverSummary(name, catalog, undefined),
-                });
-            } catch (cause) {
-                if (cause instanceof AuthorizationRequiredError) {
-                    candidates.push({
-                        alias: "discovered",
-                        definition,
-                        provenance: { kind: "direct-target", source },
-                        summary: "The server requires authorization before it can be inspected; add it and complete the authorization.",
-                    });
-                } else {
-                    failure = actionError("discover-failed", 502, `MCP target '${source}' could not be inspected.`, { source, retryable: true }, cause);
-                }
-            }
-            try {
-                await this.#closeOwned([connection]);
-                if (directory !== undefined) await rm(directory, { recursive: true, force: true });
-            } catch (cause) {
-                if (failure !== undefined) throw new AggregateError([failure, cause], "MCP discovery and cleanup failed.");
-                throw cause;
-            }
-            if (failure !== undefined) throw failure;
-        }
-        if (query.query !== undefined && query.source === undefined && query.configuration === undefined) {
-            throw actionError(
-                "registry-not-configured",
-                501,
-                "MCP registry search requires a configured downstream registry; none is configured.",
-                { query: query.query, recovery: "Discover an explicit source (URL or command) or configure a registry.", retryable: false },
-            );
-        }
-        return candidates;
-    }
-
-    static #launchOptions(definition: McpServerDefinition, options: FunctionalityOptions): McpServerDefinition {
-        if (options.env === undefined || Object.keys(options.env).length === 0) return definition;
-        if (definition.transport !== "stdio") throw actionError("env-transport", 400, "An HTTP MCP server has no local process environment.", { retryable: false });
-        return { ...definition, env: { ...definition.env, ...options.env } };
-    }
-
-    #admit(input: unknown, options: FunctionalityOptions = {}): { alias: string; definition: McpServerDefinition } {
-        const params = objectOf(input) ?? {};
-        let definition: McpServerDefinition;
-        try {
-            definition = structuredClone(Validator.assertMcpServerDefinition(structuredClone(params.definition) as McpServerDefinition));
-        } catch (cause) {
-            throw actionError("definition-invalid", 400, "The MCP server definition is invalid.", { retryable: false }, cause);
-        }
-        const alias = typeof params.alias === "string" ? params.alias : definition.name;
-        if (alias !== definition.name) {
-            throw actionError(
-                "alias-mismatch",
-                400,
-                `Alias '${alias}' must equal the definition's name '${definition.name}'.`,
-                { alias, name: definition.name, retryable: false },
-            );
-        }
-        return { alias, definition: Module.#launchOptions(definition, options) };
-    }
-
+    // The attachment keeps the enabled definition it was prepared from; a new connection launches from
+    // `launch`, the same definition with its plugin.
     async #prepareAttachment(
         workspaceId: number,
         definition: McpServerDefinition,
         connection?: ServerConnection,
+        launch: McpServerDefinition = definition,
     ): Promise<Attachment> {
         this.#assertOpen();
+        // {§mcp-server-settings} — the operator's settings for this alias; a bad one isolates this server.
+        let settings: ServerSettings;
+        try {
+            settings = serverSettings(definition.name, this.#env);
+        } catch (cause) {
+            throw actionError("server-settings-invalid", 422, `MCP server '${definition.name}' has invalid operator settings: ${cause instanceof Error ? cause.message : String(cause)}`, {
+                server: definition.name, retryable: false,
+            }, cause);
+        }
         const environment = await this.#workspaceEnvironment(workspaceId);
         this.#assertOpen();
-        const candidate = connection ?? new ServerConnection(definition, environment(this.#env), {
-            environment: environment(),
-            workingDirectory: async () => {
-                const directory = join(await this.#workspaceDirectory(workspaceId), "servers", definition.name);
-                await mkdir(directory, { recursive: true, mode: 0o700 });
-                return directory;
-            },
+        // {§mcp-launch-environment} — an installed server inherits the operator's environment beneath the
+        // workspace layer, as every MCP client launches one; the model's command ceiling is not its base.
+        const candidate = connection ?? new ServerConnection(launch, environment(this.#env), {
+            environment: environment(this.#pluginEnvironment()),
+            ...(settings.authorization === undefined ? {} : { authorization: settings.authorization }),
             onCatalogChanged: (error) => {
                 if (error !== null) {
                     console.error(`MCP server '${definition.name}' catalog refresh failed:`, error);
@@ -606,8 +706,7 @@ export default class Module {
             { runtime: definition.name, glyph: "🔌" },
             candidate,
             () => this.#retain(workspaceId),
-            { tools: definition.tools ?? null, read: definition.read ?? [] },
-            this.#summaries.tools,
+            { tools: settings.tools },
         );
         try {
             const availability = await executor.requireAvailable();
@@ -620,7 +719,7 @@ export default class Module {
                     namespaceOwner: OWNER,
                     decl: runtimeDecl(
                         definition.name,
-                        runtimeServerSummary(definition.name, executor.catalog, this.#summaries.servers.get(definition.name)),
+                        runtimeServerSummary(definition.name, executor.catalog),
                         this.#expanded.has(definition.name),
                         executor.catalog.instructions,
                     ),
@@ -646,7 +745,7 @@ export default class Module {
                     closeCause = error;
                 }
             }
-            throw preparationError(definition, cause, closeCause);
+            throw preparationError(definition, settings.authorization, cause, closeCause);
         }
     }
 
@@ -674,6 +773,9 @@ export default class Module {
         const next = new Map<string, Attachment>();
         const outcomes = new Map<string, FunctionalityOutcome>();
         const fresh: ConnectedAttachment[] = [];
+        const written: Array<{ scope: McpServerScope; name: string }> = [];
+        const unwrite = (): Promise<PromiseSettledResult<void>[]> =>
+            Promise.allSettled(written.map((plugin) => this.#deleteServerPlugin(workspaceId, plugin)));
         const consumedPending = new Map<string, PendingAuthorization>();
         const refreshed = new Map<string, symbol | undefined>();
         try {
@@ -718,11 +820,11 @@ export default class Module {
                     }
                 } else {
                     try {
-                        attachment = await this.#prepareAttachment(workspaceId, definition);
+                        attachment = await this.#prepareAttachment(workspaceId, definition, undefined, await this.#launchable(workspaceId, definition, written));
                     } catch (cause) {
                         this.#assertOpen();
                         if (failure === "reject") throw cause;
-                        const refusal = cause instanceof ModuleActionError ? cause : preparationError(definition, cause);
+                        const refusal = cause instanceof ModuleActionError ? cause : preparationError(definition, undefined, cause);
                         attachment = { kind: "unavailable", definition, problem: structuredClone(refusal.problem) };
                         console.error(`MCP server '${name}' unavailable: ${refusal.problem.detail}`, refusal.cause ?? refusal);
                     }
@@ -733,7 +835,7 @@ export default class Module {
                 if (attachment !== existing) refreshed.set(key, invalidation);
             }
         } catch (cause) {
-            const cleanup = await Promise.allSettled(fresh.map(({ connection }) => this.#closeOwned([connection])));
+            const cleanup = [...await Promise.allSettled(fresh.map(({ connection }) => this.#closeOwned([connection]))), ...await unwrite()];
             const failures = cleanup.flatMap((result) => result.status === "rejected" ? errorsOf(result.reason) : []);
             if (failures.length > 0) throw new AggregateError([cause, ...failures], "MCP workspace preparation and cleanup failed.");
             throw cause;
@@ -772,6 +874,13 @@ export default class Module {
                     this.#pending.delete(this.#pendingKey(workspaceId, name));
                     pending.releaseWorkspace();
                 }
+                // {§oauth-lifetime} — a withdrawn alias, disabled or gone with its plugin, clears its pending candidate.
+                for (const [key, pending] of this.#pending) {
+                    if (!key.startsWith(`${workspaceId}:`) || next.has(key.slice(`${workspaceId}:`.length))) continue;
+                    this.#pending.delete(key);
+                    pending.releaseWorkspace();
+                    if (!retained.has(pending.connection)) obsolete.push(pending.connection);
+                }
                 for (const [name, attachment] of next) {
                     if (attachment.kind !== "authorization-required") continue;
                     const key = this.#pendingKey(workspaceId, name);
@@ -804,6 +913,8 @@ export default class Module {
             },
             abort: async () => {
                 await this.#closeOwned(fresh.map(({ connection }) => connection));
+                const failures = (await unwrite()).flatMap((result) => result.status === "rejected" ? errorsOf(result.reason) : []);
+                if (failures.length > 0) throw new AggregateError(failures, "An abandoned MCP preparation could not delete the plugins it wrote.");
             },
         };
     }

@@ -82,12 +82,12 @@ test("{§agui-action-schema-enforcement}: dynamic schemas resolve contracts-owne
         "MCP extension input",
         {
             type: "object",
-            required: ["options"],
+            required: ["oauth"],
             additionalProperties: false,
             properties: {
-                options: { $ref: "https://schemas.plurnk.xyz/v0/McpServerOptions.json" },
+                oauth: { $ref: "https://schemas.plurnk.xyz/v0/McpOAuth.json" },
             },
         },
-        { options: { args: ["--stdio"], env: { TOKEN: "GITEA_TOKEN" } } },
+        { oauth: { type: "oauth", redirectUrl: "http://127.0.0.1:8765/callback" } },
     ));
 });

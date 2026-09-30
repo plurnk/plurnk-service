@@ -32,6 +32,7 @@ server.registerTool(
     "batch",
     {
         description: "Request two independent client decisions in one round.",
+        annotations: { readOnlyHint: true },
         inputSchema: z.object({}),
     },
     async (_args, ctx) => {
@@ -68,6 +69,7 @@ server.registerTool(
     "round-trip",
     {
         description: "Require two serial interaction rounds with opaque continuation state.",
+        annotations: { readOnlyHint: true },
         inputSchema: z.object({}),
     },
     async (_args, ctx) => {
@@ -115,6 +117,7 @@ server.registerTool(
     "url",
     {
         description: "Request a standard URL-mode elicitation.",
+        annotations: { readOnlyHint: true },
         inputSchema: z.object({}),
     },
     async (_args, ctx) => {

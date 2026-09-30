@@ -1,4 +1,3 @@
-import { workingDirectory } from "../test/working-directory.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -14,12 +13,13 @@ import type { GetPromptResult, ResourceLink } from "@modelcontextprotocol/client
 import McpExecutor from "./McpExecutor.ts";
 import McpResources from "./McpResources.ts";
 import ServerConnection, { type ServerCatalog } from "./client.ts";
+import { stdioServer } from "../test/definitions.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
 const interactionFixture = fileURLToPath(new URL("./fixtures/interaction-server.mjs", import.meta.url));
 const env = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
+    PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 const retainWorkspace = (): (() => void) => () => undefined;
 
@@ -27,13 +27,7 @@ const configured = async (): Promise<{
     connection: ServerConnection;
     resources: McpResources;
 }> => {
-    const connection = new ServerConnection({
-        name: "echo",
-        transport: "stdio",
-        cwd: workingDirectory,
-        command: process.execPath,
-        args: [fixture],
-    }, env);
+    const connection = new ServerConnection(stdioServer("echo", [fixture]), env);
     const executor = new McpExecutor(
         { runtime: "echo", glyph: "🔌" },
         connection,
@@ -97,13 +91,7 @@ const interactionResources = async (): Promise<{
     connection: ServerConnection;
     resources: McpResources;
 }> => {
-    const connection = new ServerConnection({
-        name: "interaction",
-        transport: "stdio",
-        cwd: workingDirectory,
-        command: process.execPath,
-        args: [interactionFixture],
-    }, env);
+    const connection = new ServerConnection(stdioServer("interaction", [interactionFixture]), env);
     const executor = new McpExecutor(
         { runtime: "interaction", glyph: "🔌" },
         connection,

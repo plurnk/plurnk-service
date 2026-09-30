@@ -33,6 +33,8 @@ export default class HostPaths {
     readonly databaseFile: string;
     readonly plurnkSkillsDir: string;
     readonly globalSkillsDir: string;
+    readonly plurnkPluginsDir: string;
+    readonly globalPluginsDir: string;
     readonly legacyDir: string;
 
     constructor({ env = process.env, home = homedir() }: HostPathsOptions = {}) {
@@ -93,11 +95,23 @@ export default class HostPaths {
         // config and of any state root: a private daemon still reads the user's skills.
         this.plurnkSkillsDir = join(this.configDir, "skills");
         this.globalSkillsDir = join(this.home, ".agents", "skills");
+        // {§agent-plugins-hosting} — plugins are configuration, found like skills; their data is data.
+        this.plurnkPluginsDir = join(this.configDir, "plugins");
+        this.globalPluginsDir = join(this.home, ".agents", "plugins");
         this.legacyDir = join(this.home, ".plurnk");
     }
 
     projectSkillsDir(projectRoot: string): string {
         return join(resolve(projectRoot), ".agents", "skills");
+    }
+
+    projectPluginsDir(projectRoot: string): string {
+        return join(resolve(projectRoot), ".agents", "plugins");
+    }
+
+    // {§agent-plugins-hosting} — one plugin's PLUGIN_DATA, kept across its updates.
+    pluginDataDir(pluginName: string): string {
+        return join(this.dataDir, "plugins", pluginName);
     }
 
     expandUserPath(value: string): string {

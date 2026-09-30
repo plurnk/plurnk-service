@@ -14,7 +14,7 @@ async function assertInstalledDiscovery(sqliteEnabled: boolean): Promise<void> {
     const daemon = new Daemon({ db, provider: null, nodeModulesPath: join(SERVICE, "node_modules") });
     const started = Promise.withResolvers<Module>();
     const registration = Module.init({ host: "127.0.0.1", port: 0 });
-    daemon.registerModule(McpModule.init({ env: { PLURNK_MCP_ENABLED: "[]" } }));
+    daemon.registerModule(McpModule.init({ env: {} }));
     daemon.registerModule({
         start: async (seam: ApplicationPort) => {
             const module = await registration.start(seam);

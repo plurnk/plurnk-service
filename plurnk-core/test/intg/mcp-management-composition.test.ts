@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { createHash } from "node:crypto";
+import { join } from "node:path";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
@@ -11,16 +12,26 @@ import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { taskHandler } from "../../../plurnk-mcp/test/task-fixture.ts";
+import { httpEntry, mcpPluginHome } from "./_mcp-plugin.ts";
 
 type Event = Record<string, unknown>;
 type ActionResult = { ok: boolean; result?: Record<string, unknown>; problem?: { type: string; status: number } };
 
-const setup = async (t: TestContext, responses: ReturnType<typeof makeMockResponse>[] = []) => {
+// {§mcp-plugin-servers} — the daemon's servers are one installed plugin's; `settings` are the operator's
+// per-alias settings and the variables they reference ({§mcp-server-settings}).
+const setup = async (
+    t: TestContext,
+    servers: Readonly<Record<string, object>>,
+    responses: ReturnType<typeof makeMockResponse>[] = [],
+    settings: Readonly<Record<string, string>> = {},
+) => {
     const provider = new Mock({ contextWindow: 1_000_000, responses });
+    const hostPaths = await mcpPluginHome(t, servers);
     const db = await openMigrated();
-    const daemon = new Daemon({ db, provider });
+    const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env: {
-        PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
+        PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "5000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+        ...settings,
     } }));
     const registration = AguiModule.init({ host: "127.0.0.1", port: 0 });
     let agui: AguiModule | undefined;
@@ -69,7 +80,7 @@ const setup = async (t: TestContext, responses: ReturnType<typeof makeMockRespon
         assert.ok(result, `no action result for ${kind}: ${JSON.stringify(events)}`);
         return result.value as ActionResult;
     };
-    return { provider, post, action };
+    return { provider, post, action, hostPaths };
 };
 
 test("{§mcp-management-actions}: AG-UI completion preserves prompt and resource arguments and workspace binding", { timeout: 20000 }, async (t) => {
@@ -84,11 +95,7 @@ test("{§mcp-management-actions}: AG-UI completion preserves prompt and resource
         }), {}, async (uri) => ({ contents: [{ uri: uri.href, text: "document" }] }));
         return server;
     }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
-    const { action, provider } = await setup(t);
-    const attached = await action("completions", "workspace.mcp.add", {
-        alias: "fixture", definition: { name: "fixture", transport: "http", url: served.url },
-    });
-    assert.equal(attached.ok, true, JSON.stringify(attached));
+    const { action, provider } = await setup(t, { fixture: httpEntry(served.url) });
     for (const params of [
         { ref: { type: "ref/prompt", name: "summarize" }, argument: { name: "topic", value: "P" } },
         { ref: { type: "ref/resource", uri: "fixture://{project}/{document}" }, argument: { name: "document", value: "spec" }, context: { arguments: { project: "plurnk" } } },
@@ -102,6 +109,9 @@ test("{§mcp-management-actions}: AG-UI completion preserves prompt and resource
         const { _meta, ...received } = (request.body as { params: Record<string, unknown> }).params;
         assert.deepEqual(received, params, "the standard argument context reaches the actual server unchanged");
     }
+    // Every workspace has the installed plugin's server; one that disabled it has no attachment to complete through.
+    const withdrawn = await action("other-workspace", "workspace.mcp.disable", { alias: "fixture" });
+    assert.equal(withdrawn.ok, true, JSON.stringify(withdrawn));
     const unavailable = await action("other-workspace", "workspace.mcp.complete", {
         server: "fixture", ref: { type: "ref/prompt", name: "summarize" }, argument: { name: "topic", value: "P" },
     });
@@ -116,7 +126,7 @@ test("{§oauth-continuation}: AG-UI authorization activates the same workspace a
     let exchanges = 0;
     const served = await serveMcpHttp(t, createMcpHandler(() => {
         const server = new McpServer({ name: "authorized", version: "1.0.0" });
-        server.registerTool("echo", { inputSchema: z.object({ message: z.string() }) }, async ({ message }) => ({
+        server.registerTool("echo", { inputSchema: z.object({ message: z.string() }), annotations: { readOnlyHint: true } }, async ({ message }) => ({
             content: [{ type: "text", text: `Authorized response: ${message}` }],
         }));
         return server;
@@ -148,16 +158,15 @@ test("{§oauth-continuation}: AG-UI authorization activates the same workspace a
         return new Response(null, { status: 404 });
     });
     origin = new URL(served.url).origin;
-    const { action, post, provider } = await setup(t, [
+    const { action, post, provider } = await setup(t, { fixture: httpEntry(served.url) }, [
         makeMockResponse("````fixture (echo)\n{\"message\":\"management proof\"}\n````\n\n````WAIT\nObserve the result.\n````"),
         makeMockResponse("````KILL\nObserved the authorized result.\n````"),
-    ]);
-    const added = await action("authorization", "workspace.mcp.add", {
-        alias: "fixture", definition: { name: "fixture", transport: "http", url: served.url, read: ["echo"],
-            authorization: { type: "oauth", redirectUrl: `${origin}/callback`, clientMetadataUrl: "https://client.example.test/oauth.json" } },
+    ], {
+        PLURNK_MCP_FIXTURE_OAUTH: JSON.stringify({ type: "oauth", redirectUrl: `${origin}/callback`, clientMetadataUrl: "https://client.example.test/oauth.json" }),
     });
-    assert.equal(added.ok, true, JSON.stringify(added));
-    const definition = added.result?.definition as { state: string; authorization: { url: string } } | undefined;
+    const enabled = await action("authorization", "workspace.mcp.enable", { alias: "fixture" });
+    assert.equal(enabled.ok, true, JSON.stringify(enabled));
+    const definition = enabled.result?.definition as { state: string; authorization: { url: string } } | undefined;
     assert.ok(definition, "the authorization challenge publishes its definition");
     assert.equal(definition.state, "authorization-required");
     authorization = new URL(definition.authorization.url);
@@ -168,9 +177,10 @@ test("{§oauth-continuation}: AG-UI authorization activates the same workspace a
     callback.searchParams.set("state", authorization.searchParams.get("state")!);
     callback.searchParams.set("iss", origin);
     const complete = (workspace: string, callbackUrl = callback.href) => action(workspace, "workspace.mcp.oauth.complete", { alias: "fixture", callbackUrl });
+    // Every workspace prepares the plugin's server itself: another workspace's own attempt rejects this callback's state.
     const wrongWorkspace = await complete("other-authorization");
     assert.equal(wrongWorkspace.ok, false);
-    assert.equal(wrongWorkspace.problem?.type, "https://problems.plurnk.xyz/mcp/management/oauth-not-pending");
+    assert.equal(wrongWorkspace.problem?.type, "https://problems.plurnk.xyz/mcp/management/oauth-callback-invalid");
     const wrongState = new URL(callback);
     wrongState.searchParams.set("state", "unrelated-attempt");
     const rejected = await complete("authorization", wrongState.href);
@@ -200,7 +210,7 @@ const applicationServer = async (t: TestContext, rejectGrant = false) => {
     let expired = false;
     const served = await serveMcpHttp(t, createMcpHandler(() => {
         const server = new McpServer({ name: "application", version: "1.0.0" });
-        server.registerTool("echo", { inputSchema: z.object({ message: z.string() }) }, async ({ message }) => {
+        server.registerTool("echo", { inputSchema: z.object({ message: z.string() }), annotations: { readOnlyHint: true } }, async ({ message }) => {
             calls++;
             return { content: [{ type: "text", text: `Application response: ${message}` }] };
         });
@@ -247,18 +257,17 @@ const applicationServer = async (t: TestContext, rejectGrant = false) => {
 
 test("{§oauth-client-credentials}: AG-UI application credentials and SDK refresh deliver an authorized result to the model", { timeout: 20000 }, async (t) => {
     const served = await applicationServer(t);
-    const { action, post, provider } = await setup(t, [
+    const { action, post, provider, hostPaths } = await setup(t, { fixture: httpEntry(served.url) }, [
         makeMockResponse("````fixture (echo)\n{\"message\":\"application proof\"}\n````\n\n````WAIT\nObserve the result.\n````"),
         makeMockResponse("````KILL\nObserved the application result.\n````"),
-    ]);
+    ], {
+        MCP_APP_SECRET: "fixture-app-secret",
+        PLURNK_MCP_FIXTURE_OAUTH: JSON.stringify({ type: "client-credentials", clientId: "fixture-app", clientSecret: "${MCP_APP_SECRET}", issuer: served.issuer, scope: "mcp:read" }),
+    });
     const workspace = "application-authorization";
-    const configured = await action(workspace, "workspace.env.add", { alias: "MCP_APP_SECRET", definition: { value: "fixture-app-secret" } });
-    assert.equal(configured.ok, true, JSON.stringify(configured));
-    const definition = { name: "fixture", transport: "http", url: served.url, read: ["echo"],
-        authorization: { type: "client-credentials", clientId: "fixture-app", clientSecret: "${MCP_APP_SECRET}", issuer: served.issuer, scope: "mcp:read" } };
-    const added = await action(workspace, "workspace.mcp.add", { alias: "fixture", definition });
-    assert.equal(added.ok, true, JSON.stringify(added));
-    assert.equal((added.result?.definition as { state: string } | undefined)?.state, "active");
+    const enabled = await action(workspace, "workspace.mcp.enable", { alias: "fixture" });
+    assert.equal(enabled.ok, true, JSON.stringify(enabled));
+    assert.equal((enabled.result?.definition as { state: string } | undefined)?.state, "active");
     assert.equal(served.grants(), 1);
     served.expire();
     const events = await post(workspace, undefined, "Call the application echo and report its result.");
@@ -273,9 +282,11 @@ test("{§oauth-client-credentials}: AG-UI application credentials and SDK refres
     assert.equal(listed.ok, true, JSON.stringify(listed));
     const definitions = listed.result?.definitions as { definition: unknown }[] | undefined;
     assert.ok(definitions);
-    assert.deepEqual(definitions[0]?.definition, definition,
-        "management retains the symbolic reference rather than the resolved credential");
-    assert.doesNotMatch(JSON.stringify([added, events, listed]), /fixture-app-secret|fixture-app-access-/);
+    assert.deepEqual(definitions[0]?.definition, {
+        name: "fixture", scope: "plurnk", plugin: { name: "fixtures", root: join(hostPaths.plurnkPluginsDir, "fixtures"), data: hostPaths.pluginDataDir("fixtures") },
+        type: "streamable-http", url: served.url,
+    }, "the listed definition is the plugin's entry; the authorization stays the operator's setting");
+    assert.doesNotMatch(JSON.stringify([enabled, events, listed]), /fixture-app-secret|fixture-app-access-/);
     const request = served.requests.findLast(({ body }) => (body as { method?: string })?.method === "tools/call");
     assert.ok(request);
     const { params } = request.body as { params: { _meta: Record<string, { extensions: Record<string, unknown> }> } };
@@ -285,24 +296,26 @@ test("{§oauth-client-credentials}: AG-UI application credentials and SDK refres
 for (const mode of ["rejected grant", "wrong issuer"] as const) {
     test(`{§oauth-client-credentials}: AG-UI ${mode} fails atomically without publishing or echoing credentials`, { timeout: 20000 }, async (t) => {
         const served = await applicationServer(t, mode === "rejected grant");
-        const { action, provider } = await setup(t);
+        const { action, provider } = await setup(t, { fixture: httpEntry(served.url) }, [], {
+            MCP_APP_SECRET: "fixture-app-secret",
+            PLURNK_MCP_FIXTURE_OAUTH: JSON.stringify({ type: "client-credentials", clientId: "fixture-app", clientSecret: "${MCP_APP_SECRET}",
+                issuer: mode === "wrong issuer" ? "https://other-issuer.invalid" : served.issuer, scope: "mcp:read" }),
+        });
         const workspace = "rejected-application";
-        const configured = await action(workspace, "workspace.env.add", { alias: "MCP_APP_SECRET", definition: { value: "fixture-app-secret" } });
-        assert.equal(configured.ok, true, JSON.stringify(configured));
-        const added = await action(workspace, "workspace.mcp.add", { alias: "fixture", definition: {
-            name: "fixture", transport: "http", url: served.url,
-            authorization: { type: "client-credentials", clientId: "fixture-app", clientSecret: "${MCP_APP_SECRET}",
-                issuer: mode === "wrong issuer" ? "https://other-issuer.invalid" : served.issuer, scope: "mcp:read" },
-        } });
-        assert.equal(added.ok, false);
-        assert.equal(added.problem?.status, 502);
-        assert.equal(added.problem?.type, "https://problems.plurnk.xyz/mcp/management/oauth-client-credentials-failed");
-        assert.doesNotMatch(JSON.stringify(added), /fixture-app-secret|fixture-provider-detail|fixture-app-access-/);
+        const enabled = await action(workspace, "workspace.mcp.enable", { alias: "fixture" });
+        assert.equal(enabled.ok, false);
+        assert.equal(enabled.problem?.status, 502);
+        assert.equal(enabled.problem?.type, "https://problems.plurnk.xyz/mcp/management/oauth-client-credentials-failed");
+        assert.doesNotMatch(JSON.stringify(enabled), /fixture-app-secret|fixture-provider-detail|fixture-app-access-/);
         if (mode === "wrong issuer") assert.equal(served.grants(), 0, "issuer mismatch withholds the credential from the token endpoint");
-        else assert.equal(served.grants(), 2, "the SDK's one invalid-client retry is bounded; the host adds no retry loop");
+        else assert.equal(served.grants(), 4, "activation and the explicit enable each prepare once, each within the SDK's one bounded invalid-client retry; the host adds no retry loop");
         const listed = await action(workspace, "workspace.mcp.list");
         assert.equal(listed.ok, true, JSON.stringify(listed));
-        assert.deepEqual(listed.result?.definitions, [], "failed preparation publishes no attachment");
+        const definitions = listed.result?.definitions as { alias: string; state: string; problem?: { type: string } }[] | undefined;
+        assert.deepEqual(definitions?.map(({ alias, state, problem }) => ({ alias, state, type: problem?.type })),
+            [{ alias: "fixture", state: "unavailable", type: "https://problems.plurnk.xyz/mcp/management/oauth-client-credentials-failed" }],
+            "failed preparation publishes no attachment; the plugin's server stays listed as unavailable ({§mcp-activation-isolation})");
+        assert.doesNotMatch(JSON.stringify(listed), /fixture-app-secret|fixture-provider-detail|fixture-app-access-/);
         assert.equal(served.calls(), 0);
         assert.equal(provider.received.length, 0);
     });
@@ -313,7 +326,7 @@ test("{§mcp-host-composition} {§notice-event-notify}: MCP progress reaches AG-
     t.after(() => finish.resolve());
     const served = await serveMcpHttp(t, createMcpHandler(() => {
         const server = new McpServer({ name: "progress", version: "1.0.0" });
-        server.registerTool("observe", { inputSchema: z.object({}) }, async (_args, ctx) => {
+        server.registerTool("observe", { inputSchema: z.object({}), annotations: { readOnlyHint: true } }, async (_args, ctx) => {
             const progressToken = ctx.mcpReq._meta?.progressToken;
             assert.notEqual(progressToken, undefined);
             await ctx.mcpReq.notify({ method: "notifications/progress", params: {
@@ -324,14 +337,10 @@ test("{§mcp-host-composition} {§notice-event-notify}: MCP progress reaches AG-
         });
         return server;
     }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
-    const { action, post, provider } = await setup(t, [
+    const { post, provider } = await setup(t, { fixture: httpEntry(served.url) }, [
         makeMockResponse("````fixture (observe)\n{}\n````\n\n````WAIT\nObserve the result.\n````"),
         makeMockResponse("````KILL\nThe observation completed.\n````"),
     ]);
-    const added = await action("live-progress", "workspace.mcp.add", { alias: "fixture", definition: {
-        name: "fixture", transport: "http", url: served.url, read: ["observe"],
-    } });
-    assert.equal(added.ok, true, JSON.stringify(added));
     const received = Promise.withResolvers<Event>();
     const running = post("live-progress", undefined, "Observe the tool result.", (event) => {
         if (event.type === "CUSTOM" && event.name === "plurnk.notice"
@@ -378,6 +387,7 @@ for (const deferred of [false, true]) {
                 if (wire.method === "tools/list") return reply({ resultType: "complete", ttlMs: 0, cacheScope: "public", tools: [{
                     name: fixture.toolName, inputSchema: { type: "object", properties: { topic: { type: "string", "x-mcp-header": "Topic" } }, required: ["topic"] },
                     outputSchema: { type: "object", properties: { count: { type: "integer" } }, required: ["count"] },
+                    annotations: { readOnlyHint: true },
                 }] });
                 if (wire.method === "tools/call") {
                     calls++;
@@ -391,7 +401,7 @@ for (const deferred of [false, true]) {
                 }
                 return deferred ? fixture.route(request) : null;
             });
-            const { action, post, provider } = await setup(t, [
+            const { post, provider } = await setup(t, { fixture: httpEntry(served.url) }, [
                 makeMockResponse(`\`\`\`\`fixture (${fixture.toolName})
 {"topic":"MCP"}
 \`\`\`\`
@@ -401,10 +411,6 @@ Observe the result.
 \`\`\`\``),
                 makeMockResponse("````KILL\nInspected the result.\n````"),
             ]);
-            const added = await action("structured", "workspace.mcp.add", { alias: "fixture", definition: {
-                name: "fixture", transport: "http", url: served.url, read: [fixture.toolName],
-            } });
-            assert.equal(added.ok, true, JSON.stringify(added));
             const events = await post("structured", undefined, "Inspect the tool's result, including any failure.");
             assert.equal((events.at(-1)?.outcome as { type: string } | undefined)?.type, "success", JSON.stringify(events));
             assert.equal(calls, 1, "validation never replays the remote operation");

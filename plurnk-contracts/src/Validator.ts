@@ -27,8 +27,7 @@ import clientDisplayCapabilitiesSchema from "../schema/ClientDisplayCapabilities
 import mcpServerDefinitionSchema from "../schema/McpServerDefinition.json" with { type: "json" };
 import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
 import a2aAgentDefinitionSchema from "../schema/A2aAgentDefinition.json" with { type: "json" };
-import mcpServerOptionsSchema from "../schema/McpServerOptions.json" with { type: "json" };
-import mcpConfigurationOverlaySchema from "../schema/McpConfigurationOverlay.json" with { type: "json" };
+import mcpOAuthSchema from "../schema/McpOAuth.json" with { type: "json" };
 import clientInteractionRequestSchema from "../schema/ClientInteractionRequest.json" with { type: "json" };
 import clientInteractionProjectionSchema from "../schema/ClientInteractionProjection.json" with { type: "json" };
 import clientInteractionResolutionSchema from "../schema/ClientInteractionResolution.json" with { type: "json" };
@@ -51,7 +50,7 @@ import providerAccountingSchema from "../schema/ProviderAccounting.json" with { 
 import providerRequestAccountingSchema from "../schema/ProviderRequestAccounting.json" with { type: "json" };
 import providerUsageSchema from "../schema/ProviderUsage.json" with { type: "json" };
 import providerCostSchema from "../schema/ProviderCost.json" with { type: "json" };
-import type { A2AAgentDefinition as A2aAgentDefinition, AguiClientConformance, AguiConformanceKit, AguiDiscovery, CapabilityDescriptor, CapabilityPolicy, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, LoopPolicy, LoopPolicyRequest, McpConfigurationOverlay, McpServerDefinition, McpServerOptions, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion } from "./types.generated.ts";
+import type { A2AAgentDefinition as A2aAgentDefinition, AguiClientConformance, AguiConformanceKit, AguiDiscovery, CapabilityDescriptor, CapabilityPolicy, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, LoopPolicy, LoopPolicyRequest, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion } from "./types.generated.ts";
 import type { JsonSchema } from "./types.generated.ts";
 
 export type ValidationResult = { valid: boolean; errors: OutputUnit[] };
@@ -71,8 +70,7 @@ export class InvalidClientDisplayCapabilitiesError extends TypeError {}
 export class InvalidMcpServerDefinitionError extends TypeError {}
 export class InvalidSkillDefinitionError extends TypeError {}
 export class InvalidA2aAgentDefinitionError extends TypeError {}
-export class InvalidMcpServerOptionsError extends TypeError {}
-export class InvalidMcpConfigurationOverlayError extends TypeError {}
+export class InvalidMcpOAuthError extends TypeError {}
 export class InvalidClientInteractionRequestError extends TypeError {}
 export class InvalidClientInteractionProjectionError extends TypeError {}
 export class InvalidClientInteractionResolutionError extends TypeError {}
@@ -158,12 +156,8 @@ export default class Validator {
         skillDefinitionSchema as unknown as Schema,
         "2020-12",
     );
-    static #mcpServerOptions = Validator.#withRefs(
-        mcpServerOptionsSchema,
-        [mcpServerDefinitionSchema],
-    );
-    static #mcpConfigurationOverlay = new CfValidator(
-        mcpConfigurationOverlaySchema as unknown as Schema,
+    static #mcpOAuth = new CfValidator(
+        mcpOAuthSchema as unknown as Schema,
         "2020-12",
     );
     static #clientInteractionRequest = new CfValidator(
@@ -243,9 +237,8 @@ export default class Validator {
         functionalityListResultSchema,
         functionalityMutationResultSchema,
         functionalityPreparationActivitySchema,
-        mcpConfigurationOverlaySchema,
+        mcpOAuthSchema,
         mcpServerDefinitionSchema,
-        mcpServerOptionsSchema,
         skillDefinitionSchema,
         a2aAgentDefinitionSchema,
         capabilityDescriptorSchema,
@@ -403,12 +396,8 @@ export default class Validator {
         return Validator.#validate(Validator.#skillDefinition, value);
     }
 
-    static validateMcpServerOptions(value: unknown): ValidationResult {
-        return Validator.#validate(Validator.#mcpServerOptions, value);
-    }
-
-    static validateMcpConfigurationOverlay(value: unknown): ValidationResult {
-        return Validator.#validate(Validator.#mcpConfigurationOverlay, value);
+    static validateMcpOAuth(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#mcpOAuth, value);
     }
 
     static validateClientInteractionRequest(value: unknown): ValidationResult {
@@ -664,21 +653,11 @@ export default class Validator {
         return value;
     }
 
-    static assertMcpServerOptions<T extends McpServerOptions>(value: T): T {
-        const result = Validator.validateMcpServerOptions(value);
+    static assertMcpOAuth<T extends McpOAuth>(value: T): T {
+        const result = Validator.validateMcpOAuth(value);
         if (!result.valid) {
-            throw new InvalidMcpServerOptionsError(
-                `invalid MCP server options: ${JSON.stringify(result.errors)}`,
-            );
-        }
-        return value;
-    }
-
-    static assertMcpConfigurationOverlay<T extends McpConfigurationOverlay>(value: T): T {
-        const result = Validator.validateMcpConfigurationOverlay(value);
-        if (!result.valid) {
-            throw new InvalidMcpConfigurationOverlayError(
-                `invalid MCP configuration overlay: ${JSON.stringify(result.errors)}`,
+            throw new InvalidMcpOAuthError(
+                `invalid MCP OAuth settings: ${JSON.stringify(result.errors)}`,
             );
         }
         return value;

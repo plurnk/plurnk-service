@@ -1,424 +1,77 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import {
+    assertNoRetiredVariables,
     connectTimeoutMs,
     expandedServerNames,
-    overlayServerDefinitions,
     requestTimeoutMs,
     retryDelayMs,
     retryPacing,
-    serverDefinition,
-    serverNames,
-    serviceDefinitions,
-    serviceEnabledNames,
-    summaryOverrides,
+    serverSettings,
+    settingName,
 } from "./config.ts";
 
 const floor = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-    PLURNK_MCP_REQUEST_TIMEOUT: "86400000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
+    PLURNK_MCP_REQUEST_TIMEOUT: "86400000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
-test("configuration discovers case-folded server targets and exact stdio arguments", () => {
-    const env = {
+test("{§mcp-configuration} a retired server variable fails boot naming what replaced it; an empty one states nothing", () => {
+    assert.doesNotThrow(() => assertNoRetiredVariables({
         ...floor,
-        PLURNK_MCP_ATLAS: "node",
-        PLURNK_MCP_ATLAS_ARGS: '["server.mjs","--task","smoke"]',
-        PLURNK_MCP_ATLAS_CWD: "/tmp/atlas",
-        PLURNK_MCP_ATLAS_TOOLS: '["filesystem_read_text_file"]',
-        PLURNK_MCP_ATLAS_READ: '["filesystem_read_text_file"]',
-    };
-    assert.deepEqual(serverNames(env), ["atlas"]);
-    assert.deepEqual(serverDefinition("ATLAS", env), {
-        name: "atlas",
-        transport: "stdio",
-        command: "node",
-        args: ["server.mjs", "--task", "smoke"],
-        cwd: "/tmp/atlas",
-        tools: ["filesystem_read_text_file"],
-        read: ["filesystem_read_text_file"],
-    });
-});
-
-test("{§mcp-configuration-overlay} every knob the panel declares is a control an overlay carries without effect", async () => {
-    const panel = await readFile(new URL("../.env.defaults", import.meta.url), "utf8");
-    const controls = Object.fromEntries([...panel.matchAll(/^(PLURNK_MCP_[A-Z0-9_]+)=(.*)$/gmu)].map(([, key, value]) => [key!, value!]));
-    assert.ok(Object.keys(controls).length >= 5, "the panel's live keys are the package's controls");
-    const declared = { PLURNK_MCP_FILES: "npx", PLURNK_MCP_FILES_ARGS: '["-y","server"]' };
-    assert.deepEqual(overlayServerDefinitions({ ...declared, ...controls }), overlayServerDefinitions(declared));
-});
-
-test("configured servers are available independently from the exact cold-enabled set", () => {
-    const env = {
-        ...floor,
-        PLURNK_MCP_ATLAS: "node",
-        PLURNK_MCP_GITEA: "gitea-mcp",
-        PLURNK_MCP_ENABLED: '["gitea"]',
-    };
-    assert.deepEqual(serverNames(env), ["atlas", "gitea"]);
-    assert.deepEqual(serviceEnabledNames(env), ["gitea"]);
-    assert.deepEqual(serviceEnabledNames({ ...env, PLURNK_MCP_ENABLED: "[]" }), [], "[] is the one spelling of none");
-    assert.throws(() => serviceEnabledNames({ ...env, PLURNK_MCP_ENABLED: "" }), /PLURNK_MCP_ENABLED must be a JSON array of strings; \[\] enables none\./);
-    assert.throws(() => serviceEnabledNames({ PLURNK_MCP_ATLAS: "node" }), /PLURNK_MCP_ENABLED is missing from the assembled environment floor\./);
-    assert.throws(
-        () => serviceEnabledNames({
-            ...env,
-            PLURNK_MCP_ENABLED: '["missing"]',
-        }),
-        /PLURNK_MCP_ENABLED.*unknown MCP server 'missing'/,
-    );
-    assert.throws(
-        () => serviceEnabledNames({
-            ...env,
-            PLURNK_MCP_ENABLED: '["gitea","gitea"]',
-        }),
-        /PLURNK_MCP_ENABLED.*duplicate MCP server 'gitea'/,
-    );
-});
-
-test("HTTP bearer authentication preserves its authoritative environment reference", () => {
-    const env = {
-        ...floor,
-        TOKEN: "secret",
-        PLURNK_MCP_GITHUB: "https://example.test/mcp",
-        PLURNK_MCP_GITHUB_BEARER: "${TOKEN}",
-    };
-    assert.deepEqual(serverDefinition("github", env), {
-        name: "github",
-        transport: "http",
-        url: "https://example.test/mcp",
-        authorization: {
-            type: "bearer",
-            token: "${TOKEN}",
-        },
-        read: [],
-    });
-});
-
-test("supplementary HTTP headers preserve environment references and cannot conflict with bearer auth", () => {
-    const env = {
-        ...floor,
-        TOKEN: "secret",
-        PLURNK_MCP_GITHUB: "https://example.test/mcp",
-        PLURNK_MCP_GITHUB_HEADERS: '{"X-Tenant":"${TOKEN}"}',
-    };
-    assert.deepEqual(serverDefinition("github", env), {
-        name: "github",
-        transport: "http",
-        url: "https://example.test/mcp",
-        headers: {
-            "X-Tenant": "${TOKEN}",
-        },
-        read: [],
-    });
-    assert.throws(
-        () => serverDefinition("github", {
-            ...env,
-            PLURNK_MCP_GITHUB_BEARER: "${TOKEN}",
-            PLURNK_MCP_GITHUB_HEADERS: '{"authorization":"custom"}',
-        }),
-        /BEARER.*conflicts with Authorization.*_HEADERS/,
-    );
-});
-
-test("bearer authentication accepts only a symbolic reference and defers resolution", () => {
-    const env = {
-        ...floor,
-        PLURNK_MCP_GITHUB: "https://example.test/mcp",
-    };
-    assert.equal(
-        serverDefinition("github", {
-            ...env,
-            PLURNK_MCP_GITHUB_BEARER: "${TOKEN}",
-        })?.authorization?.type,
-        "bearer",
-    );
-    assert.throws(
-        () => serverDefinition("github", {
-            ...env,
-            TOKEN: "",
-            PLURNK_MCP_GITHUB_BEARER: "literal-secret",
-        }),
-        /invalid MCP server definition/,
-    );
-});
-
-test("{§mcp-configuration-cascade} empty targets mask definitions, companions, summaries and inherited selections", () => {
-    const env = {
-        ...floor,
-        PLURNK_MCP_ATLAS: "",
-        PLURNK_MCP_ATLAS_ARGS: "not JSON",
-        PLURNK_MCP_ATLAS_HEADERS: "not JSON",
-        PLURNK_MCP_ATLAS_ENV: "not JSON",
-        PLURNK_MCP_ATLAS_TOOLS: "not JSON",
-        PLURNK_MCP_ATLAS_SUMMARY: "${MISSING}",
-        PLURNK_MCP_ATLAS_echo_SUMMARY: "${MISSING}",
-        PLURNK_MCP_OTHER: "node",
-        PLURNK_MCP_ENABLED: '["atlas","other"]',
-        PLURNK_MCP_EXPANDED: '["atlas","other"]',
-    };
-    assert.equal(serverDefinition("ATLAS", env), null);
-    assert.deepEqual(serverNames(env), ["other"]);
-    assert.deepEqual(serviceDefinitions(env), [{ name: "other", transport: "stdio", command: "node", args: [], read: [] }]);
-    assert.deepEqual(serviceEnabledNames(env), ["other"]);
-    assert.deepEqual(expandedServerNames(env), ["other"]);
-    assert.deepEqual(summaryOverrides(env), { servers: new Map(), tools: new Map() });
-    for (const field of ["PLURNK_MCP_ENABLED", "PLURNK_MCP_EXPANDED"]) {
-        const names = field.endsWith("ENABLED") ? serviceEnabledNames : expandedServerNames;
-        assert.throws(() => names({ ...env, [field]: '["missing"]' }), /unknown MCP server 'missing'/);
-        assert.throws(() => names({ ...env, [field]: '["other","other"]' }), /duplicate MCP server 'other'/);
+        PLURNK_MCP_EXPANDED: '["forge"]',
+        PLURNK_MCP_FORGE_TOOLS: '["issue_read"]',
+        PLURNK_MCP_FORGE_BEARER: "${FORGE_TOKEN}",
+        PLURNK_MCP_LOCAL_VALIDATOR_OAUTH: '{"type":"oauth","redirectUrl":"http://127.0.0.1:8765/callback"}',
+        PLURNK_MCP_GITEA: "",
+        PLURNK_MCP_ENABLED: "",
+    }), "controls, settings and empty retired names pass");
+    for (const [key, value, successor] of [
+        ["PLURNK_MCP_GITEA", "npx", /MCP servers come from an installed Agent Plugin's mcp\.json/u],
+        ["PLURNK_MCP_GITEA_ARGS", '["-y"]', /mcp\.json declares args/u],
+        ["PLURNK_MCP_GITEA_CWD", "/srv", /mcp\.json declares cwd/u],
+        ["PLURNK_MCP_GITEA_ENV", "{}", /mcp\.json declares env/u],
+        ["PLURNK_MCP_GITEA_HEADERS", "{}", /mcp\.json declares headers/u],
+        ["PLURNK_MCP_GITEA_READ", '["issue_read"]', /annotations\.readOnlyHint/u],
+        ["PLURNK_MCP_GITEA_SUMMARY", "Forge.", /the server's own fields/u],
+        ["PLURNK_MCP_GITEA_ISSUE_READ_SUMMARY", "One issue.", /the server's own fields/u],
+        ["PLURNK_MCP_ENABLED", '["gitea"]', /installed plugin's servers are enabled/u],
+    ] as const) {
+        assert.throws(() => assertNoRetiredVariables({ ...floor, [key]: value }), (error: Error) =>
+            error.message.startsWith(`${key} is retired: `) && successor.test(error.message), key);
     }
-    assert.throws(() => serverNames({ ...env, PLURNK_MCP_atlas: "node" }), /both derive MCP server name 'atlas'/);
 });
 
-test("{§mcp-configuration-cascade} empty overlay targets mask lower definitions before companions are parsed", () => {
-    const base = serverDefinition("atlas", { PLURNK_MCP_ATLAS: "node" });
-    assert.ok(base);
-    assert.deepEqual([...overlayServerDefinitions({
-        PLURNK_MCP_ATLAS: "",
-        PLURNK_MCP_ATLAS_ARGS: "not JSON",
-        PLURNK_MCP_ATLAS_echo_SUMMARY: "${MISSING}",
-        PLURNK_MCP_OTHER: "node",
-    }, new Map([["atlas", base]])).keys()], ["other"]);
-    assert.deepEqual([...overlayServerDefinitions({
-        PLURNK_MCP_ATLAS_echo_SUMMARY: "Echo input.",
-    }, new Map([["atlas", base]])).values()], [base], "a tool summary belongs to its server, not a second definition");
+test("{§mcp-server-settings} a setting's variable is the alias uppercased, its hyphens as underscores", () => {
+    assert.equal(settingName("forge", "_TOOLS"), "PLURNK_MCP_FORGE_TOOLS");
+    assert.equal(settingName("local-validator", "_BEARER"), "PLURNK_MCP_LOCAL_VALIDATOR_BEARER");
+    assert.equal(settingName("x2", "_OAUTH"), "PLURNK_MCP_X2_OAUTH");
 });
 
-test("configuration rejects orphan companions and transport-specific companions", () => {
-    assert.throws(
-        () => serverNames({
-            ...floor,
-            PLURNK_MCP_ATLAS_ARGS: '["server.mjs"]',
-        }),
-        /PLURNK_MCP_ATLAS_ARGS.*PLURNK_MCP_ATLAS/,
-    );
-    assert.throws(
-        () => serverDefinition("github", {
-            ...floor,
-            PLURNK_MCP_GITHUB: "https://example.test/mcp",
-            PLURNK_MCP_GITHUB_ENV: "{}",
-        }),
-        /PLURNK_MCP_GITHUB_ENV.*PLURNK_MCP_GITHUB/,
-    );
-    assert.throws(
-        () => serverDefinition("atlas", {
-            ...floor,
-            PLURNK_MCP_ATLAS: "node",
-            PLURNK_MCP_ATLAS_HEADERS: "{}",
-        }),
-        /PLURNK_MCP_ATLAS_HEADERS.*PLURNK_MCP_ATLAS/,
-    );
-    assert.throws(
-        () => serverDefinition("atlas", {
-            ...floor,
-            TOKEN: "secret",
-            PLURNK_MCP_ATLAS: "node",
-            PLURNK_MCP_ATLAS_BEARER: "${TOKEN}",
-        }),
-        /PLURNK_MCP_ATLAS_BEARER.*PLURNK_MCP_ATLAS/,
-    );
+test("{§mcp-server-settings} tools narrow by exact name, a bearer is one reference, OAuth is McpOAuth, and they exclude each other", () => {
+    assert.deepEqual(serverSettings("forge", floor), { tools: null }, "absent settings enable every tool and no authorization");
+    assert.deepEqual(serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_TOOLS: "" }), { tools: null }, "an empty allowlist states nothing");
+    assert.deepEqual(serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_TOOLS: "[]" }), { tools: [] }, "[] enables none");
+    assert.deepEqual(serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_TOOLS: '["issue_read","issue_search"]' }).tools, ["issue_read", "issue_search"]);
+    assert.throws(() => serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_TOOLS: '["a","a"]' }), /duplicate tool name 'a'/u);
+    assert.throws(() => serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_TOOLS: '"a"' }), /JSON array of strings/u);
+
+    assert.deepEqual(serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_BEARER: "${FORGE_TOKEN}" }).authorization, { type: "bearer", token: "${FORGE_TOKEN}" },
+        "the reference is kept; the token is read only while preparing a connection");
+    assert.throws(() => serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_BEARER: "literal-token" }), /one \$\{NAME\} reference/u);
+
+    const oauth = { type: "client-credentials", clientId: "worker", clientSecret: "${WORKER_SECRET}" };
+    assert.deepEqual(serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_OAUTH: JSON.stringify(oauth) }).authorization, oauth);
+    assert.throws(() => serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_OAUTH: '{"type":"client-credentials","clientId":"w","clientSecret":"plain"}' }), /invalid MCP OAuth settings/u);
+    assert.throws(() => serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_OAUTH: "{" }), /PLURNK_MCP_FORGE_OAUTH must be McpOAuth JSON/u);
+    assert.throws(() => serverSettings("forge", { ...floor, PLURNK_MCP_FORGE_BEARER: "${T}", PLURNK_MCP_FORGE_OAUTH: JSON.stringify(oauth) }), /are exclusive/u);
 });
 
-test("configured names use the safe executor and URI intersection", () => {
-    assert.throws(
-        () => serverNames({
-            ...floor,
-            PLURNK_MCP_BAD_NAME: "node",
-        }),
-        /PLURNK_MCP_BAD_NAME.*bad_name.*\[a-z\]\[a-z0-9-\]\*/,
-    );
-    assert.throws(
-        () => serverNames({
-            ...floor,
-            PLURNK_MCP_9ATLAS: "node",
-        }),
-        /PLURNK_MCP_9ATLAS.*9atlas.*\[a-z\]\[a-z0-9-\]\*/,
-    );
-    assert.deepEqual(serverNames({
-        ...floor,
-        "PLURNK_MCP_ATLAS-NEXT": "node",
-    }), ["atlas-next"]);
-});
-
-test("case-fold collisions and reserved global/suffix ambiguity name exact variables", () => {
-    assert.throws(
-        () => serverNames({
-            ...floor,
-            PLURNK_MCP_ATLAS: "node",
-            PLURNK_MCP_atlas: "other-node",
-        }),
-        /PLURNK_MCP_ATLAS.*PLURNK_MCP_atlas.*atlas/,
-    );
-    assert.throws(
-        () => serverNames({
-            ...floor,
-            PLURNK_MCP_ATLAS: "node",
-            PLURNK_MCP_ATLAS_ARGS: "[]",
-            PLURNK_MCP_atlas_args: "[]",
-        }),
-        /PLURNK_MCP_ATLAS_ARGS.*PLURNK_MCP_atlas_args/,
-    );
-    assert.throws(
-        () => serverNames({
-            ...floor,
-            PLURNK_MCP_CONNECT_TIMEOUT_ARGS: "[]",
-        }),
-        /PLURNK_MCP_CONNECT_TIMEOUT_ARGS.*PLURNK_MCP_CONNECT_TIMEOUT.*reserved global/,
-    );
-    assert.throws(
-        () => serverNames({
-            ...floor,
-            PLURNK_MCP_connect_timeout: "30000",
-        }),
-        /PLURNK_MCP_connect_timeout.*PLURNK_MCP_CONNECT_TIMEOUT.*reserved global/,
-    );
-    assert.throws(
-        () => serverNames({
-            ...floor,
-            PLURNK_MCP_enabled: "[]",
-        }),
-        /PLURNK_MCP_enabled.*PLURNK_MCP_ENABLED.*reserved global/,
-    );
-    assert.throws(
-        () => serverNames({
-            ...floor,
-            PLURNK_MCP_ENABLED_ARGS: "[]",
-        }),
-        /PLURNK_MCP_ENABLED_ARGS.*PLURNK_MCP_ENABLED.*reserved global/,
-    );
-});
-
-test("stdio targets preserve whitespace as part of one exact executable", () => {
-    const target = "/opt/MCP Servers/atlas";
-    assert.deepEqual(serverDefinition("atlas", {
-        ...floor,
-        PLURNK_MCP_ATLAS: target,
-        PLURNK_MCP_ATLAS_ARGS: '["--stdio"]',
-    }), {
-        name: "atlas",
-        transport: "stdio",
-        command: target,
-        args: ["--stdio"],
-        read: [],
-    });
-});
-
-test("tool policy uses absence for all, an exact array to narrow, and rejects ambiguous or duplicate names", () => {
-    assert.deepEqual(serverDefinition("atlas", {
-        ...floor,
-        PLURNK_MCP_ATLAS: "node",
-        PLURNK_MCP_ATLAS_TOOLS: "[]",
-    }), {
-        name: "atlas",
-        transport: "stdio",
-        command: "node",
-        args: [],
-        tools: [],
-        read: [],
-    });
-    assert.throws(
-        () => serverDefinition("atlas", {
-            ...floor,
-            PLURNK_MCP_ATLAS: "node",
-            PLURNK_MCP_ATLAS_TOOLS: '"echo"',
-        }),
-        /TOOLS.*JSON array of strings/,
-    );
-    assert.throws(
-        () => serverDefinition("atlas", {
-            ...floor,
-            PLURNK_MCP_ATLAS: "node",
-            PLURNK_MCP_ATLAS_TOOLS: '["echo","echo"]',
-        }),
-        /TOOLS.*duplicate tool name 'echo'/,
-    );
-    assert.throws(
-        () => serverDefinition("atlas", {
-            ...floor,
-            PLURNK_MCP_ATLAS: "node",
-            PLURNK_MCP_ATLAS_READ: '["echo","echo"]',
-        }),
-        /READ.*duplicate tool name 'echo'/,
-    );
-});
-
-test("{§mcp-configuration-cascade} client companions replace complete fields over normalized service or workspace definitions", () => {
-    const base = serverDefinition("gitea", {
-        ...floor,
-        PLURNK_MCP_GITEA: "gitea-mcp",
-        PLURNK_MCP_GITEA_ARGS: '["serve"]',
-        PLURNK_MCP_GITEA_ENV: '{"TENANT":"main","TRACE":"off"}',
-        PLURNK_MCP_GITEA_TOOLS: '["issue_read"]',
-    });
-    assert.ok(base);
-    const definitions = overlayServerDefinitions({
-        PLURNK_MCP_GITEA_ARGS: '["an-org"]',
-        PLURNK_MCP_GITEA_ENV: '{"TENANT":"project"}',
-    }, new Map([["gitea", base]]));
-    assert.deepEqual(definitions.get("gitea"), {
-        name: "gitea",
-        transport: "stdio",
-        command: "gitea-mcp",
-        args: ["an-org"],
-        env: { TENANT: "project" },
-        tools: ["issue_read"],
-        read: [],
-    });
-});
-
-test("{§mcp-configuration-cascade} a client target replaces the lower definition before its companions apply", () => {
-    const base = serverDefinition("atlas", {
-        ...floor,
-        PLURNK_MCP_ATLAS: "atlas-mcp",
-        PLURNK_MCP_ATLAS_ARGS: '["serve"]',
-        PLURNK_MCP_ATLAS_CWD: "/srv/atlas",
-        PLURNK_MCP_ATLAS_ENV: '{"MODE":"service"}',
-    });
-    assert.ok(base);
-    const definitions = overlayServerDefinitions({
-        PLURNK_MCP_ATLAS: "https://atlas.example.test/mcp",
-        PLURNK_MCP_ATLAS_HEADERS: '{"X-Tenant":"project"}',
-    }, new Map([["atlas", base]]));
-    assert.deepEqual(definitions.get("atlas"), {
-        name: "atlas",
-        transport: "http",
-        url: "https://atlas.example.test/mcp",
-        headers: { "X-Tenant": "project" },
-        read: [],
-    });
-});
-
-test("{§mcp-configuration-cascade} client-only definitions are complete and incomplete fragments fail at the parser boundary", () => {
-    assert.deepEqual(
-        overlayServerDefinitions({
-            PLURNK_MCP_LOCAL: process.execPath,
-            PLURNK_MCP_LOCAL_ARGS: '["server.mjs"]',
-        }).get("local"),
-        {
-            name: "local",
-            transport: "stdio",
-            command: process.execPath,
-            args: ["server.mjs"],
-            read: [],
-        },
-    );
-    assert.throws(
-        () => overlayServerDefinitions({
-            PLURNK_MCP_LOCAL_ARGS: '["server.mjs"]',
-        }),
-        /PLURNK_MCP_LOCAL_ARGS.*PLURNK_MCP_LOCAL/,
-    );
-    assert.deepEqual(
-        [...overlayServerDefinitions({ PLURNK_MCP_ENABLED: '["local"]' }).keys()],
-        [],
-        "a carried control declares no server and enables none",
-    );
-    assert.throws(
-        () => overlayServerDefinitions({ OPENAI_API_KEY: "nope" } as never),
-        /invalid MCP configuration overlay/,
-    );
+test("{§mcp-configuration} EXPANDED names server aliases", () => {
+    assert.deepEqual(expandedServerNames(floor), []);
+    assert.deepEqual(expandedServerNames({ ...floor, PLURNK_MCP_EXPANDED: '["forge","brave"]' }), ["brave", "forge"]);
+    assert.throws(() => expandedServerNames({ ...floor, PLURNK_MCP_EXPANDED: '["Forge"]' }), /not an MCP server alias/u);
+    assert.throws(() => expandedServerNames({ ...floor, PLURNK_MCP_EXPANDED: '["a","a"]' }), /duplicate MCP server 'a'/u);
 });
 
 test("timeouts are required positive integers owned by .env.defaults", () => {
@@ -431,38 +84,6 @@ test("timeouts are required positive integers owned by .env.defaults", () => {
         }),
         /positive integer/,
     );
-});
-
-test("{§mcp-summary-derivation} _SUMMARY companions separate server and tool tiers", () => {
-    const environ = {
-        ...floor,
-        PLURNK_MCP_BRAVE: "npx",
-        PLURNK_MCP_BRAVE_SUMMARY: "Search the web with Brave.",
-        PLURNK_MCP_BRAVE_BRAVE_WEB_SEARCH_SUMMARY: "General web search.",
-    };
-    const { servers, tools } = summaryOverrides(environ);
-    assert.deepEqual([...servers], [["brave", "Search the web with Brave."]]);
-    assert.deepEqual([...tools], [["brave/brave_web_search", "General web search."]]);
-});
-
-test("{§mcp-summary-derivation} a tool _SUMMARY companion without its server target is an orphan", () => {
-    assert.throws(
-        () => summaryOverrides({
-            ...floor,
-            PLURNK_MCP_BRAVE_BRAVE_WEB_SEARCH_SUMMARY: "General web search.",
-        }),
-        /no MCP server target/,
-    );
-});
-
-test("{§mcp-summary-derivation} summary companions expand ${NAME} references", () => {
-    const { servers } = summaryOverrides({
-        ...floor,
-        PLURNK_MCP_BRAVE: "npx",
-        PLURNK_MCP_BRAVE_SUMMARY: "Search with ${SEARCH_KIND}.",
-        SEARCH_KIND: "the Brave API",
-    });
-    assert.equal(servers.get("brave"), "Search with the Brave API.");
 });
 
 test("{§mcp-retry-pacing} one pacing, stated on the panel, doubles from its floor to its ceiling", () => {

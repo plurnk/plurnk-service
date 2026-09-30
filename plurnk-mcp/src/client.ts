@@ -1,4 +1,5 @@
-import { isAbsolute, resolve } from "node:path";
+import { mkdir, realpath } from "node:fs/promises";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import {
     OAuthClientFlowError,
     OAuthError,
@@ -43,7 +44,10 @@ import {
     expandReferences,
     requestTimeoutMs,
     retryPacing,
+    settingName,
+    type McpAuthorization,
 } from "./config.ts";
+import { expandPlaceholders } from "@plurnk/plurnk-agent-plugins";
 import {
     INPUT_REQUIRED_MAX_ROUNDS,
     runInputRequiredRequest,
@@ -84,15 +88,18 @@ export interface ServerCatalog {
 }
 
 interface ResolvedStdioDefinition {
-    readonly transport: "stdio";
+    readonly type: "stdio";
     readonly command: string;
     readonly args: string[];
-    readonly cwd?: string;
-    readonly env?: Record<string, string>;
+    readonly cwd: string;
+    readonly env: Record<string, string>;
+    // {§mcp-plugin-servers} — what the launch creates and what it must stay inside.
+    readonly plugin: { readonly root: string; readonly data: string };
+    readonly cwdWithin: "root" | "data";
 }
 
 interface ResolvedHttpDefinition {
-    readonly transport: "http";
+    readonly type: "streamable-http";
     readonly url: string;
     readonly headers?: Record<string, string>;
     readonly authProvider?: AuthProvider | OAuthClientProvider;
@@ -108,8 +115,8 @@ type ResolvedDefinition = ResolvedStdioDefinition | ResolvedHttpDefinition;
 export interface ServerConnectionOptions {
     // {§mcp-launch-environment} Exact admitted environment, separate from reference resolution.
     readonly environment?: NodeJS.ProcessEnv;
-    // {§mcp-working-storage} Lazy, absolute host-owned CWD when none is configured.
-    readonly workingDirectory?: () => Promise<string>;
+    // {§mcp-server-settings} The operator's client-managed authorization for this alias.
+    readonly authorization?: McpAuthorization;
     readonly onCatalogChanged?: (error: Error | null) => void;
     readonly onInfrastructureError?: (error: Error) => void;
 }
@@ -139,145 +146,125 @@ export const isClientCredentialsRejection = (error: unknown): boolean => errorsO
     return false;
 });
 
-const expandedRecord = (
-    source: Readonly<Record<string, string>> | undefined,
-    environ: NodeJS.ProcessEnv,
-    field: string,
-): Record<string, string> | undefined => source === undefined
-    ? undefined
-    : Object.fromEntries(Object.entries(source).map(([key, value]) => [
-        key,
-        expandReferences(value, environ, `${field}.${key}`),
-    ]));
-
-const requireString = (value: unknown, field: string): string => {
-    if (typeof value !== "string" || value.length === 0) {
-        throw new Error(`${field} must be a non-empty string.`);
-    }
-    return value;
-};
+// {§mcp-plugin-servers} — headers the client generates for HTTP, MCP, or authorization take precedence
+// over a configured header of the same name (Agent Plugins 1.0 §7.2.1); the SDK would let it win.
+const clientOwnedHeader = (name: string): boolean =>
+    ["authorization", "accept", "content-type", "last-event-id"].includes(name.toLowerCase()) || name.toLowerCase().startsWith("mcp-");
 
 const resolveDefinition = (
     source: McpServerDefinition,
+    authorization: McpAuthorization | undefined,
     environ: NodeJS.ProcessEnv,
 ): ResolvedDefinition => {
     const definition = Validator.assertMcpServerDefinition(source);
-    if (definition.transport === "stdio") {
+    if (definition.type === "stdio") {
+        // A stdio server launches from its plugin; an added server's is written before it launches.
+        if (definition.plugin === undefined) throw new TypeError(`MCP server '${definition.name}' has no plugin to launch from.`);
+        const { root, data } = definition.plugin;
+        const expand = (value: string): string => expandPlaceholders(value, { root, data });
+        const cwd = definition.cwd === undefined ? root : resolve(root, expand(definition.cwd));
         return {
-            transport: "stdio",
-            command: expandReferences(
-                requireString(definition.command, `${definition.name}.command`),
-                environ,
-                `${definition.name}.command`,
-            ),
-            args: (definition.args ?? []).map((argument, index) =>
-                expandReferences(argument, environ, `${definition.name}.args[${index}]`)),
-            ...(definition.cwd === undefined
-                ? {}
-                : { cwd: resolve(expandReferences(definition.cwd, environ, `${definition.name}.cwd`)) }),
-            ...(definition.env === undefined
-                ? {}
-                : { env: expandedRecord(definition.env, environ, `${definition.name}.env`) }),
+            type: "stdio",
+            // A bare name resolves through the executable search; a ./ path against the plugin root.
+            command: definition.command.startsWith("./") ? resolve(root, definition.command) : definition.command,
+            args: (definition.args ?? []).map(expand),
+            cwd,
+            env: {
+                ...Object.fromEntries(Object.entries(definition.env ?? {}).map(([name, value]) => [name, expand(value)])),
+                PLUGIN_ROOT: root,
+                PLUGIN_DATA: data,
+            },
+            plugin: { root, data },
+            cwdWithin: definition.cwd?.startsWith("${PLUGIN_DATA}") === true ? "data" : "root",
         };
     }
 
-    const url = requireString(definition.url, `${definition.name}.url`);
-    const headers = expandedRecord(definition.headers, environ, `${definition.name}.headers`);
-    const authorizationHeader = Object.keys(headers ?? {}).find(
-        (name) => name.toLowerCase() === "authorization",
-    );
-    if (definition.authorization !== undefined && authorizationHeader !== undefined) {
-        throw new Error(
-            `${definition.name}.authorization conflicts with the Authorization header.`,
-        );
-    }
-    if (definition.authorization === undefined) {
+    const configured = Object.entries(definition.headers ?? {}).filter(([name]) => !clientOwnedHeader(name));
+    const headers = configured.length === 0 ? undefined : Object.fromEntries(configured);
+    const url = definition.url;
+    if (authorization === undefined) {
         return {
-            transport: "http",
+            type: "streamable-http",
             url,
             ...(headers === undefined ? {} : { headers }),
             cachePartition: "anonymous",
         };
     }
-    if (definition.authorization.type === "bearer") {
-        const token = expandReferences(
-            definition.authorization.token,
-            environ,
-            `${definition.name}.authorization.token`,
-        );
-        if (token.length === 0) throw new Error(`${definition.name}.authorization.token resolved empty.`);
+    if (authorization.type === "bearer") {
+        const field = settingName(definition.name, "_BEARER");
+        const token = expandReferences(authorization.token, environ, field);
+        if (token.length === 0) throw new Error(`${field} resolved empty.`);
         return {
-            transport: "http",
+            type: "streamable-http",
             url,
             ...(headers === undefined ? {} : { headers }),
             authProvider: { token: async () => token },
-            cachePartition: `bearer:${definition.authorization.token}`,
+            cachePartition: `bearer:${authorization.token}`,
         };
     }
-    if (definition.authorization.type === "client-credentials") {
-        const secret = expandReferences(
-            definition.authorization.clientSecret,
-            environ,
-            `${definition.name}.authorization.clientSecret`,
-        );
-        if (secret.length === 0) {
-            throw new Error(`${definition.name}.authorization.clientSecret resolved empty.`);
-        }
+    const field = settingName(definition.name, "_OAUTH");
+    if (authorization.type === "client-credentials") {
+        const secret = expandReferences(authorization.clientSecret, environ, `${field}.clientSecret`);
+        if (secret.length === 0) throw new Error(`${field}.clientSecret resolved empty.`);
         return {
-            transport: "http",
+            type: "streamable-http",
             url,
             ...(headers === undefined ? {} : { headers }),
             clientCredentials: true,
             authProvider: new ClientCredentialsProvider({
-                clientId: definition.authorization.clientId,
+                clientId: authorization.clientId,
                 clientSecret: secret,
                 // {§oauth-client-credentials} — a declared issuer binds the static
                 // credential to that authorization server (SEP-2352); absent, the
                 // SDK's legacy no-binding behaviour applies.
-                ...(definition.authorization.issuer === undefined
-                    ? {}
-                    : { expectedIssuer: definition.authorization.issuer }),
-                ...(definition.authorization.scope === undefined
-                    ? {}
-                    : { scope: definition.authorization.scope }),
+                ...(authorization.issuer === undefined ? {} : { expectedIssuer: authorization.issuer }),
+                ...(authorization.scope === undefined ? {} : { scope: authorization.scope }),
             }),
-            cachePartition: `client:${definition.authorization.clientId}`,
+            cachePartition: `client:${authorization.clientId}`,
         };
     }
-    const oauthAuthorization = definition.authorization;
     // {§oauth-lifetime} — registration data, tokens, PKCE verifier, and
-    // callback state remain process-memory in this provider; the durable
-    // definition stays unexpanded.
+    // callback state remain process-memory in this provider.
     const oauthProvider = new InteractiveOAuthProvider({
-        redirectUrl: oauthAuthorization.redirectUrl,
-        ...(oauthAuthorization.scope === undefined ? {} : { scope: oauthAuthorization.scope }),
-        ...("clientMetadataUrl" in oauthAuthorization
-            ? { clientMetadataUrl: oauthAuthorization.clientMetadataUrl }
-            : {}),
-        ...("clientId" in oauthAuthorization
-            ? {
-                clientId: oauthAuthorization.clientId,
-                clientSecret: expandReferences(
-                    oauthAuthorization.clientSecret,
-                    environ,
-                    `${definition.name}.authorization.clientSecret`,
-                ),
-            }
+        redirectUrl: authorization.redirectUrl,
+        ...(authorization.scope === undefined ? {} : { scope: authorization.scope }),
+        ...("clientMetadataUrl" in authorization ? { clientMetadataUrl: authorization.clientMetadataUrl } : {}),
+        ...("clientId" in authorization
+            ? { clientId: authorization.clientId, clientSecret: expandReferences(authorization.clientSecret, environ, `${field}.clientSecret`) }
             : {}),
     });
-    const cachePartition = "clientMetadataUrl" in oauthAuthorization
-        ? `oauth:cimd:${oauthAuthorization.clientMetadataUrl}`
-        : "clientId" in oauthAuthorization
-            ? `oauth:client:${oauthAuthorization.clientId}`
+    const cachePartition = "clientMetadataUrl" in authorization
+        ? `oauth:cimd:${authorization.clientMetadataUrl}`
+        : "clientId" in authorization
+            ? `oauth:client:${authorization.clientId}`
             : "oauth:dynamic";
     return {
-        transport: "http",
+        type: "streamable-http",
         url,
         ...(headers === undefined ? {} : { headers }),
         authProvider: oauthProvider,
         oauthProvider,
         cachePartition,
     };
+};
+
+const inside = (root: string, candidate: string): boolean => {
+    const path = relative(root, candidate);
+    return path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path);
+};
+
+// {§mcp-plugin-servers} — PLUGIN_DATA exists before the launch, and a ./ command and the working
+// directory stay inside the filesystem-resolved directory they are rooted in (§4.1, §7.2.1).
+const prepareLaunch = async (definition: ResolvedStdioDefinition): Promise<void> => {
+    await mkdir(definition.plugin.data, { recursive: true, mode: 0o700 });
+    const root = await realpath(definition.plugin.root);
+    const base = definition.cwdWithin === "data" ? await realpath(definition.plugin.data) : root;
+    if (!inside(base, await realpath(definition.cwd))) {
+        throw new Error(`The working directory ${definition.cwd} resolves outside the plugin's ${definition.cwdWithin === "data" ? "PLUGIN_DATA" : "root"}.`);
+    }
+    if (isAbsolute(definition.command) && !inside(root, await realpath(definition.command))) {
+        throw new Error(`The command ${definition.command} resolves outside the plugin root.`);
+    }
 };
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
@@ -289,7 +276,7 @@ const openTransport = (
     definition: ResolvedDefinition,
     environment: NodeJS.ProcessEnv = getDefaultEnvironment(),
 ): StdioClientTransport | StreamableHTTPClientTransport => {
-    if (definition.transport === "http") {
+    if (definition.type === "streamable-http") {
         const transport: StreamableHTTPClientTransport = new StreamableHTTPClientTransport(
             new URL(definition.url),
             {
@@ -336,9 +323,6 @@ const openTransport = (
             },
         );
         return transport;
-    }
-    if (definition.cwd === undefined || !isAbsolute(definition.cwd)) {
-        throw new Error("A stdio MCP connection requires an absolute working directory.");
     }
     // {§mcp-stdio-process-ownership} — stdio servers spawn through the
     // parent-death watchdog wrapper: the real server runs detached (own
@@ -482,7 +466,7 @@ const openClient = async (
         ...matrixCapabilities,
         extensions: {
             ...matrixCapabilities.extensions,
-            ...(definition.transport === "http" && definition.clientCredentials === true
+            ...(definition.type === "streamable-http" && definition.clientCredentials === true
                 ? { [MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION_ID]: {} }
                 : {}),
         },
@@ -512,7 +496,7 @@ const openClient = async (
                     onChanged: (error) => changed(error ?? undefined),
                 },
             },
-            ...(definition.transport === "http"
+            ...(definition.type === "streamable-http"
                 ? { cachePartition: definition.cachePartition }
                 : {}),
         },
@@ -525,7 +509,7 @@ const openClient = async (
     } catch (failure) {
         const refused = transport instanceof StreamableHTTPClientTransport ? refusedRedirects.get(transport) : undefined;
         const cause = refused ?? failure;
-        const authorizationUrl = definition.transport === "http"
+        const authorizationUrl = definition.type === "streamable-http"
             ? definition.oauthProvider?.takeAuthorizationUrl()
             : undefined;
         let closeFailure: unknown;
@@ -607,7 +591,7 @@ export default class ServerConnection {
         options: ServerConnectionOptions = {},
     ) {
         this.#definition = structuredClone(Validator.assertMcpServerDefinition(definition));
-        this.#resolved = resolveDefinition(this.#definition, environ);
+        this.#resolved = resolveDefinition(this.#definition, options.authorization, environ);
         this.#environ = environ;
         this.#options = options;
     }
@@ -632,9 +616,8 @@ export default class ServerConnection {
         if (this.#client !== undefined) return this.#client;
         let transport: StdioClientTransport | StreamableHTTPClientTransport | undefined;
         const pending = (async () => {
-            const definition = this.#resolved.transport === "stdio" && this.#resolved.cwd === undefined
-                ? { ...this.#resolved, cwd: await this.#options.workingDirectory?.() }
-                : this.#resolved;
+            const definition = this.#resolved;
+            if (definition.type === "stdio") await prepareLaunch(definition);
             if (this.#closed) throw new Error(`MCP server '${this.#definition.name}' connection is closed.`);
             transport = openTransport(definition, this.#options.environment);
             this.#openingTransport = transport;
@@ -642,7 +625,7 @@ export default class ServerConnection {
         })().catch((cause: unknown) => {
             if (
                 cause instanceof AuthorizationRequiredError
-                && this.#resolved.transport === "http"
+                && this.#resolved.type === "streamable-http"
                 && this.#resolved.oauthProvider !== undefined
                 && transport instanceof StreamableHTTPClientTransport
             ) {
@@ -712,7 +695,7 @@ export default class ServerConnection {
 
     #takeAuthorization(opened: OpenClient, cause: unknown): AuthorizationRequiredError | null {
         if (
-            this.#resolved.transport !== "http"
+            this.#resolved.type !== "streamable-http"
             || this.#resolved.oauthProvider === undefined
             || !(opened.transport instanceof StreamableHTTPClientTransport)
         ) {

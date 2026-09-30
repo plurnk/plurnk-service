@@ -13,6 +13,10 @@ test("{§host-path-layout} resolves the XDG defaults by artifact semantics", () 
     assert.equal(paths.plurnkSkillsDir, "/home/ada/.config/plurnk/skills");
     assert.equal(paths.globalSkillsDir, "/home/ada/.agents/skills");
     assert.equal(paths.projectSkillsDir("/work/repo"), "/work/repo/.agents/skills");
+    assert.equal(paths.plurnkPluginsDir, "/home/ada/.config/plurnk/plugins");
+    assert.equal(paths.globalPluginsDir, "/home/ada/.agents/plugins");
+    assert.equal(paths.projectPluginsDir("/work/repo"), "/work/repo/.agents/plugins");
+    assert.equal(paths.pluginDataDir("devtools"), "/home/ada/.local/share/plurnk/plugins/devtools");
     assert.equal(paths.legacyDir, "/home/ada/.plurnk");
 });
 
@@ -72,6 +76,8 @@ test("{§state-root} an absolute state root moves data, state, cache and runtime
     assert.equal(paths.databaseFile, "/tmp/private-daemon/data/plurnk/plurnk.db");
     assert.equal(paths.configDir, "/cfg/plurnk", "configuration is operator input and stays under XDG");
     assert.equal(paths.globalSkillsDir, "/home/example/.agents/skills", "the shared skills root stays under the home");
+    assert.equal(paths.plurnkPluginsDir, "/cfg/plurnk/plugins", "installed plugins are configuration");
+    assert.equal(paths.pluginDataDir("devtools"), "/tmp/private-daemon/data/plurnk/plugins/devtools", "plugin data moves with the daemon's data");
     assert.deepEqual(paths.invalidXdg, [], "XDG homes the root replaces are not consulted");
 });
 

@@ -1,6 +1,6 @@
-import { workingDirectory } from "../test/working-directory.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { stdioServer } from "../test/definitions.ts";
 import { access, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,24 +22,16 @@ const configured = (): {
 } => {
     const env = {
         PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
+        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     };
-    const connection = new ServerConnection({
-        name: "echo",
-        transport: "stdio",
-        cwd: workingDirectory,
-        command: process.execPath,
-        args: [fixture],
-        tools: ["echo"],
-        read: [],
-    }, env);
+    const connection = new ServerConnection(stdioServer("echo", [fixture]), env);
     return {
         connection,
         executor: new McpExecutor(
             { runtime: "echo", glyph: "🔌" },
             connection,
             retainWorkspace,
-            { tools: ["echo"], read: [] },
+            { tools: ["echo"] },
         ),
     };
 };
@@ -94,7 +86,7 @@ const waitForFile = async (pathname: string): Promise<void> => {
 };
 
 test("runtime declaration derives the server summary from the chain", async () => {
-    const declaration = runtimeDecl("echo", serverSummary("echo", undefined, undefined), false);
+    const declaration = runtimeDecl("echo", serverSummary("echo", undefined), false);
     assert.equal(declaration.summary, "MCP server echo.");
     assert.deepEqual(declaration.invocation, {
         body: { role: "JSON arguments", required: false, mimetype: "application/json" },
@@ -118,11 +110,10 @@ test("MCP executor requires a tool target instead of duplicating catalog discove
     }
 });
 
-test("MCP executor publishes exact enabled targets and never trusts remote readOnlyHint for effect", async () => {
+test("MCP executor publishes exact enabled targets as one immutable registry", async () => {
     const { connection, executor } = configured();
     try {
         await executor.requireAvailable();
-        assert.equal(executor.effect("echo"), "host", "unlisted remote hints cannot bypass proposal policy");
         const registry = executor.toolRegistry();
         assert.equal(executor.toolRegistry(), registry, "every consumer receives the same immutable snapshot");
         assert.deepEqual(registry.tools.map((tool) => tool.target), ["echo"]);
@@ -140,18 +131,18 @@ test("MCP executor publishes exact enabled targets and never trusts remote readO
     }
 });
 
-test("only the host-owned read list changes an MCP tool's effect", async () => {
+test("{§mcp-plugin-servers} a tool's annotations.readOnlyHint alone makes its effect read", async () => {
     const { connection } = configured();
     const executor = new McpExecutor(
         { runtime: "echo", glyph: "🔌" },
         connection,
         retainWorkspace,
-        { tools: ["echo"], read: ["echo"] },
+        { tools: null },
     );
     try {
         await executor.requireAvailable();
-        assert.equal(executor.effect("echo"), "read");
-        assert.throws(() => executor.effect("fail"), /unregistered target/);
+        assert.equal(executor.effect("echo"), "read", "echo declares readOnlyHint: true");
+        assert.equal(executor.effect("fail"), "host", "fail declares no hint and keeps the conservative host effect");
         assert.throws(() => executor.effect(null), /unregistered target/);
     } finally {
         await connection.close();
@@ -164,30 +155,12 @@ test("configured tool policy fails setup when the server lacks an exact name", a
         { runtime: "echo", glyph: "🔌" },
         connection,
         retainWorkspace,
-        { tools: ["missing"], read: [] },
+        { tools: ["missing"] },
     );
     try {
         await assert.rejects(
             () => executor.requireAvailable(),
             /Configured MCP tool 'missing' is absent from server 'echo'/,
-        );
-    } finally {
-        await connection.close();
-    }
-});
-
-test("read classification must be a subset of enabled exact tools", async () => {
-    const { connection } = configured();
-    const executor = new McpExecutor(
-        { runtime: "echo", glyph: "🔌" },
-        connection,
-        retainWorkspace,
-        { tools: ["echo"], read: ["fail"] },
-    );
-    try {
-        await assert.rejects(
-            () => executor.requireAvailable(),
-            /Read-classified MCP tool 'fail' is not enabled/,
         );
     } finally {
         await connection.close();
@@ -238,7 +211,7 @@ test("{§executor-page-receipt} a tool result exactly as long as the page it ask
         { runtime: "pager", glyph: "🔌" },
         connection,
         retainWorkspace,
-        { tools: ["list"], read: [] },
+        { tools: ["list"] },
     );
     await executor.requireAvailable();
     const run = async (body: string) => executor.run(harness({ runtime: "pager", target: "list", body }).args);
@@ -271,7 +244,7 @@ test("{§mcp-tool-problem-detail} a tool Problem names its runtime and tool and 
         { runtime: "effects", glyph: "🔌" },
         connection,
         retainWorkspace,
-        { tools: ["mutate"], read: [] },
+        { tools: ["mutate"] },
     );
     await executor.requireAvailable();
     const previous = process.env[ERROR_DETAIL_LIMIT];
@@ -313,7 +286,7 @@ test("{§mcp-tool-replay} an uncertain MCP tool-call failure never recommends au
         { runtime: "effects", glyph: "🔌" },
         connection,
         retainWorkspace,
-        { tools: ["mutate"], read: [] },
+        { tools: ["mutate"] },
     );
     await executor.requireAvailable();
     const result = await executor.run(harness({ runtime: "effects", target: "mutate", body: "{}" }).args);
@@ -324,22 +297,15 @@ test("{§mcp-tool-replay} an uncertain MCP tool-call failure never recommends au
 });
 
 test("MCP executor keeps elicitation on its generic client interaction sink", async () => {
-    const connection = new ServerConnection({
-        name: "interaction",
-        transport: "stdio",
-        cwd: workingDirectory,
-        command: process.execPath,
-        args: [interactionFixture],
-        tools: ["batch"],
-    }, {
+    const connection = new ServerConnection(stdioServer("interaction", [interactionFixture]), {
         PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
+        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     });
     const executor = new McpExecutor(
         { runtime: "interaction", glyph: "🔌" },
         connection,
         retainWorkspace,
-        { tools: ["batch"], read: [] },
+        { tools: ["batch"] },
     );
     try {
         await executor.requireAvailable();
@@ -364,17 +330,9 @@ test("MCP executor keeps elicitation on its generic client interaction sink", as
 });
 
 test("{§mcp-result-content} every passive content variant is preserved losslessly as channel evidence", async () => {
-    const connection = new ServerConnection({
-        name: "rich",
-        transport: "stdio",
-        cwd: workingDirectory,
-        command: process.execPath,
-        args: [fixture],
-        env: { PLURNK_MCP_TEST_EXTENDED: "1" },
-        tools: ["rich"],
-    }, {
+    const connection = new ServerConnection(stdioServer("rich", [fixture], { env: { PLURNK_MCP_TEST_EXTENDED: "1" } }), {
         PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
+        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     });
     const executor = new McpExecutor(
         { runtime: "rich", glyph: "🔌" },
@@ -435,20 +393,12 @@ test("MCP progress and cancellation remain on the owning execution lifecycle ove
     const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-exec-lifecycle-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const marker = join(root, "cancelled");
-    const connection = new ServerConnection({
-        name: "lifecycle",
-        transport: "stdio",
-        cwd: workingDirectory,
-        command: process.execPath,
-        args: [fixture],
-        env: {
+    const connection = new ServerConnection(stdioServer("lifecycle", [fixture], { env: {
             PLURNK_MCP_TEST_EXTENDED: "1",
             PLURNK_MCP_TEST_CANCEL_MARKER: marker,
-        },
-        tools: ["progress", "wait"],
-    }, {
+        } }), {
         PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000", PLURNK_MCP_ENABLED: "[]",
+        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
     });
     let residencyLeases = 0;
     const executor = new McpExecutor(
@@ -530,27 +480,25 @@ test("{§mcp-summary-derivation} every server-summary tier has one deterministic
         ...(instructions === undefined ? {} : { instructions }),
     }) as unknown as ServerCatalog;
 
-    assert.equal(serverSummary("cdp", catalog({ description: "Server description.", title: "Display title" }), "Authored override."), "Authored override.");
-    assert.equal(serverSummary("cdp", catalog({ description: " Server   description. ", title: "Display title" }), undefined), "Server description.");
-    assert.equal(serverSummary("search", catalog({ title: "Search MCP" }, "Search the Web. Consult the available tools."), undefined), "Search the Web.");
-    assert.equal(serverSummary("search", catalog({ description: " \n ", title: "Search MCP" }, "Search the Web. More guidance."), " \t "), "Search the Web.");
-    assert.equal(serverSummary("cdp", catalog({ title: "Chrome DevTools MCP server" }, " \n "), undefined), "Chrome DevTools MCP server");
-    assert.equal(serverSummary("cdp", catalog({ description: "", title: "" }, ""), undefined), "Tools: click.");
-    assert.equal(serverSummary("cdp", catalog({ title: "Chrome DevTools MCP server" }), undefined), "Chrome DevTools MCP server");
-    assert.equal(serverSummary("cdp", catalog({}, "First instruction. Second instruction."), undefined), "First instruction.");
-    assert.equal(serverSummary("cdp", catalog({}, undefined), undefined), "Tools: click.");
-    assert.equal(serverSummary("cdp", catalog({}, undefined, []), undefined), "MCP server cdp.");
-    assert.deepEqual(runtimeServerSummary("cdp", catalog({}, undefined), undefined), { from: "tools" });
-    assert.equal(runtimeServerSummary("cdp", catalog({}, undefined, []), undefined), "MCP server cdp.");
+    assert.equal(serverSummary("cdp", catalog({ description: " Server   description. ", title: "Display title" })), "Server description.");
+    assert.equal(serverSummary("search", catalog({ title: "Search MCP" }, "Search the Web. Consult the available tools.")), "Search the Web.");
+    assert.equal(serverSummary("search", catalog({ description: " \n ", title: "Search MCP" }, "Search the Web. More guidance.")), "Search the Web.");
+    assert.equal(serverSummary("cdp", catalog({ title: "Chrome DevTools MCP server" }, " \n ")), "Chrome DevTools MCP server");
+    assert.equal(serverSummary("cdp", catalog({ description: "", title: "" }, "")), "Tools: click.");
+    assert.equal(serverSummary("cdp", catalog({ title: "Chrome DevTools MCP server" })), "Chrome DevTools MCP server");
+    assert.equal(serverSummary("cdp", catalog({}, "First instruction. Second instruction.")), "First instruction.");
+    assert.equal(serverSummary("cdp", catalog({}, undefined)), "Tools: click.");
+    assert.equal(serverSummary("cdp", catalog({}, undefined, [])), "MCP server cdp.");
+    assert.deepEqual(runtimeServerSummary("cdp", catalog({}, undefined)), { from: "tools" });
+    assert.equal(runtimeServerSummary("cdp", catalog({}, undefined, [])), "MCP server cdp.");
     const instructions = "Search **the Web** for current information.\n\n## Results\nPreserve links and attribution.";
     const described = catalog({ title: "Search MCP" }, instructions);
-    assert.deepEqual(runtimeServerSummary("search", described, undefined), { from: "tools", description: "Search **the Web** for current information." });
-    assert.deepEqual(runtimeServerSummary("search", described, "Operator purpose."), { from: "tools", description: "Operator purpose." });
-    assert.equal(runtimeDecl("search", runtimeServerSummary("search", described, undefined), false, instructions).details, instructions);
+    assert.deepEqual(runtimeServerSummary("search", described), { from: "tools", description: "Search **the Web** for current information." });
+    assert.equal(runtimeDecl("search", runtimeServerSummary("search", described), false, instructions).details, instructions);
     assert.equal(runtimeDecl("search", "Search the Web.", false, " \n ").details, undefined);
     const verbose = catalog({ description: "Search ".repeat(100), title: "Search MCP" });
-    assert.ok(serverSummary("search", verbose, undefined).length <= 81, "derived descriptions are bounded like tool summaries");
-    assert.match(serverSummary("search", verbose, undefined), /…$/u);
+    assert.ok(serverSummary("search", verbose).length <= 81, "derived descriptions are bounded like tool summaries");
+    assert.match(serverSummary("search", verbose), /…$/u);
 });
 
 // The invalid-arguments failure names the form that works, whatever the body was

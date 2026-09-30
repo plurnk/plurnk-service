@@ -122,7 +122,7 @@ test("{§members-functionality} client and model share one surface; the ceiling,
             // The baseline: tracked is a member, loose is not ({§membership-baseline}).
             assert.equal(await memberOf(db, workspaceId, "README.md"), true);
             assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "an untracked file is dark until added");
-            // Service definitions from the operator's env ride like PLURNK_MCP_*: docs is enabled by
+            // Service definitions from the operator's env ride like PLURNK_A2A_*: docs is enabled by
             // default, and list says what it resolved to.
             assert.deepEqual(await states(), ["docs:service:dormant"]);
             await invoke("enable", { alias: "docs" });

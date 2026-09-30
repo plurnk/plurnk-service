@@ -24,8 +24,8 @@ describe("{§dotenv-values}: Node's complete dotenv fixture set", () => {
         const text = [
             "PLURNK_MODEL=fast # selected alias",
             "PLURNK_MODEL_fast=provider/model",
-            'PLURNK_MCP_ENABLED=["forge"]',
-            'PLURNK_MCP_forge_ENV=\'{"TOKEN":"${FORGE_TOKEN}"}\'',
+            'PLURNK_MCP_EXPANDED=["forge"]',
+            'PLURNK_MCP_FORGE_OAUTH=\'{"type":"client-credentials","clientId":"worker","clientSecret":"${WORKER_SECRET}"}\'',
             "PLURNK_MODEL=careful",
         ].join("\n");
         assert.deepEqual(h().deepJson(text), { ...parseEnv(text) });

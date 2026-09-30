@@ -3,17 +3,15 @@
 // and names the invocation the registry actually publishes, so recovery takes one turn.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fileURLToPath } from "node:url";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_db.ts";
 import { connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
+import { MCP_CONTROLS, mcpPluginHome, stdioEntry } from "./_mcp-plugin.ts";
 
-const fixture = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures/echo-server.mjs", import.meta.url));
-
-test("a bare execution of a tool's name fails with a receipt that names the tool's real invocation", { timeout: 60_000 }, async () => {
+test("a bare execution of a tool's name fails with a receipt that names the tool's real invocation", { timeout: 60_000 }, async (t) => {
     const provider = new Mock({
         contextWindow: 100_000,
         responses: [
@@ -21,15 +19,10 @@ test("a bare execution of a tool's name fails with a receipt that names the tool
             makeMockResponse("````KILL\nseen\n````", 10),
         ],
     });
+    const hostPaths = await mcpPluginHome(t, { fixture: stdioEntry("echo-server.mjs") });
     const db = await openMigrated();
-    const daemon = new Daemon({ db, provider });
-    daemon.registerModule(McpModule.init({ env: {
-        PLURNK_MCP_CONNECT_TIMEOUT: "30000",
-        PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
-        PLURNK_MCP_FIXTURE: process.execPath,
-        PLURNK_MCP_FIXTURE_ARGS: JSON.stringify([fixture]),
-        PLURNK_MCP_ENABLED: '["fixture"]',
-    } }));
+    const daemon = new Daemon({ db, provider, hostPaths });
+    daemon.registerModule(McpModule.init({ env: { ...MCP_CONTROLS } }));
     try {
         await daemon.start();
         const ws = await connect({ daemon });

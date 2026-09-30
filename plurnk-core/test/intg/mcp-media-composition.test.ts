@@ -11,6 +11,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { openMigrated } from "./_db.ts";
 import { waitForDb } from "./_rpc.ts";
+import { httpEntry, mcpPluginHome } from "./_mcp-plugin.ts";
 
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
@@ -80,14 +81,12 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             turn(step("KILL")),
         ] });
         provider.beforeFirstRead = () => assert.equal(resourceReads, 0, "listing a resource link does not acquire its bytes");
+        const hostPaths = await mcpPluginHome(t, { fixture: httpEntry(served.url) });
         const db = await openMigrated();
-        const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules") });
+        const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths });
         daemon.registerModule(McpModule.init({ env: {
             PLURNK_MCP_CONNECT_TIMEOUT: "5000",
             PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
-            PLURNK_MCP_FIXTURE: served.url,
-            PLURNK_MCP_ENABLED: '["fixture"]',
-            PLURNK_MCP_FIXTURE_READ: '["observe"]',
         } }));
         let identity: { workspaceId: number; workerId: number } | undefined;
         try {

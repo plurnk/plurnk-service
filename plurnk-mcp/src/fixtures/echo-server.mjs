@@ -76,6 +76,14 @@ const factory = () => {
             isError: true,
         }),
     );
+    if (process.env.PLURNK_MCP_TEST_WHERE === "1") {
+        // {§mcp-plugin-servers} — where the launch placed this process.
+        server.registerTool(
+            "where",
+            { description: "Report the working directory and plugin directories.", inputSchema: fromJsonSchema({ type: "object", additionalProperties: false }) },
+            async () => ({ content: [{ type: "text", text: JSON.stringify({ cwd: process.cwd(), root: process.env.PLUGIN_ROOT, data: process.env.PLUGIN_DATA }) }] }),
+        );
+    }
     if (process.env.PLURNK_MCP_TEST_EXTENDED === "1") {
         server.registerTool(
             "rich",
