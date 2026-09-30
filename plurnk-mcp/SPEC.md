@@ -177,6 +177,11 @@ created for its server. Ordinary closure forwards stdin EOF and permits a
 bounded graceful exit; an expired shutdown bound or disappearance of the host
 process forcibly terminates the group, including descendants.
 
+§mcp-redirect-refused **An HTTP endpoint is never redirected.** Every Streamable HTTP request,
+authorization discovery included, sets `redirect: "manual"`; a 301, 302, 303, 307, or 308 fails the
+connection naming the `Location`. Configured headers therefore never reach another origin
+(Agent Plugins 1.0 §7.2.1), and the endpoint URL is corrected where it is configured.
+
 At the pinned revision, HTTP requests carry matching `MCP-Protocol-Version` and `Mcp-Method`
 headers. Named requests also carry `Mcp-Name`; declared primitive tool
 parameters carry validated `Mcp-Param-*` headers. Header names compare
@@ -756,3 +761,4 @@ stdio/Streamable HTTP servers are composition evidence only.
 | `server-not-connected` | 409 | MCP server '*name*' is not connected for this workspace. |
 | `completion-parameters-invalid` | 400 | MCP completion requires 'ref' and 'argument' objects. |
 | `server-unavailable` | 502 | Configured MCP server '*name*' is unavailable. |
+| `server-redirected` | 502 | MCP endpoint *url* redirected to *location*; plurnk follows no redirect, so the server's url must be the endpoint itself ({§mcp-redirect-refused}). |

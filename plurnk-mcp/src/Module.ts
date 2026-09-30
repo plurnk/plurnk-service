@@ -38,6 +38,7 @@ import {
 import ServerConnection, {
     AuthorizationRequiredError,
     isClientCredentialsRejection,
+    McpRedirectError,
 } from "./client.ts";
 import {
     expandedServerNames,
@@ -195,6 +196,18 @@ const actionError = (
 const errorsOf = (error: unknown): unknown[] =>
     error instanceof AggregateError ? [...error.errors] : [error];
 
+// The first error of a type anywhere in a cause chain, aggregates included.
+const causeOf = <T>(error: unknown, type: abstract new (...args: never[]) => T, seen = new Set<unknown>()): T | undefined => {
+    if (error === null || typeof error !== "object" || seen.has(error)) return undefined;
+    seen.add(error);
+    if (error instanceof type) return error;
+    for (const inner of error instanceof AggregateError ? error.errors : []) {
+        const found = causeOf(inner, type, seen);
+        if (found !== undefined) return found;
+    }
+    return causeOf((error as { cause?: unknown }).cause, type, seen);
+};
+
 const preparationError = (
     definition: McpServerDefinition,
     cause: unknown,
@@ -222,6 +235,17 @@ const preparationError = (
                     : { issuer: definition.authorization.issuer }),
                 retryable: false,
             },
+            completeCause,
+        );
+    }
+    // {§mcp-redirect-refused} — the operator corrects the endpoint; retrying cannot.
+    const redirect = causeOf(cause, McpRedirectError);
+    if (redirect !== undefined) {
+        return actionError(
+            "server-redirected",
+            502,
+            redirect.message,
+            { server: definition.name, url: redirect.url, ...(redirect.location === null ? {} : { location: redirect.location }), retryable: false },
             completeCause,
         );
     }

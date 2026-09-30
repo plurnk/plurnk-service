@@ -280,12 +280,17 @@ const resolveDefinition = (
     };
 };
 
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+// The SDK re-wraps a transport failure without keeping it as a cause, so each HTTP transport's refused
+// redirect is kept beside it for the connection failure to carry.
+const refusedRedirects = new WeakMap<StreamableHTTPClientTransport, McpRedirectError>();
+
 const openTransport = (
     definition: ResolvedDefinition,
     environment: NodeJS.ProcessEnv = getDefaultEnvironment(),
 ): StdioClientTransport | StreamableHTTPClientTransport => {
     if (definition.transport === "http") {
-        return new StreamableHTTPClientTransport(
+        const transport: StreamableHTTPClientTransport = new StreamableHTTPClientTransport(
             new URL(definition.url),
             {
                 ...(definition.headers === undefined
@@ -307,18 +312,30 @@ const openTransport = (
                     const request = body !== null && typeof body === "object" && !Array.isArray(body)
                         ? body as { method?: unknown; params?: { taskId?: unknown } }
                         : undefined;
+                    let sent = init;
                     if (
                         ["tasks/get", "tasks/update", "tasks/cancel"].includes(String(request?.method))
                         && typeof request?.params?.taskId === "string"
                     ) {
                         const headers = new Headers(init?.headers);
                         headers.set("Mcp-Name", mcpRoutingHeaderValue(request.params.taskId));
-                        return fetch(url, { ...init, headers });
+                        sent = { ...init, headers };
                     }
-                    return fetch(url, init);
+                    // {§mcp-redirect-refused} — configured headers never reach another origin: no
+                    // redirect is followed, and a redirected endpoint fails naming where it pointed.
+                    const response = await fetch(url, { ...sent, redirect: "manual" });
+                    if (REDIRECT_STATUSES.has(response.status)) {
+                        const location = response.headers.get("location");
+                        await response.body?.cancel();
+                        const refused = new McpRedirectError(String(url), location === null ? null : new URL(location, String(url)).href);
+                        refusedRedirects.set(transport, refused);
+                        throw refused;
+                    }
+                    return response;
                 },
             },
         );
+        return transport;
     }
     if (definition.cwd === undefined || !isAbsolute(definition.cwd)) {
         throw new Error("A stdio MCP connection requires an absolute working directory.");
@@ -414,6 +431,19 @@ class CatalogClient extends Client {
     }
 }
 
+// {§mcp-redirect-refused} — an HTTP endpoint answered with a redirect, which plurnk never follows.
+export class McpRedirectError extends Error {
+    readonly url: string;
+    readonly location: string | null;
+
+    constructor(url: string, location: string | null) {
+        super(`MCP endpoint ${url} redirected${location === null ? "" : ` to ${location}`}; plurnk follows no redirect, so the server's url must be the endpoint itself.`);
+        this.name = "McpRedirectError";
+        this.url = url;
+        this.location = location;
+    }
+}
+
 export class AuthorizationRequiredError extends Error {
     readonly authorizationUrl: string;
 
@@ -492,7 +522,9 @@ const openClient = async (
         await client.connect(transport, {
             timeout: connectTimeoutMs(environ),
         });
-    } catch (cause) {
+    } catch (failure) {
+        const refused = transport instanceof StreamableHTTPClientTransport ? refusedRedirects.get(transport) : undefined;
+        const cause = refused ?? failure;
         const authorizationUrl = definition.transport === "http"
             ? definition.oauthProvider?.takeAuthorizationUrl()
             : undefined;

@@ -10,7 +10,7 @@ import {
 } from "@modelcontextprotocol/server";
 import { z } from "zod/v4";
 import { serveMcpHttp } from "../test/http-fixture.ts";
-import ServerConnection, { AuthorizationRequiredError } from "./client.ts";
+import ServerConnection, { AuthorizationRequiredError, McpRedirectError } from "./client.ts";
 import {
     MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION_ID,
     MCP_PROTOCOL_VERSION,
@@ -179,6 +179,27 @@ test("Streamable HTTP carries the current envelope and ordinary tool calls", asy
             `request ${index} carries the matching envelope revision`,
         );
     }
+});
+
+test("{§mcp-redirect-refused} a redirected endpoint fails naming its target, and no configured header reaches the other origin", async (t) => {
+    const elsewhere = await serveMcpHttp(t, handler());
+    const moved = await serveMcpHttp(t, handler(), () => new Response(null, { status: 307, headers: { location: elsewhere.url } }));
+    const connection = new ServerConnection({
+        name: "moved",
+        transport: "http",
+        url: moved.url,
+        headers: { "x-api-key": "KEY" },
+    }, floor);
+    t.after(() => connection.close());
+    const redirected = (error: unknown): McpRedirectError | undefined => {
+        if (error === null || typeof error !== "object") return undefined;
+        if (error instanceof McpRedirectError) return error;
+        const nested = error instanceof AggregateError ? error.errors : [];
+        return [...nested, (error as { cause?: unknown }).cause].map(redirected).find((found) => found !== undefined);
+    };
+    await assert.rejects(() => connection.catalog(), (error: unknown) => redirected(error)?.location === new URL(elsewhere.url).href);
+    assert.ok(moved.requests.length > 0, "the configured endpoint was asked");
+    assert.equal(elsewhere.requests.length, 0, "the other origin received nothing, the configured header included");
 });
 
 test("HTTP bearer credentials expand only while preparing a connection", async (t) => {
