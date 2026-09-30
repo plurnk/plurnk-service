@@ -25,6 +25,7 @@ import {
     type FunctionalityOutcome,
     type FunctionalityPreparation,
     type FunctionalityPrepared,
+    type FunctionalityServiceDefinition,
     type McpServerDefinition,
     type JsonSchema,
     type ProblemDetails,
@@ -99,7 +100,7 @@ interface FunctionalityAdapter {
     readonly docsDir?: string;
     readonly example?: { readonly alias: string; readonly definition: object };
     readonly discovery?: { readonly details: string };
-    available(identity: WorkspaceCapabilityIdentity): Promise<readonly { alias: string; definition: object; enabled: boolean }[]>;
+    available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]>;
     discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]>;
     admit(input: unknown, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource>;
     prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared<RuntimeRegistration>>;
