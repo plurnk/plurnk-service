@@ -94,6 +94,8 @@ test("the on-demand catalog is owner-labelled and preserves package comments", a
         const files = await EnvDefaults.collect(root, nm);
         const catalog = EnvDefaults.renderCatalog(files);
         assert.match(catalog, /Generated on demand/, "the header identifies the projection");
+        assert.match(catalog, /--config.*--env-file/u, "additional files are selected explicitly through the launcher");
+        assert.match(catalog, /working directory's \.env is not read/u, "the catalog does not imply ambient project configuration");
         assert.doesNotMatch(catalog, /~\/.plurnk/, "the retired mixed home is absent");
         assert.match(catalog, /═══ @plurnk\/plurnk-service ═══/, "the host section is owner-labelled");
         assert.match(catalog, /═══ @plurnk\/plurnk-fake ═══/, "each member section is owner-labelled");

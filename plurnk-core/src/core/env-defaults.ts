@@ -91,7 +91,8 @@ export default class EnvDefaults {
             "# Plurnk installed configuration defaults",
             "# Generated on demand from each installed package's .env.defaults.",
             "# This output is documentation, not an input file. Put user overrides in",
-            "# $XDG_CONFIG_HOME/plurnk/.env, a project .env, or the shell environment.",
+            "# $XDG_CONFIG_HOME/plurnk/.env, a file selected with --config or --env-file,",
+            "# or the shell environment. A working directory's .env is not read.",
             "# Effective secret values are never projected here.",
             "",
         ].join("\n");
