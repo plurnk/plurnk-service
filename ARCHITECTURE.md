@@ -147,8 +147,8 @@ a second home for a choice, and it will eventually disagree with the first.
   deployment and an invalid value is the operator's mistake: both crash by name.
   Unset may mean "off", or "the dependency's own default applies and plurnk
   makes no choice" — never a literal.
-- **One knob per choice.** A composite value whose partial override must merge
-  over a base forces that base into code.
+- **One knob per choice.** Independent behavior choices override independently
+  through the environment cascade.
 - **A knob earns its place.** PLURNK is as configurable as is practical, and the
   panel is still something an operator reads: a knob is a lever somebody would
   turn for their deployment — a deadline, a page, a disposition, how much the
@@ -164,7 +164,8 @@ a second home for a choice, and it will eventually disagree with the first.
 - **A flag mirrors a knob.** A command-line flag is a knob's spelling for one
   invocation and nothing more; the service's flags are generated from its panel.
 - **A definition is not a knob.** A schedule's rule or an MCP server's address
-  is data with its own lifecycle, not a choice of behaviour.
+  is data with its own lifecycle, not a choice of behaviour. Resolution selects
+  a whole definition, not field patches ({§configuration-definition-resolution}).
 - **A source is not a scope.** A standard file supplies definitions; its format
   does not choose where live changes persist. Workspace management must not
   silently rewrite project or user-global installations. Subsystem commands,

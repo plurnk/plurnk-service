@@ -4137,6 +4137,16 @@ Retryability describes the actual failed condition, not its numeric status.
 | `disable` | Withdraw live capability; retain its definition and saved results. |
 | `remove` | Disable and forget the workspace definition. A same-alias service baseline reappears disabled. Service definitions are disable-only. Saved results remain. |
 
+§configuration-definition-resolution **Named resource definitions replace whole;
+independent behavior controls remain independent.** Source readers and scope
+overlays apply the same boundary:
+
+| Value | Resolution |
+|---|---|
+| Named definition | Select the complete definition from the highest-precedence source or scope declaring that alias. Omitted fields, arrays and nested objects never inherit from a lower definition. |
+| Definition validity | Validate the selected definition against its family's schema. Missing required fields are errors, not requests to fill from a lower definition; rejected live changes preserve the previous publication. |
+| Independently declared behavior control | Resolve its own value through its cascade. An enabledness override does not copy or patch the definition it controls. |
+
 §functionality-inspection **Inspection is not demand.** `list` and `discover` do not
 acquire residency, join preparation, reconcile worker documents, or extend warm
 retention. An enabled definition no resident publication has prepared is `dormant`: every one while

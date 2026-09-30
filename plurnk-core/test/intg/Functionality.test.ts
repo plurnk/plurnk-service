@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Problems } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
-import type { FunctionalityOutcome, PlurnkStatement, ProblemDetails } from "@plurnk/plurnk-contracts";
+import type { FunctionalityListResult, FunctionalityOutcome, PlurnkStatement, ProblemDetails } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import type {
     FunctionalityAdapter,
@@ -256,6 +256,58 @@ const rejectedProblem = async (run: () => Promise<unknown>): Promise<ProblemDeta
     }
     assert.fail("Expected operation failure.");
 };
+
+test("{§configuration-definition-resolution} a workspace definition replaces the whole baseline; enabledness never copies it", async (t) => {
+    const db = await openMigrated();
+    const adapter = fixtureAdapter([]);
+    let baseline: object = { kind: "ok", args: ["service-argument"], env: { SERVICE: "first" } };
+    let prepared: object | undefined;
+    const daemon = new Daemon({ db, provider: null });
+    daemon.registerModule({ setup: (seam) => { seam.registerFunctionalityAdapter({
+        ...adapter,
+        definitionSchema: {
+            ...adapter.definitionSchema,
+            properties: {
+                kind: { enum: ["ok", "fail", "doc"] },
+                args: { type: "array", items: { type: "string" } },
+                env: { type: "object", additionalProperties: { type: "string" } },
+            },
+        },
+        available: async () => [{ alias: "svc", definition: baseline, enabled: true }],
+        prepare: async (input) => {
+            prepared = input.enabled.get("svc");
+            return adapter.prepare(input);
+        },
+    }); } });
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    const workspaceId = await insertWorkspace(db, "whole-definitions");
+    const invoke = (verb: string, params = {}) => daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId));
+    const listed = async () => (await invoke("list") as FunctionalityListResult).definitions;
+
+    await invoke("disable", { alias: "svc" });
+    baseline = { kind: "ok", args: ["changed-service-argument"], env: { SERVICE: "second" } };
+    assert.deepEqual(await listed(), [{ alias: "svc", origin: "service", state: "disabled", definition: baseline }],
+        "a local enabledness override still reads the current complete baseline");
+    await invoke("enable", { alias: "svc" });
+    assert.deepEqual(prepared, baseline, "preparation receives that same current definition");
+
+    const previous = await listed();
+    const invalid = await rejectedProblem(() => invoke("add", { alias: "svc", definition: { env: { LOCAL: "workspace" } } }));
+    assert.equal(invalid.status, 400, "the required kind cannot be inherited to make an incomplete override valid");
+    assert.equal(invalid.type, "https://problems.plurnk.xyz/functionality/arguments-invalid");
+    assert.equal(invalid.detail, "fx add arguments do not match their schema.");
+    assert.deepEqual(await listed(), previous, "invalid input leaves the previously published definition unchanged");
+
+    const replacement = { kind: "doc", env: { LOCAL: "workspace" } };
+    await invoke("add", { alias: "svc", definition: replacement });
+    assert.deepEqual(prepared, replacement, "preparation inherits neither the omitted args nor nested SERVICE field");
+    assert.deepEqual(await listed(), [{ alias: "svc", origin: "workspace", state: "active", definition: replacement }]);
+    await invoke("disable", { alias: "svc" });
+    baseline = { kind: "ok", args: ["another-service-argument"], env: { SERVICE: "third" } };
+    await invoke("enable", { alias: "svc" });
+    assert.deepEqual(prepared, replacement, "behavior changes cannot merge the later baseline into the local definition");
+});
 
 test("{§module-workspace-sharing} {§functionality-coordinator} registration, client lifecycle, documents, persistence, and shared visibility through one owner", async () => {
     const db = await openMigrated();
