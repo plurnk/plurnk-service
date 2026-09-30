@@ -135,7 +135,7 @@ test("{§schedule-discovery-preview} the panel says how many occurrences a readi
     const one = family(new FakeTime(), { PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "1" });
     const [daily] = await one.discover({ source: "FREQ=DAILY" }, { workspaceId: 1 });
     assert.match(String(daily!.summary), /; next 2026-09-16T12:30:16\+00:00\[UTC\]; unbounded/u, "one occurrence, not three");
-    assert.deepEqual([...one.service().keys()], [], "the control key declares no rule");
+    assert.deepEqual(await one.available(), [], "the control key declares no rule");
     const time = new FakeTime();
     const unset = new ScheduleFunctionality({ TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "[]" }, { clock: time.clock, timers: time.api });
     await assert.rejects(unset.discover({ source: "FREQ=DAILY" }, { workspaceId: 1 }), /PLURNK_SCHEDULE_PREVIEW_OCCURRENCES must be a positive integer; got undefined/u);

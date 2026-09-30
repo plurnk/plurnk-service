@@ -87,10 +87,11 @@ the present, as above.
 
 A schedule is an obligation, not a runtime. Cooling a workspace leaves its
 timers armed; `disable` and `remove` disarm through the published rule set. At
-daemon start the module arms every workspace's enabled rules from the
-coordinator's persisted family state ({§functionality-state}) over the
-service definitions, resident or not; an unreadable definition is reported and
-stays disarmed.
+daemon start the module obtains each workspace's effective definitions through
+the coordinator's passive `list` ({§functionality-inspection}) and arms the
+enabled rules, resident or not. Only the coordinator resolves and validates
+stored configuration ({§functionality-state}, {§configuration-definition-resolution});
+malformed state fails there. An unreadable recurrence is reported and stays disarmed.
 
 ## §schedule-environment Environment
 

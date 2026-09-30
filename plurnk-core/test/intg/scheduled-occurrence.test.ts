@@ -2,12 +2,81 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Module, type SchedulerTimers } from "@plurnk/plurnk-schedule";
+import type { FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { openMigrated } from "./_db.ts";
+import { insertWorkspace, openMigrated } from "./_db.ts";
 import { waitForDb } from "./_rpc.ts";
 
 const INITIAL = Date.UTC(2026, 8, 17, 12, 0, 0, 250);
+
+test("{§functionality-state} schedule startup rejects malformed persisted enabledness before arming", async (t) => {
+    const db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, "invalid-schedule-state");
+    await db.workspace_module_state_put.run({
+        workspace_id: workspaceId,
+        namespace_owner: "@plurnk/plurnk-schedule",
+        state: JSON.stringify({ version: 1, definitions: { beat: {
+            origin: "workspace", enabled: "false",
+            definition: { rule: "DTSTART;TZID=UTC:20260917T120001\nRRULE:FREQ=HOURLY;COUNT=2", target: "worker://recipient", prompt: "Must not fire." },
+        } } }),
+    });
+    const timers: SchedulerTimers = { set: () => assert.fail("malformed state must not arm a timer"), clear: () => {} };
+    const module = Module.init({ env: { TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "[]" }, clock: () => INITIAL, timers });
+    const daemon = new Daemon({ db, provider: null });
+    daemon.registerModule(module);
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await assert.rejects(daemon.start(), {
+        name: "Error", message: "Functionality state for schedule alias 'beat' is malformed.",
+    });
+});
+
+test("{§schedule-residency} restart arms the coordinator's complete definitions and per-workspace enabledness", async (t) => {
+    const db = await openMigrated();
+    const baseline = {
+        rule: "DTSTART;TZID=UTC:20260917T120001\nRRULE:FREQ=HOURLY",
+        target: "worker://recipient", prompt: "Baseline.", policy: { proposals: "accept" },
+    };
+    const replacement = { rule: `${baseline.rule};COUNT=2`, target: "worker://alternate", prompt: "Workspace override." };
+    const instances: Daemon[] = [];
+    const start = async () => {
+        const module = Module.init({
+            env: { TZ: "UTC", PLURNK_SCHEDULE_ENABLED: '["beat"]', PLURNK_SCHEDULE_BEAT: JSON.stringify(baseline) },
+            clock: () => INITIAL, timers: { set: () => Symbol("occurrence"), clear: () => {} },
+        });
+        const daemon = new Daemon({ db, provider: null });
+        instances.push(daemon);
+        daemon.registerModule(module);
+        await daemon.start();
+        return { daemon, module };
+    };
+    t.after(async () => { for (const daemon of instances) await daemon.stop(); await db.close(); });
+    const first = await start();
+    const alice = await insertWorkspace(db, "schedule-alice");
+    const bob = await insertWorkspace(db, "schedule-bob");
+    const charlie = await insertWorkspace(db, "schedule-charlie");
+    const invoke = (workspaceId: number, verb: string, params = {}) => first.daemon.invokeModuleAction(
+        `workspace.schedule.${verb}`, params, { scope: "workspace", workspaceId },
+    );
+    await invoke(alice, "add", { alias: "beat", definition: replacement });
+    await invoke(alice, "add", { alias: "muted", definition: replacement });
+    await invoke(alice, "disable", { alias: "muted" });
+    await invoke(bob, "disable", { alias: "beat" });
+    await invoke(bob, "add", { alias: "private", definition: replacement });
+    await first.daemon.stop();
+
+    const restored = await start();
+    for (const [workspaceId, aliases] of [[alice, ["beat"]], [bob, ["private"]], [charlie, ["beat"]]] as const) {
+        const listing = await restored.daemon.invokeModuleAction("workspace.schedule.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult;
+        assert.deepEqual(listing.definitions.filter(({ state }) => state !== "disabled").map(({ alias }) => alias), aliases);
+        assert.deepEqual(restored.module.functionality.scheduler.armed(workspaceId), aliases,
+            "restart and passive inspection must agree without demanding workspace residency");
+        assert.ok(listing.definitions.every(({ state }) => state === "disabled" || state === "dormant"),
+            "arming a durable obligation does not prepare the workspace's capabilities");
+        assert.deepEqual(listing.definitions.find(({ alias }) => alias === "beat")?.definition,
+            workspaceId === alice ? replacement : baseline, "the local rule does not inherit baseline policy or message fields");
+    }
+});
 
 // {§schedule-delivery} — a composed daemon with one hourly rule targeting the recipient worker; the
 // scheduler's timers are the test's, so an occurrence fires when the test says so.

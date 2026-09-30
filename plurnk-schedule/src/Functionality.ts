@@ -134,11 +134,6 @@ export default class ScheduleFunctionality {
         return this.#scheduler;
     }
 
-    // The service's rules as the coordinator's baseline, and as the module re-arms them at start.
-    service(): ReadonlyMap<string, { readonly definition: ScheduleDefinition; readonly enabled: boolean }> {
-        return this.#service;
-    }
-
     async available(): Promise<readonly { alias: string; definition: object; enabled: boolean }[]> {
         return [...this.#service].map(([alias, { definition, enabled }]) => ({ alias, definition, enabled }));
     }
