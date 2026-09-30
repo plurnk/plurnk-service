@@ -37,6 +37,18 @@ test("{§resource-environment} settings compose with definitions from other sour
     assert.throws(() => environment.assertKnownAliases([]), { message: "PLURNK_FIXTURE_imported_ENABLED names unknown resource 'imported'." });
 });
 
+test("{§resource-environment} empty definitions are invalid even when disabled; absent definitions remain absent", () => {
+    for (const enabled of ["0", "1"]) {
+        for (const value of ["", " \t\r\n"]) {
+            assert.throws(() => read({ PLURNK_FIXTURE_ENABLED: enabled, PLURNK_FIXTURE_one: value, PLURNK_FIXTURE_one_ENABLED: "0" }), {
+                message: "PLURNK_FIXTURE_one must contain a definition; use PLURNK_FIXTURE_one_ENABLED=0 to disable a defined resource.",
+            });
+        }
+        const environment = read({ PLURNK_FIXTURE_ENABLED: enabled, PLURNK_FIXTURE_one: undefined });
+        assert.deepEqual([...environment.definitions], []);
+    }
+});
+
 test("{§resource-environment} invalid names, controls and switches fail without exposing definition data", () => {
     for (const key of ["PLURNK_FIXTURE_CODE_SEARCH", "PLURNK_FIXTURE_Code_Search", "PLURNK_FIXTURE_code-search", "PLURNK_FIXTURE_", "PLURNK_FIXTURE_9invalid"]) {
         assert.throws(() => read({ PLURNK_FIXTURE_ENABLED: "1", [key]: "private-definition" }), {

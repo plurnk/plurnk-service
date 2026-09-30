@@ -240,8 +240,8 @@ test("composed production path: env-attached agent, two delegated Tasks, topolog
         caller = new Daemon({ db: callerDb, provider: routedProvider });
         caller.registerModule(A2aOutboundModule.init({
             PLURNK_A2A_ERROR_DETAIL_LIMIT: "512",
-            PLURNK_A2A_REMOTE: agentUrl,
-            PLURNK_A2A_ENABLED: '["remote"]',
+            PLURNK_A2A_remote: JSON.stringify({ name: "remote", url: agentUrl }),
+            PLURNK_A2A_ENABLED: "1",
         }));
         await caller.start();
         const callerWorkspace = await caller.createWorkspace({

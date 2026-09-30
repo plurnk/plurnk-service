@@ -23,7 +23,7 @@ test("{§send-resource-attachments}: outbound A2A snapshots only selected resour
         turn(done),
     ] });
     const daemon = new Daemon({ db, provider });
-    daemon.registerModule(OutboundModule.init({ PLURNK_A2A_PEER: remote.baseUrl, PLURNK_A2A_ENABLED: '["peer"]' }));
+    daemon.registerModule(OutboundModule.init({ PLURNK_A2A_peer: JSON.stringify({ name: "peer", url: remote.baseUrl }), PLURNK_A2A_ENABLED: "1" }));
     try {
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: "message-export", projectRoot: null });

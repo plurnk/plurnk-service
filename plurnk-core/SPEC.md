@@ -4119,10 +4119,10 @@ registry. Deleting the workspace cascades its state; worker lifecycle does not.
 ## Workspace Functionality
 
 §functionality-coordinator **One coordinator owns the common lifecycle.**
-Agent Skills, MCP, outbound A2A agents, and membership are adapters beneath
+Functionality families are adapters beneath
 `list | discover | add | enable | disable | remove`. State and mutations
-serialize per workspace and family. Client actions
-`workspace.<family>.<verb>` and model manager executors invoke the same
+serialize per workspace and family. Scope-bound client actions
+`workspace.<family>.<verb>` / `worker.<family>.<verb>` and model manager executors invoke the same
 coordinator. Families do not invent another management grammar, proposal
 policy, or hotload path.
 
@@ -4132,7 +4132,7 @@ Retryability describes the actual failed condition, not its numeric status.
 |---|---|
 | `list` | Project definitions, origin, enabledness, and published preparation outcome: disabled, dormant, active, unavailable with its Problem, or authorization-required. No credential values. |
 | `discover` | Return inert candidates. Never install, persist, enable, or execute them. |
-| `add` | Admit and persist a workspace definition, prepare it, and enable it atomically. It may override the service baseline. Reapplying the same workspace definition enables it idempotently (200); a different definition for that alias fails 409 without replacing it. |
+| `add` | Admit and persist a local definition, prepare it, and enable it atomically. It may override an inherited definition. Reapplying the same local definition enables it idempotently (200); a different local definition for that alias fails 409 without replacing it. |
 | `enable` | Publish an available definition; retry preparation if unavailable. |
 | `disable` | Withdraw live capability; retain its definition and saved results. |
 | `remove` | Forget the locally owned definition and its enabledness override. Restore any inherited definition with its inherited enabledness. Inherited definitions are disable-only at this scope. Saved results remain. |
@@ -4144,6 +4144,7 @@ overlays apply the same boundary:
 | Value | Resolution |
 |---|---|
 | Named definition | Select the complete definition from the highest-precedence source or scope declaring that alias. Omitted fields, arrays and nested objects never inherit from a lower definition. |
+| Environment resource declaration | Use {§resource-environment}: absence inherits, an empty definition is invalid, and an explicit enabledness switch disables without erasing the definition. |
 | Definition validity | Validate the selected definition against its family's schema. Missing required fields are errors, not requests to fill from a lower definition; rejected live changes preserve the previous publication. |
 | Independently declared behavior control | Resolve its own value through its cascade. An enabledness override does not copy or patch the definition it controls. |
 | Local definition removal | Remove this scope's definition and enabledness override. Restore the current inherited definition and enabledness, or leave no entry if none exists. Do not persist a replacement or disabling mask; subsequent inherited changes remain effective. Restoration follows the same preparation and publication failure policy as other mutations ({§functionality-publication}). |

@@ -18,7 +18,7 @@ const expectedProfile = {
     PLURNK_SERVICE_PACKET_INJECT: "",
     PLURNK_SERVICE_ROOTS: "project",
     PLURNK_MCP_EXPANDED: "[]",
-    PLURNK_SCHEDULE_ENABLED: "[]",
+    PLURNK_SCHEDULE_ENABLED: "0",
     PLURNK_EXECS_QUESTION: "0",
 };
 
@@ -76,12 +76,12 @@ test("test entrypoints exclude personal XDG policy while daily driving and expli
     assert.equal(readFileSync(personalPath, "utf8"), personalPolicy, "the operator's policy is never rewritten");
 });
 
-test("the gate leaves operator schedules disabled unless explicitly selected in the shell", () => {
+test("the gate defaults operator schedules to disabled unless explicitly enabled in the shell", () => {
     const directory = mkdtempSync(resolve(tmpdir(), "plurnk-schedule-profile-"));
     try {
         const operatorFile = resolve(directory, ".env");
-        writeFileSync(operatorFile, 'PLURNK_SCHEDULE_ENABLED=["operator"]\n');
-        for (const selected of [undefined, '["fixture"]']) {
+        writeFileSync(operatorFile, "PLURNK_SCHEDULE_ENABLED=1\n");
+        for (const selected of [undefined, "1"]) {
             const env = { ...process.env };
             if (selected === undefined) delete env.PLURNK_SCHEDULE_ENABLED;
             else env.PLURNK_SCHEDULE_ENABLED = selected;
@@ -90,7 +90,7 @@ test("the gate leaves operator schedules disabled unless explicitly selected in 
                 "--eval", "process.stdout.write(process.env.PLURNK_SCHEDULE_ENABLED)",
             ], { encoding: "utf8", env });
             assert.equal(result.status, 0, result.stderr);
-            assert.equal(result.stdout, selected ?? "[]");
+            assert.equal(result.stdout, selected ?? "0");
         }
     } finally {
         rmSync(directory, { recursive: true, force: true });

@@ -13,21 +13,22 @@ Put overrides in the shell or `$XDG_CONFIG_HOME/plurnk/.env`:
 
 ```dotenv
 TZ=America/New_York
-PLURNK_SCHEDULE_HEARTBEAT={"rule":"FREQ=HOURLY","target":"worker://plurnkbot","prompt":"Check for new messages and report."}
-PLURNK_SCHEDULE_ENABLED=["heartbeat"]
+PLURNK_SCHEDULE_heartbeat={"rule":"FREQ=HOURLY","target":"worker://plurnkbot","prompt":"Check for new messages and report."}
 ```
 
 - `TZ` is the zone rules are read in and the time is told in. The package
   defaults it to UTC; the shell overrides; a workspace overrides through the
   `env` family.
-- `PLURNK_SCHEDULE_<ALIAS>` is one definition as JSON: `rule`, `target`
+- `PLURNK_SCHEDULE_<alias>` is one definition as JSON: `rule`, `target`
   (`worker://<name>`), `prompt`, and optionally `policy`
   (`{"proposals":"accept"}` for a loop nobody watches). A service rule may be
   unbounded; a rule a worker adds carries `COUNT` or `UNTIL`. Without a
   `DTSTART` a service rule starts when the daemon starts: `FREQ=HOURLY` is a
   check-in at start and every hour after; `BYHOUR`, `BYMINUTE` and `BYSECOND`
   pin a time of day instead.
-- `PLURNK_SCHEDULE_ENABLED` names the aliases a workspace starts with.
+- Declared rules start enabled. Set `PLURNK_SCHEDULE_heartbeat_ENABLED=0` to
+  disable that rule, or `PLURNK_SCHEDULE_ENABLED=0` to change the family default.
+  Aliases are lowercase; use `_` for `-` in environment names.
 
 ## Behaviour
 

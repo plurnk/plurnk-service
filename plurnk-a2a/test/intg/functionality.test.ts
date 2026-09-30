@@ -7,7 +7,7 @@ import A2aFunctionality, { aliasOfCard, renderAgent, A2aFunctionalityError } fro
 import { ERROR_DETAIL_LIMIT } from "../../src/ErrorDetail.ts";
 import { startDemoAgent } from "../fixtures/DemoAgent.ts";
 
-const diagnosticEnv = { [ERROR_DETAIL_LIMIT]: "512" };
+const diagnosticEnv = { [ERROR_DETAIL_LIMIT]: "512", PLURNK_A2A_ENABLED: "1" };
 
 const preparation = (workspaceId: number, enabled: Record<string, object>, options: { previous?: unknown; failure?: "publish-unavailable" | "reject"; force?: string } = {}) => ({
     workspaceId,
@@ -30,11 +30,10 @@ const problemOf = async (run: () => Promise<unknown>): Promise<{ type: string; s
 test("{§a2a-environment-projection} environment definitions are the service baseline with PLURNK_A2A_ENABLED as the newborn default", async () => {
     const family = new A2aFunctionality({
         ...diagnosticEnv,
-        PLURNK_A2A_RESEARCHER: "https://agent.example",
-        PLURNK_A2A_RESEARCHER_BEARER: "${RESEARCHER_TOKEN}",
-        PLURNK_A2A_SCRIBE: "https://scribe.example",
-        PLURNK_A2A_SCRIBE_CARD_PATH: "/cards/scribe.json",
-        PLURNK_A2A_ENABLED: '["researcher"]',
+        PLURNK_A2A_researcher: JSON.stringify({ name: "researcher", url: "https://agent.example", authorization: { type: "bearer", token: "${RESEARCHER_TOKEN}" } }),
+        PLURNK_A2A_scribe: JSON.stringify({ name: "scribe", url: "https://scribe.example", cardPath: "/cards/scribe.json" }),
+        PLURNK_A2A_ENABLED: "1",
+        PLURNK_A2A_scribe_ENABLED: "0",
     });
     assert.deepEqual(await family.available(), [
         { alias: "researcher", definition: { name: "researcher", url: "https://agent.example", authorization: { type: "bearer", token: "${RESEARCHER_TOKEN}" } }, enabled: true },
@@ -52,7 +51,7 @@ test("{§a2a-problem-detail} A2A Problems bound caught diagnostics and keep requ
     assert.equal(invalidSource.detail, "A2A discovery requires an absolute HTTP(S) agent URL."); // {§problems-a2a}
     assert.doesNotMatch(invalidSource.detail, /sensitive/u);
 
-    const invalidConfiguration = await problemOf(() => family.discover({ configuration: { PLURNK_A2A_BAD: "not a url" } }));
+    const invalidConfiguration = await problemOf(() => family.discover({ configuration: { PLURNK_A2A_bad: "not JSON" } }));
     assert.equal(invalidConfiguration.detail, "The offered A2A configuration is invalid."); // {§problems-a2a}
     assert.equal(invalidConfiguration.diagnostic?.length, 7);
     assert.match(invalidConfiguration.diagnostic ?? "", /\.\.\.$/u);
@@ -70,13 +69,13 @@ test("discovery is inert: a URL yields one card-derived candidate, configuration
             definition: { name: "plurnk-a2a-protocol-witness", url: agent.baseUrl },
             provenance: { kind: "agent-card", source: agent.baseUrl, reference: "Plurnk A2A protocol witness" },
         });
-        assert.deepEqual(await family.discover({ configuration: { PLURNK_A2A_LOCAL: agent.baseUrl, PLURNK_A2A_ENABLED: '["local"]', IGNORED: 1 } }), [
-            { alias: "local", definition: { name: "local", url: agent.baseUrl }, provenance: { kind: "client-configuration", source: "PLURNK_A2A_LOCAL" } },
+        assert.deepEqual(await family.discover({ configuration: { PLURNK_A2A_local: JSON.stringify({ name: "local", url: agent.baseUrl }), IGNORED: 1 } }), [
+            { alias: "local", definition: { name: "local", url: agent.baseUrl }, provenance: { kind: "client-configuration", source: "PLURNK_A2A_local" } },
         ]);
         assert.equal((await problemOf(() => family.discover({ source: "ftp://nope" }))).type, "https://problems.plurnk.xyz/a2a/functionality/source-invalid");
         assert.equal((await problemOf(() => family.discover({ source: "http://127.0.0.1:9" }))).type, "https://problems.plurnk.xyz/a2a/functionality/card-unreachable");
         assert.equal((await problemOf(() => family.discover({ query: "research" }))).status, 501);
-        assert.equal((await problemOf(() => family.discover({ configuration: { PLURNK_A2A_BAD: "not a url" } }))).type, "https://problems.plurnk.xyz/a2a/functionality/configuration-invalid");
+        assert.equal((await problemOf(() => family.discover({ configuration: { PLURNK_A2A_bad: "not JSON" } }))).type, "https://problems.plurnk.xyz/a2a/functionality/configuration-invalid");
     } finally {
         await agent.close();
     }
@@ -87,6 +86,8 @@ test("admission validates the exact definition and the alias/name identity", asy
     assert.deepEqual(await family.admit({ alias: "peer", definition: { name: "peer", url: "https://peer.example" } }), { alias: "peer", definition: { name: "peer", url: "https://peer.example" } });
     assert.equal((await problemOf(() => family.admit({ alias: "other", definition: { name: "peer", url: "https://peer.example" } }))).type, "https://problems.plurnk.xyz/a2a/functionality/alias-mismatch");
     assert.equal((await problemOf(() => family.admit({ alias: "peer", definition: { name: "peer", url: "https://peer.example", authorization: { type: "bearer", token: "literal-secret" } } }))).type, "https://problems.plurnk.xyz/a2a/functionality/definition-invalid");
+    assert.equal((await problemOf(() => family.admit({ definition: { name: "peer", url: "https://" } }))).type, "https://problems.plurnk.xyz/a2a/functionality/definition-invalid");
+    assert.equal((await problemOf(() => family.admit({ definition: { name: "peer", url: "https://peer.example", headers: { authorization: "custom" }, authorization: { type: "bearer", token: "${TOKEN}" } } }))).type, "https://problems.plurnk.xyz/a2a/functionality/definition-invalid");
     assert.equal(aliasOfCard({ name: "  Weird/Name 9 " } as never), "weird-name-9");
     assert.equal(aliasOfCard({ name: "42" } as never), "agent-42");
 });

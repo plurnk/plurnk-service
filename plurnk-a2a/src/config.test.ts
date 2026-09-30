@@ -3,14 +3,12 @@ import assert from "node:assert/strict";
 import {
     connectTimeoutMs,
     hostedAgentConfiguration,
-    outboundAgentDefinition,
-    outboundAgentNames,
     outboundDefinitions,
     requestTimeoutMs,
-    serviceEnabledNames,
 } from "./config.ts";
 
 const floor = {
+    PLURNK_A2A_ENABLED: "1",
     PLURNK_A2A_CONNECT_TIMEOUT: "30000",
     PLURNK_A2A_REQUEST_TIMEOUT: "86400000",
     PLURNK_A2A_ERROR_DETAIL_LIMIT: "512",
@@ -18,92 +16,63 @@ const floor = {
     PLURNK_A2A_TOKEN: "",
 };
 
-test("outbound configuration preserves standard discovery targets and environment-owned credentials", () => {
-    const env = {
-        ...floor,
-        PLURNK_A2A_RESEARCH: "https://agent.example",
-        PLURNK_A2A_RESEARCH_CARD_PATH: "/agents/research/card.json",
-        PLURNK_A2A_RESEARCH_BEARER: "${RESEARCH_TOKEN}",
-        PLURNK_A2A_RESEARCH_HEADERS: '{"X-Tenant":"${RESEARCH_TENANT}"}',
-        PLURNK_A2A_ENABLED: '["research"]',
-    };
-    assert.deepEqual(outboundAgentNames(env), ["research"]);
-    assert.deepEqual(serviceEnabledNames(env), ["research"]);
-    assert.deepEqual(outboundAgentDefinition("RESEARCH", env), {
-        name: "research",
-        url: "https://agent.example",
-        cardPath: "/agents/research/card.json",
+test("{§a2a-environment-projection} whole definitions preserve discovery targets and symbolic credentials", () => {
+    const definition = {
+        name: "code-search", url: "https://agent.example", cardPath: "/agents/research/card.json",
         headers: { "X-Tenant": "${RESEARCH_TENANT}" },
         authorization: { type: "bearer", token: "${RESEARCH_TOKEN}" },
-    });
-});
-
-test("{§a2a-environment-projection} empty targets mask definitions and ignore their companions and inherited enabledness", () => {
-    const env = {
-        ...floor,
-        PLURNK_A2A_RESEARCH: "",
-        PLURNK_A2A_RESEARCH_CARD_PATH: "not a path",
-        PLURNK_A2A_RESEARCH_HEADERS: "not JSON",
-        PLURNK_A2A_RESEARCH_BEARER: "not a reference",
-        PLURNK_A2A_OTHER: "https://agent.example",
-        PLURNK_A2A_ENABLED: '["research","other"]',
     };
-    assert.equal(outboundAgentDefinition("RESEARCH", env), null);
-    assert.deepEqual(outboundAgentNames(env), ["other"]);
-    assert.deepEqual(outboundDefinitions(env), [{ name: "other", url: "https://agent.example" }]);
-    assert.deepEqual(serviceEnabledNames(env), ["other"]);
-    assert.throws(() => serviceEnabledNames({ ...env, PLURNK_A2A_ENABLED: '["missing"]' }), /unknown A2A agent 'missing'/);
-    assert.throws(() => outboundAgentNames({ ...env, PLURNK_A2A_research: "https://agent.example" }), /both derive A2A agent name 'research'/);
+    const env = { ...floor, PLURNK_A2A_code_search: JSON.stringify(definition), PLURNK_A2A_code_search_ENABLED: "0" };
+    assert.deepEqual(outboundDefinitions(env), [{ alias: "code-search", definition, enabled: false }]);
+    assert.deepEqual(outboundDefinitions({ ...env, PLURNK_A2A_code_search_ENABLED: "1" }), [{ alias: "code-search", definition, enabled: true }]);
+    assert.deepEqual(outboundDefinitions(floor), []);
+    const replacement = { name: "code-search", url: "https://other.example" };
+    assert.deepEqual(outboundDefinitions({ ...env, PLURNK_A2A_code_search: JSON.stringify(replacement) }), [
+        { alias: "code-search", definition: replacement, enabled: false },
+    ], "a replacement cannot inherit headers, authorization or a card path from the old endpoint");
 });
 
-test("outbound configuration rejects ambiguous aliases, companions, enabledness, and credentials", () => {
-    assert.throws(
-        () => outboundAgentNames({
-            ...floor,
-            PLURNK_A2A_RESEARCH: "https://agent.example",
-            PLURNK_A2A_research: "https://other.example",
-        }),
-        /PLURNK_A2A_RESEARCH.*PLURNK_A2A_research.*research/,
-    );
-    assert.throws(
-        () => outboundAgentNames({
-            ...floor,
-            PLURNK_A2A_RESEARCH_HEADERS: "{}",
-        }),
-        /PLURNK_A2A_RESEARCH_HEADERS.*PLURNK_A2A_RESEARCH/,
-    );
-    assert.throws(
-        () => serviceEnabledNames({
-            ...floor,
-            PLURNK_A2A_ENABLED: '["missing"]',
-        }),
-        /PLURNK_A2A_ENABLED.*unknown A2A agent 'missing'/,
-    );
-    assert.throws(
-        () => serviceEnabledNames({
-            ...floor,
-            PLURNK_A2A_RESEARCH: "https://agent.example",
-            PLURNK_A2A_ENABLED: '["research","research"]',
-        }),
-        /PLURNK_A2A_ENABLED.*duplicate A2A agent 'research'/,
-    );
-    assert.throws(
-        () => outboundAgentDefinition("research", {
-            ...floor,
-            PLURNK_A2A_RESEARCH: "https://agent.example",
-            PLURNK_A2A_RESEARCH_BEARER: "literal-secret",
-        }),
-        /PLURNK_A2A_RESEARCH_BEARER.*symbolic environment reference/,
-    );
-    assert.throws(
-        () => outboundAgentDefinition("research", {
-            ...floor,
-            PLURNK_A2A_RESEARCH: "https://agent.example",
-            PLURNK_A2A_RESEARCH_BEARER: "${RESEARCH_TOKEN}",
-            PLURNK_A2A_RESEARCH_HEADERS: '{"authorization":"custom"}',
-        }),
-        /BEARER.*conflicts with Authorization.*HEADERS/,
-    );
+test("{§a2a-environment-projection} lowercase aliases remain distinct from uppercase controls", () => {
+    const definitions = outboundDefinitions({
+        ...floor, PLURNK_A2A_ENABLED: "0", PLURNK_A2A_name_ENABLED: "1",
+        PLURNK_A2A_port: JSON.stringify({ name: "port", url: "https://port.example" }),
+        PLURNK_A2A_name: JSON.stringify({ name: "name", url: "https://name.example" }),
+        PLURNK_A2A_NAME: "Hosted name",
+    });
+    assert.deepEqual(definitions.map(({ alias, enabled }) => ({ alias, enabled })), [
+        { alias: "name", enabled: true }, { alias: "port", enabled: false },
+    ]);
+    for (const key of ["PLURNK_A2A_RESEARCH", "PLURNK_A2A_Research", "PLURNK_A2A_code-search"]) {
+        assert.throws(() => outboundDefinitions({ ...floor, [key]: "private-definition" }), new RegExp(key + " .*lowercase", "u"));
+    }
+    assert.throws(() => outboundDefinitions({ ...floor, PLURNK_A2A_research_HEADERS: "{}" }), /PLURNK_A2A_research_HEADERS names unsupported resource setting/u);
+    assert.throws(() => outboundDefinitions({ ...floor, PLURNK_A2A_missing_ENABLED: "0" }), /PLURNK_A2A_missing_ENABLED names unknown resource 'missing'/u);
+    assert.throws(() => outboundDefinitions({ ...floor, PLURNK_A2A_ENABLED: '["research"]' }), /PLURNK_A2A_ENABLED must be 0 or 1/u);
+    const { PLURNK_A2A_ENABLED: _unset, ...missing } = floor;
+    assert.throws(() => outboundDefinitions(missing), /PLURNK_A2A_ENABLED is missing from the assembled environment floor/u);
+});
+
+test("{§a2a-environment-projection} empty and invalid definitions fail even when disabled, without disclosing their values", () => {
+    for (const raw of ["", " \t"]) {
+        assert.throws(() => outboundDefinitions({ ...floor, PLURNK_A2A_research: raw, PLURNK_A2A_research_ENABLED: "0" }), /PLURNK_A2A_research must contain a definition/u);
+    }
+    const definition = { name: "research", url: "https://agent.example" };
+    const invalid = [
+        "not json", "null", "[]", "{}",
+        JSON.stringify({ ...definition, url: "https://" }),
+        JSON.stringify({ ...definition, url: "file:///private-definition" }),
+        JSON.stringify({ ...definition, cardPath: "/path?query=1" }),
+        JSON.stringify({ ...definition, authorization: { type: "bearer", token: "literal-secret" } }),
+        JSON.stringify({ ...definition, authorization: { type: "bearer", token: "${TOKEN}" }, headers: { aUtHoRiZaTiOn: "private-definition" } }),
+    ];
+    for (const raw of invalid) {
+        assert.throws(() => outboundDefinitions({ ...floor, PLURNK_A2A_research: raw, PLURNK_A2A_research_ENABLED: "0" }), {
+            message: "PLURNK_A2A_research must be an A2A agent definition.",
+        });
+    }
+    assert.throws(() => outboundDefinitions({ ...floor, PLURNK_A2A_other: JSON.stringify(definition) }), {
+        message: "PLURNK_A2A_other must define name 'other'.",
+    });
 });
 
 test("{§a2a-hosted-card} the hosted card derives identity from environment and protocol claims from implementation", () => {
@@ -246,16 +215,16 @@ test("{§a2a-hosted-bearer} the token is the floor's to state: empty is open, a 
     assert.equal(hostedAgentConfiguration({ ...hosted, PLURNK_A2A_TOKEN: "s3cret" })?.token, "s3cret");
     const { PLURNK_A2A_TOKEN: _unset, ...missing } = hosted;
     assert.throws(() => hostedAgentConfiguration(missing), /PLURNK_A2A_TOKEN is missing from the assembled environment floor/);
-    assert.deepEqual(outboundAgentNames({ ...floor, PLURNK_A2A_TOKEN: "s3cret" }), [], "the token is a reserved global, never an alias");
+    assert.deepEqual(outboundDefinitions({ ...floor, PLURNK_A2A_TOKEN: "s3cret" }), [], "the token is a reserved global, never an alias");
 });
 
 test("{§a2a-environment-projection} a key that once named the exposure's own listener fails hard, naming the service listener", () => {
-    for (const key of ["PLURNK_A2A_HOST", "PLURNK_A2A_PORT", "PLURNK_A2A_port"]) {
+    for (const key of ["PLURNK_A2A_HOST", "PLURNK_A2A_PORT"]) {
         assert.throws(
-            () => outboundAgentNames({ ...floor, [key]: "4100" }),
+            () => outboundDefinitions({ ...floor, [key]: "4100" }),
             new RegExp(`^Error: ${key} is retired: .*PLURNK_HOST and PLURNK_PORT .*remove it\\.$`, "u"),
             key,
         );
     }
-    assert.deepEqual(outboundAgentNames({ ...floor, PLURNK_A2A_HOST: "" }), [], "an emptied leftover is inert, like any empty target");
+    assert.throws(() => outboundDefinitions({ ...floor, PLURNK_A2A_HOST: "" }), /PLURNK_A2A_HOST is retired/u);
 });

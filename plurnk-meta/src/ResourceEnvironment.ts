@@ -32,6 +32,9 @@ export default class ResourceEnvironment {
             const alias = match[1].replaceAll("_", "-");
             const setting = match[2];
             if (setting === undefined) {
+                if (value.trim().length === 0) {
+                    throw new Error(`${key} must contain a definition; use ${key}_ENABLED=0 to disable a defined resource.`);
+                }
                 definitions.set(alias, { key, value });
                 continue;
             }

@@ -1,6 +1,7 @@
 import type { A2AAgentDefinition as A2aAgentDefinition } from "@plurnk/plurnk-contracts";
-import { Knob } from "@plurnk/plurnk-meta";
+import { Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import { isAbsolute } from "node:path";
+import { readDefinition } from "./definition.ts";
 import {
     A2A_PROTOCOL_VERSION,
     AgentCard,
@@ -8,44 +9,14 @@ import {
 } from "@a2a-js/sdk";
 
 const PREFIX = "PLURNK_A2A_";
-const COMPANION_SUFFIXES = ["_card_path", "_bearer", "_headers"] as const;
-const CONTROL_KEYS = new Map([
-    ["enabled", `${PREFIX}ENABLED`],
-    ["connect_timeout", `${PREFIX}CONNECT_TIMEOUT`],
-    ["request_timeout", `${PREFIX}REQUEST_TIMEOUT`],
-    ["error_detail_limit", `${PREFIX}ERROR_DETAIL_LIMIT`],
-    ["expose", `${PREFIX}EXPOSE`],
-    ["token", `${PREFIX}TOKEN`],
-    ["endpoint_path", `${PREFIX}ENDPOINT_PATH`],
-    ["endpoint_url", `${PREFIX}ENDPOINT_URL`],
-    ["workspace", `${PREFIX}WORKSPACE`],
-    ["project_root", `${PREFIX}PROJECT_ROOT`],
-    ["proposals", `${PREFIX}PROPOSALS`],
-    ["name", `${PREFIX}NAME`],
-    ["description", `${PREFIX}DESCRIPTION`],
-    ["version", `${PREFIX}VERSION`],
-    ["provider_organization", `${PREFIX}PROVIDER_ORGANIZATION`],
-    ["provider_url", `${PREFIX}PROVIDER_URL`],
-    ["documentation_url", `${PREFIX}DOCUMENTATION_URL`],
-    ["icon_url", `${PREFIX}ICON_URL`],
-    ["skills", `${PREFIX}SKILLS`],
-]);
-const AGENT_NAME = /^[a-z][a-z0-9-]*$/;
-const ENV_REFERENCE = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/u;
+const CONTROLS = [
+    "CONNECT_TIMEOUT", "REQUEST_TIMEOUT", "ERROR_DETAIL_LIMIT", "EXPOSE", "TOKEN",
+    "ENDPOINT_PATH", "ENDPOINT_URL", "WORKSPACE", "PROJECT_ROOT", "PROPOSALS",
+    "NAME", "DESCRIPTION", "VERSION", "PROVIDER_ORGANIZATION", "PROVIDER_URL",
+    "DOCUMENTATION_URL", "ICON_URL", "SKILLS",
+];
 const INPUT_MODES = ["*/*"];
 const OUTPUT_MODES = ["*/*"];
-
-type CompanionSuffix = typeof COMPANION_SUFFIXES[number];
-
-interface EnvironmentVariable {
-    readonly key: string;
-    readonly value: string;
-}
-
-interface ParsedEnvironment {
-    readonly targets: Map<string, EnvironmentVariable>;
-    readonly companions: Map<string, Map<CompanionSuffix, EnvironmentVariable>>;
-}
 
 // The environment's projection of one outbound agent is exactly the
 // coordinator's `A2aAgentDefinition` contract.
@@ -68,118 +39,24 @@ export interface HostedAgentConfiguration {
 const HOSTED_PROPOSALS = ["accept", "reject"] as const;
 export type HostedProposals = typeof HOSTED_PROPOSALS[number];
 
-const assertAgentName = (name: string, variable: string): void => {
-    if (!AGENT_NAME.test(name)) {
-        throw new Error(
-            `${variable} derives invalid A2A agent name '${name}'; names must match [a-z][a-z0-9-]*.`,
-        );
-    }
-};
-
 // {§http-host} — the exposure rides the service listener, so it has no address knobs (#641).
 // A still-set one fails hard naming the successor; it never silently binds nothing, and it never
 // case-folds into an alias definition. Spelled out only here, as the refusal's own evidence.
 const shedRetiredListener = (environ: NodeJS.ProcessEnv): void => {
     for (const name of ["PLURNK_A2A_HOST", "PLURNK_A2A_PORT"] as const) {
-        const present = Object.entries(environ).find(([key, value]) => key.toUpperCase() === name && value !== undefined && value !== "");
-        if (present !== undefined) {
+        if (environ[name] !== undefined) {
             throw new Error(
-                `${present[0]} is retired: the A2A exposure is mounted on the service listener, whose address is PLURNK_HOST and PLURNK_PORT ({§http-host}); remove it.`,
+                `${name} is retired: the A2A exposure is mounted on the service listener, whose address is PLURNK_HOST and PLURNK_PORT ({§http-host}); remove it.`,
             );
         }
     }
 };
 
-const parseEnvironment = (environ: NodeJS.ProcessEnv): ParsedEnvironment => {
+const parseEnvironment = (environ: NodeJS.ProcessEnv): ResourceEnvironment => {
     shedRetiredListener(environ);
-    const targets = new Map<string, EnvironmentVariable>();
-    const companions = new Map<string, Map<CompanionSuffix, EnvironmentVariable>>();
-    for (const [key, value] of Object.entries(environ)) {
-        if (value === undefined || !key.startsWith(PREFIX)) continue;
-        const suffix = key.slice(PREFIX.length);
-        if (suffix.length === 0) continue;
-        const folded = suffix.toLowerCase();
-        const controlKey = CONTROL_KEYS.get(folded);
-        if (controlKey !== undefined) {
-            if (key !== controlKey) {
-                throw new Error(
-                    `${key} case-folds to ${controlKey}; that name is a reserved global and must use its canonical spelling.`,
-                );
-            }
-            continue;
-        }
-        const companion = COMPANION_SUFFIXES.find((candidate) => folded.endsWith(candidate));
-        if (companion !== undefined) {
-            const name = folded.slice(0, -companion.length);
-            const reservedGlobal = CONTROL_KEYS.get(name);
-            if (reservedGlobal !== undefined) {
-                throw new Error(
-                    `${key} uses ${reservedGlobal} as an agent name; reserved globals cannot have agent companions.`,
-                );
-            }
-            assertAgentName(name, key);
-            const bySuffix = companions.get(name) ?? new Map<CompanionSuffix, EnvironmentVariable>();
-            const existing = bySuffix.get(companion);
-            if (existing !== undefined) {
-                throw new Error(
-                    `${existing.key} and ${key} are duplicate A2A agent companions after case-folding.`,
-                );
-            }
-            bySuffix.set(companion, { key, value });
-            companions.set(name, bySuffix);
-            continue;
-        }
-        assertAgentName(folded, key);
-        const existing = targets.get(folded);
-        if (existing !== undefined) {
-            throw new Error(
-                `${existing.key} and ${key} both derive A2A agent name '${folded}' after case-folding.`,
-            );
-        }
-        targets.set(folded, { key, value });
-    }
-    for (const [name, fields] of companions) {
-        if (targets.has(name)) continue;
-        const variables = [...fields.values()].map(({ key }) => key).join(", ");
-        throw new Error(`${variables} has no A2A agent target ${PREFIX}${name.toUpperCase()}.`);
-    }
-    return { targets, companions };
-};
-
-const jsonStrings = (raw: string | undefined, field: string): string[] => {
-    if (raw === undefined || raw.length === 0) return [];
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(raw);
-    } catch (cause) {
-        throw new Error(`${field} must be a JSON array of strings.`, { cause });
-    }
-    if (!Array.isArray(parsed) || !parsed.every((value) => typeof value === "string")) {
-        throw new Error(`${field} must be a JSON array of strings.`);
-    }
-    return parsed;
-};
-
-const jsonRecord = (
-    raw: string | undefined,
-    field: string,
-): Record<string, string> | undefined => {
-    if (raw === undefined || raw.length === 0) return undefined;
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(raw);
-    } catch (cause) {
-        throw new Error(`${field} must be a JSON object with string values.`, { cause });
-    }
-    if (
-        typeof parsed !== "object"
-        || parsed === null
-        || Array.isArray(parsed)
-        || !Object.values(parsed).every((value) => typeof value === "string")
-    ) {
-        throw new Error(`${field} must be a JSON object with string values.`);
-    }
-    return parsed as Record<string, string>;
+    const environment = new ResourceEnvironment(PREFIX, { controls: CONTROLS, settings: [] }, environ);
+    environment.assertKnownAliases(environment.definitions.keys());
+    return environment;
 };
 
 const absoluteHttpUrl = (raw: string, field: string): string => {
@@ -269,71 +146,20 @@ const skills = (raw: string | undefined): AgentSkill[] => {
     });
 };
 
-export const outboundAgentNames = (environ: NodeJS.ProcessEnv = process.env): string[] =>
-    [...parseEnvironment(environ).targets]
-        .filter(([, { value }]) => value !== "")
-        .map(([name]) => name)
-        .toSorted();
-
-export const outboundAgentDefinition = (
-    name: string,
-    environ: NodeJS.ProcessEnv = process.env,
-): OutboundAgentDefinition | null => {
-    const folded = name.toLowerCase();
-    const { targets, companions } = parseEnvironment(environ);
-    const target = targets.get(folded);
-    if (target === undefined || target.value === "") return null;
-    const fields = companions.get(folded);
-    const cardPathField = fields?.get("_card_path");
-    const cardPath = cardPathField?.value;
-    if (cardPath !== undefined && (!cardPath.startsWith("/") || cardPath.includes("?") || cardPath.includes("#"))) {
-        throw new Error(`${cardPathField?.key} must be an absolute URL pathname without query or fragment.`);
-    }
-    const headersField = fields?.get("_headers");
-    const headers = jsonRecord(headersField?.value, headersField?.key ?? `${PREFIX}${folded.toUpperCase()}_HEADERS`);
-    const bearer = fields?.get("_bearer");
-    if (bearer !== undefined && !ENV_REFERENCE.test(bearer.value)) {
-        throw new Error(`${bearer.key} must be a symbolic environment reference such as \${TOKEN}.`);
-    }
-    const authorizationHeader = Object.keys(headers ?? {}).find((key) => key.toLowerCase() === "authorization");
-    if (bearer !== undefined && authorizationHeader !== undefined) {
-        throw new Error(`${bearer.key} conflicts with Authorization in ${headersField?.key}.`);
-    }
-    return {
-        name: folded,
-        url: absoluteHttpUrl(target.value, target.key),
-        ...(cardPath === undefined || cardPath.length === 0 ? {} : { cardPath }),
-        ...(headers === undefined ? {} : { headers }),
-        ...(bearer === undefined ? {} : {
-            authorization: { type: "bearer" as const, token: bearer.value },
-        }),
-    };
-};
-
 export const outboundDefinitions = (
     environ: NodeJS.ProcessEnv = process.env,
-): OutboundAgentDefinition[] => outboundAgentNames(environ).map((name) => {
-    const definition = outboundAgentDefinition(name, environ);
-    if (definition === null) throw new Error(`A2A agent '${name}' disappeared during configuration.`);
-    return definition;
-});
-
-export const serviceEnabledNames = (environ: NodeJS.ProcessEnv = process.env): string[] => {
-    const field = `${PREFIX}ENABLED`;
-    if (environ[field] === undefined) throw new Error(`${field} is missing from the assembled environment floor.`);
-    if (environ[field] === "") throw new Error(`${field} must be a JSON array of strings; [] enables none.`);
-    const configured = jsonStrings(environ[field], field);
-    const { targets } = parseEnvironment(environ);
-    const enabled = new Set<string>();
-    for (const name of configured) {
-        assertAgentName(name, field);
-        const target = targets.get(name);
-        if (target === undefined) throw new Error(`${field} contains unknown A2A agent '${name}'.`);
-        if (target.value === "") continue;
-        if (enabled.has(name)) throw new Error(`${field} contains duplicate A2A agent '${name}'.`);
-        enabled.add(name);
-    }
-    return [...enabled].toSorted();
+): Array<{ alias: string; definition: OutboundAgentDefinition; enabled: boolean }> => {
+    const environment = parseEnvironment(environ);
+    return [...environment.definitions].map(([alias, { key, value }]) => {
+        let definition: OutboundAgentDefinition;
+        try {
+            definition = readDefinition(JSON.parse(value));
+        } catch (cause) {
+            throw new Error(`${key} must be an A2A agent definition.`, { cause });
+        }
+        if (definition.name !== alias) throw new Error(`${key} must define name '${alias}'.`);
+        return { alias, definition, enabled: environment.enabled(alias) };
+    });
 };
 
 export const hostedAgentConfiguration = (

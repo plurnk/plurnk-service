@@ -95,14 +95,12 @@ malformed state fails there. An unreadable recurrence is reported and stays disa
 
 ## §schedule-environment Environment
 
-`PLURNK_SCHEDULE_<ALIAS>` holds one definition as JSON; the alias is the
-suffix case-folded to the family grammar, and two variables folding to one
-alias fail at boot. `PLURNK_SCHEDULE_ENABLED` is the JSON array of aliases a
-workspace starts with; `[]` is the one spelling of none, and an absent or empty
-key is refused by name. A service definition is disable-only in a workspace,
-as for every family. An explicitly empty definition masks that service rule and
-its inherited `ENABLED` selection; it does not remove a workspace-owned rule or
-prohibit adding one. Case-fold collisions still fail validation.
+`PLURNK_SCHEDULE_<alias>` holds one complete definition as JSON, using
+{§resource-environment}. `PLURNK_SCHEDULE_ENABLED=1` arms declared service rules
+by default; `<alias>_ENABLED=0` retains a rule without arming it. The family
+validates every definition, including disabled rules, at construction. A service
+definition is disable-only in a workspace ({§functionality-coordinator}); live
+definitions and state compose through {§configuration-definition-resolution}.
 
 §problems-schedule **Schedule Problems.** Every code this family mints, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 

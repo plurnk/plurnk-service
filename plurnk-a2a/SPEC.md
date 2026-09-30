@@ -10,30 +10,27 @@ well-known path. No legacy protocol or alternate binding is enabled.
 ## §a2a-environment-projection POSIX configuration projection
 
 The package `.env.defaults` is the complete configuration vocabulary. The
-ordinary service, user, project, and client environment cascade remains the
-only configuration authority; generated Agent Cards and discovered remote
+ordinary cascading environment ({§operator-config-precedence}) remains the
+configuration authority; generated Agent Cards and discovered remote
 cards are protocol projections, not configuration files.
 
 | Family | Variables | Meaning |
 |---|---|---|
-| Outbound definition | `PLURNK_A2A_<ALIAS>=<absolute HTTP(S) URL>` plus optional `_CARD_PATH`, `_HEADERS`, and `_BEARER` companions | Defines one available remote agent without fetching or enabling it. `_BEARER` contains only a symbolic `${NAME}` reference; secrets remain environment-owned. |
-| Outbound defaults | `PLURNK_A2A_ENABLED` | JSON array selecting the exact aliases enabled by default for the workspace's `a2a` family ({§a2a-functionality}); workspace state may override enabledness. `[]` is the one spelling of none: an absent or empty key is refused by name. |
+| Outbound definition | `PLURNK_A2A_<alias>=<JSON definition>` | One complete `A2aAgentDefinition` ({§a2a-functionality}), including transport and authentication. The definition's `name` equals the alias. Parsing performs no network activity. |
+| Outbound defaults | `PLURNK_A2A_ENABLED=1`, `<alias>_ENABLED=0\|1` | Shared resource controls ({§resource-environment}); declared agents default enabled, and workspace state may override enabledness. |
 | Timeouts | `PLURNK_A2A_CONNECT_TIMEOUT`, `PLURNK_A2A_REQUEST_TIMEOUT` | Positive integer milliseconds owned by the A2A package. |
 | Diagnostics | `PLURNK_A2A_ERROR_DETAIL_LIMIT` | Non-negative character bound for one caught upstream diagnostic admitted to a model-facing A2A Problem; complete causes remain internal. |
 | Inbound exposure | `PLURNK_A2A_EXPOSE`, `_TOKEN`, `_ENDPOINT_PATH`, `_ENDPOINT_URL` | `EXPOSE=1` mounts one HTTP+JSON exposure on the service listener ({§http-host}); `0` mounts none. `_TOKEN` is the bearer the endpoint requires and the card declares ({§a2a-hosted-bearer}); empty is an unauthenticated exposure. |
 | Inbound workspace | `PLURNK_A2A_WORKSPACE`, `_PROJECT_ROOT` | Names the lazily resolved execution workspace and its creation root. |
 | Hosted identity | `PLURNK_A2A_NAME`, `_DESCRIPTION`, `_VERSION`, optional provider/docs/icon fields, and `_SKILLS` | Supplies identity content for one generated standard Agent Card. `_SKILLS` is a JSON array; omitted per-skill examples and media modes receive the exposure's factual defaults. |
 
-Alias matching is case-insensitive but collision-intolerant, while the canonical
-global names use their documented spelling. Header values preserve symbolic
+Definitions use {§resource-environment}, including nonempty values and distinct
+lowercase aliases/uppercase controls. Every definition is validated, even when
+disabled. A replacement inherits no connection fields from a lower definition
+({§configuration-definition-resolution}). Header values preserve symbolic
 environment references until connection admission. A remote Agent Card remains
 the authority for that remote agent; its discovered contents are never copied
 into this environment vocabulary.
-
-An explicitly empty outbound target omits that definition, ignores its companion
-values and drops its inherited `ENABLED` selection. It does not remove a
-workspace-owned definition or prohibit adding one. Genuinely undeclared aliases
-and case-fold collisions still fail validation.
 
 ## §a2a-protocol-witness Protocol witness
 
@@ -158,7 +155,10 @@ family named `a2a` ({§functionality-adapter} in core): the package, its keys,
 the family and the scheme share one name. Its definition
 is the `A2aAgentDefinition` contract — local alias `name`, remote `url`,
 optional `cardPath`, `headers`, and symbolic bearer `authorization` —
-exactly the environment's `PLURNK_A2A_<ALIAS>*` projection.
+exactly the environment's `PLURNK_A2A_<alias>` value. Environment and live
+admission use the same validator: a valid absolute HTTP(S) URL, schema-valid
+connection fields, and no simultaneous bearer `authorization` and
+case-insensitive `Authorization` header.
 
 *Available definitions* are the environment's aliases; `PLURNK_A2A_ENABLED`
 supplies their default enabledness. *Admission* (`add {alias, definition}`)

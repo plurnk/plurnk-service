@@ -125,7 +125,9 @@ sources; they do not manufacture definitions. The caller checks referenced alias
 against its complete resolved resource set, after source composition. Missing
 resources, malformed spellings and unsupported settings fail by variable name.
 Definition data remains verbatim for its owning schema; this reader neither merges
-fields nor includes those values in its diagnostics.
+fields nor includes those values in its diagnostics. Empty or whitespace-only
+definitions are invalid even when disabled. Absence leaves inheritance intact;
+`<alias>_ENABLED=0` suppresses activation without hiding the definition.
 
 ### §error-detail-bound One diagnostic-preview bound
 

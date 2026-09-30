@@ -38,14 +38,16 @@ import { connectHttpJsonAgent } from "@plurnk/plurnk-a2a";
 const client = await connectHttpJsonAgent("https://agent.example");
 ```
 
-Available remote agents use parallel alias blocks in the same environment
+Available remote agents use complete named definitions in the same environment
 cascade. Their discovered standard Agent Cards remain authoritative:
 
 ```dotenv
-PLURNK_A2A_RESEARCH=https://agent.example
-PLURNK_A2A_RESEARCH_BEARER=${A2A_RESEARCH_TOKEN}
-PLURNK_A2A_ENABLED=["research"]
+PLURNK_A2A_research={"name":"research","url":"https://agent.example","authorization":{"type":"bearer","token":"${A2A_RESEARCH_TOKEN}"}}
 ```
+
+Declared agents start enabled. `PLURNK_A2A_research_ENABLED=0` disables that
+agent without hiding its definition; `PLURNK_A2A_ENABLED=0` changes the family
+default. Aliases are lowercase; `_` represents `-` in environment names.
 
 In the service those definitions are the baseline of the workspace `a2a`
 Functionality family (`OutboundModule`): every Worker lists, discovers, adds,

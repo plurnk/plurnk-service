@@ -26,5 +26,5 @@ export {
     type ScheduleRuleCode,
 } from "./rules.ts";
 export { DEFINITION_SCHEMA, DefinitionError, readDefinition, targetWorkerName, type ScheduleDefinition } from "./definition.ts";
-export { ENABLED, serviceDefinitions, serviceEnabled } from "./config.ts";
+export { serviceDefinitions } from "./config.ts";
 export { isoString, zoned } from "./temporal.ts";

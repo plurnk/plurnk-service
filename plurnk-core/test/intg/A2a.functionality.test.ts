@@ -37,9 +37,10 @@ test("{§a2a-functionality} outbound agents are workspace Functionality: baselin
     const daemon = new Daemon({ db, provider: null });
     daemon.registerModule(OutboundModule.init({
         PLURNK_A2A_ERROR_DETAIL_LIMIT: "512",
-        PLURNK_A2A_RESEARCHER: agent.baseUrl,
-        PLURNK_A2A_ENABLED: '["researcher"]',
-        PLURNK_A2A_SCRIBE: "http://127.0.0.1:9",
+        PLURNK_A2A_researcher: JSON.stringify({ name: "researcher", url: agent.baseUrl }),
+        PLURNK_A2A_ENABLED: "1",
+        PLURNK_A2A_scribe: JSON.stringify({ name: "scribe", url: "http://127.0.0.1:9" }),
+        PLURNK_A2A_scribe_ENABLED: "0",
     }));
     await daemon.start();
     const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>): Promise<T> =>

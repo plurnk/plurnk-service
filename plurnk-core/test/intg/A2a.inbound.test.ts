@@ -69,7 +69,7 @@ test("{§a2a-inbound-exposure}: an unrelated addressed reply is not an A2A artif
     const provider = new Mock({ contextWindow: 100_000, responses: [] });
     const http = await bindListener();
     const daemon = new Daemon({ db, provider, http });
-    daemon.registerModule(OutboundModule.init({ PLURNK_A2A_ENABLED: "[]" }));
+    daemon.registerModule(OutboundModule.init({ PLURNK_A2A_ENABLED: "1" }));
     const workspace = await daemon.createWorkspace({ name: "a2a-reply-audience", projectRoot: null });
     const registration = A2aModule.init({
         workspace: { name: workspace.workspaceName, projectRoot: null }, card: a2aCard(),

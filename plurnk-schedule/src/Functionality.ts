@@ -17,7 +17,7 @@ import {
     type ProblemDetails,
     type WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
-import { previewOccurrences, serviceDefinitions, serviceEnabled } from "./config.ts";
+import { previewOccurrences, serviceDefinitions } from "./config.ts";
 import { DEFINITION_SCHEMA, DefinitionError, readDefinition, type ScheduleDefinition } from "./definition.ts";
 import { describeRule, nextOccurrence, normalizeRule, parseRule, ScheduleRuleError, upcoming, type ParsedRule } from "./rules.ts";
 import Scheduler, { type ScheduledRule, type SchedulerOptions } from "./Scheduler.ts";
@@ -112,16 +112,15 @@ export default class ScheduleFunctionality {
         });
         const zone = env.TZ;
         if (zone === undefined || zone.length === 0) throw new Error("TZ is unset; @plurnk/plurnk-schedule declares its default in .env.defaults.");
-        const enabled = serviceEnabled(env);
         const now = this.#scheduler.now();
-        this.#service = new Map([...serviceDefinitions(env)].map(([alias, definition]) => {
+        this.#service = new Map([...serviceDefinitions(env)].map(([alias, { definition, enabled }]) => {
             let parsed: ParsedRule;
             try {
                 parsed = normalizeRule(definition.rule, zone, now);
             } catch (cause) {
-                throw new Error(`PLURNK_SCHEDULE_${alias.toUpperCase()}: ${messageOf(cause)}`, { cause });
+                throw new Error(`PLURNK_SCHEDULE_${alias.replaceAll("-", "_")}: ${messageOf(cause)}`, { cause });
             }
-            return [alias, { definition: { ...definition, rule: parsed.text }, enabled: enabled.has(alias) }];
+            return [alias, { definition: { ...definition, rule: parsed.text }, enabled }];
         }));
     }
 

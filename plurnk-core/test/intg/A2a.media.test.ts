@@ -70,8 +70,8 @@ test(`{§a2a-part-resources}: ${mode}/${media.modality}/${supported ? "native" :
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider });
     daemon.registerModule(OutboundModule.init({
-        PLURNK_A2A_REMOTE: agent.baseUrl,
-        PLURNK_A2A_ENABLED: '["remote"]',
+        PLURNK_A2A_remote: JSON.stringify({ name: "remote", url: agent.baseUrl }),
+        PLURNK_A2A_ENABLED: "1",
         PLURNK_A2A_CONNECT_TIMEOUT: "5000",
         PLURNK_A2A_REQUEST_TIMEOUT: "5000",
     }));

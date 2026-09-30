@@ -101,7 +101,7 @@ const HEARTBEAT = { rule: "FREQ=HOURLY", target: "worker://bot", prompt: "Check 
 const BEAT = { rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY;COUNT=2", target: "worker://bot", prompt: "Beat.", policy: { proposals: "accept" } };
 
 const family = (time: FakeTime, env: Record<string, string> = {}, reports: string[] = []): ScheduleFunctionality =>
-    new ScheduleFunctionality({ TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "[]", PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "3", ...env }, { clock: time.clock, timers: time.api, report: (message) => { reports.push(message); } });
+    new ScheduleFunctionality({ TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1", PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "3", ...env }, { clock: time.clock, timers: time.api, report: (message) => { reports.push(message); } });
 
 const attached = (adapter: ScheduleFunctionality, zone = "UTC"): number[] => {
     const refreshed: number[] = [];
@@ -119,15 +119,15 @@ const attached = (adapter: ScheduleFunctionality, zone = "UTC"): number[] => {
 
 test("{§schedule-environment} environment definitions are the service baseline with PLURNK_SCHEDULE_ENABLED as the newborn default", async () => {
     const adapter = family(new FakeTime(), {
-        PLURNK_SCHEDULE_HEARTBEAT: JSON.stringify(HEARTBEAT),
-        PLURNK_SCHEDULE_NIGHTLY: JSON.stringify({ rule: "FREQ=DAILY", target: "worker://janitor", prompt: "Tidy." }),
-        PLURNK_SCHEDULE_ENABLED: '["heartbeat"]',
+        PLURNK_SCHEDULE_heartbeat: JSON.stringify(HEARTBEAT),
+        PLURNK_SCHEDULE_nightly: JSON.stringify({ rule: "FREQ=DAILY", target: "worker://janitor", prompt: "Tidy." }),
+        PLURNK_SCHEDULE_nightly_ENABLED: "0",
     });
     assert.deepEqual(await adapter.available(), [
         { alias: "heartbeat", definition: { ...HEARTBEAT, rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY" }, enabled: true },
         { alias: "nightly", definition: { rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=DAILY", target: "worker://janitor", prompt: "Tidy." }, enabled: false },
     ]);
-    assert.throws(() => family(new FakeTime(), { PLURNK_SCHEDULE_BROKEN: JSON.stringify({ ...HEARTBEAT, rule: "FREQ=DAILY;BOGUS=1" }) }), /PLURNK_SCHEDULE_BROKEN: The rule is not a readable RFC 5545 recurrence: RRULE has no part named BOGUS/u);
+    assert.throws(() => family(new FakeTime(), { PLURNK_SCHEDULE_broken: JSON.stringify({ ...HEARTBEAT, rule: "FREQ=DAILY;BOGUS=1" }), PLURNK_SCHEDULE_broken_ENABLED: "0" }), /PLURNK_SCHEDULE_broken: The rule is not a readable RFC 5545 recurrence: RRULE has no part named BOGUS/u);
     assert.throws(() => new ScheduleFunctionality({}), /TZ is unset/u);
 });
 
@@ -137,8 +137,8 @@ test("{§schedule-discovery-preview} the panel says how many occurrences a readi
     assert.match(String(daily!.summary), /; next 2026-09-16T12:30:16\+00:00\[UTC\]; unbounded/u, "one occurrence, not three");
     assert.deepEqual(await one.available(), [], "the control key declares no rule");
     const time = new FakeTime();
-    const unset = new ScheduleFunctionality({ TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "[]" }, { clock: time.clock, timers: time.api });
-    await assert.rejects(unset.discover({ source: "FREQ=DAILY" }, { workspaceId: 1 }), /PLURNK_SCHEDULE_PREVIEW_OCCURRENCES must be a positive integer; got undefined/u);
+    const unset = new ScheduleFunctionality({ TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1" }, { clock: time.clock, timers: time.api });
+    await assert.rejects(unset.discover({ source: "FREQ=DAILY" }, { workspaceId: 1 }), /PLURNK_SCHEDULE_PREVIEW_OCCURRENCES is missing from the assembled environment floor/u);
 });
 
 test("{§schedule-clock} discovery tells the time beside the rule it reads, in the effective zone, and persists nothing", async () => {

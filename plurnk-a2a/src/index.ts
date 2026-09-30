@@ -9,11 +9,8 @@ export type { A2aWorkspaceConfiguration } from "./WorkspaceBinding.ts";
 export {
     connectTimeoutMs,
     hostedAgentConfiguration,
-    outboundAgentDefinition,
-    outboundAgentNames,
     outboundDefinitions,
     requestTimeoutMs,
-    serviceEnabledNames,
     type HostedAgentConfiguration,
     type OutboundAgentDefinition,
 } from "./config.ts";

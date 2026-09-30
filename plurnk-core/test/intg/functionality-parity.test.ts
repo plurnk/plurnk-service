@@ -235,8 +235,8 @@ const agentsFamily = async (): Promise<Family> => {
             const daemon = new Daemon({ db, provider });
             daemon.registerModule(A2aOutboundModule.init({
                 PLURNK_A2A_ERROR_DETAIL_LIMIT: "512",
-                PLURNK_A2A_RESEARCHER: agentA.baseUrl,
-                PLURNK_A2A_ENABLED: '["researcher"]',
+                PLURNK_A2A_researcher: JSON.stringify({ name: "researcher", url: agentA.baseUrl }),
+                PLURNK_A2A_ENABLED: "1",
             }));
             return { daemon };
         },

@@ -9,7 +9,6 @@ import type { AgentCard } from "@a2a-js/sdk";
 import type { Client } from "@a2a-js/sdk/client";
 import {
     Problems,
-    Validator,
     type A2AAgentDefinition as A2aAgentDefinition,
     type FunctionalityCandidate,
     type FunctionalityDiscoverQuery,
@@ -22,7 +21,8 @@ import {
     type WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
 import A2a from "./A2a.ts";
-import { outboundDefinitions, serviceEnabledNames } from "./config.ts";
+import { outboundDefinitions } from "./config.ts";
+import { readDefinition } from "./definition.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 import { connectHttpJsonAgentFromCard, discoverAgentCard } from "./HttpJsonClient.ts";
 
@@ -163,30 +163,25 @@ export default class A2aFunctionality {
     }
 
     async available(): Promise<readonly { alias: string; definition: object; enabled: boolean }[]> {
-        const enabled = new Set(serviceEnabledNames(this.#env));
-        return outboundDefinitions(this.#env).map((definition) => ({
-            alias: definition.name,
-            definition,
-            enabled: enabled.has(definition.name),
-        }));
+        return outboundDefinitions(this.#env);
     }
 
     async discover(query: FunctionalityDiscoverQuery): Promise<readonly FunctionalityCandidate[]> {
         if (query.configuration !== undefined) {
             const overlay = Object.fromEntries(Object.entries(query.configuration).filter(([, value]) => typeof value === "string")) as Record<string, string>;
-            let definitions: A2aAgentDefinition[];
+            let definitions: ReturnType<typeof outboundDefinitions>;
             try {
-                definitions = outboundDefinitions(overlay);
+                definitions = outboundDefinitions({ PLURNK_A2A_ENABLED: this.#env.PLURNK_A2A_ENABLED, ...overlay });
             } catch (cause) {
                 throw failure("configuration-invalid", 400, "The offered A2A configuration is invalid.", {
                     diagnostic: ErrorDetail.preview(cause),
                     retryable: false,
                 }, cause);
             }
-            return definitions.map((definition): FunctionalityCandidate => ({
-                alias: definition.name,
+            return definitions.map(({ alias, definition }): FunctionalityCandidate => ({
+                alias,
                 definition,
-                provenance: { kind: "client-configuration", source: `PLURNK_A2A_${definition.name.toUpperCase()}` },
+                provenance: { kind: "client-configuration", source: `PLURNK_A2A_${alias.replaceAll("-", "_")}` },
             }));
         }
         if (query.source !== undefined) {
@@ -222,7 +217,7 @@ export default class A2aFunctionality {
         const params = isRecord(input) ? input : {};
         let definition: A2aAgentDefinition;
         try {
-            definition = structuredClone(Validator.assertA2aAgentDefinition(structuredClone(params.definition) as A2aAgentDefinition));
+            definition = readDefinition(params.definition);
         } catch (cause) {
             throw failure("definition-invalid", 400, "The A2A agent definition is invalid.", { retryable: false }, cause);
         }
