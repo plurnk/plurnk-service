@@ -1,0 +1,12 @@
+{
+  "section": "5.5",
+  "requirement": "Names use lowercase alphanumerics, hyphens, and periods.",
+  "plugin": "rejected",
+  "reports": [
+    {
+      "path": "plugin.json",
+      "section": "5.5",
+      "outcome": "rejected"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "section": "5.4",
+  "requirement": "description is a string.",
+  "plugin": "rejected",
+  "reports": [
+    {
+      "path": "plugin.json",
+      "section": "5.4",
+      "outcome": "rejected"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "extensions-foreign",
+  "extensions": {
+    "com.example.client": {
+      "hooks": [
+        1,
+        {
+          "deep": null
+        }
+      ],
+      "setting": "x"
+    }
+  }
+}

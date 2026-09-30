@@ -1,0 +1,12 @@
+{
+  "section": "5.4",
+  "requirement": "author is an object.",
+  "plugin": "rejected",
+  "reports": [
+    {
+      "path": "plugin.json",
+      "section": "5.4",
+      "outcome": "rejected"
+    }
+  ]
+}

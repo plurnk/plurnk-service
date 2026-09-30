@@ -1,0 +1,14 @@
+{
+  "section": "4.1",
+  "requirement": "If mcp.json does not resolve within the plugin root, MCP is invalid for that plugin.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": null,
+  "reports": [
+    {
+      "path": "mcp.json",
+      "section": "4.1",
+      "outcome": "invalid"
+    }
+  ]
+}

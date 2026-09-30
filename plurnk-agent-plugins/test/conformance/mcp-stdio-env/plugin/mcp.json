@@ -1,0 +1,41 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "placeholders": {
+      "type": "stdio",
+      "command": "npx",
+      "env": {
+        "CONFIG": "${PLUGIN_ROOT}/config.json",
+        "CACHE": "${PLUGIN_DATA}/cache"
+      }
+    },
+    "reserved-root": {
+      "type": "stdio",
+      "command": "npx",
+      "env": {
+        "PLUGIN_ROOT": "/elsewhere"
+      }
+    },
+    "reserved-data": {
+      "type": "stdio",
+      "command": "npx",
+      "env": {
+        "PLUGIN_DATA": "/elsewhere"
+      }
+    },
+    "non-string": {
+      "type": "stdio",
+      "command": "npx",
+      "env": {
+        "PORT": 8080
+      }
+    },
+    "args-non-string": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        1
+      ]
+    }
+  }
+}

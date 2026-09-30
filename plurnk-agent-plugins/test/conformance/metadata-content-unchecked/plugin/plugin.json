@@ -1,0 +1,12 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "loose-metadata",
+  "version": "banana",
+  "homepage": "not a url",
+  "repository": "somewhere",
+  "license": "whatever I like",
+  "author": {
+    "email": "not-an-email",
+    "url": "nope"
+  }
+}

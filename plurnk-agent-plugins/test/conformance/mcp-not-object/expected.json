@@ -1,0 +1,14 @@
+{
+  "section": "7.2.1",
+  "requirement": "mcp.json MUST be a JSON object.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": null,
+  "reports": [
+    {
+      "path": "mcp.json",
+      "section": "7.2.1",
+      "outcome": "invalid"
+    }
+  ]
+}

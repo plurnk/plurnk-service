@@ -1,0 +1,12 @@
+{
+  "section": "5.2",
+  "requirement": "$schema MUST be the canonical identifier.",
+  "plugin": "rejected",
+  "reports": [
+    {
+      "path": "plugin.json",
+      "section": "5.2",
+      "outcome": "rejected"
+    }
+  ]
+}

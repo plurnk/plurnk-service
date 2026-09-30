@@ -1,0 +1,12 @@
+{
+  "section": "5.2",
+  "requirement": "The manifest MUST be JSON.",
+  "plugin": "rejected",
+  "reports": [
+    {
+      "path": "plugin.json",
+      "section": "5.2",
+      "outcome": "rejected"
+    }
+  ]
+}

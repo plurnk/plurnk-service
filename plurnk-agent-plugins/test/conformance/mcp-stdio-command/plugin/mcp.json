@@ -1,0 +1,37 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "bare": {
+      "type": "stdio",
+      "command": "npx"
+    },
+    "plugin-path": {
+      "type": "stdio",
+      "command": "./bin/server"
+    },
+    "shell-string": {
+      "type": "stdio",
+      "command": "node server.js"
+    },
+    "path-without-dot": {
+      "type": "stdio",
+      "command": "bin/server"
+    },
+    "absolute": {
+      "type": "stdio",
+      "command": "/usr/bin/node"
+    },
+    "empty": {
+      "type": "stdio",
+      "command": ""
+    },
+    "escape": {
+      "type": "stdio",
+      "command": "./../outside/server"
+    },
+    "placeholder": {
+      "type": "stdio",
+      "command": "${PLUGIN_ROOT}/bin/server"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "section": "5.4",
+  "requirement": "Clients MUST NOT reject a manifest solely for a non-semver version, a non-URL, a non-email, or a non-SPDX license.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": null,
+  "reports": []
+}

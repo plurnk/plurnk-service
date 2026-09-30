@@ -1,0 +1,8 @@
+{
+  "section": "5.3",
+  "requirement": "A manifest needs only the required $schema and name fields.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": null,
+  "reports": []
+}

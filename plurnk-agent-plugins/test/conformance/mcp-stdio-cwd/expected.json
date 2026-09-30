@@ -1,0 +1,45 @@
+{
+  "section": "7.2.1",
+  "requirement": "cwd is ./, ${PLUGIN_ROOT}, or ${PLUGIN_DATA} rooted and stays within its root after expansion.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": [
+    "data",
+    "data-child",
+    "relative",
+    "root",
+    "root-child"
+  ],
+  "reports": [
+    {
+      "path": "mcp.json#/mcpServers/bare-relative",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/absolute",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/root-prefix-only",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/root-escape",
+      "section": "4.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/relative-escape",
+      "section": "4.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/data-escape",
+      "section": "4.1",
+      "outcome": "skipped"
+    }
+  ]
+}

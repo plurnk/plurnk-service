@@ -1,0 +1,42 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "literal": {
+      "type": "streamable-http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": {
+        "X-Tenant": "public-tenant",
+        "Accept-Language": "en"
+      }
+    },
+    "duplicate-case": {
+      "type": "streamable-http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": {
+        "x-tenant": "a",
+        "X-TENANT": "b"
+      }
+    },
+    "invalid-name": {
+      "type": "streamable-http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": {
+        "Bad Header": "x"
+      }
+    },
+    "invalid-value": {
+      "type": "streamable-http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": {
+        "X-Tenant": "a\r\nInjected: yes"
+      }
+    },
+    "non-string": {
+      "type": "streamable-http",
+      "url": "https://mcp.example.com/mcp",
+      "headers": {
+        "X-Retries": 3
+      }
+    }
+  }
+}

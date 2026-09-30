@@ -1,0 +1,8 @@
+{
+  "section": "7.2.1",
+  "requirement": "An empty mcpServers object is valid.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": [],
+  "reports": []
+}

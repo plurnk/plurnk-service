@@ -1,0 +1,14 @@
+{
+  "section": "10.1",
+  "requirement": "When mcp.json is present, its $schema version MUST match plugin.json.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": null,
+  "reports": [
+    {
+      "path": "mcp.json",
+      "section": "10.1",
+      "outcome": "invalid"
+    }
+  ]
+}

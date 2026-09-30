@@ -1,0 +1,12 @@
+{
+  "section": "8.1",
+  "requirement": "extensions member values MUST be objects; only the two §5.2 exceptions are non-fatal.",
+  "plugin": "rejected",
+  "reports": [
+    {
+      "path": "plugin.json",
+      "section": "8.1",
+      "outcome": "rejected"
+    }
+  ]
+}

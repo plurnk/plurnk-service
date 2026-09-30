@@ -1,0 +1,8 @@
+{
+  "section": "5.4",
+  "requirement": "Every permitted metadata field is accepted with its JSON type.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": null,
+  "reports": []
+}

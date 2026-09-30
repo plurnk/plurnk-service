@@ -1,0 +1,14 @@
+{
+  "section": "8.1",
+  "requirement": "If extensions is not an object, the client MUST report and ignore the field and continue loading components.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": null,
+  "reports": [
+    {
+      "path": "plugin.json",
+      "section": "8.1",
+      "outcome": "ignored"
+    }
+  ]
+}

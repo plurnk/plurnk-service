@@ -1,0 +1,12 @@
+{
+  "section": "5.5",
+  "requirement": "The last character MUST be alphanumeric.",
+  "plugin": "rejected",
+  "reports": [
+    {
+      "path": "plugin.json",
+      "section": "5.5",
+      "outcome": "rejected"
+    }
+  ]
+}

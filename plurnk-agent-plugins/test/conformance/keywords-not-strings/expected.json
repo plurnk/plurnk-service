@@ -1,0 +1,12 @@
+{
+  "section": "5.4",
+  "requirement": "keywords is an array of strings.",
+  "plugin": "rejected",
+  "reports": [
+    {
+      "path": "plugin.json",
+      "section": "5.4",
+      "outcome": "rejected"
+    }
+  ]
+}

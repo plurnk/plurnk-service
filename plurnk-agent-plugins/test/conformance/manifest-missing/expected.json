@@ -1,0 +1,12 @@
+{
+  "section": "5.1",
+  "requirement": "A plugin MUST include a manifest at plugin.json in the plugin root.",
+  "plugin": "rejected",
+  "reports": [
+    {
+      "path": "plugin.json",
+      "section": "5.1",
+      "outcome": "rejected"
+    }
+  ]
+}

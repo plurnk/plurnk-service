@@ -1,0 +1,8 @@
+{
+  "section": "8.1",
+  "requirement": "A client MUST ignore namespaces it does not implement without validating the contents of their values.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": null,
+  "reports": []
+}

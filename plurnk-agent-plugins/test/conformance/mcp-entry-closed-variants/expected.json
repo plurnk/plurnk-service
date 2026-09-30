@@ -1,0 +1,36 @@
+{
+  "section": "7.2.1",
+  "requirement": "An unknown field, an unknown type, or a field of another variant makes that entry invalid; other entries load.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": [
+    "valid"
+  ],
+  "reports": [
+    {
+      "path": "mcp.json#/mcpServers/unknown-field",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/unknown-type",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/missing-type",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/cross-variant",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/not-object",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    }
+  ]
+}

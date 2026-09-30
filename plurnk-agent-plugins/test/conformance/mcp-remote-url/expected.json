@@ -1,0 +1,50 @@
+{
+  "section": "7.2.1",
+  "requirement": "url is an absolute HTTP(S) URL without user information or a fragment, and HTTPS unless loopback.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": [
+    "https",
+    "localhost",
+    "loopback-v4",
+    "loopback-v6",
+    "sse-https"
+  ],
+  "reports": [
+    {
+      "path": "mcp.json#/mcpServers/http-remote",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/userinfo",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/empty-userinfo",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/fragment",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/relative",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/other-scheme",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/whitespace",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    }
+  ]
+}

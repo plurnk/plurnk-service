@@ -15,6 +15,7 @@
         "plurnk-parser",
         "plurnk-aliases",
         "plurnk-agent-skills",
+        "plurnk-agent-plugins",
         "plurnk-models",
         "plurnk-mimetypes-application-json",
         "plurnk-mimetypes-application-xml",

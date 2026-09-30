@@ -1,0 +1,42 @@
+{
+  "section": "7.2.1",
+  "requirement": "command is one executable token: a bare name or a ./ plugin path, never expanded.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": [
+    "bare",
+    "plugin-path"
+  ],
+  "reports": [
+    {
+      "path": "mcp.json#/mcpServers/shell-string",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/path-without-dot",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/absolute",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/empty",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/placeholder",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/escape",
+      "section": "4.1",
+      "outcome": "skipped"
+    }
+  ]
+}

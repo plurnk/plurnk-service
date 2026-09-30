@@ -236,9 +236,12 @@ const repositoryFiles = async (root) => {
     ).split("\0").filter(Boolean);
     const files = [];
     for (const name of names) {
+        const file = path.join(root, name);
         let bytes;
         try {
-            bytes = await fs.readFile(path.join(root, name));
+            // A link's target is scanned under its own path, or it is not repository content.
+            if ((await fs.lstat(file)).isSymbolicLink()) continue;
+            bytes = await fs.readFile(file);
         } catch (error) {
             if (error?.code === "ENOENT") continue;
             throw error;

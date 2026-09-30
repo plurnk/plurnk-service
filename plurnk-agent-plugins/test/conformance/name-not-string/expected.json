@@ -1,0 +1,12 @@
+{
+  "section": "5.3",
+  "requirement": "A required field of the wrong type rejects the plugin.",
+  "plugin": "rejected",
+  "reports": [
+    {
+      "path": "plugin.json",
+      "section": "5.3",
+      "outcome": "rejected"
+    }
+  ]
+}

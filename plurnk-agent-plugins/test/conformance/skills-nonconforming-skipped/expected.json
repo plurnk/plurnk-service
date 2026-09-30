@@ -1,0 +1,26 @@
+{
+  "section": "7.1",
+  "requirement": "A skill that does not conform to the Agent Skills specification is skipped; other skills load.",
+  "plugin": "accepted",
+  "skills": [
+    "good"
+  ],
+  "mcpServers": null,
+  "reports": [
+    {
+      "path": "skills/misnamed",
+      "section": "7.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "skills/no-description",
+      "section": "7.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "skills/no-frontmatter",
+      "section": "7.1",
+      "outcome": "skipped"
+    }
+  ]
+}

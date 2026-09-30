@@ -1,0 +1,14 @@
+{
+  "section": "4.1",
+  "requirement": "If a fixed component location does not resolve within the plugin root, that component type is invalid.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": null,
+  "reports": [
+    {
+      "path": "skills",
+      "section": "4.1",
+      "outcome": "invalid"
+    }
+  ]
+}

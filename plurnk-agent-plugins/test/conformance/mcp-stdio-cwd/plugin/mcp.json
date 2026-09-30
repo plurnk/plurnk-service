@@ -1,0 +1,60 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "root": {
+      "type": "stdio",
+      "command": "npx",
+      "cwd": "${PLUGIN_ROOT}"
+    },
+    "root-child": {
+      "type": "stdio",
+      "command": "npx",
+      "cwd": "${PLUGIN_ROOT}/data"
+    },
+    "relative": {
+      "type": "stdio",
+      "command": "npx",
+      "cwd": "./data"
+    },
+    "data": {
+      "type": "stdio",
+      "command": "npx",
+      "cwd": "${PLUGIN_DATA}"
+    },
+    "data-child": {
+      "type": "stdio",
+      "command": "npx",
+      "cwd": "${PLUGIN_DATA}/cache"
+    },
+    "bare-relative": {
+      "type": "stdio",
+      "command": "npx",
+      "cwd": "data"
+    },
+    "absolute": {
+      "type": "stdio",
+      "command": "npx",
+      "cwd": "/tmp"
+    },
+    "root-prefix-only": {
+      "type": "stdio",
+      "command": "npx",
+      "cwd": "${PLUGIN_ROOT}data"
+    },
+    "root-escape": {
+      "type": "stdio",
+      "command": "npx",
+      "cwd": "${PLUGIN_ROOT}/../elsewhere"
+    },
+    "relative-escape": {
+      "type": "stdio",
+      "command": "npx",
+      "cwd": "./../elsewhere"
+    },
+    "data-escape": {
+      "type": "stdio",
+      "command": "npx",
+      "cwd": "${PLUGIN_DATA}/../elsewhere"
+    }
+  }
+}

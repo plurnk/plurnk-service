@@ -1,0 +1,12 @@
+{
+  "section": "5.4",
+  "requirement": "The author object MAY contain only name, email, and url.",
+  "plugin": "rejected",
+  "reports": [
+    {
+      "path": "plugin.json",
+      "section": "5.4",
+      "outcome": "rejected"
+    }
+  ]
+}

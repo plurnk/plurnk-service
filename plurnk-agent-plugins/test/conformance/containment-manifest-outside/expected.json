@@ -1,0 +1,12 @@
+{
+  "section": "4.1",
+  "requirement": "If plugin.json does not resolve within the plugin root, the client MUST reject the plugin.",
+  "plugin": "rejected",
+  "reports": [
+    {
+      "path": "plugin.json",
+      "section": "4.1",
+      "outcome": "rejected"
+    }
+  ]
+}

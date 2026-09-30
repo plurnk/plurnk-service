@@ -1,0 +1,12 @@
+{
+  "section": "7.2.1",
+  "requirement": "stdio, streamable-http, and sse entries are the closed server variants.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": [
+    "deployment-api",
+    "legacy-events",
+    "local-validator"
+  ],
+  "reports": []
+}

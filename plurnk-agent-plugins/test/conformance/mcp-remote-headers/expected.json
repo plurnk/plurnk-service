@@ -1,0 +1,31 @@
+{
+  "section": "7.2.1",
+  "requirement": "Header names and values are valid HTTP fields, unique case-insensitively.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": [
+    "literal"
+  ],
+  "reports": [
+    {
+      "path": "mcp.json#/mcpServers/duplicate-case",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/invalid-name",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/invalid-value",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/non-string",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    }
+  ]
+}

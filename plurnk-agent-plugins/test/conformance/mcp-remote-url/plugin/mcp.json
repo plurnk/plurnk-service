@@ -1,0 +1,53 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "https": {
+      "type": "streamable-http",
+      "url": "https://mcp.example.com/mcp"
+    },
+    "localhost": {
+      "type": "streamable-http",
+      "url": "http://localhost:8080/mcp"
+    },
+    "loopback-v4": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:8080/mcp"
+    },
+    "loopback-v6": {
+      "type": "streamable-http",
+      "url": "http://[::1]:8080/mcp"
+    },
+    "sse-https": {
+      "type": "sse",
+      "url": "https://legacy.example.com/sse"
+    },
+    "http-remote": {
+      "type": "streamable-http",
+      "url": "http://mcp.example.com/mcp"
+    },
+    "userinfo": {
+      "type": "streamable-http",
+      "url": "https://user:secret@mcp.example.com/mcp"
+    },
+    "empty-userinfo": {
+      "type": "streamable-http",
+      "url": "https://@mcp.example.com/mcp"
+    },
+    "fragment": {
+      "type": "streamable-http",
+      "url": "https://mcp.example.com/mcp#section"
+    },
+    "relative": {
+      "type": "streamable-http",
+      "url": "/mcp"
+    },
+    "other-scheme": {
+      "type": "streamable-http",
+      "url": "wss://mcp.example.com/mcp"
+    },
+    "whitespace": {
+      "type": "streamable-http",
+      "url": " https://mcp.example.com/mcp"
+    }
+  }
+}

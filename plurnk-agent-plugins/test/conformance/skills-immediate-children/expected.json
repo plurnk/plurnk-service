@@ -1,0 +1,10 @@
+{
+  "section": "7.1",
+  "requirement": "Clients MUST NOT recursively search deeper descendants for additional skills.",
+  "plugin": "accepted",
+  "skills": [
+    "outer"
+  ],
+  "mcpServers": null,
+  "reports": []
+}

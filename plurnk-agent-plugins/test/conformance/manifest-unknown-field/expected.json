@@ -1,0 +1,14 @@
+{
+  "section": "5.2",
+  "requirement": "Clients MUST report and ignore each unknown field and MUST continue loading the plugin.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": null,
+  "reports": [
+    {
+      "path": "plugin.json",
+      "section": "5.2",
+      "outcome": "ignored"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "section": "5.2",
+  "requirement": "A client that does not support the declared version MUST reject the plugin and SHOULD report it.",
+  "plugin": "rejected",
+  "reports": [
+    {
+      "path": "plugin.json",
+      "section": "5.2",
+      "outcome": "rejected"
+    }
+  ]
+}

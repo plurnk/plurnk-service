@@ -1,0 +1,12 @@
+{
+  "section": "4.1",
+  "requirement": "Symlinks MAY resolve to targets within the plugin root.",
+  "plugin": "accepted",
+  "skills": [
+    "greet"
+  ],
+  "mcpServers": [
+    "local"
+  ],
+  "reports": []
+}

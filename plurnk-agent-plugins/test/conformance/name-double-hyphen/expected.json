@@ -1,0 +1,12 @@
+{
+  "section": "5.5",
+  "requirement": "Consecutive hyphens are not allowed.",
+  "plugin": "rejected",
+  "reports": [
+    {
+      "path": "plugin.json",
+      "section": "5.5",
+      "outcome": "rejected"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "valid": {
+      "type": "stdio",
+      "command": "npx"
+    },
+    "unknown-field": {
+      "type": "stdio",
+      "command": "npx",
+      "shell": true
+    },
+    "unknown-type": {
+      "type": "websocket",
+      "url": "wss://mcp.example.com"
+    },
+    "missing-type": {
+      "command": "npx"
+    },
+    "cross-variant": {
+      "type": "stdio",
+      "command": "npx",
+      "url": "https://mcp.example.com/mcp"
+    },
+    "not-object": "npx"
+  }
+}

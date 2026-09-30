@@ -1,0 +1,12 @@
+{
+  "section": "5.4",
+  "requirement": "Each author field has a string value.",
+  "plugin": "rejected",
+  "reports": [
+    {
+      "path": "plugin.json",
+      "section": "5.4",
+      "outcome": "rejected"
+    }
+  ]
+}

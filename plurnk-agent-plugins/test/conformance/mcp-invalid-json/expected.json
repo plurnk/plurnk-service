@@ -1,0 +1,14 @@
+{
+  "section": "7.2.2",
+  "requirement": "If mcp.json is not valid JSON, the client MUST disable MCP for that plugin and continue.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": null,
+  "reports": [
+    {
+      "path": "mcp.json",
+      "section": "7.2.2",
+      "outcome": "invalid"
+    }
+  ]
+}

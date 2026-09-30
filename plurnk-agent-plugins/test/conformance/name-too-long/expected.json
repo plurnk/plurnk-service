@@ -1,0 +1,12 @@
+{
+  "section": "5.5",
+  "requirement": "The name MUST be between 1 and 64 characters inclusive.",
+  "plugin": "rejected",
+  "reports": [
+    {
+      "path": "plugin.json",
+      "section": "5.5",
+      "outcome": "rejected"
+    }
+  ]
+}

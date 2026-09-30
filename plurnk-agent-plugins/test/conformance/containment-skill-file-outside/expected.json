@@ -1,0 +1,16 @@
+{
+  "section": "4.1",
+  "requirement": "If a discovered SKILL.md does not resolve within the plugin root, the client MUST skip that skill.",
+  "plugin": "accepted",
+  "skills": [
+    "local"
+  ],
+  "mcpServers": null,
+  "reports": [
+    {
+      "path": "skills/escape/SKILL.md",
+      "section": "4.1",
+      "outcome": "skipped"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "section": "6.2",
+  "requirement": "A fixed location of the wrong kind invalidates that component type, and loading continues.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": null,
+  "reports": [
+    {
+      "path": "skills",
+      "section": "6.2",
+      "outcome": "invalid"
+    },
+    {
+      "path": "mcp.json",
+      "section": "6.2",
+      "outcome": "invalid"
+    }
+  ]
+}

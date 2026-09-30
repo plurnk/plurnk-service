@@ -1,0 +1,31 @@
+{
+  "section": "9.2",
+  "requirement": "env MUST NOT contain PLUGIN_ROOT or PLUGIN_DATA; values are strings.",
+  "plugin": "accepted",
+  "skills": [],
+  "mcpServers": [
+    "placeholders"
+  ],
+  "reports": [
+    {
+      "path": "mcp.json#/mcpServers/reserved-root",
+      "section": "9.2",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/reserved-data",
+      "section": "9.2",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/non-string",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    },
+    {
+      "path": "mcp.json#/mcpServers/args-non-string",
+      "section": "7.2.1",
+      "outcome": "skipped"
+    }
+  ]
+}
