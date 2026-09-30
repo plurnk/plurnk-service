@@ -74,11 +74,11 @@ const rows = async (db: Db, workspaceId: number): Promise<string[]> =>
     (await db.crud_list_workspace_constraints.all<{ effect: string; glob: string; source: string }>({ workspace_id: workspaceId }))
         .map(({ effect, glob, source }) => `${effect} ${glob} ${source}`);
 
-test("{§members-configuration} workspace inspection rejects ambiguous inherited aliases without publishing a winner", async () => {
+test("{§members-configuration} workspace inspection rejects noncanonical inherited aliases without publishing a winner", async () => {
     await withEnv({
         PLURNK_MEMBERS_DOCS: "docs/**",
         PLURNK_MEMBERS_docs: "src/**",
-        PLURNK_MEMBERS_ENABLED: "[]",
+        PLURNK_MEMBERS_ENABLED: "1",
     }, async () => {
         const db = await openMigrated();
         const daemon = new Daemon({ db, provider: null });
@@ -89,7 +89,7 @@ test("{§members-configuration} workspace inspection rejects ambiguous inherited
                 "workspace.members.list", {}, workspaceContext(workspaceId),
             ), {
                 name: "Error",
-                message: "PLURNK_MEMBERS_DOCS and PLURNK_MEMBERS_docs both derive the members alias 'docs'.",
+                message: "PLURNK_MEMBERS_DOCS is not a declared control; use a lowercase resource alias with underscores for hyphens and uppercase setting names.",
             });
             assert.deepEqual(await rows(db, workspaceId), [], "neither ambiguous definition changes membership");
         } finally {
@@ -105,8 +105,8 @@ test("{§members-functionality} client and model share one surface; the ceiling,
         PLURNK_SERVICE_GIT_ALLOWED: "1",
         PLURNK_SERVICE_GIT_AUTO: "1",
         PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "none",
-        PLURNK_MEMBERS_DOCS: "docs/**",
-        PLURNK_MEMBERS_ENABLED: "[\"docs\"]",
+        PLURNK_MEMBERS_docs: "docs/**",
+        PLURNK_MEMBERS_ENABLED: "1",
     }, async () => {
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `members-${crypto.randomUUID()}`);
@@ -273,7 +273,7 @@ test("{§members-model-scope} the ceiling: none refuses every model definition, 
         return error.result.problem as { recovery?: string; scope?: string };
     };
     try {
-        const closed = new MembersFunctionality({ db, engine, environ: { PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "none", PLURNK_MEMBERS_ENABLED: "[]" } });
+        const closed = new MembersFunctionality({ db, engine, environ: { PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "none", PLURNK_MEMBERS_ENABLED: "1" } });
         const refused = await refusedAs(() => closed.admit({ definition: { glob: "notes.md" } }, who, "operation"), "model-scope", 403);
         assert.match(String(refused.recovery), /git add/u);
         await refusedAs(() => closed.admit({ definition: { glob: "!notes.md" } }, who, "operation"), "model-scope", 403);
@@ -286,7 +286,7 @@ test("{§members-model-scope} the ceiling: none refuses every model definition, 
             definition: { glob: "!**/*.lock", provenance: { kind: "client-action" } },
         });
 
-        const rooted = new MembersFunctionality({ db, engine, environ: { PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "root", PLURNK_MEMBERS_ENABLED: "[]" } });
+        const rooted = new MembersFunctionality({ db, engine, environ: { PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "root", PLURNK_MEMBERS_ENABLED: "1" } });
         assert.deepEqual(await rooted.admit({ alias: "notes", definition: { glob: "notes.md" } }, who, "operation"), {
             alias: "notes",
             definition: { glob: "notes.md", provenance: { kind: "model-proposal" } },
@@ -297,7 +297,7 @@ test("{§members-model-scope} the ceiling: none refuses every model definition, 
 
         // A permissive service (namespace) narrowed by the workspace to root.
         await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ membersModelScope: "root" }) });
-        const wide = new MembersFunctionality({ db, engine, environ: { PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "namespace", PLURNK_MEMBERS_ENABLED: "[]" } });
+        const wide = new MembersFunctionality({ db, engine, environ: { PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "namespace", PLURNK_MEMBERS_ENABLED: "1" } });
         assert.deepEqual(await wide.admit({ alias: "shared", definition: { glob: "../shared/*.md" } }, who, "action"), {
             alias: "shared",
             definition: { glob: "../shared/*.md", provenance: { kind: "client-action" } },

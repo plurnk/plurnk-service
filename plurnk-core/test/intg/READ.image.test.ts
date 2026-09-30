@@ -13,8 +13,8 @@ import NativeContent from "../../src/core/NativeContent.ts";
 import { userText } from "./_mock.ts";
 
 // The member tree is a plain directory: the service member definition admits it, as the harness does.
-process.env.PLURNK_MEMBERS_TASK = "**";
-process.env.PLURNK_MEMBERS_ENABLED = "[\"task\"]";
+process.env.PLURNK_MEMBERS_task = "**";
+process.env.PLURNK_MEMBERS_ENABLED = "1";
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 process.env.PLURNK_SERVICE_PROVIDER_RECOVERY = "1000";
 process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF = "1";

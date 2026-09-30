@@ -107,6 +107,26 @@ fall through to the process, and reading never mutates either environment.
 Every package reads its knobs through it, so validation and failure wording
 have one home for runtime and offline configuration checks.
 
+### §resource-environment Named resource environment projection
+
+`ResourceEnvironment` reads one family's assembled environment without loading
+resources or changing configuration. Families declare their supported controls
+and per-resource settings; definition parsing and validation remain family-owned.
+
+| Form | Meaning |
+|---|---|
+| `PLURNK_<FAMILY>_<alias>=<definition>` | One complete definition. Alias spelling is `[a-z][a-z0-9_]*`; `_` represents `-` in the resource name. |
+| `PLURNK_<FAMILY>_ENABLED=0\|1` | The family default, declared in its owning `.env.defaults`. |
+| `PLURNK_<FAMILY>_<alias>_ENABLED=0\|1` | This resource's independent override; it does not copy or modify the definition. |
+| Other uppercase controls/settings | Accepted only when the family declares them. Definition aliases are never case-folded into controls. |
+
+Enabledness uses {§env-knob}. Controls may address resources supplied by other
+sources; they do not manufacture definitions. The caller checks referenced aliases
+against its complete resolved resource set, after source composition. Missing
+resources, malformed spellings and unsupported settings fail by variable name.
+Definition data remains verbatim for its owning schema; this reader neither merges
+fields nor includes those values in its diagnostics.
+
 ### §error-detail-bound One diagnostic-preview bound
 
 `new ErrorDetail(knob)` binds a package's model-facing diagnostic preview to

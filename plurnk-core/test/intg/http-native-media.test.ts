@@ -8,8 +8,8 @@ import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/src/buildPdf
 import { wav } from "../../../plurnk-mimetypes-audio/test/wav.ts";
 import { connect, rpcCall, waitForDb, withDaemon } from "./_rpc.ts";
 
-process.env.PLURNK_MEMBERS_TASK = "**";
-process.env.PLURNK_MEMBERS_ENABLED = '["task"]';
+process.env.PLURNK_MEMBERS_task = "**";
+process.env.PLURNK_MEMBERS_ENABLED = "1";
 process.env.PLURNK_SCHEMES_HTTP_TTL_MS = "60000";
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
 const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "Media inspection complete.");

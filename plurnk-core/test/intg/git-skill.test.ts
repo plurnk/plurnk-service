@@ -15,8 +15,8 @@ import { userText } from "./_mock.ts";
 const execFileP = promisify(execFile);
 
 // The harness's plain-directory membership, so a repository-less root still admits its files.
-process.env.PLURNK_MEMBERS_TASK = "**";
-process.env.PLURNK_MEMBERS_ENABLED = "[\"task\"]";
+process.env.PLURNK_MEMBERS_task = "**";
+process.env.PLURNK_MEMBERS_ENABLED = "1";
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 

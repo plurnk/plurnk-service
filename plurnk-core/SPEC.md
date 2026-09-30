@@ -5400,12 +5400,11 @@ repository's ignore rules refused — so the model sees what its glob did and ad
 untracked, absent); a glob previews what `add` would include or exclude. Names only, never
 content; nothing is added.
 
-§members-configuration *Available definitions.* The operator's `PLURNK_MEMBERS_<ALIAS>=<glob>`
-(`!glob` excludes) and `PLURNK_MEMBERS_ENABLED=[…]` (`[]` enables none) are the
-service-origin definitions. Alias suffixes are lowercased and underscores become
-hyphens. Two keys resolving to the same alias are rejected naming both keys;
-declaration order cannot select a winner. An empty glob, a bare `!`, or an
-unknown enabled alias also fails boot.
+§members-configuration *Available definitions.* `PLURNK_MEMBERS_<alias>=<glob>`
+declares one service-origin rule (`!glob` excludes). The shared naming and
+enabledness dialect is {§resource-environment}; `PLURNK_MEMBERS_ENABLED` supplies
+the panel default and `PLURNK_MEMBERS_<alias>_ENABLED` overrides one rule.
+An empty glob, a bare `!`, or a control naming an unknown rule fails validation.
 
 §members-model-scope *The model's authority.* A model's `add` is admitted against
 `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` in the file-creation lattice `none < root <

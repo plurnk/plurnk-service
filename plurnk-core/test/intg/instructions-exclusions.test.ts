@@ -20,10 +20,10 @@ test("an ignored or excluded AGENTS.md is never projected; the standard does not
     const priorAuto = process.env.PLURNK_SERVICE_GIT_AUTO;
     process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
     process.env.PLURNK_SERVICE_GIT_AUTO = "1";
-    const priorMembers = process.env.PLURNK_MEMBERS_NO_HIDDEN;
+    const priorMembers = process.env.PLURNK_MEMBERS_no_hidden;
     const priorEnabled = process.env.PLURNK_MEMBERS_ENABLED;
-    process.env.PLURNK_MEMBERS_NO_HIDDEN = "!packages/hidden/**";   // an operator exclusion ({§members-configuration})
-    process.env.PLURNK_MEMBERS_ENABLED = "[\"no-hidden\"]";
+    process.env.PLURNK_MEMBERS_no_hidden = "!packages/hidden/**";   // an operator exclusion ({§members-configuration})
+    process.env.PLURNK_MEMBERS_ENABLED = "1";
     const dir = await mkdtemp(join(tmpdir(), "plurnk-instructions-"));
     try {
         await execFileP("git", ["init", "-q"], { cwd: dir, env: hermeticGitEnv() });
@@ -58,8 +58,8 @@ test("an ignored or excluded AGENTS.md is never projected; the standard does not
         else process.env.PLURNK_SERVICE_GIT_ALLOWED = priorAllowed;
         if (priorAuto === undefined) delete process.env.PLURNK_SERVICE_GIT_AUTO;
         else process.env.PLURNK_SERVICE_GIT_AUTO = priorAuto;
-        if (priorMembers === undefined) delete process.env.PLURNK_MEMBERS_NO_HIDDEN;
-        else process.env.PLURNK_MEMBERS_NO_HIDDEN = priorMembers;
+        if (priorMembers === undefined) delete process.env.PLURNK_MEMBERS_no_hidden;
+        else process.env.PLURNK_MEMBERS_no_hidden = priorMembers;
         if (priorEnabled === undefined) delete process.env.PLURNK_MEMBERS_ENABLED;
         else process.env.PLURNK_MEMBERS_ENABLED = priorEnabled;
     }

@@ -11,8 +11,8 @@ import { viableWindow } from "./_provider.ts";
 import { rpcCall, connect, withDaemon, waitForDb } from "./_rpc.ts";
 import { userText } from "./_mock.ts";
 
-process.env.PLURNK_MEMBERS_TASK = "**";
-process.env.PLURNK_MEMBERS_ENABLED = "[\"task\"]";
+process.env.PLURNK_MEMBERS_task = "**";
+process.env.PLURNK_MEMBERS_ENABLED = "1";
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 const mockTurn = (dsl: string) => ({

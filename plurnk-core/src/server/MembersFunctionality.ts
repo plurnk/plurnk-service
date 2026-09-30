@@ -9,7 +9,7 @@ import { stat } from "node:fs/promises";
 import { matchesGlob, resolve } from "node:path";
 import { Validator, type FunctionalityCandidate, type FunctionalityDiscoverQuery, type JsonSchema } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
-import { Knob } from "@plurnk/plurnk-meta";
+import { Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type Engine from "../core/Engine.ts";
 import FileCreationPolicy, { type FileCreateScope } from "../core/file-creation-policy.ts";
 import GitMembership, { type OverlayResolution, type OverlayRow } from "../core/git-membership.ts";
@@ -32,7 +32,6 @@ import type {
 const MEMBERS_FAMILY = "members";
 const MEMBERS_OWNER = "@plurnk/plurnk-core/members";
 const PREFIX = "PLURNK_MEMBERS_";
-const ENABLED_KEY = "PLURNK_MEMBERS_ENABLED";
 const SCOPE_KEY = "PLURNK_SERVICE_MEMBERS_MODEL_SCOPE";
 const ALIAS = /^[a-z][a-z0-9-]*$/u;
 const PATTERN_CHARACTERS = /[*?[\]{}]/u;
@@ -101,39 +100,18 @@ export const aliasOf = (glob: string): string => {
     return isExclusion(glob) ? `no-${base}` : base;
 };
 
-const foldAlias = (suffix: string): string => suffix.toLowerCase().replaceAll("_", "-");
-
-const jsonStrings = (raw: string | undefined, key: string): string[] => {
-    if (raw === undefined) throw new Error(`${key} is missing from the assembled environment floor.`);
-    let parsed: unknown;
-    try { parsed = JSON.parse(raw); } catch (cause) { throw new Error(`${key} must be a JSON array of aliases.`, { cause }); }
-    if (!Array.isArray(parsed) || parsed.some((entry) => typeof entry !== "string")) throw new Error(`${key} must be a JSON array of aliases.`);
-    return parsed as string[];
-};
-
-// {§members-configuration} — the operator's definitions: PLURNK_MEMBERS_<ALIAS>=<glob> (`!glob`
-// excludes) and PLURNK_MEMBERS_ENABLED=[…] naming the subset enabled by default ([] enables
-// none) — the shape PLURNK_A2A_* has.
+// {§members-configuration}
 export const serviceMembers = (environ: NodeJS.ProcessEnv = process.env): FunctionalityServiceDefinition[] => {
-    const targets = new Map<string, { key: string; glob: string }>();
-    for (const [key, value] of Object.entries(environ)) {
-        if (!key.startsWith(PREFIX) || value === undefined || key === ENABLED_KEY) continue;
-        const alias = foldAlias(key.slice(PREFIX.length));
-        const existing = targets.get(alias);
-        if (existing !== undefined) throw new Error(`${existing.key} and ${key} both derive the members alias '${alias}'.`);
-        targets.set(alias, { key, glob: value.trim() });
-    }
-    const enabled = new Set(jsonStrings(environ[ENABLED_KEY], ENABLED_KEY));
-    for (const alias of enabled) {
-        if (!targets.has(alias)) throw new Error(`${ENABLED_KEY} contains unknown members alias '${alias}'.`);
-    }
-    return [...targets].toSorted(([left], [right]) => left.localeCompare(right)).map(([alias, { key, glob }]) => {
+    const environment = new ResourceEnvironment(PREFIX, { controls: [], settings: [] }, environ);
+    environment.assertKnownAliases(environment.definitions.keys());
+    return [...environment.definitions].map(([alias, { key, value }]) => {
+        const glob = value.trim();
         if (!ALIAS.test(alias)) throw new Error(`${key} names an invalid members alias '${alias}'.`);
         if (patternOf(glob).length === 0) throw new Error(`${key} names no pattern.`);
         return {
             alias,
             definition: { glob, provenance: { kind: "service-configuration", source: key } } satisfies MembersDefinition,
-            enabled: enabled.has(alias),
+            enabled: environment.enabled(alias),
         };
     });
 };

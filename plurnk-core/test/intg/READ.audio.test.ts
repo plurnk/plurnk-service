@@ -10,8 +10,8 @@ import { connect, rpcCall, waitForDb, withDaemon } from "./_rpc.ts";
 import Fork from "../../src/core/fork.ts";
 import NativeContent from "../../src/core/NativeContent.ts";
 
-process.env.PLURNK_MEMBERS_TASK = "**";
-process.env.PLURNK_MEMBERS_ENABLED = '["task"]';
+process.env.PLURNK_MEMBERS_task = "**";
+process.env.PLURNK_MEMBERS_ENABLED = "1";
 const next = "````NOTE\nInspect the audio.\n````";
 const turn = (content: string) => ({ assistant: { content, reasoning: null } });
 

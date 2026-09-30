@@ -1,49 +1,43 @@
-// {§members-configuration} {§members-model-scope} — the members family's own truths: the
-// operator's definitions ride the PLURNK_A2A_* shape and a glob's alias is suggested from the
-// glob. The ceiling is witnessed through the daemon (test/intg/members-functionality.test.ts).
+// {§members-configuration} {§members-model-scope}
 import test from "node:test";
 import assert from "node:assert/strict";
 import { aliasOf, modelScope, serviceMembers } from "./MembersFunctionality.ts";
 
-test("serviceMembers parses PLURNK_MEMBERS_<ALIAS> and PLURNK_MEMBERS_ENABLED; an exclusion rides in the glob", () => {
+test("{§members-configuration} declarations default enabled and per-alias switches override the family default", () => {
     const definitions = serviceMembers({
-        PLURNK_MEMBERS_DOCS: "docs/**",
-        PLURNK_MEMBERS_NO_LOCKS: "!**/*.lock",
-        PLURNK_MEMBERS_ENABLED: "[\"docs\"]",
+        PLURNK_MEMBERS_docs: "docs/**",
+        PLURNK_MEMBERS_no_locks: "!**/*.lock",
+        PLURNK_MEMBERS_no_locks_ENABLED: "0",
+        PLURNK_MEMBERS_ENABLED: "1",
         OTHER_KEY: "x",
     });
     assert.deepEqual(definitions, [
-        { alias: "docs", definition: { glob: "docs/**", provenance: { kind: "service-configuration", source: "PLURNK_MEMBERS_DOCS" } }, enabled: true },
-        { alias: "no-locks", definition: { glob: "!**/*.lock", provenance: { kind: "service-configuration", source: "PLURNK_MEMBERS_NO_LOCKS" } }, enabled: false },
+        { alias: "docs", definition: { glob: "docs/**", provenance: { kind: "service-configuration", source: "PLURNK_MEMBERS_docs" } }, enabled: true },
+        { alias: "no-locks", definition: { glob: "!**/*.lock", provenance: { kind: "service-configuration", source: "PLURNK_MEMBERS_no_locks" } }, enabled: false },
     ]);
-    assert.deepEqual(serviceMembers({ PLURNK_MEMBERS_ENABLED: "[]" }), []);
+    assert.deepEqual(serviceMembers({ PLURNK_MEMBERS_ENABLED: "1" }), []);
+    assert.equal(serviceMembers({ PLURNK_MEMBERS_ENABLED: "0", PLURNK_MEMBERS_docs: "docs/**" })[0].enabled, false);
+    assert.equal(serviceMembers({ PLURNK_MEMBERS_ENABLED: "0", PLURNK_MEMBERS_docs: "docs/**", PLURNK_MEMBERS_docs_ENABLED: "1" })[0].enabled, true);
     assert.throws(() => serviceMembers({}), /PLURNK_MEMBERS_ENABLED is missing from the assembled environment floor/u);
 });
 
-test("serviceMembers fails hard on an unknown enabled alias, an empty glob, or a bare exclusion", () => {
-    assert.throws(() => serviceMembers({ PLURNK_MEMBERS_DOCS: "docs/**", PLURNK_MEMBERS_ENABLED: "[\"nope\"]" }), /unknown members alias 'nope'/u);
-    assert.throws(() => serviceMembers({ PLURNK_MEMBERS_DOCS: "  ", PLURNK_MEMBERS_ENABLED: "[]" }), /PLURNK_MEMBERS_DOCS names no pattern/u);
-    assert.throws(() => serviceMembers({ PLURNK_MEMBERS_NONE: "!", PLURNK_MEMBERS_ENABLED: "[]" }), /PLURNK_MEMBERS_NONE names no pattern/u);
-    assert.throws(() => serviceMembers({ PLURNK_MEMBERS_DOCS: "docs/**", PLURNK_MEMBERS_ENABLED: "" }), /must be a JSON array/u);
-    assert.throws(() => serviceMembers({ PLURNK_MEMBERS_DOCS: "docs/**", PLURNK_MEMBERS_ENABLED: "docs" }), /must be a JSON array/u);
+test("{§members-configuration} invalid patterns and controls fail by name", () => {
+    assert.throws(() => serviceMembers({ PLURNK_MEMBERS_nope_ENABLED: "0", PLURNK_MEMBERS_ENABLED: "1" }), /PLURNK_MEMBERS_nope_ENABLED names unknown resource 'nope'/u);
+    assert.throws(() => serviceMembers({ PLURNK_MEMBERS_docs: "  ", PLURNK_MEMBERS_ENABLED: "1" }), /PLURNK_MEMBERS_docs names no pattern/u);
+    assert.throws(() => serviceMembers({ PLURNK_MEMBERS_none: "!", PLURNK_MEMBERS_ENABLED: "1" }), /PLURNK_MEMBERS_none names no pattern/u);
+    assert.throws(() => serviceMembers({ PLURNK_MEMBERS_docs: "docs/**", PLURNK_MEMBERS_ENABLED: "[]" }), /PLURNK_MEMBERS_ENABLED must be 0 or 1/u);
+    assert.throws(() => serviceMembers({ PLURNK_MEMBERS_docs: "docs/**", PLURNK_MEMBERS_docs_ENABLED: "true", PLURNK_MEMBERS_ENABLED: "1" }), /PLURNK_MEMBERS_docs_ENABLED must be 0 or 1/u);
 });
 
-test("{§members-configuration} normalized alias collisions name both declarations, regardless of order", async (t) => {
-    const pairs = [
-        ["PLURNK_MEMBERS_DOCS", "PLURNK_MEMBERS_docs", "docs"],
-        ["PLURNK_MEMBERS_NO_LOCKS", "PLURNK_MEMBERS_no-locks", "no-locks"],
-    ] as const;
-    for (const [left, right, alias] of pairs) {
-        for (const [first, second] of [[left, right], [right, left]] as const) {
-            await t.test(`${first} then ${second}`, () => {
+test("{§members-configuration} noncanonical alias spellings cannot compete with canonical declarations", async (t) => {
+    for (const invalid of ["PLURNK_MEMBERS_DOCS", "PLURNK_MEMBERS_Docs", "PLURNK_MEMBERS_no-locks"]) {
+        for (const reverse of [false, true]) {
+            await t.test(`${invalid}, reverse=${reverse}`, () => {
+                const entries = [[invalid, "src/**"], ["PLURNK_MEMBERS_docs", "docs/**"]];
                 assert.throws(() => serviceMembers({
-                    PLURNK_MEMBERS_ENABLED: "[]",
-                    [first]: "docs/**",
-                    [second]: "src/**",
-                }), {
-                    name: "Error",
-                    message: `${first} and ${second} both derive the members alias '${alias}'.`,
-                });
+                    PLURNK_MEMBERS_ENABLED: "1",
+                    ...Object.fromEntries(reverse ? entries.toReversed() : entries),
+                }), new RegExp(`${invalid} .*lowercase`, "u"));
             });
         }
     }

@@ -19,8 +19,8 @@ import EntryFind from "../../src/schemes/_entry-find.ts";
 import Worker from "../../src/schemes/Worker.ts";
 
 // The task tree is a plain directory: admit its files as members, as the harness does.
-process.env.PLURNK_MEMBERS_TASK = "**";
-process.env.PLURNK_MEMBERS_ENABLED = "[\"task\"]";
+process.env.PLURNK_MEMBERS_task = "**";
+process.env.PLURNK_MEMBERS_ENABLED = "1";
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 
 // A complete, valid 1×1 PNG (signature, IHDR, IDAT, IEND).
