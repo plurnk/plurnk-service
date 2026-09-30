@@ -816,7 +816,7 @@ export type EnvironmentReference = string
 
 export type McpServerDefinition = (McpStdioServerDefinition | McpStreamableHttpServerDefinition)
 /**
- * The server's alias: its mcpServers member name, the runtime tag whose fence invokes it, and its resource scheme.
+ * The server's alias: the runtime tag whose fence invokes it and its resource scheme.
  */
 
 export type McpServerName = string
@@ -868,7 +868,7 @@ name: McpServerName
  */
 type: "streamable-http"
 /**
- * The MCP endpoint: HTTPS, or HTTP on a loopback host.
+ * The explicitly configured HTTP(S) MCP endpoint. OAuth has its own transport-security requirements.
  */
 url: string
 /**

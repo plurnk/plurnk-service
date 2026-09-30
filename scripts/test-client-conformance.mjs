@@ -286,7 +286,7 @@ try {
     tui.write("/mcp\r");
     await tui.waitFor(/MCP servers: none/);
     tui.write("/skills\r");
-    await tui.waitFor(/plurnk\s+dormant\s+service/);
+    await tui.waitFor(/plurnk\s+dormant/);
     tui.write("/a2a\r");
     await tui.waitFor(/A2A agents: none/);
     tui.write("Exercise the installed interactive terminal.\r");
@@ -307,7 +307,7 @@ try {
     assertIncludes(tuiOutput, "Confirm the packed interactive terminal path.", "installed TUI NOTE aside");
     assertIncludes(tuiOutput, "The installed interactive journey is complete.", "installed TUI KILL answer");
     tui.write("/skills\r");
-    await tui.waitFor(/plurnk\s+active\s+service/);
+    await tui.waitFor(/plurnk\s+active/);
     await tui.exit();
     tui = undefined;
     process.stdout.write("installed interactive TUI journey GREEN: Functionality + message READ + reasoning + NOTE + KILL + status\n");
@@ -366,6 +366,12 @@ try {
         const listed = await terminal.rpc(`workspace.${family}.list`);
         if (!Array.isArray(listed.definitions)) {
             throw new Error(`workspace.${family}.list returned no Functionality definitions`);
+        }
+        if (family === "skills") {
+            const skill = listed.definitions.find(({ alias }) => alias === "plurnk");
+            if (skill?.origin !== "service" || skill.definition?.name !== "plurnk" || "scope" in skill.definition) {
+                throw new Error(`the provided skill lost its service origin or acquired an installation scope: ${JSON.stringify(skill)}`);
+            }
         }
     }
 

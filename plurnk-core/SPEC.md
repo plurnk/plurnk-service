@@ -3903,7 +3903,7 @@ the policy renders in exactly one packet section. Every other tier runs the
 test cascade, so shipped-default regressions are otherwise invisible by
 construction.
 
-§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to gate-wide service posture that is identical on every machine: complete catalog orientation, automatic Git membership when the operator ceiling permits Git, ambient operator-file docs/packet notes cleared, the operator's installed skills and plugins left unread ({§agent-roots}), ambient MCP/A2A and schedules default disabled, and `PLURNK_EXECS_QUESTION=0` for unattended runs. The ordinary executor switch removes the question tool and its teaching; an explicit override can opt into an attended drill. The drivers also project per-alias `ENABLED=0` overrides for named MCP, A2A, schedule and membership resources in the operator's config file. Definitions remain inspectable; explicit shell/benchmark controls win. Mock-tier bootstrap clears these ambient families before loading its fixture floor. No operator file is rewritten. Configuration with a narrower or variable owner stays outside it:
+§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. Its exact allowlist is limited to gate-wide service posture that is identical on every machine: complete catalog orientation, automatic Git membership when the operator ceiling permits Git, ambient operator-file docs/packet notes cleared, the operator's installed skills and plugins left unread ({§agent-roots}), ambient MCP/A2A and schedules default disabled, and `PLURNK_EXECS_QUESTION=0` for unattended runs. The ordinary executor switch removes the question tool and its teaching; an explicit override can opt into an attended drill. The drivers also project per-alias `ENABLED=0` overrides for named MCP, A2A, schedule, membership, and skill resources in the operator's config file. Definitions remain inspectable; explicit shell/benchmark controls win. Mock-tier bootstrap clears these ambient families before loading its fixture floor. No operator file is rewritten. Configuration with a narrower or variable owner stays outside it:
 
 | Owner | Configuration |
 |---|---|
@@ -4258,9 +4258,10 @@ operator's ceiling ({§exec-env-scoped}, service origin) precede workspace defau
 worker overrides ({§workspace-env}). `add` takes
 the name as the alias and `{ "value": "…" }` as the definition, used verbatim with no
 interpolation. `disable` withholds a name in the selected scope while retaining it;
-`remove` forgets a locally-owned entry and a same-name lower baseline reappears
-disabled, so removal never silently changes what the next spawn sees. Definitions
-from a lower layer are disable-only in the current scope.
+`remove` forgets a locally-owned entry and restores any same-name inherited value
+and enabledness ({§configuration-definition-resolution}). Use `disable` to keep
+an inherited name out of subsequent launches. Definitions from a lower layer are
+disable-only in the current scope.
 
 `list` projects effective values with their origin. Values are shown: the ceiling is the security
 boundary, not the projection, and any admitted name is already readable by every command the

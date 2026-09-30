@@ -14,7 +14,7 @@
     "$defs": {
         "name": {
             "title": "McpServerName",
-            "description": "The server's alias: its mcpServers member name, the runtime tag whose fence invokes it, and its resource scheme.",
+            "description": "The server's alias: the runtime tag whose fence invokes it and its resource scheme.",
             "type": "string",
             "pattern": "^[a-z][a-z0-9-]*$"
         },
@@ -79,7 +79,7 @@
                     "const": "streamable-http"
                 },
                 "url": {
-                    "description": "The MCP endpoint: HTTPS, or HTTP on a loopback host.",
+                    "description": "The explicitly configured HTTP(S) MCP endpoint. OAuth has its own transport-security requirements.",
                     "type": "string",
                     "pattern": "^https?://"
                 },

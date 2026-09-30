@@ -62,7 +62,8 @@ the owning declaration specifies its meaning.
 | --- | --- |
 | Startup defaults or installed plugin configuration | The daemon's environment cascade. A remote client's shell does not change it. |
 | Model, reasoning, child model | Worker selections persist. Set them through client controls; changing a startup default does not retarget an existing Worker. |
-| MCPs, skills, agents | Workspace Functionality: list, discover, add, enable, disable, remove. Workers share the workspace's current selection. |
+| MCPs, skills, outbound agents, schedules, membership | Workspace Functionality: list, discover, add, enable, disable, remove. Workers share the workspace's current selection. |
+| Command environment | `env` manages worker overrides or workspace defaults. It does not reconfigure the daemon; running processes keep their launch environment. |
 | External capabilities | Service policy is a ceiling; workspace policy can narrow it for every worker. Hiding a doc does not grant or revoke authority. |
 | Proposal review / YOLO | Decides who accepts or rejects an admitted operation. Automatic acceptance never overrides capability or resource permissions. |
 | File creation and membership | Separate policies. Creating an out-of-root file, admitting a new file, and editing an existing member are distinct decisions. |
@@ -84,19 +85,46 @@ a model cannot widen their ceiling by changing its policy prose.
 ## Skills
 
 Project names shadow Plurnk-only names, then user-global names, then
-service-provided skills.
-Plurnk's own skill uses the same discovery, READ, and workspace enablement as
-installed skills. It is not copied into a universal root.
+service-provided skills. These roots are read-only configuration inputs;
+external edits appear at the next turn. Plurnk's own skill uses the same READ,
+discovery, and workspace enablement as other skills.
 
-Clients use `workspace.skills.{list,discover,add,enable,disable,remove}`; models use
-the generated `skills` executor. `discover` returns candidates without
-installation. `add` installs from a Git remote, directory, `SKILL.md`, or archive
-into the chosen project, Plurnk-only, or global root; `remove` uninstalls a
-workspace-origin installation.
-Service-provided entries can be disabled, not uninstalled through that action.
-An external installer changes the available catalog at the next turn.
+`skills (add)` binds a source to this workspace, never installs into those roots.
+Local folders and `SKILL.md` files stay live references, with supporting files in
+place. Git/archive sources become workspace-owned copies retained across enable
+and restart until the source definition changes. `remove` forgets the workspace
+binding without deleting its source. READ is not execution; running a skill's
+script follows ordinary proposal policy. The [skills reference](worker:///_plurnk/plurnk/skills.md)
+covers discovery, source forms, and Git refs.
 
-Project installation is local to that project. Global installation intentionally
-shares the skill with other compatible agents using `~/.agents/skills/`.
-Supporting files stay in their original tree, including script siblings.
-READ is not execution; running a script follows ordinary proposal policy.
+## Resource definitions
+
+Supported standard sources, environment declarations, and live workspace changes
+feed the same family. Whole definitions replace lower definitions; omitted fields
+never inherit. Workspace overrides win over environment declarations, which win
+over discovered sources. Independent behavior controls cascade separately.
+
+```dotenv
+PLURNK_MCP_docs={"name":"docs","type":"streamable-http","url":"https://docs.example/mcp"}
+PLURNK_MCP_ENABLED=1
+PLURNK_MCP_docs_ENABLED=0
+```
+
+MCP, skills, outbound A2A, schedule, and members use this same naming pattern;
+their `.env.defaults` entries describe each family's definition and controls.
+Aliases use lowercase names, with `_` encoding `-`; skills retain their standard
+Unicode and digit-leading names. An empty definition is invalid, not a disable
+instruction. A control may precede the resource it will govern.
+
+| Action | Effect |
+| --- | --- |
+| Declare in configuration | Supply an inherited definition, enabled by default unless a control disables it. No workspace writes. |
+| `list` | Inspect the effective definition, origin, enabledness, and runtime readiness without starting it. |
+| `discover` | Return inert candidates; nothing is added or enabled. |
+| `add` | Persist a workspace override and prepare it through the ordinary authorization policy. |
+| `disable` / `enable` | Change availability without forgetting the definition or updating fetched skill copies. |
+| `remove` | Forget the local override and restore the inherited definition and enabledness. Use `disable` to suppress an inherited entry. |
+
+Use the environment cascade for daemon/CI defaults and the subsystem actions for
+live workspace changes. A declared or enabled resource never bypasses capability
+or proposal policy. Unavailable resources retain their exact Problem in `list`.

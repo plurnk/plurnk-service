@@ -553,6 +553,41 @@ test("{§skills-configuration} a configured Git snapshot survives enable and res
     assert.equal(await exists(s.projectSkills), false);
 });
 
+test("{§skills-configuration} an archive snapshot survives source changes and removal; a new source definition materializes new content", async (t) => {
+    const s = await skillsWorkspace(t, "archive-configured");
+    const source = join(s.base, "first.zip");
+    const replacement = join(s.base, "second.zip");
+    await writeFile(source, zip([["alpha/SKILL.md", skill("alpha", "First edition")]]));
+    const previous = process.env.PLURNK_SKILLS_alpha;
+    t.after(() => {
+        if (previous === undefined) delete process.env.PLURNK_SKILLS_alpha;
+        else process.env.PLURNK_SKILLS_alpha = previous;
+    });
+    const definition = { name: "alpha", source };
+    process.env.PLURNK_SKILLS_alpha = JSON.stringify(definition);
+    await s.prepare();
+    const original = (await s.listed()).find(({ alias }) => alias === "alpha")!.detail!.path!;
+    await writeFile(source, zip([["alpha/SKILL.md", skill("alpha", "Changed in place")]]));
+    await s.action("disable", { alias: "alpha" });
+    await s.action("enable", { alias: "alpha" });
+    assert.match(await readFile(join(original, "SKILL.md"), "utf8"), /First edition/u);
+    await rm(source);
+    await s.restart();
+    await s.prepare();
+    const retained = (await s.listed()).find(({ alias }) => alias === "alpha")!;
+    assert.equal(retained.state, "active", "source availability is not a dependency of a retained copy");
+    assert.equal(retained.detail?.path, original);
+    assert.deepEqual(retained.definition, definition);
+    assert.match(await readFile(join(original, "SKILL.md"), "utf8"), /First edition/u);
+    await writeFile(replacement, zip([["alpha/SKILL.md", skill("alpha", "Replacement edition")]]));
+    process.env.PLURNK_SKILLS_alpha = JSON.stringify({ ...definition, source: replacement });
+    await s.action("enable", { alias: "alpha" });
+    const changed = (await s.listed()).find(({ alias }) => alias === "alpha")!.detail!.path!;
+    assert.notEqual(changed, original);
+    assert.match(await readFile(join(changed, "SKILL.md"), "utf8"), /Replacement edition/u);
+    assert.match(await readFile(join(original, "SKILL.md"), "utf8"), /First edition/u);
+});
+
 test("{§skills-sources} a lone SKILL.md, a tar archive and a zip archive each add their skill", async (t) => {
     const s = await skillsWorkspace(t, "files");
     const files = join(s.base, "files");
