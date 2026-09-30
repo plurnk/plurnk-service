@@ -529,51 +529,27 @@ test("bin: provider initialization failure closes the admitted database", async 
     }
 });
 
-test("bin: observability initialization failure closes the admitted database", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "plurnk-observe-startup-"));
+test("{§configuration-repair-path} bin: unavailable observability preserves discovery and releases the database on shutdown", async () => {
+    const booted = await bootDaemon(async () => ({
+        OTEL_TRACES_EXPORTER: "unsupported",
+        OTEL_METRICS_EXPORTER: "none",
+    }));
     try {
-        const dbPath = join(dir, "plurnk.db");
-        const env: NodeJS.ProcessEnv = {
-            ...process.env,
-            HOME: dir,
-            PLURNK_SERVICE_DB_PATH: dbPath,
-            PLURNK_HOST: "127.0.0.1",
-            PLURNK_PORT: "0",
-            OTEL_TRACES_EXPORTER: "unsupported",
-            OTEL_METRICS_EXPORTER: "none",
-        };
-        delete env.PLURNK_MODEL;
-        const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH, "start"], {
-            env,
-            cwd: dir,
-            stdio: ["ignore", "ignore", "pipe"],
-        });
-        let stderr = "";
-        child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
-        const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolvePromise, rejectPromise) => {
-            const timer = setTimeout(() => {
-                child.kill("SIGKILL");
-                rejectPromise(new Error(`observability-startup timeout; stderr=${stderr}`));
-            }, 10_000);
-            child.once("exit", (code, signal) => {
-                clearTimeout(timer);
-                resolvePromise({ code, signal });
-            });
-            child.once("error", (cause) => {
-                clearTimeout(timer);
-                rejectPromise(cause);
-            });
-        });
-        assert.equal(result.code, 1, `observability initialization fails startup (signal=${result.signal})`);
-        assert.match(stderr, /unsupported OTEL_TRACES_EXPORTER value "unsupported"/);
+        assert.ok(await action(booted, "discover"), "client inspection remains available");
+        const dbPath = join(booted.tmpdir, "plurnk.db");
         await access(dbPath);
+        await access(`${dbPath}.lock`);
+        const exited = new Promise<number | null>((resolvePromise) => booted.child.once("exit", resolvePromise));
+        booted.child.kill("SIGTERM");
+        assert.equal(await exited, 0, "configuration diagnostics do not turn normal shutdown into a failure");
         await assert.rejects(
             access(`${dbPath}.lock`),
             { code: "ENOENT" },
             "the admitted database owner is closed and its lock released",
         );
     } finally {
-        await rm(dir, { recursive: true, force: true });
+        if (booted.child.exitCode === null) await stopDaemon(booted);
+        else await rm(booted.tmpdir, { recursive: true, force: true });
     }
 });
 
