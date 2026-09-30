@@ -153,9 +153,9 @@ repeatable `--env-file-if-exists` flags the LAST flag wins. The live/demo tier
 2. `plurnk-core/.env.test` — the committed real-model gate profile: the posture that is the
    same on every machine (`PLURNK_SERVICE_FILES_ITEMS=-1`, `PLURNK_SERVICE_GIT_AUTO=1`,
    ambient operator surfaces cleared). It names no model,
-3. `./.env`, then `$XDG_CONFIG_HOME/plurnk/.env` — operator files. The user file declares the
+3. `$XDG_CONFIG_HOME/plurnk/.env` — the operator file. It declares the
    model aliases (`PLURNK_MODEL_<alias>=<provider>/<model>`) and may set `PLURNK_MODEL`
-   as this machine's standing selection; both are operator-owned and never committed,
+   as this machine's standing selection; it is operator-owned and never committed,
 4. per-package `.env.defaults` — committed safe defaults plus the authoritative env docs,
 5. `test/floor.ts` — the assembled `.env.defaults` of every installed package,
    applied set-if-unset so it only fills genuinely-unset knobs.
@@ -185,7 +185,7 @@ bootstrap (`--import=./test/floor.ts`) instead; it boots a fresh throwaway works
 never the host repo, and is not part of `npm test`. Both tiers route through
 driver scripts (`scripts/live.mjs`, `scripts/demo.mjs`) that layer the full
 cascade (operator-environment.sh → floor.ts → `.env.defaults`, the XDG user `.env`,
-`./.env`, `.env.test`) and place `--test-name-pattern` *before* the file list
+`.env.test`) and place `--test-name-pattern` *before* the file list
 (node ignores it after the files). Run from `plurnk-core`, selecting a model:
 
 ```sh

@@ -9,7 +9,7 @@ own rules through the `schedule` family (`discover`, `add`, `list`, `enable`,
 
 ## Configure
 
-Put overrides in the shell, `./.env`, or `$XDG_CONFIG_HOME/plurnk/.env`:
+Put overrides in the shell or `$XDG_CONFIG_HOME/plurnk/.env`:
 
 ```dotenv
 TZ=America/New_York

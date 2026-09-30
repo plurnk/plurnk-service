@@ -91,7 +91,7 @@ const migratedPath = (result: { code: number | null; stdout: string; stderr: str
     return match[1];
 };
 
-test("launcher cascade: project config beats XDG user config; the derived DB uses XDG data", async () => {
+test("{§operator-config-precedence} launcher cascade: the working directory's .env is ignored; the XDG user config supplies values; the derived DB uses XDG data", async () => {
     const fx = await fixture();
     try {
         const homeDb = join(fx.root, "home.db");
@@ -99,9 +99,7 @@ test("launcher cascade: project config beats XDG user config; the derived DB use
         await envFile(fx.homeEnv, homeDb);
         await envFile(fx.cwdEnv, cwdDb);
 
-        assert.equal(migratedPath(await runService(fx, ["migrate"])), cwdDb);
-        await rm(fx.cwdEnv);
-        assert.equal(migratedPath(await runService(fx, ["migrate"])), homeDb);
+        assert.equal(migratedPath(await runService(fx, ["migrate"])), homeDb, "the working directory's .env configures nothing");
         await rm(fx.homeEnv);
         assert.equal(
             migratedPath(await runService(fx, ["migrate"])),

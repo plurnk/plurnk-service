@@ -3713,11 +3713,13 @@ ordinary precedence; XDG variables themselves require absolute paths.
 |---------:|------------------------------------|-----------------------------------------------------------|
 |        1 | Assembled package `.env.defaults` | Set-if-unset floor; one owner per key.                     |
 |        2 | `$XDG_CONFIG_HOME/plurnk/.env`     | User-level ambient configuration.                         |
-|        3 | `./.env`                           | Working-directory ambient configuration.                  |
-|        4 | `--config=<path>`                  | Singular service-owned explicit file.                     |
-|        5 | `--env-file*`                      | Repeatable explicit files; later selected files win.      |
-|        6 | Initial shell environment          | Preserved over every file layer.                          |
-|        7 | Derived service CLI flags          | Assigned last.                                            |
+|        3 | `--config=<path>`                  | Singular service-owned explicit file.                     |
+|        4 | `--env-file*`                      | Repeatable explicit files; later selected files win.      |
+|        5 | Initial shell environment          | Preserved over every file layer.                          |
+|        6 | Derived service CLI flags          | Assigned last.                                            |
+
+A working directory's `.env` configures that directory's application, never plurnk (#926); a
+project's variables reach its commands through the workspace environment ({§workspace-env}).
 
 Node's pre-script env-file form and the executable's post-script form share the same later-file-wins ordering. `--env-file-if-exists` skips an absent file without changing the order of selected files.
 

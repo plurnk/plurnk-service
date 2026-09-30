@@ -73,9 +73,7 @@ const bootDaemon = (
         };
         delete env.PLURNK_MODEL;
 
-        // cwd isolation, same reason as HOME: the service cascade loads ./.env (operator config,
-        // the owner's surface) — an inherited cwd leaks the box's model selector into this
-        // hermetic tier and can introduce unrelated provider credential requirements ({§operator-config}).
+        // A hermetic working directory: the service reads nothing from it ({§operator-config-precedence}).
         const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH], { env, cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
         let stdoutBuf = "";
         let stderrBuf = "";
@@ -351,6 +349,37 @@ test("bin: --help prints usage without booting daemon", async () => {
     });
     assert.equal(result.code, 0, `--help exits 0; got ${result.code}, stderr=${result.stderr}`);
     assert.match(result.stdout, /usage: plurnk-service/);
+});
+
+test("{§operator-config-precedence} a working directory's .env configures nothing", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-cwd-env-"));
+    try {
+        await writeFile(join(dir, ".env"), "PLURNK_MODEL_projectonly=openai/gpt-4o\nPLURNK_MODEL=projectonly\n");
+        const env: NodeJS.ProcessEnv = {
+            ...process.env,
+            HOME: dir,
+            XDG_CONFIG_HOME: join(dir, ".config"),
+            XDG_DATA_HOME: join(dir, ".local", "share"),
+            PLURNK_SERVICE_DB_PATH: join(dir, "plurnk.db"),
+        };
+        for (const key of Object.keys(env)) if (key === "PLURNK_MODEL" || key.startsWith("PLURNK_MODEL_")) delete env[key];
+        const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolvePromise, rejectPromise) => {
+            const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH, "config"], { env, cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
+            let stdout = "";
+            let stderr = "";
+            child.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
+            child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+            child.once("exit", (code) => resolvePromise({ code, stdout, stderr }));
+            child.once("error", rejectPromise);
+            setTimeout(() => { child.kill("SIGKILL"); rejectPromise(new Error("config timeout")); }, 30_000);
+        });
+        assert.equal(result.code, 0, `config exits 0; got ${result.code}, stderr=${result.stderr}`);
+        assert.match(result.stdout, /^declared aliases: none$/mu, "the project's alias is not declared");
+        assert.match(result.stdout, /^model: not selected$/mu, "the project's selector is not applied");
+        assert.equal(result.stdout.includes(join(dir, ".env")), false, "the working directory's .env is not a listed source");
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
 });
 
 test("bin: a failed DB open names the path and any stale sidecars — never a bare 'disk I/O error'", async () => {

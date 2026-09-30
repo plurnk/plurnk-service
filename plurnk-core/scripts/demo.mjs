@@ -48,7 +48,6 @@ export const demoInvocation = async (pattern) => {
             "--import=./test/floor.ts",
             "--env-file-if-exists=.env.defaults",
             ...operatorEnv,
-            "--env-file-if-exists=.env",
             "--env-file-if-exists=.env.test",
             "--test",
             "--test-concurrency=1",

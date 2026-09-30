@@ -302,7 +302,6 @@ export default class Service {
             "sources (low -> high):",
             "  package .env.defaults floor",
             `  ${Service.#hostPaths.configFile}${existsSync(Service.#hostPaths.configFile) ? "" : " (absent)"}`,
-            `  ${resolve(".env")}${existsSync(".env") ? "" : " (absent)"}`,
             ...(configFile === null ? [] : [`  ${resolve(configFile)}${existsSync(configFile) ? "" : " (absent)"}`]),
             ...explicitFiles.map((path) => `  ${path}${existsSync(path) ? "" : " (absent)"}`),
             "  process environment",
@@ -380,7 +379,6 @@ export default class Service {
         const configFile = Service.#configFileArg();
 
         if (configFile !== null) Service.#loadEnv(configFile, true);
-        Service.#loadEnv(".env", false);
         Service.#loadEnv(Service.#hostPaths.configFile, false);
         // The assembled floor sits under everything the operator set: this package's
         // .env.defaults + every installed member's, one owner per key (collision = boot crash),

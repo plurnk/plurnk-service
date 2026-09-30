@@ -44,9 +44,11 @@ Highest priority first ({§operator-config-precedence}):
 | Initial shell environment | Preserved over files. |
 | `--env-file` / `--env-file-if-exists` | Repeatable; later files win. The optional form skips absent files. |
 | `--config=<path>` | One explicit service configuration file. |
-| `./.env` | Service working-directory configuration. |
 | `$XDG_CONFIG_HOME/plurnk/.env` | User configuration. |
 | Installed packages' `.env.defaults` | Set-if-unset floor; duplicate key ownership fails boot. |
+
+A working directory's `.env` belongs to that directory's application and is never read. A project's
+variables reach its commands through the workspace environment (`/env import .env`).
 
 For a service-owned variable, strip `PLURNK_`, lowercase, and replace `_` with
 `-` to obtain its CLI flag: `PLURNK_SERVICE_MAX_TURNS` → `--service-max-turns`.
