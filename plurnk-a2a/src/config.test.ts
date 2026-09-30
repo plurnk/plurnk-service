@@ -46,7 +46,8 @@ test("{§a2a-environment-projection} lowercase aliases remain distinct from uppe
         assert.throws(() => outboundDefinitions({ ...floor, [key]: "private-definition" }), new RegExp(key + " .*lowercase", "u"));
     }
     assert.throws(() => outboundDefinitions({ ...floor, PLURNK_A2A_research_HEADERS: "{}" }), /PLURNK_A2A_research_HEADERS names unsupported resource setting/u);
-    assert.throws(() => outboundDefinitions({ ...floor, PLURNK_A2A_missing_ENABLED: "0" }), /PLURNK_A2A_missing_ENABLED names unknown resource 'missing'/u);
+    assert.deepEqual(outboundDefinitions({ ...floor, PLURNK_A2A_missing_ENABLED: "0" }), [], "controls for future definitions do not manufacture agents");
+    assert.throws(() => outboundDefinitions({ ...floor, PLURNK_A2A_missing_ENABLED: "true" }), /PLURNK_A2A_missing_ENABLED must be 0 or 1/u);
     assert.throws(() => outboundDefinitions({ ...floor, PLURNK_A2A_ENABLED: '["research"]' }), /PLURNK_A2A_ENABLED must be 0 or 1/u);
     const { PLURNK_A2A_ENABLED: _unset, ...missing } = floor;
     assert.throws(() => outboundDefinitions(missing), /PLURNK_A2A_ENABLED is missing from the assembled environment floor/u);

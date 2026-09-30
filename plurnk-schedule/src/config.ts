@@ -18,7 +18,6 @@ export const previewOccurrences = (env: NodeJS.ProcessEnv): number => Knob.integ
 
 export const serviceDefinitions = (env: NodeJS.ProcessEnv): ReadonlyMap<string, { readonly definition: ScheduleDefinition; readonly enabled: boolean }> => {
     const environment = new ResourceEnvironment(PREFIX, { controls: ["PREVIEW_OCCURRENCES"], settings: [] }, env);
-    environment.assertKnownAliases(environment.definitions.keys());
     const definitions = new Map<string, { definition: ScheduleDefinition; enabled: boolean }>();
     for (const [alias, { key, value }] of environment.definitions) {
         let definition: ScheduleDefinition;

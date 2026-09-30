@@ -24,17 +24,17 @@ test("{§resource-environment} lowercase declarations and uppercase controls are
         assert.equal(environment.enabled("code-search"), false);
         assert.equal(environment.enabled("enabled"), true);
         assert.deepEqual(environment.setting("code-search", "TOOLS"), { key: "PLURNK_FIXTURE_code_search_TOOLS", value: '["find"]' });
-        environment.assertKnownAliases(environment.definitions.keys());
     }
 });
 
-test("{§resource-environment} settings compose with definitions from other sources without manufacturing definitions", () => {
+test("{§resource-environment} settings may precede definitions without manufacturing resources", () => {
     const environment = read({ PLURNK_FIXTURE_ENABLED: "0", PLURNK_FIXTURE_imported_ENABLED: "1" });
     assert.deepEqual([...environment.definitions], []);
     assert.equal(environment.enabled("imported"), true);
     assert.equal(environment.enabled("another"), false);
-    environment.assertKnownAliases(["imported", "another"]);
-    assert.throws(() => environment.assertKnownAliases([]), { message: "PLURNK_FIXTURE_imported_ENABLED names unknown resource 'imported'." });
+    const defined = read({ PLURNK_FIXTURE_ENABLED: "0", PLURNK_FIXTURE_imported_ENABLED: "1", PLURNK_FIXTURE_imported: "later definition" });
+    assert.equal(defined.enabled("imported"), true);
+    assert.deepEqual([...defined.definitions.keys()], ["imported"]);
 });
 
 test("{§resource-environment} empty definitions are invalid even when disabled; absent definitions remain absent", () => {

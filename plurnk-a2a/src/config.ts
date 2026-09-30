@@ -55,7 +55,6 @@ const shedRetiredListener = (environ: NodeJS.ProcessEnv): void => {
 const parseEnvironment = (environ: NodeJS.ProcessEnv): ResourceEnvironment => {
     shedRetiredListener(environ);
     const environment = new ResourceEnvironment(PREFIX, { controls: CONTROLS, settings: [] }, environ);
-    environment.assertKnownAliases(environment.definitions.keys());
     return environment;
 };
 

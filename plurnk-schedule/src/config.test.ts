@@ -27,7 +27,8 @@ test("{§schedule-environment} per-alias enablement overrides the family default
     for (const value of ["", " \t"]) {
         assert.throws(() => serviceDefinitions({ ...env, PLURNK_SCHEDULE_heartbeat: value }), /PLURNK_SCHEDULE_heartbeat must contain a definition/u);
     }
-    assert.throws(() => serviceDefinitions({ ...env, PLURNK_SCHEDULE_missing_ENABLED: "0" }), /PLURNK_SCHEDULE_missing_ENABLED names unknown resource 'missing'/u);
+    assert.deepEqual(serviceDefinitions({ ...env, PLURNK_SCHEDULE_missing_ENABLED: "0" }), serviceDefinitions(env), "controls for future definitions do not manufacture schedules");
+    assert.throws(() => serviceDefinitions({ ...env, PLURNK_SCHEDULE_missing_ENABLED: "true" }), /PLURNK_SCHEDULE_missing_ENABLED must be 0 or 1/u);
 });
 
 test("{§schedule-environment} malformed service configuration fails at once, naming the variable", () => {

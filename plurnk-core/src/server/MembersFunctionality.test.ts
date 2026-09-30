@@ -22,7 +22,8 @@ test("{§members-configuration} declarations default enabled and per-alias switc
 });
 
 test("{§members-configuration} invalid patterns and controls fail by name", () => {
-    assert.throws(() => serviceMembers({ PLURNK_MEMBERS_nope_ENABLED: "0", PLURNK_MEMBERS_ENABLED: "1" }), /PLURNK_MEMBERS_nope_ENABLED names unknown resource 'nope'/u);
+    assert.deepEqual(serviceMembers({ PLURNK_MEMBERS_nope_ENABLED: "0", PLURNK_MEMBERS_ENABLED: "1" }), [], "controls for future definitions do not manufacture members");
+    assert.throws(() => serviceMembers({ PLURNK_MEMBERS_nope_ENABLED: "true", PLURNK_MEMBERS_ENABLED: "1" }), /PLURNK_MEMBERS_nope_ENABLED must be 0 or 1/u);
     assert.throws(() => serviceMembers({ PLURNK_MEMBERS_docs: "  ", PLURNK_MEMBERS_ENABLED: "1" }), /PLURNK_MEMBERS_docs must contain a definition/u);
     assert.throws(() => serviceMembers({ PLURNK_MEMBERS_none: "!", PLURNK_MEMBERS_ENABLED: "1" }), /PLURNK_MEMBERS_none names no pattern/u);
     assert.throws(() => serviceMembers({ PLURNK_MEMBERS_docs: "docs/**", PLURNK_MEMBERS_ENABLED: "[]" }), /PLURNK_MEMBERS_ENABLED must be 0 or 1/u);

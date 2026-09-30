@@ -103,7 +103,6 @@ export const aliasOf = (glob: string): string => {
 // {§members-configuration}
 export const serviceMembers = (environ: NodeJS.ProcessEnv = process.env): FunctionalityServiceDefinition[] => {
     const environment = new ResourceEnvironment(PREFIX, { controls: [], settings: [] }, environ);
-    environment.assertKnownAliases(environment.definitions.keys());
     return [...environment.definitions].map(([alias, { key, value }]) => {
         const glob = value.trim();
         if (!ALIAS.test(alias)) throw new Error(`${key} names an invalid members alias '${alias}'.`);

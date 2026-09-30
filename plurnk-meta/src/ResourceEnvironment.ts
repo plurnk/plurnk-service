@@ -55,11 +55,4 @@ export default class ResourceEnvironment {
         return this.#settings.get(alias)?.get(name);
     }
 
-    assertKnownAliases(aliases: Iterable<string>): void {
-        const known = new Set(aliases);
-        for (const [alias, settings] of this.#settings) {
-            if (known.has(alias)) continue;
-            throw new Error(`${[...settings.values()].map(({ key }) => key).join(", ")} names unknown resource '${alias}'.`);
-        }
-    }
 }

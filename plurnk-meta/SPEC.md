@@ -120,10 +120,10 @@ and per-resource settings; definition parsing and validation remain family-owned
 | `PLURNK_<FAMILY>_<alias>_ENABLED=0\|1` | This resource's independent override; it does not copy or modify the definition. |
 | Other uppercase controls/settings | Accepted only when the family declares them. Definition aliases are never case-folded into controls. |
 
-Enabledness uses {§env-knob}. Controls may address resources supplied by other
-sources; they do not manufacture definitions. The caller checks referenced aliases
-against its complete resolved resource set, after source composition. Missing
-resources, malformed spellings and unsupported settings fail by variable name.
+Enabledness uses {§env-knob}. Controls may precede a definition or address resources
+supplied by other sources; they do not manufacture definitions. An unused alias
+is valid. Spelling, supported settings and their values are validated when the
+environment is read, independently of whether a definition exists.
 Definition data remains verbatim for its owning schema; this reader neither merges
 fields nor includes those values in its diagnostics. Empty or whitespace-only
 definitions are invalid even when disabled. Absence leaves inheritance intact;
