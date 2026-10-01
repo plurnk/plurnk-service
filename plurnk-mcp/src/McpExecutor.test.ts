@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { ERROR_DETAIL_LIMIT, type ExecArgs } from "@plurnk/plurnk-execs";
 
 import type { Notice } from "@plurnk/plurnk-contracts";
-import McpExecutor, { runtimeDecl, runtimeServerSummary, serverSummary, toolResultBody } from "./McpExecutor.ts";
+import McpExecutor, { runtimeDecl, runtimeServerSummary, serverSummary, toolResultBody, type ToolResultShape } from "./McpExecutor.ts";
 import ServerConnection, { type ServerCatalog } from "./client.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
@@ -262,6 +262,52 @@ test("{§mcp-tool-problem-detail} a tool Problem names its runtime and tool and 
     assert.equal(result.problem?.tool, "mutate", "so is the tool");
     assert.equal(result.problem?.diagnostic, "conn...", "the remote cause is admitted only within the operator's bound");
     assert.doesNotMatch(JSON.stringify(result), /sk-not-in-the-packet/u, "nothing past the bound reaches the model");
+});
+
+test("{§mcp-tool-problem-detail} tool-reported errors retain bounded text explanations without changing their evidence", async () => {
+    const cases: Array<{ name: string; result: ToolResultShape; diagnostic?: string }> = [
+        { name: "one text block", result: { isError: true, content: [{ type: "text", text: "No web results found" }] }, diagnostic: "No web results found" },
+        { name: "multiple text blocks", result: { isError: true, content: [{ type: "text", text: "First cause" }, { type: "text", text: " \n " }, { type: "text", text: "Second cause" }] }, diagnostic: "First cause\nSecond cause" },
+        { name: "mixed content", result: { isError: true, content: [{ type: "text", text: "First cause" }, { type: "resource_link", uri: "fixture://report", name: "Report" }, { type: "text", text: "Second cause" }] }, diagnostic: "First cause\nSecond cause" },
+        { name: "bounded text", result: { isError: true, content: [{ type: "text", text: "x".repeat(40) }] }, diagnostic: `${"x".repeat(32)}...` },
+        { name: "blank text", result: { isError: true, content: [{ type: "text", text: " \n " }] } },
+        { name: "no content", result: { isError: true, content: [] } },
+        { name: "absent content", result: { isError: true } },
+        { name: "structured data", result: { isError: true, content: [], structuredContent: { message: "Not a text explanation" } } },
+        { name: "resource link", result: { isError: true, content: [{ type: "resource_link", uri: "fixture://report", name: "Report" }] } },
+        { name: "successful text", result: { content: [{ type: "text", text: "No web results found" }] } },
+    ];
+    const previous = process.env[ERROR_DETAIL_LIMIT];
+    process.env[ERROR_DETAIL_LIMIT] = "32";
+    try {
+        for (const specimen of cases) {
+            const connection = {
+                async catalog() {
+                    return {
+                        protocolVersion: "2026-07-28", server: { name: "fixture", version: "1" }, capabilities: {},
+                        tools: [{ name: "inspect", inputSchema: { type: "object" } }],
+                        resources: [], resourceTemplates: [], prompts: [], unsupportedLists: [],
+                    };
+                },
+                async callTool() { return specimen.result; },
+            } as unknown as ServerConnection;
+            const executor = new McpExecutor({ runtime: "fixture", glyph: "🔌" }, connection, retainWorkspace);
+            await executor.requireAvailable();
+            const h = harness({ runtime: "fixture", target: "inspect", body: "{}" });
+            const result = await executor.run(h.args);
+            assert.equal(result.status, specimen.result.isError ? 502 : 200, specimen.name);
+            assert.equal(result.problem?.diagnostic, specimen.diagnostic, specimen.name);
+            assert.deepEqual(JSON.parse(h.channels.get("json")!), specimen.result, `${specimen.name}: complete result preserved`);
+            assert.equal(h.channels.get("body"), (await toolResultBody(specimen.result, "fixture")).content, `${specimen.name}: passive output preserved`);
+            if (specimen.result.isError) {
+                assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/tool-reported-error", specimen.name);
+                assert.equal(result.problem?.retryable, false, specimen.name);
+            }
+        }
+    } finally {
+        if (previous === undefined) delete process.env[ERROR_DETAIL_LIMIT];
+        else process.env[ERROR_DETAIL_LIMIT] = previous;
+    }
 });
 
 test("{§mcp-tool-replay} an uncertain MCP tool-call failure never recommends automatic replay", async () => {

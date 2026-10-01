@@ -609,6 +609,11 @@ does not weaken this uncertain-outcome boundary.
 remote diagnostic as structured extensions. Their prose states only the failed
 boundary fact; it neither repeats those fields nor infers whether the remote
 effect occurred.
+For `isError: true`, nonblank text content blocks, in order and joined by
+newlines, supply `diagnostic` under the existing executor error-detail bound.
+Nontext parts and structured data are not interpreted as explanations. With no
+text explanation the extension is absent; successful results do not acquire one.
+The complete result and passive output remain unchanged ({§mcp-result-content}).
 
 §mcp-trailing-aside A tool call's body is one JSON object. HTML comments after
 that object are the writer's aside, not arguments: when the body does not parse

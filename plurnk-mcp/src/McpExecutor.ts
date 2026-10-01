@@ -371,6 +371,9 @@ export default class McpExecutor extends BaseExecutor {
             const body = await toolResultBody(result, runtime, entry);
             write(CHANNEL, body.content, body.mimetype);
             if (result.isError === true) {
+                const diagnostic = (result.content ?? [])
+                    .flatMap((part) => part.type === "text" && part.text.trim().length > 0 ? [part.text] : [])
+                    .join("\n");
                 return fail(
                     "tool-reported-error",
                     502,
@@ -378,6 +381,7 @@ export default class McpExecutor extends BaseExecutor {
                     {
                         tool: target,
                         retryable: false,
+                        ...(diagnostic.length === 0 ? {} : { diagnostic: ErrorDetail.preview(diagnostic) }),
                     },
                 );
             }

@@ -373,6 +373,13 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
         const recoveryPacket = packet(provider.requests, 8);
         assert.match(recoveryPacket, /tool-reported-error/);
         assert.match(recoveryPacket, /The MCP tool reported an error\./);
+        assert.match(recoveryPacket, /"diagnostic":"fixture failure"/, "the durable observed result retains the server's explanation");
+        const toolFailure = resumed.find((event) => event.type === "CUSTOM" && event.name === "plurnk.stream"
+            && (event.value as { result?: { problem?: { tool?: string } } } | undefined)?.result?.problem?.tool === "fail");
+        assert.ok(toolFailure, "the actual AG-UI stream conclusion carries the tool failure");
+        const toolResult = (toolFailure.value as { result: { status: number; problem: { diagnostic?: string } } }).result;
+        assert.equal(toolResult.status, 502);
+        assert.equal(toolResult.problem.diagnostic, "fixture failure");
         const recoveredSpeech = resumed
             .filter((event) => event.type === "TEXT_MESSAGE_CONTENT")
             .map((event) => String(event.delta ?? ""))
