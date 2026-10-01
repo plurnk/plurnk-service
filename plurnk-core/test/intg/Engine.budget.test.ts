@@ -111,14 +111,19 @@ test("retired service-side capacity knobs fail at construction", async () => {
     }
 });
 
-test("a malformed prompt projection percentage fails at construction", async () => {
+test("{§configuration-repair-path} a malformed prompt projection refuses packet construction, not the repair environment", async () => {
     const previous = process.env.PLURNK_SERVICE_PROMPT_PROJECTION;
     const db = await openMigrated();
     try {
+        const workspaceId = await insertWorkspace(db, `projection-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "inspect");
+        const provider = new Mock({ contextWindow: 16_384, responses: [] });
         for (const invalid of ["25", "0%", "100%", "oops%"] as const) {
             process.env.PLURNK_SERVICE_PROMPT_PROJECTION = invalid;
-            assert.throws(
-                () => new Engine({ db, schemes: new SchemeRegistry() }),
+            const packets = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
+            await assert.rejects(
+                packets.buildRequestPacket({ workspaceId, workerId, loopId, provider, currentTurnSeq: 1, gitStatus: null, initialMessages: [{ role: "user", content: "inspect" }] }),
                 /PLURNK_SERVICE_PROMPT_PROJECTION must be a percentage in \(0, 100\)/,
             );
         }
