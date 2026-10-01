@@ -217,7 +217,7 @@ test("{§packet-attachment-parts} a response-less network retry retains the same
 });
 
 test("{§read-bytes} {§packet-attachment-parts} a ranged byte READ returns its hex slice and the complete native image", async () => {
-    const requests = await runLoop(["image"], "````READ (file:///logo.png#bytes) <1,16>````");
+    const requests = await runLoop(["image"], "````READ (logo.png#bytes) <1,16>````");
     const user = requests[1]?.at(-1);
     const packetText = userText(requests[1] ?? []);
     const logoAt = packetText.lastIndexOf("logo.png");
@@ -234,7 +234,7 @@ test("{§read-bytes} {§packet-attachment-parts} a ranged byte READ returns its 
 });
 
 test("{§read-bytes} {§packet-attachment-parts} a ranged byte READ remains the same hex slice on a text-only route", async () => {
-    const requests = await runLoop([], "````READ (file:///logo.png#bytes) <1,16>````");
+    const requests = await runLoop([], "````READ (logo.png#bytes) <1,16>````");
     assert.ok(requests[1]!.every((message) => typeof message.content === "string"), "a text-only route receives no native part");
     const text = userText(requests[1]!);
     assert.match(text, new RegExp(`"range":"<1,16> of ${PNG.length} bytes"`, "u"));
@@ -306,7 +306,7 @@ test("{§packet-attachment-parts} explicit log READ preserves its own observatio
 test("{§log-kill-scope} a text-only route preserves ordinary scoped trimming of a media READ", async () => {
     const next = "````NOTE\nInspect bytes.\n````";
     const requests = await runLoop([], undefined, false, [
-        mockTurn(`\`\`\`\`READ (file:///logo.png#bytes) <1,16>\`\`\`\`\n${next}`),
+        mockTurn(`\`\`\`\`READ (logo.png#bytes) <1,16>\`\`\`\`\n${next}`),
         mockTurn(`\`\`\`\`KILL (log:///1/2/3/READ) <1>\`\`\`\`\n${next}`),
         mockTurn("````KILL\nImage inspection complete.\n````"),
     ]);

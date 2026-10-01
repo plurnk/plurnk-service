@@ -86,7 +86,7 @@ for (const fixture of cases) test(`{§edit-batch-receipt} ${fixture.name}`, asyn
         // mock's third response is filled in once those anchors are known.
         const pending: { batch: string | null } = { batch: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("````READ (file:///doc.md) <1,-1>````\n````NOTE\nreading\n````", 50),
+            makeMockResponse("````READ (doc.md) <1,-1>````\n````NOTE\nreading\n````", 50),
             makeMockResponse("````KILL\nread\n````", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
@@ -116,14 +116,14 @@ editing
                 await writeFile(join(root, "doc.md"), fixture.current);
                 const unresolved = fixture.unresolved(anchors);
                 const statements = [
-                    `\`\`\`\`EDIT (file:///doc.md) <${anchors[0]}>
+                    `\`\`\`\`EDIT (doc.md) <${anchors[0]}>
 ONE
 \`\`\`\``,
-                    `\`\`\`\`EDIT (file:///doc.md) <${anchors[1]}>
+                    `\`\`\`\`EDIT (doc.md) <${anchors[1]}>
 TWO
 \`\`\`\``,
-                    "````EDIT (file:///doc.md) <3>\nTHREE\n````",
-                    ...fixture.scopes(anchors).map((marks) => `\`\`\`\`EDIT (file:///doc.md) <${marks.join(",")}>
+                    "````EDIT (doc.md) <3>\nTHREE\n````",
+                    ...fixture.scopes(anchors).map((marks) => `\`\`\`\`EDIT (doc.md) <${marks.join(",")}>
 replacement
 \`\`\`\``),
                 ];

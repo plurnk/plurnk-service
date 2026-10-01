@@ -80,6 +80,8 @@ export interface FindProjectionResource {
 interface FindAddress {
     readonly authority?: string;
     readonly pathname?: string;
+    // File keys are relative to this directory; other schemes have no filesystem base.
+    readonly pathBase?: string;
     // {§worker-tool-admission} — per-asker visibility: a candidate is dropped
     // when this predicate returns false. Counts and weights stay consistent
     // because the filter runs before matching and rendering.
@@ -352,7 +354,8 @@ export default class EntryFind {
             scheme,
             authority: multipleAuthorities ? null : authority,
             channel,
-            scope_prefix: scope?.candidatePrefix ?? null,
+            scope_prefix: address.pathBase !== undefined && scope?.candidatePrefix?.startsWith("../")
+                ? null : scope?.candidatePrefix ?? null,
         });
         candidates = candidates.filter((candidate) => pathScopeMatches(authorityScope, candidate.authority));
         if (address.visible !== undefined) {
@@ -370,7 +373,7 @@ export default class EntryFind {
         ]));
         const folders = statement.matcher === null && scope !== null
             ? [...Map.groupBy([...coordinateByKey.entries()], ([, coordinate]) => coordinate.authority)]
-                .flatMap(([authority, entries]) => pathFolderSummaries(scope, entries.map(([, coordinate]) => coordinate.pathname))
+                .flatMap(([authority, entries]) => pathFolderSummaries(scope, entries.map(([, coordinate]) => coordinate.pathname), address.pathBase)
                     .map((folder) => ({
                         selector: multipleAuthorities ? EntryManifest.toPath(scheme, authority, folder.selector) : folder.selector,
                         pathnames: folder.pathnames.map((pathname) => multipleAuthorities ? EntryManifest.toPath(scheme, authority, pathname) : pathname),
@@ -379,7 +382,7 @@ export default class EntryFind {
 
         if (scope !== null) {
             try {
-                candidates = candidates.filter((c) => pathScopeMatches(scope, c.pathname));
+                candidates = candidates.filter((c) => pathScopeMatches(scope, c.pathname, address.pathBase));
             } catch {
                 return {
                     status: 400,

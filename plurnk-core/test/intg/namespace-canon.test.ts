@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { FindStatement, ReadStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
+import type { FindStatement, ReadStatement, LineMarker, ParsedPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import File from "../../src/schemes/File.ts";
 import Namespace from "../../src/core/namespace.ts";
@@ -14,16 +14,12 @@ import { openMigrated, insertWorkspace, insertWorker, rootWorkspace } from "./_d
 import { makeSchemeCtx, DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
 import { testExecutors } from "./_execs.ts";
 
-const fileUrl = (pathname: string): UrlPath => ({
-    kind: "url", raw: `file://${pathname}`, scheme: "file",
-    username: null, password: null, hostname: null, port: null,
-    pathname, query: null, fragment: null,
-});
-const readStmt = (pathname: string): ReadStatement => ({ metadata: null, op: "READ", aside: null, target: fileUrl(pathname), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } });
+const filePath = (pathname: string): ParsedPath => ({ kind: "local", raw: pathname });
+const readStmt = (pathname: string): ReadStatement => ({ metadata: null, op: "READ", aside: null, target: filePath(pathname), lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } });
 const readFileScheme = (statement: ReadStatement, ctx: ReturnType<typeof makeSchemeCtx>) =>
     lookThroughScheme("file", null, statement, ctx);
 const fullReplace: LineMarker = { marks: [1, -1] };
-const editStmt = (pathname: string, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ metadata: null, op: "EDIT", aside: null, target: fileUrl(pathname), lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 } });
+const editStmt = (pathname: string, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ metadata: null, op: "EDIT", aside: null, target: filePath(pathname), lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 } });
 
 const setup = async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-canon-"));
@@ -43,7 +39,7 @@ test("{§fs-canonical-name}: every spelling of one member resolves to the same r
         await EntryCrud.writeEntry({ authority: "", pathname: "src/main.js" }, { channels: { body: { content: "the one file\n", mimetype: "text/markdown" } } }, ctx, "file");
 
         const rootBase = root; // e.g. /tmp/plurnk-canon-XXXX
-        const spellings = ["src/main.js", "/src/main.js", "./src/main.js", "src/./main.js", "a/../src/main.js", `../${rootBase.split("/").at(-1)}/src/main.js`];
+        const spellings = ["src/main.js", join(root, "src/main.js"), "./src/main.js", "src/./main.js", "a/../src/main.js", `../${rootBase.split("/").at(-1)}/src/main.js`];
         for (const spelling of spellings) {
             const r = await readFileScheme(readStmt(spelling), ctx);
             assert.equal(r.status, 200, `READ(${spelling}) resolves the member`);
@@ -51,6 +47,9 @@ test("{§fs-canonical-name}: every spelling of one member resolves to the same r
         }
         const rows = await db.test_count_entry_rows.get<{ n: number }>({ workspace_id: workspaceId, pathname: "src/main.js" });
         assert.equal(rows?.n, 1, "one identity under every spelling");
+        const outside = await readFileScheme(readStmt("/src/main.js"), ctx);
+        assert.equal(outside.status, 404, "an absolute miss never falls back to the in-root member");
+        assert.equal(outside.problem?.target, "../../src/main.js");
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
@@ -68,7 +67,7 @@ test("{§fs-answer-in-canon}: EDIT through an alias answers canonically without 
         assert.ok(seeded);
         const before = await db.test_entries_count_all.get<{ n: number }>({});
 
-        const r = await new File().edit(editStmt("/note.md", "revised\n", fullReplace), ctx);
+        const r = await new File().edit(editStmt(join(root, "note.md"), "revised\n", fullReplace), ctx);
         assert.equal(r.status, 202, "the slashed spelling proposes against the member");
         const attrs = r.attrs as { path: string };
         assert.equal(attrs.path, "note.md", "the engine answers in wire canon — never an echo of the model's spelling");
@@ -105,7 +104,7 @@ test("the log row: address columns speak canon while tx retains non-sensitive au
         const loopId = await insertLoop(db, ctx.workerId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
-        const spelling = "/./readme.md"; // a deliberately ugly legal spelling
+        const spelling = `${root}/./readme.md`; // a deliberately ugly legal spelling
         const r = await engine.dispatch({
             statement: readStmt(spelling), workspaceId, workerId: ctx.workerId, loopId, turnId, sequence: 1, origin: "model",
         });
@@ -155,14 +154,21 @@ test("{§fs-write-outside} {§fs-create-root} {§fs-write-surface}: canonical ro
         await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "include", glob: mountKeyClient, source: "members" });
         await db.crud_register_workspace_member.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: mountKeyClient, membership_origin: "constraint" });
         await db.crud_register_workspace_member.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: mountKeyGit, membership_origin: "git" });
-        const rw = await file.edit(editStmt(mountKeyClient, "revised\n", fullReplace), ctx);
-        assert.equal(rw.status, 202, "a picked mount member is read-write — the per-file rw bind mount");
-        const ro = await file.edit(editStmt(mountKeyGit, "revised\n"), ctx);
-        assert.equal(ro.status, 403, "a git-included mount member is read-only — git grants rw only within the project");
+        for (const pathname of [mountKeyClient, join(outside, "client.md")]) {
+            const rw = await file.edit(editStmt(pathname, "revised\n", fullReplace), ctx);
+            assert.equal(rw.status, 202, "relative and absolute spellings preserve the outside member's write grant");
+            assert.equal((rw.attrs as { path: string }).path, mountKeyClient);
+        }
+        for (const pathname of [mountKeyGit, join(outside, "gitted.md")]) {
+            const ro = await file.edit(editStmt(pathname, "revised\n"), ctx);
+            assert.equal(ro.status, 403, "absolute spelling cannot expand a Git-only outside member's authority");
+        }
 
         // Default scope is root, so an absent outside path is refused.
-        const mint = await file.edit(editStmt(`../${outside.split("/").at(-1)}/new.md`, "x\n"), ctx);
-        assert.equal(mint.status, 403, "root scope cannot mint an outside member");
+        for (const pathname of [`../${outside.split("/").at(-1)}/new.md`, join(outside, "new.md")]) {
+            const mint = await file.edit(editStmt(pathname, "x\n"), ctx);
+            assert.equal(mint.status, 403, "root scope cannot mint an outside member");
+        }
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
 });
 
@@ -174,7 +180,7 @@ test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty s
         const file = new File();
 
         // ENOENT on a READ miss carries the resolved name in wire canon.
-        const miss = await readFileScheme(readStmt("/no/such.md"), ctx);
+        const miss = await readFileScheme(readStmt(join(root, "no/such.md")), ctx);
         assert.equal(miss.status, 404);
         assert.equal(miss.problem?.detail, "No member of this workspace is at 'no/such.md'.", "the READ miss states its fact — resolved form, wire canon"); // {§problems-file}
         assert.equal(miss.problem?.recovery, "Check the path with FIND. EDIT creates files; `members (add)` admits existing files with a `{\"glob\": \"<path>\"}` body."); // {§problems-file}
@@ -216,7 +222,7 @@ test("{§file-find-directory}: directory recognition does not probe outside-root
     try {
         const target = `../${outside.split("/").at(-1)}`;
         const statement: FindStatement = {
-            metadata: null, op: "FIND", aside: null, target: fileUrl(target),
+            metadata: null, op: "FIND", aside: null, target: filePath(target),
             lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
         };
         const result = await new File().find(statement, ctx);

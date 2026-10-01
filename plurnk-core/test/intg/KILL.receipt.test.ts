@@ -14,7 +14,7 @@ const source = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join("\n");
 for (const scheme of ["file", "worker"]) for (const anchored of [false, true]) {
     test(`{§kill-scope-entry}: ${scheme} ${anchored ? "anchored" : "numeric"} deletion exposes its existing receipt through packet and log READ`, async () => {
         const root = await mkdtemp(join(tmpdir(), "plurnk-kill-receipt-"));
-        const target = `${scheme}:///notes.md`;
+        const target = scheme === "file" ? "notes.md" : "worker:///notes.md";
         try {
             const mock = new Mock({ contextWindow: 32768, responses: [
                 makeMockResponse(`\`\`\`\`EDIT (${target})

@@ -32,7 +32,7 @@ for (const fixture of [
 
         const pending: { batch: string | null } = { batch: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("````READ (file:///doc.md) <1,-1>````\n````NOTE\nreading\n````", 50),
+            makeMockResponse("````READ (doc.md) <1,-1>````\n````NOTE\nreading\n````", 50),
             makeMockResponse("````KILL\nread\n````", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
@@ -60,10 +60,10 @@ editing
                 if (fixture.name === "repeated") assert.notEqual(anchors[fixture.first - 1], anchors[fixture.first + 5], "the two copies have distinct handles");
                 await writeFile(join(root, "doc.md"), `zero-a\nzero-b\n${fixture.source}`);
                 pending.batch = [
-                    `\`\`\`\`EDIT (file:///doc.md) <${anchors[fixture.first - 1]},${anchors[fixture.first]}>
+                    `\`\`\`\`EDIT (doc.md) <${anchors[fixture.first - 1]},${anchors[fixture.first]}>
 THREE-FOUR
 \`\`\`\``,
-                    `\`\`\`\`EDIT (file:///doc.md) <${anchors[fixture.first + 1]}>
+                    `\`\`\`\`EDIT (doc.md) <${anchors[fixture.first + 1]}>
 FIVE
 \`\`\`\``,
                 ].join("\n\n");

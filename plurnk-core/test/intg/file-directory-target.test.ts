@@ -14,7 +14,7 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated, rootWorkspace 
 import { makeRawMockResponse } from "./_mock.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
-const turnRows = async (program: string) => {
+const turnRows = async (program: string | ((root: string) => string)) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-dir-target-"));
     const db = await openMigrated();
     try {
@@ -42,7 +42,7 @@ const turnRows = async (program: string) => {
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "Look around.");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const provider = new Mock({ contextWindow: 100_000, responses: [makeRawMockResponse(program)] });
+        const provider = new Mock({ contextWindow: 100_000, responses: [makeRawMockResponse(typeof program === "string" ? program : program(root))] });
         const turn = await engine.runTurn({ messages: [], provider, workspaceId, workerId, loopId });
         const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string; attrs: string }>({ turn_id: turn.turnId });
         return rows.filter((row) => row.op !== "NOTE" && row.op !== "SEND" && !LogEntryProjection.isEmission(row)).map(({ op, rx }) => ({ op, ...JSON.parse(rx) as { status: number; content?: string; problem?: Record<string, unknown> } }));
@@ -94,14 +94,15 @@ const foundPaths = (row: { content?: string }): string[] => {
 };
 
 test("{§file-find-directory}: parsed FIND recognizes a directory with or without its trailing slash", async () => {
-    const targets = [
-        "packages/chord", "packages/chord/", "/packages/chord", "./packages/chord",
-        "packages/other/../chord", "file:///packages/chord",
-    ];
-    const rows = await turnRows([
-        ...targets.map((target) => `\`\`\`FIND (${target})\n\`\`\``),
-        "```READ (packages/chord/README.md)\n```",
-    ].join("\n\n"));
+    const targets: string[] = [];
+    const rows = await turnRows((root) => {
+        targets.push("packages/chord", "packages/chord/", `${root}/packages/chord`, "./packages/chord",
+            "packages/other/../chord", `file://${root}/packages/chord`);
+        return [
+            ...targets.map((target) => `\`\`\`FIND (${target})\n\`\`\``),
+            "```READ (packages/chord/README.md)\n```",
+        ].join("\n\n");
+    });
     assert.equal(rows.length, targets.length + 1);
     for (const [index, target] of targets.entries()) {
         const row = rows[index]!;

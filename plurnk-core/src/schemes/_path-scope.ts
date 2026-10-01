@@ -32,7 +32,20 @@ export const pathScope = (pathname: string, folderScopes: boolean): PathScope =>
 // rule holds, so the glued form is matched as `**/*<rest>`.
 const crossingDoubleStar = (pattern: string): string => pattern.replace(/(^|\/)\*\*(?=[^/*])/g, "$1**/*");
 
-export const pathScopeMatches = (scope: PathScope, pathname: string): boolean => {
+// {§fs-namei} Match from the selector's ancestor, not against literal `../` keys.
+// The base is outside the glob, so metacharacters in real directory names stay literal.
+const rebaseScope = (scope: PathScope, base: string): { scope: PathScope; base: string } => {
+    const pathname = scope.kind === "folder" ? scope.prefix : scope.kind === "glob" ? scope.pattern : scope.pathname;
+    const parents = /^(?:\.\.\/)+/u.exec(pathname)?.[0] ?? "";
+    return { scope: pathScope(pathname.slice(parents.length), true), base: posix.resolve(base, parents) };
+};
+
+export const pathScopeMatches = (scope: PathScope, pathname: string, base?: string): boolean => {
+    if (base !== undefined && scope.kind !== "exact") {
+        const rebased = rebaseScope(scope, base);
+        const candidate = posix.relative(rebased.base, posix.resolve(base, pathname));
+        return candidate !== ".." && !candidate.startsWith("../") && pathScopeMatches(rebased.scope, candidate);
+    }
     if (scope.kind === "exact") return pathname === scope.pathname;
     if (scope.kind === "folder") return pathname.startsWith(scope.prefix);
     // Terminal `*` and `**` are the structural catalog selectors. They include
@@ -58,8 +71,18 @@ export type PathFolderSummary = {
 export const pathFolderSummaries = (
     scope: PathScope,
     pathnames: readonly string[],
+    base?: string,
 ): PathFolderSummary[] => {
     if (scope.kind !== "glob" || scope.shallowPrefix === null) return [];
+    if (base !== undefined) {
+        const rebased = rebaseScope(scope, base);
+        const candidates = pathnames.map((pathname) => posix.relative(rebased.base, posix.resolve(base, pathname)))
+            .filter((pathname) => pathname !== ".." && !pathname.startsWith("../"));
+        const canonical = (pathname: string): string => posix.relative(base, posix.resolve(rebased.base, pathname));
+        return pathFolderSummaries(rebased.scope, candidates).map(({ selector, pathnames: members }) => ({
+            selector: canonical(selector), pathnames: members.map(canonical),
+        }));
+    }
     const bySelector = new Map<string, string[]>();
     for (const pathname of pathnames) {
         if (!pathname.startsWith(scope.shallowPrefix)) continue;

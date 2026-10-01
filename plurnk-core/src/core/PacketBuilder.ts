@@ -307,7 +307,7 @@ export default class PacketBuilder {
         // block; a root worker states `"parent": null` rather than omitting it.
         const parentRow = await this.#db.engine_parent_worker.get<{ name: string; status: number }>({ worker_id: workerId });
         const parentPath = parentRow === undefined ? null : `worker://${parentRow.name}`;
-        // {§fs-namespace} — the log renders working directories relative to the model's `/`.
+        // {§fs-namespace} Receipt directories are relative to the workspace project root.
         const workspaceRow = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         const renderedLog = PacketWire.renderLogWithAccounting(
             log,

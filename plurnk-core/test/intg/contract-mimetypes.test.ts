@@ -26,7 +26,7 @@ import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEnvelope, rootWorkspace } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES, lookThroughScheme } from "./_scheme.ts";
-import { urlPath, editStmt, readStmt, findStmt, killStmt } from "./_dsl.ts";
+import { urlPath, localPath, editStmt, readStmt, findStmt, killStmt } from "./_dsl.ts";
 
 const execFileP = promisify(execFile);
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
@@ -318,7 +318,7 @@ test("a binary file persists only derived Unicode and refreshes when its project
                 disposition: "projected",
             },
         });
-        const read = await readFileScheme(readStmt(urlPath("file", "/document.binary")), firstCtx);
+        const read = await readFileScheme(readStmt(localPath("document.binary")), firstCtx);
         assert.equal(read.status, 200);
         assert.equal(read.content, "projection-v1:1,2,3,4");
         assert.equal(read.mimetype, "text/markdown");
@@ -397,7 +397,7 @@ test("a binary file persists only derived Unicode and refreshes when its project
         });
         // {§read-bytes} — the marker stays honest (no derived Unicode), and the source still reads as
         // its bytes: the raw view needs no plugin and never relabels the mimetype.
-        const rawView = await readFileScheme(readStmt(urlPath("file", "/document.binary")), limitedCtx);
+        const rawView = await readFileScheme(readStmt(localPath("document.binary")), limitedCtx);
         assert.equal(rawView.status, 200, "an over-limit source reads as its bytes");
         assert.equal(rawView.content, "01\n02\n03\n04");
         assert.equal(rawView.mimetype, "application/x-readable-binary");
@@ -475,18 +475,18 @@ test("{§mimetype-classification-consumption} registry-aware classification gove
 
         const file = new File();
         const readable = await readFileScheme({
-            ...readStmt(urlPath("file", "/readable.treeish")),
+            ...readStmt(localPath("readable.treeish")),
             lineMarker: { marks: [1] },
         }, ctx);
         assert.equal(readable.status, 200);
         assert.equal(readable.content, "registry text needle");
         assert.equal((await file.edit(
-            editStmt(urlPath("file", "/readable.treeish"), "revised", { marks: [1] }),
+            editStmt(localPath("readable.treeish"), "revised", { marks: [1] }),
             ctx,
         )).status, 202, "the handler-declared text file remains region-editable");
 
         const opaque = await readFileScheme({
-            ...readStmt(urlPath("file", "/opaque.encoded")),
+            ...readStmt(localPath("opaque.encoded")),
             lineMarker: { marks: [1] },
         }, ctx);
         // {§read-bytes} — a handler-declared binary file reads as its bytes; `<1>` is its first byte.
@@ -494,7 +494,7 @@ test("{§mimetype-classification-consumption} registry-aware classification gove
         assert.equal(opaque.content, "6f");
         assert.equal(opaque.range?.unit, "byte");
         assert.equal((await file.edit(
-            editStmt(urlPath("file", "/opaque.encoded"), "revised", { marks: [1] }),
+            editStmt(localPath("opaque.encoded"), "revised", { marks: [1] }),
             ctx,
         )).status, 415, "the same binary declaration governs EDIT");
 

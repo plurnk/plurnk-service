@@ -59,7 +59,7 @@ export default class MembershipMaterialization {
         ctx: PlurnkSchemeContext,
         identities: Map<string, Promise<string>>,
     ): Promise<FsDivergence | null> {
-        const canonical = join(root, pathname);  // pathname is namespace-absolute (`/src/foo.ts`); join roots it at the workspace
+        const canonical = join(root, pathname);
         const known = await ctx.db.crud_get_member_sig.get<MemberSnapshot>({
             workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname,
         });

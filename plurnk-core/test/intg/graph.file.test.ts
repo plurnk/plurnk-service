@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { FindStatement, MatcherBody, UrlPath } from "@plurnk/plurnk-contracts";
+import type { FindStatement, MatcherBody, LocalPath } from "@plurnk/plurnk-contracts";
 import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
@@ -13,13 +13,9 @@ import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
 import { resourcePaths } from "./_find.ts";
 
-const fileUrl = (pathname: string): UrlPath => ({
-    kind: "url", raw: `file:///${pathname}`, scheme: "file",
-    username: null, password: null, hostname: null, port: null,
-    pathname: `/${pathname}`, query: null, fragment: null,
-});
+const filePath = (pathname: string): LocalPath => ({ kind: "local", raw: pathname });
 
-const findStmt = (target: UrlPath, matcher: MatcherBody): FindStatement => ({
+const findStmt = (target: LocalPath, matcher: MatcherBody): FindStatement => ({
     metadata: null,
     op: "FIND", aside: null, target, lineMarker: null, matcher, body: null,
      position: { line: 1, column: 1 },
@@ -56,14 +52,14 @@ test("&graph resolves over file:/// entries", async () => {
         // FIND returns channel groups; a stored file resource renders its default path BARE
         // (slash-free, namespace-relative) — the same form the manifest catalogs and the
         // model types back, not the addressed file:/// form.
-        const referrers = await new File().find(findStmt(fileUrl(""), graph("&<foo")), ctx);
+        const referrers = await new File().find(findStmt(filePath(""), graph("&<foo")), ctx);
         assert.equal(referrers.status, 200);
         assert.deepEqual([...new Set(resourcePaths(referrers))], ["src/b.ts"]);
 
-        const referents = await new File().find(findStmt(fileUrl(""), graph("&>foo")), ctx);
+        const referents = await new File().find(findStmt(filePath(""), graph("&>foo")), ctx);
         assert.deepEqual([...new Set(resourcePaths(referents))], ["src/c.ts"]);
 
-        const neighborhood = await new File().find(findStmt(fileUrl(""), graph("&foo")), ctx);
+        const neighborhood = await new File().find(findStmt(filePath(""), graph("&foo")), ctx);
         assert.deepEqual([...new Set(resourcePaths(neighborhood))], ["src/a.ts", "src/b.ts", "src/c.ts"]);
     } finally { db.close(); }
 });

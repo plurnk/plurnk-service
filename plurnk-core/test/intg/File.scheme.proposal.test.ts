@@ -1,5 +1,5 @@
 // File scheme as the canonical proposal consumer (SPEC.md {§engine-rails} + {§methods}
-// + {§membership} D3 — disk co-location). EDIT against file:/// returns status=202 with a udiff body
+// + {§membership} D3 — disk co-location). EDIT against a file returns status=202 with a udiff body
 // and {path, canonical, patch, patched} attrs; on accept the engine calls
 // File.applyResolution which writes patched content to disk.
 
@@ -31,18 +31,14 @@ const fullReplace: LineMarker = { marks: [1, -1] };
 const fileEditStmt = (pathname: string, body: string, marker: LineMarker | null = null): EditStatement => ({
     metadata: null,
     op: "EDIT", aside: null,
-    target: { kind: "url", raw: `file:///${pathname}`, scheme: "file",
-        username: null, password: null, hostname: null, port: null,
-        pathname: `/${pathname}`, query: null, fragment: null },
+    target: { kind: "local", raw: pathname },
     lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 },
 });
 
 const fileReadStmt = (pathname: string): ReadStatement => ({
     metadata: null,
     op: "READ", aside: null,
-    target: { kind: "url", raw: `file:///${pathname}`, scheme: "file",
-        username: null, password: null, hostname: null, port: null,
-        pathname: `/${pathname}`, query: null, fragment: null },
+    target: { kind: "local", raw: pathname },
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 
@@ -111,7 +107,7 @@ for (const decision of ["accept", "reject", "replace", "drift"] as const) test(`
         const source = `\`\`\`\`EDIT (${target}) <2>
 TWO
 \`\`\`\`
-\`\`\`\`EDIT (file:///${target}) <${anchors[2]}>
+\`\`\`\`EDIT (${target}) <${anchors[2]}>
 THREE
 \`\`\`\`
 \`\`\`\`NOTE

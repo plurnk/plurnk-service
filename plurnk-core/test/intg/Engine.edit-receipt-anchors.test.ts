@@ -28,14 +28,14 @@ test("{§edit-receipt-anchored-context} the EDIT row renders the landed lines wi
 
         const pending: { anchor: string | null } = { anchor: null };
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("````EDIT (file:///f.go) <1>\nvar x int64\n````\n\n````NOTE\nfirst\n````", 50),
+            makeMockResponse("````EDIT (f.go) <1>\nvar x int64\n````\n\n````NOTE\nfirst\n````", 50),
             makeMockResponse("````KILL\ndone\n````", 50),
         ] });
         const realGenerate = mock.generate.bind(mock);
         let calls = 0;
         mock.generate = async (args) => {
             calls += 1;
-            if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`\`\`\`\`EDIT (file:///f.go) <${pending.anchor}>
+            if (calls === 3) return await new Mock({ contextWindow: 32768, responses: [makeMockResponse(`\`\`\`\`EDIT (f.go) <${pending.anchor}>
 func requireFn(a int) int { // anchored
 \`\`\`\`
 

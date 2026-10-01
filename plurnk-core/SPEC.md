@@ -1475,9 +1475,23 @@ sequences; native messages and workspace outputs use opaque identifiers rather t
 pretending to be turn coordinates. `worker://<name>` addresses the actor, not a
 historical execution. No address grants ownership or access restrictions.
 
-§fs-namespace **The workspace is a mount namespace; `project_root` is the model's `/`.** A namespace *names*; it does not confine. Host paths do not exist in it, and no engine surface folds a host-absolute spelling onto a member — not because a wall refuses them, but because those coordinates have no meaning here. What the model can reach is exactly the mount table, which the operator composes: a membership overlay routinely mounts a path from above the root (`../house-policy.md` is an ordinary `include` grantor, {§fs-visibility-grantors}), and it arrives named in namespace coordinates like everything else. Plurnk is therefore not a sandbox and claims no containment — confinement is the host's job; what Plurnk owns is authority, consent and audit. The root is **fixed immutably at workspace creation** (headless is forever); the mount table changes only through the declared membership overlay ({§membership}), never by re-rooting. At `project_root = /` the namespace is the whole filesystem and every rule below degenerates to identity — the design's proof case, and the common benchmark topology.
+§fs-namespace **Filesystem coordinates are ordinary paths; internal addresses are project-relative.** `project_root` is the base directory, not a replacement for the operating-system `/`. It is fixed at workspace creation; a headless workspace has no implicit filesystem base. Absolute paths and paths emitted by executors name the same filesystem locations as they do on the host. Resolution never grants membership or creation authority ({§fs-visibility-grantors}, {§fs-write-surface}); an outside-root member retains its `../`-prefixed key. Plurnk is not a sandbox: confinement belongs to the host.
 
-§fs-namei **Resolution is namei over the mount table.** The model's CWD is permanently `/`, so `src/x.md` and `/src/x.md` are the same name — the slash rule is a corollary, never a legislated equivalence. Resolution is lexical: `.` and `..` resolve before anything touches storage (`..` is legal *during* traversal); the final name lands in the root subtree (a bare key), on a declared outside-root mount (a `../`-prefixed key — the git-style overlay), or names nothing (404 carrying the resolved form). Containment is the resolution semantics — there is no separate traversal check to forget.
+§fs-namei **Resolve, then relativize, through one pathname resolver.** Resolve relative input against `project_root` and absolute input from the operating-system root, normalize lexical `.`/`..` segments, then translate the result to a `project_root`-relative key before storage, comparison or canonical rendering. Physical membership and symlink checks remain separate. No failed absolute lookup retries as a project-relative spelling.
+
+| Input with `project_root=/work/project` | Canonical address |
+|---|---|
+| `src/x.md`, `./src/x.md`, `/work/project/src/x.md` | `src/x.md` |
+| `/src/x.md` | `../../src/x.md` |
+| `../policy.md`, `/work/policy.md` | `../policy.md` |
+| `.`, `/work/project/` | The project collection, not a file entry |
+| `/` | `../../`, the operating-system root collection |
+
+At `project_root=/`, `/src/x.md` and `src/x.md` resolve to the same key. Without a project root, absolute paths cannot be translated; no process CWD or home directory is substituted.
+
+Folders and globs select members in those same filesystem coordinates. Parent-directory selectors may include in-root and outside-root members; they never scan or admit unrelated disk contents. Catalog paths and grouped subtree selectors remain project-relative.
+
+§file-path-normalization An authored model file operation using an absolute path receives a `scheme:file/path_normalized` warning Notice naming its project-relative address. COPY/MOVE cover each absolute operand. The Notice neither changes the operation result nor causes a strike, and does not repeat for automatic observations or already-relative paths. Root-mounted workspaces need no such notice. It never suggests that an unadmitted path has become a member.
 
 §fs-canonical-name **One canonical name, storage ≡ wire: the git pathspec.** Member keys follow gitformat-index(5) verbatim (reference edition: git 2.47.3): relative to the workspace `project_root`, without leading slash, `/`-separated, no trailing slash or NUL. Directories are never entries and the root needs no name. When `project_root` is below the containing repository's top level, Git members above it naturally use the same `../`-prefixed CWD-relative names that `git ls-files` emits without `--full-name`; these are not outside-repository mounts. The database stores that root-relative key directly because workspace identity is rooted at the access point. Every model spelling canonicalizes before storage or comparison.
 
@@ -2960,8 +2974,9 @@ target that cannot be read keeps the owning READ's failure identity (#163) and s
 the slot contract in its recovery — the resource is the program and the body its stdin;
 a command belongs beneath a targetless heading — without guessing which was meant (#425). The started receipt always
 names the working directory only when it is not the project root, and then in the
-model's own project-relative form ({§fs-namespace}: the root is the model's `/`, so it
-is never rendered, and no receipt or Problem carries a host-absolute path). The `(path)` is a program — a script for an interpreter, a tool name for a tool
+project-relative form ({§fs-namespace}); the default directory is omitted rather
+than repeated in every receipt. Native file addresses resolve from that same project
+directory, while absolute input retains its filesystem meaning. The `(path)` is a program — a script for an interpreter, a tool name for a tool
 family — and neither a command nor a working directory is ever a target. The default
 shell is written as its own fence, ```` ```sh ````; no runtime-less form exists.
 

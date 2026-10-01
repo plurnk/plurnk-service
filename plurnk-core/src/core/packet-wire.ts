@@ -111,8 +111,7 @@ type WeighContent = (text: string) => number;
 interface RenderLogOptions {
     readonly promptProjectionWeight?: number;
     readonly acceptedAttachmentKinds?: ReadonlySet<PacketAttachment["kind"]>;
-    // {§fs-namespace} — the workspace project root, the model's `/`; host-absolute spellings
-    // are rendered relative to it and never verbatim. Null: the workspace has no root.
+    // {§fs-namespace} Base for project-relative receipt addresses; null is headless.
     readonly projectRoot?: string | null;
 }
 
@@ -884,8 +883,7 @@ export default class PacketWire {
         // An execution's output is a separate stream entry ({§exec-stream}); its address rides in a
         // `stream` link, distinct from the runtime-owned invocation target.
         // {§exec-target-routing} {§fs-namespace} — the receipt names the working directory only
-        // when it is not the project root, and then in the model's own project-relative form;
-        // the root is the default and a host-absolute path never reaches the packet.
+        // when it is not the project root, and then in project-relative form.
         if (isExecutionOp(op) && e.attrs !== null && typeof e.attrs === "object" && typeof (e.attrs as { cwd?: unknown }).cwd === "string") {
             const cwd = PacketWire.#projectRelativeCwd((e.attrs as { cwd: string }).cwd, options.projectRoot ?? null);
             if (cwd !== null) meta.cwd = cwd;

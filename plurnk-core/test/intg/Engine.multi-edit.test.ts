@@ -83,7 +83,7 @@ const withProject = async <T>(fn: (ctx: Ctx) => Promise<T>): Promise<T> => {
     }
 };
 
-const edit = (file: string, scope: string, body: string | null): string => PlurnkParser.frame(`EDIT (file:///${file}) <${scope}>`, body ?? "");
+const edit = (file: string, scope: string, body: string | null): string => PlurnkParser.frame(`EDIT (${file}) <${scope}>`, body ?? "");
 
 // The anchors the model's latest READ of each file published, indexed by one-based line: the packet is the
 // only place a model learns an anchor, so the program takes them from there and nowhere else.
@@ -108,7 +108,7 @@ const anchorsFromLog = async ({ db, workerId }: Ctx): Promise<[Anchors, Anchors]
 const program = async (ctx: Ctx, sequence: number, frames: (a: Anchors, b: Anchors) => string[]): Promise<{ edits: EditRow[]; published: [Anchors, Anchors] }> => {
     const { db, engine, workspaceId, workerId } = ctx;
     const loopId = await insertLoop(db, workerId, sequence, "Apply the fix.", { proposals: "accept", attended: false });
-    const reads = [DEBUG, HELPERS].map((file) => PlurnkParser.frame(`READ (file:///${file}) <1,-1>`, null)).join("\n\n");
+    const reads = [DEBUG, HELPERS].map((file) => PlurnkParser.frame(`READ (${file}) <1,-1>`, null)).join("\n\n");
     const respond = async (content: string, args: Parameters<Mock["generate"]>[0]) =>
         await new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning: null } }] }).generate(args);
     let calls = 0;

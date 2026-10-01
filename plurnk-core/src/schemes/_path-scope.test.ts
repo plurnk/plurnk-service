@@ -72,3 +72,17 @@ test("one-level maps group every deeper entry under exact recursive selectors", 
         { selector: "src/**", pathnames: ["src/a.ts", "src/deep/b.ts"] },
     ]);
 });
+
+test("{§fs-namei} filesystem selectors above the project match physical coordinates but return relative selectors", () => {
+    const base = "/repo/project[1]";
+    const scope = pathScope("../*", true);
+    assert.equal(pathScopeMatches(scope, "../README.md", base), true);
+    assert.equal(pathScopeMatches(scope, "src/a.ts", base), false, "a shallow parent survey groups the project's files");
+    assert.equal(pathScopeMatches(pathScope("../**", true), "src/a.ts", base), true);
+    assert.equal(pathScopeMatches(pathScope("**", true), "../sibling/a.ts", base), false);
+    assert.equal(pathScopeMatches(pathScope("src/*.ts", true), "src/a.ts", base), true, "directory metacharacters never become part of the glob");
+    assert.deepEqual(pathFolderSummaries(scope, ["src/a.ts", "../sibling/b.ts", "../../outside/x.ts"], base), [
+        { selector: "**", pathnames: ["src/a.ts"] },
+        { selector: "../sibling/**", pathnames: ["../sibling/b.ts"] },
+    ]);
+});

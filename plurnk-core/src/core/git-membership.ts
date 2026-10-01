@@ -447,9 +447,6 @@ export default class GitMembership {
         const passesExclusions = (p: string): boolean => excludeGlobs.length === 0 || !excludeGlobs.some((g) => matchesGlob(p, g));
         const desiredGit = members.filter((p) => !includedSet.has(p) && passesExclusions(p));
         const desiredIncluded = included.filter(passesExclusions);
-        // Glob matching above stays bare (definition patterns are bare);
-        // storage, reconcile, and the returned set are namespace-absolute (`/src/foo.ts`)
-        // so they match the parser's pathname the shared read helper queries by.
         const desired = [...desiredGit, ...desiredIncluded]; // bare canon keys ({§fs-canonical-name}) — ls-files output IS the canon
         const candidateSet = new Set([...members, ...included, ...masked]);
 

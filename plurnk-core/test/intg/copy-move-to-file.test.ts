@@ -1,4 +1,4 @@
-// COPY/MOVE into file:/// — a disk write under {§copy-cross-scheme-copy},
+// COPY/MOVE into files — a disk write under {§copy-cross-scheme-copy},
 // {§move-cross-scheme-move}, and the {§proposal} gate.
 // The dest write proposes (202); on accept the file lands + an entry registers.
 // MOVE's source-delete is DEFERRED to after the accept, so a rejected MOVE leaves
@@ -90,10 +90,10 @@ const proposeAndResolve = async (
     return dispatchPromise;
 };
 
-test("{§fs-create-copy} {§copy-cross-scheme-copy}: COPY worker:/// → file:/// proposes then lands on accept", async () => {
+test("{§fs-create-copy} {§copy-cross-scheme-copy}: COPY worker:/// → file proposes then lands on accept", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedWorker(ctx, "note", "copied content\n");
-        const result = await proposeAndResolve(ctx, copyStmt(urlPath("worker", "/note"), urlPath("file", "/copied.txt")), "accept");
+        const result = await proposeAndResolve(ctx, copyStmt(urlPath("worker", "/note"), localPath("copied.txt")), "accept");
         assert.equal(result.status, 200);
         assert.deepEqual(result.effects, [{
             target: "copied.txt",
@@ -108,13 +108,13 @@ test("{§fs-create-copy} {§copy-cross-scheme-copy}: COPY worker:/// → file://
 });
 
 for (const transfer of [copyStmt, moveStmt]) {
-    const op = transfer(urlPath("worker", "/note"), urlPath("file", "/copied.txt")).op;
+    const op = transfer(urlPath("worker", "/note"), localPath("copied.txt")).op;
     for (const decision of ["accept", "reject"] as const) {
         test(`{§mimetype-verbatim-transfer}: ${op} plain text to a file respects ${decision} before changing either resource`, async () => {
             await withWorkspace(async (root, ctx) => {
                 const content = "## Result\r\n\t<verbatim> café\r\n";
                 await seedEntryWithChannel(ctx.db, { workspaceId: ctx.workspaceId, pathname: "/note", content, mimetype: "text/plain" });
-                const result = await proposeAndResolve(ctx, transfer(urlPath("worker", "/note"), urlPath("file", "/copied.txt")), decision);
+                const result = await proposeAndResolve(ctx, transfer(urlPath("worker", "/note"), localPath("copied.txt")), decision);
                 if (decision === "accept") {
                     assert.equal(result.status, 200);
                     assert.equal(await readFile(join(root, "copied.txt"), "utf8"), content);
@@ -142,7 +142,7 @@ test("{§notifications-loop-proposal} live and reconnect use one COPY destinatio
         const observed = deferred<ProposalPendingEvent>();
         ctx.engine.onProposalPending((event) => observed.resolve(event));
         const dispatched = ctx.engine.dispatch({
-            statement: copyStmt(urlPath("worker", "/note"), urlPath("file", "/parity.txt")),
+            statement: copyStmt(urlPath("worker", "/note"), localPath("parity.txt")),
             workspaceId: ctx.workspaceId,
             workerId: ctx.workerId,
             loopId: ctx.loopId,
@@ -172,7 +172,7 @@ test("a scoped COPY into a new file reports the accepted creation receipt", asyn
             ctx,
             copyStmt(
                 urlPath("worker", "/note"),
-                urlPath("file", "/slice.md"),
+                localPath("slice.md"),
                 { marks: [2, 3] },
             ),
             "accept",
@@ -203,7 +203,7 @@ test("a scoped COPY receipt reports parser recovery for the complete landed file
             ctx,
             copyStmt(
                 urlPath("worker", "/broken.go"),
-                urlPath("file", "/copied.go"),
+                localPath("copied.go"),
                 { marks: [1, 2] },
             ),
             "accept",
@@ -225,17 +225,17 @@ test("a scoped COPY receipt reports parser recovery for the complete landed file
     });
 });
 
-test("{§proposal-reject-fails}: a rejected COPY into file:/// never touches disk", async () => {
+test("{§proposal-reject-fails}: a rejected COPY into a file never touches disk", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedWorker(ctx, "note", "nope\n");
-        const result = await proposeAndResolve(ctx, copyStmt(urlPath("worker", "/note"), urlPath("file", "/rejected.txt")), "reject");
+        const result = await proposeAndResolve(ctx, copyStmt(urlPath("worker", "/note"), localPath("rejected.txt")), "reject");
         assert.ok(result.status >= 400, "rejected proposal is a 4xx");
         assert.equal(result.effects, undefined, "a rejected destination proposal lands no effect");
         await assert.rejects(readFile(join(root, "rejected.txt"), "utf8"), "the rejected COPY never created the file");
     });
 });
 
-test("a regional COPY into file:/// reports the accepted text receipt", async () => {
+test("a regional COPY into a file reports the accepted text receipt", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedWorker(ctx, "note", "alpha\nbeta\ngamma\n");
         await seedFileMember(ctx, root, "destination.md", "before\nreplace\nafter\n");
@@ -267,7 +267,7 @@ test("a regional COPY into file:/// reports the accepted text receipt", async ()
 test("{§move-cross-scheme-move}: accepted MOVE lands the file and deletes the source", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedWorker(ctx, "movee", "moved content\n");
-        const result = await proposeAndResolve(ctx, moveStmt(urlPath("worker", "/movee"), urlPath("file", "/moved.txt")), "accept");
+        const result = await proposeAndResolve(ctx, moveStmt(urlPath("worker", "/movee"), localPath("moved.txt")), "accept");
         assert.equal(result.status, 200);
         assert.deepEqual(result.effects, [
             { target: "moved.txt", action: "create" },
@@ -409,10 +409,10 @@ test("a reviewer-rewritten cross-resource MOVE still reports its landed source r
     });
 });
 
-test("{§proposal-reject-fails}: a rejected MOVE into file:/// preserves the source", async () => {
+test("{§proposal-reject-fails}: a rejected MOVE into a file preserves the source", async () => {
     await withWorkspace(async (_root, ctx) => {
         await seedWorker(ctx, "keepme", "keep\n");
-        const result = await proposeAndResolve(ctx, moveStmt(urlPath("worker", "/keepme"), urlPath("file", "/rejected-move.txt")), "reject");
+        const result = await proposeAndResolve(ctx, moveStmt(urlPath("worker", "/keepme"), localPath("rejected-move.txt")), "reject");
         assert.ok(result.status >= 400, "rejected proposal is a 4xx");
         assert.equal(result.effects, undefined, "a rejected destination proposal lands no effect");
         assert.notEqual(await workerEntry(ctx, "keepme"), undefined, "the source MUST survive a rejected MOVE — the delete was deferred behind the dest write");
@@ -463,7 +463,7 @@ test("{§move-canonical-whole-source}: file MOVE with <1,-1> to absent <0> unlin
     });
 });
 
-test("MOVE file:/// to an internal destination applies the source proposal after the destination lands", async () => {
+test("MOVE from a file to an internal destination applies the source proposal after the destination lands", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedFileMember(ctx, root, "source.md", "source content\n");
         const result = await proposeAndResolve(
@@ -512,7 +512,7 @@ test("EDIT onto an existing NON-member file is refused (403) and never clobbers 
         await writeFile(join(root, "AGENTS.md"), "SECRET untracked policy\n", "utf8"); // on disk, NOT a member
         // A refused create returns 403 outright — it never PROPOSES (no review to accept), so dispatch directly.
         const result = await ctx.engine.dispatch({
-            statement: editStmt(urlPath("file", "/AGENTS.md"), "# the model's clobbering content"),
+            statement: editStmt(localPath("AGENTS.md"), "# the model's clobbering content"),
             workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 403, "create over an existing non-member is refused outright, never a proposal, never clobbered");

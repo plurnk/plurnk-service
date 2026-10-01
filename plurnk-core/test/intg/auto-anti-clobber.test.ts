@@ -26,11 +26,11 @@ test("a stale hash anchor rejects an EDIT before proposal — no silent clobber"
         await execFileP("git", ["add", "doc.md"], { cwd: root, env: hermeticGitEnv() });
         await execFileP("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--no-verify", "-q", "-m", "seed"], { cwd: root, env: hermeticGitEnv() });
 
-        const staleAnchor = LineAnchors.token("file:///doc.md", 1, "V1 original\n");
+        const staleAnchor = LineAnchors.token("doc.md", 1, "V1 original\n");
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("````READ (file:///doc.md)````\n````NOTE\nReview the file.\n````", 50),
+            makeMockResponse("````READ (doc.md)````\n````NOTE\nReview the file.\n````", 50),
             makeMockResponse("````KILL\nRead complete.\n````", 50),
-            makeMockResponse(`\`\`\`\`EDIT (file:///doc.md) <${staleAnchor}>
+            makeMockResponse(`\`\`\`\`EDIT (doc.md) <${staleAnchor}>
 V3 model clobber
 \`\`\`\`
 

@@ -460,8 +460,8 @@ test("{§fs-namespace} an execution receipt names its working directory project-
         rx: { status: 200, outcome: "started" }, attrs: { runtime: "sh", cwd, stream: "sh:///1/1/3/sh" },
     });
     const atRoot = PacketWire.renderLog([row("/host/proj")], tok, { projectRoot: "/host/proj" });
-    assert.doesNotMatch(atRoot, /"cwd":/, "the root is the model's `/` — the default, never rendered");
-    assert.doesNotMatch(atRoot, /\/host\/proj/, "no host-absolute path reaches the packet");
+    assert.doesNotMatch(atRoot, /"cwd":/, "the default project directory is not repeated");
+    assert.doesNotMatch(atRoot, /\/host\/proj/, "the receipt does not expose a redundant absolute directory");
     const below = PacketWire.renderLog([row("/host/proj/pkg/inner")], tok, { projectRoot: "/host/proj" });
     assert.match(below, /"cwd":"pkg\/inner"/, "a subdirectory is spelled the way the model would write it");
     assert.doesNotMatch(below, /\/host\/proj/);

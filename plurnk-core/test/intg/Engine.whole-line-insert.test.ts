@@ -47,7 +47,7 @@ const program = async (frames: (anchor: (line: number) => string) => string[]): 
         const provider = new Mock({ contextWindow: 100_000, responses: [] });
         provider.generate = async (args) => {
             calls += 1;
-            if (calls === 1) return await respond(PlurnkParser.frame(`READ (file:///${FILE}) <790,800>`, null), args);
+            if (calls === 1) return await respond(PlurnkParser.frame(`READ (${FILE}) <790,800>`, null), args);
             if (calls === 2) {
                 const row = (await db.engine_render_log.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ worker_id: workerId }))
                     .filter(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200).at(-1);
@@ -72,7 +72,7 @@ const program = async (frames: (anchor: (line: number) => string) => string[]): 
     }
 };
 
-const edit = (scope: string, body: string): string => PlurnkParser.frame(`EDIT (file:///${FILE}) <${scope}>`, body);
+const edit = (scope: string, body: string): string => PlurnkParser.frame(`EDIT (${FILE}) <${scope}>`, body);
 
 test("{§zero-width-column-one-insert} <795,1,795,1> with a body lacking a trailing newline inserts whole lines before line 795 and removes nothing", async () => {
     const { rows, content } = await program(() => [edit("795,1,795,1", BODY)]);

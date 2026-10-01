@@ -29,8 +29,8 @@ test("{§scheme-edit-proposal-receipt} {§edit-result-render} {§edit-execution}
         const mock = new Mock({
             contextWindow: 32768,
             responses: [makeMockResponse(
-                "````EDIT (file:///reviewed.md) <2>\nTWO\n````\n"
-                + "````EDIT (file:///reviewed.md) <4>\nFOUR\n````\n"
+                "````EDIT (reviewed.md) <2>\nTWO\n````\n"
+                + "````EDIT (reviewed.md) <4>\nFOUR\n````\n"
                 + "````SEND\ndone\n````",
                 20,
             ), makeMockResponse("````KILL\ndone\n````", 10)], // {§send-premature-terminate} — the edit receipts force the second turn

@@ -1,8 +1,7 @@
 // Operation semantics coverage matrix: how each entry op resolves a model-typed path and how
 // matchers render.
 //
-// A member is stored at its canonical key (`/notes.md`), but the model emits a bare path
-// (`notes.md`, a LocalPath). Every op normalizes to the canonical key before resolving.
+// {§fs-namei} Every operation resolves filesystem spellings to project-relative keys.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -34,7 +33,7 @@ const parseOp = <T extends PlurnkStatement>(dsl: string, op: T["op"]): T => {
 };
 
 // Materialize a file as a readable member — mirrors the git-membership pass: disk
-// content into the entry's body channel under the namespace-absolute key `/${pathname}`.
+// content into the entry's body channel under its project-relative key.
 const addMember = async (ctx: PlurnkSchemeContext, pathname: string): Promise<void> => {
     if (ctx.mimetypes === undefined) throw new Error("addMember: ctx.mimetypes required");
     const row = await ctx.db.envelope_get_workspace.get<{ project_root: string }>({ id: ctx.workspaceId });
@@ -104,14 +103,11 @@ test("contract: EDIT(bare path) resolves the canonical-stored member and propose
     });
 });
 
-// ISOLATOR [FIND × leading-slash path]. The SAME FIND that fails on `notes.md` succeeds
-// on `/notes.md` — pinning the defect to the missing leading-slash canonicalization, not
-// FIND's matcher or candidate logic. GREEN today: proves the one-character fix is the fix.
-test("contract: FIND(/leading-slash) resolves the member — isolates the missing canonicalization", async () => {
+test("{§fs-namei} FIND of an absolute path resolves the member", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "the codename is phoenix\n");
         await addMember(ctx, "notes.md");
-        const stmt = parseOp<FindStatement>("````FIND (/notes.md)````", "FIND");
+        const stmt = parseOp<FindStatement>(PlurnkParser.frame(`FIND (${join(root, "notes.md")})`, null), "FIND");
         const result = await new File().find(stmt, ctx);
         assert.ok(resourcePaths(result).includes("notes.md"), `the leading-slash form finds it; got: ${JSON.stringify(resourcePaths(result))}`);
     });
@@ -169,14 +165,14 @@ test("contract: an exact jsonpath FIND returns flat structural locations", async
 
 // CELL [FIND × file scheme glob] — the recursive tracked-file list. Confirm the explicit
 // file URI and bare project-relative form expose the same view ({§path-syntax}).
-test("contract: FIND(file:///**) and bare FIND(**) both list every tracked member", async () => {
+test("{§fs-namei} explicit file URI and bare FIND globs list the same members", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "a.md"), "alpha");
         await mkdir(join(root, "docs"), { recursive: true });
         await writeFile(join(root, "docs/b.md"), "beta");
         await addMember(ctx, "a.md");
         await addMember(ctx, "docs/b.md");
-        for (const dsl of ["````FIND (file:///**)````", "````FIND (**)````"]) {
+        for (const dsl of [PlurnkParser.frame(`FIND (file://${root}/**)`, null), "````FIND (**)````"]) {
             const r = await new File().find(parseOp<FindStatement>(dsl, "FIND"), ctx);
             assert.equal(r.status, 200, `${dsl} → 200`);
             assert.equal(r.results.length, 2, `${dsl} lists both tracked members`);
@@ -209,13 +205,17 @@ test("contract: bare FIND(*) is a shallow project map; FIND(**) is recursive", a
     });
 });
 
-test("contract: the explicit file-scheme root is a recursive collection scope", async () => {
+test("{§fs-namei} directory and glob searches from filesystem ancestors retain only workspace members", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await mkdir(join(root, "src"), { recursive: true });
         await writeFile(join(root, "src/a.ts"), "a");
         await addMember(ctx, "src/a.ts");
 
-        const rootScope = await new File().find(parseOp<FindStatement>("````FIND (file:///)````", "FIND"), ctx);
-        assert.deepEqual(resourcePaths(rootScope), ["src/a.ts"]);
+        await writeFile(join(root, "hidden.txt"), "not a member");
+        for (const target of [".", root, `${root}/`, "file:///", "/", "../", "../../**", `${root}/../**/*.ts`]) {
+            const result = await new File().find(parseOp<FindStatement>(PlurnkParser.frame(`FIND (${target})`, null), "FIND"), ctx);
+            assert.equal(result.status, 200, target);
+            assert.deepEqual(resourcePaths(result), ["src/a.ts"], target);
+        }
     });
 });

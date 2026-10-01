@@ -1047,14 +1047,9 @@ export default class TurnRunner {
     async #readOpenPaths({ workspaceId, workerId, loopId, onDispatch, onSettled }: TurnArgs, turnId: number, openPaths: string[], fromSequence: number): Promise<number> {
         let nextActionIndex = fromSequence;
         for (const raw of openPaths) {
-            const pathname = raw.startsWith("/") ? raw : `/${raw}`;
             const fileRead: ReadStatement = {
                 op: "READ", aside: null, lineMarker: null, matcher: null,
-                target: {
-                    kind: "url", raw: `file://${pathname}`, scheme: "file",
-                    username: null, password: null, hostname: null, port: null,
-                    pathname, query: null, fragment: null,
-                },
+                target: { kind: "local", raw },
                 metadata: null,
                 body: null, position: UNKNOWN_POSITION,
             };

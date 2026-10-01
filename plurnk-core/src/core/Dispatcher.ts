@@ -427,9 +427,32 @@ export default class Dispatcher {
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
         await this.#operationEvent(context, "started");
+        await this.#noticeFilePaths(context);
         const result = await this.#dispatch(context);
         await this.#operationEvent(context, "settled", result);
         return result;
+    }
+
+    // {§file-path-normalization} Authored operands, once, before internal fan-out.
+    async #noticeFilePaths({ statement, origin, workspaceId, workerId, loopId }: Pick<DispatchContext, "statement" | "origin" | "workspaceId" | "workerId" | "loopId">): Promise<void> {
+        if (origin !== "model" || isExecution(statement) || TurnDisposition.is(statement) || statement.op === "NOTE") return;
+        const targets = statement.op === "COPY" || statement.op === "MOVE"
+            ? [statement.source.target, statement.destination.target]
+            : [statement.target];
+        const absolute = targets.flatMap((target) => target === null || schemeNameOf(target) !== "file" ? []
+            : [PathSyntax.decodeParens(target.kind === "url" ? target.pathname : target.raw)])
+            .filter((pathname) => pathname.startsWith("/"));
+        if (absolute.length === 0) return;
+        const root = await this.#workspaceRoot(workspaceId);
+        if (root === null || root === "/") return;
+        for (const pathname of absolute) {
+            const key = Namespace.canonicalizeSpelling(pathname, root);
+            if (key === null) continue;
+            this.#notices.push(workspaceId, workerId, loopId, {
+                source: "scheme:file", kind: "path_normalized", level: "warn",
+                message: `Path resolved to '${key || "."}'.`,
+            });
+        }
     }
 
     // {§notifications-operation-event} One dispatch can produce several log rows.
@@ -1223,6 +1246,7 @@ export default class Dispatcher {
         context: Pick<DispatchContext, "workspaceId" | "workerId" | "loopId" | "turnId" | "sequence" | "origin"> & { statement: BareStatement },
     ): Promise<{ prompt: string } | { result: DispatchResult }> {
         await this.#operationEvent(context, "started");
+        await this.#noticeFilePaths(context);
         return ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context), async (ctx) => {
             try {
                 return await this.#prepareBarePrompt(context.statement, ctx);

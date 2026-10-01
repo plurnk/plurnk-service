@@ -1,5 +1,4 @@
-// {§fs-namespace} — host paths do not exist in the namespace. This witness renders a real loop's
-// packets and asserts the workspace's host root never appears in them.
+// {§fs-answer-in-canon} Execution receipts do not repeat the default working directory.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -15,7 +14,7 @@ import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 const execFileP = promisify(execFile);
 
-test("{§fs-namespace} no packet carries the workspace's host-absolute root: execution receipts, failed targets, and stream rows included", async () => {
+test("{§fs-answer-in-canon} execution receipts and failed targets do not expose a redundant absolute working directory", async () => {
     const root = await realpath(await mkdtemp(join(tmpdir(), "plurnk-namespace-")));
     try {
         const env = hermeticGitEnv();

@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PlurnkStatement, ReadStatement, LineMarker, ParsedPath, UrlPath } from "@plurnk/plurnk-contracts";
+import type { PlurnkStatement, ReadStatement, LineMarker, ParsedPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
@@ -26,11 +26,7 @@ const execFileP = promisify(execFile);
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
     lookThroughScheme("file", null, statement, ctx);
 
-const urlPath = (scheme: string, pathname: string): UrlPath => ({
-    kind: "url", raw: `${scheme}://${pathname}`, scheme,
-    username: null, password: null, hostname: null, port: null,
-    pathname, query: null, fragment: null,
-});
+const filePath = (pathname: string): ParsedPath => ({ kind: "local", raw: pathname });
 
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
     metadata: null,
@@ -137,7 +133,7 @@ test("git-tracked file (never client-added) is a workspace member via git ls-fil
         // not 404 it as a non-member. Production materializes members every turn
         // (indexGitMembership at runTurn); do the same before the entry-backed read.
         await GitMembership.indexGitMembership(ctx);
-        const result = await readFileScheme(readStmt(urlPath("file", `/${trackedPath}`)), ctx);
+        const result = await readFileScheme(readStmt(filePath(trackedPath)), ctx);
         assert.equal(
             result.status, 200,
             "READ of a git-tracked member must succeed; 404 means git membership was not established",
@@ -155,7 +151,7 @@ test("{§file-create-no-clobber} EDIT of an existing non-member is refused — n
 
         // EDIT it (as if blindly creating a config). Forbidden BEFORE any read:
         // 403, no secret anywhere in the result, file untouched on disk.
-        const blocked = await new File().edit(editStmt(urlPath("file", "/.env"), "PWNED=1\n"), ctx);
+        const blocked = await new File().edit(editStmt(filePath(".env"), "PWNED=1\n"), ctx);
         assert.equal(blocked.status, 403, "EDIT of an existing non-member must be forbidden");
         assert.ok(!JSON.stringify(blocked).includes("sk-do-not-leak"), "the refused EDIT must not read the non-member's content into its result (no leak)");
         assert.equal(await readFile(join(root, ".env"), "utf8"), SECRET, "the non-member file must not be overwritten (no wiping a file the model can't see)");
@@ -163,31 +159,34 @@ test("{§file-create-no-clobber} EDIT of an existing non-member is refused — n
         // The gate must not break legitimate edits: a tracked member still
         // proposes (202), and a new path still proposes creation (202 — creation
         // is how the model adds to its manifest).
-        const member = await new File().edit(editStmt(urlPath("file", `/${trackedPath}`), "# Tracked by git\n\nrevised.\n", fullReplace), ctx);
+        const member = await new File().edit(editStmt(filePath(trackedPath), "# Tracked by git\n\nrevised.\n", fullReplace), ctx);
         assert.equal(member.status, 202, "EDIT of a git-tracked member must still propose (202)");
-        const created = await new File().edit(editStmt(urlPath("file", "/new-note.md"), "fresh content\n"), ctx);
+        const created = await new File().edit(editStmt(filePath("new-note.md"), "fresh content\n"), ctx);
         assert.equal(created.status, 202, "EDIT of a new (non-existent) path must still propose creation (202)");
     });
 });
 
-test("a host-absolute spelling names its literal namespace path — READ 404s, EDIT proposes a nested CREATE, never a fold", async () => {
-    await withGitWorkspace(async (root, ctx, _db, trackedPath) => {
-        await GitMembership.indexGitMembership(ctx); // materialize the tracked member
-        const abs = `${root}/${trackedPath}`; // the path an exec/build tool would print
+test("{§fs-namei} absolute paths printed by a shell READ and EDIT the existing member", async () => {
+    await withGitWorkspace(async (root, ctx, db, trackedPath) => {
+        await GitMembership.indexGitMembership(ctx);
+        const { stdout } = await execFileP("sh", ["-c", 'printf "%s/%s\\n" "$PWD" "$1"', "path-fixture", trackedPath], { cwd: root });
+        const abs = stdout.trim();
+        assert.equal(abs, join(root, trackedPath));
+        const read = await readFileScheme(readStmt(filePath(abs)), ctx);
+        assert.equal(read.status, 200);
+        assert.equal(read.content, "# Tracked by git\n\nThis file is a git member.\n");
 
-        // {§fs-namespace} — a namespace names, it does not confine: host coordinates have no
-        // meaning in it, so nothing is being refused here. The spelling
-        // canonicalizes to the nested bare key abs.slice(1) (a legitimate, empty in-namespace path),
-        // NOT to the member.
-        const read = await readFileScheme(readStmt(urlPath("file", abs)), ctx);
-        assert.equal(read.status, 404, "a host-absolute spelling is not the member's name — no fold, deterministic 404");
-
-        // The write side obeys the same law: the spelling names an EMPTY in-namespace path, so EDIT
-        // lawfully proposes an exclusive CREATE there ({§fs-namei} — names mean what they mean),
-        // nesting under root rather than silently editing the member.
-        const edit = await new File().edit(editStmt(urlPath("file", abs), "# Tracked by git\n\nrevised.\n"), ctx);
-        assert.equal(edit.status, 202, "EDIT proposes at the literal namespace path");
-        assert.equal((edit.attrs as { path: string }).path, abs.slice(1), "the proposal targets the nested bare canon key, never the member");
+        const file = new File();
+        const revised = "# Tracked by git\n\nrevised.\n";
+        const edit = await file.edit(editStmt(filePath(abs), revised, fullReplace), ctx);
+        assert.equal(edit.status, 202);
+        assert.equal((edit.attrs as { path: string }).path, trackedPath);
+        const applied = await file.applyResolution({ attrs: edit.attrs as WriteAttrs }, ctx);
+        assert.equal(applied.status, 200);
+        assert.equal(await readFile(abs, "utf8"), revised);
+        await assert.rejects(readFile(join(root, abs.slice(1))), { code: "ENOENT" });
+        const keys = await db.test_file_pathnames.all<{ pathname: string }>({ workspace_id: ctx.workspaceId });
+        assert.deepEqual(keys.map(({ pathname }) => pathname), [trackedPath]);
     });
 });
 
@@ -199,7 +198,7 @@ test("an out-of-band disk change between propose and accept is an edit collision
         const file = new File();
 
         // The model proposes an edit against the snapshot it READ.
-        const proposal = await file.edit(editStmt(urlPath("file", `/${trackedPath}`), "# Tracked by git\n\nthe model's revision.\n", fullReplace), ctx);
+        const proposal = await file.edit(editStmt(filePath(trackedPath), "# Tracked by git\n\nthe model's revision.\n", fullReplace), ctx);
         assert.equal(proposal.status, 202, "edit proposes (202)");
 
         // An ambient writer (the user's editor, a build step, a sibling worker) changes the file on
@@ -226,7 +225,7 @@ test("with no drift the proposal lands and restamps the snapshot signature", asy
         const sigBefore = await db.crud_get_member_sig.get<{ synced_sig: string | null }>({ workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: `${trackedPath}` });
 
         const revised = "# Tracked by git\n\nlanded cleanly.\n";
-        const proposal = await file.edit(editStmt(urlPath("file", `/${trackedPath}`), revised, fullReplace), ctx);
+        const proposal = await file.edit(editStmt(filePath(trackedPath), revised, fullReplace), ctx);
         assert.equal(proposal.status, 202);
 
         const applied = await file.applyResolution({ attrs: proposal.attrs as WriteAttrs }, ctx);
@@ -290,7 +289,7 @@ test("an exclusion drops a tracked file from membership, reconciling already-reg
         // Reconciled: the entry is GONE (un-registered), not merely hidden — entries == members.
         const after = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: `${trackedPath}`});
         assert.equal(after, undefined, "an ignored member must be un-registered");
-        const read = await readFileScheme(readStmt(urlPath("file", `/${trackedPath}`)), ctx);
+        const read = await readFileScheme(readStmt(filePath(trackedPath)), ctx);
         assert.equal(read.status, 404, "an ignored file is not readable — it left the curated surface");
     });
 });
@@ -304,7 +303,7 @@ test("an include glob admits an untracked file git misses", async () => {
         const member = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: "untracked.md" });
         assert.notEqual(member, undefined, "an add-glob admits an untracked match as a member");
         // And it's readable — admitted to the curated surface.
-        const read = await readFileScheme(readStmt(urlPath("file", "/untracked.md")), ctx);
+        const read = await readFileScheme(readStmt(filePath("untracked.md")), ctx);
         assert.equal(read.status, 200, "an added file is readable");
     });
 });
@@ -366,7 +365,7 @@ test("{§membership-materialization-limit}: an oversized member degrades to an a
         process.env.PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES = "1";
         try {
             const prematerializationEdit = await new File().edit(
-                editStmt(urlPath("file", `/${trackedPath}`), "replacement\n", fullReplace),
+                editStmt(filePath(trackedPath), "replacement\n", fullReplace),
                 ctx,
             );
             assert.equal(prematerializationEdit.status, 413, "the edit gate does not depend on a completed background warm for safety");
@@ -382,7 +381,7 @@ test("{§membership-materialization-limit}: an oversized member degrades to an a
             });
             await engine.warmWorkspaceDerivations(ctx.workspaceId);
 
-            const rejectedRead = await readFileScheme(readStmt(urlPath("file", `/${trackedPath}`)), ctx);
+            const rejectedRead = await readFileScheme(readStmt(filePath(trackedPath)), ctx);
             assert.equal(rejectedRead.status, 413, "the member remains addressable through its durable producer failure");
             assert.equal(rejectedRead.content, "", "the size diagnostic is not fabricated as file content");
             assert.match(rejectedRead.problem?.detail ?? "", /tracked\.md.*1-byte.*materialization limit/i);
@@ -390,7 +389,7 @@ test("{§membership-materialization-limit}: an oversized member degrades to an a
             assert.equal(rejectedRead.problem?.observedBytes, Buffer.byteLength(original));
 
             const rejectedEdit = await new File().edit(
-                editStmt(urlPath("file", `/${trackedPath}`), "replacement\n", fullReplace),
+                editStmt(filePath(trackedPath), "replacement\n", fullReplace),
                 ctx,
             );
             assert.equal(rejectedEdit.status, 413, "EDIT cannot mistake an unavailable snapshot for an empty file");
@@ -399,14 +398,14 @@ test("{§membership-materialization-limit}: an oversized member degrades to an a
 
             process.env.PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES = "1024";
             assert.deepEqual(await GitMembership.indexGitMembership(ctx), [], "a policy-only rematerialization is not narrated as disk drift");
-            const admittedRead = await readFileScheme(readStmt(urlPath("file", `/${trackedPath}`)), ctx);
+            const admittedRead = await readFileScheme(readStmt(filePath(trackedPath)), ctx);
             assert.equal(admittedRead.status, 200, "raising the ceiling rematerializes an unchanged member");
             assert.equal(admittedRead.content, original);
 
             process.env.PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES = "1";
             assert.deepEqual(await GitMembership.indexGitMembership(ctx), [], "lowering the policy reclassifies the same source without fake EMI");
             assert.equal(
-                (await readFileScheme(readStmt(urlPath("file", `/${trackedPath}`)), ctx)).status,
+                (await readFileScheme(readStmt(filePath(trackedPath)), ctx)).status,
                 413,
                 "lowering the ceiling reclassifies an unchanged member",
             );

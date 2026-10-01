@@ -123,10 +123,7 @@ export default class File extends CoreSchemeAdapterBase {
         ].join("\n\n"),
     };
 
-    // {§fs-namei}/{§fs-canonical-name} — the ONE statement-normalizing seam: every model
-    // spelling resolves through Namespace.canonicalize before storage, comparison, or render.
-    // null (a spelling that names nothing a file can be) falls back to the original statement,
-    // which the entry-existence gate then 404s — no second resolution vocabulary exists.
+    // {§fs-namei} Resolve FIND's address before selecting member candidates.
     static async #canonTarget<S extends { target: ParsedPath | null }>(statement: S, root: string | null): Promise<S | null> {
         const t = statement.target;
         if (t === null) return statement;
@@ -180,22 +177,19 @@ export default class File extends CoreSchemeAdapterBase {
 
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
-        // {§fs-namei} — canonicalize the glob's path portion before the candidate scan, the
-        // same seam READ/EDIT use; a bare `notes.md` and `/notes.md` scan identically.
-        const canon = await File.#canonTarget(statement, await loadWorkspaceRoot(core.db, core.workspaceId));
+        // {§fs-namei} Exact paths, folders and globs share the filesystem base.
+        const root = await loadWorkspaceRoot(core.db, core.workspaceId);
+        const canon = await File.#canonTarget(statement, root);
         return EntryFind.findWorkspaceEntries(canon ?? statement, core, File.manifest, {
+            ...(root === null ? {} : { pathBase: root }),
             bytes: (pathname) => this.byteSource({ authority: "", pathname }, core),
         });
     }
 
-    // COPY/MOVE FROM file:/// — read-only, gated by entry-existence (a non-member
-    // has no entry → 404). The write-back side (writeEntry) is deliberately absent;
-    // see the SECURITY note above.
+    // {§membership} COPY/MOVE sources are membership-backed entry reads.
     async readEntry(pathname: string, ctx: CoreSchemeCallContext): Promise<ReadEntryResult> {
         const core = this.coreContext(ctx);
-        // {§scheme-address} — normalize the model-typed path (bare `brief.md`) to its `/rel` member key,
-        // the same parity READ/EDIT/deleteEntry have. Without it a COPY/MOVE FROM a bare file path
-        // misses the canonical-stored member and 404s a source that plainly exists.
+        // {§scheme-address} {§fs-namei} All read paths resolve the same member key.
         const root = await loadWorkspaceRoot(core.db, core.workspaceId);
         const key = root === null ? pathname : Namespace.canonicalize(pathname, root);
         const canonical = key ?? pathname;

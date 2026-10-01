@@ -2,11 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { parseDsl } from "./_mock.ts";
 
-// RFC 3986 parse — the root of the live xpath/jsonpath 404: a seed must store the pathname the READ's
-// reference resolves to. worker:///x is empty-authority + path-abempty "/x"; worker:///x puts x in the
-// AUTHORITY with an empty path — a different resource. These lock the parse so seed and read can't
-// silently drift on the slash again. (Storage's canonical form — verbatim vs namespace-absolute — is a
-// separate decision; see File.ts:158 "the leading slash is the namespace origin".)
+// {§worker-authority-carving} URI authority and pathname identify different resources.
 
 test("worker:///x resolves to empty authority + path-abempty /x", () => {
     const read = parseDsl("````READ (worker:///config.json)````").find((s) => s.op === "READ") as { target: { hostname: string | null; pathname: string } };
