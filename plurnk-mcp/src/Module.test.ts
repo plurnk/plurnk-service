@@ -20,6 +20,7 @@ import {
 import type { RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
 import type { FunctionalityPreparedDefinition, McpServerDefinition, ProblemDetails } from "@plurnk/plurnk-contracts";
 import { z } from "zod/v4";
+import { SdkError, SdkErrorCode } from "@modelcontextprotocol/client";
 import { serveMcpHttp } from "../test/http-fixture.ts";
 import type McpExecutor from "./McpExecutor.ts";
 import { getDefaultEnvironment } from "@modelcontextprotocol/client/stdio";
@@ -372,9 +373,14 @@ test("{§mcp-catalog-deadline} activation publishes a stalled catalog as unavail
         if (stalled && body.method === "tools/list") await delay(1000, undefined, { signal: request.signal });
         return null;
     });
-    const h = harness({ PLURNK_MCP_CONNECT_TIMEOUT: "500", PLURNK_MCP_REQUEST_TIMEOUT: "3000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000" });
+    const h = harness({ PLURNK_MCP_REQUEST_TIMEOUT: "3000" });
     await h.setup();
     try {
+        const healthy = await h.lane(1, new Map([["echo", stdio("echo")]]));
+        assert.equal(healthy.outcomes.get("echo")?.state, "active");
+        // The catalog deadline must not also time the healthy stdio cold start.
+        h.environment.PLURNK_MCP_CONNECT_TIMEOUT = "500";
+        const diagnostic = t.mock.method(console, "error");
         const enabled = new Map<string, McpServerDefinition>([
             ["stall", httpServer("stall", served.url)],
             ["echo", stdio("echo")],
@@ -384,11 +390,18 @@ test("{§mcp-catalog-deadline} activation publishes a stalled catalog as unavail
         assert.equal(unavailable?.state, "unavailable");
         if (unavailable?.state !== "unavailable") throw new Error("missing unavailable outcome");
         assert.equal(unavailable.problem.type, "https://problems.plurnk.xyz/mcp/management/server-unavailable");
+        assert.ok(served.requests.some(({ body }) => (body as { method?: string })?.method === "tools/list"), "the failing connection reached catalog discovery");
+        assert.equal(diagnostic.mock.callCount(), 1, "only the stalled catalog failed");
+        const cause: unknown = diagnostic.mock.calls[0]!.arguments[1];
+        assert.ok(cause instanceof DOMException && cause.name === "TimeoutError"
+            || SdkError.isInstance(cause) && cause.code === SdkErrorCode.RequestTimeout, String(cause));
         assert.deepEqual(h.runtimeTags(1), ["echo"], "a silent catalog does not prevent publishing other tools");
+        assert.equal(prepared.runtimes[0], healthy.runtimes[0], "the healthy connection remains in service");
         stalled = false;
         const retry = await h.lane(1, enabled, { force: "stall" });
         assert.equal(retry.outcomes.get("stall")?.state, "active");
         assert.deepEqual(h.runtimeTags(1).toSorted(), ["echo", "stall"]);
+        assert.equal(retry.runtimes.find(({ decl }) => decl.name === "echo"), healthy.runtimes[0], "retry replaces only the failed attachment");
     } finally { await h.teardown(1); await h.module.stop(); }
 });
 
