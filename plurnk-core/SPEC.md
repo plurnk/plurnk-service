@@ -4245,7 +4245,8 @@ composition boundaries, not arbitrary exceptions:
 | Inspection or mutation of an unresolved family | Return the exact configuration Problem, naming the key and required correction, through both client and model paths. No silent source fallback or change to stored settings. |
 | Invalid live mutation | Reject atomically and preserve the preceding publication. |
 | Previously valid family becomes invalid | Withdraw its operational capabilities at normal publication, then release the old snapshot. Keep the manager and diagnostic. |
-| Configuration is corrected | Normal resolution/publication restores the capability; no separate recovery mode or registry. Environment-file edits follow their ordinary process lifetime, not an implicit reload. |
+| Configuration source is corrected or removed | Inspection resolves the current source immediately, even in the repairing turn; a previous source-resolution error cannot override a successful read. Not-yet-published definitions remain dormant. Normal publication restores capabilities; inspection does not activate them. |
+| Preparation configuration is corrected | The published preparation failure remains until ordinary preparation succeeds. Successful source inspection alone does not establish runtime readiness. Environment-file edits follow their ordinary process lifetime, not an implicit reload. |
 | Internal invariant, state, or implementation failure | Preserve the exception; never reclassify it as an operator configuration error. |
 
 Client discovery and passive synchronization report startup diagnostics through the

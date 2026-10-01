@@ -196,6 +196,16 @@ for (const boundary of ["available", "prepare"] as const) {
         assert.equal(problem.type, "https://problems.plurnk.xyz/functionality/configuration-invalid");
         assert.equal(problem.detail, error.message, "a prepare failure cannot masquerade as an empty or dormant catalog");
         broken = false;
+        const beforeInspection = [...log];
+        if (boundary === "available") {
+            const fresh = await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)) as FunctionalityListResult;
+            assert.deepEqual(fresh.definitions.map(({ alias, state }) => [alias, state]), [["local", "dormant"], ["svc", "dormant"]],
+                "successful source resolution supersedes the preceding source error, without claiming publication");
+        } else {
+            const pending = await rejectedProblem(() => daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)));
+            assert.equal(pending.detail, error.message, "resolving definitions does not prove that failed preparation has recovered");
+        }
+        assert.deepEqual(log, beforeInspection, "inspection cannot prepare, publish, or tear down a family");
         await handle.refresh({ workspaceId });
         const recovered = await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)) as FunctionalityListResult;
         assert.deepEqual(recovered.definitions.map(({ alias, state }) => [alias, state]), [["local", "active"], ["svc", "active"]]);

@@ -129,6 +129,9 @@ test("{§mcp-file-configuration} malformed files leave chat usable and normal tu
     assert.ok(userText(provider.received[0]).includes(file), "the model can locate and repair the malformed file");
     const save = (name: string) => writeFile(file, JSON.stringify({ mcpServers: { [name]: stdioEntry("echo-server.mjs") } }));
     await save("first");
+    assert.deepEqual((await list()).map(({ alias, state }) => [alias, state]), [["first", "dormant"]],
+        "a repaired source is inspectable before another turn; its obsolete parse error cannot override fresh resolution");
+    assert.equal(daemon.schemes.has("first", workspaceId), false, "inspection does not publish the repaired server");
     await turn();
     assert.deepEqual((await list()).map(({ alias, state }) => [alias, state]), [["first", "active"]]);
     await save("second");
@@ -139,9 +142,50 @@ test("{§mcp-file-configuration} malformed files leave chat usable and normal tu
     await turn();
     await rejectsConfiguration();
     await rm(file);
+    assert.deepEqual(await list(), [], "removing a malformed source also clears its inspection failure before publication");
     await turn();
     assert.deepEqual(await list(), []);
     assert.equal(provider.received.length, 5, "every configuration state left inference usable");
+});
+
+test("{§configuration-repair-path} a model's EDIT and same-turn list observe the repair before the next turn activates its tool", { timeout: 30_000 }, async (t) => {
+    const { hostPaths, env } = await mcpFixture(t, {});
+    const project = join(hostPaths.home, "project");
+    const file = join(project, ".agents", "mcp.json");
+    await mkdir(join(project, ".agents"), { recursive: true });
+    await writeFile(file, "not json");
+    const content = JSON.stringify({ mcpServers: { repaired: stdioEntry("echo-server.mjs") } });
+    const db = await openMigrated();
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [
+        makeMockResponse(`\`\`\`\`EDIT (.agents/mcp.json) <1,-1>\n${content}\n\`\`\`\`\n\n\`\`\`\`mcp (list)\n\`\`\`\``),
+        makeMockResponse("````repaired (echo)\n{\"message\":\"same-turn-repair\"}\n````"),
+        makeMockResponse("````KILL\nConfiguration repaired.\n````"),
+    ] });
+    const daemon = new Daemon({ db, provider, hostPaths });
+    daemon.registerModule(McpModule.init({ env }));
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    const { workspaceId } = await daemon.createWorkspace({ name: "same-turn-repair", projectRoot: project });
+    await daemon.invokeModuleAction("workspace.members.add", {
+        alias: "configuration", definition: { glob: ".agents/mcp.json" },
+    }, { scope: "workspace", workspaceId });
+    const workerId = await insertWorker(db, workspaceId, null, "repairer", "model");
+    const finalStatuses: number[] = [];
+    const unsubscribe = daemon.subscribeToEvents((_workspace, method, params) => {
+        if (method === "loop/terminated") finalStatuses.push((params as { result: { status: number } }).result.status);
+    });
+    t.after(unsubscribe);
+    await daemon.runLoop({ workspaceId, workerId, prompt: "Repair the MCP file and verify its tool.", policy: { proposals: "accept" } });
+    await waitFor(() => finalStatuses, (statuses) => statuses.length > 0, { timeoutMs: 15_000 });
+    assert.deepEqual(finalStatuses, [200]);
+    const log = await daemon.readLog({ workspaceId, workerId, limit: 100 });
+    assert.equal(await readFile(file, "utf8"), content, JSON.stringify(log.filter(({ op }) => op === "EDIT")));
+    const inspected = await awaitExecOutcome(db, { workspaceId, scheme: "mcp" });
+    assert.deepEqual((inspected.definitions as FunctionalityListResult["definitions"]).map(({ alias, state }) => [alias, state]),
+        [["repaired", "dormant"]], "the manager's own same-turn result observes fresh configuration without premature publication");
+    const echoed = await awaitExecOutcome(db, { workspaceId, scheme: "repaired", channel: "json" });
+    assert.deepEqual(echoed.content, [{ type: "text", text: "same-turn-repair" }]);
+    assert.equal(provider.received.length, 3, "no stale-source recovery turn is necessary");
 });
 
 test("{§mcp-configuration} configured servers and workspace additions are callable without altering plugin installations", { timeout: 60_000 }, async (t) => {

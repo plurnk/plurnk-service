@@ -113,7 +113,10 @@ interface WorkspaceFamily {
     prepared: FunctionalityPrepared<RuntimeRegistration> | null;
     // The enabled definitions that publication prepared ({§functionality-hotload}).
     enabled: ReadonlyMap<string, FunctionalityPreparedDefinition>;
-    configurationError: ConfigurationError | null;
+    configurationFailure: {
+        readonly phase: "resolution" | "preparation";
+        readonly error: ConfigurationError;
+    } | null;
 }
 
 const STATE_VERSION = 1;
@@ -257,7 +260,7 @@ export default class Functionality {
         await this.#serialize(this.#key(identity.workspaceId, family), async () => {
             const current = this.#families.get(this.#key(identity.workspaceId, family));
             if (current === undefined) return;
-            if (options.ifChanged === true && current.configurationError === null) {
+            if (options.ifChanged === true && current.configurationFailure === null) {
                 try {
                     if (Functionality.#sameDefinitions(await this.#publishable(adapter, identity, current.state), current.enabled)) return;
                 } catch (cause) {
@@ -281,7 +284,7 @@ export default class Functionality {
     // {§functionality-hotload} — every family that reads out-of-band state republishes it if it changed.
     async refreshChanged(identity: WorkspaceCapabilityIdentity): Promise<void> {
         for (const adapter of this.#adapters.values()) {
-            if (this.#families.get(this.#key(identity.workspaceId, adapter.family))?.configurationError != null) {
+            if (this.#families.get(this.#key(identity.workspaceId, adapter.family))?.configurationFailure != null) {
                 await this.refresh(adapter.family, identity, { gate: "none" });
                 continue;
             }
@@ -296,7 +299,7 @@ export default class Functionality {
 
     configurationNotices(workspaceId: number): readonly Notice[] {
         return [...this.#adapters].flatMap(([family, adapter]) => {
-            const cause = this.#families.get(this.#key(workspaceId, family))?.configurationError;
+            const cause = this.#families.get(this.#key(workspaceId, family))?.configurationFailure?.error;
             return [
                 ...(cause == null ? [] : [ConfigurationDiagnostics.notice(family, cause)]),
                 ...(adapter.configurationNotices?.({ workspaceId }) ?? []),
@@ -552,7 +555,8 @@ export default class Functionality {
         const family = this.#families.get(this.#key(identity.workspaceId, adapter.family));
         const state = family?.state ?? await this.#loadState(adapter, identity.workspaceId);
         const effective = await this.#effective(adapter, identity, state);
-        if (family?.configurationError != null) throw family.configurationError;
+        // Fresh resolution supersedes a failed source read, not a failed preparation.
+        if (family?.configurationFailure?.phase === "preparation") throw family.configurationFailure.error;
         const outcomes = family?.prepared?.outcomes;
         // {§functionality-inspection} — an enabled definition no resident publication has prepared, whether
         // the family is cold or the definition arrived out of band since, is dormant.
@@ -824,9 +828,11 @@ export default class Functionality {
         const previous = this.#families.get(key)?.prepared ?? null;
         let enabled = new Map<string, FunctionalityPreparedDefinition>();
         let prepared: FunctionalityPrepared<RuntimeRegistration> | null = null;
-        let configurationError: ConfigurationError | null = null;
+        let configurationFailure: WorkspaceFamily["configurationFailure"] = null;
+        let phase: "resolution" | "preparation" = "resolution";
         try {
             enabled = await this.#publishable(adapter, identity, nextState);
+            phase = "preparation";
             prepared = await adapter.prepare({
                 workspaceId: identity.workspaceId,
                 enabled,
@@ -841,7 +847,7 @@ export default class Functionality {
             });
         } catch (cause) {
             if (!(cause instanceof ConfigurationError) || options.configurationFailure === "reject") throw cause;
-            configurationError = cause;
+            configurationFailure = { phase, error: cause };
             enabled = new Map();
         }
         report(null, "publishing");
@@ -854,18 +860,18 @@ export default class Functionality {
                 }
             }
             const details = await this.#documentBody(adapter);
-            const diagnostic = configurationError === null ? "" : `> [!WARNING]\n> ${configurationError.message}\n\n`;
+            const diagnostic = configurationFailure === null ? "" : `> [!WARNING]\n> ${configurationFailure.error.message}\n\n`;
             const manager: RuntimeRegistration = {
                 namespaceOwner: adapter.namespaceOwner,
                 decl: functionalityRuntimeDecl(adapter.family,
-                    configurationError === null ? adapter.summary : `${adapter.summary} — configuration unavailable; inspect with list`,
+                    configurationFailure === null ? adapter.summary : `${adapter.summary} — configuration unavailable; inspect with list`,
                     diagnostic + details),
                 executor: new FunctionalityManager({
                     family: adapter.family, workspaceId: identity.workspaceId, coordinator: this,
                     traits: adapter.traits, inputSchemas: this.#schemas.get(adapter.family)!, example: adapter.example, discovery: adapter.discovery,
                 }),
                 availability: { available: true, detail: "workspace Functionality manager" },
-                ...(adapter.scheme === undefined || configurationError !== null ? {} : { scheme: adapter.scheme }),
+                ...(adapter.scheme === undefined || configurationFailure !== null ? {} : { scheme: adapter.scheme }),
             };
             runtimes = [manager, ...(prepared?.runtimes ?? [])];
         } catch (cause) {
@@ -882,7 +888,7 @@ export default class Functionality {
                 }, {
                     gate: options.gate,
                     publish: () => {
-                        this.#families.set(key, { state: nextState, prepared, enabled, configurationError });
+                        this.#families.set(key, { state: nextState, prepared, enabled, configurationFailure });
                         return () => {
                             if (before === undefined) this.#families.delete(key);
                             else this.#families.set(key, before);
