@@ -70,7 +70,7 @@ export default class Turn {
         if (turn === undefined) throw new Error(`Turn.complete: turn ${id} is not open`);
     }
 
-    static async failOpen(db: Db, id: number): Promise<boolean> {
-        return (await db.turn_fail_open.get<{ id: number }>({ id })) !== undefined;
+    static async failOpen(db: Db, id: number, status: 499 | 500 | 504): Promise<boolean> {
+        return (await db.turn_fail_open.get<{ id: number }>({ id, status })) !== undefined;
     }
 }

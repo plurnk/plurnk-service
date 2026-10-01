@@ -1082,6 +1082,16 @@ plugin-authored operation turns; exposing that path must not introduce a
 parallel record or lifecycle. Producer and kind never change. Process-restart
 recovery completes any turn whose producer vanished.
 
+§turn-exception-outcome An exceptional inference exit completes every still-open
+turn it acquired, without overwriting completed turns or inventing provider evidence.
+The turn owner propagates the original exception unchanged.
+
+| Exception cause | Turn status |
+|---|---|
+| The owning aborted signal's reason, directly or through an `Error.cause` chain | 499 for cancellation; 504 for the loop execution deadline. |
+| An unrelated exception, including an unrelated `AbortError` concurrent with cancellation | 500. An aborted signal alone does not prove causation. |
+| An `AggregateError` combining cancellation with other failures | 500; cancellation does not conceal another failure. |
+
 §turn-ops-admission-path **Source acquisition varies; admitted-turn execution does not.**
 A provider response, deterministic `_plurnk` program, or future client/plugin
 program crosses one admission boundary into the same executor. That executor

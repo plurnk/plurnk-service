@@ -553,6 +553,20 @@ export default class TurnRunner {
         );
     }
 
+    // {§turn-exception-outcome}: cancellation must be the cause, not merely concurrent.
+    static #failureStatus(cause: unknown, signal: AbortSignal | undefined): 499 | 500 | 504 {
+        if (signal?.aborted !== true) return 500;
+        const seen = new Set<unknown>();
+        let current = cause;
+        while (!seen.has(current)) {
+            if (current === signal.reason) return signal.reason === LOOP_TIMEOUT_REASON ? 504 : 499;
+            if (!(current instanceof Error) || current instanceof AggregateError) break;
+            seen.add(current);
+            current = current.cause;
+        }
+        return 500;
+    }
+
     #offsetToLineColumn(content: string, offset: number): { line: number; column: number } {
         const cps = Array.from(content);
         const clamped = Math.max(0, Math.min(offset, cps.length));
@@ -615,6 +629,7 @@ export default class TurnRunner {
             turnNumber, invalidEmissionRecoveryEntryId,
         };
         const createdTurnIds: number[] = [];
+        const turnSignal = this.#loopSignal(loopId) ?? signal;
         try {
             const container = await this.#openTurnContainer(args, createdTurnIds);
             const gitStatus = await this.#deriveWorkspace(args, container.systemCtx);
@@ -633,10 +648,11 @@ export default class TurnRunner {
             await this.#recordAdmittedEmission(args, request, emission);
             return await this.#settleAdmittedTurn(args, request, emission);
         } catch (cause) {
+            const status = TurnRunner.#failureStatus(cause, turnSignal);
             const completionFailures: unknown[] = [];
             for (const createdTurnId of createdTurnIds) {
                 try {
-                    await Turn.failOpen(this.#db, createdTurnId);
+                    await Turn.failOpen(this.#db, createdTurnId, status);
                 } catch (completionCause) {
                     completionFailures.push(completionCause);
                 }

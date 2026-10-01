@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
+import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import { rpcCall, flush, connect, withDaemon, subscribeNotifications, waitFor, waitForDb } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
@@ -20,6 +21,43 @@ const terminalResult = (row: LoopRow): {
         problem?: { detail?: string; reason?: string };
     };
 };
+
+test("{§turn-record}: cancellation during packet preparation completes the turn without inventing a provider failure", async (t) => {
+    const preparing = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const build = PacketBuilder.prototype.buildRequestPacket;
+    t.mock.method(PacketBuilder.prototype, "buildRequestPacket", async function (this: PacketBuilder, ...args: Parameters<typeof build>) {
+        preparing.resolve();
+        await release.promise;
+        return build.apply(this, args);
+    });
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````KILL\ndone\n````")] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "cancel-preparation" });
+            const running = rpcCall(ws, 2, "loop.run", { prompt: "prepare a packet", policy: { proposals: "accept" } });
+            await preparing.promise;
+            const cancelled = rpcCall(ws, 3, "loop.cancel", { reason: "cancel during preparation" });
+            const loop = await waitForDb(
+                async () => (await db.test_list_loops_all.all<LoopRow>({})).find(({ status }) => status === 499),
+                (row) => row !== undefined,
+            );
+            release.resolve();
+            await cancelled;
+            await running;
+            const turns = await waitForDb(
+                () => db.test_list_turns_in_loop.all<{ id: number; kind: string; status: number; completed_at: string | null }>({ loop_id: loop!.id }),
+                (rows) => rows.every(({ completed_at }) => completed_at !== null),
+            );
+            assert.equal(turns.find(({ kind }) => kind === "inference")?.status, 499);
+            assert.equal(mock.received.length, 0, "cancelled preparation makes no provider request");
+            assert.equal(terminalResult(loop!).problem?.reason, "cancel during preparation");
+            const worker = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loop!.id });
+            assert.deepEqual(await db.test_error_rows_for_worker.all({ worker_id: worker!.worker_id }), [], "cancellation does not publish a provider failure");
+        } finally { release.resolve(); ws.close(); }
+    });
+});
 
 test("{§loop-terminal-authorship}: cancelling a live loop records who and why", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [

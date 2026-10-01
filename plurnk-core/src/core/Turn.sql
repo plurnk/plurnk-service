@@ -34,7 +34,7 @@ RETURNING id;
 -- Exception cleanup is idempotent across a run that may already have completed
 -- one of several producer turns before a later sibling failed.
 UPDATE turns
-SET status = 500,
+SET status = $status,
     completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = $id
   AND completed_at IS NULL
