@@ -390,7 +390,7 @@ test("the default wire preserves canonical order and projects the Recap override
         // {§packet-cache-monotone}: trusted control-plane sections precede the user slot;
         // append-mostly log precedes per-turn status, open message pointers, and Recap.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
-        assert.deepEqual(slot("system"), ["definition", "system-policy"], "the stable system prefix has no injected resource catalog");
+        assert.deepEqual(slot("system"), ["definition", "reasoning-operations", "system-policy"], "the stable system prefix has no injected resource catalog");
         assert.deepEqual(slot("user"), ["log", "worker", "delegation", "errors", "notices", "git", "budget", "messages", "recap"], "user slot: worker -> log -> turn -> status clump -> open message pointers -> Recap");
         assert.equal(packet.sections.find((section) => section.name === "messages")?.header, "Open Messages");
         assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Context Curation");
@@ -664,6 +664,6 @@ test("{§schemes-directory}: the assembled packet retains the definition without
 
         // The grammar (plurnk.md) must reach the model — a dropped definition section is a dead packet.
         assert.ok(packetSection(packet, "definition").length > 0, "the definition (grammar) section carries content");
-        assert.deepEqual(packet.sections.filter(({ slot }) => slot === "system").map(({ name }) => name), ["definition", "system-policy"]);
+        assert.deepEqual(packet.sections.filter(({ slot }) => slot === "system").map(({ name }) => name), ["definition", "reasoning-operations", "system-policy"]);
     } finally { await db.close(); }
 });
