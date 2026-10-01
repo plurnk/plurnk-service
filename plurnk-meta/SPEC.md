@@ -76,8 +76,8 @@ installed capabilities; they never manufacture package existence.
 
 ### §plugin-family-kind One package, one capability family
 
-`package.json#plurnk.kind` is one exact string. Arrays and other shapes claim no
-family. A package may declare multiple named capabilities inside its one
+The native declaration's `kind` is one exact string, in either manifest location
+at {§plugin-manifest-read}. Arrays and other shapes claim no family. A package may declare multiple named capabilities inside its one
 family-owned collection.
 
 | `plurnk.kind`     | Family-owned names                                       |
@@ -156,10 +156,11 @@ an explicitly supplied environment is complete and never falls back to the proce
 | Platform capability package | `package.json#plurnk` | npm package name |
 | Agent Plugin bundle | `plugin.json#extensions.ai.plurnk` | npm package name when packaged for Node; otherwise the standard plugin name |
 
-The bundle uses the standard manifest validation at {§agent-plugins-manifest};
-`ai.plurnk.module` names a daemon-module entry point ({§module-discovery}).
-This projects to the existing `module` family, which composes native capabilities
-through their owning registration interfaces ({§module-lifecycle}).
+The bundle uses the standard manifest validation at {§agent-plugins-manifest}.
+Its namespace contains the same `kind` and family-owned fields as a capability
+package. Each family's loader, import convention, registry and lifetime remain
+unchanged; bundling does not convert capabilities into daemon modules.
+Use `kind: "module"` when the extension needs the daemon lifecycle ({§module-lifecycle}).
 Its Plurnk-specific files, including defaults, live under `ai.plurnk/`.
 A bundle never repeats its family declaration in `package.json`: two declarations
 are an error, not an override. npm exports and dependencies remain Node packaging
@@ -167,9 +168,20 @@ metadata. The standard manifest is authoritative when present; an invalid one
 cannot fall through to a package declaration. Other clients' extension namespaces
 claim no native Plurnk capability.
 
-`Meta.readManifest(dir, kind)` is the one read of a package's family claim:
+| Native family | Installation boundary |
+|---|---|
+| `module` | npm or selected user plugin roots; never project roots ({§module-discovery}) |
+| `exec`, `mimetype`, `provider`, `scheme`, `http-materializer` | Existing npm discovery and family import conventions |
+
+`Meta.moduleFile(manifest, relative)` resolves a family-owned file entry. A standard
+bundle's entry must be under `ai.plurnk/` and resolve inside the plugin root.
+npm export-based families retain Node's package export resolution. Declared file
+entry loaders use this shared containment boundary before importing.
+
+`Meta.readManifest(dir, kind?)` is the one read of a package's family claim:
 its declaration, parsed, with an object declaring exactly that
-`kind` ({§plugin-family-kind}). It answers `null` for a missing or
+`kind` ({§plugin-family-kind}); omitting the filter inspects any native family,
+as required by the configuration-floor collector. It answers `null` for a missing or
 malformed ordinary package manifest, a non-object, no declaration, or another family —
 none of those is a package of that family, and a scanner skips them without
 evidence. The result carries the manifest path, the package name when

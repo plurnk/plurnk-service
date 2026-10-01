@@ -248,7 +248,7 @@ test("nearestNodeModules: finds the ancestor holding @plurnk; null when absent",
 test("{§plugin-manifest-read} an Agent Plugin supplies one native declaration through either distribution", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "agent-plugin-native-"));
     t.after(() => rm(root, { recursive: true, force: true }));
-    const native = { module: "ai.plurnk/plugin.js" };
+    const native = { kind: "module", module: "ai.plurnk/plugin.js" };
     const manifest = {
         $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
         name: "example-plugin",
@@ -256,11 +256,11 @@ test("{§plugin-manifest-read} an Agent Plugin supplies one native declaration t
     };
     await writeFile(join(root, "plugin.json"), JSON.stringify(manifest));
     assert.deepEqual(await Meta.readManifest(root, "module"), {
-        manifestPath: join(root, "plugin.json"), packageName: "example-plugin", plurnk: { kind: "module", ...native },
+        manifestPath: join(root, "plugin.json"), packageName: "example-plugin", plurnk: native,
     });
     await writeFile(join(root, "package.json"), JSON.stringify({ name: "@acme/example-plugin", type: "module" }));
     assert.deepEqual(await Meta.readManifest(root, "module"), {
-        manifestPath: join(root, "plugin.json"), packageName: "@acme/example-plugin", plurnk: { kind: "module", ...native },
+        manifestPath: join(root, "plugin.json"), packageName: "@acme/example-plugin", plurnk: native,
     });
     assert.equal(await Meta.readManifest(root, "exec"), null);
     await writeFile(join(root, "plugin.json"), JSON.stringify({ ...manifest, extensions: { "com.example.other": native } }));
@@ -270,8 +270,8 @@ test("{§plugin-manifest-read} an Agent Plugin supplies one native declaration t
 test("{§plugin-manifest-read} invalid or duplicate plugin declarations never fall through to package metadata", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "agent-plugin-invalid-"));
     t.after(() => rm(root, { recursive: true, force: true }));
-    const native = { module: "ai.plurnk/plugin.js" };
-    await writeFile(join(root, "package.json"), JSON.stringify({ name: "@acme/example-plugin", plurnk: { kind: "module", ...native } }));
+    const native = { kind: "module", module: "ai.plurnk/plugin.js" };
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "@acme/example-plugin", plurnk: native }));
     await writeFile(join(root, "plugin.json"), JSON.stringify({
         $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
         name: "example-plugin", extensions: { "ai.plurnk": native },
@@ -293,14 +293,19 @@ test("{§agent-plugins-containment} native entry paths and manifests cannot esca
     await mkdir(join(plugin, "ai.plurnk"), { recursive: true });
     const manifest = (module: string) => JSON.stringify({
         $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "example",
-        extensions: { "ai.plurnk": { module } },
+        extensions: { "ai.plurnk": { kind: "module", module } },
     });
     await writeFile(join(root, "outside.mjs"), "export default {};");
     await symlink(join(root, "outside.mjs"), join(plugin, "ai.plurnk/plugin.mjs"));
     await writeFile(join(plugin, "plugin.json"), manifest("ai.plurnk/plugin.mjs"));
-    await assert.rejects(Meta.readManifest(plugin, "module"), /module resolves outside the plugin root/);
+    const readModule = async () => {
+        const declaration = await Meta.readManifest(plugin, "module");
+        assert.ok(declaration);
+        return Meta.moduleFile(declaration, declaration.plurnk.module as string);
+    };
+    await assert.rejects(readModule(), /module resolves outside the plugin root/);
     await writeFile(join(plugin, "plugin.json"), manifest("ai.plurnk/../../outside.mjs"));
-    await assert.rejects(Meta.readManifest(plugin, "module"), /must name one module beneath ai.plurnk/);
+    await assert.rejects(readModule(), /native module must be beneath ai.plurnk/);
     await rm(join(plugin, "plugin.json"));
     await writeFile(join(root, "outside.json"), manifest("ai.plurnk/plugin.mjs"));
     await symlink(join(root, "outside.json"), join(plugin, "plugin.json"));
@@ -308,4 +313,30 @@ test("{§agent-plugins-containment} native entry paths and manifests cannot esca
     await rm(join(root, "outside.json"));
     await writeFile(join(plugin, "package.json"), JSON.stringify({ name: "example", plurnk: { kind: "module", module: "fallback.mjs" } }));
     await assert.rejects(Meta.readManifest(plugin, "module"), /plugin.json does not resolve to a regular file/);
+});
+
+test("{§plugin-manifest-read} standard bundles preserve each native family's declaration", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "agent-plugin-families-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const declarations = [
+        { kind: "exec", runtimes: [{ name: "example", summary: "Example runtime" }] },
+        { kind: "mimetype", handlers: [{ name: "application/example", revision: "1" }] },
+        { kind: "provider", name: "example" },
+        { kind: "scheme", schemes: [{ name: "example", export: "default" }] },
+        { kind: "http-materializer", materializers: [{ id: "example", module: "ai.plurnk/materializer.js" }] },
+        { kind: "module", module: "ai.plurnk/plugin.js" },
+    ] as const;
+    await writeFile(join(root, "package.json"), JSON.stringify({ name: "@acme/example-plugin", type: "module" }));
+    for (const native of declarations) {
+        await writeFile(join(root, "plugin.json"), JSON.stringify({
+            $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "example-plugin",
+            extensions: { "ai.plurnk": native },
+        }));
+        assert.deepEqual(await Meta.readManifest(root, native.kind), {
+            manifestPath: join(root, "plugin.json"), packageName: "@acme/example-plugin", plurnk: native,
+        });
+        for (const other of declarations.filter(({ kind }) => kind !== native.kind)) {
+            assert.equal(await Meta.readManifest(root, other.kind), null);
+        }
+    }
 });

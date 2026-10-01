@@ -620,7 +620,7 @@ for (const built of [false, true]) {
             await mkdir(join(plugin, "ai.plurnk"), { recursive: true });
             await writeFile(join(plugin, "plugin.json"), JSON.stringify({
                 $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "root-fixture",
-                extensions: { "ai.plurnk": { module: "ai.plurnk/plugin.mjs" } },
+                extensions: { "ai.plurnk": { kind: "module", module: "ai.plurnk/plugin.mjs" } },
             }));
             await writeFile(join(plugin, "ai.plurnk/.env.defaults"), "PLURNK_PLUGIN_CASCADE_FIXTURE=from-root\n");
             await writeFile(join(plugin, "ai.plurnk/plugin.mjs"), "throw new Error(\"catalog must not import code\");");

@@ -150,7 +150,7 @@ const addPlugin = async (dir: string, name: string, defaults: string): Promise<v
     await mkdir(join(dir, "ai.plurnk"), { recursive: true });
     await writeFile(join(dir, "plugin.json"), JSON.stringify({
         $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name,
-        extensions: { "ai.plurnk": { module: "ai.plurnk/plugin.mjs" } },
+        extensions: { "ai.plurnk": { kind: "module", module: "ai.plurnk/plugin.mjs" } },
     }));
     await writeFile(join(dir, "ai.plurnk/.env.defaults"), defaults);
     await writeFile(join(dir, "ai.plurnk/plugin.mjs"), "export default {};");
@@ -202,4 +202,23 @@ test("{§configuration-repair-path} invalid root selection is diagnosed while pa
     assert.equal(collected.files[0].parsed.PLURNK_ENVD_TEST_KNOB, "42");
     assert.equal(collected.configurationErrors.length, 1);
     assert.equal(collected.configurationErrors[0].key, "PLURNK_SERVICE_ROOTS");
+});
+
+test("{§operator-config-env-defaults} npm-only capabilities keep their panel when a user folder shadows portable components", async (t) => {
+    const { root, nm } = await scaffold();
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const hostPaths = new HostPaths({ home: join(root, "home"), env: {} });
+    setting(t, "PLURNK_SERVICE_ROOTS", "global");
+    const published = join(nm, "example");
+    const local = join(hostPaths.globalPluginsDir, "example");
+    for (const [dir, value] of [[published, "npm"], [local, "folder"]]) {
+        await addPlugin(dir, "example", `PLUGIN_VALUE=${value}\n`);
+        await writeFile(join(dir, "plugin.json"), JSON.stringify({
+            $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "example",
+            extensions: { "ai.plurnk": { kind: "http-materializer", materializers: [{ id: "example", module: "ai.plurnk/plugin.mjs" }] } },
+        }));
+    }
+    const collected = await EnvDefaults.collect(root, nm, { hostPaths });
+    assert.deepEqual(collected.configurationErrors, []);
+    assert.deepEqual(EnvDefaults.merge(collected.files).get("PLUGIN_VALUE"), { value: "npm", owner: "example" });
 });

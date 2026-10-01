@@ -94,35 +94,19 @@ export default class MaterializerRegistry {
                 if (manifest === null) continue;
                 if (!Meta.isTrusted(manifest.packageName)) continue;
                 for (const entry of manifest.materializers) {
-                    this.#register(entry.id, {
+                    const prior = this.#entries.get(entry.id);
+                    if (prior !== undefined) {
+                        throw new Error(`http materializer '${entry.id}' is claimed by both ${prior.packageName} and ${manifest.packageName} — one flat id namespace.`);
+                    }
+                    this.#entries.set(entry.id, {
                         packageName: manifest.packageName,
-                        load: () => this.#load({ module: entry.module, dir: candidate.dir }),
+                        load: () => this.#load(entry.module),
                     });
                 }
             }
             return this;
         })();
         return this.#promise;
-    }
-
-    // {§http-materializer-plugins} The module owns this registration's lifetime.
-    register(owner: string, implementation: HttpMaterializer): () => void {
-        if (owner.length === 0 || implementation.id.length === 0
-            || typeof implementation.eligible !== "function" || typeof implementation.extract !== "function") {
-            throw new TypeError("A materializer registration requires an owner, id, eligible and extract.");
-        }
-        return this.#register(implementation.id, { packageName: owner, load: async () => implementation });
-    }
-
-    #register(id: string, entry: MaterializerEntry): () => void {
-        const prior = this.#entries.get(id);
-        if (prior !== undefined) {
-            throw new Error(`http materializer '${id}' is claimed by both ${prior.packageName} and ${entry.packageName} — one flat id namespace.`);
-        }
-        this.#entries.set(id, entry);
-        return () => {
-            if (this.#entries.get(id) === entry) this.#entries.delete(id);
-        };
     }
 
     materializerFor(id: string): HttpMaterializer | null {
@@ -137,18 +121,17 @@ export default class MaterializerRegistry {
 
     #loaded = new Map<string, Promise<HttpMaterializer>>();
 
-    #load(entry: { dir: string; module: string }): Promise<HttpMaterializer> {
-        const key = `${entry.dir}:${entry.module}`;
+    #load(key: string): Promise<HttpMaterializer> {
         const cached = this.#loaded.get(key);
         if (cached !== undefined) return cached;
         const promise = (async (): Promise<HttpMaterializer> => {
-            const module = await import(pathToFileURL(path.join(entry.dir, entry.module)).href) as {
+            const module = await import(pathToFileURL(key).href) as {
                 default?: HttpMaterializer | { new(): HttpMaterializer };
             };
             const exported = module.default;
             if (typeof exported === "function") return new exported();
             if (exported !== undefined && typeof exported === "object" && "eligible" in exported) return exported;
-            throw new Error(`http materializer module '${entry.module}' exports no HttpMaterializer default`);
+            throw new Error(`http materializer module '${key}' exports no HttpMaterializer default`);
         })();
         this.#loaded.set(key, promise);
         return promise;
@@ -165,7 +148,7 @@ export default class MaterializerRegistry {
             const id = (entry as { id?: unknown }).id;
             const module = (entry as { module?: unknown }).module;
             if (typeof id !== "string" || id.length === 0 || typeof module !== "string" || module.length === 0) continue;
-            materializers.push({ id, module });
+            materializers.push({ id, module: await Meta.moduleFile(manifest, module) });
         }
         if (materializers.length === 0) return null;
         return { packageName: manifest.packageName ?? path.basename(dir), materializers };

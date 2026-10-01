@@ -15,8 +15,10 @@ What plurnk's packages share that no single package owns: plugin discovery and t
 **The teaching corpus**: authored policy, an optional Recap, the Plurnk skill entry, and built-in scheme references resolved from this installed package. Meta owns the source bytes and membership; core owns admission, resource composition, and projection. See [`CORPUS.md`](./CORPUS.md) and {§teaching-corpus}.
 
 Capability-library packages declare one `package.json#plurnk.kind`. Standard Agent Plugin bundles
-instead declare `plugin.json#extensions.ai.plurnk.module`: a daemon-module entry point that registers
-capabilities through their owning interfaces. Never declare both. Shared manifest and filesystem
+instead put that same native declaration under `plugin.json#extensions.ai.plurnk`.
+The capability's loader and lifetime stay unchanged; `kind: "module"` opts into the daemon lifecycle.
+Native families use npm installation, with user plugin-folder loading also available for modules.
+Never declare both. Shared manifest and filesystem
 validation is exported from `@plurnk/plurnk-meta/agent-plugin`; the portable component loader remains
 `@plurnk/plurnk-agent-plugins`. Native imports use the same operator trust gate.
 

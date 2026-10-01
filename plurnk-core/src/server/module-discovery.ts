@@ -50,7 +50,7 @@ const readManifest = async (dir: string): Promise<ModuleManifest | null> => {
     if (manifest === null || manifest.packageName === null) return null;
     const moduleSubpath = manifest.plurnk.module;
     if (typeof moduleSubpath !== "string" || moduleSubpath.length === 0) return null;
-    return { packageName: manifest.packageName, module: moduleSubpath, manifestPath: manifest.manifestPath };
+    return { packageName: manifest.packageName, module: await Meta.moduleFile(manifest, moduleSubpath), manifestPath: manifest.manifestPath };
 };
 
 export const discoverDaemonModules = async (
@@ -91,7 +91,7 @@ export const discoverDaemonModules = async (
             if (sources.plugins.some(({ root }) => root === candidate.dir)) {
                 await EnvDefaults.nativeFile(candidate.dir, manifest.packageName);
             }
-            const imported = await import(pathToFileURL(join(candidate.dir, manifest.module)).href) as {
+            const imported = await import(pathToFileURL(manifest.module).href) as {
                 default?: unknown;
             };
             const exported = imported.default;

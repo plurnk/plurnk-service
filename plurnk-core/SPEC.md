@@ -3748,6 +3748,8 @@ Node's pre-script env-file form and the executable's post-script form share the 
 | Agent Plugin native extension | `ai.plurnk/.env.defaults` | The winning daemon-wide plugin in {§agent-plugins-hosting}, a valid native declaration, and the same trust gate |
 
 Root and trust flags apply before collection. A project plugin contributes no native panel.
+Non-module native panels follow their npm-only family discovery ({§plugin-manifest-read});
+a plain-folder declaration does not suppress an installed capability's panel.
 The file travels with its code and is its configuration reference. All admitted files compose
 one floor, applied set-if-unset beneath operator sources. `plurnk-service config defaults`
 renders those same owner-labelled files, preserving comments and optional declarations without
@@ -4033,7 +4035,7 @@ even if setup fails. A returned object identical to its module is tracked once.
 | Source | Declaration | Lifetime |
 |---|---|---|
 | Platform capability package | `package.json#plurnk` with `kind: "module"` and `module` | Daemon-wide |
-| Agent Plugin | `plugin.json#extensions.ai.plurnk.module`, a path under `ai.plurnk/` | Daemon-wide; npm and selected user roots only |
+| Agent Plugin | `plugin.json#extensions.ai.plurnk` with `kind: "module"` and a `module` path under `ai.plurnk/` | Daemon-wide; npm and selected user roots only |
 | Project Agent Plugin | Portable components only | Workspace-scoped; native code is not imported |
 
 The export is one DaemonModule object or no-argument factory. Standard bundles follow

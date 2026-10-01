@@ -90,7 +90,7 @@ test("{§module-discovery} a directory plugin loads its floor, publishes its act
     await mkdir(join(plugin, "ai.plurnk"), { recursive: true });
     await writeFile(join(plugin, "plugin.json"), JSON.stringify({
         $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "native-fixture",
-        extensions: { "ai.plurnk": { module: "ai.plurnk/plugin.mjs" } },
+        extensions: { "ai.plurnk": { kind: "module", module: "ai.plurnk/plugin.mjs" } },
     }));
     await writeFile(join(plugin, "ai.plurnk/.env.defaults"), "PLURNK_NATIVE_FIXTURE=from-plugin\n");
     await writeFile(join(plugin, "ai.plurnk/plugin.mjs"), `
@@ -114,18 +114,19 @@ export default () => ({
     await mkdir(broken);
     await writeFile(join(broken, "plugin.json"), JSON.stringify({
         $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "broken",
-        extensions: { "ai.plurnk": { module: "../escape.mjs" } },
+        extensions: { "ai.plurnk": { kind: "module", module: "../escape.mjs" } },
     }));
     const nodeModules = resolve(import.meta.dirname, "../../..", "node_modules");
     const collected = await EnvDefaults.collect(Paths.packageRoot, nodeModules, { hostPaths: paths });
-    assert.equal(collected.configurationErrors.length, 1);
+    assert.deepEqual(collected.configurationErrors, [], "the floor collector validates panels; the native family validates its entry point");
     EnvDefaults.apply(EnvDefaults.merge(collected.files));
     const db = await openMigrated();
     const daemon = new Daemon({ db, hostPaths: paths, nodeModulesPath: nodeModules });
     try {
         await daemon.start();
         assert.deepEqual(await daemon.invokeModuleAction("fixture.native", {}, { scope: "worldless" }), { value: "from-plugin" });
-        assert.ok(daemon.configurationNotices().some(({ key }) => key === join(broken, "plugin.json")));
+        const notice = daemon.configurationNotices().find(({ key }) => key === join(broken, "plugin.json"));
+        assert.ok(notice, "invalid native code is reported without preventing unrelated modules from loading");
     } finally {
         await daemon.stop();
         await db.close();

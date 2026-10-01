@@ -159,7 +159,7 @@ test("{§module-discovery}: user plugins shadow npm by standard name; project na
         await mkdir(join(dir, "ai.plurnk"), { recursive: true });
         await writeFile(join(dir, "plugin.json"), JSON.stringify({
             $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name,
-            extensions: { "ai.plurnk": { module: "ai.plurnk/plugin.mjs" } },
+            extensions: { "ai.plurnk": { kind: "module", module: "ai.plurnk/plugin.mjs" } },
         }));
         await writeFile(join(dir, "ai.plurnk/plugin.mjs"), `export default () => ({ tag: ${JSON.stringify(tag)}, setup() {} });`);
     };
@@ -179,11 +179,11 @@ test("{§module-discovery}: bad native configuration is diagnosed without exclud
     const broken = await packageOf(root, "bad-plugin", {}, "export default {};");
     await writeFile(join(broken.dir, "plugin.json"), JSON.stringify({
         $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "bad-plugin",
-        extensions: { "ai.plurnk": { module: "../outside.mjs" } },
+        extensions: { "ai.plurnk": { kind: "module", module: "../outside.mjs" } },
     }));
     const healthy = await packageOf(root, "healthy", { plurnk: { kind: "module", module: "module.mjs" } }, "export default { setup() {} };");
     const found = await discoverDaemonModules({ hostPaths: new HostPaths({ home: root, env: {} }), packageDirs: [broken, healthy] });
     assert.equal(found.modules.length, 1);
     assert.equal(found.configurationErrors.length, 1);
-    assert.match(found.configurationErrors[0].message, /extensions.ai.plurnk must name one module beneath ai.plurnk/);
+    assert.match(found.configurationErrors[0].message, /native module must be beneath ai.plurnk/);
 });

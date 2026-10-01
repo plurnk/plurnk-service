@@ -42,7 +42,8 @@ export interface PackageCandidate {
     name: string;
 }
 
-export type PluginKind = "exec" | "mimetype" | "provider" | "scheme" | "http-materializer" | "module";
+const PLUGIN_KINDS = ["exec", "mimetype", "provider", "scheme", "http-materializer", "module"] as const;
+export type PluginKind = typeof PLUGIN_KINDS[number];
 
 // {§plugin-manifest-read} — one native declaration, projected to its owning family.
 export interface PluginManifest {
@@ -108,7 +109,7 @@ export default class Meta {
     // {§plugin-manifest-read} — null for a missing or malformed package.json, a non-object,
     // no `plurnk` object, or another family: none of those is a package of this family, and
     // discovery skips them without a word. An abort is the caller's contract and surfaces.
-    static async readManifest(dir: string, kind: PluginKind, { signal }: { signal?: AbortSignal } = {}): Promise<PluginManifest | null> {
+    static async readManifest(dir: string, kind?: PluginKind, { signal }: { signal?: AbortSignal } = {}): Promise<PluginManifest | null> {
         const pluginPath = path.join(dir, "plugin.json");
         let plugin: Awaited<ReturnType<typeof AgentPluginFiles.manifest>>;
         try {
@@ -118,7 +119,6 @@ export default class Meta {
             if (cause instanceof Error && cause.name === "AbortError") throw cause;
             throw new ConfigurationError(pluginPath, `${pluginPath}: plugin.json could not be read.`, { cause });
         }
-        if (plugin !== null && kind !== "module") return null;
         const packageRecord = await Meta.#packageRecord(dir, signal);
         if (plugin !== null) {
             if ("rejected" in plugin) {
@@ -129,24 +129,37 @@ export default class Meta {
             }
             const native = plugin.manifest.extensions?.["ai.plurnk"];
             if (native === undefined) return null;
-            if (Object.keys(native).some((key) => key !== "module")
-                || typeof native.module !== "string" || !native.module.startsWith("ai.plurnk/")
-                || !AgentPluginFiles.inside(path.resolve(dir, "ai.plurnk"), path.resolve(dir, native.module))) {
-                throw new ConfigurationError(pluginPath, `${pluginPath}: extensions.ai.plurnk must name one module beneath ai.plurnk/.`);
+            if (!PLUGIN_KINDS.some((family) => Meta.declaresKind(native, family))) {
+                throw new ConfigurationError(pluginPath, `${pluginPath}: extensions.ai.plurnk.kind must name one native capability family.`);
             }
-            const root = await AgentPluginFiles.resolved(dir);
-            if (root === null || !await AgentPluginFiles.contained(root, path.resolve(root, native.module))) {
-                throw new ConfigurationError(pluginPath, `${pluginPath}: extensions.ai.plurnk.module resolves outside the plugin root.`);
-            }
+            if (kind !== undefined && !Meta.declaresKind(native, kind)) return null;
             const packageName = typeof packageRecord?.name === "string" && packageRecord.name.length > 0
                 ? packageRecord.name : plugin.manifest.name;
-            return { manifestPath: pluginPath, packageName, plurnk: { kind: "module", ...native } };
+            return { manifestPath: pluginPath, packageName, plurnk: native };
         }
         if (packageRecord === null) return null;
         const plurnk = packageRecord.plurnk;
-        if (!isObject(plurnk) || !Meta.declaresKind(plurnk, kind)) return null;
+        if (!isObject(plurnk) || !(kind === undefined
+            ? PLUGIN_KINDS.some((family) => Meta.declaresKind(plurnk, family))
+            : Meta.declaresKind(plurnk, kind))) return null;
         const packageName = typeof packageRecord.name === "string" && packageRecord.name.length > 0 ? packageRecord.name : null;
         return { manifestPath: path.join(dir, "package.json"), packageName, plurnk };
+    }
+
+    // {§plugin-manifest-read} Family loaders resolve their own file declarations through this boundary.
+    static async moduleFile(manifest: PluginManifest, relative: string): Promise<string> {
+        const dir = path.dirname(manifest.manifestPath);
+        const location = path.resolve(dir, relative);
+        if (path.basename(manifest.manifestPath) !== "plugin.json") return location;
+        if (!relative.startsWith("ai.plurnk/")
+            || !AgentPluginFiles.inside(path.join(dir, "ai.plurnk"), location)) {
+            throw new ConfigurationError(manifest.manifestPath, `${manifest.manifestPath}: native module must be beneath ai.plurnk/.`);
+        }
+        const root = await AgentPluginFiles.resolved(dir);
+        if (root === null || !await AgentPluginFiles.contained(root, location)) {
+            throw new ConfigurationError(manifest.manifestPath, `${manifest.manifestPath}: native module resolves outside the plugin root.`);
+        }
+        return location;
     }
 
     static async #packageRecord(dir: string, signal?: AbortSignal): Promise<Record<string, unknown> | null> {
