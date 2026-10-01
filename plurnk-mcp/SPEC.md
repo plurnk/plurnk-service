@@ -214,7 +214,7 @@ originating distinction in its canonical Problem/result path.
 
 ## §mcp-configuration Configuration
 
-MCP servers are complete connection definitions ({§mcp-server-definition}). Standalone files and environment declarations
+MCP servers are complete connection definitions ({§mcp-server-definition}). Standalone files, plugin components, and environment declarations
 supply the service baseline; live additions belong to the workspace. All use the common resolution
 and lifecycle ({§configuration-definition-resolution}, {§functionality-coordinator}). Disabled definitions remain
 client-visible but contribute no connection, Registry, documentation, or resource authority.
@@ -227,9 +227,10 @@ by alias, highest precedence first:
 |---|---|
 | Workspace overlay | Ordinary `mcp (add)` state |
 | Environment | `PLURNK_MCP_<alias>` |
-| Project file | `<project>/.agents/mcp.json` |
-| Plurnk-only file | `$XDG_CONFIG_HOME/plurnk/mcp.json` |
-| Shared global file | `~/.agents/mcp.json` |
+| Project | `<project>/.agents/mcp.json`, then selected project plugins |
+| Plurnk-only | `$XDG_CONFIG_HOME/plurnk/mcp.json`, then selected Plurnk plugins |
+| Shared global | `~/.agents/mcp.json`, then selected global plugins |
+| Installed npm plugins | Selected plugin bundles in the installed graph |
 
 - The document is an object with required `mcpServers`, an object keyed by server alias,
   and an optional string `$schema` editor hint. No schema is fetched. No other top-level fields.
@@ -249,6 +250,29 @@ by alias, highest precedence first:
 `mcpServers` follows the common MCP catalog shape, also used by
 [MCP Inspector](https://github.com/modelcontextprotocol/inspector/blob/main/docs/mcp-server-configuration.md).
 The discovery locations are Plurnk's supported cross-client convention, not an MCP wire requirement.
+
+§mcp-plugin-configuration **Plugin MCP components use their format's interpretation, not the native file dialect.**
+The validated components supplied by {§agent-plugins-hosting} become ordinary configured MCP
+definitions. The adapter carries the canonical plugin root and persistent data directory as
+interpretation context under {§functionality-adapter}; inspection preserves symbolic definitions.
+
+| Field or boundary | Agent Plugins v1 behavior |
+|---|---|
+| `command` | Bare executable or plugin-root-relative `./` path; no expansion |
+| `args`, `env`, `cwd` | One nonrecursive expansion of `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` only; all other placeholder-like text stays literal |
+| Omitted `cwd` | Plugin root; explicit plugin/data cwd is contained within its corresponding resolved root |
+| Subprocess environment | Ordinary admitted operator/workspace environment, then configured values, then authoritative `PLUGIN_ROOT` and `PLUGIN_DATA` |
+| Data | Created before launch; preserved across disable, removal of an override, and in-place plugin updates |
+| Filesystem containment | Rechecked before each subprocess launch, including existing parents of missing paths |
+| HTTP URL and headers | Literal; client-owned protocol headers win; existing no-redirect rule applies |
+| Unsupported transport or name | Skip the entry with a configuration notice; never rename, reinterpret, or disable independent entries |
+
+Supported transports are stdio and Streamable HTTP, not legacy SSE. Server names must meet
+Plurnk's runtime alias grammar `[a-z][a-z0-9-]*`; other standard map keys are explicitly unsupported.
+The standard loader owns component validation and narrow failure boundaries
+({§agent-plugins-mcp-entries}, {§agent-plugins-components}). Connection failures remain ordinary
+unavailable outcomes. Current adapter notices join client/model configuration diagnostics;
+source repair replaces them, rather than retaining a historical warning.
 
 §mcp-activation-isolation **Cold endpoint failure is capability-local.** An enabled server
 that cannot connect or complete discovery during workspace activation remains

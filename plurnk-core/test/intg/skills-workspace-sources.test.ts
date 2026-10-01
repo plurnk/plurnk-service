@@ -12,6 +12,50 @@ import { readStmt } from "./_dsl.ts";
 
 const document = (description: string): string => `---\nname: review\ndescription: ${description}\n---\nRead guide.md.\n`;
 
+test("{§agent-plugins-hosting} plugin skills follow source precedence and workspace management without a separate lifecycle", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-plugin-skills-"));
+    const project = join(root, "project");
+    const hostPaths = new HostPaths({ home: join(root, "home"), env: {} });
+    const standalone = join(hostPaths.globalSkillsDir, "review");
+    const plugin = join(hostPaths.projectPluginsDir(project), "review-tools");
+    const pluginSkill = join(plugin, "skills", "review");
+    const override = join(root, "override", "review");
+    for (const [directory, description] of [[standalone, "Global"], [pluginSkill, "Project plugin"], [override, "Workspace override"]]) {
+        await mkdir(directory!, { recursive: true });
+        await writeFile(join(directory!, "SKILL.md"), document(description!));
+    }
+    await writeFile(join(plugin, "plugin.json"), JSON.stringify({
+        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "review-tools",
+    }));
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null, hostPaths });
+    t.after(async () => { await daemon.stop(); await db.close(); await rm(root, { recursive: true, force: true }); });
+    await daemon.start();
+    const a = await daemon.createWorkspace({ name: "plugin-skills-a", projectRoot: project });
+    const b = await daemon.createWorkspace({ name: "plugin-skills-b", projectRoot: null });
+    const action = (workspaceId: number, verb: string, params = {}) => daemon.invokeModuleAction(
+        `workspace.skills.${verb}`, params, { scope: "workspace", workspaceId },
+    );
+    const read = (workspace: typeof a) => daemon.dispatchAsClient({
+        ...workspace, statement: readStmt(parsePath("skill://review/SKILL.md"), { marks: [1, -1] }),
+    });
+    assert.match(String((await read(a)).content), /Project plugin/);
+    assert.match(String((await read(b)).content), /Global/);
+    const listed = await action(a.workspaceId, "list") as FunctionalityListResult;
+    assert.deepEqual(listed.definitions.find(({ alias }) => alias === "review")?.provenance, {
+        kind: "plugin", source: join(pluginSkill, "SKILL.md"),
+    });
+    await action(a.workspaceId, "disable", { alias: "review" });
+    assert.equal((await read(a)).status, 404);
+    await action(a.workspaceId, "enable", { alias: "review" });
+    assert.match(String((await read(a)).content), /Project plugin/);
+    await action(a.workspaceId, "add", { alias: "review", definition: { name: "review", source: override } });
+    assert.match(String((await read(a)).content), /Workspace override/);
+    await action(a.workspaceId, "remove", { alias: "review" });
+    assert.match(String((await read(a)).content), /Project plugin/);
+    assert.equal(await readFile(join(pluginSkill, "SKILL.md"), "utf8"), document("Project plugin"));
+});
+
 test("{§skills-functionality} local additions are live, workspace-owned references; removing them preserves every source", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-skills-references-"));
     const project = join(root, "project");

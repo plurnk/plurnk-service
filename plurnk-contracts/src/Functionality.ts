@@ -33,6 +33,13 @@ export interface FunctionalityDefinitionSource {
 export interface FunctionalityServiceDefinition extends FunctionalityDefinitionSource {
     readonly enabled: boolean;
     readonly provenance?: FunctionalityProvenance;
+    // Source-specific interpretation, owned by the adapter; never persisted as a local definition.
+    readonly context?: object;
+}
+
+export interface FunctionalityPreparedDefinition {
+    readonly definition: object;
+    readonly context?: object;
 }
 
 export type FunctionalityOutcome =
@@ -49,7 +56,7 @@ export interface FunctionalityDocument {
 
 export interface FunctionalityPreparation extends WorkspaceCapabilityIdentity {
     // The enabled definitions to prepare, in alias order.
-    readonly enabled: ReadonlyMap<string, object>;
+    readonly enabled: ReadonlyMap<string, FunctionalityPreparedDefinition>;
     // The adapter's previous process snapshot for this workspace, when one exists.
     readonly previous: unknown | null;
     // Whether failures publish as unavailable outcomes (activation, model

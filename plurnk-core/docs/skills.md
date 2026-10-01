@@ -12,10 +12,12 @@ scripts, and assets beside it. Enabled skills appear in the turn-0 catalog as
 | `project` | `<project root>/.agents/skills/<name>/` | the repository (often committed) |
 | `plurnk` | `$XDG_CONFIG_HOME/plurnk/skills/<name>/` | the user, for plurnk alone |
 | `global` | `~/.agents/skills/<name>/` | the user, for every agent and project |
+| plugin | `skills/<name>/` inside an installed Agent Plugin | a project, user or npm installation |
 | `service` | a tree the service itself provides | plurnk (for example the `plurnk` skill: its own configuration and model reference) |
 
 A `project` skill shadows a `plurnk` one of the same name, which shadows a
-`global` one, which shadows a `service` one. These roots are read-only inputs.
+`global` one, which shadows a `service` one. Plugin skills join their installation's
+scope after standalone skills; npm bundles follow global roots. These are read-only inputs.
 The cascading environment can replace a whole definition above them;
 `skills (add)` creates a workspace override above that. Declared skills are
 enabled by default. A disabled skill remains listed but has no resource tree.

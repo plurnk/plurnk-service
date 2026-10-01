@@ -1,5 +1,5 @@
 import { lstat, readFile, realpath, stat } from "node:fs/promises";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { validateManifest, type ManifestResult } from "./AgentPluginManifest.ts";
 
 // {§agent-plugins-containment} Shared by portable components and native extension admission.
@@ -22,7 +22,9 @@ export default class AgentPluginFiles {
     static async contained(root: string, candidate: string): Promise<boolean> {
         if (!AgentPluginFiles.inside(root, candidate)) return false;
         const real = await AgentPluginFiles.resolved(candidate);
-        return real === null || AgentPluginFiles.inside(root, real);
+        if (real !== null) return AgentPluginFiles.inside(root, real);
+        // A missing leaf can still escape through an existing symlinked parent.
+        return candidate !== root && AgentPluginFiles.contained(root, dirname(candidate));
     }
 
     // null is absence, not an invalid manifest that permits another format to take its place.

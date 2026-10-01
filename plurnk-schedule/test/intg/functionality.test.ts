@@ -79,7 +79,7 @@ const preparation = (
     options: { previous?: unknown; failure?: "publish-unavailable" | "reject"; force?: string } = {},
 ) => ({
     workspaceId,
-    enabled: new Map(Object.entries(enabled)),
+    enabled: new Map(Object.entries(enabled).map(([alias, definition]) => [alias, { definition }])),
     previous: options.previous ?? null,
     failure: options.failure ?? "publish-unavailable",
     progress: () => undefined,

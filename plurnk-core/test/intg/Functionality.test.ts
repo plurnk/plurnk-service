@@ -88,7 +88,7 @@ const fixtureAdapter = (log: string[]): FunctionalityAdapter => ({
         const outcomes = new Map<string, FunctionalityOutcome>();
         const runtimes: RuntimeRegistration[] = [];
         const documents: Array<{ pathname: string; content: string }> = [];
-        for (const [alias, definition] of enabled) {
+        for (const [alias, { definition }] of enabled) {
             const kind = (definition as { kind: string }).kind;
             if (kind === "fail") {
                 const problem: ProblemDetails = Problems.create("fx:fixture", "refused", 502, `${alias} refused to prepare.`, { retryable: true });
@@ -318,6 +318,51 @@ test("{§functionality-inspection} a changed inherited definition never borrows 
     assert.deepEqual(await listed(), { alias: "svc", origin: "service", definition, state: "dormant" }, "an old failure does not describe its replacement");
 });
 
+test("{§functionality-adapter} interpretation context participates in runtime identity and is removed by a complete local replacement", async (t) => {
+    const db = await openMigrated();
+    const adapter = fixtureAdapter([]);
+    let context = { root: "/plugins/one" };
+    let prepared: unknown;
+    let preparations = 0;
+    let handle: FunctionalityFamilyHandle;
+    const daemon = new Daemon({ db, provider: null });
+    daemon.registerModule({ setup: (seam) => {
+        handle = seam.registerFunctionalityAdapter({
+            ...adapter,
+            available: async () => [{ alias: "svc", definition: { kind: "ok" }, enabled: true, context }],
+            prepare: async (input) => {
+                preparations++;
+                prepared = input.enabled.get("svc");
+                return adapter.prepare(input);
+            },
+        });
+    } });
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    const workspaceId = await insertWorkspace(db, `interpretation-context-${crypto.randomUUID()}`);
+    const invoke = (verb: string, params = {}) => daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId));
+    const listed = async () => (await invoke("list") as FunctionalityListResult).definitions[0]!;
+    await invoke("enable", { alias: "svc" });
+    assert.deepEqual(prepared, { definition: { kind: "ok" }, context });
+    assert.equal(Object.hasOwn(await listed(), "context"), false, "adapter preparation context is not another public configuration field");
+    const before = preparations;
+    await handle!.refresh({ workspaceId }, { ifChanged: true });
+    assert.equal(preparations, before);
+    context = { root: "/plugins/two" };
+    assert.equal((await listed()).state, "dormant", "identical source text at a different interpretation root is not the old runtime");
+    await handle!.refresh({ workspaceId }, { ifChanged: true });
+    assert.equal(preparations, before + 1);
+    assert.deepEqual(prepared, { definition: { kind: "ok" }, context });
+    await invoke("add", { alias: "svc", definition: { kind: "ok" } });
+    assert.deepEqual(prepared, { definition: { kind: "ok" } }, "a local replacement cannot inherit plugin interpretation");
+    await invoke("remove", { alias: "svc" });
+    assert.deepEqual(prepared, { definition: { kind: "ok" }, context }, "remove restores the current complete binding");
+    context.root = "/plugins/three";
+    assert.equal((await listed()).state, "dormant", "the publication retains an owned snapshot, not a mutable source object");
+    await handle!.refresh({ workspaceId }, { ifChanged: true });
+    assert.deepEqual(prepared, { definition: { kind: "ok" }, context });
+});
+
 test("{§configuration-provenance} inspection reports the winning source without persisting it or preparing it", async (t) => {
     const db = await openMigrated();
     const log: string[] = [];
@@ -418,7 +463,7 @@ test("{§configuration-definition-resolution} a workspace definition replaces th
         },
         available: async () => [{ alias: "svc", definition: baseline, enabled: true }],
         prepare: async (input) => {
-            prepared = input.enabled.get("svc");
+            prepared = input.enabled.get("svc")?.definition;
             return adapter.prepare(input);
         },
     }); } });

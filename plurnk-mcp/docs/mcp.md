@@ -34,7 +34,7 @@ effect, admitted under the loop's policy.
 
 A complete definition names one transport: `stdio` has `command` and optional
 `args`, `env`, `cwd`; `streamable-http` has `url` and optional `headers`,
-`authorization`. Local commands run without a shell, in workspace-owned state
+`authorization`. Native definitions run local commands without a shell, in workspace-owned state
 unless `cwd` supplies an absolute directory. Use absolute project paths in
 arguments. This is file placement, not a sandbox or plugin installation.
 A tool marked `readOnlyHint` runs as a read; other tools retain the `host` effect.
@@ -49,6 +49,14 @@ Live management changes the workspace, never those files. File edits are
 picked up before the next turn; enabledness and tool filters still use
 `PLURNK_MCP_<alias>_ENABLED` and `PLURNK_MCP_<alias>_TOOLS`.
 
+Installed Agent Plugins contribute servers from their root `mcp.json` through
+the same family. Within each scope standalone definitions win; nearer scopes
+win over farther ones. Plugin commands default to the plugin root and receive
+`PLUGIN_ROOT` plus a persistent `PLUGIN_DATA` directory. Their arguments,
+environment values, and cwd expand only those two placeholders; HTTP values
+and all other placeholder-like text remain literal. `list` identifies the
+source. A complete workspace override replaces these plugin semantics too.
+
 A local server inherits the operator's environment, which is where it reads
 its credentials, without plurnk's own settings or model provider keys.
 Workspace variables set with the `env` family (`env.md`) apply on top at
@@ -60,7 +68,7 @@ workspace values, without a daemon restart.
 {"scope": "workspace", "alias": "SERVICE_TOKEN", "definition": {"value": "<credential>"}}
 ```
 
-Definitions may reference workspace variables as `${NAME}` in arguments,
+Native definitions may reference workspace variables as `${NAME}` in arguments,
 environment values, working directories, HTTP headers, and authorization.
 Structured authorization secrets must be references, not literal credentials.
 

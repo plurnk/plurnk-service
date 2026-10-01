@@ -56,6 +56,7 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
+        "@plurnk/plurnk-agent-plugins": "1.24.0",
         "@modelcontextprotocol/client": "2.0.0",
         "@plurnk/plurnk-meta": "1.24.0",
         "@plurnk/plurnk-contracts": "1.24.0"

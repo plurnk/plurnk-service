@@ -93,7 +93,8 @@ a model cannot widen their ceiling by changing its policy prose.
 ## Skills
 
 Project names shadow Plurnk-only names, then user-global names, then
-service-provided skills. These roots are read-only configuration inputs;
+service-provided skills. Agent Plugin skills join the same scope after standalone
+skills; npm bundles follow user-global roots. These are read-only configuration inputs;
 external edits appear at the next turn. Plurnk's own skill uses the same READ,
 discovery, and workspace enablement as other skills.
 

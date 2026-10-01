@@ -1,18 +1,62 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ServerConnection from "./client.ts";
 import { MCP_PROTOCOL_VERSION } from "./protocol.ts";
 import { FIXTURES, stdioServer } from "../test/definitions.ts";
+import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
+import { serveMcpHttp } from "../test/http-fixture.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
 const env = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
     PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
+
+test("{§mcp-plugin-configuration} a plugin process receives reserved variables and literal inputs with no native interpolation", async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "plurnk-mcp-launch-${PLUGIN_DATA}-"));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    const context = { root: join(directory, "plugin"), data: join(directory, "data") };
+    await mkdir(context.root);
+    const executable = join(context.root, "run");
+    await writeFile(executable, `#!${process.execPath}\nimport ${JSON.stringify(new URL("./fixtures/echo-server.mjs", import.meta.url).href)};\n`);
+    await chmod(executable, 0o755);
+    const definition = {
+        name: "plugin", type: "stdio" as const, command: "./run", cwd: "${PLUGIN_DATA}",
+        args: ["${PLUGIN_ROOT}", "${PLUGIN_DATA}", "${SAMPLE}"],
+        env: { PLURNK_MCP_TEST_LAUNCH: "1", SAMPLE: "${PLUGIN_ROOT}", LITERAL: "${SAMPLE}" },
+    };
+    const connection = new ServerConnection(definition, { ...env, SAMPLE: "must-not-expand" }, {
+        plugin: context, cwd: "/unused-native-cwd", environment: { ...process.env, PLUGIN_ROOT: "wrong", PLUGIN_DATA: "wrong" },
+    });
+    try {
+        const result = await connection.callTool("launch", {}) as { content: Array<{ text: string }> };
+        const values = JSON.parse(result.content[0]!.text);
+        assert.deepEqual(values, {
+            cwd: context.data, argv: [context.root, context.data, "${SAMPLE}"], pid: values.pid,
+            root: context.root, data: context.data, sample: context.root, literal: "${SAMPLE}",
+        });
+        assert.ok(Number.isSafeInteger(values.pid));
+        assert.deepEqual(connection.definition, definition);
+    } finally { await connection.close(); }
+});
+
+test("{§mcp-plugin-configuration} remote plugin headers stay literal and protocol headers remain client-owned", async (t) => {
+    const handler = createMcpHandler(() => new McpServer({ name: "literal", version: "1.0.0" }));
+    const { url, requests } = await serveMcpHttp(t, handler);
+    const connection = new ServerConnection({ name: "literal", type: "streamable-http", url, headers: {
+        "x-literal": "${SECRET}/${PLUGIN_ROOT}", "MCP-Protocol-Version": "invalid",
+    } }, { ...env, SECRET: "must-not-expand" }, { plugin: { root: "/plugin", data: "/data" } });
+    try {
+        await connection.connect();
+        assert.ok(requests.length > 0);
+        assert.ok(requests.every(({ headers }) => headers.get("x-literal") === "${SECRET}/${PLUGIN_ROOT}"));
+        assert.ok(requests.every(({ headers }) => headers.get("mcp-protocol-version") !== "invalid"));
+    } finally { await connection.close(); }
+});
 
 test("client pins the current MCP revision and exercises tools and resources", async () => {
     const connection = new ServerConnection(stdioServer("echo", [fixture]), env);

@@ -317,7 +317,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
         const overlay = await GitMembership.resolveOverlay(this.#db, workspaceId, rows, undefined);
         const outcomes = new Map<string, FunctionalityOutcome>();
         const documents: Array<{ pathname: string; content: string }> = [];
-        for (const [alias, definition] of enabled) {
+        for (const [alias, { definition }] of enabled) {
             const resolution = resolutionOf(definition as MembersDefinition, overlay);
             outcomes.set(alias, { state: "active", detail: resolution });
             documents.push(membersDocument(alias, definition as MembersDefinition, resolution));
@@ -335,7 +335,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
         // Desired state is durable; the overlay keeps reflecting it after the workspace cools.
     }
 
-    #projection(enabled: ReadonlyMap<string, object>): OverlayRow[] {
+    #projection(enabled: FunctionalityPreparation["enabled"]): OverlayRow[] {
         const rows = new Map<string, OverlayRow>();
         const admit = (definition: MembersDefinition): void => {
             const row = rowOf(definition);
@@ -343,7 +343,7 @@ export default class MembersFunctionality implements FunctionalityAdapter {
             const current = rows.get(key);
             if (current === undefined || (current.source === "model" && row.source === "members")) rows.set(key, row);
         };
-        for (const definition of enabled.values()) admit(definition as MembersDefinition);
+        for (const { definition } of enabled.values()) admit(definition as MembersDefinition);
         return [...rows.values()];
     }
 

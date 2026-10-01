@@ -15,6 +15,7 @@ import type {
     FunctionalityPrepared,
     FunctionalityServiceDefinition,
     JsonSchema,
+    Notice,
     WorkspaceCapabilityGate,
     WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
@@ -133,6 +134,8 @@ export interface FunctionalityAdapter {
     // authored teaching beneath the family document's generated header, by the runtime doc-file rule.
     readonly docsDir?: string;
     available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]>;
+    // Current partial-source diagnostics; independent valid definitions remain available.
+    configurationNotices?(identity: WorkspaceCapabilityIdentity): readonly Notice[];
     discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity, options?: FunctionalityOptions): Promise<readonly FunctionalityCandidate[]>;
     admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller?: FunctionalityCaller, options?: FunctionalityOptions): Promise<FunctionalityDefinitionSource>;
     prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared<RuntimeRegistration>>;

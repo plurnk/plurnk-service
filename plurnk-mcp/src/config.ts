@@ -1,9 +1,15 @@
 // {§mcp-configuration} Definitions and independent controls share the resource environment dialect.
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
-import type { FunctionalityServiceDefinition, McpServerDefinition } from "@plurnk/plurnk-contracts";
+import type { FunctionalityServiceDefinition, McpServerDefinition, Notice } from "@plurnk/plurnk-contracts";
+import type { DiscoveredPlugin } from "@plurnk/plurnk-agent-plugins";
 import { readDefinition } from "./definition.ts";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+
+export interface PluginSources {
+    readonly plugins: readonly (DiscoveredPlugin & { readonly data: string })[];
+    readonly roots: Readonly<Record<string, string | null>>;
+}
 
 export type { McpAuthorization } from "@plurnk/plurnk-contracts";
 
@@ -82,16 +88,41 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 export const configuredDefinitions = async (
     directories: readonly string[],
     environ: NodeJS.ProcessEnv = process.env,
+    plugins?: PluginSources & { report(notice: Notice): void },
 ): Promise<Array<FunctionalityServiceDefinition & { definition: McpServerDefinition }>> => {
     const { resources } = configuration(environ);
     const selected = new Map(serviceDefinitions(environ).map((entry) => [entry.alias, entry]));
-    for (const directory of directories) {
+    const addPlugins = (scopeDirectory: string | null): void => {
+        for (const plugin of plugins?.plugins ?? []) {
+            const root = plugins!.roots[plugin.scope];
+            if ((root == null ? null : dirname(root)) !== scopeDirectory) continue;
+            const file = join(plugin.root, "mcp.json");
+            for (const [alias, entry] of plugin.mcpServers ?? []) {
+                if (selected.has(alias)) continue;
+                const reference = `/mcpServers/${alias.replaceAll("~", "~0").replaceAll("/", "~1")}`;
+                if (!isServerName(alias) || entry.type === "sse") {
+                    plugins!.report({
+                        source: "engine:configuration", kind: "plugin_configuration", level: "warn", family: "mcp",
+                        message: `${file}#${reference}: ${entry.type === "sse" ? "legacy SSE transport is unsupported" : "server name must match [a-z][a-z0-9-]*"}; this entry was skipped.`,
+                    });
+                    continue;
+                }
+                const definition = readDefinition({ ...entry, name: alias });
+                selected.set(alias, {
+                    alias, definition, enabled: resources.enabled(alias),
+                    context: { root: plugin.root, data: plugin.data },
+                    provenance: { kind: "plugin", source: file, reference },
+                });
+            }
+        }
+    };
+    const addFile = async (directory: string): Promise<void> => {
         const file = join(directory, "mcp.json");
         let contents: string;
         try {
             contents = await readFile(file, "utf8");
         } catch (cause) {
-            if ((cause as NodeJS.ErrnoException).code === "ENOENT") continue;
+            if ((cause as NodeJS.ErrnoException).code === "ENOENT") return;
             throw new ConfigurationError(file, `${file} could not be read.`, { cause });
         }
         let document: unknown;
@@ -118,7 +149,12 @@ export const configuredDefinitions = async (
             }
             selected.set(alias, { alias, definition, enabled: resources.enabled(alias), provenance: { kind: "file", source: file, reference } });
         }
+    };
+    for (const directory of directories) {
+        await addFile(directory);
+        addPlugins(directory);
     }
+    addPlugins(null);
     return [...selected.values()].toSorted((left, right) => left.alias.localeCompare(right.alias));
 };
 

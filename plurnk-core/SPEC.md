@@ -4284,7 +4284,12 @@ family declares, at admission, in the service projection, and on persisted
 state, so an environment variable's name is an alias exactly as a skill name
 is. Admission distinguishes explicit client
 actions from model operations where the family contract requires it
-({§members-model-scope}). Preparation returns runtimes, documents, per-alias
+({§members-model-scope}). Preparation receives each complete definition with optional
+adapter-owned interpretation context. Context is source semantics, not policy or provenance;
+it participates in runtime identity and hot-load comparisons, is never projected as configuration
+or persisted into a workspace override, and cannot survive replacement by a local definition.
+Removing that override restores the current inherited definition and context together.
+Descriptive provenance alone does not change runtime identity. Preparation returns runtimes, documents, per-alias
 outcomes, and a snapshot with `commit`/`abort`. Successful publication commits;
 failure aborts; cooling tears down. Protocol continuations remain ordinary
 module actions. Optional `forget` releases an installed or provisioned
@@ -4294,6 +4299,8 @@ sources, outcomes, preparation, the prepared result and the family handle —
 are declared once in `plurnk-contracts` and imported by core and every
 module; core adds only its own face of the seam, the runtime registration a
 resident family prepares and the scheme facet it may expose.
+An adapter may expose current partial-source `configurationNotices`; these join the ordinary
+workspace diagnostics without preventing independently valid definitions from preparing.
 
 §functionality-hotload **Out-of-band state is admitted before the next turn.** An adapter whose
 `available` reads state that changes outside the daemon, such as skill roots ({§skills-hotload}) or
@@ -4311,12 +4318,21 @@ the immediate child directories of its project's `.agents/plugins`, then
 validated by `@plurnk/plurnk-agent-plugins` ({§agent-plugins-roots}), followed by standard plugin
 bundles in the installed npm graph. An earlier source shadows a later plugin of the same manifest
 name, regardless of distribution or directory name. Native discovery uses that same cascade with
-the project root omitted; workspace discovery includes it. A plugin's `PLUGIN_DATA` is `$XDG_DATA_HOME/plurnk/plugins/<name>`, kept
-across its updates and moved with a state root ({§state-root}). Modules receive a workspace's plugins,
+the project root omitted; workspace discovery includes it. A plugin's `PLUGIN_DATA` is
+`$XDG_DATA_HOME/plurnk/plugins/<name>/<sha256(canonical-root)>`, kept across in-place updates and
+moved with a state root ({§state-root}). Distinct installations never share data by name alone;
+workspaces referencing the same canonical installation share its data. Modules receive a workspace's plugins,
 in precedence order, through the setup seam's `readWorkspacePlugins`, with one signature that changes
 exactly when a plugin, its manifest, its MCP configuration, or its skills change
 ({§functionality-hotload}), and the roots the workspace has. This read-only source loader does
 not install or delete plugins. MCP's own lifecycle is independent ({§mcp-definitions}).
+
+Portable components use each family's existing management and publication path. Within a source
+scope, standalone definitions precede bundled components; nearer scopes precede farther scopes,
+with npm last. Complete environment definitions override those inputs, followed by workspace
+definitions and enabledness. Inspection names the winning component file as plugin provenance.
+Removing a workspace override restores inheritance; it never deletes the installed bundle.
+Current plugin-source diagnostics join the workspace's configuration notices before inference.
 
 §agent-roots **A daemon reads the roots `PLURNK_SERVICE_ROOTS` names.** A comma list drawn from
 `project`, `plurnk` and `global`, nearest first, selects which Agent Skills, Agent Plugins and standalone MCP roots a

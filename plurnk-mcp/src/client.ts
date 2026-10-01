@@ -59,6 +59,7 @@ import {
 } from "./protocol.ts";
 import { staticClientCapabilities } from "./capabilityMatrix.ts";
 import Subscriptions from "./subscriptions.ts";
+import PluginConfiguration, { type PluginContext } from "./PluginConfiguration.ts";
 import {
     callToolWithTasks,
     serverSupportsTasks,
@@ -107,6 +108,7 @@ interface ResolvedHttpDefinition {
 type ResolvedDefinition = ResolvedStdioDefinition | ResolvedHttpDefinition;
 
 export interface ServerConnectionOptions {
+    readonly plugin?: PluginContext;
     // {§mcp-launch-environment} Exact admitted environment, separate from reference resolution.
     readonly environment?: NodeJS.ProcessEnv;
     // {§mcp-launch-directory} Host-owned cwd when the definition does not select one.
@@ -148,10 +150,12 @@ const resolveDefinition = (
     source: McpServerDefinition,
     environ: NodeJS.ProcessEnv,
     defaultCwd: string | undefined,
+    plugin?: PluginContext,
 ): ResolvedDefinition => {
     const definition = readDefinition(source);
     const field = `MCP server '${definition.name}'`;
     if (definition.type === "stdio") {
+        if (plugin !== undefined) return PluginConfiguration.resolve(definition, plugin);
         const expand = (value: string): string => expandReferences(value, environ, field);
         const cwd = definition.cwd === undefined ? defaultCwd : expand(definition.cwd);
         if (cwd === undefined || !isAbsolute(cwd)) throw new TypeError(`${field} requires an absolute working directory from its definition or host.`);
@@ -165,7 +169,7 @@ const resolveDefinition = (
     }
 
     const configured = Object.entries(definition.headers ?? {}).filter(([name]) => !clientOwnedHeader(name));
-    const headers = configured.length === 0 ? undefined : Object.fromEntries(configured.map(([name, value]) => [name, expandReferences(value, environ, `${field}.headers.${name}`)]));
+    const headers = configured.length === 0 ? undefined : Object.fromEntries(configured.map(([name, value]) => [name, plugin === undefined ? expandReferences(value, environ, `${field}.headers.${name}`) : value]));
     const url = definition.url;
     const authorization = definition.authorization;
     if (authorization === undefined) {
@@ -557,7 +561,7 @@ export default class ServerConnection {
         options: ServerConnectionOptions = {},
     ) {
         this.#definition = structuredClone(Validator.assertMcpServerDefinition(definition));
-        this.#resolved = resolveDefinition(this.#definition, environ, options.cwd);
+        this.#resolved = resolveDefinition(this.#definition, environ, options.cwd, options.plugin);
         this.#environ = environ;
         this.#options = options;
     }
@@ -583,6 +587,9 @@ export default class ServerConnection {
         let transport: StdioClientTransport | StreamableHTTPClientTransport | undefined;
         const pending = (async () => {
             const definition = this.#resolved;
+            if (this.#options.plugin !== undefined && this.#definition.type === "stdio") {
+                await PluginConfiguration.prepare(this.#definition, this.#options.plugin);
+            }
             if (this.#closed) throw new Error(`MCP server '${this.#definition.name}' connection is closed.`);
             transport = openTransport(definition, this.#options.environment);
             this.#openingTransport = transport;

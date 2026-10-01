@@ -26,6 +26,7 @@ import type {
     FunctionalityOptions,
     FunctionalityOutcome,
     FunctionalityPrepared,
+    FunctionalityPreparedDefinition,
     WorkspaceCapabilityIdentity,
     WorkspaceCapabilityGate,
 } from "@plurnk/plurnk-contracts";
@@ -104,13 +105,14 @@ interface EffectiveDefinition {
     readonly enabled: boolean;
     readonly inherited?: string;
     readonly provenance?: FunctionalityProvenance;
+    readonly context?: object;
 }
 
 interface WorkspaceFamily {
     state: FamilyState;
     prepared: FunctionalityPrepared<RuntimeRegistration> | null;
     // The enabled definitions that publication prepared ({§functionality-hotload}).
-    enabled: ReadonlyMap<string, object>;
+    enabled: ReadonlyMap<string, FunctionalityPreparedDefinition>;
     configurationError: ConfigurationError | null;
 }
 
@@ -293,9 +295,12 @@ export default class Functionality {
     }
 
     configurationNotices(workspaceId: number): readonly Notice[] {
-        return [...this.#adapters.keys()].flatMap((family) => {
+        return [...this.#adapters].flatMap(([family, adapter]) => {
             const cause = this.#families.get(this.#key(workspaceId, family))?.configurationError;
-            return cause == null ? [] : [ConfigurationDiagnostics.notice(family, cause)];
+            return [
+                ...(cause == null ? [] : [ConfigurationDiagnostics.notice(family, cause)]),
+                ...(adapter.configurationNotices?.({ workspaceId }) ?? []),
+            ];
         });
     }
 
@@ -516,6 +521,7 @@ export default class Functionality {
             effective.set(service.alias, {
                 alias: service.alias, origin: service.origin, definition: service.definition, enabled, ...inherited,
                 ...(service.provenance === undefined ? {} : { provenance: service.provenance }),
+                ...(service.context === undefined ? {} : { context: service.context }),
             });
         }
         for (const [alias, record] of Object.entries(state.definitions)) {
@@ -553,7 +559,7 @@ export default class Functionality {
         return Validator.assertFunctionalityListResult({
             family: adapter.family,
             definitions: [...effective.values()].map((definition) => {
-                const outcome = isDeepStrictEqual(family?.enabled.get(definition.alias), definition.definition)
+                const outcome = isDeepStrictEqual(family?.enabled.get(definition.alias), Functionality.#binding(definition))
                     ? outcomes?.get(definition.alias)
                     : undefined;
                 return this.#projection(definition, outcome ?? { state: "dormant" });
@@ -733,12 +739,12 @@ export default class Functionality {
     // The enabled definitions a workspace publication of `state` prepares. A worker-scoped family's
     // workspace publication carries only its manager: what is enabled is decided per Worker, at each
     // verb and each spawn ({§functionality-scope}).
-    async #publishable(adapter: FunctionalityAdapter, identity: WorkspaceCapabilityIdentity, state: FamilyState): Promise<Map<string, object>> {
+    async #publishable(adapter: FunctionalityAdapter, identity: WorkspaceCapabilityIdentity, state: FamilyState): Promise<Map<string, FunctionalityPreparedDefinition>> {
         if (!scopesOf(adapter).includes("workspace")) return new Map();
         return Functionality.#enabled(await this.#effective(adapter, { ...identity, scope: "workspace" }, state));
     }
 
-    static #sameDefinitions(left: ReadonlyMap<string, object>, right: ReadonlyMap<string, object>): boolean {
+    static #sameDefinitions(left: ReadonlyMap<string, FunctionalityPreparedDefinition>, right: ReadonlyMap<string, FunctionalityPreparedDefinition>): boolean {
         if (left.size !== right.size) return false;
         for (const [alias, definition] of left) {
             if (!right.has(alias) || !isDeepStrictEqual(definition, right.get(alias))) return false;
@@ -746,10 +752,14 @@ export default class Functionality {
         return true;
     }
 
-    static #enabled(effective: ReadonlyMap<string, EffectiveDefinition>): Map<string, object> {
-        const enabled = new Map<string, object>();
+    static #binding({ definition, context }: EffectiveDefinition): FunctionalityPreparedDefinition {
+        return { definition, ...(context === undefined ? {} : { context }) };
+    }
+
+    static #enabled(effective: ReadonlyMap<string, EffectiveDefinition>): Map<string, FunctionalityPreparedDefinition> {
+        const enabled = new Map<string, FunctionalityPreparedDefinition>();
         for (const definition of effective.values()) {
-            if (definition.enabled) enabled.set(definition.alias, definition.definition);
+            if (definition.enabled) enabled.set(definition.alias, structuredClone(Functionality.#binding(definition)));
         }
         return enabled;
     }
@@ -812,7 +822,7 @@ export default class Functionality {
     ): Promise<{ outcomes: ReadonlyMap<string, FunctionalityOutcome> }> {
         const key = this.#key(identity.workspaceId, adapter.family);
         const previous = this.#families.get(key)?.prepared ?? null;
-        let enabled = new Map<string, object>();
+        let enabled = new Map<string, FunctionalityPreparedDefinition>();
         let prepared: FunctionalityPrepared<RuntimeRegistration> | null = null;
         let configurationError: ConfigurationError | null = null;
         try {

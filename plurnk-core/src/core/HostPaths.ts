@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 
@@ -116,8 +117,8 @@ export default class HostPaths {
     }
 
     // {§agent-plugins-hosting} — one plugin's PLUGIN_DATA, kept across its updates.
-    pluginDataDir(pluginName: string): string {
-        return join(this.dataDir, "plugins", pluginName);
+    pluginDataDir(pluginName: string, canonicalRoot: string): string {
+        return join(this.dataDir, "plugins", pluginName, createHash("sha256").update(canonicalRoot).digest("hex"));
     }
 
     expandUserPath(value: string): string {

@@ -45,7 +45,7 @@ test("{§skills-hotload} retargeting an installed symlink refreshes its source b
     });
 });
 
-test("{§skills-hotload} turn admission refreshes skills mutated between loops", async (t) => {
+for (const source of ["standalone", "plugin"] as const) test(`{§skills-hotload} turn admission refreshes ${source} skills mutated between loops`, async (t) => {
     const previous = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     t.after(() => {
@@ -53,6 +53,8 @@ test("{§skills-hotload} turn admission refreshes skills mutated between loops",
         else process.env.PLURNK_SERVICE_FILES_ITEMS = previous;
     });
     const root = await mkdtemp(join(tmpdir(), "plurnk-skills-loop-"));
+    const bundle = join(root, ".agents", "plugins", "fixture");
+    const skills = source === "plugin" ? join(bundle, "skills") : join(root, ".agents", "skills");
     const provider = new PacketCapturingMock({
         contextWindow: 16384,
         responses: [
@@ -62,8 +64,11 @@ test("{§skills-hotload} turn admission refreshes skills mutated between loops",
         ],
     });
     try {
-        await mkdir(join(root, ".agents", "skills", "grep"), { recursive: true });
-        await writeFile(join(root, ".agents", "skills", "grep", "SKILL.md"), "---\nname: grep\ndescription: Find text\n---\nUse ripgrep.");
+        await mkdir(join(skills, "grep"), { recursive: true });
+        if (source === "plugin") await writeFile(join(bundle, "plugin.json"), JSON.stringify({
+            $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "fixture",
+        }));
+        await writeFile(join(skills, "grep", "SKILL.md"), "---\nname: grep\ndescription: Find text\n---\nUse ripgrep.");
         await withDaemon(provider, async (db, daemon, addr) => {
             const ws = await connect(addr);
             try {
@@ -87,8 +92,8 @@ test("{§skills-hotload} turn admission refreshes skills mutated between loops",
                 assert.notEqual(await entry("grep"), undefined, "first capability demand publishes the installed skill");
 
                 // Between loops an ordinary Agent Skills installer has landed a project skill.
-                await mkdir(join(root, ".agents", "skills", "review"), { recursive: true });
-                await writeFile(join(root, ".agents", "skills", "review", "SKILL.md"), "---\nname: review\ndescription: Check diffs\n---\nReview diffs before committing.");
+                await mkdir(join(skills, "review"), { recursive: true });
+                await writeFile(join(skills, "review", "SKILL.md"), "---\nname: review\ndescription: Check diffs\n---\nReview diffs before committing.");
 
                 assert.equal((await runLoopToTerminal(ws, 2, { prompt: "second", policy: { proposals: "accept" } })).finalStatus, 200);
                 assert.match(provider.requests[2] ?? "", /Review diffs before committing\./);

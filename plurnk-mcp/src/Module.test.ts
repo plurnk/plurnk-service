@@ -18,7 +18,7 @@ import {
     type McpHttpHandler,
 } from "@modelcontextprotocol/server";
 import type { RuntimeAvailability, RuntimeDecl } from "@plurnk/plurnk-execs";
-import type { McpServerDefinition, ProblemDetails } from "@plurnk/plurnk-contracts";
+import type { FunctionalityPreparedDefinition, McpServerDefinition, ProblemDetails } from "@plurnk/plurnk-contracts";
 import { z } from "zod/v4";
 import { serveMcpHttp } from "../test/http-fixture.ts";
 import type McpExecutor from "./McpExecutor.ts";
@@ -65,7 +65,7 @@ interface Adapter {
     refreshIfChanged(identity: { workspaceId: number }): Promise<void>;
     prepare(preparation: {
         workspaceId: number;
-        enabled: ReadonlyMap<string, object>; previous: unknown | null;
+        enabled: ReadonlyMap<string, FunctionalityPreparedDefinition>; previous: unknown | null;
         failure: "publish-unavailable" | "reject"; force?: string; retain(): () => void;
         progress(alias: string): void;
     }): Promise<Prepared>;
@@ -98,7 +98,7 @@ const harness = (env: Record<string, string> = {}) => {
         if (adapter === undefined) throw new Error("adapter not registered");
         const current = snapshots.get(workspaceId);
         const prepared = await adapter.prepare({
-            ...identity(workspaceId), enabled, previous: current?.prepared?.snapshot ?? null,
+            ...identity(workspaceId), enabled: new Map([...enabled].map(([alias, definition]) => [alias, { definition }])), previous: current?.prepared?.snapshot ?? null,
             failure: options.failure ?? "publish-unavailable", ...(options.force ? { force: options.force } : {}), retain,
             progress: () => undefined,
         });
@@ -107,6 +107,7 @@ const harness = (env: Record<string, string> = {}) => {
         return prepared;
     };
     const seam = {
+        readWorkspacePlugins: async () => ({ plugins: [], roots: {} }),
         workspaceConfigurationDirectories: async () => [],
         workspaceStateDirectory: async (workspaceId: number, owner: string) => {
             const directory = stateDirectory(workspaceId, owner);
@@ -409,7 +410,7 @@ test("{§mcp-setup} commit closes connections the next snapshot no longer uses; 
         assert.deepEqual(h.runtimeTags(1), ["a"], "the removed server's connection closed after the replacement committed");
 
         // abort: a fresh connection is opened, then discarded; the committed one survives.
-        const attempt = await h.adapter().prepare({ ...h.identity(1), enabled: new Map([["a", withMarker("a")], ["c", withMarker("c")]]), previous: h.snapshots.get(1)!.prepared!.snapshot, failure: "reject", retain: () => () => undefined, progress: () => undefined });
+        const attempt = await h.adapter().prepare({ ...h.identity(1), enabled: new Map([["a", { definition: withMarker("a") }], ["c", { definition: withMarker("c") }]]), previous: h.snapshots.get(1)!.prepared!.snapshot, failure: "reject", retain: () => () => undefined, progress: () => undefined });
         assert.equal(attempt.outcomes.get("c")?.state, "active");
         await attempt.abort();
         await waitForFile(marker("c"));

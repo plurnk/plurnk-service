@@ -182,7 +182,7 @@ export default class ScheduleFunctionality {
         const unavailable = new Map<string, string>();
         const outcomes = new Map<string, FunctionalityOutcome>();
         const now = this.#scheduler.now();
-        for (const [alias, raw] of preparation.enabled) {
+        for (const [alias, { definition: raw }] of preparation.enabled) {
             if (preparation.force === alias) this.#scheduler.forgive(workspaceId, alias);
             let definition: ScheduleDefinition;
             let parsed: ParsedRule;

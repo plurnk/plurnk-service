@@ -84,6 +84,17 @@ const factory = () => {
             async () => ({ content: [{ type: "text", text: JSON.stringify({ cwd: process.cwd() }) }] }),
         );
     }
+    if (process.env.PLURNK_MCP_TEST_LAUNCH === "1") {
+        server.registerTool(
+            "launch",
+            { description: "Report this fixture's launch inputs.", inputSchema: z.object({}), annotations: { readOnlyHint: true } },
+            async () => ({ content: [{ type: "text", text: JSON.stringify({
+                cwd: process.cwd(), argv: process.argv.slice(2), pid: process.pid,
+                root: process.env.PLUGIN_ROOT, data: process.env.PLUGIN_DATA,
+                sample: process.env.SAMPLE, literal: process.env.LITERAL,
+            }) }] }),
+        );
+    }
     if (process.env.PLURNK_MCP_TEST_EXTENDED === "1") {
         server.registerTool(
             "rich",

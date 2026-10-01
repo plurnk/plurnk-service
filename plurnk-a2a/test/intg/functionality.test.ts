@@ -11,7 +11,7 @@ const diagnosticEnv = { [ERROR_DETAIL_LIMIT]: "512", PLURNK_A2A_ENABLED: "1" };
 
 const preparation = (workspaceId: number, enabled: Record<string, object>, options: { previous?: unknown; failure?: "publish-unavailable" | "reject"; force?: string } = {}) => ({
     workspaceId,
-    enabled: new Map(Object.entries(enabled)),
+    enabled: new Map(Object.entries(enabled).map(([alias, definition]) => [alias, { definition }])),
     previous: options.previous ?? null,
     failure: options.failure ?? "publish-unavailable",
     ...(options.force === undefined ? {} : { force: options.force }),

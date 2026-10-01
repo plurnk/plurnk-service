@@ -268,7 +268,7 @@ export default class A2aFunctionality {
         const attachments = new Map<string, Attachment>();
         const unavailable = new Map<string, { definition: A2aAgentDefinition; problem: ProblemDetails }>();
         const outcomes = new Map<string, FunctionalityOutcome>();
-        for (const [alias, raw] of preparation.enabled) {
+        for (const [alias, { definition: raw }] of preparation.enabled) {
             preparation.progress(alias);
             const definition = raw as A2aAgentDefinition;
             const kept = previous?.attachments.get(alias);

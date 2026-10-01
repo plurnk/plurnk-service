@@ -4,6 +4,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
+import { PluginRoots, PLUGIN_SCHEMA, MCP_SCHEMA } from "@plurnk/plurnk-agent-plugins";
+import type { Notice } from "@plurnk/plurnk-contracts";
 import {
     serviceDefinitions,
     configuredDefinitions,
@@ -22,6 +24,45 @@ const floor = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
     PLURNK_MCP_REQUEST_TIMEOUT: "86400000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
+
+test("{§mcp-plugin-configuration} plugin servers compose by scope, retain context, and isolate unsupported entries", async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "plurnk-mcp-plugins-"));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    const project = join(directory, "project", ".agents");
+    const global = join(directory, "global", ".agents");
+    const root = join(project, "plugins", "bundle");
+    await mkdir(root, { recursive: true });
+    await mkdir(global, { recursive: true });
+    await writeFile(join(root, "plugin.json"), JSON.stringify({ $schema: PLUGIN_SCHEMA, name: "bundle" }));
+    const source = { type: "stdio", command: "node", args: ["${PLUGIN_ROOT}/run.mjs"] };
+    await writeFile(join(root, "mcp.json"), JSON.stringify({ $schema: MCP_SCHEMA, mcpServers: {
+        example: source, "not supported": source, legacy: { type: "sse", url: "https://example.org/mcp" },
+    } }));
+    await writeFile(join(global, "mcp.json"), JSON.stringify({ mcpServers: { example: { command: "global" } } }));
+    const discovered = await PluginRoots.discover([{ scope: "project", directory: join(project, "plugins") }]);
+    const data = join(directory, "data");
+    const notices: Notice[] = [];
+    const sources = { plugins: discovered.plugins.map((plugin) => ({ ...plugin, data })), roots: { project: join(project, "plugins") }, report: (notice: Notice) => notices.push(notice) };
+    const definitions = await configuredDefinitions([project, global], floor, sources);
+    assert.deepEqual(definitions, [{
+        alias: "example", enabled: true, definition: { ...source, name: "example" }, context: { root, data },
+        provenance: { kind: "plugin", source: join(root, "mcp.json"), reference: "/mcpServers/example" },
+    }]);
+    assert.equal(notices.length, 2);
+    assert.match(notices[0]!.message!, /server name must match/u);
+    assert.match(notices[1]!.message!, /legacy SSE transport is unsupported/u);
+    await writeFile(join(project, "mcp.json"), JSON.stringify({ mcpServers: { example: { command: "standalone" } } }));
+    const replaced = (await configuredDefinitions([project, global], floor, sources))[0]!;
+    assert.equal(replaced.context, undefined);
+    assert.deepEqual(replaced.definition, { name: "example", type: "stdio", command: "standalone" });
+    const overridden = await configuredDefinitions([project, global], {
+        ...floor, PLURNK_MCP_example: JSON.stringify({ name: "example", type: "stdio", command: "environment" }), PLURNK_MCP_example_ENABLED: "0",
+    }, sources);
+    assert.deepEqual(overridden[0], {
+        alias: "example", enabled: false, definition: { name: "example", type: "stdio", command: "environment" },
+        provenance: { kind: "environment", source: "PLURNK_MCP_example" },
+    });
+});
 
 test("{§mcp-configuration} whole definitions and independent controls use the shared resource dialect", () => {
     const definition = { name: "code-search", type: "stdio", command: "node", args: ["server.mjs"] };

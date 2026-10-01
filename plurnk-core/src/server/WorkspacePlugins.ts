@@ -11,6 +11,8 @@ import HostPaths from "../core/HostPaths.ts";
 import type { AgentRootScope } from "./AgentRoots.ts";
 import PluginSources from "./PluginSources.ts";
 import { join } from "node:path";
+import type { Notice } from "@plurnk/plurnk-contracts";
+import ConfigurationDiagnostics from "./ConfigurationDiagnostics.ts";
 
 export interface InstalledPlugin extends DiscoveredPlugin {
     // PLUGIN_DATA: a consumer creates it before launching one of the plugin's subprocesses.
@@ -31,6 +33,7 @@ export default class WorkspacePlugins {
     readonly #db: Db;
     readonly #hostPaths: HostPaths;
     readonly #nodeModules: string;
+    readonly #notices = new Map<number, readonly Notice[]>();
 
     constructor({ db, hostPaths, nodeModules = join(process.cwd(), "node_modules") }: {
         readonly db: Db; readonly hostPaths: HostPaths; readonly nodeModules?: string;
@@ -43,10 +46,14 @@ export default class WorkspacePlugins {
     async read(workspaceId: number): Promise<WorkspacePluginSet> {
         const workspace = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         const projectRoot = workspace?.project_root ?? null;
-        const { plugins, reports, roots } = await PluginSources.read({
+        const { plugins, reports, roots, configurationErrors } = await PluginSources.read({
             hostPaths: this.#hostPaths, projectRoot, nodeModules: this.#nodeModules,
         });
-        const installed = plugins.map((plugin): InstalledPlugin => ({ ...plugin, data: this.#hostPaths.pluginDataDir(plugin.manifest.name) }));
+        const diagnostics = new ConfigurationDiagnostics();
+        diagnostics.pluginReports(reports);
+        for (const error of configurationErrors) diagnostics.record("plugins", error);
+        this.#notices.set(workspaceId, diagnostics.notices());
+        const installed = plugins.map((plugin): InstalledPlugin => ({ ...plugin, data: this.#hostPaths.pluginDataDir(plugin.manifest.name, plugin.root) }));
         const signature = createHash("sha256").update(JSON.stringify(installed.map((plugin) => [
             plugin.scope,
             plugin.root,
@@ -55,6 +62,10 @@ export default class WorkspacePlugins {
             plugin.skills.map((skill) => [skill.directory, skill.document.source]),
         ]))).digest("hex");
         return { plugins: installed, reports, signature, roots };
+    }
+
+    notices(workspaceId: number): readonly Notice[] {
+        return this.#notices.get(workspaceId) ?? [];
     }
 
 }

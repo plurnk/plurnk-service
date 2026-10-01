@@ -28,6 +28,12 @@ Put shared servers in `~/.agents/mcp.json` ({§mcp-file-configuration}):
 Project `.agents/mcp.json` overrides `$XDG_CONFIG_HOME/plurnk/mcp.json`, which
 overrides that shared global file, by complete server entry. The existing
 `PLURNK_SERVICE_ROOTS` selection applies. Files stay read-only; no plugin is required.
+
+Installed Agent Plugins also contribute `mcp.json` servers through the same
+workspace management. Standalone definitions precede plugin components within
+each scope; npm bundles come last. Plugin subprocesses use their plugin root
+and persistent data directory, with the standard's literal-string rules
+({§mcp-plugin-configuration}).
 `list` identifies the winning file and entry; file changes are read before the next turn.
 
 Environment-only configuration remains available and overrides file definitions

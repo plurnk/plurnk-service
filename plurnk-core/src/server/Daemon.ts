@@ -228,6 +228,7 @@ export default class Daemon implements ApplicationPort {
         this.#plugins = new WorkspacePlugins({ db, hostPaths, nodeModules: this.#nodeModulesPath });
         this.#skills = new SkillsFunctionality({
             db,
+            plugins: this.#plugins,
             storage: this.#storage,
             hostPaths,
             provided: async () => {
@@ -323,7 +324,7 @@ export default class Daemon implements ApplicationPort {
             // the first subsequent model turn sees their exact result.
             workspaceTurnStarting: async ({ workspaceId }) => {
                 await this.#functionality.refreshChanged({ workspaceId });
-                return [...this.configurationNotices(), ...this.#functionality.configurationNotices(workspaceId)];
+                return [...this.configurationNotices(), ...this.#functionality.configurationNotices(workspaceId), ...this.#plugins.notices(workspaceId)];
             },
             // worker:// KILL (terminate) — cancel the addressed worker subtree and
             // tear down its held streams before the operation completes.

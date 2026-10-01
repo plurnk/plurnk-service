@@ -5,6 +5,10 @@
 // publication, and both the client and model projections.
 import { fileURLToPath } from "node:url";
 import { readDefinition } from "./definition.ts";
+import { isDeepStrictEqual } from "node:util";
+import type { PluginContext } from "./PluginConfiguration.ts";
+import type { PluginSources } from "./config.ts";
+import type { Notice } from "@plurnk/plurnk-contracts";
 import type {
     RuntimeAvailability,
     RuntimeDecl,
@@ -24,6 +28,7 @@ import {
     type FunctionalityFamilyHandle,
     type FunctionalityOutcome,
     type FunctionalityPreparation,
+    type FunctionalityPreparedDefinition,
     type FunctionalityPrepared,
     type FunctionalityServiceDefinition,
     type McpServerDefinition,
@@ -101,6 +106,7 @@ interface FunctionalityAdapter {
     readonly example?: { readonly alias: string; readonly definition: object };
     readonly discovery?: { readonly details: string };
     available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition[]>;
+    configurationNotices?(identity: WorkspaceCapabilityIdentity): readonly Notice[];
     discover(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]>;
     admit(input: unknown, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDefinitionSource>;
     prepare(preparation: FunctionalityPreparation): Promise<FunctionalityPrepared<RuntimeRegistration>>;
@@ -109,6 +115,7 @@ interface FunctionalityAdapter {
 }
 
 interface ModuleSetupSeam {
+    readWorkspacePlugins(workspaceId: number): Promise<PluginSources>;
     workspaceConfigurationDirectories(workspaceId: number): Promise<readonly string[]>;
     readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
     // {§mcp-launch-environment} The operator's environment without plurnk's own secrets.
@@ -128,24 +135,26 @@ interface ModuleSetupSeam {
     registerFunctionalityAdapter(adapter: FunctionalityAdapter): FunctionalityFamilyHandle;
 }
 
-interface ActiveAttachment {
-    readonly kind: "active";
+interface McpBinding extends FunctionalityPreparedDefinition {
     readonly definition: McpServerDefinition;
+    readonly context?: PluginContext;
+}
+
+interface ActiveAttachment extends McpBinding {
+    readonly kind: "active";
     readonly connection: ServerConnection;
     readonly executor: McpExecutor;
     readonly runtime: RuntimeRegistration;
 }
 
-interface AuthorizationAttachment {
+interface AuthorizationAttachment extends McpBinding {
     readonly kind: "authorization-required";
-    readonly definition: McpServerDefinition;
     readonly connection: ServerConnection;
     readonly authorizationUrl: string;
 }
 
-interface UnavailableAttachment {
+interface UnavailableAttachment extends McpBinding {
     readonly kind: "unavailable";
-    readonly definition: McpServerDefinition;
     readonly problem: ProblemDetails;
 }
 
@@ -158,8 +167,7 @@ const attachmentConnection = (attachment: Attachment): ServerConnection | undefi
 // {§oauth-lifetime} — a pending authorization is process memory per
 // (workspace, alias): the challenged connection, its URL, the workspace residency it
 // holds, and, once the callback lands, the prepared active attachment.
-interface PendingAuthorization {
-    readonly definition: McpServerDefinition;
+interface PendingAuthorization extends McpBinding {
     readonly connection: ServerConnection;
     readonly authorizationUrl: string;
     readonly releaseWorkspace: () => void;
@@ -323,8 +331,8 @@ const workspaceIdentityOf = (context: ModuleActionContext): WorkspaceCapabilityI
     return { workspaceId: context.workspaceId };
 };
 
-const sameDefinition = (left: McpServerDefinition, right: McpServerDefinition): boolean =>
-    JSON.stringify(left) === JSON.stringify(right);
+const sameBinding = (left: McpBinding, right: McpBinding): boolean =>
+    isDeepStrictEqual([left.definition, left.context], [right.definition, right.context]);
 
 const statusOf = (error: unknown): number | null => {
     if (typeof error !== "object" || error === null) return null;
@@ -349,6 +357,8 @@ const catalogDetail = (executor: McpExecutor): object => {
 export default class Module {
     readonly #env: NodeJS.ProcessEnv;
     #workspaceEnvironment!: ModuleSetupSeam["readWorkspaceEnvironment"];
+    #plugins!: ModuleSetupSeam["readWorkspacePlugins"];
+    readonly #configurationNotices = new Map<number, readonly Notice[]>();
     #operatorEnvironment!: ModuleSetupSeam["operatorEnvironment"];
     #stateDirectory!: ModuleSetupSeam["workspaceStateDirectory"];
     #configurationDirectories!: ModuleSetupSeam["workspaceConfigurationDirectories"];
@@ -374,6 +384,7 @@ export default class Module {
     }
 
     async setup(seam: ModuleSetupSeam): Promise<void> {
+        this.#plugins = (workspaceId) => seam.readWorkspacePlugins(workspaceId);
         this.#workspaceEnvironment = (workspaceId) => seam.readWorkspaceEnvironment(workspaceId);
         this.#operatorEnvironment = () => seam.operatorEnvironment();
         this.#stateDirectory = (workspaceId, owner) => seam.workspaceStateDirectory(workspaceId, owner);
@@ -389,6 +400,7 @@ export default class Module {
                 details: "`query` searches the MCP Registry by server name; each candidate carries the exact definition to add.",
             },
             available: (identity) => this.#available(identity),
+            configurationNotices: ({ workspaceId }) => this.#configurationNotices.get(workspaceId) ?? [],
             discover: (query) => this.#discover(query),
             admit: (input) => this.#admit(input),
             prepare: (preparation) => this.#prepare(preparation),
@@ -421,7 +433,12 @@ export default class Module {
 
     async #available(identity: WorkspaceCapabilityIdentity): ReturnType<typeof configuredDefinitions> {
         expandedServerNames(this.#env);
-        return configuredDefinitions(await this.#configurationDirectories(identity.workspaceId), this.#env);
+        const { workspaceId } = identity;
+        const notices: Notice[] = [];
+        this.#configurationNotices.set(workspaceId, notices);
+        return configuredDefinitions(await this.#configurationDirectories(workspaceId), this.#env, {
+            ...await this.#plugins(workspaceId), report: (notice) => notices.push(notice),
+        });
     }
 
     // {§functionality-hotload} — a server's definition is complete, so the coordinator's
@@ -517,9 +534,10 @@ export default class Module {
     // The attachment keeps the exact symbolic definition; resolved launch values never enter state.
     async #prepareAttachment(
         workspaceId: number,
-        definition: McpServerDefinition,
+        binding: McpBinding,
         connection?: ServerConnection,
     ): Promise<Attachment> {
+        const { definition, context } = binding;
         this.#assertOpen();
         // {§mcp-server-settings} — the operator's settings for this alias; a bad one isolates this server.
         let settings: ToolPolicy;
@@ -537,7 +555,8 @@ export default class Module {
             // {§mcp-launch-environment} — a configured server inherits the operator's environment beneath the
             // workspace layer, as every MCP client launches one; the model's command ceiling is not its base.
             candidate ??= new ServerConnection(definition, environment(this.#env), {
-                ...(definition.type === "stdio" && definition.cwd === undefined ? { cwd: await this.#stateDirectory(workspaceId, `${OWNER}/${definition.name}`) } : {}),
+                ...(definition.type === "stdio" && definition.cwd === undefined && context === undefined ? { cwd: await this.#stateDirectory(workspaceId, `${OWNER}/${definition.name}`) } : {}),
+                ...(context === undefined ? {} : { plugin: context }),
                 environment: environment(this.#operatorEnvironment()),
                 onCatalogChanged: (error) => {
                     if (error !== null) {
@@ -561,6 +580,7 @@ export default class Module {
             );
             const availability = await executor.requireAvailable();
             return {
+                ...(context === undefined ? {} : { context }),
                 kind: "active",
                 definition,
                 connection: candidate,
@@ -581,6 +601,7 @@ export default class Module {
         } catch (cause) {
             if (cause instanceof AuthorizationRequiredError && candidate !== undefined) {
                 return {
+                    ...(context === undefined ? {} : { context }),
                     kind: "authorization-required",
                     definition,
                     connection: candidate,
@@ -610,8 +631,8 @@ export default class Module {
         this.#retainWorkspace.set(workspaceId, preparation.retain);
         const previous = (preparation.previous as ReadonlyMap<string, Attachment> | null) ?? new Map<string, Attachment>();
         for (const [name, attachment] of previous) {
-            const nextDefinition = enabled.get(name) as McpServerDefinition | undefined;
-            if (nextDefinition === undefined || force === name || !sameDefinition(attachment.definition, nextDefinition)) {
+            const nextDefinition = enabled.get(name) as McpBinding | undefined;
+            if (nextDefinition === undefined || force === name || !sameBinding(attachment, nextDefinition)) {
                 const activeRequests = attachmentConnection(attachment)?.activeRequests ?? 0;
                 if (activeRequests > 0) throw actionError(
                     "server-busy", 409,
@@ -630,14 +651,15 @@ export default class Module {
                 preparation.progress(name);
                 const key = this.#pendingKey(workspaceId, name);
                 const invalidation = this.#dirty.get(key);
-                const definition = value as McpServerDefinition;
+                const binding = value as McpBinding;
+                const { definition } = binding;
                 const existing = previous.get(name);
                 const pending = this.#pending.get(this.#pendingKey(workspaceId, name));
                 if (
                     existing !== undefined
                     && force !== name
                     && !this.#dirty.has(this.#pendingKey(workspaceId, name))
-                    && sameDefinition(existing.definition, definition)
+                    && sameBinding(existing, binding)
                     && !(pending?.prepared !== undefined)
                 ) {
                     next.set(name, existing);
@@ -647,10 +669,10 @@ export default class Module {
                 const heldConnection = existing === undefined ? undefined : attachmentConnection(existing);
                 const catalogOnly = existing !== undefined
                     && force !== name
-                    && sameDefinition(existing.definition, definition)
+                    && sameBinding(existing, binding)
                     && !(pending?.prepared !== undefined)
                     && heldConnection !== undefined;
-                if (pending?.prepared !== undefined && sameDefinition(pending.definition, definition)) {
+                if (pending?.prepared !== undefined && sameBinding(pending, binding)) {
                     attachment = pending.prepared;
                     consumedPending.set(name, pending);
                 } else if (catalogOnly) {
@@ -659,7 +681,7 @@ export default class Module {
                     // spawned, so neither abort nor commit has anything of this alias to close
                     // (#429).
                     try {
-                        attachment = await this.#prepareAttachment(workspaceId, definition, heldConnection);
+                        attachment = await this.#prepareAttachment(workspaceId, binding, heldConnection);
                     } catch (cause) {
                         this.#assertOpen();
                         console.error(`MCP server '${name}' catalog refresh failed; the current catalog stays in service:`, cause);
@@ -667,12 +689,12 @@ export default class Module {
                     }
                 } else {
                     try {
-                        attachment = await this.#prepareAttachment(workspaceId, definition);
+                        attachment = await this.#prepareAttachment(workspaceId, binding);
                     } catch (cause) {
                         this.#assertOpen();
                         if (failure === "reject") throw cause;
                         const refusal = cause instanceof ModuleActionError ? cause : preparationError(definition, undefined, cause);
-                        attachment = { kind: "unavailable", definition, problem: structuredClone(refusal.problem) };
+                        attachment = { ...binding, kind: "unavailable", problem: structuredClone(refusal.problem) };
                         console.error(`MCP server '${name}' unavailable: ${refusal.problem.detail}`, refusal.cause ?? refusal);
                     }
                     // Only a connection this attempt opened is the attempt's to close on abort.
@@ -737,6 +759,7 @@ export default class Module {
                     if (current?.connection === attachment.connection) continue;
                     this.#pending.set(key, {
                         definition: attachment.definition,
+                        ...(attachment.context === undefined ? {} : { context: attachment.context }),
                         connection: attachment.connection,
                         authorizationUrl: attachment.authorizationUrl,
                         releaseWorkspace: this.#retain(workspaceId),
@@ -803,7 +826,7 @@ export default class Module {
             );
         }
         const current = this.#attachments.get(identity.workspaceId)?.get(alias);
-        if (current === undefined || current.kind !== "authorization-required" || !sameDefinition(current.definition, pending.definition)) {
+        if (current === undefined || current.kind !== "authorization-required" || !sameBinding(current, pending)) {
             throw actionError(
                 "oauth-target-conflict",
                 409,
@@ -814,7 +837,7 @@ export default class Module {
         if (pending.prepared === undefined) {
             try {
                 await pending.connection.finishAuthorization(callbackUrl);
-                const prepared = await this.#prepareAttachment(identity.workspaceId, pending.definition, pending.connection);
+                const prepared = await this.#prepareAttachment(identity.workspaceId, pending, pending.connection);
                 if (prepared.kind !== "active") throw new Error("OAuth completion returned another authorization challenge.");
                 pending.prepared = prepared;
             } catch (cause) {

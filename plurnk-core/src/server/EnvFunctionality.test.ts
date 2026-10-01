@@ -113,7 +113,7 @@ test("{§env-functionality} available projects what the ceiling admits, enabled,
 test("{§env-functionality} prepare publishes no runtime and marks every enabled definition active", async () => {
     const prepared = await adapter.prepare({
         workspaceId: 1,
-        enabled: new Map([["PAGER", { value: "cat" }], ["CI", { value: "1" }]]),
+        enabled: new Map([["PAGER", { definition: { value: "cat" } }], ["CI", { definition: { value: "1" } }]]),
         previous: null,
         failure: "publish-unavailable",
         progress: () => undefined,
