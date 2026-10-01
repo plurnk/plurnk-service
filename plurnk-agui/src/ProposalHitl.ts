@@ -10,6 +10,7 @@ import {
     type ClientInteractionProjection,
     type ClientInteractionResolution,
     type ProblemDetails,
+    type ProposalResolution,
 } from "@plurnk/plurnk-contracts";
 import {
     interactionInterrupt,
@@ -62,12 +63,10 @@ type PendingItem =
     };
 
 type ParsedResolution =
-    | {
+    | ProposalResolution & {
         readonly kind: "proposal";
         readonly key: string;
         readonly id: number;
-        readonly decision: "accept" | "reject" | "cancel";
-        readonly body?: string;
     }
     | {
         readonly kind: "interaction";
@@ -151,6 +150,7 @@ const parseResolution = (entry: ResumeEntry): ParsedResolution | null => {
             id: proposal.logEntryId,
             decision: proposal.decision,
             ...(proposal.body !== undefined ? { body: proposal.body } : {}),
+            ...(proposal.outcome !== undefined ? { outcome: proposal.outcome } : {}),
         };
     }
     const interaction = interactionResolutionFromResume(entry);
@@ -321,6 +321,7 @@ export default class ProposalHitl {
                 this.#seam.resolveProposal(resolution.id, {
                     decision: resolution.decision,
                     ...(resolution.body !== undefined ? { body: resolution.body } : {}),
+                    ...(resolution.outcome !== undefined ? { outcome: resolution.outcome } : {}),
                 });
                 return;
             }

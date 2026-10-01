@@ -17,6 +17,7 @@ import type {
     FunctionalityPreparationActivity,
     ModelRoute,
     ProblemDetails,
+    ProposalResolution,
 } from "@plurnk/plurnk-contracts";
 
 // ── §1 — stop-the-world → tool-call ──────────────────────────────────
@@ -56,22 +57,25 @@ export const proposalInterrupt = (logEntryId: number): Interrupt => ({
         properties: {
             decision: { type: "string", enum: ["accept", "reject", "cancel"] },
             body: { type: "string" },
+            outcome: { type: "string" },
         },
         required: ["decision"],
     },
 });
 
 // The inverse — a standard resume entry resolves the durable PLURNK proposal.
-export interface Resolution { logEntryId: number; decision: "accept" | "reject" | "cancel"; body?: string }
+export interface Resolution extends ProposalResolution { logEntryId: number }
 export const resolutionFromResume = (entry: ResumeEntry): Resolution | null => {
     const logEntryId = logEntryIdFromToolCallId(entry.interruptId);
     if (logEntryId === null) return null;
-    if (entry.status === "cancelled") return { logEntryId, decision: "cancel" };
-    const payload = entry.payload as { decision?: unknown; body?: unknown } | undefined;
+    const payload = entry.payload as { decision?: unknown; body?: unknown; outcome?: unknown } | undefined;
+    if (payload?.outcome !== undefined && typeof payload.outcome !== "string") return null;
+    const outcome = payload?.outcome === undefined ? {} : { outcome: payload.outcome };
+    if (entry.status === "cancelled") return { logEntryId, decision: "cancel", ...outcome };
     const decision = payload?.decision;
     const body = typeof payload?.body === "string" ? payload.body : undefined;
     if (decision !== "accept" && decision !== "reject" && decision !== "cancel") return null;
-    return { logEntryId, decision, ...(body !== undefined ? { body } : {}) };
+    return { logEntryId, decision, ...(body !== undefined ? { body } : {}), ...outcome };
 };
 
 export const interactionToolCallId = (interactionId: number): string => `int:${interactionId}`;

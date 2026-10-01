@@ -141,6 +141,22 @@ test("resolve(): a complete standard resume resolves the exact worker proposal",
     assert.equal(m.resolves.length, 1, "the foreign tool-result issued no resolve");
 });
 
+test("{§agui-proposal-resolve} valid outcomes reach the owner and invalid outcomes release nothing", async () => {
+    const m = mockSeam([proposal({ logEntryId: 42, loopId: 7 })]);
+    const hitl = new ProposalHitl(m.seam, collect());
+    for (const decision of ["accept", "reject", "cancel"] as const) {
+        await hitl.resolve(3, [{ interruptId: "prop:42", status: "resolved", payload: { decision, outcome: "client_reason" } }]);
+        assert.deepEqual(m.resolves.at(-1), { logEntryId: 42, resolution: { decision, outcome: "client_reason" } });
+    }
+    await hitl.resolve(3, [{ interruptId: "prop:42", status: "cancelled", payload: { outcome: "client_cancelled" } }]);
+    assert.deepEqual(m.resolves.at(-1), { logEntryId: 42, resolution: { decision: "cancel", outcome: "client_cancelled" } });
+    let released = false;
+    await assert.rejects(hitl.resolve(3, [{ interruptId: "prop:42", status: "resolved", payload: { decision: "accept", outcome: 42 } }], () => { released = true; }),
+        (error: unknown) => (error as { problem?: { type?: string } }).problem?.type === "https://problems.plurnk.xyz/agui/interrupt/interrupt-invalid");
+    assert.equal(released, false);
+    assert.equal(m.resolves.length, 4);
+});
+
 test("{§agui-proposal-disposition} resurface(): a workspace's pending stopped-worlds come back as tool-calls", async () => {
     const pending: ProposalProjection[] = [
         proposal({ logEntryId: 5, op: "sh", target: { scheme: null, authority: null, pathname: null }, body: "rm -rf /tmp/x", attrs: { command: "rm" } }),

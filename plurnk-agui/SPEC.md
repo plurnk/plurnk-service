@@ -311,6 +311,10 @@ operation. The continued loop later closes that Run B step normally. No AG-UI Ru
 while a step remains active.
 
 Proposal tool-call arguments and resume payloads retain the proposal review contract.
+Resolved proposal payloads carry `decision`, optional edited `body`, and optional string
+`outcome`; a cancelled entry may also carry `payload.outcome`. The outcome reaches Core
+unchanged under {§proposal-outcome-terse-error}; invalid outcome types refuse the resume
+before any proposal is released. An omitted outcome leaves Core's existing default intact.
 Client-interaction tool calls use the request's exact `toolName` and `arguments`; their standard
 interrupt carries its optional `message` and `responseSchema`. A resolved resume payload becomes
 the generic resolved payload, while AG-UI cancellation becomes interaction cancellation. AG-UI

@@ -61,12 +61,13 @@ test("{§agui-broadcast-fan} a client command that writes late concludes inside 
         const resumed = await post(port, {
             threadId: "action-stream",
             forwardedProps: { plurnk: workspace },
-            resume: [{ interruptId, status: "resolved", payload: { decision: "accept" } }],
+            resume: [{ interruptId, status: "resolved", payload: { decision: "accept", outcome: "auto: sh" } }],
         });
         const order = resumed.map(label);
         const started = resumed.find((e) => label(e) === "plurnk.row"
-            && typeof (e as { value?: { attrs?: { stream?: unknown } } }).value?.attrs?.stream === "string") as { value: { attrs: { stream: string } } } | undefined;
+            && typeof (e as { value?: { attrs?: { stream?: unknown } } }).value?.attrs?.stream === "string") as { value: { attrs: { stream: string }; rx: { outcome?: string } } } | undefined;
         assert.ok(started !== undefined, `the started row rides the resumed Run: ${order.join(" → ")}`);
+        assert.equal(started.value.rx.outcome, "auto: sh", "the durable proposal result retains the client's resolution reason");
         const conclusion = resumed.findIndex((e) => label(e) === "plurnk.stream"
             && typeof (e as { value?: { result?: { status?: unknown } } }).value?.result?.status === "number");
         assert.notEqual(conclusion, -1, `the conclusion rides the Run that launched the command: ${order.join(" → ")}`);

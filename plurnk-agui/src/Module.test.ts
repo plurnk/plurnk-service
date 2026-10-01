@@ -1620,10 +1620,10 @@ test("a standard resume resolves the paused proposal without driving a new loop"
     try {
         const events = await post(mod.address().port, {
             threadId: "t2", runId: "r1", forwardedProps: { plurnk: { workspace: "t2" } },
-            resume: [{ interruptId: "prop:42", status: "resolved", payload: { decision: "accept", body: "edited" } }],
+            resume: [{ interruptId: "prop:42", status: "resolved", payload: { decision: "accept", body: "edited", outcome: "client_yolo" } }],
         });
         assert.equal(events[0].type, "RUN_STARTED");
-        assert.deepEqual(resolves[0], { logEntryId: 42, resolution: { decision: "accept", body: "edited" } }, `the resume reached resolveProposal: ${JSON.stringify(events)}`);
+        assert.deepEqual(resolves[0], { logEntryId: 42, resolution: { decision: "accept", body: "edited", outcome: "client_yolo" } }, `the resume reached resolveProposal: ${JSON.stringify(events)}`);
     } finally { await mod.close(); }
 });
 

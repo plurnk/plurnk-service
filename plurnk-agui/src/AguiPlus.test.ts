@@ -13,6 +13,7 @@ import {
     interactionResolutionFromResume,
     interactionToolCall,
     parseAction,
+    proposalInterrupt,
     proposalToolCall,
     proposalToolCallId,
     proposalToolName,
@@ -104,6 +105,24 @@ test("an edited-body approval carries the frontend's body through to resolveProp
     const id = proposalToolCallId(7);
     const res = resolutionFromResume({ interruptId: id, status: "resolved", payload: { decision: "accept", body: "the human's edit" } });
     assert.deepEqual(res, { logEntryId: 7, decision: "accept", body: "the human's edit" });
+});
+
+test("{§agui-proposal-resolve} proposal resumes preserve the resolver's outcome", () => {
+    const schema = proposalInterrupt(7).responseSchema as { properties: Record<string, unknown> };
+    assert.deepEqual(schema.properties.outcome, { type: "string" });
+    for (const decision of ["accept", "reject", "cancel"] as const) {
+        for (const outcome of ["auto: brave", "client_no_review_channel", ""]) {
+            assert.deepEqual(resolutionFromResume({ interruptId: "prop:7", status: "resolved", payload: { decision, outcome } }),
+                { logEntryId: 7, decision, outcome });
+        }
+    }
+    assert.deepEqual(resolutionFromResume({ interruptId: "prop:7", status: "cancelled", payload: { outcome: "client_cancelled" } }),
+        { logEntryId: 7, decision: "cancel", outcome: "client_cancelled" });
+    for (const outcome of [null, false, 3, {}, []]) {
+        for (const status of ["resolved", "cancelled"] as const) {
+            assert.equal(resolutionFromResume({ interruptId: "prop:7", status, payload: { decision: "accept", outcome } }), null);
+        }
+    }
 });
 
 test("resolutionFromResume: standard cancellation and strict payload validation", () => {
