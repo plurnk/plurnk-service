@@ -210,6 +210,10 @@ for (const transition of ["enabled", "disabled", "removed", "producer-removed", 
         }, (channel) => channel?.content.includes("/resources/snapshot.txt") === true);
         const address = /<(shared:\/\/[^>]+)>/u.exec(published!.content)?.[1];
         assert.ok(address, published!.content);
+        const settled = await waitForDb(() => f.db.test_latest_subscription_for_worker.get<{ close_status: number | null }>({
+            worker_id: f.client,
+        }), (subscription) => subscription?.close_status !== null && subscription?.close_status !== undefined);
+        assert.equal(settled?.close_status, 200, "the saved result's producer settles successfully before lifecycle changes");
         if (transition === "disabled") {
             const changed = await f.action("disable", { alias: "shared" }) as { status: number };
             assert.equal(changed.status, 200, JSON.stringify(changed));
