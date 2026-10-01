@@ -437,9 +437,10 @@ Interactive OAuth state is deliberately ephemeral and process-memory: client
 registration data, access and refresh tokens, the PKCE verifier, and pending
 state live only in the owning connection or pending candidate. Nothing
 OAuth-secret is written to SQLite; the durable workspace state holds only the
-unexpanded definition ({§mcp-configuration}). There is no callback HTTP
-listener, authority-root resource, or daemon-side browser side channel: the
-client returns the complete callback URL through `workspace.mcp.oauth.complete`
+unexpanded definition ({§mcp-configuration}). There is no daemon callback HTTP
+listener, authority-root resource, or daemon-side browser side channel: an
+interactive client may receive its configured loopback redirect, or accept a
+pasted callback for remote/headless use. It returns the complete URL through `workspace.mcp.oauth.complete`
 so `state`, `code`, and `iss` remain one parsing unit. Reauthorization after a
 daemon restart is the intended journey, documented here rather than presented
 as an accidental failure.
