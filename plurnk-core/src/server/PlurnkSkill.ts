@@ -38,7 +38,7 @@ export default class PlurnkSkill implements SkillTree {
         return new GeneratedByteSource(async () => {
             if (pathname !== ".env.defaults") return null;
             const sources = await EnvDefaults.collect(dirname(Paths.configuration), this.#nodeModules);
-            return new TextEncoder().encode(EnvDefaults.renderCatalog(sources));
+            return new TextEncoder().encode(EnvDefaults.renderCatalog(sources.files));
         });
     }
 }

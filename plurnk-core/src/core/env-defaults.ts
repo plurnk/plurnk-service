@@ -1,9 +1,13 @@
 import { parseEnv } from "node:util";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import Meta from "@plurnk/plurnk-meta";
+import Meta, { ConfigurationError, type PackageCandidate } from "@plurnk/plurnk-meta";
+import { AgentPluginFiles } from "@plurnk/plurnk-meta/agent-plugin";
+import type { PluginReport } from "@plurnk/plurnk-agent-plugins";
+import HostPaths from "./HostPaths.ts";
+import PluginSources from "../server/PluginSources.ts";
 
-// Each package owns its configuration keys and declares them in its package-root `.env.defaults`
+// Each package owns its configuration keys and panel (Agent Plugin native panels live in ai.plurnk/)
 // ({§operator-config-env-defaults}). The daemon assembles those files into the lowest-precedence
 // floor and renders the same sources on demand through `config defaults`, never a second file.
 // Duplicate ownership fails boot naming both packages.
@@ -17,6 +21,12 @@ export type EnvDefaultsFile = {
     text: string;                     // the raw file — comments included; the catalog preserves them
     parsed: Record<string, string>;
 };
+
+export interface EnvDefaultsCollection {
+    readonly files: readonly EnvDefaultsFile[];
+    readonly configurationErrors: readonly ConfigurationError[];
+    readonly reports: readonly PluginReport[];
+}
 
 export default class EnvDefaults {
 
@@ -38,8 +48,7 @@ export default class EnvDefaults {
 
     // Enumerate installed package dirs via the shared membership primitives
     // (@plurnk/plurnk-meta); keep ecosystem members that ship a .env.defaults.
-    static async #memberFiles(nodeModules: string): Promise<EnvDefaultsFile[]> {
-        const dirs = await Meta.packageDirs(nodeModules);
+    static async #memberFiles(dirs: readonly PackageCandidate[]): Promise<EnvDefaultsFile[]> {
         const files: EnvDefaultsFile[] = [];
         for (const { dir, name } of dirs.toSorted((a, b) => a.name.localeCompare(b.name))) {
             if (!Meta.isTrusted(name)) continue;
@@ -58,11 +67,41 @@ export default class EnvDefaults {
     // The host's own file first, then every installed member's, name-sorted (deterministic).
     // The host is excluded from the member scan — a workspace checkout symlinks the daemon
     // into node_modules as its own member, and self-vs-self is not a collision.
-    static async collect(serviceRoot: string, nodeModules: string): Promise<EnvDefaultsFile[]> {
+    static async collect(serviceRoot: string, nodeModules: string, { hostPaths = new HostPaths() }: {
+        readonly hostPaths?: HostPaths;
+    } = {}): Promise<EnvDefaultsCollection> {
         const own = await EnvDefaults.#readDefaults(serviceRoot, "@plurnk/plurnk-service");
         if (own === null) throw new Error("@plurnk/plurnk-service: .env.defaults missing from the package root — the shipped floor is not optional");
-        const members = await EnvDefaults.#memberFiles(nodeModules);
-        return [own, ...members.filter((m) => m.owner !== own.owner)];
+        const environment = { ...own.parsed, ...process.env };
+        const sources = await PluginSources.read({ hostPaths, nodeModules, environment });
+        const configurationErrors = [...sources.configurationErrors];
+        const members = await EnvDefaults.#memberFiles(sources.packages.filter(({ dir }) => !sources.pluginPackages.has(dir)));
+        const files = [own, ...members.filter((m) => m.owner !== own.owner)];
+        for (const plugin of sources.plugins) {
+            try {
+                const native = await Meta.readManifest(plugin.root, "module");
+                if (native === null || native.packageName === null || !Meta.isTrusted(native.packageName)) continue;
+                const file = await EnvDefaults.nativeFile(plugin.root, native.packageName);
+                if (file !== null) files.push(file);
+            } catch (cause) {
+                if (!(cause instanceof ConfigurationError)) throw cause;
+                configurationErrors.push(cause);
+            }
+        }
+        return { files, configurationErrors, reports: sources.reports };
+    }
+
+    // {§operator-config-env-defaults} A standard bundle's panel is native extension data, not a portable component.
+    static async nativeFile(root: string, owner: string): Promise<EnvDefaultsFile | null> {
+        const location = join(root, "ai.plurnk", ".env.defaults");
+        try {
+            if (!await AgentPluginFiles.contained(root, location)) {
+                throw new Error("native defaults resolve outside the plugin root");
+            }
+            return await EnvDefaults.#readDefaults(join(root, "ai.plurnk"), owner);
+        } catch (cause) {
+            throw new ConfigurationError(location, `${owner}: native .env.defaults is unavailable: ${(cause as Error).message}`, { cause });
+        }
     }
 
     // The ONE law: global key uniqueness. A collision names both claimants — it is also the

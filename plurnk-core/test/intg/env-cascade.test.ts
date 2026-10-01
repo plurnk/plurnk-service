@@ -612,6 +612,29 @@ test("config edit preserves editor arguments and an XDG path containing spaces",
     }
 });
 
+for (const built of [false, true]) {
+    test(`{§operator-config-env-defaults} ${built ? "built" : "source"} root flags govern native plugin defaults before floor collection`, async () => {
+        const fx = await fixture();
+        try {
+            const plugin = join(fx.home, ".agents/plugins/root-fixture");
+            await mkdir(join(plugin, "ai.plurnk"), { recursive: true });
+            await writeFile(join(plugin, "plugin.json"), JSON.stringify({
+                $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "root-fixture",
+                extensions: { "ai.plurnk": { module: "ai.plurnk/plugin.mjs" } },
+            }));
+            await writeFile(join(plugin, "ai.plurnk/.env.defaults"), "PLURNK_PLUGIN_CASCADE_FIXTURE=from-root\n");
+            await writeFile(join(plugin, "ai.plurnk/plugin.mjs"), "throw new Error(\"catalog must not import code\");");
+            const env = { PLURNK_SERVICE_ROOTS: "global", PLURNK_PLUGINS_TRUSTED_ONLY: "0" };
+            const included = await runService(fx, ["config", "defaults"], { env, built });
+            assert.equal(included.code, 0, included.stderr);
+            assert.match(included.stdout, /PLURNK_PLUGIN_CASCADE_FIXTURE=from-root/);
+            const excluded = await runService(fx, ["--service-roots=project", "config", "defaults"], { env, built });
+            assert.equal(excluded.code, 0, excluded.stderr);
+            assert.doesNotMatch(excluded.stdout, /PLURNK_PLUGIN_CASCADE_FIXTURE/);
+        } finally { await rm(fx.root, { recursive: true, force: true }); }
+    });
+}
+
 test("legacy mixed state blocks ordinary startup until the explicit one-way path migration", async () => {
     const fx = await fixture();
     try {

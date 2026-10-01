@@ -225,7 +225,7 @@ export default class Daemon implements ApplicationPort {
             retainWorkspace: (workspaceId) => this.#residency.retain(workspaceId),
             preparationChanged: (workspaceId, preparation) => this.#broadcast({ workspaceId }, "workspace/preparation", { workspaceId, preparation }) });
         // {§skills-functionality} — Core's own family: standard Agent Skills.
-        this.#plugins = new WorkspacePlugins({ db, hostPaths });
+        this.#plugins = new WorkspacePlugins({ db, hostPaths, nodeModules: this.#nodeModulesPath });
         this.#skills = new SkillsFunctionality({
             db,
             storage: this.#storage,
@@ -1633,7 +1633,9 @@ export default class Daemon implements ApplicationPort {
         // {§module-discovery} — third-party daemon-module composition: trusted
         // packages declaring `plurnk.kind: "module"` register beside the
         // service's explicit composition before any module setup runs.
-        const discoveredModules = await discoverDaemonModules({ cwd: this.#discoveryCwd });
+        const discoveredModules = await discoverDaemonModules({ cwd: this.#discoveryCwd, hostPaths: this.#hostPaths });
+        for (const cause of discoveredModules.configurationErrors) this.#configuration.record("native-plugins", cause);
+        this.#configuration.pluginReports(discoveredModules.reports);
         for (const packageName of discoveredModules.skipped) {
             console.warn(`module discovery: '${packageName}' is discovered but untrusted (PLURNK_PLUGINS_TRUSTED_ONLY); not registered`);
         }

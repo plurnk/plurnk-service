@@ -4,11 +4,14 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_db.ts";
+import HostPaths from "../../src/core/HostPaths.ts";
+import EnvDefaults from "../../src/core/env-defaults.ts";
+import Paths from "../../src/Paths.ts";
 
 // A third-party module is exactly what this file composes, so it states the operator who admitted it
 // ({§plugin-trust-boundary}); the shipped panel admits only `@plurnk/*`.
@@ -68,4 +71,64 @@ export default () => ({
         await db.close();
         await rm(root, { recursive: true, force: true });
     }
+});
+
+test("{§module-discovery} a directory plugin loads its floor, publishes its action and drains before releasing resources", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-native-boot-"));
+    const paths = new HostPaths({ home: root, env: {} });
+    const plugin = join(paths.globalPluginsDir, "fixture");
+    const trace = join(root, "lifecycle.txt");
+    const priorRoots = process.env.PLURNK_SERVICE_ROOTS;
+    const priorKnob = process.env.PLURNK_NATIVE_FIXTURE;
+    process.env.PLURNK_SERVICE_ROOTS = "global";
+    delete process.env.PLURNK_NATIVE_FIXTURE;
+    t.after(async () => {
+        if (priorRoots === undefined) delete process.env.PLURNK_SERVICE_ROOTS; else process.env.PLURNK_SERVICE_ROOTS = priorRoots;
+        if (priorKnob === undefined) delete process.env.PLURNK_NATIVE_FIXTURE; else process.env.PLURNK_NATIVE_FIXTURE = priorKnob;
+        await rm(root, { recursive: true, force: true });
+    });
+    await mkdir(join(plugin, "ai.plurnk"), { recursive: true });
+    await writeFile(join(plugin, "plugin.json"), JSON.stringify({
+        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "native-fixture",
+        extensions: { "ai.plurnk": { module: "ai.plurnk/plugin.mjs" } },
+    }));
+    await writeFile(join(plugin, "ai.plurnk/.env.defaults"), "PLURNK_NATIVE_FIXTURE=from-plugin\n");
+    await writeFile(join(plugin, "ai.plurnk/plugin.mjs"), `
+import { appendFile } from "node:fs/promises";
+const trace = ${JSON.stringify(trace)};
+export default () => ({
+    setup(seam) {
+        seam.registerModuleAction({
+            name: "fixture.native", scope: "worldless", residency: "none",
+            inputSchema: { type: "object", additionalProperties: false },
+            outputSchema: { type: "object", required: ["value"], additionalProperties: false,
+                properties: { value: { type: "string" } } },
+            handler: async () => ({ value: process.env.PLURNK_NATIVE_FIXTURE }),
+        });
+    },
+    async stop() { await appendFile(trace, "stopped\\n"); },
+    async close() { await appendFile(trace, "closed\\n"); },
+});
+`);
+    const broken = join(paths.globalPluginsDir, "broken");
+    await mkdir(broken);
+    await writeFile(join(broken, "plugin.json"), JSON.stringify({
+        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "broken",
+        extensions: { "ai.plurnk": { module: "../escape.mjs" } },
+    }));
+    const nodeModules = resolve(import.meta.dirname, "../../..", "node_modules");
+    const collected = await EnvDefaults.collect(Paths.packageRoot, nodeModules, { hostPaths: paths });
+    assert.equal(collected.configurationErrors.length, 1);
+    EnvDefaults.apply(EnvDefaults.merge(collected.files));
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, hostPaths: paths, nodeModulesPath: nodeModules });
+    try {
+        await daemon.start();
+        assert.deepEqual(await daemon.invokeModuleAction("fixture.native", {}, { scope: "worldless" }), { value: "from-plugin" });
+        assert.ok(daemon.configurationNotices().some(({ key }) => key === join(broken, "plugin.json")));
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+    assert.equal(await readFile(trace, "utf8"), "stopped\nclosed\n");
 });

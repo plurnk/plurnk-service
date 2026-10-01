@@ -9,7 +9,8 @@ export interface PluginReport {
     readonly message: string;
 }
 
-export interface Finding {
-    readonly section: string;
-    readonly message: string;
-}
+export type { Finding } from "@plurnk/plurnk-meta/agent-plugin";
+// Only filesystem failures cross the installation boundary as reports; programming errors still throw.
+export const isFileError = (cause: unknown): cause is NodeJS.ErrnoException => cause instanceof Error
+    && typeof (cause as NodeJS.ErrnoException).code === "string"
+    && typeof (cause as NodeJS.ErrnoException).syscall === "string";

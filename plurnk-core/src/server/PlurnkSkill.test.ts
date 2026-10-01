@@ -24,7 +24,10 @@ test("{§skills-installation-boundary} {§plurnk-skill} listing is lazy and chap
 
 test("{§plurnk-skill} only reading generated defaults collects the installed catalog", async (t) => {
     const tree = await PlurnkSkill.load(resolve("../node_modules"));
-    const collect = t.mock.method(EnvDefaults, "collect", async () => [{ owner: "fixture", text: "# fixture\nKNOB=1\n", parsed: { KNOB: "1" } }]);
+    const collect = t.mock.method(EnvDefaults, "collect", async () => ({
+        files: [{ owner: "fixture", text: "# fixture\nKNOB=1\n", parsed: { KNOB: "1" } }],
+        reports: [], configurationErrors: [],
+    }));
     await tree.list();
     const source = tree.resource(".env.defaults");
     assert.equal(collect.mock.callCount(), 0);

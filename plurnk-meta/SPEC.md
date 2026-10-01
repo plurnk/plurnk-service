@@ -149,12 +149,28 @@ diagnostic, never degrades into an unbounded one.
 `limit(environment?)` validates the same bound without rendering a diagnostic;
 an explicitly supplied environment is complete and never falls back to the process.
 
-### §plugin-manifest-read One package.json read
+### §plugin-manifest-read One native capability declaration
+
+| Distribution | Declaration | Identity |
+|---|---|---|
+| Platform capability package | `package.json#plurnk` | npm package name |
+| Agent Plugin bundle | `plugin.json#extensions.ai.plurnk` | npm package name when packaged for Node; otherwise the standard plugin name |
+
+The bundle uses the standard manifest validation at {§agent-plugins-manifest};
+`ai.plurnk.module` names a daemon-module entry point ({§module-discovery}).
+This projects to the existing `module` family, which composes native capabilities
+through their owning registration interfaces ({§module-lifecycle}).
+Its Plurnk-specific files, including defaults, live under `ai.plurnk/`.
+A bundle never repeats its family declaration in `package.json`: two declarations
+are an error, not an override. npm exports and dependencies remain Node packaging
+metadata. The standard manifest is authoritative when present; an invalid one
+cannot fall through to a package declaration. Other clients' extension namespaces
+claim no native Plurnk capability.
 
 `Meta.readManifest(dir, kind)` is the one read of a package's family claim:
-its `package.json`, parsed, with a `plurnk` object declaring exactly that
+its declaration, parsed, with an object declaring exactly that
 `kind` ({§plugin-family-kind}). It answers `null` for a missing or
-malformed manifest, a non-object, no `plurnk` object, or another family —
+malformed ordinary package manifest, a non-object, no declaration, or another family —
 none of those is a package of that family, and a scanner skips them without
 evidence. The result carries the manifest path, the package name when
 `name` is a non-empty string (otherwise `null`; what an unnamed package is

@@ -24,6 +24,7 @@ export default class Paths {
     static readonly packageRoot = Paths.#PACKAGE_ROOT;
     static migrations = resolve(Paths.#PACKAGE_ROOT, "migrations");
     static instructionsSystem = resolve(Paths.#CONTRACTS_ROOT, "plurnk.md");
+    static sharedDefaults = resolve(Paths.#CONTRACTS_ROOT, ".env.defaults");
     static configuration = resolve(Paths.#PACKAGE_ROOT, "INSTALL.md");
     // The first-run policy seed and built-in/conditional pull-doc sources.
     static policy = Paths.teachingSource(TEACHING_CORPUS.policy);

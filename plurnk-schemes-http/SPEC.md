@@ -203,6 +203,12 @@ Markdown negotiation, browser-compatible `User-Agent`, and conditional cache
 fields are transport mechanics, not authored metadata. No authored request headers or
 origin credentials cross the materializer boundary.
 
+A trusted native module may call `MaterializerRegistry.register(owner, implementation)`
+during setup. It uses the same id namespace, lookup and collision enforcement as
+package discovery. The returned idempotent release removes only that registration;
+the module calls it during close, after producers have drained. Registration
+neither imports code nor changes configuration or authorization.
+
 When no `Accept` is authored, origin acquisition offers
 `text/markdown, text/html;q=0.9, */*;q=0.1`. An origin `text/markdown`
 representation wins and the materializer is skipped; no second HTML request is

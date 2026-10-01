@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import PluginRoots from "./PluginRoots.ts";
@@ -36,6 +36,22 @@ test("{§agent-plugins-roots} within one root the first directory in code-point 
     assert.deepEqual(reports.map(({ root, outcome }) => ({ root, outcome })), [{ root: join(base, "b-copy"), outcome: "shadowed" }]);
 });
 
+test("{§agent-plugins-roots} explicit installed directories follow roots in the same identity cascade", async (t) => {
+    const base = await mkdtemp(join(tmpdir(), "agent-plugins-roots-"));
+    t.after(() => rm(base, { recursive: true, force: true }));
+    const user = join(base, "user");
+    const npm = join(base, "node_modules");
+    await plugin(user, "replacement", "shared");
+    await plugin(npm, "published", "shared");
+    await plugin(npm, "other", "npm-only");
+    const { plugins, reports } = await PluginRoots.discover([{ scope: "global", directory: user }], [
+        { scope: "npm", directory: join(npm, "published") },
+        { scope: "npm", directory: join(npm, "other") },
+    ]);
+    assert.deepEqual(plugins.map(({ scope, manifest }) => [scope, manifest.name]), [["global", "shared"], ["npm", "npm-only"]]);
+    assert.deepEqual(reports.map(({ outcome }) => outcome), ["shadowed"]);
+});
+
 test("{§agent-plugins-roots} files, dot-entries, and missing roots hold no plugins; a plain directory is reported", async (t) => {
     const base = await mkdtemp(join(tmpdir(), "agent-plugins-roots-"));
     t.after(() => rm(base, { recursive: true, force: true }));
@@ -48,4 +64,24 @@ test("{§agent-plugins-roots} files, dot-entries, and missing roots hold no plug
     assert.deepEqual(reports.map(({ root, path, section, outcome }) => ({ root, path, section, outcome })), [
         { root: join(base, "data"), path: "plugin.json", section: "5.1", outcome: "rejected" },
     ]);
+});
+
+test("{§agent-plugins-roots} unreadable roots and candidates are reported without losing healthy siblings", async (t) => {
+    const base = await mkdtemp(join(tmpdir(), "agent-plugins-roots-"));
+    t.after(() => rm(base, { recursive: true, force: true }));
+    const invalidRoot = join(base, "invalid");
+    const validRoot = join(base, "valid");
+    await writeFile(invalidRoot, "not a directory");
+    await plugin(validRoot, "healthy", "healthy");
+    await symlink("loop", join(validRoot, "loop"));
+    const { plugins, reports } = await PluginRoots.discover([
+        { scope: "project", directory: invalidRoot }, { scope: "global", directory: validRoot },
+    ]);
+    assert.deepEqual(plugins.map(({ manifest }) => manifest.name), ["healthy"]);
+    assert.deepEqual(reports.map(({ root, outcome }) => ({ root, outcome })), [
+        { root: invalidRoot, outcome: "rejected" },
+        { root: join(validRoot, "loop"), outcome: "rejected" },
+    ]);
+    assert.match(reports[0]!.message, /ENOTDIR/);
+    assert.match(reports[1]!.message, /ELOOP/);
 });

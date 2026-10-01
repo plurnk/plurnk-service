@@ -76,7 +76,7 @@ test("{§skills-installation-boundary} {§plurnk-skill} defaults are the operato
         assert.match(String(entry.content), /\.env\.defaults/);
         const defaults = await read("skill://plurnk/.env.defaults");
         assert.equal(defaults.status, 200);
-        const expected = EnvDefaults.renderCatalog(await EnvDefaults.collect(resolve("."), resolve("../node_modules")));
+        const expected = EnvDefaults.renderCatalog((await EnvDefaults.collect(resolve("."), resolve("../node_modules"))).files);
         assert.equal(defaults.content, expected.trimEnd(), "the source matches the operator's complete installed catalog");
         const matches = await dispatch({ ...findStmt(parsePath("skill://plurnk/.env.defaults"), regex("PLURNK_PROVIDERS_OUTPUT_BUDGET")), lineMarker: { marks: [1, -1] } });
         assert.equal(matches.status, 200);

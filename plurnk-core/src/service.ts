@@ -44,6 +44,7 @@ export default class Service {
     static #projectRoot = resolve(Service.#codeDir, "..");
     static #ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
     static #hostPaths = new HostPaths();
+    static #configuration = new ConfigurationDiagnostics();
 
     // The node_modules holding the service's plugin deps (exec/scheme/mimetype), resolved
     // from this file's REAL location by the shared membership walk. Falls back to CWD.
@@ -222,7 +223,7 @@ export default class Service {
         // it at boot via the seam). {§rpc}: production has no daemon-owned listener.
         const port = Number(Service.#requireEnv("PLURNK_PORT"));
 
-        const configuration = new ConfigurationDiagnostics();
+        const configuration = Service.#configuration;
         await configuration.capture("model-aliases", () => parseAliasesFromEnv());
         const route = await configuration.capture("model", () => resolveActiveRoute());
         await configuration.capture("model-child", () => resolveChildRoute());
@@ -293,7 +294,7 @@ export default class Service {
     }
 
     static async #configStatus(): Promise<void> {
-        const diagnostics = new ConfigurationDiagnostics();
+        const diagnostics = Service.#configuration;
         const aliases = await diagnostics.capture("model-aliases", () => parseAliasesFromEnv());
         const active = await diagnostics.capture("model", () => resolveActiveRoute());
         await diagnostics.capture("model-child", () => resolveChildRoute());
@@ -324,6 +325,8 @@ export default class Service {
                 `relative XDG variable(s) are invalid and ignored: ${Service.#hostPaths.invalidXdg.join(", ")}`,
             );
         }
+        const unavailable = Service.#configuration.notices().filter(({ level }) => level === "warn" || level === "error");
+        if (unavailable.length > 0) throw new Error(unavailable.map(({ message }) => message).join("\n"));
         await Service.#validateConfiguration();
         const { aliases, active } = Service.#modelConfiguration();
         process.stdout.write([
@@ -383,20 +386,11 @@ export default class Service {
 
         if (configFile !== null) Service.#loadEnv(configFile, true);
         Service.#loadEnv(Service.#hostPaths.configFile, false);
-        // The assembled floor sits under everything the operator set: this package's
-        // .env.defaults + every installed member's, one owner per key (collision = boot crash),
-        // applied set-if-unset. The complete owner-labelled catalog is projected only by
-        // `config defaults`; there is no generated configuration copy.
-        const defaultsFiles = await EnvDefaults.collect(Service.#projectRoot, Service.#pluginsNodeModules());
-        EnvDefaults.apply(EnvDefaults.merge(defaultsFiles));
-
         // A flag is a knob's spelling for one invocation: the service's own panel, and the keys it
         // shares with every client ({§operator-config-shared-keys}), which contracts declares.
-        const shared = defaultsFiles.find(({ owner }) => owner === "@plurnk/plurnk-contracts");
-        if (shared === undefined) throw new Error("@plurnk/plurnk-contracts: .env.defaults missing — the shared endpoint keys have no owner");
         const flagDescriptors = [
             ...await EnvFlags.parseEnvDefaults(resolve(Service.#projectRoot, ".env.defaults")),
-            ...EnvFlags.parseEnvDefaultsContent(shared.text),
+            ...await EnvFlags.parseEnvDefaults(Paths.sharedDefaults),
         ];
         const flagOptions: Record<string, { type: "string" }> = {};
         for (const f of flagDescriptors) {
@@ -452,6 +446,14 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
             process.exit(0);
         }
 
+        // Root/trust flags participate before plugin defaults are admitted to the shared floor.
+        const { files: defaultsFiles, configurationErrors, reports } = await EnvDefaults.collect(
+            Service.#projectRoot, Service.#pluginsNodeModules(), { hostPaths: Service.#hostPaths },
+        );
+        for (const cause of configurationErrors) Service.#configuration.record("native-plugins", cause);
+        Service.#configuration.pluginReports(reports);
+        EnvDefaults.apply(EnvDefaults.merge(defaultsFiles));
+
         const command = typeof positionals[0] === "string" ? positionals[0] : "start";
         const action = typeof positionals[1] === "string" ? positionals[1] : null;
         let name = command;
@@ -464,7 +466,10 @@ ${EnvFlags.formatFlagsHelp(flagDescriptors)}
             if (positionals.length > 2) Service.#die(64, `unexpected arguments: ${positionals.slice(2).join(" ")}`);
             name = action === null ? "config" : `config ${action}`;
             if (action === "defaults") {
-                handler = async () => { process.stdout.write(EnvDefaults.renderCatalog(defaultsFiles)); };
+                handler = async () => {
+                    process.stdout.write(EnvDefaults.renderCatalog(defaultsFiles));
+                    for (const notice of Service.#configuration.notices()) process.stderr.write(`${notice.message}\n`);
+                };
             } else {
                 await LegacyHome.assertCanonical(Service.#hostPaths);
                 if (action === "edit") {

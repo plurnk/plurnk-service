@@ -3,13 +3,14 @@
 // directory its subprocesses receive.
 import { createHash } from "node:crypto";
 import {
-    PluginRoots,
     type DiscoveredPlugin,
     type PluginReport,
 } from "@plurnk/plurnk-agent-plugins";
 import type { Db } from "../core/Db.ts";
 import HostPaths from "../core/HostPaths.ts";
-import { AGENT_ROOT_SCOPES, agentRootScopes, type AgentRootScope } from "./AgentRoots.ts";
+import type { AgentRootScope } from "./AgentRoots.ts";
+import PluginSources from "./PluginSources.ts";
+import { join } from "node:path";
 
 export interface InstalledPlugin extends DiscoveredPlugin {
     // PLUGIN_DATA: a consumer creates it before launching one of the plugin's subprocesses.
@@ -29,31 +30,22 @@ export interface WorkspacePluginSet {
 export default class WorkspacePlugins {
     readonly #db: Db;
     readonly #hostPaths: HostPaths;
+    readonly #nodeModules: string;
 
-    constructor({ db, hostPaths }: { readonly db: Db; readonly hostPaths: HostPaths }) {
+    constructor({ db, hostPaths, nodeModules = join(process.cwd(), "node_modules") }: {
+        readonly db: Db; readonly hostPaths: HostPaths; readonly nodeModules?: string;
+    }) {
         this.#db = db;
         this.#hostPaths = hostPaths;
-    }
-
-    async #roots(workspaceId: number): Promise<Record<AgentRootScope, string | null>> {
-        const workspace = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
-        const projectRoot = workspace?.project_root ?? null;
-        const read = agentRootScopes();
-        const directory = (scope: AgentRootScope): string | null => {
-            if (!read.has(scope)) return null;
-            if (scope === "global") return this.#hostPaths.globalPluginsDir;
-            if (scope === "plurnk") return this.#hostPaths.plurnkPluginsDir;
-            return projectRoot === null ? null : this.#hostPaths.projectPluginsDir(projectRoot);
-        };
-        return { project: directory("project"), plurnk: directory("plurnk"), global: directory("global") };
+        this.#nodeModules = nodeModules;
     }
 
     async read(workspaceId: number): Promise<WorkspacePluginSet> {
-        const roots = await this.#roots(workspaceId);
-        const { plugins, reports } = await PluginRoots.discover(AGENT_ROOT_SCOPES.flatMap((scope) => {
-            const directory = roots[scope];
-            return directory === null ? [] : [{ scope, directory }];
-        }));
+        const workspace = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
+        const projectRoot = workspace?.project_root ?? null;
+        const { plugins, reports, roots } = await PluginSources.read({
+            hostPaths: this.#hostPaths, projectRoot, nodeModules: this.#nodeModules,
+        });
         const installed = plugins.map((plugin): InstalledPlugin => ({ ...plugin, data: this.#hostPaths.pluginDataDir(plugin.manifest.name) }));
         const signature = createHash("sha256").update(JSON.stringify(installed.map((plugin) => [
             plugin.scope,

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { expandPlaceholders, schemaVersion } from "./AgentPlugins.ts";
+import { expandPlaceholders, schemaVersion } from "@plurnk/plurnk-meta/agent-plugin";
 
 test("{§agent-plugins-expansion} both placeholders expand at every occurrence", () => {
     assert.equal(

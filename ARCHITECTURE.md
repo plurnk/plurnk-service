@@ -136,7 +136,8 @@ default or a SQL column default that supplies a value the environment did not is
 a second home for a choice, and it will eventually disagree with the first.
 
 - **The system environment is the mechanism.** Node, the shell and CI all speak
-  it. Each package declares its own keys in its package-root `.env.defaults`; a
+  it. Each package declares its own keys in `.env.defaults` (under `ai.plurnk/`
+  for an Agent Plugin native extension); a
   key's prefix names its owner; one package owns a key. The daemon assembles
   every installed package's file into one floor, set-if-unset beneath every
   operator source, so a declared key is always present

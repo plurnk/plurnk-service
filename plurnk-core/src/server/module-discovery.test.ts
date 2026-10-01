@@ -9,6 +9,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { discoverDaemonModules } from "./module-discovery.ts";
+import HostPaths from "../core/HostPaths.ts";
 
 // These fixtures are third-party packages, so this file exercises the operator who admitted them
 // ({§plugin-trust-boundary}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself
@@ -145,4 +146,44 @@ test("{§module-discovery}: malformed lifecycle hooks fail at discovery", async 
     } finally {
         await rm(root, { recursive: true, force: true });
     }
+});
+
+test("{§module-discovery}: user plugins shadow npm by standard name; project native code never loads", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-native-plugin-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const hostPaths = new HostPaths({ home: root, env: {} });
+    const prior = process.env.PLURNK_SERVICE_ROOTS;
+    process.env.PLURNK_SERVICE_ROOTS = "project,plurnk,global";
+    t.after(() => { if (prior === undefined) delete process.env.PLURNK_SERVICE_ROOTS; else process.env.PLURNK_SERVICE_ROOTS = prior; });
+    const plugin = async (dir: string, name: string, tag: string): Promise<void> => {
+        await mkdir(join(dir, "ai.plurnk"), { recursive: true });
+        await writeFile(join(dir, "plugin.json"), JSON.stringify({
+            $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name,
+            extensions: { "ai.plurnk": { module: "ai.plurnk/plugin.mjs" } },
+        }));
+        await writeFile(join(dir, "ai.plurnk/plugin.mjs"), `export default () => ({ tag: ${JSON.stringify(tag)}, setup() {} });`);
+    };
+    const npm = join(root, "node_modules/published");
+    await plugin(npm, "example", "npm");
+    await plugin(join(hostPaths.globalPluginsDir, "different-folder"), "example", "global");
+    const project = join(root, "project");
+    await plugin(join(hostPaths.projectPluginsDir(project), "project"), "project-only", "project");
+    const found = await discoverDaemonModules({ cwd: project, hostPaths, packageDirs: [{ dir: npm, name: "published" }] });
+    assert.deepEqual(found.modules.map((module) => (module as { tag?: string }).tag), ["global"]);
+    assert.deepEqual(found.reports.map(({ outcome }) => outcome), ["shadowed"]);
+});
+
+test("{§module-discovery}: bad native configuration is diagnosed without excluding a healthy sibling", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-native-plugin-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const broken = await packageOf(root, "bad-plugin", {}, "export default {};");
+    await writeFile(join(broken.dir, "plugin.json"), JSON.stringify({
+        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "bad-plugin",
+        extensions: { "ai.plurnk": { module: "../outside.mjs" } },
+    }));
+    const healthy = await packageOf(root, "healthy", { plurnk: { kind: "module", module: "module.mjs" } }, "export default { setup() {} };");
+    const found = await discoverDaemonModules({ hostPaths: new HostPaths({ home: root, env: {} }), packageDirs: [broken, healthy] });
+    assert.equal(found.modules.length, 1);
+    assert.equal(found.configurationErrors.length, 1);
+    assert.match(found.configurationErrors[0].message, /extensions.ai.plurnk must name one module beneath ai.plurnk/);
 });

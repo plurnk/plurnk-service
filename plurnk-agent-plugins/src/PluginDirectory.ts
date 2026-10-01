@@ -1,10 +1,9 @@
-import { readFile, readdir, realpath, stat } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { readFile, readdir, stat } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { SkillDirectory } from "@plurnk/plurnk-agent-skills";
-import { expandPlaceholders } from "./AgentPlugins.ts";
-import { validateManifest, type PluginManifest } from "./PluginManifest.ts";
+import { AgentPluginFiles, expandPlaceholders, type PluginManifest } from "@plurnk/plurnk-meta/agent-plugin";
 import { validateMcpConfiguration, type McpServerEntry } from "./McpConfiguration.ts";
-import type { PluginOutcome, PluginReport } from "./PluginReport.ts";
+import { isFileError, type PluginOutcome, type PluginReport } from "./PluginReport.ts";
 
 export interface AgentPlugin {
     readonly root: string;
@@ -20,30 +19,19 @@ export interface PluginLoad {
 
 type Report = (path: string, section: string, outcome: PluginOutcome, message: string) => void;
 
-// A lexical stand-in for the client-managed data directory, which the consumer checks again at launch.
-const DATA = "/PLUGIN_DATA";
-
-const inside = (root: string, candidate: string): boolean => {
-    const path = relative(root, candidate);
-    return path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path);
-};
-
-// A missing path (or one under a non-directory) resolves to null; every other failure surfaces.
-const resolved = async (path: string): Promise<string | null> => {
-    try {
-        return await realpath(path);
-    } catch (cause) {
-        if ((cause as NodeJS.ErrnoException).code === "ENOENT" || (cause as NodeJS.ErrnoException).code === "ENOTDIR") return null;
-        throw cause;
+const read = async <T>(path: string, outcome: PluginOutcome, report: Report, action: () => Promise<T>): Promise<T | null> => {
+    try { return await action(); }
+    catch (cause) {
+        if (!isFileError(cause)) throw cause;
+        report(path, "client", outcome, cause.message);
+        return null;
     }
 };
 
-// {§agent-plugins-containment} Lexically inside, and still inside once symlinks resolve when the path exists.
-const contained = async (root: string, candidate: string): Promise<boolean> => {
-    if (!inside(root, candidate)) return false;
-    const real = await resolved(candidate);
-    return real === null || inside(root, real);
-};
+// A lexical stand-in for the client-managed data directory, which the consumer checks again at launch.
+const DATA = "/PLUGIN_DATA";
+
+const { inside, resolved, contained } = AgentPluginFiles;
 
 const pointer = (server: string): string => `mcp.json#/mcpServers/${server.replaceAll("~", "~0").replaceAll("/", "~1")}`;
 
@@ -61,39 +49,25 @@ export default class PluginDirectory {
     static async load(directory: string): Promise<PluginLoad> {
         const reports: PluginReport[] = [];
         const report: Report = (path, section, outcome, message) => { reports.push({ root: directory, path, section, outcome, message }); };
-        const root = await resolved(directory);
-        if (root === null || !(await stat(root)).isDirectory()) {
+        const root = await read("", "rejected", report, () => resolved(directory));
+        if (root === null || !(await read("", "rejected", report, () => stat(root)))?.isDirectory()) {
+            if (reports.length > 0) return { plugin: null, reports };
             report("", "11.1", "rejected", "the plugin directory does not exist");
             return { plugin: null, reports };
         }
-        const manifest = await PluginDirectory.#manifest(root, report);
+        const manifest = await read("plugin.json", "rejected", report, () => PluginDirectory.#manifest(root, report));
         if (manifest === null) return { plugin: null, reports };
-        const skills = await PluginDirectory.#skills(root, report);
-        const mcpServers = await PluginDirectory.#mcp(root, report);
+        const skills = await read("skills", "invalid", report, () => PluginDirectory.#skills(root, report)) ?? [];
+        const mcpServers = await read("mcp.json", "invalid", report, () => PluginDirectory.#mcp(root, report));
         return { plugin: { root, manifest, skills, mcpServers }, reports };
     }
 
     static async #manifest(root: string, report: Report): Promise<PluginManifest | null> {
-        const location = join(root, "plugin.json");
-        const real = await resolved(location);
-        if (real === null) {
+        const result = await AgentPluginFiles.manifest(root);
+        if (result === null) {
             report("plugin.json", "5.1", "rejected", "plugin.json is missing");
             return null;
         }
-        if (!inside(root, real)) {
-            report("plugin.json", "4.1", "rejected", "plugin.json resolves outside the plugin root");
-            return null;
-        }
-        if (!(await stat(real)).isFile()) {
-            report("plugin.json", "5.1", "rejected", "plugin.json is not a regular file");
-            return null;
-        }
-        const parsed = await parseJson(real);
-        if (parsed === null) {
-            report("plugin.json", "5.2", "rejected", "plugin.json is not valid JSON");
-            return null;
-        }
-        const result = validateManifest(parsed.value);
         for (const finding of result.ignored) report("plugin.json", finding.section, "ignored", finding.message);
         if ("rejected" in result) {
             report("plugin.json", result.rejected.section, "rejected", result.rejected.message);
@@ -117,13 +91,13 @@ export default class PluginDirectory {
         }
         const skills: SkillDirectory[] = [];
         for (const name of (await readdir(real)).toSorted()) {
-            const file = await resolved(join(real, name, "SKILL.md"));
+            const file = await read(`skills/${name}`, "skipped", report, () => resolved(join(real, name, "SKILL.md")));
             if (file === null) continue;
             if (!inside(root, file)) {
                 report(`skills/${name}/SKILL.md`, "4.1", "skipped", "SKILL.md resolves outside the plugin root");
                 continue;
             }
-            if (!(await stat(file)).isFile()) continue;
+            if (!(await read(`skills/${name}`, "skipped", report, () => stat(file)))?.isFile()) continue;
             try {
                 skills.push(await SkillDirectory.load(join(real, name)));
             } catch (cause) {
@@ -158,7 +132,13 @@ export default class PluginDirectory {
         for (const finding of result.skipped) report(pointer(finding.server), finding.section, "skipped", finding.message);
         const servers = new Map<string, McpServerEntry>();
         for (const [name, entry] of result.servers) {
-            const escape = await PluginDirectory.#escape(root, entry);
+            let escape: string | null;
+            try { escape = await PluginDirectory.#escape(root, entry); }
+            catch (cause) {
+                if (!isFileError(cause)) throw cause;
+                report(pointer(name), "client", "skipped", cause.message);
+                continue;
+            }
             if (escape === null) servers.set(name, entry);
             else report(pointer(name), "4.1", "skipped", escape);
         }

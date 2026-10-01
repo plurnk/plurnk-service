@@ -139,3 +139,26 @@ or proposal policy. Unavailable resources retain their exact Problem in `list`.
 Configuration provenance names the definition's environment key, discovered
 `SKILL.md` path, or MCP JSON file and JSON Pointer, not a dotenv file or shadowed history. Local overrides are
 workspace-owned; removing one exposes its current inherited source again.
+
+## Native extensions
+
+Standard [Agent Plugins](https://agent-plugins.org/specification) may declare a Plurnk daemon module:
+
+```json
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "example-plugin",
+  "extensions": { "ai.plurnk": { "module": "ai.plurnk/plugin.js" } }
+}
+```
+
+Native code loads at startup from installed npm packages and selected user roots:
+`$XDG_CONFIG_HOME/plurnk/plugins/` before `~/.agents/plugins/`, then npm. The manifest name
+identifies a plugin across those sources. Project plugins never load native code into the daemon.
+`PLURNK_SERVICE_ROOTS` selects the directory roots; `PLURNK_PLUGINS_TRUSTED_ONLY` governs native
+imports, using the npm package name when present or the plugin name otherwise.
+
+The module exports a lifecycle object or a no-argument factory. `setup` registers capabilities;
+`stop` drains producers; `close` releases registrations and observers. See {§module-lifecycle}.
+Native files and the optional configuration panel live under `ai.plurnk/`; its `.env.defaults`
+joins the ordinary floor. npm owns dependencies and delivery, not a second native declaration.

@@ -1,4 +1,4 @@
-// {§agent-plugins-manifest} The one Agent Plugins version this loader implements.
+// {§agent-plugins-manifest} Shared inert Agent Plugins format primitives.
 export const AGENT_PLUGINS_VERSION = "1.0.0";
 export const PLUGIN_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json";
 export const MCP_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json";

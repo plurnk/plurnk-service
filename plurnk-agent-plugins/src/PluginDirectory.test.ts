@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import PluginDirectory from "./PluginDirectory.ts";
@@ -66,4 +67,20 @@ test("{§agent-plugins-scope} a directory that does not exist is rejected with a
     const { plugin, reports } = await PluginDirectory.load(directory);
     assert.equal(plugin, null);
     assert.deepEqual(reports.map(({ path, section, outcome }) => ({ path, section, outcome })), [{ path: "", section: "11.1", outcome: "rejected" }]);
+});
+
+test("{§agent-plugins-components} unreadable component paths preserve other components", async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "agent-plugin-component-"));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    await writeFile(join(directory, "plugin.json"), JSON.stringify({
+        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "fixture",
+    }));
+    await mkdir(join(directory, "skills", "usable"), { recursive: true });
+    await writeFile(join(directory, "skills", "usable", "SKILL.md"), "---\nname: usable\ndescription: A usable skill.\n---\nUse this.\n");
+    await symlink("mcp.json", join(directory, "mcp.json"));
+    const { plugin, reports } = await PluginDirectory.load(directory);
+    assert.deepEqual(plugin?.skills.map(({ document }) => document.name), ["usable"]);
+    assert.equal(plugin.mcpServers, null);
+    assert.deepEqual(reports.map(({ path, outcome }) => ({ path, outcome })), [{ path: "mcp.json", outcome: "invalid" }]);
+    assert.match(reports[0]!.message, /ELOOP/);
 });

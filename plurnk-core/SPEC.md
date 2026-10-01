@@ -3740,7 +3740,20 @@ project's variables reach its commands through the workspace environment ({§wor
 
 Node's pre-script env-file form and the executable's post-script form share the same later-file-wins ordering. `--env-file-if-exists` skips an absent file without changing the order of selected files.
 
-§operator-config-env-defaults **Every package owns its knobs — `.env.defaults` is the standard.** Each package in the daemon's ecosystem — internal or third-party — ships a `.env.defaults` at its package root declaring its own knobs; the file is the package's configuration reference, traveling in the tarball and changing with the code that reads it. At boot the daemon assembles every installed member's file into one floor (membership = the `@plurnk/*` scope or a `plurnk` package.json field, gated by `PLURNK_PLUGINS_TRUSTED_ONLY` with discover()'s exact semantics) and applies it set-if-unset under every operator source. `plurnk-service config defaults` renders the same complete, owner-labelled aggregate to stdout on demand, preserving comments and optional declarations without persisting a second copy or exposing effective secret values. A key claimed by two packages fails boot naming both. With the reader-declares discipline, each key has one implementation and one defaults owner.
+§operator-config-env-defaults **Every package owns its knobs — one assembled floor.**
+
+| Source | Panel | Admission |
+|---|---|---|
+| Platform capability package | `.env.defaults` at the package root | `@plurnk/*` or a `plurnk` package field; {§plugin-trust-boundary} |
+| Agent Plugin native extension | `ai.plurnk/.env.defaults` | The winning daemon-wide plugin in {§agent-plugins-hosting}, a valid native declaration, and the same trust gate |
+
+Root and trust flags apply before collection. A project plugin contributes no native panel.
+The file travels with its code and is its configuration reference. All admitted files compose
+one floor, applied set-if-unset beneath operator sources. `plurnk-service config defaults`
+renders those same owner-labelled files, preserving comments and optional declarations without
+persisting another copy or exposing effective values. Duplicate key ownership fails naming both
+owners. Invalid optional native panels are diagnosed and prevent that extension from loading;
+they do not block the remaining floor or the repair path ({§configuration-repair-path}).
 
 §operator-config-only-home **The cascading environment is the only home for a choice.** The principle and its reasons are ARCHITECTURE.md's (*Configuration authority*); this is what `scripts/env-surface-policy.mjs` enforces in `root:lint`, over the source Git tracks:
 
@@ -4015,18 +4028,25 @@ Both phases are optional and idempotent; repeated calls join the same work.
 Core tracks a module before `setup` so partially acquired resources are released
 even if setup fails. A returned object identical to its module is tracked once.
 
-§module-discovery **Third-party daemon-module composition is manifest
-discovery.** A package declares `plurnk: { kind: "module", module:
-"<export-subpath>" }`; the export is one DaemonModule (an object, or a no-arg
-factory returning one). At boot, core scans installed packages under the
-executor family's discovery and trust rules ({§plugin-discovery}) and
-registers every trusted declaring module before any module setup runs, in
-package-name order. The service's explicit composition — the AG-UI,
-hooks, and MCP modules — carries init options and is wired in service.ts;
-discovery never duplicates those packages. An untrusted declaring package is
-skipped with a boot warning, never executed. A module export that is neither
-an object nor a no-arg factory, a factory returning a non-object, or an object
-with a non-function lifecycle member fails boot loudly.
+§module-discovery **Native extensions compose through the daemon-module lifecycle.**
+
+| Source | Declaration | Lifetime |
+|---|---|---|
+| Platform capability package | `package.json#plurnk` with `kind: "module"` and `module` | Daemon-wide |
+| Agent Plugin | `plugin.json#extensions.ai.plurnk.module`, a path under `ai.plurnk/` | Daemon-wide; npm and selected user roots only |
+| Project Agent Plugin | Portable components only | Workspace-scoped; native code is not imported |
+
+The export is one DaemonModule object or no-argument factory. Standard bundles follow
+{§agent-plugins-hosting} source order, then other installed module packages load in package-name
+order. All trusted modules register before setup. The service's explicit AG-UI, hooks and MCP
+composition is never duplicated. Untrusted modules are reported and not imported. Invalid
+declarations, unavailable module files and configuration errors during construction are diagnosed
+at the affected native extension; healthy siblings remain available. A factory validates startup
+configuration before `setup` acquires resources. Failures after registration begins follow
+{§module-lifecycle} cleanup, not a partial-registration fallback.
+An invalid module object, factory result or lifecycle member is an implementation contract failure,
+not configuration, and fails loudly. Native capabilities register through their owning public
+interfaces and release registrations during {§module-lifecycle} resource teardown.
 
 §module-shutdown-order `Daemon.stop()` first rejects new capability demand and
 aborts proposals, branches, derivations, and worker scopes. It begins module
@@ -4288,8 +4308,10 @@ unconditionally when that content changed. An unchanged family dispatches nothin
 §agent-plugins-hosting **Installed Agent Plugins are found like skills.** A workspace's plugins are
 the immediate child directories of its project's `.agents/plugins`, then
 `$XDG_CONFIG_HOME/plurnk/plugins` (plurnk alone), then `~/.agents/plugins` (every agent), loaded and
-validated by `@plurnk/plurnk-agent-plugins` ({§agent-plugins-roots}); an earlier root shadows a later
-plugin of the same name. A plugin's `PLUGIN_DATA` is `$XDG_DATA_HOME/plurnk/plugins/<name>`, kept
+validated by `@plurnk/plurnk-agent-plugins` ({§agent-plugins-roots}), followed by standard plugin
+bundles in the installed npm graph. An earlier source shadows a later plugin of the same manifest
+name, regardless of distribution or directory name. Native discovery uses that same cascade with
+the project root omitted; workspace discovery includes it. A plugin's `PLUGIN_DATA` is `$XDG_DATA_HOME/plurnk/plugins/<name>`, kept
 across its updates and moved with a state root ({§state-root}). Modules receive a workspace's plugins,
 in precedence order, through the setup seam's `readWorkspacePlugins`, with one signature that changes
 exactly when a plugin, its manifest, its MCP configuration, or its skills change

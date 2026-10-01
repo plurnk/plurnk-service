@@ -1,7 +1,7 @@
 // The metaproject layer's membership slice — the mechanics every discovery
 // surface shares ({§plugin-discovery} / {§operator-config-env-defaults}):
 //   - declaresKind:      the ONE package → capability-family representation.
-//   - readManifest:       the ONE package.json read: a family's manifest, or null for
+//   - readManifest:       the ONE native declaration read: a family's manifest, or null for
 //                         anything that is not a package of that family. Field
 //                         validation past the family claim is the caller's.
 //   - Knob:               the ONE environment reader: the panel's value by name, or a
@@ -29,6 +29,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { parseEnv } from "node:util";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import ConfigurationError from "./ConfigurationError.ts";
+import { AgentPluginFiles, isObject } from "./AgentPlugin.ts";
 
 export { default as Knob } from "./Knob.ts";
 export { default as ConfigurationError } from "./ConfigurationError.ts";
@@ -42,7 +44,7 @@ export interface PackageCandidate {
 
 export type PluginKind = "exec" | "mimetype" | "provider" | "scheme" | "http-materializer" | "module";
 
-// {§plugin-manifest-read} — a package's family claim as read from its package.json.
+// {§plugin-manifest-read} — one native declaration, projected to its owning family.
 export interface PluginManifest {
     readonly manifestPath: string;
     // `name` when it is a non-empty string; the caller decides what an unnamed package is.
@@ -107,10 +109,50 @@ export default class Meta {
     // no `plurnk` object, or another family: none of those is a package of this family, and
     // discovery skips them without a word. An abort is the caller's contract and surfaces.
     static async readManifest(dir: string, kind: PluginKind, { signal }: { signal?: AbortSignal } = {}): Promise<PluginManifest | null> {
-        const manifestPath = path.join(dir, "package.json");
+        const pluginPath = path.join(dir, "plugin.json");
+        let plugin: Awaited<ReturnType<typeof AgentPluginFiles.manifest>>;
+        try {
+            plugin = await AgentPluginFiles.manifest(dir, { signal });
+        } catch (cause) {
+            signal?.throwIfAborted();
+            if (cause instanceof Error && cause.name === "AbortError") throw cause;
+            throw new ConfigurationError(pluginPath, `${pluginPath}: plugin.json could not be read.`, { cause });
+        }
+        if (plugin !== null && kind !== "module") return null;
+        const packageRecord = await Meta.#packageRecord(dir, signal);
+        if (plugin !== null) {
+            if ("rejected" in plugin) {
+                throw new ConfigurationError(pluginPath, `${pluginPath}: ${plugin.rejected.message}.`);
+            }
+            if (isObject(packageRecord?.plurnk) && packageRecord.plurnk.kind !== undefined) {
+                throw new ConfigurationError(pluginPath, `${pluginPath}: native capabilities must not also be declared in package.json#plurnk.`);
+            }
+            const native = plugin.manifest.extensions?.["ai.plurnk"];
+            if (native === undefined) return null;
+            if (Object.keys(native).some((key) => key !== "module")
+                || typeof native.module !== "string" || !native.module.startsWith("ai.plurnk/")
+                || !AgentPluginFiles.inside(path.resolve(dir, "ai.plurnk"), path.resolve(dir, native.module))) {
+                throw new ConfigurationError(pluginPath, `${pluginPath}: extensions.ai.plurnk must name one module beneath ai.plurnk/.`);
+            }
+            const root = await AgentPluginFiles.resolved(dir);
+            if (root === null || !await AgentPluginFiles.contained(root, path.resolve(root, native.module))) {
+                throw new ConfigurationError(pluginPath, `${pluginPath}: extensions.ai.plurnk.module resolves outside the plugin root.`);
+            }
+            const packageName = typeof packageRecord?.name === "string" && packageRecord.name.length > 0
+                ? packageRecord.name : plugin.manifest.name;
+            return { manifestPath: pluginPath, packageName, plurnk: { kind: "module", ...native } };
+        }
+        if (packageRecord === null) return null;
+        const plurnk = packageRecord.plurnk;
+        if (!isObject(plurnk) || !Meta.declaresKind(plurnk, kind)) return null;
+        const packageName = typeof packageRecord.name === "string" && packageRecord.name.length > 0 ? packageRecord.name : null;
+        return { manifestPath: path.join(dir, "package.json"), packageName, plurnk };
+    }
+
+    static async #packageRecord(dir: string, signal?: AbortSignal): Promise<Record<string, unknown> | null> {
         let raw: string;
         try {
-            raw = await readFile(manifestPath, { encoding: "utf8", signal });
+            raw = await readFile(path.join(dir, "package.json"), { encoding: "utf8", signal });
         } catch (err) {
             if (err instanceof Error && err.name === "AbortError") throw err;
             return null;
@@ -121,12 +163,7 @@ export default class Meta {
         } catch {
             return null;
         }
-        if (typeof pkg !== "object" || pkg === null) return null;
-        const record = pkg as Record<string, unknown>;
-        const plurnk = record.plurnk;
-        if (typeof plurnk !== "object" || plurnk === null || !Meta.declaresKind(plurnk, kind)) return null;
-        const packageName = typeof record.name === "string" && record.name.length > 0 ? record.name : null;
-        return { manifestPath, packageName, plurnk: plurnk as Record<string, unknown> };
+        return isObject(pkg) ? pkg : null;
     }
 
     // {§operator-config-only-home} — the trust gate is asked while the floor is still being

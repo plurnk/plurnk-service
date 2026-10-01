@@ -1,5 +1,10 @@
-import { PLUGIN_SCHEMA, isObject, schemaVersion } from "./AgentPlugins.ts";
-import type { Finding } from "./PluginReport.ts";
+import { PLUGIN_SCHEMA, isObject, schemaVersion } from "./AgentPluginFormat.ts";
+export { AGENT_PLUGINS_VERSION, MCP_SCHEMA, PLUGIN_SCHEMA, expandPlaceholders, isObject, schemaVersion } from "./AgentPluginFormat.ts";
+
+export interface Finding {
+    readonly section: string;
+    readonly message: string;
+}
 
 export interface PluginAuthor {
     readonly name?: string;

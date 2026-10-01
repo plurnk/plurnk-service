@@ -34,6 +34,11 @@
             "types": "./dist/index.d.ts",
             "default": "./dist/index.js"
         },
+        "./agent-plugin": {
+            "plurnk-dev": "./src/AgentPlugin.ts",
+            "types": "./dist/AgentPlugin.d.ts",
+            "default": "./dist/AgentPlugin.js"
+        },
         "./configuration-error": {
             "plurnk-dev": "./src/ConfigurationError.ts",
             "types": "./dist/ConfigurationError.d.ts",

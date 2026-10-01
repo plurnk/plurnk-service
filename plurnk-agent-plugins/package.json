@@ -50,6 +50,7 @@
         "prepublishOnly": "npm audit --audit-level=moderate && npm test"
     },
     "dependencies": {
-        "@plurnk/plurnk-agent-skills": "1.24.0"
+        "@plurnk/plurnk-agent-skills": "1.24.0",
+        "@plurnk/plurnk-meta": "1.24.0"
     }
 }

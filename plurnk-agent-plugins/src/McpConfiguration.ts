@@ -1,4 +1,4 @@
-import { MCP_SCHEMA, isObject, schemaVersion } from "./AgentPlugins.ts";
+import { MCP_SCHEMA, isObject, schemaVersion } from "@plurnk/plurnk-meta/agent-plugin";
 import type { Finding } from "./PluginReport.ts";
 
 export interface StdioServer {

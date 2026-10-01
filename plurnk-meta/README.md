@@ -2,7 +2,7 @@
 
 What plurnk's packages share that no single package owns: plugin discovery and trust, and the teaching material the service gives models.
 
-**Membership primitives** (`import Meta from "@plurnk/plurnk-meta"`): the shared implementation of exact family identity, trust, attribution normalization, enumeration, and root resolution consumed by the four family-owned scanners (schemes, mimetypes, providers, execs). [SPEC.md](./SPEC.md) owns the complete contract ({§plugin-discovery}).
+**Membership primitives** (`import Meta from "@plurnk/plurnk-meta"`): shared family identity, trust, attribution, enumeration, and root resolution for capability scanners. [SPEC.md](./SPEC.md) owns the complete contract ({§plugin-discovery}).
 
 - `Meta.declaresKind(manifest, kind)` — accepts one exact string family identity; arrays claim no family ({§plugin-family-kind}).
 - `Meta.isTrusted(packageName, env?)` — the `PLURNK_PLUGINS_TRUSTED_ONLY` gate: `""`/`"0"` off; any value on, `@plurnk/*` always trusted plus a comma-separated allowlist. An unset key is answered by this package's own panel, which ships the gate on.
@@ -14,4 +14,11 @@ What plurnk's packages share that no single package owns: plugin discovery and t
 
 **The teaching corpus**: authored policy, an optional Recap, the Plurnk skill entry, and built-in scheme references resolved from this installed package. Meta owns the source bytes and membership; core owns admission, resource composition, and projection. See [`CORPUS.md`](./CORPUS.md) and {§teaching-corpus}.
 
-Third-party plugin authors: your package is discovered under any scope through one string `plurnk.kind`, enumerated by these primitives, and gated before import by the operator's trust knob — no registration with us required. An admitted package may declare always-on `plurnk.attribution` tags and its loaded plugin object may decide per provider attempt whether to return additional tags from `attributions(context)` ({§plugin-attribution}). MIT.
+Capability-library packages declare one `package.json#plurnk.kind`. Standard Agent Plugin bundles
+instead declare `plugin.json#extensions.ai.plurnk.module`: a daemon-module entry point that registers
+capabilities through their owning interfaces. Never declare both. Shared manifest and filesystem
+validation is exported from `@plurnk/plurnk-meta/agent-plugin`; the portable component loader remains
+`@plurnk/plurnk-agent-plugins`. Native imports use the same operator trust gate.
+
+An admitted capability package may declare always-on `plurnk.attribution` tags and its loaded object
+may return per-attempt tags from `attributions(context)` ({§plugin-attribution}). MIT.

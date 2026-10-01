@@ -46,7 +46,8 @@ const packedExecInventory = (env = {}) => {
         const { default: EnvDefaults } = await import(pathToFileURL(resolve(serviceRoot, "dist/core/env-defaults.js")));
         const { default: ExecutorRegistry } = await import(pathToFileURL(resolve(serviceRoot, "dist/core/ExecutorRegistry.js")));
         const { discover } = await import(pathToFileURL(resolve(nodeModules, "@plurnk/plurnk-execs/dist/index.js")));
-        const files = await EnvDefaults.collect(serviceRoot, nodeModules);
+        const { files, configurationErrors } = await EnvDefaults.collect(serviceRoot, nodeModules);
+        if (configurationErrors.length > 0) throw new AggregateError(configurationErrors, "packed defaults are invalid");
         const merged = EnvDefaults.merge(files);
         EnvDefaults.apply(merged);
         const discovery = await discover({ cwd: process.cwd() });
@@ -72,7 +73,8 @@ const packedMimetypeInventory = () => {
         const serviceRoot = resolve("node_modules/@plurnk/plurnk-service");
         const nodeModules = resolve("node_modules");
         const { default: EnvDefaults } = await import(pathToFileURL(resolve(serviceRoot, "dist/core/env-defaults.js")));
-        const files = await EnvDefaults.collect(serviceRoot, nodeModules);
+        const { files, configurationErrors } = await EnvDefaults.collect(serviceRoot, nodeModules);
+        if (configurationErrors.length > 0) throw new AggregateError(configurationErrors, "packed defaults are invalid");
         EnvDefaults.apply(EnvDefaults.merge(files));
         const framework = resolve(nodeModules, "@plurnk/plurnk-mimetypes/dist/index.js");
         const { Mimetypes, discover } = await import(pathToFileURL(framework));

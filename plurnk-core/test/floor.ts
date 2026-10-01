@@ -18,4 +18,7 @@ if (process.env.PLURNK_ZERO_PIN === "1") {
     process.stderr.write(`floor: ZERO-PIN — stripped ${stripped.length} tuning pin(s)${stripped.length > 0 ? ": " + stripped.join(", ") : ""}; provider capacity derives naturally\n`);
 }
 
-EnvDefaults.apply(EnvDefaults.merge(await EnvDefaults.collect(root, nodeModules)));
+const { files, configurationErrors, reports } = await EnvDefaults.collect(root, nodeModules);
+for (const cause of configurationErrors) process.stderr.write(`floor: ${cause.message}\n`);
+for (const report of reports) process.stderr.write(`floor: ${report.root}/${report.path}: ${report.message}\n`);
+EnvDefaults.apply(EnvDefaults.merge(files));

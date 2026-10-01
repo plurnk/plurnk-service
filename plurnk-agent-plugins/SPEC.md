@@ -11,10 +11,11 @@ is silent.
 
 | Rule | Contract |
 |---|---|
-| Input | An ordered list of `{ scope, directory }`; an earlier root takes precedence. |
+| Input | Ordered roots `{ scope, directory }`, followed by optional explicit installed directories in supplied order. An earlier source takes precedence. |
 | Candidates | Every immediate child directory whose name does not begin with `.`. Files, such as another client's marketplace file, are not plugins, and a missing root holds none. |
 | Identity | A plugin is identified by its manifest `name`, never its directory name: §11.1 loads a plugin from any path. |
 | Shadowing | The first plugin with a name wins, by root order and then by directory name in code-point order; each later one is reported `shadowed`. |
+| Filesystem failures | An unreadable root or candidate is reported `rejected`; other candidates remain available. |
 
 ## §agent-plugins-manifest Manifest
 
@@ -48,6 +49,7 @@ the narrowest boundary (§4.1):
 |---|---|
 | `skills/` or `mcp.json` absent | no components of that type and no report (§6.2) |
 | present but of the wrong kind | that type is `invalid`; the plugin's other components still load |
+| unreadable paths | Filesystem errors are reported at the narrowest component or entry boundary; unaffected components still load. Programming errors remain failures. |
 | `skills/<child>/SKILL.md` | immediate children only (§7.1). A skill that fails {§agent-skills-directory} is `skipped`. |
 | `mcp.json` | invalid JSON, an unknown top-level field, a missing `mcpServers`, or a `$schema` other than the manifest's version makes MCP `invalid` for that plugin (§7.2.2, §10.1) |
 

@@ -64,8 +64,13 @@ interface Manifest {
     readonly materializers: Array<{ readonly id: string; readonly module: string }>;
 }
 
+interface MaterializerEntry {
+    readonly packageName: string;
+    readonly load: () => Promise<HttpMaterializer>;
+}
+
 export default class MaterializerRegistry {
-    readonly #entries = new Map<string, { readonly packageName: string; readonly module: string; readonly dir: string }>();
+    readonly #entries = new Map<string, MaterializerEntry>();
     #promise: Promise<MaterializerRegistry> | null = null;
 
     // One process-wide lazy scan; the registry caches both the scan and the
@@ -89,13 +94,10 @@ export default class MaterializerRegistry {
                 if (manifest === null) continue;
                 if (!Meta.isTrusted(manifest.packageName)) continue;
                 for (const entry of manifest.materializers) {
-                    const prior = this.#entries.get(entry.id);
-                    if (prior !== undefined) {
-                        throw new Error(
-                            `http materializer '${entry.id}' is claimed by both ${prior.packageName} and ${manifest.packageName} — one flat id namespace.`,
-                        );
-                    }
-                    this.#entries.set(entry.id, { packageName: manifest.packageName, module: entry.module, dir: candidate.dir });
+                    this.#register(entry.id, {
+                        packageName: manifest.packageName,
+                        load: () => this.#load({ module: entry.module, dir: candidate.dir }),
+                    });
                 }
             }
             return this;
@@ -103,13 +105,33 @@ export default class MaterializerRegistry {
         return this.#promise;
     }
 
+    // {§http-materializer-plugins} The module owns this registration's lifetime.
+    register(owner: string, implementation: HttpMaterializer): () => void {
+        if (owner.length === 0 || implementation.id.length === 0
+            || typeof implementation.eligible !== "function" || typeof implementation.extract !== "function") {
+            throw new TypeError("A materializer registration requires an owner, id, eligible and extract.");
+        }
+        return this.#register(implementation.id, { packageName: owner, load: async () => implementation });
+    }
+
+    #register(id: string, entry: MaterializerEntry): () => void {
+        const prior = this.#entries.get(id);
+        if (prior !== undefined) {
+            throw new Error(`http materializer '${id}' is claimed by both ${prior.packageName} and ${entry.packageName} — one flat id namespace.`);
+        }
+        this.#entries.set(id, entry);
+        return () => {
+            if (this.#entries.get(id) === entry) this.#entries.delete(id);
+        };
+    }
+
     materializerFor(id: string): HttpMaterializer | null {
         const entry = this.#entries.get(id);
         if (entry === undefined) return null;
         return {
             id,
-            eligible: async (...args) => (await this.#load(entry)).eligible(...args),
-            extract: async (...args) => (await this.#load(entry)).extract(...args),
+            eligible: async (...args) => (await entry.load()).eligible(...args),
+            extract: async (...args) => (await entry.load()).extract(...args),
         };
     }
 
