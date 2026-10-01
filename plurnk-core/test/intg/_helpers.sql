@@ -3,6 +3,9 @@
 -- Production boot (bin/plurnk-service.ts) does NOT include this directory,
 -- so test fixtures stay out of production.
 
+-- PREP: test_checkpoint
+PRAGMA wal_checkpoint(TRUNCATE);
+
 -- PREP: test_insert_workspace
 INSERT INTO workspaces (name) VALUES ($name) RETURNING id;
 

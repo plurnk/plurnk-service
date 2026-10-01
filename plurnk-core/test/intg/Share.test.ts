@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, statSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,7 +8,7 @@ import Digest from "../../src/digest/Digest.ts";
 import Share from "../../src/share/Share.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
-test("{§share} {§share-scope}: a scoped share holds one workspace, from a copy of the database", async (t) => {
+test("{§share} {§share-scope}: a scoped share preserves a checkpointed source and holds one workspace", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-share-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const dbPath = join(root, "plurnk.db");
@@ -17,7 +17,13 @@ test("{§share} {§share-scope}: a scoped share holds one workspace, from a copy
     const other = await insertWorkspace(db, "other");
     await insertLoop(db, await insertWorker(db, kept, null, "alice"), 1, "kept task");
     await insertLoop(db, await insertWorker(db, other, null, "bob"), 1, "other task");
-    await db.close();
+    // Main-file byte equality requires committed pages outside the WAL first.
+    try {
+        await db.test_checkpoint.run();
+        assert.equal(statSync(`${dbPath}-wal`).size, 0);
+    } finally {
+        await db.close();
+    }
     const before = readFileSync(dbPath);
 
     const folder = join(root, "shares", "share_this_session_here");
@@ -27,7 +33,8 @@ test("{§share} {§share-scope}: a scoped share holds one workspace, from a copy
     assert.ok(existsSync(join(folder, "digest.md")));
     const digest = JSON.parse(readFileSync(join(folder, "digest.json"), "utf8")) as { workspaces: Array<{ name: string }> };
     assert.deepEqual(digest.workspaces.map(({ name }) => name), ["kept"]);
-    assert.ok(readFileSync(dbPath).equals(before), "the database itself is only read");
+    const after = readFileSync(dbPath);
+    assert.ok(after.equals(before), `the database itself is only read: bytes ${before.length} -> ${after.length}, first change ${after.findIndex((byte, index) => byte !== before[index])}`);
 });
 
 test("{§share}: a folder that already holds files, the database's own included, is refused and never cleared", async (t) => {
