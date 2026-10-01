@@ -383,6 +383,8 @@ for (const built of [false, true]) {
             PLURNK_SERVICE_EFFECT_HOST: "invalid",
             PLURNK_SERVICE_FILE_CREATE_SCOPE: "invalid",
             PLURNK_SERVICE_ATTENDED: "invalid",
+            PLURNK_SERVICE_RETAIN_PACKET_TURNS: "invalid",
+            PLURNK_SERVICE_PROMPT_BUDGET: "1024",
         };
         const env: NodeJS.ProcessEnv = {
             ...process.env, ...invalid,
@@ -414,6 +416,8 @@ for (const built of [false, true]) {
             ["effect-policy", "PLURNK_SERVICE_EFFECT_HOST"],
             ["file-creation", "PLURNK_SERVICE_FILE_CREATE_SCOPE"],
             ["loop-policy", "PLURNK_SERVICE_ATTENDED"],
+            ["retention", "PLURNK_SERVICE_RETAIN_PACKET_TURNS"],
+            ["packet", "PLURNK_SERVICE_PROMPT_BUDGET"],
         ]) {
             const notice = notices.find((item) => item.key === key);
             assert.equal(notice?.kind, "configuration_unavailable", JSON.stringify(notices));
@@ -512,6 +516,9 @@ test("{§configuration-repair-path} config check rejects optional startup errors
         { key: "PLURNK_SERVICE_EFFECT_HOST", env: { PLURNK_SERVICE_EFFECT_HOST: "invalid" } },
         { key: "PLURNK_SERVICE_FILE_CREATE_SCOPE", env: { PLURNK_SERVICE_FILE_CREATE_SCOPE: "invalid" } },
         { key: "PLURNK_SERVICE_ATTENDED", env: { PLURNK_SERVICE_ATTENDED: "invalid" } },
+        { key: "PLURNK_SERVICE_RETAIN_PACKET_TURNS", env: { PLURNK_SERVICE_RETAIN_PACKET_TURNS: "invalid" } },
+        { key: "PLURNK_SERVICE_PROMPT_BUDGET", env: { PLURNK_SERVICE_PROMPT_BUDGET: "1024" } },
+        { key: "PLURNK_SERVICE_PROMPT_PROJECTION", env: { PLURNK_SERVICE_PROMPT_PROJECTION: "invalid" } },
     ];
     for (const { key, env } of cases) {
         const result = await runService(fx, ["config", "check"], { env });

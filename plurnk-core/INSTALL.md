@@ -136,6 +136,6 @@ instruction. A control may precede the resource it will govern.
 Use the environment cascade for daemon/CI defaults and the subsystem actions for
 live workspace changes. A declared or enabled resource never bypasses capability
 or proposal policy. Unavailable resources retain their exact Problem in `list`.
-Configuration provenance names the definition's environment key or discovered
-`SKILL.md` path, not a dotenv file or shadowed history. Local overrides are
+Configuration provenance names the definition's environment key, discovered
+`SKILL.md` path, or MCP JSON file and JSON Pointer, not a dotenv file or shadowed history. Local overrides are
 workspace-owned; removing one exposes its current inherited source again.

@@ -6,6 +6,8 @@ import { stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Retention, { retentionPolicy } from "../../src/server/Retention.ts";
+import Daemon from "../../src/server/Daemon.ts";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { DurablePacket } from "../../src/core/StoredPacket.ts";
 import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
@@ -20,6 +22,27 @@ const packet = (upTo: number): DurablePacket => {
     return { weight: 1, sections: [{ name: "log", slot: "user", header: "Log", content: items.join("\n\n"), weight: 1, items }], attributions: [] };
 };
 
+test("{§configuration-repair-path}: invalid retention withholds collection and storage conversion through shutdown", async (t) => {
+    const key = "PLURNK_SERVICE_RETAIN_PACKET_TURNS";
+    const previous = process.env[key];
+    process.env[key] = "invalid";
+    t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
+    await using db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, "retention-repair");
+    const entryId = await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/released.md", channel: "body", content: "must remain", mimetype: "text/plain" });
+    await db.crud_delete_entry.run({ entry_id: entryId });
+    const before = await db.test_content_store_count.get({});
+    assert.equal(before?.n, 1);
+    const mode = await db.retention_auto_vacuum_mode.get({});
+    const daemon = new Daemon({ db });
+    try {
+        await daemon.start();
+        assert.ok(daemon.configurationNotices().some((notice) => notice.key === key));
+        assert.deepEqual(await db.retention_auto_vacuum_mode.get({}), mode, "an invalid policy cannot choose a storage conversion");
+    } finally { await daemon.stop(); }
+    assert.deepEqual(await db.test_content_store_count.get({}), before, "no collector ran at startup or shutdown");
+});
+
 test("{§retention-policy}: the shipped panel bounds transient data by age and keeps the durable record (#788)", () => {
     // The intg tier loads .env.defaults, so this is the real panel, not a fixture.
     const shipped = retentionPolicy(process.env);
@@ -33,11 +56,20 @@ test("{§retention-policy}: the shipped panel bounds transient data by age and k
 test("{§retention-policy}: the keep-everything fixture retires nothing and refuses malformed knobs", async () => {
     const policy = retentionPolicy(DEFAULTS);
     assert.deepEqual(policy, { retainPacketTurns: -1, retainPacketMs: -1, retainResponseTurns: -1, retainResponseMs: -1, collectPacketItems: true, collectDerivations: true, collectContents: true, intervalMs: 3_600_000, autoVacuum: "incremental", reclaimMinFreeBytes: 0 });
-    assert.throws(() => retentionPolicy({ ...DEFAULTS, PLURNK_SERVICE_RETAIN_PACKET_TURNS: "-2" }), /PLURNK_SERVICE_RETAIN_PACKET_TURNS must be -1 or a non-negative safe integer/);
-    assert.throws(() => retentionPolicy({ ...DEFAULTS, PLURNK_SERVICE_COLLECT_DERIVATIONS: "yes" }), /PLURNK_SERVICE_COLLECT_DERIVATIONS must be 0 or 1/);
-    assert.throws(() => retentionPolicy({ ...DEFAULTS, PLURNK_SERVICE_AUTO_VACUUM: "full" }), /PLURNK_SERVICE_AUTO_VACUUM must be incremental or none/);
-    assert.throws(() => retentionPolicy({ ...DEFAULTS, PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES: "-1" }), /PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES must be a non-negative safe integer/);
-    assert.throws(() => retentionPolicy({ ...DEFAULTS, PLURNK_SERVICE_RETENTION_INTERVAL_MS: undefined }), /PLURNK_SERVICE_RETENTION_INTERVAL_MS must be a non-negative safe integer/);
+    for (const [key, value] of [
+        ["PLURNK_SERVICE_RETAIN_PACKET_TURNS", "-2"],
+        ["PLURNK_SERVICE_COLLECT_DERIVATIONS", "yes"],
+        ["PLURNK_SERVICE_AUTO_VACUUM", "full"],
+        ["PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES", "-1"],
+        ["PLURNK_SERVICE_RETENTION_INTERVAL_MS", ""],
+    ]) assert.throws(() => retentionPolicy({ ...DEFAULTS, [key!]: value }), (cause: unknown) => {
+        assert.ok(cause instanceof ConfigurationError);
+        assert.equal(cause.key, key);
+        assert.ok(cause.message.includes(key!));
+        return true;
+    });
+    assert.throws(() => retentionPolicy({ ...DEFAULTS, PLURNK_SERVICE_RETENTION_INTERVAL_MS: undefined }),
+        /PLURNK_SERVICE_RETENTION_INTERVAL_MS is missing from the assembled environment floor/u);
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `retention-defaults-${crypto.randomUUID()}`);

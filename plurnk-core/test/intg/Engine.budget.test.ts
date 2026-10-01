@@ -92,14 +92,15 @@ test("Core starts curation at provider input capacity without inventing another 
     }
 });
 
-test("retired service-side capacity knobs fail at construction", async () => {
-    const keys = ["PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_SAFETY_rig"] as const;
+test("{§configuration-repair-path} retired service-side capacity knobs fail validation without preventing engine construction", async () => {
+    const keys = ["PLURNK_SERVICE_PROMPT_BUDGET", "PLURNK_SERVICE_SAFETY_rig", "PLURNK_SERVICE_CTX_rig"] as const;
     const previous = keys.map((key) => process.env[key]);
     const db = await openMigrated();
     try {
         for (const key of keys) {
             process.env[key] = "1";
-            assert.throws(() => new Engine({ db, schemes: new SchemeRegistry() }), new RegExp(`${key} is retired`));
+            assert.doesNotThrow(() => new Engine({ db, schemes: new SchemeRegistry() }));
+            assert.throws(() => PacketBuilder.validateConfiguration(), new RegExp(`${key} is retired`));
             delete process.env[key];
         }
     } finally {

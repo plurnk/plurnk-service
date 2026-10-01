@@ -2,6 +2,7 @@
 // as set statements: on the daemon's cadence while it runs, and as a shutdown step before the
 // planner statistics. Information is kept by default; only what no row references is collected.
 import type { Db } from "../core/Db.ts";
+import { Knob } from "@plurnk/plurnk-meta";
 
 export interface RetentionPolicy {
     readonly retainPacketTurns: number;   // -1 = every packet
@@ -21,38 +22,17 @@ export type AutoVacuum = "incremental" | "none";
 // SQLite's PRAGMA auto_vacuum codes for the modes the daemon manages.
 const AUTO_VACUUM_CODE: Readonly<Record<AutoVacuum, number>> = Object.freeze({ none: 0, incremental: 2 });
 
-const readBound = (env: NodeJS.ProcessEnv, name: string, floor: number): number => {
-    const raw = env[name];
-    const value = Number(raw);
-    if (raw === undefined || !Number.isSafeInteger(value) || value < floor) {
-        throw new Error(`${name} must be ${floor === -1 ? "-1 or a non-negative" : "a non-negative"} safe integer; got ${JSON.stringify(raw)}.`);
-    }
-    return value;
-};
-
-const readAutoVacuum = (env: NodeJS.ProcessEnv): AutoVacuum => {
-    const raw = env.PLURNK_SERVICE_AUTO_VACUUM;
-    if (raw !== "incremental" && raw !== "none") throw new Error(`PLURNK_SERVICE_AUTO_VACUUM must be incremental or none; got ${JSON.stringify(raw)}.`);
-    return raw;
-};
-
-const readFlag = (env: NodeJS.ProcessEnv, name: string): boolean => {
-    const raw = env[name];
-    if (raw !== "0" && raw !== "1") throw new Error(`${name} must be 0 or 1; got ${JSON.stringify(raw)}.`);
-    return raw === "1";
-};
-
 export const retentionPolicy = (env: NodeJS.ProcessEnv = process.env): RetentionPolicy => ({
-    retainPacketTurns: readBound(env, "PLURNK_SERVICE_RETAIN_PACKET_TURNS", -1),
-    retainPacketMs: readBound(env, "PLURNK_SERVICE_RETAIN_PACKET_MS", -1),
-    retainResponseTurns: readBound(env, "PLURNK_SERVICE_RETAIN_RESPONSE_TURNS", -1),
-    retainResponseMs: readBound(env, "PLURNK_SERVICE_RETAIN_RESPONSE_MS", -1),
-    collectPacketItems: readFlag(env, "PLURNK_SERVICE_COLLECT_PACKET_ITEMS"),
-    collectDerivations: readFlag(env, "PLURNK_SERVICE_COLLECT_DERIVATIONS"),
-    collectContents: readFlag(env, "PLURNK_SERVICE_COLLECT_CONTENTS"),
-    intervalMs: readBound(env, "PLURNK_SERVICE_RETENTION_INTERVAL_MS", 0),
-    autoVacuum: readAutoVacuum(env),
-    reclaimMinFreeBytes: readBound(env, "PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES", 0),
+    retainPacketTurns: Knob.integer("PLURNK_SERVICE_RETAIN_PACKET_TURNS", -1, env),
+    retainPacketMs: Knob.integer("PLURNK_SERVICE_RETAIN_PACKET_MS", -1, env),
+    retainResponseTurns: Knob.integer("PLURNK_SERVICE_RETAIN_RESPONSE_TURNS", -1, env),
+    retainResponseMs: Knob.integer("PLURNK_SERVICE_RETAIN_RESPONSE_MS", -1, env),
+    collectPacketItems: Knob.flag("PLURNK_SERVICE_COLLECT_PACKET_ITEMS", env),
+    collectDerivations: Knob.flag("PLURNK_SERVICE_COLLECT_DERIVATIONS", env),
+    collectContents: Knob.flag("PLURNK_SERVICE_COLLECT_CONTENTS", env),
+    intervalMs: Knob.integer("PLURNK_SERVICE_RETENTION_INTERVAL_MS", 0, env),
+    autoVacuum: Knob.choice("PLURNK_SERVICE_AUTO_VACUUM", ["incremental", "none"], env),
+    reclaimMinFreeBytes: Knob.integer("PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES", 0, env),
 });
 
 export default class Retention {

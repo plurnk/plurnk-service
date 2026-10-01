@@ -31,6 +31,8 @@ import TokenCalibration from "./TokenCalibration.ts";
 import LineAnchors from "../content/line-anchors.ts";
 import ToolResources from "./ToolResources.ts";
 import LogVisibility from "./LogVisibility.ts";
+import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
+import Results, { OperationFailureError } from "./results.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
 
@@ -102,18 +104,6 @@ const compactDefinitionTables = (markdown: string): string => {
     }).join("\n");
 };
 
-// {§tokenomics-prompt-projection-share} — the required alias-scoped share of
-// provider-derived input capacity used only for automatic prompt projection.
-const readRequiredPercentFrom = (env: NodeJS.ProcessEnv, name: string): number => {
-    const raw = env[name];
-    const match = /^([0-9]+(?:\.[0-9]+)?)%$/.exec(raw ?? "");
-    const percent = Number(match?.[1]);
-    if (!Number.isFinite(percent) || percent <= 0 || percent >= 100) {
-        throw new Error(`${name} must be a percentage in (0, 100); got ${JSON.stringify(raw)}`);
-    }
-    return percent / 100;
-};
-
 export type { ChatMessage } from "@plurnk/plurnk-providers";
 
 export interface CurationOverflow {
@@ -152,8 +142,6 @@ export default class PacketBuilder {
         this.#schemes = schemes;
         this.#executors = executors;
         this.#capabilities = new CapabilityResolver(db, schemes, executors);
-        // Retired capacity knobs fail at boot rather than silently becoming inert.
-        this.#shedRetiredCapacityKnobs();
     }
 
     setFunctionalityDocuments(documents: (workspaceId: number) => Array<{ family: string; pathname: string; content: string }>): void {
@@ -163,15 +151,16 @@ export default class PacketBuilder {
     // Prompt projection is Core policy, scoped through the same alias contract as providers.
     static #KNOBS = ["PLURNK_SERVICE_PROMPT_PROJECTION"] as const;
 
-    #shedRetiredCapacityKnobs(): void {
+    // {§configuration-repair-path} {§tokenomics-prompt-projection-share}
+    static validateConfiguration(env: NodeJS.ProcessEnv = process.env): number {
         const retired: Record<string, string> = {
             PLURNK_SERVICE_PROMPT_BUDGET: "provider input capacity is derived from context and output budgets",
             PLURNK_SERVICE_SAFETY: "provider request-shaped capacity admission owns physical headroom",
         };
-        for (const key of Object.keys(process.env)) {
+        for (const key of Object.keys(env)) {
             const match = /^(PLURNK_SERVICE_PROMPT_BUDGET|PLURNK_SERVICE_SAFETY)(?:_.*)?$/u.exec(key);
             const reason = match === null ? undefined : retired[match[1]!];
-            if (reason !== undefined) throw new Error(`${key} is retired: ${reason}.`);
+            if (reason !== undefined) throw new ConfigurationError(key, `${key} is retired: ${reason}.`);
         }
         const moved: Record<string, string> = {
             CTX: "PLURNK_PROVIDERS_CONTEXT_WINDOW",
@@ -180,15 +169,20 @@ export default class PacketBuilder {
             ASSISTANT: "PLURNK_PROVIDERS_OUTPUT_BUDGET",
             COMPLETION: "PLURNK_PROVIDERS_OUTPUT_BUDGET",
         };
-        for (const key of Object.keys(process.env)) {
+        for (const key of Object.keys(env)) {
             const match = /^PLURNK_SERVICE_(CTX|CONTEXT_WINDOW|REASONING|ASSISTANT|COMPLETION)(_.*)?$/u.exec(key);
-            if (match !== null) throw new Error(`${key} is retired: the provider-owned knob is ${moved[match[1]!]}${match[2] ?? ""}.`);
+            if (match !== null) throw new ConfigurationError(key, `${key} is retired: the provider-owned knob is ${moved[match[1]!]}${match[2] ?? ""}.`);
         }
+        return Knob.percent("PLURNK_SERVICE_PROMPT_PROJECTION", env);
     }
 
     #promptProjectionFor(alias: string): number {
         const view = scopeEnvToAlias(process.env, alias, PacketBuilder.#KNOBS);
-        return readRequiredPercentFrom(view, "PLURNK_SERVICE_PROMPT_PROJECTION");
+        try { return PacketBuilder.validateConfiguration(view); }
+        catch (cause) {
+            if (!(cause instanceof ConfigurationError)) throw cause;
+            throw new OperationFailureError(Results.configurationFailure(cause), { cause });
+        }
     }
 
     // {§packet-wire-envelope} — the emissions this packet placed, keyed by their rows' coordinates.
@@ -232,6 +226,7 @@ export default class PacketBuilder {
         promptProjection?: "automatic" | "withheld";
         turnId?: number | null;
     }): Promise<RequestPacket> {
+        const projectionShare = this.#promptProjectionFor(ProviderInstantiate.configurationAliasOf(provider) ?? "");
         // {§loop-policy-effective-read} Validate active-loop policy before any
         // packet assembly or provider spend, independently of its presentation.
         await LoopPolicyReader.read(this.#db, loopId);
@@ -271,12 +266,11 @@ export default class PacketBuilder {
         // {§tokenomics-prompt-projection-share} — the cold-start allocation
         // preserves prompt bytes as rolling calibration changes the overall ceiling.
         const projectionBudget = TokenCalibration.capacity(inputCapacity);
-        const alias = ProviderInstantiate.configurationAliasOf(provider) ?? "";
         const promptProjectionWeight = promptProjection === "withheld"
             ? 0
             : projectionBudget === null
                 ? null
-                : Math.floor(projectionBudget * this.#promptProjectionFor(alias));
+                : Math.floor(projectionBudget * projectionShare);
         const budgetReadout = BudgetReadout.draft(curationBudget);
         // The canonical default order, trust boundary, and cache-locality bias are
         // specified at {§packet-cache-monotone}. Budget placeholders resolve only

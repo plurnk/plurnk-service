@@ -11,7 +11,10 @@ import { waitFor } from "./_rpc.ts";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import ConfigurationDiagnostics from "../../src/server/ConfigurationDiagnostics.ts";
 
-for (const key of ["PLURNK_SERVICE_EFFECT_HOST", "PLURNK_SERVICE_FILE_CREATE_SCOPE", "PLURNK_SERVICE_ATTENDED"] as const) {
+for (const key of [
+    "PLURNK_SERVICE_EFFECT_HOST", "PLURNK_SERVICE_FILE_CREATE_SCOPE", "PLURNK_SERVICE_ATTENDED",
+    "PLURNK_SERVICE_RETAIN_PACKET_TURNS", "PLURNK_SERVICE_COLLECT_CONTENTS", "PLURNK_SERVICE_AUTO_VACUUM",
+] as const) {
     test(`{§configuration-repair-path} ${key} preserves an explicitly configured model loop and inspection`, async (t) => {
         const previous = process.env[key];
         process.env[key] = "invalid";
@@ -47,6 +50,37 @@ for (const key of ["PLURNK_SERVICE_EFFECT_HOST", "PLURNK_SERVICE_FILE_CREATE_SCO
         assert.match(userText(provider.received[1]), /"family":\s*"env"/u);
     });
 }
+
+test("{§configuration-repair-path} retired packet configuration preserves startup and reports the failed demand before inference", async (t) => {
+    const key = "PLURNK_SERVICE_PROMPT_BUDGET";
+    const previous = process.env[key];
+    process.env[key] = "1024";
+    t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
+    const db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, `packet-repair-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId, null, "repair", "model");
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("````KILL\nRepaired.\n````")] });
+    const daemon = new Daemon({ db, provider });
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    ServiceModules.registerWorkspaceCapabilities(daemon);
+    await daemon.start();
+    assert.ok(daemon.configurationNotices().some((notice) => notice.key === key));
+    const ended: Array<{ loopId: number; result: OperationResult }> = [];
+    t.after(daemon.subscribeToEvents((_id, method, params) => {
+        if (method === "loop/terminated") ended.push(params as typeof ended[number]);
+    }));
+    const failed = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect.", policy: { proposals: "accept" } });
+    await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === failed.loopId), { timeoutMs: 20_000 });
+    const result = ended.find(({ loopId }) => loopId === failed.loopId)?.result;
+    assert.equal(result?.status, 503);
+    assert.equal(result?.problem?.key, key);
+    assert.equal(provider.received.length, 0, "an invalid packet policy never reaches the provider");
+    delete process.env[key];
+    const repaired = await daemon.runLoop({ workspaceId, workerId, prompt: "The setting is corrected.", policy: { proposals: "accept" } });
+    await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === repaired.loopId), { timeoutMs: 20_000 });
+    assert.equal(ended.find(({ loopId }) => loopId === repaired.loopId)?.result.status, 200);
+    assert.equal(provider.received.length, 1);
+});
 
 test("{§configuration-repair-path} startup diagnostics reach the model and client once while ordinary operations still execute", { timeout: 30_000 }, async (t) => {
     const db = await openMigrated();

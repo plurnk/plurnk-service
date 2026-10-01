@@ -24,6 +24,7 @@ import QuestionTool, { questionRuntimeDecl } from "../schemes/QuestionTool.ts";
 export type NotifyTarget = "all" | { workspaceId: number };
 import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult, type TurnCeilingSelection } from "./DrainSupervisor.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
+import PacketBuilder from "../core/PacketBuilder.ts";
 import { Validator, type ClientDisplayCapabilities, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationPort, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort } from "@plurnk/plurnk-contracts";
 import type { HttpRouteHandler, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
@@ -105,6 +106,8 @@ export default class Daemon implements ApplicationPort {
         FileCreationPolicy.serviceScope();
         EffectPolicy.validateConfiguration();
         LoopPolicies.validateConfiguration();
+        retentionPolicy();
+        PacketBuilder.validateConfiguration();
     }
 
     static validateWorkspaceConfiguration(): void {
@@ -138,7 +141,7 @@ export default class Daemon implements ApplicationPort {
     #residency: WorkspaceResidency;
     readonly #functionality: Functionality;
     // {§retention-policy} — the operator's retention, run on a cadence and at shutdown.
-    readonly #retention: Retention;
+    #retention: Retention | null = null;
     readonly #skills: SkillsFunctionality;
     readonly #plugins: WorkspacePlugins;
     readonly #members: MembersFunctionality;
@@ -326,7 +329,6 @@ export default class Daemon implements ApplicationPort {
             loopPacketNotify: (workspaceId, payload) => {
                 this.#broadcast({ workspaceId }, "loop/packet", payload);
             } });
-        this.#retention = new Retention(db, retentionPolicy());
         this.#drains = new DrainSupervisor({
             db,
             lifecycle: this.#lifecycle,
@@ -1576,14 +1578,18 @@ export default class Daemon implements ApplicationPort {
         await this.#configuration.capture("file-creation", () => FileCreationPolicy.serviceScope());
         await this.#configuration.capture("effect-policy", () => EffectPolicy.validateConfiguration());
         await this.#configuration.capture("loop-policy", () => LoopPolicies.validateConfiguration());
+        await this.#configuration.capture("packet", () => PacketBuilder.validateConfiguration());
+        this.#retention = await this.#configuration.capture("retention", () => new Retention(this.#db, retentionPolicy()));
         this.#started = true;
         // {§db-space-reclamation} — the file is brought to the policy's auto-vacuum mode before any work.
-        const storage = await this.#retention.prepareStorage();
-        if (storage.converted) {
-            console.error(`database: converted to auto_vacuum=${this.#retention.policy.autoVacuum} (${storage.pagesBefore} → ${storage.pagesAfter} pages)`);
+        if (this.#retention !== null) {
+            const storage = await this.#retention.prepareStorage();
+            if (storage.converted) {
+                console.error(`database: converted to auto_vacuum=${this.#retention.policy.autoVacuum} (${storage.pagesBefore} → ${storage.pagesAfter} pages)`);
+            }
         }
         this.#drains.start();
-        this.#retention.start((cause) => { console.error("retention pass failed:", cause instanceof Error ? cause.message : String(cause)); });
+        this.#retention?.start((cause) => { console.error("retention pass failed:", cause instanceof Error ? cause.message : String(cause)); });
 
         // Mimetypes owns its own discovery scan over @plurnk/plurnk-mimetypes-*
         // packages; pre-warm it so first index render doesn't pay the cost.
@@ -1733,7 +1739,7 @@ export default class Daemon implements ApplicationPort {
         // already between queue claim and activation must observe its own abort,
         // not misclassify orderly shutdown as a capability failure.
         const derivationAbort = new DOMException("daemon stopping", "AbortError");
-        this.#retention.stop();
+        this.#retention?.stop();
         this.#engine.cancelAllProposals("daemon_stopping");
         this.#engine.cancelDerivations(derivationAbort);
         this.#drains.beginStop("daemon_stopping");
@@ -1808,7 +1814,7 @@ export default class Daemon implements ApplicationPort {
         // {§db-maintenance-optimize} — the last database step before the caller closes SQLite:
         // planner statistics refreshed on the writer, bounded by SQLite's own analysis limit.
         // {§retention-policy} — the operator's retention runs once more before the statistics.
-        const collectResult = await settle("retention", () => this.#retention.run());
+        const collectResult = await settle("retention", async () => this.#retention?.run());
         const optimizeResult = await settle("database optimize", () => this.#db.maintenance_optimize.run({}));
         const closeErrors = [
             moduleStopResult,
