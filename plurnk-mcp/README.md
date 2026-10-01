@@ -183,7 +183,7 @@ client.
 HTTP servers support bearer references, client credentials, and interactive
 OAuth; stdio servers read their credentials from the environment. A server that
 needs interactive OAuth comes up `authorization-required`, and enabling it
-returns `{ "status": 202, "authorization": { "url": "..." } }` without
+returns `202` with `definition.authorization.url` without
 publishing a partial server. The terminal client's `/mcp oauth <alias>` receives
 a configured HTTP loopback IP callback and opens the browser; supplying the
 callback URL explicitly also works for remote/headless use. The client submits
