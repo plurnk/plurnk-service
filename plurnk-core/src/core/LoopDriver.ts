@@ -296,7 +296,9 @@ export default class LoopDriver {
                     // that attempted nothing did not "fail": calling it a failed turn misreads a
                     // model that answered without the fence as one whose operations broke.
                     const because = {
-                        repetition: "its operations and results repeated",
+                        repetition: turn.emptyTurn
+                            ? "its responses repeated without performing an operation"
+                            : "its operations and results repeated",
                         operation: "consecutive turns failed",
                         no_operation: "consecutive turns performed no operation",
                     }[verdict.crossedBy ?? "operation"];

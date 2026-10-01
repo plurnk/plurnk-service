@@ -116,10 +116,28 @@ test("{§empty-turn}: an empty turn's fingerprint is its text — saying the sam
         const problem = problemOf(loop);
 
         assert.equal(loop.result.status, 508, "a model repeating itself verbatim is a loop, and still says so");
-        assert.match(problem.detail as string, /its operations and results repeated\.$/);
+        assert.match(problem.detail as string, /its responses repeated without performing an operation\.$/);
         assert.equal(problem.unconcluded, "ops://alice/1/4", "a cycle terminal keeps the evidence too");
     } finally { await db.close(); }
 });
+
+for (const finishReason of ["stop", "length"] as const) {
+    test(`{§engine-rails}: repeated reasoning-only ${finishReason} responses are not reported as repeated operations`, async () => {
+        const { db, engine, workspaceId, workerId, loopId } = await setup();
+        try {
+            const same: MockResponse = { assistant: { content: "", reasoning: "Considering the next step.", finishReason }, assistantRaw: null };
+            const provider = new Mock({ contextWindow: 100_000, responses: [same, same, same] });
+            const loop = await engine.runLoop({
+                provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 3,
+                messages: [{ role: "user", content: "What is two plus two?" }],
+            });
+            assert.equal(loop.result.status, 508, "the cycle and strike threshold remain enforced");
+            assert.equal(problemOf(loop).type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
+            assert.match(problemOf(loop).detail as string, /its responses repeated without performing an operation\.$/);
+            assert.equal(provider.received.length, 3, "the diagnostic does not change recovery or termination");
+        } finally { await db.close(); }
+    });
+}
 
 test("{§engine-rails}: a threshold crossed by failed operations still says operations failed", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();

@@ -1218,7 +1218,8 @@ A crossing terminal names the source that struck the crossing turn — `repetiti
 `no_operation`, then `operation` — in its detail, in that order when a turn matches more
 than one. The three are not interchangeable: a turn that authored no operation did not *fail*
 one, and reporting it as a failed turn misreads a model answering without the fence as a model
-whose operations broke. This is the crossing turn's source, not the streak's composition; the
+whose operations broke. A cycle of empty turns names repeated responses without operations,
+not repeated operations or results. This is the crossing turn's source, not the streak's composition; the
 rail rules on the crossing and does not retain the kinds behind it. What the crossing turn
 actually said is cited, not discarded ({§terminal-evidence}). Naming the source is not the
 private accounting {§rail-accounting-private} withholds: the streak, the cycle verdict and
