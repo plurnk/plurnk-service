@@ -15,7 +15,6 @@ sources into a consuming package would create a second teaching owner.
 | ------------------------------- | ---------- | -------------------------------------------------- | ------------------------------------------------------- |
 | `POLICY.md`                     | Required   | First-run default operating policy                 | Policy bootstrap {§policy-sections}                     |
 | `recap.md`                       | Required   | Optional default operational Recap                 | Per-packet user-slot footer {§recap}                    |
-| `reasoning.md`                   | Required   | Reasoning-operation TIP                            | Conditional system teaching {§reasoning-operations-configuration} |
 | `docs/worker.md`                | Required   | Deep reference prose for the reserved worker scheme | Pull-doc materialization {§schemes-directory}           |
 | `skills/plurnk/SKILL.md`         | Required   | Standard Plurnk skill entry and chapter directory | Service-provided skill {§plurnk-skill} |
 

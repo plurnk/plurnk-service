@@ -940,14 +940,14 @@ available; catalog estimation requires all quantities its rates need, otherwise
 cost is `unknown`. Covered by `usage.test.ts`, `aiSdkTransport.test.ts`, and
 `AiSdkProvider.test.ts`.
 
-§provider-open-reasoning **Plurnk consumes exposed reasoning text.** The adapter
-retains the text its transport exposes, including SDK reasoning events that may
-contain a summary; their fidelity is not inferred from a model name or catalog
-reasoning flag. {§reasoning-operations-configuration} controls whether that text
-may supply operations. Encrypted or redacted payloads are never reconstructed
-into reasoning text. A route that withholds reasoning is not refused or
-compensated for: its `reasoning://` is empty, while billed reasoning tokens remain
-visible in accounting.
+§provider-open-reasoning **Plurnk requires endpoints with open, verbatim reasoning.**
+The adapter retains the reasoning text its transport exposes; fidelity is not
+inferred from a model name or catalog flag. Hidden or summarized reasoning is not
+a supported substitute, and encrypted or redacted payloads are never reconstructed
+into text. A single response without reasoning does not establish endpoint
+incapability: its `reasoning://` reads empty, while billed reasoning tokens remain
+visible in accounting. Exposed operations follow {§reasoning-operations}; no
+compatibility teaching or alternate admission mode is selected for a route.
 Unrecognized detail shapes are omitted at this normalization boundary. Core
 may preserve normalized items as forensic evidence, but a client protocol must
 correlate them to an entity it actually created rather than reusing `id`.

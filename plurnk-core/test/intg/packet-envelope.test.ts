@@ -13,7 +13,7 @@ import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.t
 
 const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
 const say = (content: string, reasoning: string | null = null) => ({ assistant: { content, reasoning }, usage });
-const surveyRead = PlurnkParser.frame("READ (ops://analyst/1/1)", null);
+const surveyRead = PlurnkParser.frame("READ (reasoning://analyst/1/1)", null);
 const roles = (request: readonly ChatMessage[]): string[] => request.map(({ role }) => role);
 const assistants = (request: readonly ChatMessage[]): string[] => request.filter(({ role }) => role === "assistant").map(chatMessageText);
 // {§packet-wire-envelope}: the user messages, joined by one blank line, are the user slot byte for byte.
@@ -107,7 +107,7 @@ test("{§emission-row} {§packet-token-accounting}: a long body keeps its head b
     assert.match(userText(second), /REASONING-MEMORY/u, "reasoning NOTE memory remains independent of assistant history");
     const third = provider.received[2]!;
     assert.doesNotMatch(third.map(chatMessageText).join("\n"), /CURATABLE-MEMORY|REASONING-MEMORY/u, "curating notes leaves no automatic assistant duplicate");
-    assert.equal(assistants(third)[1], header, "a later request does not change the retained header");
+    assert.equal(assistants(third)[0], header, "a later request does not change the retained header");
     assert.equal(assistants(third).at(-1), "```KILL (log:///1/2/*/NOTE)\n```", "a bodyless operation renders bare");
     const last = provider.received[3]!;
     assert.match(userText(last), /CURATABLE-MEMORY/u, "an explicit READ retrieves the complete source program");
@@ -125,14 +125,14 @@ test("{§emission-row} {§packet-token-accounting}: a long body keeps its head b
     assert.ok(charged < contentWeight(first), "the cut remainder is not charged as assistant history");
 });
 
-test("{§emission-row} {§packet-wire-envelope}: the survey and every admitted emission ride in place, canonical, each behind its own row", async (t) => {
+test("{§emission-row} {§packet-wire-envelope}: initialization remains in the log; each content emission rides behind its own row", async (t) => {
     const first = `Let me look around first.\n\n${surveyRead}\n\n${PlurnkParser.frame("NOTE", "Bearings: nothing read yet.")}\n\nDone for now.`;
     const { db, result, provider, rows } = await run("envelope-transcript", "Answer.", [say(first), say(PlurnkParser.frame("KILL", "Answer."))], 3);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 2);
 
-    assert.deepEqual(rows.map(({ coordinate }) => coordinate), ["1/1/1", "1/2/2", "1/3/1"], "turn zero's survey, then each model turn's emission after its inputs");
+    assert.deepEqual(rows.map(({ coordinate }) => coordinate), ["1/2/2", "1/3/1"], "only model content turns announce emissions, after their inputs");
     for (const row of rows) {
         assert.equal(row.origin, "_plurnk");
         assert.equal(row.op, "READ");
@@ -142,23 +142,24 @@ test("{§emission-row} {§packet-wire-envelope}: the survey and every admitted e
         assert.equal(row.active, 1);
     }
     const texts = rows.map(({ rx }) => (JSON.parse(rx) as { content: string }).content);
-    assert.equal(texts[1], `${surveyRead}\n\n${PlurnkParser.frame("NOTE", "Bearings: nothing read yet.")}`, "frozen with every admitted statement");
+    assert.equal(texts[0], `${surveyRead}\n\n${PlurnkParser.frame("NOTE", "Bearings: nothing read yet.")}`, "frozen with every admitted content statement");
     const delivered = texts.map((text) => PacketWire.deliveredEmission(text));
-    assert.equal(delivered[1], surveyRead, "the wire delivers it without the NOTE, whose row shows it whole");
-    assert.doesNotMatch(texts[1]!, /Let me look around|Done for now/u, "free text never reaches the emission");
+    assert.equal(delivered[0], surveyRead, "the wire delivers it without the NOTE, whose row shows it whole");
+    assert.doesNotMatch(texts[0]!, /Let me look around|Done for now/u, "free text never reaches the emission");
 
     const opening = provider.received[0]!;
-    assert.deepEqual(roles(opening), ["system", "user", "assistant", "user"]);
-    assert.match(chatMessageText(opening[1]!), /^## Log\n\n### log:\/\/\/1\/1\/1\/emission → ops:\/\/[^/\s]+\/1\/1 · \d+\n\{"origin":"_plurnk"\}$/u, "the user stub: the log heading and the survey's row, which names its author");
-    assert.equal(chatMessageText(opening[2]!), delivered[0], "turn zero's survey is the first assistant message");
-    assert.match(chatMessageText(opening[3]!), /^### log:\/\/\/1\/1\/2\//u, "the survey's results follow it");
+    assert.deepEqual(roles(opening), ["system", "user"]);
+    assert.match(chatMessageText(opening[1]!), /^## Log\n\n### log:\/\/\/1\/1\/1\/NOTE/u, "the log begins with initialization's ordinary reasoning NOTE");
+    assert.match(chatMessageText(opening[1]!), /### log:\/\/\/1\/1\/\d+\/READ → reasoning:\/\/[^/\s]+\/1\/1/u,
+        "initialization's reasoning program is available through its ordinary READ");
+    assert.doesNotMatch(chatMessageText(opening[1]!), /\/emission →/u, "initialization creates no content announcement");
 
     const second = provider.received[1]!;
-    assert.deepEqual(roles(second), ["system", "user", "assistant", "user", "assistant", "user"]);
-    assert.deepEqual(assistants(second), [delivered[0], delivered[1]], "every admitted emission, in order");
-    assert.match(chatMessageText(second[3]!), /### log:\/\/\/1\/2\/1\/SEND[\s\S]*\n\n### log:\/\/\/1\/2\/2\/emission → ops:\/\/[^/\s]+\/1\/2 · \d+$/u, "the arrival turn 2 answered, then its emission's row, a bare heading because the model wrote it");
-    assert.match(chatMessageText(second[5]!), /^### log:\/\/\/1\/2\/3\/READ\b/u, "the emission's result follows it");
-    assert.match(chatMessageText(second[5]!), /## Worker\n\{"path":"worker:\/\/[^"]+","parent":null,"loop":1,"turn":3\}/u, "the Worker block names the actor and the turn, nothing else");
+    assert.deepEqual(roles(second), ["system", "user", "assistant", "user"]);
+    assert.deepEqual(assistants(second), [delivered[0]], "only the admitted content emission appears");
+    assert.match(chatMessageText(second[1]!), /### log:\/\/\/1\/2\/1\/SEND[\s\S]*\n\n### log:\/\/\/1\/2\/2\/emission → ops:\/\/[^/\s]+\/1\/2 · \d+$/u, "the arrival turn 2 answered, then its emission's row, a bare heading because the model wrote it");
+    assert.match(chatMessageText(second[3]!), /^### log:\/\/\/1\/2\/3\/READ\b/u, "the emission's result follows it");
+    assert.match(chatMessageText(second[3]!), /## Worker\n\{"path":"worker:\/\/[^"]+","parent":null,"loop":1,"turn":3\}/u, "the Worker block names the actor and the turn, nothing else");
 });
 
 test("{§emission-row}: a whole KILL of an emission row takes its emission off the wire, and the user messages around it merge", async (t) => {
@@ -173,7 +174,7 @@ test("{§emission-row}: a whole KILL of an emission row takes its emission off t
     assert.ok(assistants(provider.received[1]!).includes(surveyRead), "the emission was present before its KILL");
     const last = provider.received.at(-1)!;
     assert.ok(!assistants(last).includes(surveyRead), "its emission left the wire");
-    assert.equal(assistants(last).length, 2, "the survey and the KILL's own emission remain");
+    assert.deepEqual(assistants(last), [PlurnkParser.frame("KILL (log:///1/2/2/emission)", null)], "only the KILL's own emission remains");
     assert.doesNotMatch(userText(last), /log:\/\/\/1\/2\/2\/emission/u, "its row left the log");
 });
 

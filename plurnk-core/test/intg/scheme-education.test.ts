@@ -41,8 +41,7 @@ test("{§manifest-client-display} {§schemes-directory}: stored packets carry la
         const definition = packetSection(packet, "definition");
         assert.match(definition, /PLURNK_MD/, "definition carries the operator's plurnk.md");
         const system = packet.sections.filter((section: { slot: string }) => section.slot === "system");
-        assert.deepEqual(system.map((section: { name: string }) => section.name), ["definition", "reasoning-operations", "system-policy"]);
-        assert.equal(packetSection(packet, "reasoning-operations").trim(), "> [!TIP]\n> YOU MAY emit NOTE, FIND, and READ operations while reasoning.");
+        assert.deepEqual(system.map((section: { name: string }) => section.name), ["definition", "system-policy"]);
         assert.doesNotMatch(JSON.stringify(system), /glyph-test|GLYPH_MUST_STAY_CLIENT_SIDE/, "neither references nor client glyphs are injected");
         const reference = (await engine.referenceEntries(workspaceId))
             .find(({ pathname }) => pathname === "/_plurnk/plurnk/glyph-test.md");

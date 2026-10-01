@@ -806,8 +806,8 @@ automatically hidden. A NOTE-only turn does not request completion; ordinary
 repetition and strike rules still apply.
 
 §reasoning-operations The shared fence parser admits complete, line-leading NOTE,
-FIND and READ statements from exposed provider reasoning when enabled by
-{§reasoning-operations-configuration}. Other backtick or tilde
+FIND and READ statements from exposed provider reasoning. Admission is part of
+the language, not an optional compatibility mode. Other backtick or tilde
 code blocks are opaque; heading and missing-closer recovery cannot escape them or
 complete an unfinished reasoning operation. Blockquoted and inline examples are
 not headings. Other reasoned operations never execute.

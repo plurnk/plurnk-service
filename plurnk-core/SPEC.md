@@ -382,7 +382,7 @@ direct-entry-plus-directory count; `-1` enables the ordinary markerless page;
 unset / `0` disables previews. `log://` is absent because the current worker's
 log already renders in present mode.
 
-§worker-initialization-entry **Model-worker initialization is a real `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its reasoning and program are stored before execution. NOTEs from its reasoning and program, the orienting READ/FIND surveys, and the reasoning READ in {§reasoning-initial-read} execute under {§op-execution-order}. Its program is announced at `log:///1/1/1/emission` ({§emission-row}) and supplies the worked example as the first request's assistant message ({§packet-wire-envelope}); no program READ, actionless source row or simulated READ is added. Every orienting row is structurally classified `_plurnk` and `init`. The namespace surveys and their asides follow {§actor-boundary-catalog-preview}.
+§worker-initialization-entry **Model-worker initialization is a real reasoning-only `_plurnk` turn.** A model worker's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}. Its authored reasoning contains the orientation NOTE, READ/FIND surveys and its own reasoning READ ({§reasoning-initial-read}); it is stored before those operations execute through {§reasoning-operations} and {§op-execution-order}. No content program or emission row is fabricated ({§emission-row}). The first request sees ordinary results and the reasoning READ, not an assistant-content copy of the surveys. Every orienting row is structurally classified `_plurnk` and `init`. The namespace surveys and their asides follow {§actor-boundary-catalog-preview}.
 
 Incoming messages publish once as inbound SEND rows in the first model turn
 ({§message-arrival}); initialization neither READs nor archives them. The turn
@@ -2176,35 +2176,23 @@ same transitions the dispatcher's atomic curation event makes, without the row.
 | Lifecycle | Restart retains sources and observations. FORK snapshots sources under the child's name at the same loop/turn coordinates and receipts with independent curation. No curation or lifecycle event automatically READs model reasoning. A turn the provider left without reasoning reads empty; absent workers and turns return the ordinary missing result ({§turn-source-resources}). |
 | Client | Standard live reasoning events and replay retain original provider reasoning; working resources and READ receipts never substitute for or replay that stream. |
 
-### §reasoning-operations-configuration Reasoning operation policy
-
-`PLURNK_SERVICE_REASONING_OPERATIONS` enables NOTE/FIND/READ admission from
-exposed reasoning, with an ordinary `<key>_<alias>` override. Its enabled
-default lives in `.env.defaults`; there is no model-name or fidelity allowlist.
-`0` disables their admission and interruption, the TIP after the language
-definition, and initialization's reasoning NOTE example. Reasoning display,
-source retention, and ordinary content operations remain unchanged. No reasoning
-is fabricated when the endpoint supplies none. Invalid values are repairable
-configuration failures before inference.
-
 ### §reasoning-reboot-configuration Reasoning interruption policy
 
 `PLURNK_SERVICE_REASONING_REBOOT` enables {§reasoning-yield}; its default lives
 in `.env.defaults`, with `PLURNK_SERVICE_REASONING_REBOOT_<alias>` overriding
 through the ordinary model-alias cascade. `0` disables early interruption, not
-{§reasoning-operations}: when enabled by {§reasoning-operations-configuration},
-complete reasoning operations still join the admitted program when generation
-finishes. It changes neither teaching nor source retention.
+{§reasoning-operations}: complete reasoning operations still join the admitted
+program when generation finishes. It changes neither teaching nor source retention.
 Invalid values are configuration failures before inference, not provider failures.
 
 ### §reasoning-initial-read Initial reasoning observation
 
-The initialization turn records a short `_plurnk`-authored rationale containing
-a fenced NOTE when reasoning operations are enabled ({§reasoning-operations-configuration}).
-The shared reasoning extractor ({§reasoning-operations}) executes that
-NOTE through ordinary dispatch, creating its log item and immutable source.
-The program begins with its own NOTE and READs its reasoning,
-demonstrating both NOTE placements and their ordinary results. The initial message arrives separately as an
+The initialization turn records its `_plurnk`-authored rationale and complete
+NOTE/FIND/READ program as one reasoning source before dispatch. The shared
+reasoning extractor ({§reasoning-operations}) admits every operation once, in
+source order. Its final READ observes that same reasoning source, including
+the READ itself; this is an ordinary read of already stored text, not recursion
+or a future-source subscription. The initial message arrives separately as an
 inbound SEND ({§message-arrival}). Neither initialization nor later turns
 manufacture a task inventory.
 `PLURNK_REASONING_VIEW_LINES` (alias-scoped, default in `.env.defaults`) selects this one READ's
@@ -2409,10 +2397,10 @@ like any other row.
 
 | Surface | Contract |
 |---|---|
-| When | An inference turn that admitted at least one content statement or reasoning FIND/READ ({§reasoning-operations}), and turn zero's survey ({§worker-initialization-entry}). A programmatic batch, an empty turn ({§empty-turn}), a client operation and a rejected attempt ({§rejected-emission-entry}) announce nothing. |
+| When | An inference turn that admitted at least one content statement. Reasoning-only turns, including initialization ({§worker-initialization-entry}), a programmatic batch, an empty turn ({§empty-turn}), a client operation and a rejected attempt ({§rejected-emission-entry}) announce nothing. |
 | Place | After the turn's inputs (arrivals, deltas, open-path READs) and before its reasoning NOTEs and operations, written after the selection snapshot ({§turn-ops-selection-snapshot}): the emission sits between what the worker had seen and what it caused. |
 | Row | A `_plurnk` READ of the turn's own source, `ops://<worker>/L/T`, with `attrs.kind="emission"` and the canonical leaf `/emission`: `### log:///L/T/S/emission → ops://<worker>/L/T · N`. It renders its author, the turn's producer, as `origin`, so a model's row carries none. It is no operation: no receipt, tool call or strike, and outside the op mix. |
-| Body | Frozen at announcement: the canonical rendering ({§statement-rendering}) of admitted reasoning FIND/READs followed by content statements, each in a closed fence. Each body appears within the shared preview bound ({§body-projection}), `PLURNK_SERVICE_PREVIEW_LINES` and `PLURNK_SERVICE_PREVIEW_CHARS`. A longer body keeps its head, and its closing fence carries `<!-- Automatically truncated op body: READ (ops://<worker>/L/T) to retrieve in full -->`; nothing the harness writes enters a fence. Absent and empty bodies remain empty. All heading operands, scopes, metadata, patterns and asides remain. Free text and unadmitted forms are absent; a recovered native call ({§native-tool-calls}) appears as the operation it was read as; an operation whose receipt failed stays. Turn zero uses the same projection of its survey. No body text is inspected for nested operations. |
+| Body | Frozen at announcement: the canonical rendering ({§statement-rendering}) of admitted content statements, each in a closed fence. Each body appears within the shared preview bound ({§body-projection}), `PLURNK_SERVICE_PREVIEW_LINES` and `PLURNK_SERVICE_PREVIEW_CHARS`. A longer body keeps its head, and its closing fence carries `<!-- Automatically truncated op body: READ (ops://<worker>/L/T) to retrieve in full -->`; nothing the harness writes enters a fence. Absent and empty bodies remain empty. All heading operands, scopes, metadata, patterns and asides remain. Free text and unadmitted forms are absent; a recovered native call ({§native-tool-calls}) appears as the operation it was read as; an operation whose receipt failed stays. Reasoning operations retain their own source and normal receipts, never an assistant-content copy. No body text is inspected for nested operations. |
 | Sources and memory | Dispatch and immutable `ops://` sources retain complete bodies ({§turn-source-resources}); an explicit source READ returns them normally. The wire omits NOTE and WAIT blocks, whose own rows show them whole ({§body-projection}), so curating a NOTE row removes its text; an emission of only NOTE and WAIT delivers nothing, its row stands, and no assistant message follows it ({§packet-wire-envelope}); reasoning-only NOTEs never enter this projection. |
 | Stability | The projection is fixed from its first appearance, never aged or resized under budget pressure. Already frozen announcements and historical request captures are not rewritten. |
 | Presentation | Born folded: the record shows its header, and its body follows the record as the worker's assistant message. |

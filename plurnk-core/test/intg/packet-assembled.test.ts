@@ -192,10 +192,10 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
             .filter((row) => row.origin === "_plurnk" && (row.op === "FIND" || row.op === "READ") && !LogEntryProjection.isEmission(row));
         assert.ok(foists.length > 0, "the first turn persists its structural observation foists");
         const sources = await db.test_turn_sources.all<{ kind: string; producer: string; content: string }>({ worker_id: workerId });
-        const turnSource = sources.find(({ kind, producer }) => kind === "ops" && producer === "_plurnk");
+        const turnSource = sources.find(({ kind, producer }) => kind === "reasoning" && producer === "_plurnk");
         assert.ok(turnSource, "initialization stores exact source before its real READ");
         const source = turnSource.content;
-        const sourceFoists = PlurnkParser.parse(source, { executors: fixtureExecutors(source) }).items.flatMap((item) => item.kind === "statement" ? [item.statement] : [])
+        const sourceFoists = PlurnkParser.parseReasoningOperations(source)
             .filter(({ op }) => op === "FIND" || op === "READ");
         assert.equal(sourceFoists.length, foists.length, "the exact source accounts for every structural observation");
         for (const [index, { tx }] of foists.entries()) {
@@ -232,15 +232,16 @@ test("assembled packet: the turn-0 catalog foist renders its entries into the lo
             .filter(({ logPath: path }) => String(path).startsWith("log:///1/1/"));
         assert.deepEqual(
             initialization.map(({ logPath: path }) => String(path).split("/").at(-1)),
-            ["emission", "NOTE", "NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ"],
-            "turn 0 announces its program, then exposes its reasoning and program notes, executed surveys, and its reasoning READ",
+            ["NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ"],
+            "turn 0 exposes its reasoning NOTE, executed surveys, and its reasoning READ exactly once",
         );
         assert.deepEqual(
             initialization.filter(({ path: target }) => target === "ops://subject/1/1").map(({ logPath: path }) => path),
-            ["log:///1/1/1/emission"],
-            "turn 0's program reaches the model as the envelope's assistant message, announced by its row, never as a READ ({§emission-row})",
+            [],
+            "turn 0 has no content source or assistant emission ({§emission-row})",
         );
-        const initializationOutcomes = initialization.slice(1);
+        assert.deepEqual(provider.received[0]!.filter(({ role }) => role === "assistant"), []);
+        const initializationOutcomes = initialization;
         assert.deepEqual(
             initializationOutcomes.filter(({ path: target }) => target !== undefined).slice(0, 5).map(({ path: target }) => target),
             [
@@ -390,7 +391,7 @@ test("the default wire preserves canonical order and projects the Recap override
         // {§packet-cache-monotone}: trusted control-plane sections precede the user slot;
         // append-mostly log precedes per-turn status, open message pointers, and Recap.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
-        assert.deepEqual(slot("system"), ["definition", "reasoning-operations", "system-policy"], "the stable system prefix has no injected resource catalog");
+        assert.deepEqual(slot("system"), ["definition", "system-policy"], "the stable system prefix has no injected resource catalog");
         assert.deepEqual(slot("user"), ["log", "worker", "delegation", "errors", "notices", "git", "budget", "messages", "recap"], "user slot: worker -> log -> turn -> status clump -> open message pointers -> Recap");
         assert.equal(packet.sections.find((section) => section.name === "messages")?.header, "Open Messages");
         assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Context Curation");
@@ -664,6 +665,6 @@ test("{§schemes-directory}: the assembled packet retains the definition without
 
         // The grammar (plurnk.md) must reach the model — a dropped definition section is a dead packet.
         assert.ok(packetSection(packet, "definition").length > 0, "the definition (grammar) section carries content");
-        assert.deepEqual(packet.sections.filter(({ slot }) => slot === "system").map(({ name }) => name), ["definition", "reasoning-operations", "system-policy"]);
+        assert.deepEqual(packet.sections.filter(({ slot }) => slot === "system").map(({ name }) => name), ["definition", "system-policy"]);
     } finally { await db.close(); }
 });

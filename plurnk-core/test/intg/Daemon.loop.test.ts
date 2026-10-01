@@ -182,8 +182,8 @@ test("loop.run streams log/entry notifications during execution", async () => {
             const harness = captured
                 .map((event) => (event as { entry: { id: number; op: string | null; origin: string; status_rx: number; attrs: unknown } }).entry)
                 .filter((entry) => entry.origin === "_plurnk" && entry.op !== "SEND");
-            assert.equal(LogEntryProjection.isEmission(harness[0]!), true, "initialization first announces its admitted survey ({§emission-row})");
-            const initialization = harness.filter((entry) => !LogEntryProjection.isEmission(entry));
+            assert.equal(harness.some(LogEntryProjection.isEmission), false, "reasoning-only initialization announces no content emission ({§emission-row})");
+            const initialization = harness;
             assert.equal(
                 captured.some((event) => (event as { entry: { op: string | null } }).entry.op === null),
                 false,

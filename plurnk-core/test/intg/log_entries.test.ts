@@ -539,7 +539,7 @@ test("{§emission-row}: the schema admits an emission row only as one born-folde
         await Turn.complete(db, turn.id, 200);
         const operation = await Turn.open(db, { loopId, producer: "_plurnk", kind: "operation" });
         await Turn.recordSource(db, operation.id, "ops", content);
-        await assert.rejects(() => emission({ turn_id: operation.id, pathname: `/1/${operation.sequence}` }), refused, "only an inference or initialization turn admits an emission");
+        await assert.rejects(() => emission({ turn_id: operation.id, pathname: `/1/${operation.sequence}` }), refused, "a programmatic turn does not admit an emission");
         await Turn.complete(db, operation.id, 200);
         const branch = await Fork.fork(db, workerId, "branch");
         assert.deepEqual(

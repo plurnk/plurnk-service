@@ -10,7 +10,6 @@ Authored defaults published by `@plurnk/plurnk-meta` and consumed by
 | ------------------------------- | ---------------------------------------------------------------------------- |
 | `POLICY.md`                     | Read before the first-run seed of the user-owned XDG config `AGENTS.md`.     |
 | `recap.md`                       | Read for an optional Recap rendered last when its content is nonempty.       |
-| `reasoning.md`                   | Read after the language definition when reasoning operations are enabled. |
 | `docs/worker.md`                | Read when registered built-in pull docs are materialized.                    |
 | `skills/plurnk/SKILL.md`         | Standard skill entry; Core composes its package-owned and generated resources. |
 

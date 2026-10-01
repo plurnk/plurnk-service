@@ -11,11 +11,13 @@ import { statement, type Read } from "./reasoning-fixture.ts";
 
 const next = PlurnkParser.frame("NOTE", "Continue.");
 
-for (const limit of [-1, 0]) test(`{§worker-initialization-entry}: program and reasoning NOTEs reach the first model input with reasoning view ${limit}`, async () => {
+for (const limit of [-1, 0, 100]) test(`{§worker-initialization-entry}: initialization executes only reasoning and reads it back with view ${limit}`, async () => {
     const db = await openMigrated();
     const prior = process.env.PLURNK_REASONING_VIEW_LINES;
+    const priorFiles = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         process.env.PLURNK_REASONING_VIEW_LINES = String(limit);
+        process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
         const workspaceId = await insertWorkspace(db, "reasoning-bootstrap");
         const workerId = await insertWorker(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, workerId, 3, "Inspect the initial program.");
@@ -35,25 +37,28 @@ for (const limit of [-1, 0]) test(`{§worker-initialization-entry}: program and 
             assert.equal(initial.origin, "_plurnk");
             assert.match(String(initial.body), /^\s*1:This harness-generated turn surveys/m);
             assert.match(String(initial.body), /```NOTE/);
-            assert.match(String(initial.body), /NOTE, FIND and READ may also be emitted while reasoning\./);
+            assert.match(String(initial.body), /```FIND/);
+            assert.match(String(initial.body), /```READ \(reasoning:\/\/alice\/3\/1\)/);
             assert.doesNotMatch(String(initial.body), /Unrequested model reasoning/);
             assert.equal(reads.length, 1);
             assert.equal(reads[0]!.turn_seq, 1);
             assert.equal(JSON.parse(reads[0]!.rx).status, 200, "initialization performs an immediately successful ordinary READ");
         }
-        const source = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (ops://alice/3/1) <1,-1>", null)) });
+        const source = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (reasoning://alice/3/1) <1,-1>", null)) });
         assert.ok("content" in source && typeof source.content === "string");
-        const orientation = "This turn surveys tooling and environment. The log records results; ops://alice/3/1 contains the submitted OPs.";
-        assert.ok(source.content.startsWith(PlurnkParser.frame("NOTE", orientation)));
+        const orientation = "This turn surveys tooling and environment. The log records results; reasoning://alice/3/1 contains the submitted OPs.";
+        const operations = PlurnkParser.parseReasoningOperations(source.content);
+        assert.equal(operations[0]?.body, orientation);
+        assert.ok(operations.some(({ op }) => op === "FIND"));
         if (limit !== 0) assert.match(source.content, /READ \(reasoning:\/\/alice\/3\/1\)/);
-        assert.doesNotMatch(source.content, /READ \(ops:\/\/alice\/3\/1\)/, "the program is the first request's assistant message, never its own READ ({§packet-wire-envelope})");
+        const content = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (ops://alice/3/1) <1,-1>", null)) });
+        assert.equal(content.status, 204, "no content program is fabricated for a reasoning-only turn");
+        assert.equal(content.content ?? "", "");
+        assert.deepEqual(provider.received[0]!.filter(({ role }) => role === "assistant"), [], "reasoning OPs never masquerade as content emissions");
         assert.doesNotMatch(source.content, /READ \(prompt:\/\//, "the prompt arrives as its row, never as a second READ");
         const notes = logEntries(packet).filter((row) => /^log:\/\/\/3\/1\/\d+\/NOTE$/.test(String(row.logPath)));
-        assert.deepEqual(notes.map((row) => row.resource), ["note://alice/3/1/2", "note://alice/3/1/3"]);
-        const bodies = [
-            "NOTE, FIND and READ may also be emitted while reasoning.",
-            orientation,
-        ];
+        assert.deepEqual(notes.map((row) => row.resource), ["note://alice/3/1/1"]);
+        const bodies = [orientation];
         for (const [index, note] of notes.entries()) {
             assert.equal(note.origin, "_plurnk");
             assert.equal(String(note.body).trim(), `1:${bodies[index]}`);
@@ -66,6 +71,8 @@ for (const limit of [-1, 0]) test(`{§worker-initialization-entry}: program and 
         await db.close();
         if (prior === undefined) delete process.env.PLURNK_REASONING_VIEW_LINES;
         else process.env.PLURNK_REASONING_VIEW_LINES = prior;
+        if (priorFiles === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS;
+        else process.env.PLURNK_SERVICE_FILES_ITEMS = priorFiles;
     }
 });
 

@@ -7,7 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import { aggregateProviderAccounting } from "@plurnk/plurnk-providers";
 import type { CapabilityPolicy, Notice } from "@plurnk/plurnk-contracts";
-import type { BareStatement, PlurnkStatement, ReadStatement, UrlPath, FindStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, PlurnkStatement, NoteStatement, ReadStatement, UrlPath, FindStatement } from "@plurnk/plurnk-contracts";
 
 // Internal-only — collected from PlurnkParser output, then translated to
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
@@ -71,7 +71,7 @@ import { genAiRequestName, genAiRequestOptions, settleGenAiResponse } from "../o
 import { PROVIDER_CALLS, recordCounter } from "../observe/metrics.ts";
 import ModelCall, { ModelCallPersistenceError, ProviderAccountingIntegrityError } from "./ModelCall.ts";
 import WorkerName from "./WorkerName.ts";
-import TurnOps, { type InternalTurnStatement } from "./TurnOps.ts";
+import TurnOps from "./TurnOps.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
 
@@ -281,7 +281,7 @@ type TurnContainer = {
     readonly createdTurnIds: number[];
     readonly initializationTurn: TurnRow | null;
     readonly initializationPolicies: CapabilityPolicy[];
-    readonly initializationStatements: InternalTurnStatement[];
+    readonly initializationStatements: Array<NoteStatement | FindStatement | ReadStatement>;
     readonly modelTurn: TurnRow | null;
     readonly systemCtx: PlurnkSchemeContext;
 };
@@ -333,7 +333,6 @@ type ProviderAttempts = {
     readonly recoveryBudget: number;
     readonly recoveryBackoff: number;
     readonly reasoningReboot: boolean;
-    readonly reasoningOperations: boolean;
     readonly signal: AbortSignal | undefined;
     readonly providerWorkerId: string;
     // {§turn-accounting-notice} (#465) — every physical exchange this turn pays
@@ -702,7 +701,7 @@ export default class TurnRunner {
             throw new Error(`worker ${workerId} has no durable ambient observation boundary`);
         }
         const systemCtx = this.#schemeContext(args, initializationTurn?.id ?? modelTurn!.id);
-        const initializationStatements: InternalTurnStatement[] = [];
+        const initializationStatements: Array<NoteStatement | FindStatement | ReadStatement> = [];
         // {§worker-initialization-entry} — the worker's first turn is the worked
         // example itself: the actual orienting operations and ordinary NOTEs.
         // {§turn0-agents-stunt} — the project AGENTS.md (materialized by LoopDocs as
@@ -712,7 +711,7 @@ export default class TurnRunner {
         if (initializationTurn !== null) {
             initializationStatements.push({
                 op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null,
-                body: `This turn surveys tooling and environment. The log records results; ops://${workerName}/${loopSequence}/${initializationTurn.sequence} contains the submitted OPs.`, position: UNKNOWN_POSITION,
+                body: `This turn surveys tooling and environment. The log records results; reasoning://${workerName}/${loopSequence}/${initializationTurn.sequence} contains the submitted OPs.`, position: UNKNOWN_POSITION,
             });
             const agentsEntry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
                 workspace_id: workspaceId,
@@ -813,22 +812,24 @@ export default class TurnRunner {
         if (filesItems !== null) { // {§actor-boundary-catalog-preview} — once per worker
             initializationStatements.push(...await this.#catalogSurveys(args, container, filesItems));
         }
-        const reasoning = ReasoningView.initialSource(ReasoningPolicy.read(provider).operations);
-        await Turn.recordSource(this.#db, initializationTurn.id, "reasoning", reasoning);
         const reasoningRead = ReasoningView.initialRead(provider, workerName, loopSequence, initializationTurn.sequence);
         if (reasoningRead !== null) initializationStatements.push(reasoningRead);
-        // {§emission-row} — the survey is announced as the worker's first emission and reaches the
-        // model as its first assistant message; turn zero READs its reasoning, never its own program.
+        // {§worker-initialization-entry} — publish the complete source before its own READ executes.
+        // {§emission-row} — reasoning-only work has receipts, never a fabricated content emission.
         // {§message-arrival} — the message reaches the model as an inbound SEND in the first
         // model turn; initialization does not READ it a second time.
         const admittedInitializationStatements = initializationStatements.filter((statement) =>
             this.#capabilities.allowsAcross(statement, workspaceId, initializationPolicies));
-        const source = admittedInitializationStatements.length === 0 ? "" : TurnOps.renderInternal(admittedInitializationStatements);
-        const admitted = [...PlurnkParser.parseReasoningOperations(reasoning), ...(source.length === 0 ? [] : TurnOps.parseInternal(source))];
+        const reasoning = ReasoningView.initialSource(TurnOps.renderInternal(admittedInitializationStatements));
+        const admitted = PlurnkParser.parseReasoningOperations(reasoning);
+        if (admitted.length !== admittedInitializationStatements.length) {
+            throw new Error("initialization reasoning did not preserve every authored operation");
+        }
+        await Turn.recordSource(this.#db, initializationTurn.id, "reasoning", reasoning);
         const result = await this.executeAdmittedTurn({
             statements: admitted,
-            source,
-            emission: source.length === 0 ? null : { content: TurnOps.renderEmission(admittedInitializationStatements, `ops://${workerName}/${loopSequence}/${initializationTurn.sequence}`), workerName, loopSeq: loopSequence, turnSeq: initializationTurn.sequence },
+            source: null,
+            emission: null,
             origin: "_plurnk",
             workspaceId,
             workerId,
@@ -848,7 +849,7 @@ export default class TurnRunner {
     // {§actor-boundary-catalog-preview} — the opening surveys, each admitted only when
     // its scheme is registered for the workspace. A positive filesItems caps the
     // project rows.
-    async #catalogSurveys({ workspaceId }: TurnArgs, { workerName, initializationPolicies }: TurnContainer, filesItems: number): Promise<InternalTurnStatement[]> {
+    async #catalogSurveys({ workspaceId }: TurnArgs, { workerName, initializationPolicies }: TurnContainer, filesItems: number): Promise<Array<FindStatement | ReadStatement>> {
         const catalogSchemes = await this.#db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
         const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
         const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
@@ -1081,7 +1082,7 @@ export default class TurnRunner {
     // Phase 4's bookkeeping: the wire request, the recovery knobs, the signal the
     // provider sees, the client id and the worker's provider identity.
     async #prepareProviderAttempts({ provider, workspaceId, workerId, loopId, signal }: TurnArgs, request: TurnRequest): Promise<ProviderAttempts> {
-        const reasoningPolicy = ReasoningPolicy.read(provider);
+        const reasoningReboot = ReasoningPolicy.reboot(provider);
         const wire = await this.#wireMessages(request.packet, request.systemCtx, provider);
         // {§provider-recovery} — this turn's recovery clock: the first recoverable provider
         // failure starts it; the budget and backoff are the operator's.
@@ -1108,8 +1109,7 @@ export default class TurnRunner {
             attributions: [],
             recoveryBudget,
             recoveryBackoff,
-            reasoningReboot: reasoningPolicy.reboot,
-            reasoningOperations: reasoningPolicy.operations,
+            reasoningReboot,
             signal: providerSignal,
             providerWorkerId,
             turnWireAccounting: [],
@@ -1247,7 +1247,7 @@ export default class TurnRunner {
         attempts.turnWireAccounting.push(...completedResponse.accounting);
         await modelCall.observeResponse(completedResponse, null, attempts.wire.nativeInputs);
         attempts.railEvidence = attempts.railGrammar === undefined ? undefined : completedResponse.grammarEvidence;
-        const split = this.#splitResponse(completedResponse, attempts.reasoningOperations, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []);
+        const split = this.#splitResponse(completedResponse, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []);
         attempts.split = split;
         await this.#classifyProviderAttempt(attempts, attemptRow.id, split, attempt, split.emissionValid);
         return split.emissionValid ? "admitted" : "rejected";
@@ -1366,7 +1366,7 @@ export default class TurnRunner {
     ): Promise<void> {
         await modelCall.observeResponse(attempt, TurnRunner.#providerFailure(error, attempts.signal), attempts.wire.nativeInputs);
         attempts.callInFlight = false;
-        const split = this.#splitResponse(attempt, attempts.reasoningOperations, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []);
+        const split = this.#splitResponse(attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []);
         attempts.response = attempt;
         attempts.split = {
             ...split,
@@ -1396,7 +1396,7 @@ export default class TurnRunner {
             // {§provider-interrupted-attempt} — the interrupted response stays durable
             // as an unaccepted attempt; it is never admitted or replayed.
             await modelCall.observeResponse(error.attempt, failure, attempts.wire.nativeInputs);
-            await this.#classifyProviderAttempt(attempts, attemptId, this.#splitResponse(error.attempt, attempts.reasoningOperations, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []), attempts.currentEmissionAttempt, false);
+            await this.#classifyProviderAttempt(attempts, attemptId, this.#splitResponse(error.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []), attempts.currentEmissionAttempt, false);
         } else {
             await modelCall.fail(failure, error.capacity ?? null);
         }
@@ -1496,7 +1496,7 @@ export default class TurnRunner {
         if (err instanceof ProviderError && err.attempt !== undefined) {
             attempts.response = err.attempt;
             await attempts.modelCall.observeResponse(err.attempt, failure, attempts.wire.nativeInputs);
-            attempts.split = this.#splitResponse(err.attempt, attempts.reasoningOperations, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []);
+            attempts.split = this.#splitResponse(err.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []);
             await this.#classifyProviderAttempt(attempts, attempts.attemptId, attempts.split, attempts.currentEmissionAttempt, false);
         } else {
             await attempts.modelCall.fail(
@@ -1832,7 +1832,7 @@ export default class TurnRunner {
         };
     }
 
-    #splitResponse(response: ProviderAttempt, reasoningOperations: boolean, executors: readonly string[] = [], wellFormed?: BodyCheck, jsonBodyExecutors: readonly string[] = []): SplitProviderResponse {
+    #splitResponse(response: ProviderAttempt, executors: readonly string[] = [], wellFormed?: BodyCheck, jsonBodyExecutors: readonly string[] = []): SplitProviderResponse {
         const { assistant } = response;
         const yielded = response.reasoningYield;
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
@@ -1910,7 +1910,7 @@ export default class TurnRunner {
             }
         }
         const reasoning = assistant.reasoning ?? null;
-        const reasoningOps = !reasoningOperations || reasoning === null ? [] : PlurnkParser.parseReasoningOperations(yielded === undefined ? reasoning : reasoning.slice(0, yielded.end));
+        const reasoningOps = reasoning === null ? [] : PlurnkParser.parseReasoningOperations(yielded === undefined ? reasoning : reasoning.slice(0, yielded.end));
         const reasoningWork = reasoningOps.filter(({ op }) => op !== "NOTE");
         if (yielded !== undefined && reasoningWork.length === 0) throw new Error("reasoning yield admitted no fact-finding operation");
         const operationCount = contentStatementCount + reasoningWork.length;
@@ -1921,7 +1921,7 @@ export default class TurnRunner {
             }
         }
         parseErrors.unshift(...fabrications.slice(0, 1));
-        const emissionStatements = preParsedOps === undefined && operationCount > 0 ? [...reasoningWork, ...ops] : null;
+        const emissionStatements = preParsedOps === undefined && contentStatementCount > 0 ? [...ops] : null;
         ops.unshift(...reasoningOps);
         const finalResponse = TurnDisposition.requestsCompletion(ops)
             && !hasUnparsedTail && parseErrors.length === 0

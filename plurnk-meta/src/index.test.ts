@@ -18,7 +18,6 @@ test("teaching corpus: the meta owner publishes one exact immutable membership",
     assert.deepEqual(TEACHING_CORPUS, {
         policy: "POLICY.md",
         recap: "recap.md",
-        reasoning: "reasoning.md",
         skill: "skills/plurnk/SKILL.md",
         schemeDocs: {
             worker: "docs/worker.md",

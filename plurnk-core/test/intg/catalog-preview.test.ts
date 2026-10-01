@@ -8,7 +8,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chatMessageText, Mock } from "@plurnk/plurnk-providers";
+import { Mock } from "@plurnk/plurnk-providers";
 import WorkerName from "../../src/core/WorkerName.ts";
 import { Validator, type EntryReadResult } from "@plurnk/plurnk-contracts";
 import { rpcCall, rpcProblem, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
@@ -188,11 +188,11 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 assert.deepEqual(
                     initializationRows.map(({ op }) => op),
-                    ["READ", "NOTE", "NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ"],
-                    "initialization announces its program, then reads its authored reasoning; the prompt arrives as its row",
+                    ["NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ"],
+                    "initialization executes its reasoning program once, ending with its ordinary source READ",
                 );
-                assert.equal(LogEntryProjection.isEmission(initializationRows[0]!), true,
-                    "the first row announces the survey the first request carries as its assistant message ({§emission-row})");
+                assert.equal(initializationRows.some(LogEntryProjection.isEmission), false,
+                    "reasoning-only initialization has no content emission ({§emission-row})");
                 const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
                 assert.deepEqual(
                     { producer: turn?.producer, kind: turn?.kind, status: turn?.status },
@@ -202,16 +202,14 @@ test("the turn-0 initialization consists of the real orienting operations", asyn
                 const note = JSON.parse(initializationRows.find(({ op }) => op === "NOTE")!.tx) as { body: string };
                 const reasoning = JSON.parse(initializationRows.find(({ op, scheme }) => op === "READ" && scheme === "reasoning")!.rx) as { content: string };
                 assert.ok(reasoning.content.includes(note.body), "the ordinary NOTE is extracted from the preserved reasoning source");
-                // {§packet-wire-envelope}: the program reaches the model as the first request's assistant message.
-                const survey = provider.received[0].filter(({ role }) => role === "assistant");
-                assert.equal(survey.length, 1, "the first model request carries turn 0's program as its one assistant message");
-                const program = { content: chatMessageText(survey[0]!) };
-                assert.doesNotMatch(program.content, /```READ \(ops:\/\//, "initialization never READs its own program");
-                assert.match(program.content, /\n```READ \(reasoning:\/\/[^/\s]+\/1\/1\)/, "initialization demonstrates its reasoning address through an ordinary READ");
+                assert.deepEqual(provider.received[0].filter(({ role }) => role === "assistant"), [],
+                    "the reasoning program reaches the first request through its READ, not assistant history");
+                assert.doesNotMatch(reasoning.content, /```READ \(ops:\/\//, "initialization fabricates no content program");
+                assert.match(reasoning.content, /\n```READ \(reasoning:\/\/[^/\s]+\/1\/1\)/, "initialization demonstrates its reasoning address through an ordinary READ");
                 assert.deepEqual(
-                    program.content.split("\n\n").map((block) => /^```([A-Z]+)/.exec(block)?.[1]),
-                    initializationRows.slice(3).map(({ op }) => op),
-                    "{§statement-rendering}: every announced initialization operation is separated by a blank line; its NOTEs live in their rows ({§emission-row})",
+                    reasoning.content.split("\n\n").flatMap((block) => /^```([A-Z]+)/.exec(block)?.[1] ?? []),
+                    initializationRows.map(({ op }) => op),
+                    "{§statement-rendering}: every reasoning operation is separated by a blank line and has exactly one ordinary receipt",
                 );
             } finally { ws.close(); }
         });
@@ -310,11 +308,11 @@ test("an empty workspace executes all eight orienting FINDs and preserves empty-
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);
                 assert.deepEqual(
                     initializationRows.filter(({ op }) => op !== null).map(({ op }) => op),
-                    ["READ", "NOTE", "NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ"],
-                    "initialization contains its program's announcement, reasoning and program NOTEs, eight surveys, and the reasoning READ",
+                    ["NOTE", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "FIND", "READ"],
+                    "initialization contains one NOTE, eight surveys, and the reasoning READ",
                 );
-                assert.deepEqual(initializationRows.filter(({ op, scheme }) => op === "READ" && scheme === "ops").map((row) => LogEntryProjection.isEmission(row)), [true],
-                    "turn 0 never READs its own program: its one ops row announces the first request's assistant message ({§emission-row})");
+                assert.deepEqual(initializationRows.filter(({ op, scheme }) => op === "READ" && scheme === "ops"), [],
+                    "turn 0 has no content source to announce or read ({§emission-row})");
             } finally { ws.close(); }
         });
     } finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev; }
