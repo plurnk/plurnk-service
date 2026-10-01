@@ -1033,7 +1033,7 @@ export default class AstBuilder {
                     "visitor",
                     "Regex matcher has trailing text after `/pattern/flags`.",
                     "error",
-                    "Write the flags directly after the closing `/`, as `/pattern/i`, and a note as `<!-- … -->`.",
+                    "Write only `/pattern/flags` in the matcher; flags are optional.",
                 );
             }
             const slashRecovery = regex.reason === "invalid"
