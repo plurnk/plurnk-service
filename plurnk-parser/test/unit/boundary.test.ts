@@ -8,7 +8,7 @@ import * as Contracts from "@plurnk/plurnk-contracts";
 import * as Parser from "../../src/index.ts";
 
 test("{§parser-construction-boundary} {§parser-consumers}: the parser package exports exactly the parser surface", () => {
-    assert.deepEqual(Object.keys(Parser).sort(), ["PlurnkParser", "parsePath"]);
+    assert.deepEqual(Object.keys(Parser).sort(), ["PlurnkParser", "ReasoningStream", "parsePath"]);
 });
 
 test("{§parser-consumers}: contracts exports no parser and depends on no parser runtime", () => {

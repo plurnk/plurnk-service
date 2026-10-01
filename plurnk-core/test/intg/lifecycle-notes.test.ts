@@ -87,7 +87,7 @@ test("#713: empty WAIT falls through and SEND plus a retrieval observes before c
     } finally { await db.close(); }
 });
 
-test("{§reasoning-notes}: a rejected emission cannot commit its reasoning NOTE", async () => {
+test("{§reasoning-operations}: a rejected emission cannot commit its reasoning NOTE", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "rejected-reasoning-note");

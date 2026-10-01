@@ -53,5 +53,5 @@ test("{§unfenced-operation}: a name with an operand and no fence still did not 
 });
 
 test("{§naked-operation}: reasoning is never read this way", () => {
-    assert.deepEqual(PlurnkParser.parseReasoningNotes("NOTE\nA rehearsal, not a note.\n"), []);
+    assert.deepEqual(PlurnkParser.parseReasoningOperations("NOTE\nA rehearsal, not a note.\n"), []);
 });

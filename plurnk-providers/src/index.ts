@@ -17,6 +17,7 @@ export type {
     ProviderGenerateArgs,
     ProviderRequestAccounting,
     ProviderReasoningObserver,
+    ProviderReasoningYield,
     ProviderRequestCapacity,
     ProviderRequestCapacityDecision,
     ProviderRequestIdentity,

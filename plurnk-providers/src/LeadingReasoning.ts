@@ -22,6 +22,8 @@ export default class LeadingReasoning {
         this.#envelopes = envelopes;
     }
 
+    get complete(): boolean { return this.#projected && this.#closed; }
+
     push(text: string): string {
         if (this.#closed) {
             this.#content += text;

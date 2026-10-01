@@ -11,6 +11,8 @@ import CapabilityPolicies from "./CapabilityPolicies.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
 import { readPacketInject, readSystemPolicy } from "./packet-inject.ts";
 import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { parseEnv } from "node:util";
 import Paths from "../Paths.ts";
 import { readTeachingSource } from "./teaching-corpus.ts";
 import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
@@ -150,9 +152,11 @@ export default class PacketBuilder {
 
     // Prompt projection is Core policy, scoped through the same alias contract as providers.
     static #KNOBS = ["PLURNK_SERVICE_PROMPT_PROJECTION"] as const;
+    static #declaredKnobs: readonly string[] | undefined;
 
     // {§configuration-repair-path} {§tokenomics-prompt-projection-share}
     static validateConfiguration(env: NodeJS.ProcessEnv = process.env): number {
+        const declared = PacketBuilder.#declaredKnobs ??= Object.keys(parseEnv(readFileSync(new URL("../../.env.defaults", import.meta.url), "utf8")));
         const retired: Record<string, string> = {
             PLURNK_SERVICE_PROMPT_BUDGET: "provider input capacity is derived from context and output budgets",
             PLURNK_SERVICE_SAFETY: "provider request-shaped capacity admission owns physical headroom",
@@ -170,6 +174,7 @@ export default class PacketBuilder {
             COMPLETION: "PLURNK_PROVIDERS_OUTPUT_BUDGET",
         };
         for (const key of Object.keys(env)) {
+            if (declared.some((knob) => key === knob || key.startsWith(`${knob}_`))) continue;
             const match = /^PLURNK_SERVICE_(CTX|CONTEXT_WINDOW|REASONING|ASSISTANT|COMPLETION)(_.*)?$/u.exec(key);
             if (match !== null) throw new ConfigurationError(key, `${key} is retired: the provider-owned knob is ${moved[match[1]!]}${match[2] ?? ""}.`);
         }

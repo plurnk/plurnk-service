@@ -88,8 +88,8 @@ test("{§reasoning-empty-turn-read}: an empty turn reads its own reasoning back 
     }
 });
 
-test("{§reasoning-notes}: the authored rationale demonstrates an executable NOTE", () => {
-    const notes = PlurnkParser.parseReasoningNotes(ReasoningView.initialSource());
+test("{§reasoning-operations}: the authored rationale demonstrates an executable NOTE", () => {
+    const notes = PlurnkParser.parseReasoningOperations(ReasoningView.initialSource());
     assert.equal(notes.length, 1);
-    assert.equal(notes[0]!.body, "NOTE is the only operation that is also parsed and persisted from within reasoning.");
+    assert.equal(notes[0]!.body, "NOTE, FIND and READ may also be emitted while reasoning.");
 });

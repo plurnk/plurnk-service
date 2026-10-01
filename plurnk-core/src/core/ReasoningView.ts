@@ -4,10 +4,10 @@ import ProviderInstantiate from "./ProviderInstantiate.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 
 export default class ReasoningView {
-    // {§reasoning-notes} — initialization uses the same extraction as a provider-produced turn.
+    // {§reasoning-operations} — initialization uses the same extraction as a provider-produced turn.
     static initialSource(): string {
         return "This harness-generated turn surveys the workspace and available capabilities.\n\n"
-            + PlurnkParser.frame("NOTE", "NOTE is the only operation that is also parsed and persisted from within reasoning.");
+            + PlurnkParser.frame("NOTE", "NOTE, FIND and READ may also be emitted while reasoning.");
     }
 
     static lines(provider: Provider, key: ReasoningViewKnob = "PLURNK_REASONING_VIEW_LINES"): number {

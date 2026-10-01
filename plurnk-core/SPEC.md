@@ -1281,9 +1281,10 @@ The parser owns its boundaries; core admits determinate work and exposes its fai
 | Bounded program, including malformed operations | Admit valid operations and record parser failures; with no authored operation, apply {§empty-turn}. |
 | Outside response text | Store it as the turn's `outside` source under {§outside-text}; never a row, never delivered, never completion. |
 | Lost boundary after a closed operation | Admit the closed operations and record the boundary diagnostic under {§unparsed-tail-boundary}. |
-| Lost boundary before any closed operation | Reject the attempt; neither outside text nor a reasoning NOTE substitutes for a closed response operation. |
+| Lost boundary before any closed operation | Reject the attempt; neither outside text nor a reasoning NOTE substitutes for a closed operational statement. Reasoning FIND/READ count as such statements ({§reasoning-operations}). |
 | Outside text carrying a log-entry heading, other than an emission row's | Reject the attempt ({§fabricated-log-entry}). |
 | A response the provider stopped at a repeated line | Reject the attempt with the provider's sentence as its diagnostic ({§repetition-stop}); no provider recovery, notice, or problem row. |
+| Intentional reasoning yield | Admit the selected reasoning prefix under {§reasoning-yield}; record all received channels unchanged. Later reasoning and racing content execute nothing. It is an ordinary continuing turn, never an empty turn, provider retry or failure. |
 
 §fabricated-log-entry **Only the harness writes the log.** A line of outside response text that begins with a log-entry heading, `### log:///<loop>/<turn>/<sequence>/` ({§log-wire-format}), is the model continuing the packet's transcript instead of answering it: it writes the receipts it expects and then acts on them. The attempt is rejected under {§invalid-emission-attempts}, so neither that text nor any operation beside it runs or is stored as outside text ({§outside-text}), and its one diagnostic, at the heading's line, reads `` `### log:///2/1/5/READ` is a log entry, and only the harness writes the log. Write the operation, then wait for its receipt. `` Text inside an operation body is not examined, so a SEND or KILL may quote a receipt. A heading whose leaf is `emission` is exempt: the transcript shows it before each of the worker's own emissions ({§emission-row}), and repeating it invents no receipt, so the attempt is admitted and the heading stays outside text, counted by the digest as an echo. In 10,486 recorded emissions, 101 carried such a heading in outside text, every one a fabrication: 85 of 1,675 from deepseek-flash, 81 of them opening with one, and 16 from glm-5.3-flash, deepseek-v4-pro and qwen3.8-flash, which appended an invented `## Log` after their own operations.
 
@@ -2175,10 +2176,19 @@ same transitions the dispatcher's atomic curation event makes, without the row.
 | Lifecycle | Restart retains sources and observations. FORK snapshots sources under the child's name at the same loop/turn coordinates and receipts with independent curation. No curation or lifecycle event automatically READs model reasoning. A turn the provider left without reasoning reads empty; absent workers and turns return the ordinary missing result ({§turn-source-resources}). |
 | Client | Standard live reasoning events and replay retain original provider reasoning; working resources and READ receipts never substitute for or replay that stream. |
 
+### §reasoning-reboot-configuration Reasoning interruption policy
+
+`PLURNK_SERVICE_REASONING_REBOOT` enables {§reasoning-yield}; its default lives
+in `.env.defaults`, with `PLURNK_SERVICE_REASONING_REBOOT_<alias>` overriding
+through the ordinary model-alias cascade. `0` disables early interruption, not
+{§reasoning-operations}: complete reasoning operations still join the admitted
+program when generation finishes. It changes neither teaching nor source retention.
+Invalid values are configuration failures before inference, not provider failures.
+
 ### §reasoning-initial-read Initial reasoning observation
 
 The initialization turn records a short `_plurnk`-authored rationale containing
-a fenced NOTE. The shared reasoning extractor ({§reasoning-notes}) executes that
+a fenced NOTE. The shared reasoning extractor ({§reasoning-operations}) executes that
 NOTE through ordinary dispatch, creating its log item and immutable source.
 The program begins with its own NOTE and READs its reasoning,
 demonstrating both NOTE placements and their ordinary results. The initial message arrives separately as an
@@ -2376,7 +2386,7 @@ single line past the end, a reversed range, empty content, a command's log row
 
 ### §turn-ops-entry The admitted turn program
 
-§turn-ops-log-curation A source-backed turn preserves its **exact admitted Plurnk program**, including ignored interstitial text, before dispatch. `turn_sources` records that source once, separately from the curatable log and optional provider evidence. Retention does not manufacture a log row; the one row an admitted emission gains is its announcement ({§emission-row}). Ordinary READ creates a receipt governed by {§log-readable-projection}; curation of either never changes the source.
+§turn-ops-log-curation A source-backed turn preserves its **exact content emission**, including ignored interstitial text, before dispatch. `turn_sources` records that source once, separately from reasoning, the curatable log and optional provider evidence. Retention does not manufacture a log row; the one row an admitted emission gains is its announcement ({§emission-row}). Ordinary READ creates a receipt governed by {§log-readable-projection}; curation of either never changes the source. A reasoning yield retains even unexecuted lookahead in its original channel ({§reasoning-yield}).
 
 ### §emission-row The emission row
 
@@ -2386,10 +2396,10 @@ like any other row.
 
 | Surface | Contract |
 |---|---|
-| When | An inference turn that admitted at least one statement from its provider content, and turn zero's survey ({§worker-initialization-entry}). A programmatic batch, an empty turn ({§empty-turn}), a client operation and a rejected attempt ({§rejected-emission-entry}) announce nothing. |
+| When | An inference turn that admitted at least one content statement or reasoning FIND/READ ({§reasoning-operations}), and turn zero's survey ({§worker-initialization-entry}). A programmatic batch, an empty turn ({§empty-turn}), a client operation and a rejected attempt ({§rejected-emission-entry}) announce nothing. |
 | Place | After the turn's inputs (arrivals, deltas, open-path READs) and before its reasoning NOTEs and operations, written after the selection snapshot ({§turn-ops-selection-snapshot}): the emission sits between what the worker had seen and what it caused. |
 | Row | A `_plurnk` READ of the turn's own source, `ops://<worker>/L/T`, with `attrs.kind="emission"` and the canonical leaf `/emission`: `### log:///L/T/S/emission → ops://<worker>/L/T · N`. It renders its author, the turn's producer, as `origin`, so a model's row carries none. It is no operation: no receipt, tool call or strike, and outside the op mix. |
-| Body | Frozen at announcement: the canonical rendering ({§statement-rendering}) of every admitted content statement, in order, each in a closed fence. Each body appears within the shared preview bound ({§body-projection}), `PLURNK_SERVICE_PREVIEW_LINES` and `PLURNK_SERVICE_PREVIEW_CHARS`. A longer body keeps its head, and its closing fence carries `<!-- Automatically truncated op body: READ (ops://<worker>/L/T) to retrieve in full -->`; nothing the harness writes enters a fence. Absent and empty bodies remain empty. All heading operands, scopes, metadata, patterns and asides remain. Free text and unadmitted forms are absent; a recovered native call ({§native-tool-calls}) appears as the operation it was read as; an operation whose receipt failed stays. Turn zero uses the same projection of its survey. No body text is inspected for nested operations. |
+| Body | Frozen at announcement: the canonical rendering ({§statement-rendering}) of admitted reasoning FIND/READs followed by content statements, each in a closed fence. Each body appears within the shared preview bound ({§body-projection}), `PLURNK_SERVICE_PREVIEW_LINES` and `PLURNK_SERVICE_PREVIEW_CHARS`. A longer body keeps its head, and its closing fence carries `<!-- Automatically truncated op body: READ (ops://<worker>/L/T) to retrieve in full -->`; nothing the harness writes enters a fence. Absent and empty bodies remain empty. All heading operands, scopes, metadata, patterns and asides remain. Free text and unadmitted forms are absent; a recovered native call ({§native-tool-calls}) appears as the operation it was read as; an operation whose receipt failed stays. Turn zero uses the same projection of its survey. No body text is inspected for nested operations. |
 | Sources and memory | Dispatch and immutable `ops://` sources retain complete bodies ({§turn-source-resources}); an explicit source READ returns them normally. The wire omits NOTE and WAIT blocks, whose own rows show them whole ({§body-projection}), so curating a NOTE row removes its text; an emission of only NOTE and WAIT delivers nothing, its row stands, and no assistant message follows it ({§packet-wire-envelope}); reasoning-only NOTEs never enter this projection. |
 | Stability | The projection is fixed from its first appearance, never aged or resized under budget pressure. Already frozen announcements and historical request captures are not rewritten. |
 | Presentation | Born folded: the record shows its header, and its body follows the record as the worker's assistant message. |
@@ -2837,8 +2847,8 @@ accounting and model-visible failure evidence remain separately owned by
   remains that turn's emission. A concluded child's `loop_termination` row to its parent
   READs this same loop resource. Witness: `test/intg/loop-answer.test.ts`.
 - §empty-turn **No authored response operation is a recoverable turn, never completion.**
-  Count parsed response operations before reasoning NOTEs join them; neither they nor outside
-  text ({§outside-text}) enter the count. When none exist and no boundary was lost, retain the turn
+  Count parsed content operations and reasoning FIND/READs ({§reasoning-operations}); neither
+  reasoning NOTEs nor outside text ({§outside-text}) enter the count. When none exist and no boundary was lost, retain the turn
   and its raw sources and count one progress-contract strike, whether or not the turn carried text. The strike sends no notice of its own: the turn records one `_plurnk`
   error row, `422` `The turn performed no operation.`, which rides the next packet's errors like
   any failure ({§operation-result-uniform-error-channel}), and its reasoning is read back to the

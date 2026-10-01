@@ -4,6 +4,8 @@
 // full-context predictions are uncached ({§parser-architecture}). The specification of the search
 // below — its alphabet, its preference order and its repair cost — is {§fence-pairing}.
 
+import { isReasoningOperation } from "./ReasoningOperation.ts";
+
 export type FenceCharacter = "`" | "~";
 
 // {§prose-code-blocks}: the operations whose body is a message or a prompt for another reader.
@@ -51,7 +53,7 @@ export type Pairing = {
 type PairingOptions = {
     readonly operations: ReadonlySet<string>;
     readonly executors: ReadonlySet<string>;
-    /** {§reasoning-notes} — reasoning opens only NOTE; everything else quotes. */
+    /** {§reasoning-operations} — other operations quote rather than execute. */
     readonly reasoning: boolean;
     /** Whether a heading line closes its block on that line, decided by the heading lexer itself
      * (targets, metadata strings and asides may hold backticks that close nothing). */
@@ -139,7 +141,7 @@ export default class FencePairing {
     }
 
     static #known(name: string, options: PairingOptions): boolean {
-        if (options.reasoning) return name === "NOTE";
+        if (options.reasoning) return isReasoningOperation(name);
         if (options.operations.has(name)) return true;
         const lower = name.toLowerCase();
         for (const executor of options.executors) if (executor.toLowerCase() === lower) return true;

@@ -52,6 +52,7 @@ test("the template ships no double policy, no active model, ONLY service-owned k
     assert.equal(env.get("PLURNK_SERVICE_PROMPT_PROJECTION"), "25%", "prompt initialization ships at one quarter of the derived curation budget");
     assert.equal(env.get("PLURNK_REASONING_VIEW_LINES"), "100", "initialization reads at most 100 rationale lines by default");
     assert.equal(env.get("PLURNK_REASONING_EMPTY_TURN_LINES"), "100", "an empty turn reads at most 100 reasoning lines back by default");
+    assert.equal(env.get("PLURNK_SERVICE_REASONING_REBOOT"), "1", "reasoning fact-finding interrupts generation by default");
     assert.equal(env.get("PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES"), "104857600", "filesystem snapshots ship with a 100 MiB safety ceiling");
 });
 

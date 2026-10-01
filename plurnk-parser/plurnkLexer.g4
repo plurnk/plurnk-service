@@ -11,6 +11,7 @@ tokens {
 
 @lexer::header {
 import FencePairing, { type BlockEnd, type Pairing } from "../FencePairing.ts";
+import { isReasoningOperation } from "../ReasoningOperation.ts";
 }
 
 @lexer::members {
@@ -56,6 +57,17 @@ private blockEnd(required: boolean): BlockEnd | undefined {
     if (end === undefined && required) throw new Error(`fence pairing has no end for the block opened at ${this.openFenceStart}`);
     return end;
 }
+// {§reasoning-operations}: source code-point boundaries, excluding repaired/incomplete blocks.
+public closedBlock(line: number): { start: number; end: number } | null {
+    const pairing = this.fencePairing();
+    const start = pairing.lineStarts[line - 1];
+    if (start === undefined) return null;
+    if (pairing.selfClosed.has(start)) return { start, end: pairing.lineStarts[line] ?? this.inputStream.size };
+    const end = pairing.ends.get(start);
+    return end?.kind === "closer"
+        ? { start, end: pairing.lineStarts[end.line + 1] ?? this.inputStream.size }
+        : null;
+}
 private quotationHere(): boolean { return this.lineOnly ? this.fenceOpens() : this.fencePairing().quotations.has(this.lineStartOf(this.inputStream.index)); }
 private splitHere(): boolean { return !this.lineOnly && this.fencePairing().splits.has(this.lineStartOf(this.inputStream.index)); }
 private surplusHere(): boolean { return !this.lineOnly && this.fencePairing().surplus.has(this.lineStartOf(this.inputStream.index)); }
@@ -68,7 +80,7 @@ private openHeadingColumn: number = 0;
 private fenceLength: number = 0;
 private fenceCharacter: number = 0x60;
 private openFenceStart: number = 0;
-// {§reasoning-notes} — quotations are opaque; program-boundary recovery is not note extraction.
+// {§reasoning-operations} — quotations are opaque; no program-boundary recovery.
 public reasoning: boolean = false;
 private started: boolean = false;
 // {§inline-chain} — a closer on the heading line may be followed by the next opener on the same line.
@@ -187,7 +199,7 @@ private quoteStart: number = -1;
 // {§interstitial-fence} - only a native operation or a known executor opens a block.
 private knownHeading(): boolean {
     const name = this.text.replace(/^\x60+/, "");
-    if (this.reasoning) return name === "NOTE";
+    if (this.reasoning) return isReasoningOperation(name);
     return Object.hasOwn(plurnkLexer.OPERATIONS, name) || this.knownExecutor(name);
 }
 
@@ -610,7 +622,7 @@ fragment EOL : '\r'? '\n' ;
 OPEN : { this.atLineStart() || !this.reasoning && this.inlineChain }? FENCE NAME { this.knownHeading() }? { this.open(); } -> mode(SLOTS) ;
 // {§naked-operation} - the name alone on a column-zero line opens the operation without a fence.
 NAKED_OPEN : { this.atColumnZero() && !this.reasoning && this.nakedHeadingAhead() }? [A-Z]+ { this.openNaked(); } -> mode(SLOTS) ;
-// {§reasoning-notes} — an enclosing code fence is quotation, including unknown tags and tildes.
+// {§reasoning-operations} — an enclosing code fence is quotation, including unknown tags and tildes.
 // {§quotation} - a bare fence directly under a fence line is that block's orphaned closer: it
 // closes nothing and quotes nothing (a malformed heading's block ends at its own line).
 ORPHAN_CLOSER : { this.atLineStart() && this.surplusHere() }? FENCE [ \t]* { this.orphanAtLineEnd() }? -> channel(HIDDEN) ;

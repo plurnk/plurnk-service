@@ -119,7 +119,7 @@ test("{§inline-chain}: compact and inline-chained operations accept either fenc
     }
 });
 
-test("{§reasoning-notes}: reasoning accepts three-backtick NOTE only, preserving enclosing quotations", () => {
+test("{§reasoning-operations}: reasoning accepts three-backtick NOTE while preserving enclosing quotations", () => {
     const quoted = block(3, "NOTE", "An example, not retained memory.");
     const reasoning = [
         block(3, "NOTE", "Actual memory."),
@@ -128,7 +128,7 @@ test("{§reasoning-notes}: reasoning accepts three-backtick NOTE only, preservin
         block(3, "text", quoted),
         quoted.split("\n").map((line) => `    ${line}`).join("\n"),
     ].join("\n\n");
-    assert.deepEqual(PlurnkParser.parseReasoningNotes(reasoning).map(({ body }) => body), ["Actual memory."]);
+    assert.deepEqual(PlurnkParser.parseReasoningOperations(reasoning).map(({ body }) => body), ["Actual memory."]);
 });
 
 test("{§operation-fences}: canonical output is three-backtick, one wider than any fence in the body", () => {

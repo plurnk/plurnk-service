@@ -112,6 +112,18 @@ test("{§configuration-repair-path} retired service-side capacity knobs fail val
     }
 });
 
+test("{§reasoning-reboot-configuration} current panel keys and their aliases outrank retired-prefix diagnostics", () => {
+    assert.equal(PacketBuilder.validateConfiguration({
+        PLURNK_SERVICE_PROMPT_PROJECTION: "25%",
+        PLURNK_SERVICE_REASONING_REBOOT: "1",
+        PLURNK_SERVICE_REASONING_REBOOT_local: "0",
+    }), 0.25);
+    assert.throws(() => PacketBuilder.validateConfiguration({
+        PLURNK_SERVICE_PROMPT_PROJECTION: "25%",
+        PLURNK_SERVICE_REASONING_local: "2048",
+    }), /PLURNK_SERVICE_REASONING_local is retired/u);
+});
+
 test("{§configuration-repair-path} a malformed prompt projection refuses packet construction, not the repair environment", async () => {
     const previous = process.env.PLURNK_SERVICE_PROMPT_PROJECTION;
     const db = await openMigrated();

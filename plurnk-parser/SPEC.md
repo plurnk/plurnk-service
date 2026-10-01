@@ -6,15 +6,24 @@
 `@plurnk/plurnk-contracts` specifies. It owns the ANTLR grammars
 (`plurnkLexer.g4`, `plurnkParser.g4`), the generated lexer, parser and visitor,
 `AstBuilder`, the error strategy and the recording listener, the `PlurnkParser`
-tier entry points, `parsePath`, and the `plurnk-parser` command line. It depends
+tier entry points, `ReasoningStream`, `parsePath`, and the `plurnk-parser` command line. It depends
 on contracts for the AST and wire types, the schemas, `PathSyntax`,
 `PlurnkParseError`, `TurnDisposition`, and the constants. Contracts
 depends on nothing here.
 
 §parser-consumers **Who imports the parser.** The service's execution path (core,
-agui, execs) imports `PlurnkParser` and `parsePath` from this package.
+agui, execs) imports its parser surfaces from this package.
 `@plurnk/plurnk-contracts` exports neither and declares no parser dependency, so a
 client that installs contracts installs no `antlr4ng`, `xpath`, or `json-p3`.
+
+§parser-reasoning-frontier `PlurnkParser.parseReasoningOperations` implements
+{§reasoning-operations}. `ReasoningStream.inspect` applies {§reasoning-yield} to
+one physical request's cumulative normalized reasoning. It inspects completed
+lines in source order, using the same lexer, quotation pairing and AST admission;
+transport chunk size does not change the selected prefix. The returned offset
+uses JavaScript string coordinates. A new physical request requires a new
+instance. No incomplete fence is completed speculatively, and nothing executes
+in this package.
 
 ## §parser-build 2. Build and artifacts
 

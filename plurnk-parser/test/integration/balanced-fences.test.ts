@@ -80,7 +80,7 @@ test("{§balanced-fences}: a genuinely missing enclosing closer still recovers t
 
 test("{§balanced-fences}: reasoning quotations cannot promote nested NOTE examples", () => {
     const source = "````text\nA quoted example:\n````NOTE\nNot a memory.\n````\nExplanation.\n````\n````NOTE\nActual memory.\n````";
-    assert.deepEqual(PlurnkParser.parseReasoningNotes(source).map(({ body }) => body), ["Actual memory."]);
+    assert.deepEqual(PlurnkParser.parseReasoningOperations(source).map(({ body }) => body), ["Actual memory."]);
 });
 
 test("{§balanced-fences}: equal totals with incompatible widths or labels do not establish nesting", () => {

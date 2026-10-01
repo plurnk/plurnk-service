@@ -27,7 +27,7 @@ test("{§lifecycle-only-turn} #713: NOTE-only turns continue without a synthetic
     assert.equal(PlurnkParser.stringify(parsed), frame("NOTE", "The test failed before our change."));
 });
 
-test("#713: reasoning admits only NOTE, preserving literal nested examples", () => {
+test("{§reasoning-operations}: reasoning notes preserve literal nested examples", () => {
     const reasoning = [
         "I should remember the observation.",
         frame("NOTE", "The first probe ruled out the network."),
@@ -35,7 +35,7 @@ test("#713: reasoning admits only NOTE, preserving literal nested examples", () 
         frame("SEND", frame("NOTE", "This is a quoted example, not a note.")),
         frame("NOTE", "Try the local parser next."),
     ].join("\n\n");
-    const notes = PlurnkParser.parseReasoningNotes(reasoning);
+    const notes = PlurnkParser.parseReasoningOperations(reasoning);
     assert.deepEqual(notes.map((note) => note.body), [
         "The first probe ruled out the network.",
         "Try the local parser next.",
@@ -43,17 +43,17 @@ test("#713: reasoning admits only NOTE, preserving literal nested examples", () 
     assert.ok(notes.every((note) => note.op === "NOTE"));
 });
 
-test("{§reasoning-notes}: enclosing code fences protect quoted NOTE examples", () => {
+test("{§reasoning-operations}: enclosing code fences protect quoted NOTE examples", () => {
     const example = frame("NOTE", "This is quoted, not retained memory.");
     for (const enclosing of ["```", "`````", "`````text", "`````sh", "~~~", "~~~markdown"]) {
         const closer = enclosing.match(/^[`~]+/)![0];
         const quoted = `${enclosing}\n${example}\n${closer}`;
-        assert.deepEqual(PlurnkParser.parseReasoningNotes(quoted), [], enclosing);
+        assert.deepEqual(PlurnkParser.parseReasoningOperations(quoted), [], enclosing);
     }
     const source = [
         `\`\`\`\`\`text\n${example}\n\`\`\`\`\``,
         frame("NOTE", "This is the actual determination."),
     ].join("\n\n");
-    assert.deepEqual(PlurnkParser.parseReasoningNotes(source).map(({ body }) => body), ["This is the actual determination."]);
-    assert.deepEqual(PlurnkParser.parseReasoningNotes(example.split("\n").map((line) => `> ${line}`).join("\n")), []);
+    assert.deepEqual(PlurnkParser.parseReasoningOperations(source).map(({ body }) => body), ["This is the actual determination."]);
+    assert.deepEqual(PlurnkParser.parseReasoningOperations(example.split("\n").map((line) => `> ${line}`).join("\n")), []);
 });

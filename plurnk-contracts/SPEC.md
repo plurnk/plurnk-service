@@ -808,17 +808,30 @@ in ordinary log token accounting and model-driven curation; prior notes are not
 automatically hidden. A NOTE-only turn does not request completion; ordinary
 repetition and strike rules still apply.
 
-§reasoning-notes NOTE is the only operation admitted from exposed provider
-reasoning. The shared fence parser selects line-leading NOTE statements in a
-quotation-preserving reasoning context: other backtick or tilde code blocks are
-opaque, and operation-heading recovery cannot escape them. Blockquoted and inline
-examples are not headings. Program parsing is unchanged; other reasoned operations
-never execute.
-Selected notes precede the content program in the admitted turn and use the
-ordinary dispatcher, persistence and log projection. Reasoning bytes and content
-bytes remain separate, unchanged forensic sources. Rejected or superseded
-provider attempts cannot commit notes. Non-thinking models use NOTE in their
-ordinary program. No task inventory is inferred from notes or lifecycle prose.
+§reasoning-operations The shared fence parser admits complete, line-leading NOTE,
+FIND and READ statements from exposed provider reasoning. Other backtick or tilde
+code blocks are opaque; heading and missing-closer recovery cannot escape them or
+complete an unfinished reasoning operation. Blockquoted and inline examples are
+not headings. Other reasoned operations never execute.
+
+Selected operations precede the content program, in source order without
+deduplication, and use ordinary dispatch, permissions, persistence and log
+projection. FIND/READ count as operational work for admission and continuation;
+NOTE alone does not rescue an empty or inadmissible content program. Reasoning
+and content remain separate, unchanged forensic sources. Rejected or superseded
+provider attempts execute none of their operations. All three operations remain
+available in the ordinary program; no task inventory is inferred from reasoning.
+
+§reasoning-yield A streamed reasoning FIND/READ batch ends the provider request
+and becomes an ordinary admitted turn; results arrive in the next turn's log.
+
+| Boundary | Rule |
+|---|---|
+| Trigger | The first complete top-level FIND/READ starts a batch. Whitespace-separated FIND/READs extend it. A following non-whitespace line that is not such an operation, or the end of reasoning, closes it. Incomplete lines and headings require more input, never a timer or a transport-chunk assumption. |
+| Admission | NOTE statements before the batch and the batch itself execute in order through {§reasoning-operations}. A following NOTE ends the batch; it and any lookahead or racing content remain forensic evidence, not executed work. Quoted examples and repaired/incomplete fences never trigger interruption. |
+| Lifecycle | Intentional interruption is a successful provider exchange and an ordinary continuing turn, not completion, cancellation, a strike or a retry. Ordinary permission, stream, receipt and curation rules apply. No operation executes before attempt admission. |
+| Restart | The next ordinary request sees the results in its log and begins fresh reasoning. No prefill, hidden continuation, second cache lane or in-place insertion exists. |
+| Capability | Buffered reasoning still admits operations at response completion; only exposed, streamed reasoning can save generation by interrupting it. No reasoning trace is fabricated from summaries or absent output. |
 
 §exec-executor-slot The fence name selects the executor directly: for example,
 `python3 (tools/report.py)` or `gitea (issue_list)` on the opening fence line.

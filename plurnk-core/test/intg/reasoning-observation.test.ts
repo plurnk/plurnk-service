@@ -35,7 +35,7 @@ for (const limit of [-1, 0]) test(`{§worker-initialization-entry}: program and 
             assert.equal(initial.origin, "_plurnk");
             assert.match(String(initial.body), /^\s*1:This harness-generated turn surveys/m);
             assert.match(String(initial.body), /```NOTE/);
-            assert.match(String(initial.body), /NOTE is the only operation that is also parsed and persisted from within reasoning\./);
+            assert.match(String(initial.body), /NOTE, FIND and READ may also be emitted while reasoning\./);
             assert.doesNotMatch(String(initial.body), /Unrequested model reasoning/);
             assert.equal(reads.length, 1);
             assert.equal(reads[0]!.turn_seq, 1);
@@ -51,7 +51,7 @@ for (const limit of [-1, 0]) test(`{§worker-initialization-entry}: program and 
         const notes = logEntries(packet).filter((row) => /^log:\/\/\/3\/1\/\d+\/NOTE$/.test(String(row.logPath)));
         assert.deepEqual(notes.map((row) => row.resource), ["note://alice/3/1/2", "note://alice/3/1/3"]);
         const bodies = [
-            "NOTE is the only operation that is also parsed and persisted from within reasoning.",
+            "NOTE, FIND and READ may also be emitted while reasoning.",
             orientation,
         ];
         for (const [index, note] of notes.entries()) {

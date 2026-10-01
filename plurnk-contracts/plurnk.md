@@ -25,6 +25,9 @@ body?
 * WAIT: Yield until the next wake: a child worker's result or a stream's end.
 * SEND: Message endpoints or workers.
 
+> [!TIP]
+> YOU MAY emit NOTE, FIND, and READ operations while reasoning.
+
 ## Workflow Management
 
 > [!IMPORTANT]
