@@ -48,4 +48,11 @@ export default class DigestEvidence {
     response(modelCallId: number): string | null {
         return (this.#db.digest_model_response as SyncPrep<{ response: string }>).get({ model_call_id: modelCallId })?.response ?? null;
     }
+
+    reasoning(turn: TurnRow): string | null {
+        if (turn.has_reasoning === 0) return null;
+        const row = (this.#db.digest_turn_reasoning as SyncPrep<{ content: string }>).get({ turn_id: turn.id });
+        if (row === undefined) throw new Error(`digest: turn ${turn.id} reasoning source disappeared`);
+        return row.content;
+    }
 }

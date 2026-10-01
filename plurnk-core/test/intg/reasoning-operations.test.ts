@@ -17,6 +17,32 @@ import { testExecutors } from "./_execs.ts";
 
 const frame = PlurnkParser.frame;
 
+for (const operation of [
+    { name: "NOTE", source: frame("NOTE", "Retain this conclusion.") },
+    { name: "FIND", source: frame("FIND (worker:///fact.txt)", null) },
+    { name: "READ", source: frame("READ (worker:///fact.txt)", null) },
+]) test(`{§reasoning-empty-turn-read}: an admitted reasoning ${operation.name} suppresses automatic reasoning repetition`, async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, "reasoning-no-repeat");
+        const workerId = await insertWorker(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, workerId, 1);
+        await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "Observed fact." });
+        const reasoning = `Some deliberation.\n\n${operation.source}`;
+        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "", reasoning } }] });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const result = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] });
+        const outcomes = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: result.turnId });
+        assert.ok(outcomes.some(({ op, status_rx }) => op === operation.name && status_rx === 200), "the reasoning operation actually ran");
+        const reads = await db.test_reasoning_reads.all<{ origin: string; pathname: string }>({ worker_id: workerId });
+        assert.deepEqual(reads.filter(({ origin, pathname }) => origin === "_plurnk" && pathname === "/1/2"), [],
+            "recovery does not copy a trace that already contributed an operation");
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        assert.ok(sources.some(({ turn_id, kind, content }) => turn_id === result.turnId && kind === "reasoning" && content === reasoning),
+            "the complete original reasoning remains available for deliberate READs");
+    } finally { await db.close(); }
+});
+
 test("{§reasoning-operations}: admission is unconditional and the language definition is the only system teaching", async () => {
     const db = await openMigrated();
     try {

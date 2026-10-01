@@ -43,23 +43,23 @@ test("{§emission-row} {§share-packet-names}: the digest writes each request as
     }
     const roles = (messages: WireMessage[]) => messages.map(({ role }) => role);
     const draft = await wire("analyst-1-3");
-    assert.deepEqual(roles(draft), ["system", "user", "assistant", "user", "assistant", "user"], "the survey and the draft, each after its row");
-    assert.equal(draft[4]!.content, "```EDIT (worker:///a.md)\nalpha\n```",
+    assert.deepEqual(roles(draft), ["system", "user", "assistant", "user"], "only the content draft occupies assistant history");
+    assert.equal(draft.find(({ role }) => role === "assistant")!.content, "```EDIT (worker:///a.md)\nalpha\n```",
         "the wire carries the worker's operation whole within the preview bound; its NOTE lives only in its row");
     const original = await readFile(join(digestDir, "analyst-1-2.assistant.md"), "utf8");
     assert.match(original, /\nalpha\n/u, "forensics keep the exact EDIT body");
     assert.match(original, /Wrote the first draft\./u, "forensics keep the exact NOTE body");
     const last = await wire("analyst-1-4");
-    assert.deepEqual(roles(last), ["system", "user", "assistant", "user", "assistant", "user"], "the retired draft left with its row; the KILL's emission took its place");
+    assert.deepEqual(roles(last), ["system", "user", "assistant", "user"], "the retired draft left with its row; the KILL's emission took its place");
     assert.ok(!last.some(({ role, content }) => role === "assistant" && content.includes("EDIT (worker:///a.md)")));
 
     const report = await readFile(join(digestDir, "digest.md"), "utf8");
-    assert.match(report, /^Emissions: {2}4 announced · 1 killed · 1 header echo$/mu);
+    assert.match(report, /^Emissions: {2}3 announced · 1 killed · 1 header echo$/mu);
     assert.match(report, /← \[_plurnk\] emission \(killed\)\[200\] ops:\/\/analyst\/1\/2$/mu);
     assert.match(report, /← \[_plurnk\] emission\[200\] ops:\/\/analyst\/1\/3$/mu);
     const { log_entries: rows } = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as { log_entries: Array<{ op: string | null; attrs: unknown }> };
     const kind = (attrs: unknown): unknown => ((typeof attrs === "string" ? JSON.parse(attrs) : attrs) as { kind?: unknown } | null)?.kind;
-    assert.equal(rows.filter(({ attrs }) => kind(attrs) === "emission").length, 4);
+    assert.equal(rows.filter(({ attrs }) => kind(attrs) === "emission").length, provider.received.length, "each content turn is announced, never initialization");
     const reads = rows.filter(({ op, attrs }) => op === "READ" && kind(attrs) !== "emission").length;
     const mix = /^Op mix: {5}(.*)$/mu.exec(report)?.[1] ?? "";
     if (reads === 0) assert.doesNotMatch(mix, /\bREAD=/u, "announcements are not operations");

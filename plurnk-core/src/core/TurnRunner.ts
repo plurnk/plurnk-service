@@ -1766,9 +1766,9 @@ export default class TurnRunner {
     // {§reasoning-empty-turn-read} — after a turn with no operation, one runtime turn READs that
     // turn's reasoning back to the model. A trace or emission carrying a foreign tool-call grammar
     // is not echoed (`KnownToxins`); a turn without reasoning has nothing to read.
-    async #readEmptyTurnReasoning(args: TurnArgs, request: TurnRequest, { content, reasoning }: PacketAssistant): Promise<void> {
+    async #readEmptyTurnReasoning(args: TurnArgs, request: TurnRequest, { content, reasoning, ops }: PacketAssistant): Promise<void> {
         const { provider, workspaceId, workerId, loopId, onDispatch, onSettled } = args;
-        if (!reasoning?.length || KnownToxins.match(content) !== null || KnownToxins.match(reasoning) !== null) return;
+        if (ops.length > 0 || !reasoning?.length || KnownToxins.match(content) !== null || KnownToxins.match(reasoning) !== null) return;
         const statement = ReasoningView.emptyTurnRead(provider, request.workerName, request.loopSeq, request.seq);
         if (statement === null) return;
         const policies = (await CapabilityPolicies.layers(this.#db, workspaceId, loopId)).map((layer) => layer.policy);

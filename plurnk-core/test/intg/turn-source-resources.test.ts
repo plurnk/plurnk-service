@@ -9,7 +9,6 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { logEntries } from "./_packet.ts";
-import { fixtureExecutors } from "./_mock.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { resourcePaths } from "./_find.ts";
 import type { FindResult } from "../../src/schemes/_entry-find.ts";
@@ -20,7 +19,7 @@ const program = (message: string) => [
     PlurnkParser.frame("NOTE", "Review the evidence."),
 ].join("\n\n");
 
-test("{§turn-source-resources}: initialization reads its real program; later sources are pulled, not log rows", async () => {
+test("{§turn-source-resources}: reasoning initialization and later content sources remain distinct and survive curation", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "turn-sources");
@@ -36,18 +35,17 @@ test("{§turn-source-resources}: initialization reads its real program; later so
         ] });
         const first = await engine.runTurn({ ...context, provider: model, messages: [] });
         const read = (target: string, scope = "<1,-1>") => engine.look({ ...context, statement: statement(`\`\`\`\`READ (${target}) ${scope}\`\`\`\``) });
-        const initialization = await read("ops://analyst/1/1");
+        const initialization = await read("reasoning://analyst/1/1");
         assert.equal(initialization.status, 200);
         assert.ok("content" in initialization && typeof initialization.content === "string");
-        const parsed = PlurnkParser.parseStatements(initialization.content, { executors: fixtureExecutors(initialization.content) });
-        assert.ok(parsed.items.some((item) => item.kind === "statement" && item.statement.op === "READ"
-            && item.statement.target?.raw === "reasoning://analyst/1/1"), "the program contains its reasoning READ");
-        assert.ok(!parsed.items.some((item) => item.kind === "statement" && item.statement.op === "READ" && item.statement.target?.raw === "ops://analyst/1/1"),
-            "the program never READs itself: it is the first request's assistant message ({§packet-wire-envelope})");
+        const parsed = PlurnkParser.parseReasoningOperations(initialization.content);
+        assert.ok(parsed.some((statement) => statement.op === "READ"
+            && statement.target?.raw === "reasoning://analyst/1/1"), "the reasoning program contains its own ordinary READ");
+        assert.equal((await read("ops://analyst/1/1")).status, 204, "there is no fabricated content source");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: first.turnId }))!.packet);
         const records = logEntries(packet);
-        assert.deepEqual(records.filter((row: Record<string, unknown>) => row.path === "ops://analyst/1/1").map((row: Record<string, unknown>) => row.logPath), ["log:///1/1/1/emission"],
-            "no READ receipt of the program: its row announces it, and the first model request carries it as its assistant message ({§emission-row})");
+        assert.deepEqual(records.filter((row: Record<string, unknown>) => row.path === "ops://analyst/1/1"), [],
+            "reasoning initialization has no content announcement ({§emission-row})");
         assert.ok(!records.some((row: Record<string, unknown>) => String(row.logPath).endsWith("/ops")));
         const turn = (await db.test_get_turn.get<{ sequence: number }>({ id: first.turnId }))!;
         const coordinate = `1/${turn.sequence}`;

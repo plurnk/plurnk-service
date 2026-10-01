@@ -2201,13 +2201,14 @@ bounds it to the first N lines. Source retention, deliberate READs, and client
 streaming are independent. The only other automatic reasoning READ follows an empty
 turn ({§reasoning-empty-turn-read}).
 
-§reasoning-empty-turn-read **An empty turn's reasoning is read back to the model.** After a
-turn admitted under {§empty-turn}, one runtime turn of the same loop
+§reasoning-empty-turn-read **Operation-free reasoning is read back for recovery.** After a
+turn admitted under {§empty-turn} with no admitted reasoning operations, one runtime turn of the same loop
 (`{ producer="_plurnk", kind="operation" }`) dispatches
 `READ (reasoning://<worker>/<loop>/<turn>) <!-- turn N emitted no OP -->` over that turn's stored
 reasoning source; its receipt renders in the next packet like any other log row.
 `PLURNK_REASONING_EMPTY_TURN_LINES` (alias-scoped, default in `.env.defaults`) selects the scope on the same
-scale as `PLURNK_REASONING_VIEW_LINES`. No read follows a turn without reasoning, and none follows
+scale as `PLURNK_REASONING_VIEW_LINES`. Any admitted reasoning NOTE, FIND or READ suppresses
+this recovery readback. No read follows a turn without reasoning, and none follows
 a turn whose emission or reasoning carries a foreign tool-call grammar or leaked template token
 (`KnownToxins` names them); the strike and its error row are unchanged.
 
@@ -5176,7 +5177,7 @@ source independently from this optional model-exchange record; a request-only
 turn receives a note instead of a fabricated response.
 
 §digest-turn-artifact-identity **Digest packet artifacts project durable turns.**
-After selectors are applied, digest retains every turn with exact program source, a
+After selectors are applied, digest retains every turn with exact content or reasoning source, a
 valid stored provider request, or malformed stored packet evidence; orders those
 turns by durable chronology; and names each by its log coordinate ({§share-packet-names}). The
 producer does not affect projection.
@@ -5191,6 +5192,7 @@ consumer reconstructs a name. A name that cannot be a file name, or two turns sh
 | Artifact | Present when | Authority |
 |----------|--------------|-----------|
 | `<stem>.assistant.md` | The turn has an `ops` source | Exact `turn_sources.content`, independent of log rows |
+| `<stem>.reasoning.md` | The turn has a `reasoning` source | Exact `turn_sources.content`, without relabeling it as content |
 | `<stem>.system.md`, `<stem>.user.md` | The turn stored a provider request | Stored text sections projected through `PacketWire`; native parts are not Markdown |
 | `<stem>.wire.json` | The turn stored a provider request | The request's text messages in order, its worker's emission rows placed ({§packet-wire-envelope}); `<stem>.wire.invalid.json` names a stored log that cannot be projected |
 | `digest.json` turn `attachments` | Every turn | Stored native attachment descriptors; `[]` means a request without attachments, `null` means no valid stored request. Selection is not proof of provider acceptance. |
@@ -5199,8 +5201,8 @@ consumer reconstructs a name. A name that cannot be a file name, or two turns sh
 | `<stem>.packet.raw.txt` | The stored packet fails typed validation | Exact stored packet text |
 | `<stem>.packet.invalid.json` | The stored packet fails typed validation | Turn identity and complete validation error chain |
 
-A source-backed turn without provider participation therefore produces only
-`assistant.md`; a request-only turn produces no fabricated assistant. A
+A source-backed turn without provider participation produces only its source-channel
+artifacts; a request-only turn produces no fabricated assistant. A
 source-less programmatic turn with no provider request has no forensic payload
 to project and writes no files.
 

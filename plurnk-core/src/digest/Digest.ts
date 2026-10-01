@@ -17,6 +17,7 @@
 //   <digest>/<stem>.wire.json       The request's text messages in order, emissions in place.
 //   <digest>/<stem>.response.md      Request-only note when no response was admitted.
 //   <digest>/<stem>.assistant.md     Exact persisted turnOps, regardless of producer.
+//   <digest>/<stem>.reasoning.md     Exact persisted reasoning, regardless of producer.
 //   <digest>/<stem>.assistantRaw.json  Opaque provider response.
 //   <digest>/<stem>.packet.raw.txt      Exact malformed stored packet text.
 //   <digest>/<stem>.packet.invalid.json Validation failure for that packet.

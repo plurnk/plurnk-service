@@ -36,7 +36,7 @@ export interface TurnRow {
     id: number; loop_id: number; sequence: number;
     producer: "model" | "client" | "_plurnk" | "plugin";
     kind: "inference" | "initialization" | "operation" | "maintenance";
-    status: number; timestamp: string; completed_at: string | null; has_packet: 0 | 1;
+    status: number; timestamp: string; completed_at: string | null; has_packet: 0 | 1; has_reasoning: 0 | 1;
     finish_reason: string | null; model: string | null;
     meta: string | null;  // {§meta-passthrough}, {§operator-grammar}
     program: string | null;

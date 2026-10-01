@@ -143,8 +143,13 @@ for (const limit of [-1, 0, 1, 8]) test(`{§reasoning-initial-read}: configured 
             assert.doesNotMatch(String(record.body), /Finding 1:/, "the model's original reasoning is not automatically pushed into the log");
             assert.doesNotMatch(String(record.body), /^@[A-Za-z0-9]+\s+\d+:/m, "the materialized read-only projection has no hashes");
             assert.equal(JSON.parse(reads[0]!.rx).status, 200);
-            assert.equal(record.range, limit === 1 ? "<1> of 5 lines" : "5 lines");
-            assert.deepEqual(JSON.parse(reads[0]!.rx).range, { unit: "line", total: 5, requested: [1, limit], returned: [1, limit === 1 ? 1 : 5] }, "the source selection remains structured in durable evidence");
+            const source = await engine.look({ ...context, statement: statement(PlurnkParser.frame("READ (reasoning://alice/1/1) <1,-1>", null)) });
+            assert.equal(source.status, 200);
+            assert.ok(typeof source.content === "string");
+            const total = source.content.split("\n").length;
+            const returned = limit === -1 ? total : Math.min(limit, total);
+            assert.equal(record.range, returned === total ? `${total} lines` : `<1${returned === 1 ? "" : `,${returned}`}> of ${total} lines`);
+            assert.deepEqual(JSON.parse(reads[0]!.rx).range, { unit: "line", total, requested: [1, limit], returned: [1, returned] }, "the source selection matches the retained text, independent of its wording");
         }
     } finally {
         await db.close();

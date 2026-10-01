@@ -156,7 +156,7 @@ test("{§log-history-projection}: digest retains programs after all source READ 
     }
 });
 
-test("{§digest-turn-artifact-identity}: digest projects exact chronological turnOps and provider participation", async () => {
+test("{§digest-turn-artifact-identity}: digest preserves source channels without fabricating provider participation", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-turn-artifacts-"));
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
@@ -204,9 +204,8 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
 
         const turns = await db.test_list_turns_in_loop.all<{ id: number }>({ loop_id: loopId });
         const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
-        initializationSource = programs.find(({ turn_id, kind }) => turn_id === turns[0]!.id && kind === "ops")!.content;
-        assert.match(initializationSource, /^```NOTE\nThis turn surveys tooling and environment\. The log records results; ops:\/\/analyst\/1\/1 contains the submitted OPs\.\n```\n\n/);
-        assert.match(initializationSource, /```READ \(reasoning:\/\/analyst\/1\/1\) <1,100> <!-- inspect this turn's reasoning -->\n```/);
+        initializationSource = programs.find(({ turn_id, kind }) => turn_id === turns[0]!.id && kind === "reasoning")!.content;
+        assert.ok(!programs.some(({ turn_id, kind }) => turn_id === turns[0]!.id && kind === "ops"), "initialization has no content source");
         assert.ok(!programs.some(({ turn_id }) => turn_id === overflow.turnId), "no recovery program was executed or fabricated");
     } finally {
         await db.close();
@@ -215,11 +214,13 @@ test("{§digest-turn-artifact-identity}: digest projects exact chronological tur
     try {
         Digest.run({ dbPath, digestDir });
         const stems = await digestStems(digestDir);
+        assert.deepEqual(stems, ["analyst-1-1", "analyst-1-2"], "source-backed initialization and inference retain their log coordinates");
         assert.equal(
-            await readFile(join(digestDir, `${stems[0]}.assistant.md`), "utf8"),
+            await readFile(join(digestDir, "analyst-1-1.reasoning.md"), "utf8"),
             initializationSource,
-            "the first durable turn projects its exact persisted turnOps",
+            "a packetless reasoning source remains exact forensic evidence",
         );
+        await assert.rejects(() => access(join(digestDir, "analyst-1-1.assistant.md")), { code: "ENOENT" });
         await assert.rejects(() => access(join(digestDir, `${stems[0]}.system.md`)), { code: "ENOENT" });
         await assert.rejects(() => access(join(digestDir, `${stems[0]}.user.md`)), { code: "ENOENT" });
         await assert.rejects(() => access(join(digestDir, `${stems[0]}.assistantRaw.json`)), { code: "ENOENT" });

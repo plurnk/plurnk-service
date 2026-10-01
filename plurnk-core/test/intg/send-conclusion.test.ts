@@ -300,7 +300,7 @@ for (const [label, response, reasoning, notes, outside] of [
     ["empty response", "", null, [], undefined],
     ["reasoning NOTE only", "", PlurnkParser.frame("NOTE", "Still calculating."), ["Still calculating."], undefined],
 ] as const) {
-    test(`{§empty-turn}: ${label} stores its outside text without avoiding a no-operation strike or changing recovery`, async () => {
+    test(`{§empty-turn}: ${label} preserves sources and strike behavior, repeating only operation-free reasoning`, async () => {
         const { db, engine, provider, ids, notices } = await setup([said(response, reasoning)]);
         try {
             const result = await engine.runLoop({ ...ids, provider, maxTurns: 3, maxStrikes: 1, messages: [] });
@@ -309,11 +309,11 @@ for (const [label, response, reasoning, notes, outside] of [
             assert.equal(result.result.problem.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
             assert.match(result.result.problem.detail, /performed no operation\.$/);
             assert.deepEqual(notices.filter(({ level, kind }) => level === "warn" && kind !== "outside_text"), [], "the strike is silent; only the discarded text is weighed ({§outside-text})");
-            // {§reasoning-empty-turn-read} — a reasoning-bearing empty turn is followed by the runtime turn
-            // that reads it back, so the model turn is located by its producer, not its position.
-            const turns = await Promise.all(result.turnIds.map(async (id) => (await db.test_get_turn.get<{ id: number; producer: string }>({ id }))!));
-            const modelTurn = turns.findLast(({ producer }) => producer === "model")!.id;
-            assert.equal(turns.filter(({ producer }) => producer === "_plurnk").length, reasoning === null ? 1 : 2, "initialization, and the read-back only when there is reasoning to read");
+            const turns = await Promise.all(result.turnIds.map(async (id) => (await db.test_get_turn.get<{ id: number; sequence: number; producer: string }>({ id }))!));
+            const { id: modelTurn, sequence } = turns.findLast(({ producer }) => producer === "model")!;
+            const reads = await db.test_reasoning_reads.all<{ origin: string; pathname: string }>({ worker_id: ids.workerId });
+            assert.deepEqual(reads.filter(({ origin, pathname }) => origin === "_plurnk" && pathname === `/1/${sequence}`).map(({ pathname }) => pathname),
+                reasoning !== null && notes.length === 0 ? [`/1/${sequence}`] : [], "{§reasoning-empty-turn-read}: persisted reasoning operations suppress automatic repeat");
             const rows = await db.test_log_entries_by_turn.all<{ op: string; source: string; origin: string; tx: string; status_rx: number }>({ turn_id: modelTurn });
             assert.equal(rows.some(({ op, source }) => op === "error" && source === "grammar"), false);
             assert.deepEqual(rows.filter(({ op, origin }) => op === "error" && origin === "_plurnk").map(({ status_rx }) => status_rx), [422], "the strike is one error row on the turn");

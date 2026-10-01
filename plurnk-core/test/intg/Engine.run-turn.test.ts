@@ -149,18 +149,17 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
         }>({ turn_id: turnId });
         const initializationRows = await rowsFor(turns[0]!.id);
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string; producer: string }>({ worker_id: workerId });
-        const initializationSource = sources.find((row) => row.turn_id === turns[0]!.id && row.kind === "ops");
+        const initializationSource = sources.find((row) => row.turn_id === turns[0]!.id && row.kind === "reasoning");
         assert.equal(initializationSource?.producer, "_plurnk");
-        assert.match(initializationSource!.content, /^```/);
+        assert.match(initializationSource!.content, /^```/m);
         assert.doesNotMatch(initializationSource!.content, /^(`{4,})\w[^\n]*\1$/m, "initialization never teaches inline operation fences");
         assert.match(initializationSource!.content, /^```READ \(reasoning:\/\/subject\/1\/1\)[^\n]*\n```$/m, "the initialization program demonstrates a bodyless READ with a separate closing line");
-        assert.ok(initializationSource!.content.includes("ops://subject/1/1"));
         assert.ok(!initializationRows.some(({ op }) => op === null));
         assert.ok(initializationRows.some(({ op }) => op === "READ"), "initialization observes its reasoning");
         assert.ok(initializationRows.some(({ op }) => op === "NOTE"), "source retention does not replace executed results");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
-        assert.deepEqual(logEntries(packet).filter(({ path: target }) => target === "ops://subject/1/1").map(({ logPath }) => logPath), ["log:///1/1/1/emission"],
-            "turn 0's program is announced once, by its emission row, and never READ as a receipt ({§emission-row})");
+        assert.deepEqual(logEntries(packet).filter(({ path: target }) => target === "ops://subject/1/1"), [],
+            "reasoning-only initialization never fabricates a content announcement ({§emission-row})");
 
         const inferenceRows = await rowsFor(turns[1]!.id);
         const inferenceSource = sources.find((row) => row.turn_id === turns[1]!.id && row.kind === "ops");
@@ -326,7 +325,7 @@ test("Engine.runTurn: admitted response does not change packet request-weight se
         const announced = new Map((await db.test_emission_rows_by_worker.all<{ coordinate: string; rx: string }>({ worker_id: workerId }))
             .map(({ coordinate, rx }) => [coordinate, (JSON.parse(rx) as { content: string }).content] as const));
         const placed = PacketWire.placedEmissions(packet.sections, announced);
-        assert.deepEqual(placed, ["1/1/1"], "the request carries turn zero's survey, never the response it is about to receive");
+        assert.deepEqual(placed, [], "the first request contains no content history and never its own forthcoming response");
         const requestWeight = contentWeight(PacketWire.renderSlot(packet.sections, "system"))
             + contentWeight(PacketWire.renderSlot(packet.sections, "user"))
             + placed.reduce((sum, coordinate) => sum + contentWeight(PacketWire.deliveredEmission(announced.get(coordinate)!)), 0);

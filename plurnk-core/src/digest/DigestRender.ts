@@ -638,6 +638,8 @@ export default class DigestRender {
             if (t.kind !== "inference") {
                 lines.push("");
                 lines.push("(operation turn; no provider inference)");
+                const reasoning = m.evidence.reasoning(t);
+                if (reasoning !== null) lines.push("", reasoning);
                 continue;
             }
             const attempts = m.attemptsByTurn.get(t.id) ?? [];
@@ -709,7 +711,7 @@ export default class DigestRender {
         };
         const stems = new Map<number, string>();
         const taken = new Set<string>();
-        for (const turn of m.turns.filter((row) => row.has_packet === 1 || row.program !== null).toSorted((a, b) => a.id - b.id)) {
+        for (const turn of m.turns.filter((row) => row.has_packet === 1 || row.program !== null || row.has_reasoning === 1).toSorted((a, b) => a.id - b.id)) {
             const loop = m.loopsById.get(turn.loop_id);
             const worker = loop === undefined ? undefined : m.workersById.get(loop.worker_id);
             if (loop === undefined || worker === undefined) throw new TypeError(`digest: turn ${turn.id} has no loop or worker in scope`);
@@ -742,7 +744,7 @@ export default class DigestRender {
         };
         m.turns
             .map((turn) => ({ turn, source: turn.program }))
-            .filter(({ turn, source }) => turn.has_packet === 1 || source !== null)
+            .filter(({ turn, source }) => turn.has_packet === 1 || source !== null || turn.has_reasoning === 1)
             .toSorted((a, b) => a.turn.id - b.turn.id)
             .forEach(({ turn, source }) => {
             const padded = stems.get(turn.id)!;
@@ -773,6 +775,8 @@ export default class DigestRender {
             if (source !== null) {
                 files.push([`${padded}.assistant.md`, source]);
             }
+            const reasoning = m.evidence.reasoning(turn);
+            if (reasoning !== null) files.push([`${padded}.reasoning.md`, reasoning]);
             if (packet !== null && StoredPacket.isAdmitted(packet)) {
                 if (source !== null && packet.assistant.content !== source) {
                     throw new TypeError(`digest: turn ${turn.id} packet assistant differs from its turnOps source`);

@@ -90,11 +90,11 @@ test("observe: a real loop emits the loop → turn → provider → parse → di
         const ops = dispatches.map((s) => s.attributes.op);
         assert.equal(ops.includes("PLAN"), false, "no retired PLAN operation is fabricated");
         assert.equal(ops.filter((op) => typeof op === "string" && TurnDisposition.isOp(op)).length, 0, "completion invents no lifecycle operation");
-        assert.equal(ops.filter((op) => op === "NOTE").length, 2, "initialization executes its reasoning and program NOTEs through ordinary dispatch");
+        assert.ok(ops.includes("NOTE"), "initialization's reasoning NOTE uses ordinary dispatch");
         assert.equal(ops.filter((op) => op === "KILL").length, 1, "the model's completion has its own dispatch span");
         assert.ok(
             ops.filter((op) => op !== "KILL" && (typeof op !== "string" || !TurnDisposition.isOp(op))).every((op) => op === "NOTE" || op === "FIND" || op === "READ"),
-            `initialization dispatches its reasoning and program NOTEs, catalog FINDs and source READs; got ${ops.join(", ")}`,
+            `initialization dispatches only reasoning operations; got ${ops.join(", ")}`,
         );
         for (const d of dispatches) {
             assert.ok(Number.isInteger(d.attributes.status), "every dispatched op records its result status");

@@ -17,9 +17,13 @@ SELECT * FROM loops ORDER BY worker_id, sequence;
 -- PREP: digest_turns
 SELECT t.id, t.loop_id, t.sequence, t.producer, t.kind, t.status, t.completed_at,
        t.packet IS NOT NULL AS has_packet, t.finish_reason, t.model, t.meta, t.timestamp,
+       EXISTS (SELECT 1 FROM turn_sources WHERE turn_id = t.id AND kind = 'reasoning') AS has_reasoning,
        (SELECT content FROM turn_sources WHERE turn_id = t.id AND kind = 'ops') AS program,
        (SELECT content FROM turn_sources WHERE turn_id = t.id AND kind = 'outside') AS outside
 FROM turns t ORDER BY t.loop_id, t.sequence;
+
+-- PREP: digest_turn_reasoning
+SELECT content FROM turn_sources WHERE turn_id = $turn_id AND kind = 'reasoning';
 
 -- PREP: digest_turn_packet
 -- {§packet-items}: only the requested packet is assembled; retain its exact bag on validation failure.

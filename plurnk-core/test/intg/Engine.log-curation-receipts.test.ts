@@ -72,8 +72,11 @@ test("{§log-kill-meta-operation} a KILL that worked never renders; one that mat
             assert.equal(receiptRead.status_rx, 204, "the suppressed receipt remains addressable with its ordinary empty body, not a missing-entry error");
             assert.equal(JSON.parse(receiptRead.rx).content, "");
             assert.equal(history.filter(({ op }) => op === null).length, 0, "source retention does not add log rows");
-            const programs = await db.test_turn_sources.all<{ kind: string }>({ worker_id: result.modelWorkerId! });
-            assert.equal(programs.filter(({ kind }) => kind === "ops").length, 6, "initialization and every model program remain recorded");
+            const programs = await db.test_turn_sources.all<{ kind: string; turn_id: number; content: string }>({ worker_id: result.modelWorkerId! });
+            for (const index of mock.received.keys()) {
+                assert.ok(programs.some(({ kind, turn_id }) => kind === "ops" && turn_id === ids[index + 1]), "every model turn retains its content source after curation");
+            }
+            assert.ok(programs.some(({ kind, turn_id }) => kind === "reasoning" && turn_id === ids[0]), "initialization retains its reasoning source");
         } finally { ws.close(); }
     });
 });
