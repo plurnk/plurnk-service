@@ -1,6 +1,6 @@
 {
     "name": "@plurnk/plurnk-models",
-    "version": "1.24.0",
+    "version": "1.25.0",
     "description": "Release-time snapshot of Models.dev provider and model metadata for PLURNK.",
     "keywords": [
         "plurnk",
@@ -52,6 +52,6 @@
         "prepack": "npm run build"
     },
     "devDependencies": {
-        "@opencode-ai/models": "^0.0.89"
+        "@opencode-ai/models": "^0.0.90"
     }
 }
