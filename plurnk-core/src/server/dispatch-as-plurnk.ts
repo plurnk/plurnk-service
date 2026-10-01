@@ -16,6 +16,7 @@ import Envelope from "./envelope.ts";
 import Turn from "../core/Turn.ts";
 import TurnOps from "../core/TurnOps.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
+import AdministrativeLoop from "../core/AdministrativeLoop.ts";
 
 export default class DispatchAsPlurnk {
     static async dispatch(
@@ -31,7 +32,7 @@ export default class DispatchAsPlurnk {
         if (worker?.workspace_id !== workspaceId) {
             throw new Error(`_plurnk dispatch worker ${workerId} does not belong to workspace ${workspaceId}`);
         }
-        const loopId = await Envelope.ensureClientLoop(db, workerId);
+        const { id: loopId } = await AdministrativeLoop.open(db, workerId, "runtime");
         // kind 'maintenance' — a receipt answers an asker, and these turns
         // have none: the packet render suppresses their successful rows
         // entirely (engine_render_log), while the rows stay durable and

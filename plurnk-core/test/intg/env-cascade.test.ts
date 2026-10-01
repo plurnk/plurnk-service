@@ -380,6 +380,9 @@ for (const built of [false, true]) {
             OTEL_TRACES_EXPORTER: "unknown-exporter",
             PLURNK_MODEL: "missing-alias",
             PLURNK_MODEL_CHILD: "missing-child",
+            PLURNK_SERVICE_EFFECT_HOST: "invalid",
+            PLURNK_SERVICE_FILE_CREATE_SCOPE: "invalid",
+            PLURNK_SERVICE_ATTENDED: "invalid",
         };
         const env: NodeJS.ProcessEnv = {
             ...process.env, ...invalid,
@@ -408,6 +411,9 @@ for (const built of [false, true]) {
             ["observability", "OTEL_TRACES_EXPORTER"],
             ["model", "PLURNK_MODEL"],
             ["model-child", "PLURNK_MODEL_CHILD"],
+            ["effect-policy", "PLURNK_SERVICE_EFFECT_HOST"],
+            ["file-creation", "PLURNK_SERVICE_FILE_CREATE_SCOPE"],
+            ["loop-policy", "PLURNK_SERVICE_ATTENDED"],
         ]) {
             const notice = notices.find((item) => item.key === key);
             assert.equal(notice?.kind, "configuration_unavailable", JSON.stringify(notices));
@@ -503,6 +509,9 @@ test("{§configuration-repair-path} config check rejects optional startup errors
         { key: "PLURNK_HOOKS_ARGS", env: { PLURNK_HOOKS_COMMAND: process.execPath, PLURNK_HOOKS_ARGS: "[1]", PLURNK_HOOKS_EVENTS: "daemon/started" } },
         { key: "PLURNK_A2A_ENDPOINT_PATH", env: { PLURNK_A2A_EXPOSE: "1", PLURNK_A2A_ENDPOINT_PATH: "relative" } },
         { key: "OTEL_TRACES_EXPORTER", env: { OTEL_TRACES_EXPORTER: "unknown-exporter" } },
+        { key: "PLURNK_SERVICE_EFFECT_HOST", env: { PLURNK_SERVICE_EFFECT_HOST: "invalid" } },
+        { key: "PLURNK_SERVICE_FILE_CREATE_SCOPE", env: { PLURNK_SERVICE_FILE_CREATE_SCOPE: "invalid" } },
+        { key: "PLURNK_SERVICE_ATTENDED", env: { PLURNK_SERVICE_ATTENDED: "invalid" } },
     ];
     for (const { key, env } of cases) {
         const result = await runService(fx, ["config", "check"], { env });

@@ -1,5 +1,5 @@
 import type { Effect } from "@plurnk/plurnk-execs";
-import { Knob } from "@plurnk/plurnk-meta";
+import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 
 export type ExecPolicy = "propose" | "auto";
 
@@ -15,7 +15,7 @@ export type ExecPolicy = "propose" | "auto";
 //
 // {§effect-policy-tunable} — one knob per effect, and the panel is the whole
 // map: no entry is held in code, so an effect's admission is always a value an
-// operator can read. An invalid value fails boot, never degrades admission.
+// operator can read. An invalid value refuses admission, never invents a policy.
 const POLICIES: readonly ExecPolicy[] = ["propose", "auto"];
 const KNOBS: Readonly<Record<Effect, string>> = Object.freeze({
     host: "PLURNK_SERVICE_EFFECT_HOST",
@@ -28,7 +28,7 @@ const shedRetiredComposite = (): void => {
     const composite = "PLURNK_SERVICE_EFFECT_POLICY";
     const stale = process.env[composite];
     if (stale !== undefined && stale.length > 0) {
-        throw new Error(`${composite} is retired: state ${Object.values(KNOBS).join(", ")} instead, one effect each.`);
+        throw new ConfigurationError(composite, `${composite} is retired: state ${Object.values(KNOBS).join(", ")} instead, one effect each.`);
     }
 };
 
@@ -38,11 +38,11 @@ export default class EffectPolicy {
     }
 
     static validateConfiguration(): void {
-        shedRetiredComposite();
         for (const effect of Object.keys(KNOBS) as Effect[]) EffectPolicy.decide(effect);
     }
 
     static decide(effect: Effect): ExecPolicy {
+        shedRetiredComposite();
         return Knob.choice(KNOBS[effect], POLICIES);
     }
 }

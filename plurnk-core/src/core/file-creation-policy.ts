@@ -2,6 +2,8 @@
 // filesystem creation. Admission itself remains owned by file membership; this module
 // only parses and composes the configuration contract.
 
+import { Knob } from "@plurnk/plurnk-meta";
+
 export const FILE_CREATE_SCOPES = ["none", "root", "namespace"] as const;
 export type FileCreateScope = typeof FILE_CREATE_SCOPES[number];
 
@@ -16,7 +18,7 @@ export default class FileCreationPolicy {
     }
 
     static serviceScope(env: NodeJS.ProcessEnv = process.env): FileCreateScope {
-        return FileCreationPolicy.parse(env.PLURNK_SERVICE_FILE_CREATE_SCOPE, "PLURNK_SERVICE_FILE_CREATE_SCOPE");
+        return Knob.choice("PLURNK_SERVICE_FILE_CREATE_SCOPE", FILE_CREATE_SCOPES, env);
     }
 
     static effective(service: FileCreateScope, workspace: FileCreateScope | null): FileCreateScope {

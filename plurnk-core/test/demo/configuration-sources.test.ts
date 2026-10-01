@@ -6,6 +6,46 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import { liveLoop, liveWorkspace } from "../_live-harness.ts";
+import { stdioEntry } from "../intg/_mcp-config.ts";
+import { initializeDemoRepository } from "./_git.ts";
+
+test("demo: the model repairs a broken MCP file and uses its restored tool", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-demo-config-repair-"));
+    const config = join(root, ".agents", "mcp.json");
+    const definition = { mcpServers: { echo: stdioEntry("echo-server.mjs") } };
+    const marker = `REPAIRED_${crypto.randomUUID()}`;
+    await mkdir(join(root, ".agents"));
+    await writeFile(config, JSON.stringify(definition, null, 2).slice(0, -1));
+    initializeDemoRepository(root, "seed broken configuration fixture");
+    const controls = { PLURNK_SERVICE_ROOTS: "project", PLURNK_MCP_ENABLED: "1" };
+    const saved = Object.keys(controls).map((key) => [key, process.env[key]] as const);
+    Object.assign(process.env, controls);
+    t.after(async () => {
+        for (const [key, value] of saved) {
+            if (value === undefined) delete process.env[key]; else process.env[key] = value;
+        }
+        await rm(root, { recursive: true, force: true });
+    });
+    const s = await liveWorkspace({ name: `demo-config-repair-${crypto.randomUUID()}`, projectRoot: root });
+    try {
+        const result = await liveLoop(s, 2, {
+            prompt: `The project MCP configuration in .agents/mcp.json is broken. Repair that file, preserving its server definition. Then use the configured echo tool to echo ${marker}; report the tool reply and the winning configuration source. Do not add a workspace override.`,
+            maxTurns: 12,
+        }, { signal: t.signal });
+        assert.equal(result.finalStatus, 200);
+        assert.deepEqual(JSON.parse(await readFile(config, "utf8")), definition);
+        const listed = await s.invokeWorkspaceAction("workspace.mcp.list", {}) as FunctionalityListResult;
+        const effective = listed.definitions.find(({ alias }) => alias === "echo");
+        assert.equal(effective?.state, "active");
+        assert.equal(effective?.origin, "service");
+        assert.deepEqual(effective?.provenance, { kind: "file", source: config, reference: "/mcpServers/echo" });
+        const log = await s.daemon.readLog({ workspaceId: s.workspaceId, workerId: result.modelWorkerId, limit: Number.MAX_SAFE_INTEGER });
+        assert.ok(log.some((row) => row.op === "READ" && row.scheme === "echo" && row.status_rx === 200 && JSON.stringify(row.rx).includes(marker)),
+            "the model actually observes the restored tool output, not merely repeats the requested marker");
+        assert.ok(result.lastContent.includes(marker));
+        assert.match(result.lastContent, /mcp\.json/u);
+    } finally { await s.cleanup(); }
+});
 
 test("demo: configured skill sources survive a model's workspace override and removal", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-demo-config-sources-"));

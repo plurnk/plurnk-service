@@ -179,7 +179,7 @@ export default class Envelope {
     // Client action loop allocator. One action allocates one administrative
     // loop; its statements become ordered turns and settlement closes the loop.
     static async ensureClientLoop(db: Db, workerId: number): Promise<number> {
-        return (await AdministrativeLoop.open(db, workerId)).id;
+        return (await AdministrativeLoop.open(db, workerId, "client")).id;
     }
 
     // Lazy model-worker allocator ({§connection-lifecycle}, {§machine-processes} — the client writes to its own worker).

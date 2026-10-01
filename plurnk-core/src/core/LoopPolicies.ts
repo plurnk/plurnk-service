@@ -1,5 +1,5 @@
 import { PROPOSAL_POLICIES, Validator, type LoopPolicy, type LoopPolicyRequest } from "@plurnk/plurnk-contracts";
-import { Knob } from "@plurnk/plurnk-meta";
+import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 import Results, { OperationFailureError } from "./results.ts";
 
 // {§loop-policy-composition} — a loop's policy is what its creator stated over what the panel
@@ -10,11 +10,14 @@ export default class LoopPolicies {
     static readonly #UNATTENDED = PROPOSAL_POLICIES.filter((policy) => policy !== "review");
 
     static compose(stated: LoopPolicyRequest): LoopPolicy {
-        const attended = stated.attended ?? Knob.flag("PLURNK_SERVICE_ATTENDED");
-        const policy = {
-            proposals: stated.proposals ?? LoopPolicies.#proposals(attended),
-            attended,
-        };
+        let policy: LoopPolicy;
+        try {
+            const attended = stated.attended ?? Knob.flag("PLURNK_SERVICE_ATTENDED");
+            policy = { proposals: stated.proposals ?? LoopPolicies.#proposals(attended), attended };
+        } catch (cause) {
+            if (!(cause instanceof ConfigurationError)) throw cause;
+            throw new OperationFailureError(Results.configurationFailure(cause), { cause });
+        }
         if (Validator.validateLoopPolicy(policy).valid) return policy;
         throw new OperationFailureError(Results.failure(
             "daemon:input",
@@ -31,7 +34,7 @@ export default class LoopPolicies {
         ));
     }
 
-    // An invalid panel fails boot by the knob's name, not the first loop.
+    // Startup diagnoses invalid defaults; explicit valid policy remains usable.
     static validateConfiguration(): void {
         Knob.flag("PLURNK_SERVICE_ATTENDED");
         LoopPolicies.#proposals(true);

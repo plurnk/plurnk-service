@@ -1005,7 +1005,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 );
                 if (narration === null) {
                     const workerId = await RuntimeWorker.ensure(db, ctx.workspaceId);
-                    const loop = await AdministrativeLoop.open(db, workerId);
+                    const loop = await AdministrativeLoop.open(db, workerId, "runtime");
                     const turn = await Turn.open(db, {
                         loopId: loop.id,
                         producer: "_plurnk",

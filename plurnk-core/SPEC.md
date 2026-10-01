@@ -3438,11 +3438,19 @@ was said ({§methods-loop-run-fold-consistency}). `LoopPolicies.compose` then ma
 once. `PLURNK_SERVICE_ATTENDED` answers an unstated attendance, and the attendance picks which
 knob answers an unstated disposition: `PLURNK_SERVICE_PROPOSALS` for an attended loop,
 `PLURNK_SERVICE_UNATTENDED_PROPOSALS` for an unattended one, whose vocabulary has no `review`.
-Every panel state is therefore lawful, and an invalid knob fails boot by its name. No code,
+Every valid panel state is therefore lawful; an invalid knob is diagnosed at startup
+and refuses a loop that needs it ({§configuration-repair-path}). No code,
 schema or column holds a default ({§operator-config-only-home}): `loops.policy` and
-`loops.max_turns` carry none, so every insert states both, and an administrative loop — a
-client's direct statements, the runtime's own narration — states the panel's policy like any
-other loop whose creator said nothing.
+`loops.max_turns` carry none, so every insert states both. Client-authored administrative
+loops use the same composition.
+
+§runtime-bookkeeping-policy **Runtime bookkeeping has no reviewer and cannot acquire
+new authority.** Its administrative loops explicitly state
+`{ attended: false, proposals: "reject" }`; this is a runtime invariant, not an
+interactive default. Generated reference publication and audit narration therefore
+do not depend on client policy configuration. Runtime-authored proposals do not
+use effect-policy auto-admission; bookkeeping proposals settle as failures through
+the ordinary proposal lifecycle, never wait for a client or auto-accept.
 
 §loop-policy-effective-read `loops.policy` persists one complete immutable
 `LoopPolicy`; every runtime policy read validates that snapshot before use.
@@ -4199,6 +4207,7 @@ composition boundaries, not arbitrary exceptions:
 | Optional startup integration (hooks, hosted A2A, observability) cannot be configured | Withhold that integration and retain its exact configuration diagnostic. Activate the client interface and unrelated capabilities; never invent a replacement setting. |
 | Invalid default model or child selector | Retain its diagnostic at startup; keep client inspection and explicit selection available. A request relying on the invalid selector fails with `daemon:configuration/configuration-invalid` (503), naming its key. Never substitute another model or silently inherit a child model. |
 | Model construction or endpoint verification fails | Reject selection/use before inference or committing the selection. Keep the client available; a later selection can retry or choose another route. |
+| Invalid effect, file-creation, or loop-default policy | Retain the startup diagnostic. Reject the affected operation or unresolved loop policy as `daemon:configuration/configuration-invalid` (503); no guessed admission policy, external effect, or orphan approval wait. Independent operations and explicitly supplied valid loop policies remain usable. |
 | Invalid model-alias catalog | Fail catalog inspection explicitly; omit its unavailable snapshot rather than report an empty catalog. Exact provider/model selection does not depend on aliases. |
 | Offline `config check` | Validate the same inputs without activating integrations; an invalid setting remains a nonzero failure. |
 | Family configuration cannot be resolved | Keep its manager available, identify the configuration failure in its generated documentation, and preserve durable definitions. Do not publish the family's operational capabilities or pretend its catalog is empty. Other families and ordinary model work remain usable. |

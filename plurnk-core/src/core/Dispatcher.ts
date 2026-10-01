@@ -1,4 +1,5 @@
 import { parsePath } from "@plurnk/plurnk-parser";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 import { TurnDisposition, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import Turn from "./Turn.ts";
 import type { BareStatement, CapabilityProjection, EditStatement, FindStatement, ForkStatement, KillStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
@@ -569,6 +570,8 @@ export default class Dispatcher {
                 if (err instanceof InvalidOperationResultError) throw err;
                 if (err instanceof OperationFailureError) {
                     result = err.result;
+                } else if (err instanceof ConfigurationError) {
+                    result = Results.configurationFailure(err);
                 } else {
                     const scheme = schemeNameOf(primaryTargetOf(statement));
                     console.error(`Scheme '${scheme ?? "unknown"}' ${statement.op} threw outside its operation result contract:`, err);
@@ -583,6 +586,24 @@ export default class Dispatcher {
                             operation: statement.op,
                         },
                     );
+                }
+            }
+        }
+        // {§configuration-repair-path}: decide admission before persisting a proposed row.
+        let autoAccept = false;
+        if (Dispatcher.#isProposal(statement, result)) {
+            const effect = (result.attrs as { effect?: unknown } | undefined)?.effect;
+            const mustDeclareEffect = isExecution(statement) || (statement.op === "SEND"
+                && this.#schemes.isRuntimeScheme(schemeNameOf(statement.target) ?? "", workspaceId));
+            if (mustDeclareEffect || effect !== undefined) {
+                if (!EffectPolicy.isEffect(effect)) {
+                    throw new InvalidOperationResultError("Execution proposal omitted its canonical effect fact.");
+                }
+                // {§runtime-bookkeeping-policy}: the runtime cannot grant itself effect authority.
+                try { autoAccept = origin !== "_plurnk" && EffectPolicy.decide(effect) === "auto"; }
+                catch (cause) {
+                    if (!(cause instanceof ConfigurationError)) throw cause;
+                    result = Results.configurationFailure(cause);
                 }
             }
         }
@@ -616,22 +637,6 @@ export default class Dispatcher {
         // core-owned disposition, or timeout). The post-resolution status replaces 202 in the
         // result the caller sees, so runTurn never branches on a pending state.
         if (Dispatcher.#isProposal(statement, result)) {
-            // Effect-gated auto-run (read/pure runtimes, {§exec-readpure-ungated}):
-            // An execution stores its one canonical effect fact before admission. Reuse
-            // that exact fact here; no human gate or loop/proposal notification.
-            // {§exec-host-proposes} — the rule is the effect, not the op: an execution and a
-            // runtime SEND MUST declare one, and any other proposal that declares one (an
-            // outbound HTTP mutation, {§http-outbound-proposes}) is mapped by the same panel.
-            const effect = (result.attrs as { effect?: unknown } | undefined)?.effect;
-            let autoAccept = false;
-            const mustDeclareEffect = isExecution(statement) || (statement.op === "SEND"
-                && this.#schemes.isRuntimeScheme(schemeNameOf(statement.target) ?? "", workspaceId));
-            if (mustDeclareEffect || effect !== undefined) {
-                if (!EffectPolicy.isEffect(effect)) {
-                    throw new InvalidOperationResultError("Execution proposal omitted its canonical effect fact.");
-                }
-                autoAccept = EffectPolicy.decide(effect) === "auto";
-            }
             if (autoAccept) {
                 const initialSettlement = await this.#proposals.workerApply(
                     statement,

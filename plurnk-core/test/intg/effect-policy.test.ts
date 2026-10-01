@@ -12,6 +12,9 @@ import Exec from "../../src/schemes/Exec.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import type { RuntimeTag } from "@plurnk/plurnk-contracts";
+import { access, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 process.env.PLURNK_EXECS_JQ = "1";
 
@@ -52,4 +55,36 @@ test("{§effect-policy-tunable}: proposing pure routes an otherwise-auto executi
         else process.env.PLURNK_SERVICE_EFFECT_PURE = prior;
         await db.close();
     }
+});
+
+test("{§configuration-repair-path}: invalid effect policy settles the operation without execution or an orphan proposal", async (t) => {
+    const key = "PLURNK_SERVICE_EFFECT_HOST";
+    const prior = process.env[key];
+    process.env[key] = "invalid";
+    t.after(() => { if (prior === undefined) delete process.env[key]; else process.env[key] = prior; });
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-invalid-effect-"));
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    const marker = join(dir, "executed");
+    const schemes = new SchemeRegistry();
+    const engine = new Engine({ db, schemes });
+    engine.setExecutors(await testExecutors());
+    const workspaceId = await insertWorkspace(db, `invalid-effect-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1, "invalid-effect");
+    const turnId = await insertTurn(db, loopId, 1, 102);
+    let logEntryId = -1;
+    const result = await engine.dispatch({
+        statement: execStmt("node", `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "ran")`), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        onDispatch: (id) => { logEntryId = id; },
+    });
+    assert.equal(result.status, 503);
+    assert.equal(result.problem?.key, key);
+    const row = await db.test_get_log_entry_by_id.get<{ state: string; status_rx: number }>({ id: logEntryId });
+    assert.equal(row?.status_rx, 503);
+    assert.notEqual(row?.state, "proposed");
+    assert.deepEqual(await engine.pendingProposals(workspaceId), []);
+    await (schemes.get("exec") as Exec).idle();
+    await assert.rejects(access(marker), { code: "ENOENT" }, "the operation never executed");
 });

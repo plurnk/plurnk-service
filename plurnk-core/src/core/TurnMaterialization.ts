@@ -273,7 +273,7 @@ export default class TurnMaterialization {
         if (divergences.length === 0) return;
         const gitByPath = new Map(gitStatus?.files.map(({ path, status }) => [path, status] as const) ?? []);
         const workerId = await RuntimeWorker.ensure(this.#db, workspaceId);
-        const loop = await AdministrativeLoop.open(this.#db, workerId);
+        const loop = await AdministrativeLoop.open(this.#db, workerId, "runtime");
         const turn = await Turn.open(this.#db, { loopId: loop.id, producer: "_plurnk", kind: "operation" });
         let turnOpen = true;
         try {

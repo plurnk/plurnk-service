@@ -11,6 +11,43 @@ import { waitFor } from "./_rpc.ts";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import ConfigurationDiagnostics from "../../src/server/ConfigurationDiagnostics.ts";
 
+for (const key of ["PLURNK_SERVICE_EFFECT_HOST", "PLURNK_SERVICE_FILE_CREATE_SCOPE", "PLURNK_SERVICE_ATTENDED"] as const) {
+    test(`{§configuration-repair-path} ${key} preserves an explicitly configured model loop and inspection`, async (t) => {
+        const previous = process.env[key];
+        process.env[key] = "invalid";
+        t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
+        const db = await openMigrated();
+        const workspaceId = await insertWorkspace(db, `policy-repair-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId, null, "repair", "model");
+        const provider = new Mock({ contextWindow: 1_000_000, responses: [
+            makeMockResponse("````env (list)\n````"),
+            makeMockResponse("````KILL\nConfiguration is inspectable.\n````"),
+        ] });
+        const daemon = new Daemon({ db, provider });
+        t.after(async () => { await daemon.stop(); await db.close(); });
+        ServiceModules.registerWorkspaceCapabilities(daemon);
+        await daemon.start();
+        assert.ok(daemon.configurationNotices().some((notice) => notice.key === key));
+        const ended: Array<{ loopId: number; result: OperationResult }> = [];
+        t.after(daemon.subscribeToEvents((_id, method, params) => {
+            if (method === "loop/terminated") ended.push(params as typeof ended[number]);
+        }));
+        if (key === "PLURNK_SERVICE_ATTENDED") await assert.rejects(
+            daemon.runLoop({ workspaceId, workerId, prompt: "no implicit policy" }),
+            (cause: unknown) => {
+                const problem = Problems.fromError(cause);
+                assert.equal(problem?.status, 503);
+                assert.equal(problem?.key, key);
+                return true;
+            },
+        );
+        const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the configuration error.", policy: { proposals: "accept", attended: true } });
+        await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === started.loopId), { timeoutMs: 20_000 });
+        assert.equal(ended.find(({ loopId }) => loopId === started.loopId)?.result.status, 200);
+        assert.match(userText(provider.received[1]), /"family":\s*"env"/u);
+    });
+}
+
 test("{§configuration-repair-path} startup diagnostics reach the model and client once while ordinary operations still execute", { timeout: 30_000 }, async (t) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `startup-repair-${crypto.randomUUID()}`);

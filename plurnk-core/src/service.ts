@@ -216,7 +216,6 @@ export default class Service {
 
     // {§startup-admission} — client admission does not construct providers.
     static async #start(): Promise<void> {
-        Daemon.validateConfiguration();
         const dbPath = Service.#databasePath();
         const host = Service.#requireEnv("PLURNK_HOST");
         // PLURNK_PORT is THE client surface — the AG-UI+ listener (the agui plugin module binds

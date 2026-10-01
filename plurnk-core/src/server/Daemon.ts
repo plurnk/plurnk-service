@@ -1573,7 +1573,9 @@ export default class Daemon implements ApplicationPort {
 
     async start(): Promise<void> {
         if (this.#started) throw new Error("daemon already started");
-        Daemon.validateConfiguration();
+        await this.#configuration.capture("file-creation", () => FileCreationPolicy.serviceScope());
+        await this.#configuration.capture("effect-policy", () => EffectPolicy.validateConfiguration());
+        await this.#configuration.capture("loop-policy", () => LoopPolicies.validateConfiguration());
         this.#started = true;
         // {§db-space-reclamation} — the file is brought to the policy's auto-vacuum mode before any work.
         const storage = await this.#retention.prepareStorage();

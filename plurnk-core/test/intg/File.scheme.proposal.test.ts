@@ -82,6 +82,20 @@ const withWorkspaceRoot = async <T>(fn: (root: string, ctx: { db: Db; engine: En
     }
 };
 
+test("{§configuration-repair-path}: invalid file creation policy refuses the EDIT without creating a file or proposal", async (t) => {
+    const key = "PLURNK_SERVICE_FILE_CREATE_SCOPE";
+    const before = process.env[key];
+    process.env[key] = "invalid";
+    t.after(() => { if (before === undefined) delete process.env[key]; else process.env[key] = before; });
+    await withWorkspaceRoot(async (root, ctx) => {
+        const result = await ctx.engine.dispatch({ ...ctx, statement: bareEditStmt("new.txt", "must not appear"), sequence: 1, origin: "model" });
+        assert.equal(result.status, 503);
+        assert.equal(result.problem?.key, key);
+        assert.deepEqual(await ctx.engine.pendingProposals(ctx.workspaceId), []);
+        await assert.rejects(stat(join(root, "new.txt")), { code: "ENOENT" });
+    });
+});
+
 for (const decision of ["accept", "reject", "replace", "drift"] as const) test(`{§edit-anchor-continuity}: file proposals with ${decision} preserve the individual mutation boundary`, async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const original = "one\ntwo\nthree\nfour\nfive\n";

@@ -58,7 +58,7 @@ test("{§loop-attendance} only a creator's own statement can ask for a review no
     withPanel({ PLURNK_SERVICE_ATTENDED: "0" }, () => refused({ proposals: "review" }));
 });
 
-test("{§loop-policy-composition} an invalid panel fails boot by the knob's name", () => {
+test("{§loop-policy-composition} validation identifies an invalid default by the knob's name", () => {
     LoopPolicies.validateConfiguration();
     withPanel({ PLURNK_SERVICE_PROPOSALS: "sometimes" }, () => assert.throws(
         () => LoopPolicies.validateConfiguration(),
