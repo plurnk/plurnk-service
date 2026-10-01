@@ -340,3 +340,19 @@ test("{§plugin-manifest-read} standard bundles preserve each native family's de
         }
     }
 });
+
+test("{§plugin-manifest-read} a linked npm bundle resolves native files against its canonical plugin root", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "agent-plugin-linked-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const plugin = join(root, "source");
+    const linked = join(root, "linked");
+    await mkdir(join(plugin, "ai.plurnk"), { recursive: true });
+    await writeFile(join(plugin, "plugin.json"), JSON.stringify({
+        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "example-plugin",
+        extensions: { "ai.plurnk": { kind: "http-materializer", materializers: [] } },
+    }));
+    await symlink(plugin, linked, "dir");
+    const manifest = await Meta.readManifest(linked, "http-materializer");
+    assert.ok(manifest);
+    assert.equal(await Meta.moduleFile(manifest, "ai.plurnk/native.mjs"), join(plugin, "ai.plurnk/native.mjs"));
+});

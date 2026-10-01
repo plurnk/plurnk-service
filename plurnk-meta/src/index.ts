@@ -149,14 +149,17 @@ export default class Meta {
     // {§plugin-manifest-read} Family loaders resolve their own file declarations through this boundary.
     static async moduleFile(manifest: PluginManifest, relative: string): Promise<string> {
         const dir = path.dirname(manifest.manifestPath);
-        const location = path.resolve(dir, relative);
-        if (path.basename(manifest.manifestPath) !== "plugin.json") return location;
+        if (path.basename(manifest.manifestPath) !== "plugin.json") return path.resolve(dir, relative);
+        const root = await AgentPluginFiles.resolved(dir);
+        if (root === null) {
+            throw new ConfigurationError(manifest.manifestPath, `${manifest.manifestPath}: plugin root is unavailable.`);
+        }
+        const location = path.resolve(root, relative);
         if (!relative.startsWith("ai.plurnk/")
-            || !AgentPluginFiles.inside(path.join(dir, "ai.plurnk"), location)) {
+            || !AgentPluginFiles.inside(path.join(root, "ai.plurnk"), location)) {
             throw new ConfigurationError(manifest.manifestPath, `${manifest.manifestPath}: native module must be beneath ai.plurnk/.`);
         }
-        const root = await AgentPluginFiles.resolved(dir);
-        if (root === null || !await AgentPluginFiles.contained(root, location)) {
+        if (!await AgentPluginFiles.contained(root, location)) {
             throw new ConfigurationError(manifest.manifestPath, `${manifest.manifestPath}: native module resolves outside the plugin root.`);
         }
         return location;
