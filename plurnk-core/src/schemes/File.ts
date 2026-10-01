@@ -127,31 +127,34 @@ export default class File extends CoreSchemeAdapterBase {
     // spelling resolves through Namespace.canonicalize before storage, comparison, or render.
     // null (a spelling that names nothing a file can be) falls back to the original statement,
     // which the entry-existence gate then 404s — no second resolution vocabulary exists.
-    static #canonTarget<S extends { target: ParsedPath | null }>(statement: S, root: string | null): S | null {
+    static async #canonTarget<S extends { target: ParsedPath | null }>(statement: S, root: string | null): Promise<S | null> {
         const t = statement.target;
         if (t === null) return statement;
         if (t.kind === "url") {
-            const key = File.#canonSpelling(t.pathname, root);
+            const key = await File.#canonSpelling(t.pathname, root);
             if (key === null) return null;
             return key === t.pathname ? statement : { ...statement, target: { ...t, pathname: key } };
         }
         if (t.kind === "local") {
-            const key = File.#canonSpelling(t.raw, root);
+            const key = await File.#canonSpelling(t.raw, root);
             if (key === null) return null;
             return key === t.raw ? statement : { ...statement, target: { ...t, raw: key } };
         }
         return statement; // regex — not a path
     }
 
-    // Folderhood survives canonicalization ({§find-scope-prefix-filter}) — the shared
-    // spelling canon lives on Namespace (the Dispatcher's log columns use the same one).
-    static #canonSpelling(raw: string, root: string | null): string | null {
-        return Namespace.canonicalizeSpelling(raw, root);
+    // {§file-find-directory}: a directory's canonical collection address does not depend on
+    // whether its authored spelling included the slash. Membership still owns its contents.
+    static async #canonSpelling(raw: string, root: string | null): Promise<string | null> {
+        const key = Namespace.canonicalizeSpelling(raw, root);
+        if (root === null || key === null || key.length === 0
+            || key.endsWith("/") || key.startsWith("../") || PathSyntax.hasGlob(key)) return key;
+        return (await File.#occupant(root, PathSyntax.decodeParens(key)))?.isDirectory() === true ? `${key}/` : key;
     }
 
     async resolveEntryAddress(target: ParsedPath, ctx: CoreSchemeCallContext, access: "read" | "write" = "read"): Promise<EntryAddress | SchemeResultBase | null> {
         const core = this.coreContext(ctx);
-        const pathname = File.#canonSpelling(
+        const pathname = await File.#canonSpelling(
             target.kind === "url" ? target.pathname : target.raw,
             await loadWorkspaceRoot(core.db, core.workspaceId),
         );
@@ -179,7 +182,7 @@ export default class File extends CoreSchemeAdapterBase {
         const core = this.coreContext(ctx);
         // {§fs-namei} — canonicalize the glob's path portion before the candidate scan, the
         // same seam READ/EDIT use; a bare `notes.md` and `/notes.md` scan identically.
-        const canon = File.#canonTarget(statement, await loadWorkspaceRoot(core.db, core.workspaceId));
+        const canon = await File.#canonTarget(statement, await loadWorkspaceRoot(core.db, core.workspaceId));
         return EntryFind.findWorkspaceEntries(canon ?? statement, core, File.manifest, {
             bytes: (pathname) => this.byteSource({ authority: "", pathname }, core),
         });
@@ -261,7 +264,8 @@ export default class File extends CoreSchemeAdapterBase {
     static async #occupant(root: string, key: string): Promise<Stats | null> {
         try { return await lstat(join(root, key)); }
         catch (cause) {
-            if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+            const { code } = cause as NodeJS.ErrnoException;
+            if (code !== "ENOENT" && code !== "ENOTDIR") throw cause;
             return null;
         }
     }

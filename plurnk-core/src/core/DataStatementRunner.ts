@@ -311,9 +311,7 @@ export default class DataStatementRunner {
     async #runFind(bound: BoundStatement): Promise<DispatchResult> {
         const { statement, manifest, authoredCoordinate } = bound;
         if (statement.op !== "FIND") throw new TypeError(`FIND runner given ${statement.op}`);
-        const targetPathname = statement.target?.kind === "url"
-            ? statement.target.pathname
-            : statement.target?.raw ?? "";
+        const targetPathname = bound.addressResolution?.address?.pathname ?? authoredCoordinate.pathname;
         const collectionTarget = manifest.folderScopes === true
             && (targetPathname === "" || targetPathname.endsWith("/"));
         const exactTarget = statement.target !== null

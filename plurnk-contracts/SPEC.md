@@ -964,8 +964,9 @@ Mutation semantics:
 | KILL | Status of deletion or termination                                                 |
 | NOTE / WAIT | Literal memory or wait explanation                              |
 
-§find-result-unit For FIND, authored target shape fixes the paginated result
-unit. An exact target with a matcher pages flat match locations; a glob or
+§find-result-unit For FIND, target selection fixes the paginated result
+unit after scheme address resolution ({§entry-address-resolution}). An exact
+resource target with a matcher pages flat match locations; a glob or
 folder target, and every matcher-less FIND, pages resources. Resolving a glob to
 one resource does not make it exact. The same `<N>`, inclusive `<N,M>`,
 configured markerless first page ({§markerless-first-page}), and explicit-all

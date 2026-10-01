@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ReadStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
+import type { FindStatement, ReadStatement, LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import File from "../../src/schemes/File.ts";
 import Namespace from "../../src/core/namespace.ts";
@@ -208,6 +208,22 @@ test("{§fs-errno}: facts distinguish a wrong address, occupancy, and an empty s
         assert.equal(clobber.problem?.recovery, "Choose an unoccupied member path."); // {§problems-file}
         assert.equal(clobber.problem?.retryable, false);
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+test("{§file-find-directory}: directory recognition does not probe outside-root paths", async () => {
+    const { root, db, ctx } = await setup();
+    const outside = await mkdtemp(join(tmpdir(), "plurnk-outside-directory-"));
+    try {
+        const target = `../${outside.split("/").at(-1)}`;
+        const statement: FindStatement = {
+            metadata: null, op: "FIND", aside: null, target: fileUrl(target),
+            lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
+        };
+        const result = await new File().find(statement, ctx);
+        assert.equal(result.status, 404, "an unmounted outside directory is not recognized from disk");
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-found");
+        assert.equal(result.problem?.detail, `No member of this workspace is at '${target}'.`);
+    } finally { await db.close(); await rm(root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
 });
 
 test("{§membership-read-refusal}: beyond the root a miss is the same sentence whether or not a file is there", async () => {

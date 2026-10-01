@@ -128,7 +128,7 @@ and discovery path.
 
 §scheme-operation-dispatch Sister scheme handlers implement op methods consumed by plurnk-service via
 dispatch. The consumer owns READ for every `category: "data"` scheme and owns
-exact-target FIND over its canonical representation; no handler method can
+exact-resource FIND over its canonical representation; no handler method can
 replace either projection. Other absent operation methods return **501**. The
 exported **`SchemeHandler`** interface gives operation methods their grammar
 statement and `ctx`, including KILL's target, scope, metadata and aside. Bundled
@@ -195,8 +195,10 @@ channel, applies tag/binary/text rules (including {§markerless-first-page}), an
 composes that channel's producer evidence. Cold and warm reads therefore have
 identical semantics.
 
-Exact FIND uses the same `prepareRepresentation?` seam and then the standard
-entry query; the queried default channel's durable producer result composes
+FIND classifies the target after canonical address resolution; a resolved
+collection remains broad when `folderScopes` is declared, even when the authored
+path omitted its trailing slash. Exact FIND uses the same `prepareRepresentation?`
+seam and then the standard entry query; the queried default channel's durable producer result composes
 with that exact query just as it does with exact READ. `prepareFind?` is only
 the optional broad-scope discovery seam
 used before standard entry selection when no custom broad `find()` exists. A
