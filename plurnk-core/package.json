@@ -158,7 +158,7 @@
         "@plurnk/plurnk-providers": "1.25.0",
         "@plurnk/plurnk-schemes": "1.25.0",
         "@plurnk/plurnk-schemes-http": "1.25.0",
-        "@plurnk/plurnk-schemes-http-tavily": "^1.19.1",
+        "@plurnk/plurnk-tavily-plugin": "^1.25.0",
         "@possumtech/sqlrite": "^6.5.3",
         "diff": "^9.0.0"
     },

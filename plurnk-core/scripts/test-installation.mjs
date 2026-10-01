@@ -19,6 +19,7 @@ const ok = (cond, msg) => { process.stdout.write(`  ${cond ? "✓" : "✗"} ${ms
 const bin = resolve(sandbox, "node_modules", ".bin", "plurnk-service");
 const imagePackage = "@plurnk/plurnk-mimetypes-image";
 const pdfPackage = "@plurnk/plurnk-mimetypes-application-pdf";
+const tavilyPackage = "@plurnk/plurnk-tavily-plugin";
 const sandboxHostEnv = {
     HOME: sandbox,
     XDG_CONFIG_HOME: resolve(sandbox, ".config"),
@@ -103,6 +104,32 @@ const packedMimetypeInventory = () => {
     return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "--eval", program], {
         cwd: sandbox,
         encoding: "utf8",
+    }));
+};
+
+const packedMaterializerInventory = () => {
+    const program = `
+        import { resolve } from "node:path";
+        import { pathToFileURL } from "node:url";
+        import MaterializerRegistry from "@plurnk/plurnk-schemes-http/materializer";
+        const serviceRoot = resolve("node_modules/@plurnk/plurnk-service");
+        const { default: EnvDefaults } = await import(pathToFileURL(resolve(serviceRoot, "dist/core/env-defaults.js")));
+        const { files, configurationErrors } = await EnvDefaults.collect(serviceRoot, resolve("node_modules"));
+        if (configurationErrors.length > 0) throw new AggregateError(configurationErrors, "packed defaults are invalid");
+        EnvDefaults.apply(EnvDefaults.merge(files));
+        const registry = await MaterializerRegistry.current().discover({ cwd: process.cwd() });
+        const materializer = registry.materializerFor("tavily-extract");
+        process.stdout.write(JSON.stringify({
+            owners: files.map(({ owner }) => owner),
+            id: materializer?.id,
+            eligibility: await materializer?.eligible("https://example.com", {}),
+        }));
+    `;
+    const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) => !Policy.isKey(key)));
+    return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "--eval", program], {
+        cwd: sandbox,
+        encoding: "utf8",
+        env: { ...environment, ...sandboxHostEnv, TAVILY_API_KEY: "" },
     }));
 };
 
@@ -259,6 +286,11 @@ ok(
 );
 
 const serviceDependencies = Object.keys(installedPackage.dependencies ?? {});
+ok(serviceDependencies.includes(tavilyPackage), "the service bundles the standard Tavily Agent Plugin");
+ok(!existsSync(resolve(mods, "@plurnk", "plurnk-schemes-http-tavily")), "the retired Tavily package is absent from the clean composition");
+const materializerInventory = packedMaterializerInventory();
+ok(materializerInventory.owners.includes(tavilyPackage), "the installed native plugin contributes its own configuration floor");
+ok(materializerInventory.id === "tavily-extract" && materializerInventory.eligibility === null, "the materializer family imports the installed plugin and safely declines without credentials");
 const defaultExecPackages = serviceDependencies.filter((name) => name.startsWith("@plurnk/plurnk-execs-"));
 const defaultMimetypePackages = serviceDependencies.filter((name) => name.startsWith("@plurnk/plurnk-mimetypes-"));
 const execFrameworkDependencies = Object.keys(installedManifest("@plurnk/plurnk-execs").dependencies ?? {});
