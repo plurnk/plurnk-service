@@ -175,80 +175,17 @@ mimetype: string
 display: CapabilityDisplay
 }
 
-export interface CapabilityDescriptor {
-/**
- * An operation keyword, or a runtime tag: an execution's operation is its runtime.
- */
-operation: "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "BARE" | "WORK" | "FORK" | "KILL" | Lowercase<string>
-scheme?: string
-runtime?: string
-tool?: string
-access: ("observe" | "mutate" | "execute" | "interact" | "control")
-traits: string[]
-}
-
-export interface CapabilityPolicy {
-only?: CapabilitySelector[]
-deny?: CapabilitySelector[]
-}
-/**
- * One exact, conjunctive selector over a routed PLURNK capability demand. Omitted fields are wildcards; at least one field is required.
- */
-
-export interface CapabilitySelector {
-/**
- * An operation keyword, or a runtime tag: an execution's operation is its runtime.
- */
-operation?: "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "BARE" | "WORK" | "FORK" | "KILL" | Lowercase<string>
-scheme?: string
-runtime?: string
-tool?: string
-access?: ("observe" | "mutate" | "execute" | "interact" | "control")
-/**
- * @minItems 1
- */
-traits?: [string, ...(string)[]]
-}
-
-export interface CapabilityProjection {
-service: CapabilityPolicy
-workspace: CapabilityPolicy
-effective: CapabilityPolicy
-}
-/**
- * One purely subtractive capability-policy layer. Deny wins; when only is present, a demand must match at least one selector.
- */
-
-export interface ClientInteractionProjection {
-interactionId: number
+export type ApplicationOperationEvent = {
 workerId: number
 loopId: number
 turnId: number
-request: ClientInteractionRequest
+sequence: number
+origin: ("model" | "client" | "_plurnk" | "plugin")
+projectRoot: (string | null)
+statement: PlurnkStatement
+phase: ("started" | "settled")
+result?: OperationResult
 }
-/**
- * A runtime-neutral request for one client-owned interaction. The owner supplies the standard tool presentation and response contract; protocol-private continuation state is excluded.
- */
-
-export interface ClientInteractionRequest {
-toolName: string
-arguments: {
-[k: string]: unknown
-}
-message?: string
-responseSchema: {
-[k: string]: unknown
-}
-}
-
-export type ClientInteractionResolution = ({
-status: "resolved"
-payload?: unknown
-} | {
-status: "cancelled"
-})
-
-export type ClientStatement = (PlurnkStatement | LookStatement)
 /**
  * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, aside, body, and source-position fields, and the text and log operations add a matcher lifted from the `pattern` option; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
  */
@@ -264,16 +201,31 @@ export type ParsedPath = (LocalPath | UrlPath)
  */
 
 export type MatcherBody = (XPathBody | RegexBody | JsonPathBody | FtsBody | GraphBody | GlobBody)
+/**
+ * Universal PLURNK operation result. Producer-owned metadata is open, but failures always carry one RFC 9457 Problem Details object and never a parallel error field.
+ */
 
-export type AsideOrNull = (string | null)
+export type OperationResult = ({
+status: number
+problem?: ProblemDetails
+range?: RangeExtent
+error?: never
+[k: string]: unknown
+} & {
+status?: number
+})
+/**
+ * @minItems 2
+ * @maxItems 2
+ */
 
-export type SchemeMetadataOrNull = (string[] | null)
+export type RequestedRange = [number, number]
+/**
+ * @minItems 2
+ * @maxItems 2
+ */
 
-export type PathOrNull = (ParsedPath | null)
-
-export type TextLineMarkerOrNull = (TextLineMarker | null)
-
-export type MatcherBodyOrNull = (MatcherBody | null)
+export type ReturnedRange = [number, number]
 
 export interface FindStatement {
 op: "FIND"
@@ -589,6 +541,143 @@ lineMarker: null
 body: (string | null)
 position: Position
 }
+/**
+ * PLURNK operation failure using RFC 9457 Problem Details. Extension members are permitted so an owning boundary can add structured causal and recovery facts without inventing a second error envelope.
+ */
+
+export interface ProblemDetails {
+/**
+ * Absolute URI identifying the stable problem class.
+ */
+type: string
+/**
+ * Short, stable summary for this problem type.
+ */
+title: string
+/**
+ * Operation status. It must equal the containing result status.
+ */
+status: number
+/**
+ * Specific, causal explanation of this occurrence.
+ */
+detail: string
+/**
+ * Absolute URI identifying the failed durable operation, normally its log URI. Core adds it at persistence when a plugin cannot know the durable coordinate.
+ */
+instance?: string
+/**
+ * Stable producer-owned stage at which the operation failed, when the operation has multiple independently recoverable stages.
+ */
+stage?: string
+/**
+ * One generally valid next action. It is omitted when recovery depends on facts the producer does not know.
+ */
+recovery?: string
+/**
+ * Whether the producer recommends automatically retrying the identical request.
+ */
+retryable?: boolean
+[k: string]: unknown
+}
+/**
+ * A compact projection of one line or ordered-result selection. Requested and returned positions are inclusive; total is the complete available cardinality.
+ */
+
+export interface RangeExtent {
+unit: ("line" | "result" | "resource" | "matchLocation" | "byte")
+total: number
+requested: RequestedRange
+returned?: ReturnedRange
+}
+
+export interface CapabilityDescriptor {
+/**
+ * An operation keyword, or a runtime tag: an execution's operation is its runtime.
+ */
+operation: "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "BARE" | "WORK" | "FORK" | "KILL" | Lowercase<string>
+scheme?: string
+runtime?: string
+tool?: string
+access: ("observe" | "mutate" | "execute" | "interact" | "control")
+traits: string[]
+}
+
+export interface CapabilityPolicy {
+only?: CapabilitySelector[]
+deny?: CapabilitySelector[]
+}
+/**
+ * One exact, conjunctive selector over a routed PLURNK capability demand. Omitted fields are wildcards; at least one field is required.
+ */
+
+export interface CapabilitySelector {
+/**
+ * An operation keyword, or a runtime tag: an execution's operation is its runtime.
+ */
+operation?: "FIND" | "READ" | "EDIT" | "COPY" | "MOVE" | "SEND" | "BARE" | "WORK" | "FORK" | "KILL" | Lowercase<string>
+scheme?: string
+runtime?: string
+tool?: string
+access?: ("observe" | "mutate" | "execute" | "interact" | "control")
+/**
+ * @minItems 1
+ */
+traits?: [string, ...(string)[]]
+}
+
+export interface CapabilityProjection {
+service: CapabilityPolicy
+workspace: CapabilityPolicy
+effective: CapabilityPolicy
+}
+/**
+ * One purely subtractive capability-policy layer. Deny wins; when only is present, a demand must match at least one selector.
+ */
+
+export interface ClientInteractionProjection {
+interactionId: number
+workerId: number
+loopId: number
+turnId: number
+request: ClientInteractionRequest
+}
+/**
+ * A runtime-neutral request for one client-owned interaction. The owner supplies the standard tool presentation and response contract; protocol-private continuation state is excluded.
+ */
+
+export interface ClientInteractionRequest {
+toolName: string
+arguments: {
+[k: string]: unknown
+}
+message?: string
+responseSchema: {
+[k: string]: unknown
+}
+}
+
+export type ClientInteractionResolution = ({
+status: "resolved"
+payload?: unknown
+} | {
+status: "cancelled"
+})
+
+export type ClientStatement = (PlurnkStatement | LookStatement)
+/**
+ * The parsed AST union for one protocol statement, discriminated by `op`. Every variant has fixed signal, target, metadata, lineMarker, aside, body, and source-position fields, and the text and log operations add a matcher lifted from the `pattern` option; operation-specific schemas constrain their types. A null field records an omitted tolerated slot and does not satisfy runtime requirements by itself.
+ */
+
+export type AsideOrNull = (string | null)
+
+export type SchemeMetadataOrNull = (string[] | null)
+
+export type PathOrNull = (ParsedPath | null)
+
+export type TextLineMarkerOrNull = (TextLineMarker | null)
+
+export type MatcherBodyOrNull = (MatcherBody | null)
 
 export interface LookStatement {
 op: "LOOK"
@@ -630,42 +719,6 @@ state: ("static" | "active" | "closed" | "errored")
 /**
  * PLURNK operation failure using RFC 9457 Problem Details. Extension members are permitted so an owning boundary can add structured causal and recovery facts without inventing a second error envelope.
  */
-
-export interface ProblemDetails {
-/**
- * Absolute URI identifying the stable problem class.
- */
-type: string
-/**
- * Short, stable summary for this problem type.
- */
-title: string
-/**
- * Operation status. It must equal the containing result status.
- */
-status: number
-/**
- * Specific, causal explanation of this occurrence.
- */
-detail: string
-/**
- * Absolute URI identifying the failed durable operation, normally its log URI. Core adds it at persistence when a plugin cannot know the durable coordinate.
- */
-instance?: string
-/**
- * Stable producer-owned stage at which the operation failed, when the operation has multiple independently recoverable stages.
- */
-stage?: string
-/**
- * One generally valid next action. It is omitted when recovery depends on facts the producer does not know.
- */
-recovery?: string
-/**
- * Whether the producer recommends automatically retrying the identical request.
- */
-retryable?: boolean
-[k: string]: unknown
-}
 
 export interface FunctionalityCandidate {
 /**
@@ -1009,39 +1062,6 @@ coordinate: string
  * Optional op token (FIND/READ/EDIT/...) at the coordinate, for human-readable rendering.
  */
 op?: string
-}
-
-export type OperationResult = ({
-status: number
-problem?: ProblemDetails
-range?: RangeExtent
-error?: never
-[k: string]: unknown
-} & {
-status?: number
-})
-/**
- * @minItems 2
- * @maxItems 2
- */
-
-export type RequestedRange = [number, number]
-/**
- * @minItems 2
- * @maxItems 2
- */
-
-export type ReturnedRange = [number, number]
-
-/**
- * PLURNK operation failure using RFC 9457 Problem Details. Extension members are permitted so an owning boundary can add structured causal and recovery facts without inventing a second error envelope.
- */
-
-export interface RangeExtent {
-unit: ("line" | "result" | "resource" | "matchLocation" | "byte")
-total: number
-requested: RequestedRange
-returned?: ReturnedRange
 }
 
 export type LineMarkerOrNull = (LineMarker | null)

@@ -1608,6 +1608,9 @@ An exterior adapter owns its own protocol validation, identity binding, and
 projection while reusing the same workspace, worker, loop, operation, proposal,
 interaction, and event owners through this port.
 
+`ApplicationOperationEvent` is the schema-owned dispatch observation consumed
+through that subscription; its production boundary is {§notifications-operation-event}.
+
 `configurationNotices` exposes current launcher-owned configuration diagnostics
 without acquiring a workspace or provider. Adapters use the existing Notice
 projection; model turns combine these with workspace diagnostics according to

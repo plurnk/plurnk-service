@@ -426,6 +426,24 @@ export default class Dispatcher {
     }
 
     async dispatch(context: DispatchContext): Promise<DispatchResult> {
+        await this.#operationEvent(context, "started");
+        const result = await this.#dispatch(context);
+        await this.#operationEvent(context, "settled", result);
+        return result;
+    }
+
+    // {§notifications-operation-event} One dispatch can produce several log rows.
+    async #operationEvent(context: Pick<DispatchContext, "workspaceId" | "workerId" | "loopId" | "turnId" | "sequence" | "origin" | "statement">, phase: "started" | "settled", result?: DispatchResult): Promise<void> {
+        if (this.#notify.operationEventNotify === undefined) return;
+        const { workspaceId, workerId, loopId, turnId, sequence, origin, statement } = context;
+        this.#notify.operationEventNotify(workspaceId, {
+            workerId, loopId, turnId, sequence, origin, statement,
+            projectRoot: await this.#workspaceRoot(workspaceId), phase,
+            ...(result === undefined ? {} : { result }),
+        });
+    }
+
+    async #dispatch(context: DispatchContext): Promise<DispatchResult> {
         if (context.statement.op === "READ" && Dispatcher.#globTarget(context.statement.target)) {
             return this.#fanOutRead(context, context.statement);
         }
@@ -457,7 +475,7 @@ export default class Dispatcher {
             matcher: statement.matcher, lineMarker: null, body: null, position: statement.position,
         };
         if (statement.matcher?.dialect === "fts" || statement.matcher?.dialect === "graph") {
-            return this.dispatch({ ...context, statement: survey });
+            return this.#dispatch({ ...context, statement: survey });
         }
         const found = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context),
             (ctx) => this.#dataRun.run(schemeNameOf(statement.target), survey, ctx));
@@ -482,7 +500,7 @@ export default class Dispatcher {
             const target = parsePath(path);
             if (target === null) throw new InvalidOperationResultError(`FIND named an unparseable path: ${path}`);
             const fanout = { target: statement.target!.raw, matched: matchingPathCount, index, count: paths.length };
-            results.push(await this.dispatch({ ...context, statement: { ...statement, target }, sequence: context.sequence + index, fanout }));
+            results.push(await this.#dispatch({ ...context, statement: { ...statement, target }, sequence: context.sequence + index, fanout }));
         }
         if (matchingPathCount > paths.length) {
             this.#notices.push(context.workspaceId, context.workerId, context.loopId, {
@@ -1202,8 +1220,9 @@ export default class Dispatcher {
 
     // {§bare-inference} Reuse exact READ projection without its log/presentation layer.
     async prepareBarePrompt(
-        context: Pick<DispatchContext, "workspaceId" | "workerId" | "loopId" | "turnId" | "origin"> & { statement: BareStatement },
+        context: Pick<DispatchContext, "workspaceId" | "workerId" | "loopId" | "turnId" | "sequence" | "origin"> & { statement: BareStatement },
     ): Promise<{ prompt: string } | { result: DispatchResult }> {
+        await this.#operationEvent(context, "started");
         return ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context), async (ctx) => {
             try {
                 return await this.#prepareBarePrompt(context.statement, ctx);
@@ -1258,6 +1277,7 @@ export default class Dispatcher {
         });
         context.onDispatch?.(logEntryId);
         await this.#notifySettled(context, logEntryId);
+        await this.#operationEvent(context, "settled", result);
         return result;
     }
 

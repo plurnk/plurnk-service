@@ -1,4 +1,5 @@
 import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
+import EventProjection from "./EventProjection.ts";
 
 export interface HookConfig {
     readonly command: string;
@@ -29,7 +30,12 @@ const hookEvents = (raw: string | undefined): ReadonlySet<string> => {
     }
     const selected = new Set<string>();
     for (const event of raw.split(",").map((value) => value.trim())) {
-        if (!/^[^\s,/*]+(?:\/[^\s,/*]+)+$/u.test(event)) throw new ConfigurationError("PLURNK_HOOKS_EVENTS", `PLURNK_HOOKS_EVENTS requires exact event names; got '${event}'.`);
+        if (!EventProjection.names.has(event)) {
+            const replacement = EventProjection.sources.get(event);
+            throw new ConfigurationError("PLURNK_HOOKS_EVENTS", replacement === undefined
+                ? `PLURNK_HOOKS_EVENTS requires an exact hook name; got '${event}'. Choose ${[...EventProjection.names].join(", ")}.`
+                : `PLURNK_HOOKS_EVENTS '${event}' is a core event; select ${replacement.join(", ")} instead.`);
+        }
         if (selected.has(event)) {
             throw new ConfigurationError("PLURNK_HOOKS_EVENTS", `PLURNK_HOOKS_EVENTS selects '${event}' more than once.`);
         }

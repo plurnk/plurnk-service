@@ -32,6 +32,35 @@ const seamFixture = (): SeamFixture => {
     };
 };
 
+test("{§hooks-event-projection} common hook names retain native evidence without inferring sessions", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-hook-projection-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const output = join(root, "events.jsonl");
+    const module = configuredModule({
+        PLURNK_HOOKS_COMMAND: process.execPath,
+        PLURNK_HOOKS_ARGS: JSON.stringify(["--input-type=module", "-e", 'import { appendFile } from "node:fs/promises"; let body = ""; for await (const chunk of process.stdin) body += chunk; await appendFile(process.argv[1], body);', output]),
+        PLURNK_HOOKS_EVENTS: "Stop,Notification,PermissionRequest",
+    });
+    t.after(() => module.close());
+    const fixture = seamFixture();
+    module.start(fixture.seam);
+    fixture.emit(null, "workspace/created", { id: 42 });
+    fixture.emit(42, "loop/packet", { workerId: 7, loopId: 9, packetCount: 3 });
+    const terminal = { workerId: 7, loopId: 9, result: { status: 200 } };
+    fixture.emit(42, "loop/terminated", terminal);
+    const notice = { workerId: null, loopId: 0, notice: { source: "fixture", level: "warn", message: "Preparation incomplete." } };
+    fixture.emit(42, "notice/event", notice);
+    const interaction = { workerId: 7, loopId: 10, turnId: 11, interactionId: 12, request: { toolName: "question", arguments: { prompt: "Proceed?" }, message: "Please choose.", responseSchema: {} } };
+    fixture.emit(42, "loop/interaction", interaction);
+    await module.close();
+    const events = (await readFile(output, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    assert.deepEqual(events, [
+        { hook_event_name: "Stop", session_id: "7", plurnk: { workspaceId: 42, method: "loop/terminated", params: terminal } },
+        { hook_event_name: "Notification", message: "Preparation incomplete.", plurnk: { workspaceId: 42, method: "notice/event", params: notice } },
+        { hook_event_name: "PermissionRequest", session_id: "7", tool_name: "question", tool_input: { prompt: "Proceed?" }, message: "Please choose.", plurnk: { workspaceId: 42, method: "loop/interaction", params: interaction } },
+    ]);
+});
+
 test("[{§hooks-command-delivery}] selected events reach one no-shell command as exact JSON stdin", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-hooks-"));
     try {
@@ -53,7 +82,7 @@ test("[{§hooks-command-delivery}] selected events reach one no-shell command as
                 output,
                 `literal;touch ${shellSideEffect}`,
             ]),
-            PLURNK_HOOKS_EVENTS: "loop/terminated",
+            PLURNK_HOOKS_EVENTS: "Stop",
             PLURNK_HOOKS_TIMEOUT_MS: "30000",
             HOOK_FIXTURE_MARKER: "resolved environment",
         });
@@ -72,12 +101,16 @@ test("[{§hooks-command-delivery}] selected events reach one no-shell command as
         assert.deepEqual(captured.argv, [`literal;touch ${shellSideEffect}`]);
         assert.equal(existsSync(shellSideEffect), false);
         assert.equal(captured.input, `${JSON.stringify({
-            workspaceId: 42,
-            method: "loop/terminated",
-            params: {
-                workerId: 7,
-                loopId: 9,
-                result: { status: 200 },
+            hook_event_name: "Stop",
+            session_id: "7",
+            plurnk: {
+                workspaceId: 42,
+                method: "loop/terminated",
+                params: {
+                    workerId: 7,
+                    loopId: 9,
+                    result: { status: 200 },
+                },
             },
         })}\n`);
         assert.equal(fixture.subscribed(), false);
@@ -99,7 +132,7 @@ test("{§hooks-failure-isolation} a broken stdin does not release ownership befo
     const module = configuredModule({
         PLURNK_HOOKS_COMMAND: process.execPath,
         PLURNK_HOOKS_ARGS: JSON.stringify(["-e", `require('node:fs').writeFileSync(process.argv[1], String(process.pid)); require('node:fs').closeSync(0); setInterval(() => {}, 1000);`, pidFile]),
-        PLURNK_HOOKS_EVENTS: "loop/terminated",
+        PLURNK_HOOKS_EVENTS: "Stop",
         PLURNK_HOOKS_TIMEOUT_MS: "5000",
     }, () => undefined);
     const fixture = seamFixture();
@@ -114,17 +147,17 @@ test("[{§hooks-failure-isolation}] command failures are reported after the even
     const reports: Array<{ message: string; cause: unknown }> = [];
     const module = configuredModule({
         PLURNK_HOOKS_COMMAND: "/missing/plurnk-hook",
-        PLURNK_HOOKS_EVENTS: "notice/event",
+        PLURNK_HOOKS_EVENTS: "Notification",
         PLURNK_HOOKS_TIMEOUT_MS: "30000",
     }, (message, cause) => { reports.push({ message, cause }); });
     const fixture = seamFixture();
     module.start(fixture.seam);
 
-    assert.doesNotThrow(() => fixture.emit(4, "notice/event", { loopId: 3 }));
+    assert.doesNotThrow(() => fixture.emit(4, "notice/event", { loopId: 3, notice: { message: "Fixture notice" } }));
     await module.close();
 
     assert.equal(reports.length, 1);
-    assert.match(reports[0].message, /hook command failed for notice\/event/);
+    assert.match(reports[0].message, /hook command failed for Notification/);
     assert.ok(reports[0].cause instanceof Error);
 });
 
@@ -148,7 +181,7 @@ test("[{§hooks-failure-isolation}] nonzero exits and delivery timeouts are repo
             const module = configuredModule({
                 PLURNK_HOOKS_COMMAND: process.execPath,
                 PLURNK_HOOKS_ARGS: JSON.stringify(specimen.args),
-                PLURNK_HOOKS_EVENTS: "loop/terminated",
+                PLURNK_HOOKS_EVENTS: "Stop",
                 PLURNK_HOOKS_TIMEOUT_MS: specimen.timeout,
             }, (message, cause) => { reports.push({ message, cause }); });
             const fixture = seamFixture();
@@ -157,7 +190,7 @@ test("[{§hooks-failure-isolation}] nonzero exits and delivery timeouts are repo
             await module.close();
 
             assert.equal(reports.length, 1);
-            assert.match(reports[0].message, /hook command failed for loop\/terminated/);
+            assert.match(reports[0].message, /hook command failed for Stop/);
             assert.match(String(reports[0].cause), specimen.cause);
         });
     }
@@ -177,7 +210,7 @@ test("{§hooks-bounded-delivery} close drains FIFO deliveries without mutating c
     t.after(() => module.close());
     const fixture = seamFixture();
     module.start(fixture.seam);
-    fixture.emit(null, "workspace/created", { id: 1 });
+    fixture.emit(42, "loop/terminated", { id: 1 });
     const params = { id: 2, text: "at publication" };
     fixture.emit(42, "loop/terminated", params);
     params.text = "later mutation";
@@ -196,9 +229,9 @@ test("{§hooks-bounded-delivery} close drains FIFO deliveries without mutating c
     await closing;
     assert.deepEqual(failures, []);
     assert.deepEqual(command.events, [
-        { workspaceId: null, method: "workspace/created", params: { id: 1 } },
-        { workspaceId: 42, method: "loop/terminated", params: { id: 2, text: "at publication" } },
-        { workspaceId: 42, method: "loop/terminated", params: { id: 3 } },
+        { hook_event_name: "Stop", plurnk: { workspaceId: 42, method: "loop/terminated", params: { id: 1 } } },
+        { hook_event_name: "Stop", plurnk: { workspaceId: 42, method: "loop/terminated", params: { id: 2, text: "at publication" } } },
+        { hook_event_name: "Stop", plurnk: { workspaceId: 42, method: "loop/terminated", params: { id: 3 } } },
     ]);
 });
 
@@ -211,12 +244,12 @@ test("{§hooks-bounded-delivery} finite concurrency and queue capacity report ex
     module.start(fixture.seam);
     for (const id of [1, 2, 3, 4]) assert.doesNotThrow(() => fixture.emit(42, "loop/terminated", { id }));
     await command.waitFor(2);
-    assert.deepEqual(command.events.map(({ params }) => params.id).sort(), [1, 2]);
+    assert.deepEqual(command.events.map(({ plurnk }) => plurnk.params.id).sort(), [1, 2]);
     assert.equal(failures.length, 1);
     assert.match(String(failures[0]), /queue is full; event not delivered/);
     command.release(1);
     await command.waitFor(3);
-    assert.equal(command.events[2]!.params.id, 3, "the oldest queued event starts when a slot is released");
+    assert.equal(command.events[2]!.plurnk.params.id, 3, "the oldest queued event starts when a slot is released");
     command.release(2);
     command.release(3);
     await module.close();
@@ -246,7 +279,7 @@ test("{§hooks-failure-isolation} serialization and reporter failures preserve b
     const diagnostics: unknown[][] = [];
     t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
     const reporterFailure = new Error("diagnostic sink unavailable");
-    const module = configuredModule({ PLURNK_HOOKS_COMMAND: "/must-not-run", PLURNK_HOOKS_EVENTS: "loop/terminated" }, () => { throw reporterFailure; });
+    const module = configuredModule({ PLURNK_HOOKS_COMMAND: "/must-not-run", PLURNK_HOOKS_EVENTS: "Stop" }, () => { throw reporterFailure; });
     const fixture = seamFixture();
     module.start(fixture.seam);
     const params: Record<string, unknown> = {};

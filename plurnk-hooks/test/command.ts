@@ -3,9 +3,12 @@ import { once } from "node:events";
 import type { TestContext } from "node:test";
 
 interface ObservedEvent {
-    readonly workspaceId: number | null;
-    readonly method: string;
-    readonly params: { readonly id: number; readonly text?: string };
+    readonly hook_event_name: string;
+    readonly plurnk: {
+        readonly workspaceId: number | null;
+        readonly method: string;
+        readonly params: { readonly id: number; readonly text?: string };
+    };
 }
 
 export const commandFixture = async (t: TestContext) => {
@@ -23,7 +26,7 @@ export const commandFixture = async (t: TestContext) => {
             if (!body.endsWith("\n")) return;
             const event = JSON.parse(body) as ObservedEvent;
             events.push(event);
-            clients.set(event.params.id, socket);
+            clients.set(event.plurnk.params.id, socket);
             arrivals.get(events.length)?.();
         });
     });
@@ -46,7 +49,7 @@ export const commandFixture = async (t: TestContext) => {
                 'socket.on("connect", () => socket.write(input));',
                 'for await (const chunk of socket) {}',
             ].join("\n"), String(address.port)]),
-            PLURNK_HOOKS_EVENTS: "loop/terminated,workspace/created",
+            PLURNK_HOOKS_EVENTS: "Stop",
         },
         events,
         waitFor: (count: number): Promise<void> => events.length >= count

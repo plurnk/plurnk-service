@@ -1,0 +1,27 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/ApplicationOperationEvent.json",
+    "title": "ApplicationOperationEvent",
+    "description": "A core-owned dispatch boundary. A settled dispatch has its exact result; it does not assert asynchronous process completion.",
+    "type": "object",
+    "required": ["workerId", "loopId", "turnId", "sequence", "origin", "projectRoot", "statement", "phase"],
+    "additionalProperties": false,
+    "properties": {
+        "workerId": { "type": "integer", "minimum": 1 },
+        "loopId": { "type": "integer", "minimum": 1 },
+        "turnId": { "type": "integer", "minimum": 1 },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "origin": { "enum": ["model", "client", "_plurnk", "plugin"] },
+        "projectRoot": { "type": ["string", "null"] },
+        "statement": { "$ref": "https://schemas.plurnk.xyz/v0/PlurnkStatement.json" },
+        "phase": { "enum": ["started", "settled"] },
+        "result": { "$ref": "https://schemas.plurnk.xyz/v0/OperationResult.json" }
+    },
+    "allOf": [
+        {
+            "if": { "properties": { "phase": { "const": "settled" } } },
+            "then": { "required": ["result"] },
+            "else": { "not": { "required": ["result"] } }
+        }
+    ]
+}

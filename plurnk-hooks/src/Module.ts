@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts";
 import { hookConfig, type HookConfig } from "./config.ts";
+import EventProjection from "./EventProjection.ts";
 
 interface Delivery {
     readonly method: string;
@@ -41,13 +42,15 @@ export default class Module {
         this.#started = true;
         if (this.#config === null) return;
         this.#unsubscribe = seam.subscribeToEvents((workspaceId, method, params) => {
-            if (!this.#config?.events.has(method)) return;
-            if (this.#active.size >= this.#config.concurrency && this.#queued.length >= this.#config.queueLimit) {
-                this.#failed(method, new Error("Hook delivery queue is full; event not delivered."));
-                return;
-            }
+            if (!EventProjection.sources.get(method)?.some((name) => this.#config?.events.has(name))) return;
             try {
-                this.#queued.push({ method, input: `${JSON.stringify({ workspaceId, method, params })}\n`, deadline: Date.now() + this.#config.timeoutMs });
+                const event = EventProjection.project(workspaceId, method, params);
+                if (event === null || !this.#config?.events.has(event.hook_event_name)) return;
+                if (this.#active.size >= this.#config.concurrency && this.#queued.length >= this.#config.queueLimit) {
+                    this.#failed(event.hook_event_name, new Error("Hook delivery queue is full; event not delivered."));
+                    return;
+                }
+                this.#queued.push({ method: event.hook_event_name, input: `${JSON.stringify(event)}\n`, deadline: Date.now() + this.#config.timeoutMs });
                 this.#pump();
             } catch (cause) { this.#failed(method, cause); }
         });

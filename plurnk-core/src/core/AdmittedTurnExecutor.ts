@@ -258,6 +258,7 @@ export default class AdmittedTurnExecutor {
                                 statements: bareStatements,
                                 preparePrompt: (statement) => this.#dispatcher.prepareBarePrompt({
                                     statement, workspaceId, workerId, loopId, turnId, origin,
+                                    sequence: rowSequence + bareStatements.indexOf(statement),
                                 }),
                                 provider: bare.provider,
                                 turnId,

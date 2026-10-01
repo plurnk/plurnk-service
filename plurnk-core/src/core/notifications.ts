@@ -2,6 +2,7 @@ import type { StreamEventNotify, WakeWorkerNotify, InjectWorkerNotify, CancelWor
 import type { ReasoningEventNotify } from "./ReasoningEvent.ts";
 import type { OutsideEventNotify } from "./OutsideEvent.ts";
 import type { LoopPacketNotify } from "./LoopPacket.ts";
+import type { ApplicationOperationEvent } from "@plurnk/plurnk-contracts";
 
 export type OperationSettledNotify = (workspaceId: number, logEntryId: number) => Promise<void>;
 
@@ -17,5 +18,6 @@ export interface EngineNotifications {
     readonly injectWorker?: InjectWorkerNotify;
     readonly cancelWorker?: CancelWorkerNotify;
     readonly operationSettledNotify?: OperationSettledNotify;
+    readonly operationEventNotify?: (workspaceId: number, event: ApplicationOperationEvent) => void;
     readonly noticeNotify?: NoticeNotify;
 }

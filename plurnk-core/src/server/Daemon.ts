@@ -251,6 +251,7 @@ export default class Daemon implements ApplicationPort {
             weigh: contentWeight,
             streamEventNotify: (workspaceId, event) => this.notifyStreamEvent(workspaceId, event),
             operationSettledNotify: (workspaceId, logEntryId) => this.#drains.operationSettled(workspaceId, logEntryId),
+            operationEventNotify: (workspaceId, event) => this.#broadcast({ workspaceId }, "operation/event", event),
             reasoningEventNotify: (workspaceId, event) => this.notifyReasoningEvent(workspaceId, event),
             outsideEventNotify: (workspaceId, event) => this.notifyOutsideEvent(workspaceId, event),
             wakeWorkerNotify: (payload) => this.#drains.notifyWakeWorker(payload),

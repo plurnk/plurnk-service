@@ -4,7 +4,7 @@ import { hookConfig } from "./config.ts";
 import { withEnvironment } from "../test/environment.ts";
 
 const read = (env: NodeJS.ProcessEnv = {}) => withEnvironment(env, hookConfig);
-const selected = { PLURNK_HOOKS_COMMAND: "node", PLURNK_HOOKS_EVENTS: "loop/terminated" };
+const selected = { PLURNK_HOOKS_COMMAND: "node", PLURNK_HOOKS_EVENTS: "Stop" };
 
 test("{§hooks-config} hook configuration is absent until an exact command and event selection are declared", () => {
     assert.equal(read(), null);
@@ -12,7 +12,7 @@ test("{§hooks-config} hook configuration is absent until an exact command and e
         () => read({ PLURNK_HOOKS_COMMAND: "notify-send" }),
         { name: "ConfigurationError", key: "PLURNK_HOOKS_EVENTS", message: /PLURNK_HOOKS_EVENTS must select at least one event/ },
     );
-    for (const companion of [{ PLURNK_HOOKS_EVENTS: "loop/terminated" }, { PLURNK_HOOKS_ARGS: "[]" }]) {
+    for (const companion of [{ PLURNK_HOOKS_EVENTS: "Stop" }, { PLURNK_HOOKS_ARGS: "[]" }]) {
         assert.throws(() => read(companion), { name: "ConfigurationError", key: "PLURNK_HOOKS_COMMAND", message: /has companions but no PLURNK_HOOKS_COMMAND/ });
     }
 });
@@ -21,14 +21,14 @@ test("{§hooks-config} production configuration preserves executable paths with 
     assert.deepEqual(read({
         PLURNK_HOOKS_COMMAND: "/opt/local tools/hook",
         PLURNK_HOOKS_ARGS: '["/opt/hooks/notify.mjs","literal;not-shell"]',
-        PLURNK_HOOKS_EVENTS: "loop/terminated, notice/event",
+        PLURNK_HOOKS_EVENTS: "Stop, Notification",
         PLURNK_HOOKS_TIMEOUT_MS: "1200",
         PLURNK_HOOKS_CONCURRENCY: "2",
         PLURNK_HOOKS_QUEUE_LIMIT: "0",
     }), {
         command: "/opt/local tools/hook",
         args: ["/opt/hooks/notify.mjs", "literal;not-shell"],
-        events: new Set(["loop/terminated", "notice/event"]),
+        events: new Set(["Stop", "Notification"]),
         timeoutMs: 1200,
         concurrency: 2,
         queueLimit: 0,
@@ -36,11 +36,14 @@ test("{§hooks-config} production configuration preserves executable paths with 
     assert.deepEqual(read(selected)?.args, []);
 });
 
-test("{§hooks-selection} selection uses exact core event names without a duplicated closed inventory", () => {
-    const names = ["loop/packet", "loop/interaction", "workspace/preparation", "outside/event", "reasoning/event", "extension/event"];
+test("{§hooks-selection} selection uses exact supported hook names and diagnoses retired core spellings", () => {
+    const names = ["PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "Notification", "PermissionRequest"];
     assert.deepEqual(read({ ...selected, PLURNK_HOOKS_EVENTS: names.join(",") })?.events, new Set(names));
-    for (const events of ["notice/*", "notice", "loop/terminated,", "notice/ event", "notice/event,notice/event"]) {
-        assert.throws(() => read({ ...selected, PLURNK_HOOKS_EVENTS: events }), { name: "ConfigurationError", key: "PLURNK_HOOKS_EVENTS", message: /requires exact event names|more than once/ });
+    for (const events of ["Notice*", "notice", "Stop,", "Pre ToolUse", "Notification,Notification", "SessionStart", "UserPromptSubmit", "constructor", "__proto__"]) {
+        assert.throws(() => read({ ...selected, PLURNK_HOOKS_EVENTS: events }), { name: "ConfigurationError", key: "PLURNK_HOOKS_EVENTS", message: /requires an exact hook name|more than once/ });
+    }
+    for (const [event, replacement] of [["loop/terminated", "Stop"], ["notice/event", "Notification"], ["loop/proposal", "PermissionRequest"]]) {
+        assert.throws(() => read({ ...selected, PLURNK_HOOKS_EVENTS: event }), { name: "ConfigurationError", key: "PLURNK_HOOKS_EVENTS", message: new RegExp(`select ${replacement} instead`) });
     }
 });
 

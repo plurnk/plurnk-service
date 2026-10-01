@@ -4,25 +4,61 @@
 
 An admitted selected event is delivered to the configured executable with its
 argument array and `shell: false`, subject to {§hooks-bounded-delivery}. The child receives one complete
-`{ workspaceId, method, params }` JSON envelope followed by a newline on stdin.
-The core-supplied workspace scope and payload pass through without inferred
-coordinates or payload translation. The child inherits the daemon's working
+hook event from {§hooks-event-projection} followed by a newline on stdin.
+The child inherits the daemon's working
 directory and resolved daemon environment captured at module construction;
 its standard output and error remain visible in the daemon's streams. Event
 data is serialized at publication, never read later from a mutable payload.
 
 ## §hooks-selection Event selection
 
-`PLURNK_HOOKS_EVENTS` selects exact comma-separated event names from
-{§notifications}. Hooks do not maintain a second closed inventory, translate
-names, infer lifecycle transitions, or implement a wildcard/filter language.
-A selected name with no corresponding publication causes no delivery.
+`PLURNK_HOOKS_EVENTS` selects exact comma-separated hook names from
+{§hooks-event-projection}. Unknown, retired core-event spellings and wildcard
+names are configuration diagnostics; retired spellings name their replacement.
+Core event names and the module subscription contract do not change.
 
 | Consumer | Integration |
 |---|---|
 | Installed module | `ApplicationPort.subscribeToEvents`, under {§module-lifecycle} |
 | Ordinary executable or script | This package's JSON-stdin adapter; no plugin manifest required |
 | Client | The client-interface protocol's projection; not a raw event-bus subscription |
+
+## §hooks-event-projection Notification vocabulary and payload
+
+These names and snake_case fields follow common agent-hook conventions, not a
+portable hook standard. Every hook is an asynchronous observation, including
+`PreToolUse` and `PermissionRequest`; it is never a barrier or a decision request
+to the command.
+
+| Hook | Owning core event | Meaning |
+|---|---|---|
+| `PreToolUse` | `operation/event`, `phase=started` | One model/client operation enters dispatch, before capability/proposal admission. |
+| `PostToolUse` | `operation/event`, `phase=settled`, status below 400 | That dispatch settled; a started executor may still be running. |
+| `PostToolUseFailure` | `operation/event`, `phase=settled`, status at least 400 | That dispatch returned a failure, retaining its exact result. |
+| `Stop` | `loop/terminated` | One worker loop terminated, including failure or cancellation; parking is not termination. |
+| `Notification` | `notice/event` | The existing notice, with its producer's message and severity. |
+| `PermissionRequest` | `loop/proposal` with client disposition, or `loop/interaction` | An operation awaits a client decision/input. Automatically settled proposals are not requests to a person. |
+
+| Field | Source |
+|---|---|
+| `hook_event_name` | Name above. |
+| `session_id` | Owning worker's database ID as a string; absent for workspace-only notices. Not a client connection or a loop ID. |
+| `cwd` | Operation event's project root, when present. Never inferred from a path operand or substituted with the daemon's directory. |
+| `tool_use_id` | `turnId/sequence` for operation events; stable across start and settlement, unique within this database. |
+| `tool_name` | Operation keyword or executor runtime; a runtime's target remains in `tool_input`. Interaction requests retain their declared tool name. |
+| `tool_input` | Exact parsed operation, or the proposal/interaction's declared input. No synthetic vendor tool signature. |
+| `tool_response` | Exact settled operation result, on either post-tool event. |
+| `message` | Notice or interaction message when supplied. |
+| `plurnk` | Unchanged `{ workspaceId, method, params }` core envelope, including all native coordinates and evidence. |
+
+Only model/client dispatch produces tool hooks; runtime bookkeeping and automatic
+log observations do not. READ fan-out is one dispatch with one pair of events;
+its result records the fan-out, while the log retains the individual reads.
+BARE starts before prompt preparation/inference and settles after its receipt
+commits; concurrent BARE calls may overlap their starts. Internal exceptions
+that prevent settlement do not invent a post-tool result. Session start/end and
+user-prompt hooks are not inferred from client attachment or generic message
+ingress. Installed modules can subscribe to the full core event surface directly.
 
 ## §hooks-bounded-delivery Bounded delivery
 

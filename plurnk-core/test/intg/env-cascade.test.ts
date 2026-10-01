@@ -374,7 +374,7 @@ for (const built of [false, true]) {
         const invalid = {
             PLURNK_HOOKS_COMMAND: process.execPath,
             PLURNK_HOOKS_ARGS: "[1]",
-            PLURNK_HOOKS_EVENTS: "daemon/started",
+            PLURNK_HOOKS_EVENTS: "Stop",
             PLURNK_A2A_EXPOSE: "1",
             PLURNK_A2A_ENDPOINT_PATH: "relative",
             OTEL_TRACES_EXPORTER: "unknown-exporter",
@@ -514,7 +514,7 @@ test("{§configuration-repair-path} config check rejects optional startup errors
     const fx = await fixture();
     t.after(() => rm(fx.root, { recursive: true, force: true }));
     const cases: Array<{ key: string; env: Record<string, string> }> = [
-        { key: "PLURNK_HOOKS_ARGS", env: { PLURNK_HOOKS_COMMAND: process.execPath, PLURNK_HOOKS_ARGS: "[1]", PLURNK_HOOKS_EVENTS: "daemon/started" } },
+        { key: "PLURNK_HOOKS_ARGS", env: { PLURNK_HOOKS_COMMAND: process.execPath, PLURNK_HOOKS_ARGS: "[1]", PLURNK_HOOKS_EVENTS: "Stop" } },
         { key: "PLURNK_A2A_ENDPOINT_PATH", env: { PLURNK_A2A_EXPOSE: "1", PLURNK_A2A_ENDPOINT_PATH: "relative" } },
         { key: "OTEL_TRACES_EXPORTER", env: { OTEL_TRACES_EXPORTER: "unknown-exporter" } },
         { key: "PLURNK_SERVICE_EFFECT_HOST", env: { PLURNK_SERVICE_EFFECT_HOST: "invalid" } },
@@ -566,7 +566,7 @@ test("{§operator-config-discovery} config check accepts future controls without
         PLURNK_SKILLS_3d_tools: '{"name":"3d-tools","source":"https://unreachable.invalid/skills.git"}',
         PLURNK_HOOKS_COMMAND: process.execPath,
         PLURNK_HOOKS_ARGS: JSON.stringify(args),
-        PLURNK_HOOKS_EVENTS: "daemon/started",
+        PLURNK_HOOKS_EVENTS: "Stop",
     } });
     assert.equal(result.code, 0, result.stderr);
     assert.match(result.stdout, /configuration valid/u);
