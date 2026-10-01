@@ -584,9 +584,12 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
     const afterFirstAttach = markerCount(mcpStartMarker);
     await aguiAction(address, "workspace.attach", { id: dormantWorkspaceId });
     const afterSecondAttach = markerCount(mcpStartMarker);
-    const listed = await aguiAction(address, "workspace.mcp.list", {}, attached.name);
+    const coldList = await aguiAction(address, "workspace.mcp.list", {}, attached.name);
+    const afterInspection = markerCount(mcpStartMarker);
+    await aguiAction(address, "workspace.mcp.enable", { alias: "echo" }, attached.name);
     const afterDemand = markerCount(mcpStartMarker);
-    await aguiAction(address, "workspace.mcp.list", {}, attached.name);
+    const listed = await aguiAction(address, "workspace.mcp.list", {}, attached.name);
+    await aguiAction(address, "workspace.mcp.enable", { alias: "echo" }, attached.name);
     const skillCatalog = (await aguiAction(address, "op.parse", {
         text: "````FIND (skill://*/SKILL.md) <1,-1>````",
     }, attached.name)).results[0];
@@ -636,6 +639,8 @@ raw stdin
         before,
         afterFirstAttach,
         afterSecondAttach,
+        afterInspection,
+        coldStates: Object.fromEntries(coldList.definitions.map(({ alias, state }) => [alias, state])),
         afterDemand,
         afterRepeatedDemand: markerCount(mcpStartMarker),
         states: Object.fromEntries(listed.definitions.map(({ alias, state }) => [alias, state])),
@@ -657,19 +662,32 @@ ok(
         && dormantBoot.probeError === undefined
         && dormantBoot.probeResult?.before === 0
         && dormantBoot.probeResult?.afterFirstAttach === 0
-        && dormantBoot.probeResult?.afterSecondAttach === 0,
-    "the packed daemon leaves persisted worker Functionality cold through boot and attachment",
+        && dormantBoot.probeResult?.afterSecondAttach === 0
+        && dormantBoot.probeResult?.afterInspection === 0
+        && isDeepStrictEqual(dormantBoot.probeResult?.coldStates, { broken: "dormant", echo: "dormant" }),
+    "{§functionality-inspection} packed workspace Functionality stays dormant through boot, attachment and inspection",
 );
 ok(
     dormantBoot.probeResult?.afterDemand > 0
         && dormantBoot.probeResult?.afterRepeatedDemand === dormantBoot.probeResult?.afterDemand,
-    "the packed daemon activates one demanded worker once and keeps it warm",
+    "the packed daemon activates a demanded workspace once and keeps it warm on repeated demand",
 );
 ok(
     dormantBoot.probeResult?.states?.broken === "unavailable"
         && dormantBoot.probeResult?.states?.echo === "active",
     "one unavailable packed MCP remains visible without withholding its healthy peer",
 );
+if (dormantBoot.probeResult?.afterDemand === 0 || dormantBoot.probeResult?.states?.echo !== "active") {
+    console.error({
+        before: dormantBoot.probeResult?.before,
+        afterInspection: dormantBoot.probeResult?.afterInspection,
+        afterDemand: dormantBoot.probeResult?.afterDemand,
+        afterRepeatedDemand: dormantBoot.probeResult?.afterRepeatedDemand,
+        coldStates: dormantBoot.probeResult?.coldStates,
+        states: dormantBoot.probeResult?.states,
+        probeError: dormantBoot.probeError,
+    });
+}
 const packedSkills = await readPackedCapabilityDocs();
 ok(
     dormantBoot.probeResult?.ownSkillReads?.length === 5
