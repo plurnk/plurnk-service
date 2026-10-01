@@ -143,21 +143,26 @@ workspace-owned; removing one exposes its current inherited source again.
 
 ## Native extensions
 
-Standard [Agent Plugins](https://agent-plugins.org/specification) may declare a Plurnk daemon module:
+Standard [Agent Plugins](https://agent-plugins.org/specification) keep their portable
+skills and MCP servers and may add one native capability under `extensions.ai.plurnk`.
+That declaration uses the family's existing loader and lifetime. For daemon lifecycle
+hooks, declare a module:
 
 ```json
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "example-plugin",
-  "extensions": { "ai.plurnk": { "module": "ai.plurnk/plugin.js" } }
+  "extensions": { "ai.plurnk": { "kind": "module", "module": "ai.plurnk/plugin.js" } }
 }
 ```
 
-Native code loads at startup from installed npm packages and selected user roots:
+Daemon modules load at startup from installed npm packages and selected user roots:
 `$XDG_CONFIG_HOME/plurnk/plugins/` before `~/.agents/plugins/`, then npm. The manifest name
 identifies a plugin across those sources. Project plugins never load native code into the daemon.
 `PLURNK_SERVICE_ROOTS` selects the directory roots; `PLURNK_PLUGINS_TRUSTED_ONLY` governs native
 imports, using the npm package name when present or the plugin name otherwise.
+Other native families (executors, schemes, providers, mimetypes and HTTP materializers)
+require npm installation and retain their own loading behavior.
 
 The module exports a lifecycle object or a no-argument factory. `setup` registers capabilities;
 `stop` drains producers; `close` releases registrations and observers. See {§module-lifecycle}.

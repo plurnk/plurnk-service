@@ -4032,7 +4032,7 @@ Both phases are optional and idempotent; repeated calls join the same work.
 Core tracks a module before `setup` so partially acquired resources are released
 even if setup fails. A returned object identical to its module is tracked once.
 
-§module-discovery **Native extensions compose through the daemon-module lifecycle.**
+§module-discovery **Daemon modules compose through their shared lifecycle.**
 
 | Source | Declaration | Lifetime |
 |---|---|---|

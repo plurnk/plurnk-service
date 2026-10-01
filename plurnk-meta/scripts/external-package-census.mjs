@@ -15,12 +15,12 @@ const ownerOf = (name) =>
     : name.startsWith("plurnk-providers") ? "providers"
     : name.startsWith("plurnk-schemes") ? "schemes"
     : name.startsWith("plurnk-execs") ? "execs"
-    : name === "plurnk" ? "client"
+    : name === "plurnk" || name === "plurnk-web" ? "client"
     : name === "plurnk-bench" ? "bench"
     : name === "plurnk-learn" ? "learn"
     : null;
 
-const independentProducts = new Set(["plurnk", "plurnk-bench"]);
+const independentProducts = new Set(["plurnk", "plurnk-web", "plurnk-bench"]);
 
 export const census = () => {
     const packages = [];

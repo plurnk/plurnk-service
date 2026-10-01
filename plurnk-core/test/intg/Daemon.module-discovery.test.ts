@@ -73,7 +73,7 @@ export default () => ({
     }
 });
 
-test("{§module-discovery} a directory plugin loads its floor, publishes its action and drains before releasing resources", async (t) => {
+test("{§module-discovery} the documented directory plugin loads its floor, publishes its action and drains before releasing resources", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-native-boot-"));
     const paths = new HostPaths({ home: root, env: {} });
     const plugin = join(paths.globalPluginsDir, "fixture");
@@ -88,12 +88,14 @@ test("{§module-discovery} a directory plugin loads its floor, publishes its act
         await rm(root, { recursive: true, force: true });
     });
     await mkdir(join(plugin, "ai.plurnk"), { recursive: true });
-    await writeFile(join(plugin, "plugin.json"), JSON.stringify({
-        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "native-fixture",
-        extensions: { "ai.plurnk": { kind: "module", module: "ai.plurnk/plugin.mjs" } },
-    }));
+    const guide = await readFile(join(Paths.packageRoot, "INSTALL.md"), "utf8");
+    const manifest = [...guide.matchAll(/^```json\n([\s\S]*?)^```/gmu)]
+        .map(([, body]) => JSON.parse(body!))
+        .find((value) => value.extensions?.["ai.plurnk"]?.module);
+    assert.ok(manifest, "the installation guide supplies an executable native-module manifest");
+    await writeFile(join(plugin, "plugin.json"), JSON.stringify(manifest));
     await writeFile(join(plugin, "ai.plurnk/.env.defaults"), "PLURNK_NATIVE_FIXTURE=from-plugin\n");
-    await writeFile(join(plugin, "ai.plurnk/plugin.mjs"), `
+    await writeFile(join(plugin, manifest.extensions["ai.plurnk"].module), `
 import { appendFile } from "node:fs/promises";
 const trace = ${JSON.stringify(trace)};
 export default () => ({

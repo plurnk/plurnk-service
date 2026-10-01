@@ -175,8 +175,6 @@ export default class Digest {
             opMixRows = opMixRows.filter((o) => keptWorkerIds.has(o.worker_id));
         }
 
-        // Wipe-then-recreate the digest dir so each worker is a clean snapshot —
-        // orphaned packet*.* files from a prior digest don't linger.
         mkdirSync(digestDir, { recursive: true });
 
         const workersByWorkspace = new Map<number, WorkerRow[]>();
