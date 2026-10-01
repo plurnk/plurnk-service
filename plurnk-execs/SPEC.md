@@ -263,8 +263,12 @@ under a per-probe timeout, then caches each verdict. This is intentionally
 per-tag: a multi-tag package can expose only the interpreters actually present.
 A probe that spawns or opens a connection passes the supplied signal through so
 completion or timeout reaps its work. Probe rejection or timeout makes only
-that tag unavailable; a configured default runtime that is absent or
-unavailable is a fail-hard boot error.
+that tag unavailable. No particular executor is required to start the host.
+Typed `ConfigurationError` failures during module loading, construction, or
+probing retain the tag's declaration and diagnostic without publishing an
+executable or output scheme; unrelated tags remain available. Constructors
+must not report internal implementation defects as configuration errors.
+Core owns startup diagnostics and demand refusal in {§configuration-repair-path}.
 
 ## §executor-output-address Tag-addressed output
 

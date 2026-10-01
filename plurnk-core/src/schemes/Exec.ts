@@ -46,7 +46,7 @@ import LogEntryProjection from "../core/LogEntryProjection.ts";
 import LogBody from "../core/LogBody.ts";
 import ToolResources from "../core/ToolResources.ts";
 import { setTimeout as delay } from "node:timers/promises";
-import ExecScheduler from "./ExecScheduler.ts";
+import ExecScheduler, { readExecConcurrency } from "./ExecScheduler.ts";
 import ExecScratch from "./ExecScratch.ts";
 import ExecutionInput from "./ExecutionInput.ts";
 import { execRouteOf } from "./exec-runtime.ts";
@@ -100,6 +100,12 @@ const resourceSourceOf = (target: ExecStatement["target"]): string | null => {
 export type WebFetch = (url: string, opts?: { signal?: AbortSignal }) => Promise<WebFetchResult | null>;
 
 export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHandler, "kill"> {
+    static validateConfiguration(): void {
+        readExecConcurrency();
+        ExecutionInput.configuredTimeout();
+        ExecScratch.directory();
+    }
+
     // The record goes on the output the spawn produces ({§execution-output-identity}) — the log row
     // is the model's proposal and stays immutable. An output that is not there is a defect in the
     // provenance chain, never a spawn that quietly runs unrecorded.
@@ -133,16 +139,24 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     // the registry ({§web-materialization-contract}): core names no leaf package.
     readonly #fetchWeb: WebFetch;
     readonly #materializer: () => WebMaterializer;
-    readonly #scheduler: ExecScheduler;
-    readonly #scratch: ExecScratch;
-    readonly #inputTimeoutMs: number;
+    #execution: { scheduler: ExecScheduler; inputTimeoutMs: number } | null = null;
+    #scratch: ExecScratch | null = null;
     constructor(fetchWeb: WebFetch | undefined, materializer: () => WebMaterializer) {
         super();
-        this.#scheduler = new ExecScheduler();
-        this.#scratch = new ExecScratch();
-        this.#inputTimeoutMs = ExecutionInput.configuredTimeout();
         this.#materializer = materializer;
         this.#fetchWeb = fetchWeb ?? ((url, opts) => materializer().fetch(url, opts));
+    }
+
+    // {§configuration-repair-path}: validate before admission, not while constructing the repair environment.
+    #prepareExecution(): { scheduler: ExecScheduler; inputTimeoutMs: number } {
+        return this.#execution ??= {
+            inputTimeoutMs: ExecutionInput.configuredTimeout(),
+            scheduler: new ExecScheduler(),
+        };
+    }
+
+    #sourceScratch(): ExecScratch {
+        return this.#scratch ??= new ExecScratch();
     }
 
     #activeAborts = new Map<number, { workspaceId: number; workerId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; unlink: () => void; detached: boolean; input: ExecutionInput; invocation: ExecStatement; executor: Executor }>();
@@ -274,6 +288,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             ) as ExecResult;
         }
         if (!resolved.available) {
+            if (resolved.configurationError !== undefined) return Results.configurationFailure(resolved.configurationError);
             const why = resolved.detail === undefined ? "" : `: ${ErrorDetail.preview(resolved.detail)}`;
             return Results.failure(
                 "scheme:exec",
@@ -287,6 +302,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 },
             ) as ExecResult;
         }
+
+        this.#prepareExecution();
 
         const registry = core.executors.toolRegistry(runtime, core.workspaceId);
         const exactTarget = route.target === null ? null : route.target.raw;
@@ -425,13 +442,14 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         // where its executor must be able to read it; a directory the daemon cannot create or
         // write refuses here, never mid-run.
         if (resourceSource !== null && execTarget !== null) {
-            const unavailable = await this.#scratch.unavailable();
+            const scratch = this.#sourceScratch();
+            const unavailable = await scratch.unavailable();
             if (unavailable !== null) {
                 return refuse(
                     "scratch-unavailable",
-                    `The execution scratch directory \`${this.#scratch.directory}\` named by ${ExecScratch.KNOB} cannot be created or written (${unavailable}), so the ${runtime} source \`${execTarget.raw}\` cannot be realized.`,
+                    `The execution scratch directory \`${scratch.directory}\` named by ${ExecScratch.KNOB} cannot be created or written (${unavailable}), so the ${runtime} source \`${execTarget.raw}\` cannot be realized.`,
                     `The operator points ${ExecScratch.KNOB} at a writable absolute directory the ${runtime} executor can also read; meanwhile, target a program file the executor can reach, or put the command beneath a ${runtime} heading with no target.`,
-                    { target: execTarget.raw, scratch: this.#scratch.directory, configuration: ExecScratch.KNOB },
+                    { target: execTarget.raw, scratch: scratch.directory, configuration: ExecScratch.KNOB },
                 );
             }
         }
@@ -637,6 +655,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         result?: object;
     }> {
         const core = this.coreContext(ctx);
+        const execution = this.#prepareExecution();
         const attrs = args.attrs as Partial<ExecAttrs>;
         const body = typeof attrs.body === "string" ? attrs.body : "";
         const pathname = attrs.pathname;
@@ -703,7 +722,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             if (source.nativePath !== null) {
                 target = source.nativePath;
             } else {
-                tempPath = this.#scratch.path(extname(sourceTarget.pathname)); // {§exec-scratch-directory}
+                tempPath = this.#sourceScratch().path(extname(sourceTarget.pathname)); // {§exec-scratch-directory}
                 await writeFile(tempPath, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
                 target = tempPath;
             }
@@ -719,7 +738,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             throw new InvalidOperationResultError("An accepted execution proposal has no executor registry.");
         }
         const resolved = core.executors.entry(runtime, core.workspaceId);
-        if (resolved === undefined) {
+        if (resolved === undefined || !resolved.available) {
             throw new InvalidOperationResultError(`The '${runtime}' executor disappeared after its proposal.`);
         }
         // {§executor-effect}, {§exec-hold-until-concluded}, #107: the admitted
@@ -778,13 +797,13 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             unlink = (): void => parent.removeEventListener("abort", onParentAbort);
             if (parent.aborted) controller.abort(ExecAbort.teardownReason());
         }
-        const input = new ExecutionInput(controller.signal, this.#inputTimeoutMs);
+        const input = new ExecutionInput(controller.signal, execution.inputTimeoutMs);
         this.#activeAborts.set(subscriptionId, { workspaceId: core.workspaceId, workerId: core.workerId, turnId: core.turnId, pathname, runtime, effect, controller, unlink, detached: attrs.detached === true, input, invocation, executor: resolved.executor });
         this.liveSubscriptions().register(subscriptionId, {
             cancel: () => controller.abort(ExecAbort.teardownReason()),
         });
 
-        const admission = this.#scheduler.admit(core.workspaceId, controller.signal);
+        const admission = execution.scheduler.admit(core.workspaceId, controller.signal);
         const tail = admission.ready.then(async (release) => {
             try {
                 return await this.#runExecutor({

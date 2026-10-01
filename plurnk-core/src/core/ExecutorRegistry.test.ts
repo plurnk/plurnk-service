@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ExecutorRegistry, { type Executor } from "./ExecutorRegistry.ts";
 import type { PluginAttributionContext } from "@plurnk/plurnk-meta";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 import type { SchemeManifest } from "./scheme-types.ts";
 
 const attributionContext = (attempt: number): PluginAttributionContext => ({
@@ -169,14 +170,14 @@ test("{§module-workspace-capabilities} workspace runtime snapshots isolate equa
 
     assert.deepEqual(registry.availableRuntimes(1), ["gitea", "sh"]);
     assert.deepEqual(registry.availableRuntimes(2), ["sh"]);
-    assert.equal(registry.entry("gitea", 1)?.executor.runtime, "gitea");
+    assert.equal(registry.entry("gitea", 1)?.executor?.runtime, "gitea");
     assert.equal(registry.entry("gitea", 2), undefined);
 
     registry.prepareWorkspaceRegistrations(2, "mcp", [{
         tag: "gitea",
         entry: workspaceEntry("gitea", "mcp"),
     }])();
-    assert.equal(registry.entry("gitea", 2)?.executor.runtime, "gitea");
+    assert.equal(registry.entry("gitea", 2)?.executor?.runtime, "gitea");
 
     const rollbackRemoval = registry.prepareWorkspaceRegistrations(1, "mcp", [])();
     assert.equal(registry.entry("gitea", 1), undefined, "empty owner snapshot removes only that workspace face");
@@ -273,10 +274,45 @@ test("{§plugin-trust-boundary}: build() notes untrusted packages that discovery
     assert.match(warnings[0], /@acme\/acme-execs-cobol.*untrusted.*not registered/, "the note names the package + why");
 });
 
-test("{§executor-probe} an unavailable configured default fails boot", async () => {
-    await assert.rejects(
-        () => ExecutorRegistry.build({ discoverFn: oneTwoTagPackage, load: loadFake, defaultRuntime: "beta" }),
-        /default runtime 'beta' is unavailable.*not on PATH/s,
-        "a default that probes unavailable per-tag is surfaced, not hidden",
-    );
+test("{§executor-probe} startup requires no particular executor or replacement runtime", async () => {
+    const registry = await ExecutorRegistry.build({ discoverFn: oneTwoTagPackage, load: loadFake });
+    assert.equal(registry.entry("sh"), undefined);
+    assert.equal(registry.entry("beta")?.available, false);
+    assert.equal(registry.entry("beta")?.detail, "not on PATH");
+    assert.deepEqual(registry.availableRuntimes(), ["alpha"]);
+});
+
+for (const stage of ["construction", "probe"] as const) {
+    test(`{§configuration-repair-path} executor ${stage} configuration failures preserve the declaration and other tags`, async () => {
+        const cause = new ConfigurationError("PLURNK_FIXTURE_REQUIRED", "PLURNK_FIXTURE_REQUIRED must name a configured endpoint.");
+        class ConfiguredExecutor extends FakeExecutor {
+            constructor(metadata: { runtime: string }) {
+                super(metadata);
+                if (this.runtime === "beta" && stage === "construction") throw cause;
+            }
+            override async probe() {
+                if (this.runtime === "beta") throw cause;
+                return super.probe();
+            }
+        }
+        const registry = await ExecutorRegistry.build({ discoverFn: oneTwoTagPackage, load: async () => ({ default: ConfiguredExecutor }) });
+        assert.deepEqual(registry.availableRuntimes(), ["alpha"]);
+        const unavailable = registry.entry("beta");
+        assert.ok(unavailable, "a misconfigured declaration remains inspectable, not silently omitted");
+        assert.equal(unavailable.available, false);
+        assert.equal(unavailable.executor, null, "there is no placeholder executable");
+        assert.equal(unavailable.detail, cause.message);
+        assert.equal(unavailable.configurationError, cause);
+        assert.deepEqual(registry.configurationErrors(), [{ runtime: "beta", error: cause }]);
+        assert.equal(registry.toolRegistry("beta"), null);
+        assert.deepEqual(registry.attributions(attributionContext(1)), []);
+    });
+}
+
+test("{§configuration-repair-path} internal executor construction failures are not configuration recovery", async () => {
+    const cause = new TypeError("broken executor implementation");
+    await assert.rejects(ExecutorRegistry.build({
+        discoverFn: oneTwoTagPackage,
+        load: async () => ({ default: class { constructor() { throw cause; } } }),
+    }), (error: unknown) => error === cause);
 });

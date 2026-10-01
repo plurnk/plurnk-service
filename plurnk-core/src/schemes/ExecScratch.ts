@@ -3,6 +3,7 @@ import { access, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import HostPaths from "../core/HostPaths.ts";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
 
 // {§exec-scratch-directory} — the one directory a standalone execution source is written to for
 // its run. Empty derives the XDG runtime directory, else the platform temporary directory.
@@ -14,7 +15,7 @@ export default class ExecScratch {
         const configured = env[ExecScratch.KNOB];
         if (configured === undefined || configured.length === 0) return paths.runtimeDir ?? tmpdir();
         const expanded = paths.expandUserPath(configured);
-        if (!isAbsolute(expanded)) throw new RangeError(`${ExecScratch.KNOB} must be an absolute directory path.`);
+        if (!isAbsolute(expanded)) throw new ConfigurationError(ExecScratch.KNOB, `${ExecScratch.KNOB} must be an absolute directory path.`);
         return resolve(expanded);
     }
 

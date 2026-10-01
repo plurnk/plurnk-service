@@ -18,7 +18,7 @@ import Meta, {
     type PluginAttributionContext,
 } from "@plurnk/plurnk-meta";
 import type { SchemeManifest } from "./types.ts";
-import { Knob } from "@plurnk/plurnk-meta";
+import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 
 // The executor contract surface we consume (a BaseExecutor subclass). We bind
 // to the contract, not the framework's class identity. Under {§executor-scheme-output}, the executor is also
@@ -74,7 +74,16 @@ export interface RegistryEntry {
     readonly expandTools?: boolean;
     readonly available: boolean;
     readonly detail: string | undefined;
+    readonly configurationError?: never;
 }
+
+// A declaration can survive configuration failure without inventing an executor instance.
+export type ExecutorEntry = RegistryEntry | (Omit<RegistryEntry, "executor" | "available" | "detail" | "configurationError"> & {
+    readonly executor: null;
+    readonly available: false;
+    readonly detail: string;
+    readonly configurationError: ConfigurationError;
+});
 
 export interface RuntimeRegistryRegistration {
     readonly tag: string;
@@ -90,12 +99,12 @@ export interface RuntimeRegistryRegistration {
 // so per-tag costs nothing. A probe that rejects or exceeds its timeout
 // degrades that tag to unavailable — it never crashes boot. {§exec-registry-resolves}
 export default class ExecutorRegistry {
-    readonly #byTag: Map<string, RegistryEntry>;   // own copy — runtime registration mutates it in place
+    readonly #byTag: Map<string, ExecutorEntry>;   // own copy — runtime registration mutates it in place
     readonly #workspaceByOwner = new Map<number, Map<string, Map<string, RegistryEntry>>>();
     readonly #packageAttributions: PackageAttributions;
     readonly #toolRegistries = new WeakMap<Executor, RuntimeToolRegistry | null>();
 
-    constructor(byTag: ReadonlyMap<string, RegistryEntry>, packageAttributions: PackageAttributions = new Map()) {
+    constructor(byTag: ReadonlyMap<string, ExecutorEntry>, packageAttributions: PackageAttributions = new Map()) {
         for (const [tag, entry] of byTag) ExecutorRegistry.#assertDeclaration(tag, entry);
         this.#byTag = new Map(byTag);
         this.#packageAttributions = new Map(packageAttributions);
@@ -215,7 +224,8 @@ export default class ExecutorRegistry {
             : `daemon module runtime '${owner.name}'`;
     }
 
-    static #assertDeclaration(tag: string, entry: RegistryEntry): void {
+    static #assertDeclaration(tag: string, entry: ExecutorEntry): void {
+        if (entry.executor === null) return;
         if (typeof entry.summary !== "string" && entry.executor.toolRegistry === undefined) {
             throw new Error(
                 `executor tag '${tag}' derives its summary from tools but exposes no exact tool registry`,
@@ -234,7 +244,7 @@ export default class ExecutorRegistry {
         for (const { executor, namespaceOwner } of this.#byTag.values()) {
             if (namespaceOwner.kind !== "package") continue;
             const sources = packageSources.get(namespaceOwner.name) ?? new Set<Executor>();
-            sources.add(executor);
+            if (executor !== null) sources.add(executor);
             packageSources.set(namespaceOwner.name, sources);
         }
         const lists: PluginAttribution[] = [];
@@ -248,8 +258,7 @@ export default class ExecutorRegistry {
         return Meta.composeAttributions(...lists);
     }
 
-    static async build({ defaultRuntime = null, probeTimeoutMs = Knob.integer("PLURNK_SERVICE_EXEC_PROBE_TIMEOUT_MS", 1), cwd, discoverFn, load = (name: string): Promise<unknown> => import(name) }: {
-        defaultRuntime?: string | null;
+    static async build({ probeTimeoutMs, cwd, discoverFn, load = (name: string): Promise<unknown> => import(name) }: {
         probeTimeoutMs?: number;
         cwd?: string;   // discovery root — the dir whose node_modules holds the exec plugins
         discoverFn?: () => Promise<{
@@ -277,43 +286,37 @@ export default class ExecutorRegistry {
         // Probe per-TAG: one executor instance per tag (this.runtime = the tag),
         // each probed on its own merits. import() is module-cached, so
         // re-importing a package once per tag is free.
-        const probed = await Promise.all(infos.map(async (info) => {
-            const mod = await load(info.packageName) as { default: new (metadata: ExecutorMetadata) => Executor };
-            const executor = new mod.default({ runtime: info.runtime, glyph: info.glyph });
-            const availability = await ExecutorRegistry.#probe(executor, probeTimeoutMs);
-            return { info, executor, availability };
-        }));
-
-        const byTag = new Map<string, RegistryEntry>();
-        for (const { info, executor, availability } of probed) {
-            byTag.set(info.runtime, {
-                executor,
-                namespaceOwner: { kind: "package", name: info.packageName },
+        const probed = await Promise.all(infos.map(async (info): Promise<readonly [string, ExecutorEntry]> => {
+            const declaration = {
+                namespaceOwner: { kind: "package" as const, name: info.packageName },
                 glyph: info.glyph,
                 summary: info.summary,
                 invocation: info.invocation,
                 details: info.details,
                 ...(info.resourcesPath === undefined ? {} : { resourcesPath: info.resourcesPath }),
                 ...(info.expandTools === undefined ? {} : { expandTools: info.expandTools }),
-                available: availability.available,
-                detail: availability.detail,
-            });
-        }
-
-        ExecutorRegistry.#assertDefaultUsable(byTag, defaultRuntime);
-        return new ExecutorRegistry(byTag, packageAttributions);
+            };
+            try {
+                const timeoutMs = probeTimeoutMs ?? ExecutorRegistry.validateConfiguration();
+                const mod = await load(info.packageName) as { default: new (metadata: ExecutorMetadata) => Executor };
+                const executor = new mod.default({ runtime: info.runtime, glyph: info.glyph });
+                const availability = await ExecutorRegistry.#probe(executor, timeoutMs);
+                return [info.runtime, { ...declaration, executor, available: availability.available, detail: availability.detail }];
+            } catch (cause) {
+                if (!(cause instanceof ConfigurationError)) throw cause;
+                return [info.runtime, { ...declaration, executor: null, available: false, detail: cause.message, configurationError: cause }];
+            }
+        }));
+        return new ExecutorRegistry(new Map(probed), packageAttributions);
     }
 
-    // A configured default runtime that can't run is an operator misconfig the
-    // boot must surface, not hide behind a silent fallback.
-    static #assertDefaultUsable(byTag: ReadonlyMap<string, RegistryEntry>, defaultRuntime: string | null): void {
-        if (defaultRuntime === null) return;
-        const entry = byTag.get(defaultRuntime);
-        if (entry === undefined) throw new Error(`exec default runtime '${defaultRuntime}' has no installed executor`);
-        if (!entry.available) {
-            const why = entry.detail === undefined ? "" : `: ${entry.detail}`;
-            throw new Error(`exec default runtime '${defaultRuntime}' is unavailable${why}`);
-        }
+    static validateConfiguration(): number {
+        return Knob.integer("PLURNK_SERVICE_EXEC_PROBE_TIMEOUT_MS", 1);
+    }
+
+    configurationErrors(): ReadonlyArray<{ runtime: string; error: ConfigurationError }> {
+        return [...this.#byTag].flatMap(([runtime, entry]) => entry.configurationError === undefined
+            ? [] : [{ runtime, error: entry.configurationError }]);
     }
 
     // probe() may reject or hang; bound it and treat either as unavailable.
@@ -329,13 +332,14 @@ export default class ExecutorRegistry {
             // so a slow --version write cannot EPIPE after the host tears down ({§executor-probe}).
             return await Promise.race([executor.probe(controller.signal), timeout]);
         } catch (error) {
+            if (error instanceof ConfigurationError) throw error;
             return { available: false, detail: error instanceof Error ? error.message : String(error) };
         } finally {
             controller.abort();
         }
     }
 
-    entry(tag: string, workspaceId?: number): RegistryEntry | undefined {
+    entry(tag: string, workspaceId?: number): ExecutorEntry | undefined {
         if (workspaceId !== undefined) {
             for (const entries of this.#workspaceByOwner.get(workspaceId)?.values() ?? []) {
                 const entry = entries.get(tag);
@@ -350,7 +354,7 @@ export default class ExecutorRegistry {
     // runtime's static invocation declaration is authoritative.
     toolRegistry(tag: string, workspaceId?: number): RuntimeToolRegistry | null {
         const entry = this.entry(tag, workspaceId);
-        if (entry === undefined || entry.executor.toolRegistry === undefined) return null;
+        if (entry === undefined || entry.executor === null || entry.executor.toolRegistry === undefined) return null;
         const cached = this.#toolRegistries.get(entry.executor);
         if (cached !== undefined || this.#toolRegistries.has(entry.executor)) return cached ?? null;
         const registry = RuntimeInvocation.assertToolRegistry(

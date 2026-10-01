@@ -38,7 +38,7 @@ const boot = async (capabilities: CapabilityPolicy = {}) => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
-    engine.setExecutors(await ExecutorRegistry.build({ defaultRuntime: "sh", cwd: process.cwd() }));
+    engine.setExecutors(await ExecutorRegistry.build({ cwd: process.cwd() }));
     engine.registerRuntimes([{
         tag: "question",
         entry: {

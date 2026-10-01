@@ -71,7 +71,7 @@ export default class CapabilityResolver {
             const route = execRouteOf(statement);
             const runtime = route.runtime;
             const entry = executors?.entry(runtime, workspaceId);
-            if (entry === undefined) return [];
+            if (entry === undefined || !entry.available) return [];
             const registry = executors?.toolRegistry(runtime, workspaceId) ?? null;
             const target = route.target === null ? null : route.target.raw;
             const tool = registry?.tools.find((candidate) => candidate.target === target)?.target ?? null;

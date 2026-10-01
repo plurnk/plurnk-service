@@ -11,6 +11,7 @@ import type { OutsideEventPayload } from "../core/OutsideEvent.ts";
 import Paths from "../Paths.ts";
 import Engine from "../core/Engine.ts";
 import ExecutorRegistry from "../core/ExecutorRegistry.ts";
+import Exec from "../schemes/Exec.ts";
 import SchemeRegistry from "../core/SchemeRegistry.ts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { RuntimeDeclaration } from "@plurnk/plurnk-execs";
@@ -108,6 +109,8 @@ export default class Daemon implements ApplicationPort {
         LoopPolicies.validateConfiguration();
         retentionPolicy();
         PacketBuilder.validateConfiguration();
+        Exec.validateConfiguration();
+        ExecutorRegistry.validateConfiguration();
     }
 
     static validateWorkspaceConfiguration(): void {
@@ -1579,6 +1582,7 @@ export default class Daemon implements ApplicationPort {
         await this.#configuration.capture("effect-policy", () => EffectPolicy.validateConfiguration());
         await this.#configuration.capture("loop-policy", () => LoopPolicies.validateConfiguration());
         await this.#configuration.capture("packet", () => PacketBuilder.validateConfiguration());
+        await this.#configuration.capture("execution", () => Exec.validateConfiguration());
         this.#retention = await this.#configuration.capture("retention", () => new Retention(this.#db, retentionPolicy()));
         this.#started = true;
         // {§db-space-reclamation} — the file is brought to the policy's auto-vacuum mode before any work.
@@ -1599,9 +1603,11 @@ export default class Daemon implements ApplicationPort {
         }
 
         // Discover + probe the installed executor siblings, then hand the
-        // registry to the engine for exec dispatch ({§exec-registry-resolves}). The
-        // shell is the default runtime, so its executor must boot usable.
-        const executors = await ExecutorRegistry.build({ defaultRuntime: "sh", cwd: this.#discoveryCwd });
+        // registry to the engine for exec dispatch ({§exec-registry-resolves}).
+        const executors = await ExecutorRegistry.build({ cwd: this.#discoveryCwd });
+        for (const { runtime, error } of executors.configurationErrors()) {
+            this.#configuration.record(`executor:${runtime}`, error);
+        }
         this.#engine.setExecutors(executors);
         this.#engine.setFunctionalityDocuments((workspaceId) => this.#functionality.documents(workspaceId));
         // {§question-tool} — the native request-user-input runtime, process-wide;

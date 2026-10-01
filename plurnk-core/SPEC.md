@@ -3054,13 +3054,15 @@ the workspace snapshot. Installed siblings form the immutable base:
 they are discovered and probed at startup, and availability is cached.
 Workspace Functionality providers may atomically overlay additional names under
 {§module-workspace-capabilities}; a name has one owner within a workspace, while
-independent workspaces may use the same name. An absent or empty tag selects
-`sh`; a non-empty tag selects exactly that registered executable tool. Unknown
-tags are refused 501 with the advertised catalogue and are never reinterpreted
-as shell command words. The common mistaken `[shell]` alias is narrowly told to
-omit that signal for the default shell; arbitrary unknown tags receive no guessed
-alternative intent. An unavailable runtime is also 501 and carries the probe
-`detail`.
+independent workspaces may use the same name. The fence name selects exactly
+that registered executable tool. Unknown tags are refused 400 with the
+advertised catalogue and are never reinterpreted as shell command words.
+A runtime unavailable after an ordinary probe is 501 with the probe `detail`.
+Typed configuration failures preserve the declaration, with no executor instance
+or output scheme; invocation returns the exact 503 configuration Problem
+({§configuration-repair-path}). No executor, including `sh`, is required for
+daemon startup. Internal constructor defects remain failures, not unavailable
+configuration verdicts.
 
 For a family runtime, `ExecutorRegistry.toolRegistry(tag, workspaceId)`
 validates the one executor-owned snapshot used by packet presentation,
@@ -4211,6 +4213,8 @@ composition boundaries, not arbitrary exceptions:
 | Invalid effect, file-creation, or loop-default policy | Retain the startup diagnostic. Reject the affected operation or unresolved loop policy as `daemon:configuration/configuration-invalid` (503); no guessed admission policy, external effect, or orphan approval wait. Independent operations and explicitly supplied valid loop policies remain usable. |
 | Invalid retention configuration | Withhold collection and automatic storage conversion, including shutdown collection. Preserve stored evidence and expose the diagnostic; do not substitute a deletion policy. |
 | Invalid packet configuration or retired capacity knobs | Retain the startup diagnostic and keep client inspection available. Reject affected packet construction before inference with `daemon:configuration/configuration-invalid` (503). Never guess a capacity or projection setting. |
+| Invalid executor construction/probe configuration | Keep the installed declaration and its diagnostic, but no executable instance or output scheme. Other executors and ordinary READ/EDIT remain usable. Invoking the unavailable tag returns its exact 503 configuration Problem. |
+| Invalid execution scheduling, input, or scratch configuration | Diagnose at startup and validate on the affected execution path before admission, stream creation, or external effects. Scratch configuration applies only to resource-backed execution; inline programs remain independent. Never substitute concurrency, timeout, or directory settings. |
 | Invalid model-alias catalog | Fail catalog inspection explicitly; omit its unavailable snapshot rather than report an empty catalog. Exact provider/model selection does not depend on aliases. |
 | Offline `config check` | Validate the same inputs without activating integrations; an invalid setting remains a nonzero failure. |
 | Family configuration cannot be resolved | Keep its manager available, identify the configuration failure in its generated documentation, and preserve durable definitions. Do not publish the family's operational capabilities or pretend its catalog is empty. Other families and ordinary model work remain usable. |

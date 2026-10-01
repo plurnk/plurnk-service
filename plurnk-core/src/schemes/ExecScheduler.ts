@@ -1,3 +1,5 @@
+import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
+
 type Release = () => void;
 
 type Waiter = {
@@ -22,11 +24,11 @@ const isConcurrency = (value: number): boolean =>
     value === -1 || (Number.isSafeInteger(value) && value >= 1);
 
 export const readExecConcurrency = (env: NodeJS.ProcessEnv = process.env): number => {
-    const raw = env.PLURNK_SERVICE_EXEC_CONCURRENCY;
-    const value = raw === undefined || raw.trim().length === 0 ? Number.NaN : Number(raw);
+    const key = "PLURNK_SERVICE_EXEC_CONCURRENCY";
+    const value = Knob.integer(key, -1, env);
     if (isConcurrency(value)) return value;
-    throw new RangeError(
-        `PLURNK_SERVICE_EXEC_CONCURRENCY must be -1 (unbounded) or a positive safe integer; got ${JSON.stringify(raw)}.`,
+    throw new ConfigurationError(
+        key, `${key} must be -1 (unbounded) or a positive safe integer.`,
     );
 };
 

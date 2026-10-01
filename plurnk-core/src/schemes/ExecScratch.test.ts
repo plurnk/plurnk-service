@@ -21,7 +21,8 @@ test("{§exec-scratch-directory}: without XDG_RUNTIME_DIR the platform temporary
 
 test("{§exec-scratch-directory}: a relative value fails by name", () => {
     assert.throws(() => ExecScratch.directory({ PLURNK_SERVICE_EXEC_SCRATCH: "scratch/here" }), {
-        name: "RangeError",
+        name: "ConfigurationError",
+        key: "PLURNK_SERVICE_EXEC_SCRATCH",
         message: "PLURNK_SERVICE_EXEC_SCRATCH must be an absolute directory path.",
     });
     assert.throws(() => new ExecScratch({ PLURNK_SERVICE_EXEC_SCRATCH: "./scratch" }), /PLURNK_SERVICE_EXEC_SCRATCH/u);

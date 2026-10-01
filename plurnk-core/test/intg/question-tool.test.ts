@@ -27,7 +27,7 @@ for (const target of [null, "question", "user"]) test(`{§question-tool}: dispat
     const schemes = new SchemeRegistry();
     const exec = schemes.get("exec") as Exec;
     const engine = new Engine({ db, schemes });
-    engine.setExecutors(await ExecutorRegistry.build({ defaultRuntime: "sh", cwd: process.cwd() }));
+    engine.setExecutors(await ExecutorRegistry.build({ cwd: process.cwd() }));
     engine.registerRuntimes([{
         tag: "question",
         entry: {

@@ -17,9 +17,13 @@ export default class ConfigurationDiagnostics {
             return await prepare();
         } catch (cause) {
             if (!(cause instanceof ConfigurationError)) throw cause;
-            this.#notices.push(ConfigurationDiagnostics.notice(family, cause));
+            this.record(family, cause);
             return null;
         }
+    }
+
+    record(family: string, cause: ConfigurationError): void {
+        this.#notices.push(ConfigurationDiagnostics.notice(family, cause));
     }
 
     notices(): readonly Notice[] {

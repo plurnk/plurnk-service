@@ -192,6 +192,7 @@ test("{§exec-target-routing} a bare target that is another runtime's registered
         available: true,
         detail: undefined,
     };
+    assert.ok(sh.available, "the shell fixture is available");
     const executors = new ExecutorRegistry(new Map<string, RegistryEntry>([["sh", sh], ["crm", familytool]]));
     const db = await openMigrated();
     try {

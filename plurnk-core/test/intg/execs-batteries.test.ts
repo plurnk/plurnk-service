@@ -56,8 +56,10 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
         const engine = new Engine({ db, schemes });
         const registry = await testExecutors();
         engine.setExecutors(registry);
-        const channel = registry.entry(tag)?.executor.defaultChannel ?? "stdout";
-        const declaredMimetype = registry.entry(tag)?.executor.channels[channel]?.mimetype;
+        const entry = registry.entry(tag);
+        assert.ok(entry?.available, `the ${tag} executor is available`);
+        const channel = entry.executor.defaultChannel;
+        const declaredMimetype = entry.executor.channels[channel]?.mimetype;
         const workspaceId = await insertWorkspace(db, `batt-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "batteries");
@@ -146,7 +148,7 @@ test("execs batteries: coverage census — every self-contained default-install 
     // Subprocess runtimes declare text/stream on stdout.
     const declMime = (tag: string): string | undefined => {
         const e = reg.entry(tag);
-        return e === undefined ? undefined : e.executor.channels[e.executor.defaultChannel]?.mimetype;
+        return e?.executor?.channels[e.executor.defaultChannel]?.mimetype;
     };
     assert.equal(declMime("sqlite"), "application/json", "sqlite results channel is application/json (single document)");
     assert.equal(declMime("jq"), "application/jsonl", "jq results channel is application/jsonl (newline-delimited stream)");

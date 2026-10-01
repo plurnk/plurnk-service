@@ -10,6 +10,131 @@ import { makeMockResponse, userText } from "./_mock.ts";
 import { waitFor } from "./_rpc.ts";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import ConfigurationDiagnostics from "../../src/server/ConfigurationDiagnostics.ts";
+import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
+import { BaseExecutor, type ExecArgs, type ExecutorMetadata } from "@plurnk/plurnk-execs";
+
+test("{§configuration-repair-path} a misconfigured installed executor leaves its sibling usable and its own invocation truthful", { timeout: 30_000 }, async (t) => {
+    const key = "PLURNK_FIXTURE_ENDPOINT";
+    const ran: string[] = [];
+    class FixtureExecutor extends BaseExecutor {
+        constructor(metadata: ExecutorMetadata) {
+            super(metadata);
+            if (this.runtime === "brokenfixture") throw new ConfigurationError(key, `${key} requires a configured endpoint.`);
+        }
+        get channels() { return { body: { mimetype: "text/plain" } }; }
+        async run(args: ExecArgs) {
+            ran.push(this.runtime);
+            args.write("body", "healthy executor output");
+            return { status: 200 };
+        }
+    }
+    const build = ExecutorRegistry.build.bind(ExecutorRegistry);
+    t.mock.method(ExecutorRegistry, "build", () => build({
+        discoverFn: async () => ({ registry: new Map(["healthyfixture", "brokenfixture"].map((runtime) => [runtime, {
+            runtime, glyph: "x", summary: `${runtime} fixture.`, details: "", packageName: "executor-fixture",
+            invocation: { body: { role: "input", required: true }, example: { body: "inspect" } },
+        }])) }),
+        load: async () => ({ default: FixtureExecutor }),
+    }));
+    const db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, `constructor-repair-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId, null, "repair", "model");
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [
+        makeMockResponse("````brokenfixture\ninspect\n````\n\n````healthyfixture\ninspect\n````"),
+        makeMockResponse("````KILL\nThe healthy executor worked; the other needs its endpoint configured.\n````"),
+    ] });
+    const daemon = new Daemon({ db, provider });
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    assert.ok(daemon.configurationNotices().some((notice) => notice.family === "executor:brokenfixture" && notice.key === key));
+    assert.equal(daemon.schemes.has("brokenfixture"), false, "no executable output scheme is invented");
+    assert.equal(daemon.schemes.has("healthyfixture"), true);
+    const ended: Array<{ loopId: number; result: OperationResult }> = [];
+    t.after(daemon.subscribeToEvents((_id, method, params) => {
+        if (method === "loop/terminated") ended.push(params as typeof ended[number]);
+    }));
+    const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect both executor outcomes.", policy: { proposals: "accept" } });
+    await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === started.loopId), { timeoutMs: 20_000 });
+    assert.equal(ended.find(({ loopId }) => loopId === started.loopId)?.result.status, 200);
+    assert.deepEqual(ran, ["healthyfixture"]);
+    assert.match(userText(provider.received[1]), /healthy executor output/u);
+    const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: started.loopId });
+    const failed = rows.find((row) => row.op === "brokenfixture");
+    assert.ok(failed);
+    const result = JSON.parse(failed.rx) as OperationResult;
+    assert.equal(result.status, 503);
+    assert.equal(result.problem?.key, key);
+});
+
+test("{§configuration-repair-path} invalid scratch configuration does not block an inline program", { timeout: 30_000 }, async (t) => {
+    const previous = process.env.PLURNK_SERVICE_EXEC_SCRATCH;
+    process.env.PLURNK_SERVICE_EXEC_SCRATCH = "relative";
+    t.after(() => {
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_EXEC_SCRATCH;
+        else process.env.PLURNK_SERVICE_EXEC_SCRATCH = previous;
+    });
+    const db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, `inline-repair-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId, null, "repair", "model");
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [
+        makeMockResponse("````sh\nprintf inline-still-works\n````"),
+        makeMockResponse("````KILL\nThe inline program worked.\n````"),
+    ] });
+    const daemon = new Daemon({ db, provider });
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    const ended: Array<{ loopId: number; result: OperationResult }> = [];
+    t.after(daemon.subscribeToEvents((_id, method, params) => {
+        if (method === "loop/terminated") ended.push(params as typeof ended[number]);
+    }));
+    const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Run an inline program.", policy: { proposals: "accept" } });
+    await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === started.loopId), { timeoutMs: 20_000 });
+    assert.equal(ended.find(({ loopId }) => loopId === started.loopId)?.result.status, 200);
+    assert.match(userText(provider.received[1]), /inline-still-works/u);
+});
+
+for (const [key, invocation] of [
+    ["PLURNK_SERVICE_EXEC_CONCURRENCY", "sh"],
+    ["PLURNK_SERVICE_EXEC_INPUT_TIMEOUT_MS", "sh"],
+    ["PLURNK_SERVICE_EXEC_PROBE_TIMEOUT_MS", "sh"],
+    ["PLURNK_SERVICE_EXEC_SCRATCH", "sh (worker:///program.sh)"],
+] as const) {
+    test(`{§configuration-repair-path} ${key} refuses the execution without blocking ordinary READ and EDIT`, { timeout: 30_000 }, async (t) => {
+        const previous = process.env[key];
+        process.env[key] = "invalid";
+        t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
+        const db = await openMigrated();
+        const workspaceId = await insertWorkspace(db, `executor-repair-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId, null, "repair", "model");
+        const provider = new Mock({ contextWindow: 1_000_000, responses: [
+            makeMockResponse(`\`\`\`\`${invocation}\nprintf should-not-run\n\`\`\`\`\n\n\`\`\`\`EDIT (worker:///repair.txt)\nrepair remains available\n\`\`\`\``),
+            makeMockResponse("````READ (worker:///repair.txt)\n````"),
+            makeMockResponse("````KILL\nOrdinary editing and inspection still work.\n````"),
+        ] });
+        const daemon = new Daemon({ db, provider });
+        t.after(async () => { await daemon.stop(); await db.close(); });
+        await daemon.start();
+        assert.ok(daemon.configurationNotices().some((notice) => notice.key === key), "the unavailable execution configuration is visible at startup");
+        const ended: Array<{ loopId: number; result: OperationResult }> = [];
+        t.after(daemon.subscribeToEvents((_id, method, params) => {
+            if (method === "loop/terminated") ended.push(params as typeof ended[number]);
+        }));
+        const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect and repair the configuration.", policy: { proposals: "accept" } });
+        await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === started.loopId), { timeoutMs: 20_000 });
+        assert.equal(ended.find(({ loopId }) => loopId === started.loopId)?.result.status, 200);
+        assert.equal(provider.received.length, 3);
+        assert.ok(userText(provider.received[0]).includes(key));
+        assert.match(userText(provider.received[2]), /repair remains available/u);
+        const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string; status_rx: number }>({ loop_id: started.loopId });
+        const execution = rows.find((row) => row.op === "sh");
+        assert.ok(execution, "the authored execution receives an ordinary operation result");
+        const result = JSON.parse(execution.rx) as OperationResult;
+        assert.equal(result.status, 503);
+        assert.equal(result.problem?.type, "https://problems.plurnk.xyz/daemon/configuration/configuration-invalid");
+        assert.equal(result.problem?.key, key);
+        assert.equal(rows.filter((row) => row.status_rx === 202).length, 0, "no pending proposal or stream is left behind");
+    });
+}
 
 for (const key of [
     "PLURNK_SERVICE_EFFECT_HOST", "PLURNK_SERVICE_FILE_CREATE_SCOPE", "PLURNK_SERVICE_ATTENDED",
