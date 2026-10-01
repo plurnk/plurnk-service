@@ -234,11 +234,9 @@ export interface DigestModel {
     };
 }
 
-// {§digest-cache-ledger} — one provider request's cacheable prefix beside what its provider reported.
-// `cacheableTokens` is null when the request's turn stores no valid packet or the provider reported no
-// input count; `cachedTokens` is null when the provider reported no cache field at all.
+// {§digest-cache-ledger} — provider counters and a separate, loop-local prefix estimate.
 export interface CacheLedgerEntry {
-    cacheableTokens: number | null;
+    adjacentPrefixTokensEstimate: number | null;
     cachedTokens: number | null;
     inputTokens: number | null;
 }

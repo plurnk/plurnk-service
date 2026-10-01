@@ -246,9 +246,6 @@ export default class DigestRender {
         return n;
     }
 
-    // {§digest-cache-ledger} — per provider request, keyed by request id: the character prefix it shares
-    // with the previous request of its loop, in the packet's own token estimate, beside the provider's
-    // reported cache read. Walked loop by loop so at most two prompts are held at once.
     // {§digest-edit-census}: the form an EDIT authored, read from its stored marker and pattern.
     static editForm(row: Pick<EditRow, "line_marker" | "pattern">): EditForm {
         if (row.pattern !== null) return "pattern";
@@ -321,6 +318,7 @@ export default class DigestRender {
 
     static #cacheLedgerCache = new WeakMap<DigestModel, Map<number, CacheLedgerEntry>>();
 
+    // {§digest-cache-ledger} — estimate adjacent prefixes with at most two prompts resident per loop.
     static cacheLedger(m: DigestModel): Map<number, CacheLedgerEntry> {
         const cached = DigestRender.#cacheLedgerCache.get(m);
         if (cached !== undefined) return cached;
@@ -337,18 +335,18 @@ export default class DigestRender {
             for (const request of m.requestsByLoop.get(loop.id) ?? []) {
                 const turn = turnsById.get(request.turn_id);
                 if (turn === undefined) throw new TypeError(`digest: provider request ${request.id} has no turn in scope`);
-                const text = promptOf(turn);
-                // The prefix share is ruler-agnostic; applied to the provider's own input count it sits in
-                // the same units as the reported cache read.
-                const cacheableTokens = text === null || request.usage_input === null
+                const text = request.kind === "emission" ? promptOf(turn) : null;
+                const adjacentPrefixTokensEstimate = text === null || request.usage_input === null
                     ? null
                     : previousText === undefined
                         ? 0
                         : previousText === null
                             ? null
-                            : Math.round(request.usage_input * contentWeight(text.slice(0, DigestRender.#commonPrefixLength(previousText, text))) / contentWeight(text));
+                            : text.length === 0
+                                ? 0
+                                : Math.round(request.usage_input * contentWeight(text.slice(0, DigestRender.#commonPrefixLength(previousText, text))) / contentWeight(text));
                 ledger.set(request.id, {
-                    cacheableTokens,
+                    adjacentPrefixTokensEstimate,
                     cachedTokens: request.usage_input_cache_read,
                     inputTokens: request.usage_input,
                 });
@@ -367,30 +365,28 @@ export default class DigestRender {
         return requests.map((request) => ledger.get(request.id)!);
     }
 
-    // {§digest-cache-ledger} — the turn's requests summed: `?` when any request reported no cache field.
+    // {§digest-cache-ledger} — sum each provider-reported counter; one absent quantity makes that sum unknown.
     static #cacheBadge(turn: TurnRow, m: DigestModel): string {
         const entries = DigestRender.#cacheEntries(m.requestsByTurn.get(turn.id) ?? [], m);
         if (entries.length === 0) return "";
         const sum = (values: Array<number | null>): string => values.some((value) => value === null)
             ? "?"
             : String(values.reduce<number>((total, value) => total + (value as number), 0));
-        return ` cache=${sum(entries.map((entry) => entry.cachedTokens))}/${sum(entries.map((entry) => entry.cacheableTokens))}`;
+        return ` cache=${sum(entries.map((entry) => entry.cachedTokens))}/${sum(entries.map((entry) => entry.inputTokens))}`;
     }
 
     // {§digest-cache-ledger} — one workspace line; unreported requests are named and left out of the percentage.
     static #cacheLine(requests: readonly ProviderRequestRow[], m: DigestModel): string {
-        const entries = DigestRender.#cacheEntries(requests, m).filter((entry) => entry.cacheableTokens !== null);
-        const withoutPacket = requests.length - entries.length;
-        const reported = entries.filter((entry) => entry.cachedTokens !== null);
+        const entries = DigestRender.#cacheEntries(requests, m);
+        const reported = entries.filter((entry) => entry.cachedTokens !== null && entry.inputTokens !== null);
         const unreported = entries.length - reported.length;
         const cached = reported.reduce((total, entry) => total + (entry.cachedTokens as number), 0);
-        const cacheable = reported.reduce((total, entry) => total + (entry.cacheableTokens as number), 0);
-        const pct = cacheable === 0 ? "n/a" : `${Math.round((100 * cached) / cacheable)}%`;
+        const input = reported.reduce((total, entry) => total + (entry.inputTokens as number), 0);
+        const pct = input === 0 ? "n/a" : `${((100 * cached) / input).toFixed(1)}%`;
         const plural = (n: number): string => n === 1 ? "request" : "requests";
         return [
-            `Cache: ${cached} of ${cacheable} cacheable tokens reported (${pct}) over ${reported.length} ${plural(reported.length)}`,
-            unreported > 0 ? `${unreported} unreported (cached=?)` : null,
-            withoutPacket > 0 ? `${withoutPacket} without a stored packet (excluded)` : null,
+            `Cache: ${cached} of ${input} reported input tokens read from cache (${pct}) over ${reported.length} ${plural(reported.length)}`,
+            unreported > 0 ? `${unreported} missing input or cache usage (excluded)` : null,
         ].filter((part) => part !== null).join(" · ");
     }
 
