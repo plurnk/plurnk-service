@@ -1,12 +1,31 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
+import { pinRuntime } from "./candidate-runtime.mjs";
 
 const root = resolve(import.meta.dirname, "..");
+
+test("{§operator-config-env-defaults} a pinned runtime retains the installed native configuration catalog", { timeout: 30_000 }, (t) => {
+    const fixture = mkdtempSync(resolve(tmpdir(), "plurnk-candidate-defaults-"));
+    t.after(() => rmSync(fixture, { recursive: true, force: true }));
+    const pinned = pinRuntime(root, resolve(fixture, "runtime"));
+    const env = {
+        ...process.env,
+        XDG_CONFIG_HOME: resolve(fixture, "config"),
+        PLURNK_SERVICE_ROOTS: "project",
+        PLURNK_PLUGINS_TRUSTED_ONLY: "1",
+    };
+    const catalog = (runtime) => execFileSync(process.execPath, [resolve(runtime, "plurnk-core/dist/service.js"), "config", "defaults"], {
+        env, encoding: "utf8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"],
+    });
+    const installed = catalog(root);
+    assert.match(installed, /# Plurnk installed configuration defaults/);
+    assert.equal(catalog(pinned), installed, "linking dependencies preserves every installed owner's panel");
+});
 
 test("candidate SIGTERM stops its client and daemon, runs and exports from its pinned runtime, and preserves the signal status", { timeout: 30_000 }, async (t) => {
     const fixture = mkdtempSync(resolve(tmpdir(), "plurnk-candidate-signal-"));

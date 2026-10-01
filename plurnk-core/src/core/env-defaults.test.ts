@@ -156,6 +156,42 @@ const addPlugin = async (dir: string, name: string, defaults: string): Promise<v
     await writeFile(join(dir, "ai.plurnk/plugin.mjs"), "export default {};");
 };
 
+for (const kind of ["module", "http-materializer"] as const) {
+    test(`{§operator-config-env-defaults} linked ${kind} defaults share their native code's canonical root`, async (t) => {
+        const { root, nm } = await scaffold();
+        t.after(() => rm(root, { recursive: true, force: true }));
+        const hostPaths = new HostPaths({ home: join(root, "home"), env: {} });
+        setting(t, "PLURNK_SERVICE_ROOTS", "project");
+        const plugin = join(root, "source");
+        const linked = join(nm, "example");
+        await addPlugin(plugin, "example", "PLUGIN_VALUE=linked\n");
+        await writeFile(join(plugin, "plugin.json"), JSON.stringify({
+            $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "example",
+            extensions: { "ai.plurnk": kind === "module"
+                ? { kind, module: "ai.plurnk/plugin.mjs" }
+                : { kind, materializers: [{ id: "example", module: "ai.plurnk/plugin.mjs" }] } },
+        }));
+        await symlink(plugin, linked, "dir");
+        const collect = () => EnvDefaults.collect(root, nm, { hostPaths });
+        const collected = await collect();
+        assert.deepEqual(collected.configurationErrors, []);
+        assert.deepEqual(collected.files.map(({ owner }) => owner), ["@plurnk/plurnk-service", "example"]);
+        assert.deepEqual(EnvDefaults.merge(collected.files).get("PLUGIN_VALUE"), { value: "linked", owner: "example" });
+
+        await rm(join(plugin, "ai.plurnk/.env.defaults"));
+        const absent = await collect();
+        assert.deepEqual(absent.configurationErrors, [], "a missing optional panel is not a containment failure");
+        assert.equal(EnvDefaults.merge(absent.files).has("PLUGIN_VALUE"), false);
+
+        await writeFile(join(root, "outside.env"), "PLUGIN_VALUE=escaped\n");
+        await symlink(join(root, "outside.env"), join(plugin, "ai.plurnk/.env.defaults"));
+        const escaped = await collect();
+        assert.equal(EnvDefaults.merge(escaped.files).has("PLUGIN_VALUE"), false);
+        assert.equal(escaped.configurationErrors.length, 1);
+        assert.match(escaped.configurationErrors[0].message, /native defaults resolve outside the plugin root/);
+    });
+}
+
 test("{§operator-config-env-defaults} native defaults follow the same root shadowing as native code", async (t) => {
     const { root, nm } = await scaffold();
     t.after(() => rm(root, { recursive: true, force: true }));

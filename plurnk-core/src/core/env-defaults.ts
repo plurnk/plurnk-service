@@ -98,10 +98,13 @@ export default class EnvDefaults {
     static async nativeFile(root: string, owner: string): Promise<EnvDefaultsFile | null> {
         const location = join(root, "ai.plurnk", ".env.defaults");
         try {
-            if (!await AgentPluginFiles.contained(root, location)) {
+            const canonical = await AgentPluginFiles.resolved(root);
+            if (canonical === null) throw new Error("plugin root is unavailable");
+            const directory = join(canonical, "ai.plurnk");
+            if (!await AgentPluginFiles.contained(canonical, join(directory, ".env.defaults"))) {
                 throw new Error("native defaults resolve outside the plugin root");
             }
-            return await EnvDefaults.#readDefaults(join(root, "ai.plurnk"), owner);
+            return await EnvDefaults.#readDefaults(directory, owner);
         } catch (cause) {
             throw new ConfigurationError(location, `${owner}: native .env.defaults is unavailable: ${(cause as Error).message}`, { cause });
         }

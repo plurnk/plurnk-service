@@ -3775,6 +3775,8 @@ Node's pre-script env-file form and the executable's post-script form share the 
 Root and trust flags apply before collection. A project plugin contributes no native panel.
 Non-module native panels follow their npm-only family discovery ({§plugin-manifest-read});
 a plain-folder declaration does not suppress an installed capability's panel.
+Linked packages resolve panels against the same canonical root as native code;
+an absent panel is optional, but a panel escaping that root is rejected.
 The file travels with its code and is its configuration reference. All admitted files compose
 one floor, applied set-if-unset beneath operator sources. `plurnk-service config defaults`
 renders those same owner-labelled files, preserving comments and optional declarations without
