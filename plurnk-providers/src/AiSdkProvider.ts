@@ -605,7 +605,7 @@ export default class AiSdkProvider implements Provider {
         });
     }
 
-    async generate({ messages, workerId, signal, grammar, maxOutputTokens, sampling, observeRequest, observeReasoning, yieldReasoning, callKind }: ProviderGenerateArgs): Promise<ProviderResponse> {
+    async generate({ messages, workerId, signal, grammar, maxOutputTokens, sampling, observeRequest, observeReasoning, callKind }: ProviderGenerateArgs): Promise<ProviderResponse> {
         // {§provider-interface} The worker identity is required.
         if (workerId === undefined || workerId.length === 0) throw new Error("generate: workerId is required — the worker's stable, opaque identity");
         if (callKind !== undefined && callKind !== "emission" && callKind !== "bare") {
@@ -697,43 +697,24 @@ export default class AiSdkProvider implements Provider {
         const executeAdmittedRequest = async () => {
             let requestReasoningStream = "";
             let structuredReasoning = false;
-            let yieldEnd: number | undefined;
-            const considerYield = (complete = false): void => {
-                if (!this.#streaming || yieldReasoning === undefined || yieldEnd !== undefined) return;
-                try {
-                    const end = yieldReasoning(requestReasoningStream, complete);
-                    if (end !== undefined && (!Number.isSafeInteger(end) || end <= 0 || end > requestReasoningStream.length)) {
-                        throw new TypeError("reasoning yield must select a nonempty prefix of observed reasoning");
-                    }
-                    yieldEnd = end;
-                } catch (cause) {
-                    throw new ProviderReasoningObserverError(cause);
-                }
-            };
             const envelopes = preserveGrammarSentence ? LeadingReasoning.TEMPLATE
                 : this.#reasoningResponseStyle === "think-tags" ? LeadingReasoning.THINK : [];
-            const observing = emitReasoning !== undefined || yieldReasoning !== undefined;
+            const observing = emitReasoning !== undefined;
             const liveProjection = observing && envelopes.length > 0 ? new LeadingReasoning(envelopes) : undefined;
             const observeRequestReasoning = !observing
                 ? undefined
                 : (delta: string): void => {
                     requestReasoningStream += delta;
                     emitReasoning?.(delta);
-                    considerYield();
                 };
             const observers = {
                 ...(observeRequestReasoning === undefined ? {} : { observeReasoning: (delta: string): void => {
                     structuredReasoning = true;
                     observeRequestReasoning(delta);
                 } }),
-                ...(yieldReasoning === undefined ? {} : {
-                    observeReasoningEnd: () => considerYield(true),
-                    shouldYield: () => yieldEnd !== undefined,
-                }),
                 ...(liveProjection === undefined ? {} : { observeText: (delta: string): void => {
                     if (!structuredReasoning) {
                         observeRequestReasoning!(liveProjection.push(delta));
-                        if (liveProjection.complete) considerYield(true);
                     }
                 } }),
             };
@@ -861,7 +842,7 @@ export default class AiSdkProvider implements Provider {
                 response.usage,
                 response.chargeEvidence,
             );
-            return { ...response, ...(response.yielded ? { reasoningYield: { end: yieldEnd! } } : {}) };
+            return response;
         };
 
         const executeRequest = async () => {
@@ -1053,7 +1034,6 @@ export default class AiSdkProvider implements Provider {
             assistantRaw: raw,
             accounting,
             capacity,
-            ...(raw.reasoningYield === undefined ? {} : { reasoningYield: raw.reasoningYield }),
             ...(grammarEvidence !== undefined ? { grammarEvidence } : {}),
             ...(raw.rawBody !== undefined ? { rawBody: raw.rawBody } : {}),
             ...(meta !== undefined ? { meta } : {}),

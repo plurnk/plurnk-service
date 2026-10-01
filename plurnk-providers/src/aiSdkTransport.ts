@@ -197,9 +197,7 @@ export type AiSdkTransportRequest = {
     streaming: boolean;
     captureRawBody: boolean;
     observeReasoning?: ProviderReasoningObserver;
-    observeReasoningEnd?: () => void;
     observeText?: (delta: string) => void;
-    shouldYield?: () => boolean;
     // {§repetition-stop}: stop the stream at a line repeated this many times; 0 disables.
     repeatedLineLimit?: number;
 };
@@ -237,7 +235,6 @@ export type AiSdkTransportResponse = {
     warnings: readonly CallWarning[];
     // {§repetition-stop}: the line that stopped the stream, when finishReason is "repetition".
     repetition?: { readonly line: string; readonly count: number };
-    yielded?: true;
 };
 
 type AiSdkModelRequest = Omit<AiSdkTransportRequest, "url" | "model" | "body" | "fetch"> & {
@@ -462,8 +459,7 @@ const executeModelOnce = async (
         if (attemptTimer !== null) clearTimeout(attemptTimer);
         if (firstContentTimer !== null) clearTimeout(firstContentTimer);
     };
-    const yieldController = new AbortController();
-    const signals = [request.signal, attemptDeadline?.signal, firstContentDeadline?.signal, yieldController.signal]
+    const signals = [request.signal, attemptDeadline?.signal, firstContentDeadline?.signal]
         .filter((signal): signal is AbortSignal => signal !== undefined);
     const abortSignal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
     const common = {
@@ -543,7 +539,6 @@ const executeModelOnce = async (
     const limit = request.repeatedLineLimit ?? 0;
     const guards = limit > 0 ? { text: new RepeatedLine(limit), reasoning: new RepeatedLine(limit) } : undefined;
     let repetition: { readonly line: string; readonly count: number } | null = null;
-    let yielded = false;
     try {
         for await (const part of result.fullStream) {
             if (part.type === "raw") {
@@ -563,19 +558,11 @@ const executeModelOnce = async (
                 request.observeReasoning?.(part.text);
                 repetition ??= guards?.reasoning.push(part.text) ?? null;
             }
-            if (part.type === "reasoning-end") request.observeReasoningEnd?.();
             if (part.type === "error") streamError ??= part.error;
-            if (streamError === undefined && request.shouldYield?.()) {
-                request.signal?.throwIfAborted();
-                yielded = true;
-                yieldController.abort();
-                break;
-            }
             // {§repetition-stop}: leaving the loop cancels the stream; what arrived is the response.
             if (repetition !== null) break;
         }
     } catch (error) {
-        if (yielded && !request.signal?.aborted) throw new Error("reasoning yield failed to close its transport", { cause: error });
         preserveStreamFailure(error, rawChunks, outputObserved);
         throw error;
     } finally {
@@ -586,17 +573,17 @@ const executeModelOnce = async (
         throw streamError;
     }
     request.signal?.throwIfAborted();
-    if (repetition !== null || yielded) {
+    if (repetition !== null) {
         const stopped = extractEvidence(rawChunks);
         const stoppedUsage = wireUsageEvidenceOf(rawChunks);
         const stoppedCharge = wireChargeEvidenceOf(rawChunks);
         return {
             model: typeof request.languageModel === "string" ? request.languageModel : request.languageModel.modelId,
-            content: yielded ? stopped.content || answer : answer,
+            content: answer,
             reasoning: stopped.reasoning || reasoningSoFar,
             reasoningProjected: stopped.reasoningProjected,
             wire: wireEmissionOf(rawChunks),
-            finishReason: yielded ? null : "repetition",
+            finishReason: "repetition",
             ...settledUsage(rawChunks, undefined),
             metadata: metadataOf(rawChunks),
             logprobs: stopped.logprobs,
@@ -607,7 +594,7 @@ const executeModelOnce = async (
             },
             ...(request.captureRawBody ? { rawBody: rawChunks } : {}),
             warnings: [],
-            ...(yielded ? { yielded: true } : { repetition: repetition! }),
+            repetition,
         };
     }
     const evidence = extractEvidence(rawChunks);
@@ -686,8 +673,6 @@ export const executeOpenAICompatible = async (
         streaming: request.streaming,
         captureRawBody: request.captureRawBody,
         ...(request.observeReasoning === undefined ? {} : { observeReasoning: request.observeReasoning }),
-        ...(request.observeReasoningEnd === undefined ? {} : { observeReasoningEnd: request.observeReasoningEnd }),
-        ...(request.shouldYield === undefined ? {} : { shouldYield: request.shouldYield }),
         ...(request.observeText === undefined ? {} : { observeText: request.observeText }),
         ...(request.repeatedLineLimit === undefined ? {} : { repeatedLineLimit: request.repeatedLineLimit }),
     });

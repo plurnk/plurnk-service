@@ -172,35 +172,8 @@ export default class PlurnkParser {
         const { result, lexer } = PlurnkParser.#run(input, (parser) => parser.statementSeq(), undefined, {}, "reasoning");
         return result.items.flatMap((item) => item.kind === "statement"
             && isReasoningOperation(item.statement.op)
-            && lexer.closedBlock(item.statement.position.line) !== null
+            && lexer.hasClosedBlock(item.statement.position.line)
             ? [item.statement as ReasoningOperation] : []);
-    }
-
-    // {§reasoning-yield}: the same lexer proves closure, quotation and the next heading.
-    // Lexer offsets are code points; the returned cut is a JavaScript string offset.
-    static reasoningBoundary(input: string, complete: boolean): { end?: number; pending: boolean } {
-        const { result, lexer, tokens } = PlurnkParser.#run(input, (parser) => parser.statementSeq(), undefined, {}, "reasoning");
-        const work = result.items.flatMap((item) => {
-            if (item.kind !== "statement" || (item.statement.op !== "READ" && item.statement.op !== "FIND")) return [];
-            const block = lexer.closedBlock(item.statement.position.line);
-            return block === null ? [] : [{ statement: item.statement, ...block }];
-        });
-        if (work.length === 0) return { pending: false };
-        const points = [...input];
-        let end = work[0]!.end;
-        const boundary = () => ({ end: points.slice(0, end).join("").length, pending: true });
-        for (;;) {
-            let cursor = end;
-            while (cursor < points.length && /\s/u.test(points[cursor]!)) cursor++;
-            if (cursor === points.length) return complete ? boundary() : { pending: true };
-            const next = tokens.find((token) => token.start === cursor);
-            if (next?.type !== plurnkLexer.OPEN_READ && next?.type !== plurnkLexer.OPEN_FIND) return boundary();
-            const operation = work.find(({ statement }) => statement.position.line === next.line);
-            if (operation === undefined) {
-                return complete || lexer.closedBlock(next.line) !== null ? boundary() : { pending: true };
-            }
-            end = operation.end;
-        }
     }
 
     // {§turn-shape} — no source operation is reported as its own fact, beside every diagnostic
@@ -275,7 +248,7 @@ export default class PlurnkParser {
         buildFn: (ctx: any) => S = ((ctx: any) => AstBuilder.build(ctx) as S),
         options: ParseOptions = {},
         tier: "statements" | "model" | "reasoning" = "statements",
-    ): { result: ParseResult<S>; lexer: plurnkLexer; tokens: Token[] } {
+    ): { result: ParseResult<S>; lexer: plurnkLexer } {
         const lexer = new plurnkLexer(CharStream.fromString(input));
         lexer.reasoning = tier === "reasoning";
         for (const name of options.executors ?? []) lexer.knownExecutors.add(name);
@@ -382,7 +355,7 @@ export default class PlurnkParser {
                 : item.kind === "text" ? item.position : item.error;
             items.sort((a, b) => position(a).line - position(b).line || position(a).column - position(b).column);
         }
-        return { result: { items, unparsedTail }, lexer, tokens };
+        return { result: { items, unparsedTail }, lexer };
     }
 
     // {§scope-on-scopeless} — the operation ran without the scope it cannot take; say which slots it has.

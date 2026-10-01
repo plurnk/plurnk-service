@@ -112,11 +112,10 @@ test("{§configuration-repair-path} retired service-side capacity knobs fail val
     }
 });
 
-test("{§reasoning-reboot-configuration} current panel keys and their aliases outrank retired-prefix diagnostics", () => {
+test("{§configuration-repair-path} current panel keys and their aliases outrank retired-prefix diagnostics", () => {
     assert.equal(PacketBuilder.validateConfiguration({
         PLURNK_SERVICE_PROMPT_PROJECTION: "25%",
-        PLURNK_SERVICE_REASONING_REBOOT: "1",
-        PLURNK_SERVICE_REASONING_REBOOT_local: "0",
+        PLURNK_SERVICE_PROMPT_PROJECTION_local: "30%",
     }), 0.25);
     assert.throws(() => PacketBuilder.validateConfiguration({
         PLURNK_SERVICE_PROMPT_PROJECTION: "25%",

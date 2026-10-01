@@ -1,6 +1,6 @@
 import type { RequestPacket } from "./StoredPacket.ts";
 import NativeContent from "./NativeContent.ts";
-import { PlurnkParser, ReasoningStream } from "@plurnk/plurnk-parser";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { PathSyntax, PlurnkParseError, TurnDisposition, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import LoopPolicyReader from "./LoopPolicyReader.ts";
 import { setTimeout as delay } from "node:timers/promises";
@@ -50,7 +50,6 @@ export const resolveOperatorGrammarPath = (value: string): string => {
 // drift between wire and digest possible.
 import PacketWire from "./packet-wire.ts";
 import ReasoningView from "./ReasoningView.ts";
-import ReasoningPolicy from "./ReasoningPolicy.ts";
 import Results, { OperationFailureError, type SchemeResult } from "./results.ts";
 import Turn, { type InferenceEvidence, type TurnRow } from "./Turn.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
@@ -332,7 +331,6 @@ type ProviderAttempts = {
     attributions: string[];
     readonly recoveryBudget: number;
     readonly recoveryBackoff: number;
-    readonly reasoningReboot: boolean;
     readonly signal: AbortSignal | undefined;
     readonly providerWorkerId: string;
     // {§turn-accounting-notice} (#465) — every physical exchange this turn pays
@@ -356,7 +354,6 @@ type ProviderEmission = {
 type ReasoningObserver = {
     readonly observeRequest: (...args: Parameters<ModelCall["observeRequest"]>) => ReturnType<ModelCall["observeRequest"]>;
     readonly observeReasoning: ((delta: string) => void) | undefined;
-    readonly yieldReasoning: ((reasoning: string, complete: boolean) => number | undefined) | undefined;
     readonly end: () => void;
 };
 
@@ -1082,7 +1079,6 @@ export default class TurnRunner {
     // Phase 4's bookkeeping: the wire request, the recovery knobs, the signal the
     // provider sees, the client id and the worker's provider identity.
     async #prepareProviderAttempts({ provider, workspaceId, workerId, loopId, signal }: TurnArgs, request: TurnRequest): Promise<ProviderAttempts> {
-        const reasoningReboot = ReasoningPolicy.reboot(provider);
         const wire = await this.#wireMessages(request.packet, request.systemCtx, provider);
         // {§provider-recovery} — this turn's recovery clock: the first recoverable provider
         // failure starts it; the budget and backoff are the operator's.
@@ -1109,7 +1105,6 @@ export default class TurnRunner {
             attributions: [],
             recoveryBudget,
             recoveryBackoff,
-            reasoningReboot,
             signal: providerSignal,
             providerWorkerId,
             turnWireAccounting: [],
@@ -1207,7 +1202,7 @@ export default class TurnRunner {
         }
         attempts.attemptId = attemptRow.id;
         attempts.callInFlight = true;
-        const reasoning = this.#reasoningObserver(args, request.turnId, modelCall, attempts.reasoningReboot);
+        const reasoning = this.#reasoningObserver(args, request.turnId, modelCall);
         let completedResponse: ProviderResponse;
         try {
             completedResponse = await this.#generate(args, request, attempts, modelCall, reasoning, strikeStreak);
@@ -1256,10 +1251,9 @@ export default class TurnRunner {
     // {§notifications-reasoning-event} — only the parent emission is conversational;
     // BARE has no observer on its isolated calls. Reasoning deltas cite the physical
     // request they stream in; a new request or the call's end closes the open span.
-    #reasoningObserver({ workspaceId, workerId, loopId }: TurnArgs, turnId: number, modelCall: ModelCall, reboot: boolean): ReasoningObserver {
+    #reasoningObserver({ workspaceId, workerId, loopId }: TurnArgs, turnId: number, modelCall: ModelCall): ReasoningObserver {
         let reasoningStarted = false;
         let reasoningRequestSequence = 0;
-        let reasoningStream = new ReasoningStream();
         const end = (): void => {
             if (!reasoningStarted) return;
             this.#notify.reasoningEventNotify!(workspaceId, {
@@ -1274,7 +1268,6 @@ export default class TurnRunner {
         };
         const observeRequest = async (...args: Parameters<ModelCall["observeRequest"]>) => {
             end();
-            reasoningStream = new ReasoningStream();
             const settle = await modelCall.observeRequest(...args);
             reasoningRequestSequence = modelCall.requestSequence;
             return settle;
@@ -1306,7 +1299,7 @@ export default class TurnRunner {
                     delta,
                 });
             };
-        return { observeRequest, observeReasoning, yieldReasoning: reboot ? (source, complete) => reasoningStream.inspect(source, complete) : undefined, end };
+        return { observeRequest, observeReasoning, end };
     }
 
     // The exchange under its GenAI span: the packet's observations are recorded, the
@@ -1330,7 +1323,6 @@ export default class TurnRunner {
                         grammar: attempts.railGrammar,
                         observeRequest: reasoning.observeRequest,
                         observeReasoning: reasoning.observeReasoning,
-                        yieldReasoning: reasoning.yieldReasoning,
                         callKind: "emission",
                     }); // {§provider-surface-generate} {§provider-guarantees-signal-wired} {§provider-guarantees-serial-attempts} {§attribution}
                     modelCall.assertAccounting(generated.accounting);
@@ -1834,7 +1826,6 @@ export default class TurnRunner {
 
     #splitResponse(response: ProviderAttempt, executors: readonly string[] = [], wellFormed?: BodyCheck, jsonBodyExecutors: readonly string[] = []): SplitProviderResponse {
         const { assistant } = response;
-        const yielded = response.reasoningYield;
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
         const ops: PlurnkStatement[] = [];
         const parseErrors: ParseErrorInfo[] = [];
@@ -1854,7 +1845,7 @@ export default class TurnRunner {
             const parsed = observedSync("contracts.parse", {}, (span) => {
                 // {§fence-heading-in-body} {§interstitial-fence} — the executors this workspace can run
                 // are heading tags to the parser; anything else tagged is a code block.
-                const result = PlurnkParser.parse(yielded === undefined ? assistant.content : "", { executors, jsonBodyExecutors, ...(wellFormed === undefined ? {} : { wellFormed }) });
+                const result = PlurnkParser.parse(assistant.content, { executors, jsonBodyExecutors, ...(wellFormed === undefined ? {} : { wellFormed }) });
                 span.setAttribute("statements", result.items.filter((item) => item.kind === "statement").length);
                 return result;
             });
@@ -1910,9 +1901,8 @@ export default class TurnRunner {
             }
         }
         const reasoning = assistant.reasoning ?? null;
-        const reasoningOps = reasoning === null ? [] : PlurnkParser.parseReasoningOperations(yielded === undefined ? reasoning : reasoning.slice(0, yielded.end));
+        const reasoningOps = reasoning === null ? [] : PlurnkParser.parseReasoningOperations(reasoning);
         const reasoningWork = reasoningOps.filter(({ op }) => op !== "NOTE");
-        if (yielded !== undefined && reasoningWork.length === 0) throw new Error("reasoning yield admitted no fact-finding operation");
         const operationCount = contentStatementCount + reasoningWork.length;
         // {§reasoning-operations}: fact-finding is real work, even without a content program.
         if (reasoningWork.length > 0) {

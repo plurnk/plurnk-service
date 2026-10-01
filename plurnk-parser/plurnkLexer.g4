@@ -57,16 +57,11 @@ private blockEnd(required: boolean): BlockEnd | undefined {
     if (end === undefined && required) throw new Error(`fence pairing has no end for the block opened at ${this.openFenceStart}`);
     return end;
 }
-// {§reasoning-operations}: source code-point boundaries, excluding repaired/incomplete blocks.
-public closedBlock(line: number): { start: number; end: number } | null {
+// {§reasoning-operations}: only authored closures, never repaired/incomplete blocks.
+public hasClosedBlock(line: number): boolean {
     const pairing = this.fencePairing();
     const start = pairing.lineStarts[line - 1];
-    if (start === undefined) return null;
-    if (pairing.selfClosed.has(start)) return { start, end: pairing.lineStarts[line] ?? this.inputStream.size };
-    const end = pairing.ends.get(start);
-    return end?.kind === "closer"
-        ? { start, end: pairing.lineStarts[end.line + 1] ?? this.inputStream.size }
-        : null;
+    return start !== undefined && (pairing.selfClosed.has(start) || pairing.ends.get(start)?.kind === "closer");
 }
 private quotationHere(): boolean { return this.lineOnly ? this.fenceOpens() : this.fencePairing().quotations.has(this.lineStartOf(this.inputStream.index)); }
 private splitHere(): boolean { return !this.lineOnly && this.fencePairing().splits.has(this.lineStartOf(this.inputStream.index)); }

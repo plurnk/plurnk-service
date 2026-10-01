@@ -8,7 +8,6 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
-import { OperationFailureError } from "../../src/core/results.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { logEntries } from "./_packet.ts";
@@ -86,80 +85,6 @@ test("{§reasoning-operations}: admission is unconditional and the language defi
     }
 });
 
-test("{§reasoning-reboot-configuration}: invalid reboot control is a repairable configuration failure before inference", async () => {
-    const key = "PLURNK_SERVICE_REASONING_REBOOT";
-    const saved = process.env[key];
-    const db = await openMigrated();
-    try {
-        process.env[key] = "yes";
-        const workspaceId = await insertWorkspace(db, "invalid-reboot-control");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1);
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("KILL", "Done."), reasoning: null } }] });
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        await assert.rejects(engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] }), (error) => {
-            assert.ok(error instanceof OperationFailureError);
-            assert.equal(error.result.status, 503);
-            assert.equal(error.result.problem.key, key);
-            assert.match(error.message, /must be 0 or 1/u);
-            return true;
-        });
-        assert.equal(provider.received.length, 0);
-        process.env[key] = "1";
-        assert.equal((await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] })).status, 200,
-            "repairing the setting restores inference on the same engine");
-    } finally {
-        if (saved === undefined) delete process.env[key];
-        else process.env[key] = saved;
-        await db.close();
-    }
-});
-
-for (const [global, alias, reboot] of [["1", undefined, true], ["0", undefined, false], ["1", "0", false], ["0", "1", true]] as const) {
-    test(`{§reasoning-reboot-configuration}: global=${global}, alias=${alias} controls cutoff, not admission`, async () => {
-        const key = "PLURNK_SERVICE_REASONING_REBOOT";
-        const aliasKey = `${key}_reboottest`;
-        const saved = [process.env[key], process.env[aliasKey]];
-        const db = await openMigrated();
-        try {
-            process.env[key] = global;
-            if (alias === undefined) delete process.env[aliasKey];
-            else process.env[aliasKey] = alias;
-            const workspaceId = await insertWorkspace(db, "reasoning-reboot-control");
-            const workerId = await insertWorker(db, workspaceId, null, "alice");
-            const loopId = await insertLoop(db, workerId, 1);
-            await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "Observed fact." });
-            const reasoning = `${frame("READ (worker:///fact.txt)", null)}\n\nContinuing thought.\n${frame("NOTE", "After fact-finding.")}\n`;
-            const provider = new AiSdkProvider({ model: "fixture", url: "http://example.test/v1/chat/completions", contextWindow: 100_000,
-                fetchTimeoutMs: 5000, operationTimeoutMs: 5000, firstContentTimeoutMs: 0,
-                temperature: null, repeatPenalty: null, retryAttempts: 0, effort: { mode: "adaptive", budget: null },
-                fetch: async () => new Response([
-                    { choices: [{ index: 0, delta: { reasoning_content: reasoning } }] },
-                    { choices: [{ index: 0, delta: { content: frame("KILL", "A racing conclusion.") }, finish_reason: "stop" }] },
-                ].map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("") + "data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } }),
-            });
-            ProviderInstantiate.registerConfigurationScope(provider, "reboottest");
-            const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-            const result = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] });
-            assert.equal(result.status, 102, "reasoning READ still requires observation when reboot is off");
-            const calls = await db.test_model_calls.all<{ response: string }>({ turn_id: result.turnId });
-            assert.equal(calls.length, 1);
-            assert.equal(JSON.parse(calls[0]!.response).reasoningYield !== undefined, reboot);
-            const reads = await db.test_log_entries_by_worker_op_full.all<{ pathname: string; rx: string }>({ worker_id: workerId, op: "READ" });
-            assert.ok(reads.some(({ pathname, rx }) => pathname === "/fact.txt" && rx.includes("Observed fact.")));
-            const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: workerId });
-            assert.equal(sources.some(({ kind, content }) => kind === "note" && content === "After fact-finding."), !reboot,
-                "only disabling interruption admits the completed response's later NOTE");
-        } finally {
-            [key, aliasKey].forEach((name, index) => {
-                if (saved[index] === undefined) delete process.env[name];
-                else process.env[name] = saved[index];
-            });
-            await db.close();
-        }
-    });
-}
-
 for (const content of ["", frame("KILL", "The answer must await the facts.")]) {
     test(`{§reasoning-operations}: a reasoning READ is ordinary continuing work beside ${content === "" ? "empty content" : "completion"}`, async () => {
         const db = await openMigrated();
@@ -196,71 +121,104 @@ for (const content of ["", frame("KILL", "The answer must await the facts.")]) {
     });
 }
 
-test("{§reasoning-yield}: HTTP interruption admits one ordinary turn, retains evidence and resumes with its results", async () => {
+for (const tagged of [false, true]) test(`{§reasoning-operations}: ${tagged ? "tagged" : "structured"} HTTP reasoning completes with final usage before operations execute`, async () => {
     const db = await openMigrated();
-    const batch = [frame("NOTE", "Use the actual fact."), frame("FIND (worker:///fact.txt)", null), frame("READ (worker:///fact.txt) <1,-1>", null)].join("\n\n") + "\n";
-    const reasoning = batch + `\nNow I would speculate.\n${frame("NOTE", "This lookahead must not execute.")}\n`;
-    const racingContent = frame("EDIT (worker:///fact.txt)", "Unobserved edit must not run.");
+    const firstReasoning = frame("READ (worker:///fact.txt) <1,-1>", null) + "\n\nMore deliberation.\n";
+    const laterReasoning = frame("NOTE", "Retain the later thought.") + "\n\n" + frame("FIND (worker:///fact.txt)", null);
+    const content = frame("NOTE", "Content also survives.");
+    const charge = { kind: "charged", amount: { amount: "0.0123", currency: "USD" }, source: "fixture settlement" } as const;
     const requests: Array<{ messages: Array<{ role: string; content: unknown }> }> = [];
-    const disconnected = Promise.withResolvers<void>();
+    const observed = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let prematureClose = false;
     const server = createServer(async (request, response) => {
         const chunks = [];
         for await (const chunk of request) chunks.push(chunk);
         requests.push(JSON.parse(Buffer.concat(chunks).toString()));
         response.writeHead(200, { "Content-Type": "text/event-stream" });
+        response.on("close", () => { prematureClose ||= !response.writableEnded; });
         const emit = (delta: object, finish: string | null = null) => response.write(`data: ${JSON.stringify({
             id: `request-${requests.length}`, object: "chat.completion.chunk", created: 1, model: "fixture",
             choices: [{ index: 0, delta, finish_reason: finish }],
         })}\n\n`);
         if (requests.length === 1) {
-            response.on("close", () => disconnected.resolve());
-            emit({ reasoning_content: reasoning, content: racingContent });
+            emit(tagged ? { content: "<think>" + firstReasoning } : { reasoning_content: firstReasoning });
+            await release.promise;
+            emit(tagged ? { content: laterReasoning + "</think>" } : { reasoning_content: laterReasoning });
+            emit({ content }, "stop");
         } else {
             emit({ content: frame("KILL", "The fact is established.") }, "stop");
-            response.end("data: [DONE]\n\n");
         }
+        response.write(`data: ${JSON.stringify({
+            choices: [], charge, usage: { prompt_tokens: 120, completion_tokens: 40, total_tokens: 160,
+                prompt_tokens_details: { cached_tokens: 80 } },
+        })}\n\n`);
+        response.end("data: [DONE]\n\n");
     });
+    let running: ReturnType<Engine["runTurn"]> | undefined;
     try {
         server.listen(0, "127.0.0.1");
         await once(server, "listening");
         const address = server.address();
         assert.ok(address && typeof address === "object");
-        const workspaceId = await insertWorkspace(db, "yield-integration");
+        const workspaceId = await insertWorkspace(db, "reasoning-completion");
         const workerId = await insertWorker(db, workspaceId, null, "alice");
         const loopId = await insertLoop(db, workerId, 1);
         const context = { workspaceId, workerId, loopId };
         await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "Established fact." });
         const phases: string[] = [];
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
-            reasoningEventNotify: (_workspace, event) => { phases.push(event.phase); },
+            reasoningEventNotify: (_workspace, event) => {
+                phases.push(event.phase);
+                if (event.phase === "content") observed.resolve();
+            },
         });
         const provider = new AiSdkProvider({ model: "fixture", url: `http://127.0.0.1:${address.port}/v1/chat/completions`,
             contextWindow: 100_000, fetchTimeoutMs: 5000, operationTimeoutMs: 5000, firstContentTimeoutMs: 0,
             temperature: null, repeatPenalty: null, retryAttempts: 0, effort: { mode: "adaptive", budget: null }, rawBody: true,
+            normalizeCost: ({ charge: value }) => value as typeof charge | undefined,
+            ...(tagged ? { reasoningResponseStyle: "think-tags" as const } : {}),
         });
-        const first = await engine.runTurn({ ...context, provider, messages: [], signal: AbortSignal.timeout(3000) });
+        running = engine.runTurn({ ...context, provider, messages: [] });
+        await Promise.race([observed.promise, running.then(() => assert.fail("response ended before reasoning was observed"))]);
+        const pendingReads = await db.test_log_entries_by_worker_op_full.all<{ pathname: string }>({ worker_id: workerId, op: "READ" });
+        assert.deepEqual(pendingReads.filter(({ pathname }) => pathname === "/fact.txt"), [],
+            "streaming an operation does not dispatch it before response completion");
+        release.resolve();
+        const first = await running;
         assert.equal(first.status, 102);
-        await disconnected.promise;
-        assert.deepEqual(phases, ["start", "content", "end"]);
-        assert.deepEqual((await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: first.turnId })).map(({ accepted }) => accepted), [1]);
+        assert.equal(prematureClose, false, "a reasoning operation must not disconnect the provider request");
+        assert.deepEqual(phases, ["start", "content", "content", "end"]);
+        const accounting = await db.test_provider_requests.all<{ outcome: string; usage_input: number; usage_output: number; usage_input_cache_read: number; cost_kind: string; cost_amount: string; cost_currency: string }>({ turn_id: first.turnId });
+        assert.equal(accounting.length, 1, "one physical request, no retry or restart");
+        assert.deepEqual(accounting.map(({ outcome, usage_input, usage_output, usage_input_cache_read }) =>
+            ({ outcome, usage_input, usage_output, usage_input_cache_read })),
+        [{ outcome: "response", usage_input: 120, usage_output: 40, usage_input_cache_read: 80 }]);
+        assert.deepEqual(accounting.map(({ cost_kind, cost_amount, cost_currency }) => ({ cost_kind, cost_amount, cost_currency })),
+            [{ cost_kind: "charged", cost_amount: "0.0123", cost_currency: "USD" }], "the final provider charge is retained, not estimated");
+        const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: workerId });
+        assert.ok(sources.some((source) => source.kind === "reasoning" && source.content === firstReasoning + laterReasoning));
+        assert.ok(sources.some((source) => source.kind === "ops" && source.content === content));
+        for (const note of ["Retain the later thought.", "Content also survives."]) {
+            assert.equal(sources.filter((source) => source.kind === "note" && source.content === note).length, 1);
+        }
+        for (const op of ["READ", "FIND"]) {
+            const rows = await db.test_log_entries_by_worker_op_full.all<{ pathname: string }>({ worker_id: workerId, op });
+            assert.equal(rows.filter(({ pathname }) => pathname === "/fact.txt").length, 1, `${op} executes once`);
+        }
         const second = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(second.status, 200);
-        assert.equal(requests.length, 2, "the next inference is a new turn, not a resampled attempt");
-        const nextPacket = JSON.stringify(requests[1]!.messages);
-        assert.match(nextPacket, /Established fact/u);
-        assert.deepEqual(requests[1]!.messages.filter(({ role }) => role === "assistant"), [], "interrupted reasoning has no content emission");
-        assert.doesNotMatch(nextPacket, /This lookahead must not execute|Unobserved edit must not run/u);
-        const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: workerId });
-        assert.ok(sources.some(({ kind, content }) => kind === "reasoning" && content === reasoning), "received reasoning is retained verbatim");
-        assert.ok(sources.some(({ kind, content }) => kind === "ops" && content === racingContent), "received content is retained verbatim");
-        assert.equal(sources.filter(({ kind, content }) => kind === "note" && content === "Use the actual fact.").length, 1);
-        assert.ok(sources.every(({ kind, content }) => kind !== "note" || content !== "This lookahead must not execute."));
-        const fact = await engine.look({ ...context, statement: statement(frame("READ (worker:///fact.txt) <1,-1>", null)) });
-        assert.equal(fact.content, "Established fact.");
+        assert.equal(requests.length, 2);
+        assert.match(JSON.stringify(requests[1]!.messages), /Established fact/u);
+        assert.deepEqual(requests[1]!.messages.filter(({ role }) => role === "assistant"), [],
+            "reasoning OPs and content NOTE do not become assistant-history programs");
     } finally {
-        server.closeAllConnections();
-        await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-        await db.close();
+        release.resolve();
+        try { await running; } finally {
+            server.closeAllConnections();
+            await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+            await db.close();
+        }
     }
 });
 

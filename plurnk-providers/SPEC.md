@@ -196,22 +196,6 @@ between those physical-request reasoning streams: it preserves the failed
 prefix, gives the retry a distinct presentation identity, and never concatenates
 separate stochastic attempts into one reasoning message.
 
-§provider-reasoning-yield A consumer may supply `yieldReasoning(reasoning,
-complete)`, returning a JavaScript string offset at which to admit the reasoning
-prefix. The provider interprets no operation syntax. For a streamed response it
-consults this control after normalized reasoning deltas and at reasoning end,
-aborts only that physical request, and returns a successful `ProviderResponse`
-with `reasoningYield.end`. Request identities, retries and cancellation retain
-their existing ownership. Caller cancellation and actual transport errors are
-not intentional yields. Buffered responses do not invoke the control.
-
-The returned assistant, raw evidence and client observations retain everything
-received, including lookahead and racing content. The consumer alone limits
-admission to the declared prefix. A yield has `finishReason=null`, never a
-fabricated backend stop reason. Accounting settles the physical request once
-as a response, preserving any available usage and charge evidence; absent final
-usage and cost remain unknown, never zero or inferred from character counts.
-
 Usage obeys {§provider-usage}:
 
 ```text

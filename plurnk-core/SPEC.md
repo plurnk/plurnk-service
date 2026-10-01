@@ -1284,7 +1284,6 @@ The parser owns its boundaries; core admits determinate work and exposes its fai
 | Lost boundary before any closed operation | Reject the attempt; neither outside text nor a reasoning NOTE substitutes for a closed operational statement. Reasoning FIND/READ count as such statements ({§reasoning-operations}). |
 | Outside text carrying a log-entry heading, other than an emission row's | Reject the attempt ({§fabricated-log-entry}). |
 | A response the provider stopped at a repeated line | Reject the attempt with the provider's sentence as its diagnostic ({§repetition-stop}); no provider recovery, notice, or problem row. |
-| Intentional reasoning yield | Admit the selected reasoning prefix under {§reasoning-yield}; record all received channels unchanged. Later reasoning and racing content execute nothing. It is an ordinary continuing turn, never an empty turn, provider retry or failure. |
 
 §fabricated-log-entry **Only the harness writes the log.** A line of outside response text that begins with a log-entry heading, `### log:///<loop>/<turn>/<sequence>/` ({§log-wire-format}), is the model continuing the packet's transcript instead of answering it: it writes the receipts it expects and then acts on them. The attempt is rejected under {§invalid-emission-attempts}, so neither that text nor any operation beside it runs or is stored as outside text ({§outside-text}), and its one diagnostic, at the heading's line, reads `` `### log:///2/1/5/READ` is a log entry, and only the harness writes the log. Write the operation, then wait for its receipt. `` Text inside an operation body is not examined, so a SEND or KILL may quote a receipt. A heading whose leaf is `emission` is exempt: the transcript shows it before each of the worker's own emissions ({§emission-row}), and repeating it invents no receipt, so the attempt is admitted and the heading stays outside text, counted by the digest as an echo. In 10,486 recorded emissions, 101 carried such a heading in outside text, every one a fabrication: 85 of 1,675 from deepseek-flash, 81 of them opening with one, and 16 from glm-5.3-flash, deepseek-v4-pro and qwen3.8-flash, which appended an invented `## Log` after their own operations.
 
@@ -2176,15 +2175,6 @@ same transitions the dispatcher's atomic curation event makes, without the row.
 | Lifecycle | Restart retains sources and observations. FORK snapshots sources under the child's name at the same loop/turn coordinates and receipts with independent curation. No curation or lifecycle event automatically READs model reasoning. A turn the provider left without reasoning reads empty; absent workers and turns return the ordinary missing result ({§turn-source-resources}). |
 | Client | Standard live reasoning events and replay retain original provider reasoning; working resources and READ receipts never substitute for or replay that stream. |
 
-### §reasoning-reboot-configuration Reasoning interruption policy
-
-`PLURNK_SERVICE_REASONING_REBOOT` enables {§reasoning-yield}; its default lives
-in `.env.defaults`, with `PLURNK_SERVICE_REASONING_REBOOT_<alias>` overriding
-through the ordinary model-alias cascade. `0` disables early interruption, not
-{§reasoning-operations}: complete reasoning operations still join the admitted
-program when generation finishes. It changes neither teaching nor source retention.
-Invalid values are configuration failures before inference, not provider failures.
-
 ### §reasoning-initial-read Initial reasoning observation
 
 The initialization turn records its `_plurnk`-authored rationale and complete
@@ -2388,7 +2378,7 @@ single line past the end, a reversed range, empty content, a command's log row
 
 ### §turn-ops-entry The admitted turn program
 
-§turn-ops-log-curation A source-backed turn preserves its **exact content emission**, including ignored interstitial text, before dispatch. `turn_sources` records that source once, separately from reasoning, the curatable log and optional provider evidence. Retention does not manufacture a log row; the one row an admitted emission gains is its announcement ({§emission-row}). Ordinary READ creates a receipt governed by {§log-readable-projection}; curation of either never changes the source. A reasoning yield retains even unexecuted lookahead in its original channel ({§reasoning-yield}).
+§turn-ops-log-curation A source-backed turn preserves its **exact content emission**, including ignored interstitial text, before dispatch. `turn_sources` records that source once, separately from reasoning, the curatable log and optional provider evidence. Retention does not manufacture a log row; the one row an admitted emission gains is its announcement ({§emission-row}). Ordinary READ creates a receipt governed by {§log-readable-projection}; curation of either never changes the source.
 
 ### §emission-row The emission row
 

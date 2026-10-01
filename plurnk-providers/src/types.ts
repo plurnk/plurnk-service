@@ -140,9 +140,6 @@ export type ProviderCostNormalizer = (
 // nonempty deltas early enough for an attached client to render them live.
 export type ProviderReasoningObserver = (delta: string) => void;
 
-// {§provider-reasoning-yield}: consumer-owned admission boundary, in UTF-16 string offsets.
-export type ProviderReasoningYield = (reasoning: string, complete: boolean) => number | undefined;
-
 // A successful exchange's closed finish set. ProviderAttemptFinishReason adds
 // the failed disposition that may occur only on ProviderError attempt evidence.
 export type FinishReason = "stop" | "length" | "tool_calls" | "content_filter" | null;
@@ -195,7 +192,6 @@ export interface ProviderResponse<TFinish extends ProviderAttemptFinishReason = 
     // failover that preceded this response. {§provider-request-accounting}
     readonly accounting: readonly ProviderRequestAccounting[];
     readonly capacity: ProviderRequestCapacity;
-    readonly reasoningYield?: { readonly end: number };
     // {§provider-grammar-transport} — transport evidence; present only when a grammar was configured.
     readonly grammarEvidence?: GrammarEvidence;
     // Per-turn provider→client metadata bag: the backend's non-standard top-level
@@ -233,7 +229,6 @@ export interface ProviderGenerateArgs {
     readonly sampling?: Record<string, unknown>;
     readonly observeRequest?: ProviderRequestObserver;
     readonly observeReasoning?: ProviderReasoningObserver;
-    readonly yieldReasoning?: ProviderReasoningYield;
     readonly callKind?: ProviderCallKind;
 }
 

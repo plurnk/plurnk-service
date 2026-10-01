@@ -1155,127 +1155,38 @@ for (const style of ["think-tags", "template-think", "template-channel"] as cons
     }
 });
 
-for (const tagged of [false, true]) test(`{§provider-reasoning-yield} ${tagged ? "tagged" : "structured"} reasoning yields without retry or fabricated usage`, async () => {
-    let calls = 0;
-    let aborted = false;
-    const delta = tagged
-        ? { content: "<think>keep\nlookahead\n</think>racing content" }
-        : { reasoning_content: "keep\nlookahead\n", content: "racing content" };
-    const fetch: typeof globalThis.fetch = async (_url, init) => {
-        calls++;
-        init?.signal?.addEventListener("abort", () => { aborted = true; }, { once: true });
-        return new Response(sseStream([
-            { choices: [{ index: 0, delta }] },
-            { choices: [{ index: 0, delta: { content: "unreceived suffix" }, finish_reason: "stop" }] },
-        ]), { headers: { "content-type": "text/event-stream" } });
-    };
-    const provider = testProvider({ ...injectedBase, fetch, rawBody: true,
-        ...(tagged ? { reasoningResponseStyle: "think-tags" as const } : {}) });
-    const response = await provider.generate({ workerId: "yield", messages: [],
-        yieldReasoning: (reasoning) => reasoning.includes("lookahead\n") ? 5 : undefined,
+for (const streaming of [false, true]) for (const tagged of [false, true]) {
+    test(`{§provider-reasoning-observer} ${streaming ? "streamed" : "buffered"} ${tagged ? "tagged" : "structured"} reasoning retains completion and final accounting`, async () => {
+        const reasoning = "```READ (fact.txt)\n```\n\nFurther reasoning.";
+        const content = "```NOTE\nContent survives.\n```";
+        const message = tagged ? { content: `<think>${reasoning}</think>${content}` } : { content, reasoning_content: reasoning };
+        const usage = { prompt_tokens: 120, completion_tokens: 40, total_tokens: 160 };
+        const observed: string[] = [];
+        let aborted = false;
+        const fetch: typeof globalThis.fetch = async (_url, init) => {
+            init?.signal?.addEventListener("abort", () => { aborted = true; }, { once: true });
+            return streaming
+                ? new Response(sseStream([
+                    { choices: [{ index: 0, delta: message, finish_reason: "stop" }] },
+                    { choices: [], usage, charge: settledCharge },
+                ]), { headers: { "content-type": "text/event-stream" } })
+                : new Response(JSON.stringify({ model: "m", choices: [{ message, finish_reason: "stop" }], usage, charge: settledCharge }),
+                    { headers: { "content-type": "application/json" } });
+        };
+        const response = await testProvider({ ...injectedBase, fetch, streaming, normalizeCost: directCost,
+            ...(tagged ? { reasoningResponseStyle: "think-tags" as const } : {}),
+        }).generate({ workerId: "complete", messages: [], observeReasoning: (delta) => { observed.push(delta); } });
+        assert.equal(aborted, false);
+        assert.equal(response.assistant.finishReason, "stop");
+        assert.equal(response.assistant.reasoning, reasoning);
+        assert.equal(response.assistant.content, content);
+        assert.equal(observed.join(""), reasoning);
+        assert.equal(response.accounting.length, 1);
+        assert.equal(response.accounting[0]?.outcome, "response");
+        assert.deepEqual(response.accounting[0]?.usage, { inputTokens: 120, outputTokens: 40, totalTokens: 160 });
+        assert.deepEqual(response.accounting[0]?.cost, settledCharge);
     });
-    assert.deepEqual(response.reasoningYield, { end: 5 });
-    assert.equal(response.assistant.finishReason, null);
-    assert.equal(response.assistant.reasoning, "keep\nlookahead\n");
-    assert.equal(response.assistant.content, "racing content");
-    assert.equal(calls, 1);
-    assert.equal(aborted, true, "yield cancels the physical request, not merely its consumer");
-    assert.equal(response.accounting.length, 1);
-    assert.equal(response.accounting[0]?.outcome, "response");
-    assert.equal(response.accounting[0]?.usage, undefined);
-    assert.equal(response.accounting[0]?.cost.kind, "unknown");
-    assert.match(JSON.stringify(response.rawBody), /lookahead/u);
-});
-
-test("{§provider-reasoning-yield} reasoning end can yield before racing content is admitted", async () => {
-    const complete: boolean[] = [];
-    const fetch: typeof globalThis.fetch = async () => new Response(sseStream([
-        { choices: [{ index: 0, delta: { reasoning_content: "finished reasoning" } }] },
-        { choices: [{ index: 0, delta: { content: "racing content" }, finish_reason: "stop" }] },
-    ]), { headers: { "content-type": "text/event-stream" } });
-    const response = await testProvider({ ...injectedBase, fetch }).generate({ workerId: "reasoning-end", messages: [],
-        yieldReasoning: (source, ended) => { complete.push(ended); return ended ? source.length : undefined; },
-    });
-    assert.deepEqual(complete, [false, true]);
-    assert.deepEqual(response.reasoningYield, { end: "finished reasoning".length });
-    assert.equal(response.assistant.reasoning, "finished reasoning");
-    assert.equal(response.assistant.content, "racing content");
-});
-
-test("{§provider-reasoning-yield} buffered responses retain normal delivery and do not invoke stream control", async () => {
-    const observed: string[] = [];
-    const fetch: typeof globalThis.fetch = async () => new Response(JSON.stringify({
-        ...jsonChoice, choices: [{ message: { content: "answer", reasoning_content: "complete reasoning" }, finish_reason: "stop" }],
-    }), { headers: { "content-type": "application/json" } });
-    const response = await testProvider({ ...injectedBase, fetch, streaming: false }).generate({ workerId: "buffered", messages: [],
-        observeReasoning: (delta) => { observed.push(delta); },
-        yieldReasoning: () => { assert.fail("buffered generation cannot be interrupted retroactively"); },
-    });
-    assert.equal(response.reasoningYield, undefined);
-    assert.equal(response.assistant.content, "answer");
-    assert.deepEqual(observed, ["complete reasoning"]);
-});
-
-test("{§provider-reasoning-yield} caller cancellation is not relabeled as successful yielding", async () => {
-    const cancellation = new AbortController();
-    const cause = new Error("caller cancelled");
-    const fetch: typeof globalThis.fetch = async () => new Response(sseStream([
-        { choices: [{ index: 0, delta: { reasoning_content: "some reasoning" } }] },
-    ]), { headers: { "content-type": "text/event-stream" } });
-    await assert.rejects(testProvider({ ...injectedBase, fetch }).generate({ workerId: "cancel", messages: [], signal: cancellation.signal,
-        yieldReasoning: () => { cancellation.abort(cause); return 4; },
-    }), (error) => error === cause);
-});
-
-test("{§provider-reasoning-yield} usage delivered before interruption remains authoritative", async () => {
-    const fetch: typeof globalThis.fetch = async () => new Response(sseStream([
-        { choices: [], usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 } },
-        { choices: [{ index: 0, delta: { reasoning_content: "retained reasoning" } }] },
-    ]), { headers: { "content-type": "text/event-stream" } });
-    const response = await testProvider({ ...injectedBase, fetch }).generate({ workerId: "usage", messages: [], yieldReasoning: () => 8 });
-    assert.deepEqual(response.reasoningYield, { end: 8 });
-    assert.equal(response.accounting[0]?.usage?.inputTokens, 12);
-    assert.equal(response.accounting[0]?.usage?.outputTokens, 4);
-    assert.equal(response.accounting[0]?.usage?.totalTokens, 16);
-});
-
-test("{§provider-reasoning-yield} native SDK reasoning closes its request without OpenAI wire fields", async () => {
-    let calls = 0;
-    let aborted = false;
-    const languageModel = {
-        specificationVersion: "v4",
-        provider: "native.test",
-        modelId: "native-yield",
-        supportedUrls: {},
-        doGenerate: async () => { throw new Error("buffered generation is not under test"); },
-        doStream: async ({ abortSignal }: { abortSignal: AbortSignal }) => {
-            calls++;
-            return {
-                stream: new ReadableStream({
-                    start(controller) {
-                        abortSignal.addEventListener("abort", () => {
-                            aborted = true;
-                            controller.error(abortSignal.reason);
-                        }, { once: true });
-                        controller.enqueue({ type: "stream-start", warnings: [] });
-                        controller.enqueue({ type: "reasoning-start", id: "thought" });
-                        controller.enqueue({ type: "reasoning-delta", id: "thought", delta: "native reasoning" });
-                    },
-                }),
-                response: {},
-            };
-        },
-    } as unknown as LanguageModel;
-    const response = await testProvider({ ...injectedBase, url: undefined, model: "native-yield", languageModel })
-        .generate({ workerId: "native", messages: [], yieldReasoning: () => 6 });
-    assert.equal(calls, 1);
-    assert.equal(aborted, true);
-    assert.deepEqual(response.reasoningYield, { end: 6 });
-    assert.equal(response.assistant.reasoning, "native reasoning");
-    assert.equal(response.assistant.finishReason, null);
-    assert.equal(response.accounting[0]?.outcome, "response");
-    assert.equal(response.accounting[0]?.cost.kind, "unknown");
-});
+}
 
 test("{§provider-tagged-reasoning} explicit think-tags project content without estimating token attribution", async () => {
     const config = { ...injectedBase, reasoningResponseStyle: "think-tags" as const, rawBody: true };

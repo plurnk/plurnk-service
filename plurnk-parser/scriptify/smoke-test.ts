@@ -63,7 +63,7 @@ if (JSON.stringify(rootValues) !== JSON.stringify(expectedRootValues)) {
     throw new Error("unexpected package-root values: " + JSON.stringify(rootValues));
 }
 
-const { PlurnkParser, ReasoningStream, parsePath } = Parser;
+const { PlurnkParser, parsePath } = Parser;
 
 const assertClean = (label, result) => {
     const errors = result.items.filter(({ kind }) => kind === "error");
@@ -79,9 +79,8 @@ assertClean("statement sequence", result);
 assertClean("client tier", PlurnkParser.parseClient(PlurnkParser.frame("LOOK (known://foo)", null)));
 
 const reasoning = PlurnkParser.frame("READ (worker:///fact.txt)", null);
-if (PlurnkParser.parseReasoningOperations(reasoning)[0]?.op !== "READ"
-    || new ReasoningStream().inspect(reasoning, true) !== reasoning.length) {
-    throw new Error("reasoning admission and yield frontier are not available from the packed parser");
+if (PlurnkParser.parseReasoningOperations(reasoning)[0]?.op !== "READ") {
+    throw new Error("reasoning admission is not available from the packed parser");
 }
 
 const selected = PlurnkParser.parseStatements(PlurnkParser.frame('READ (https://example.com) [{"headers":{"Accept":"text/plain"}}] /needle/', null));
