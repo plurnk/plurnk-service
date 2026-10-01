@@ -24,12 +24,12 @@ const schemes = {
 } as unknown as SchemeRegistry;
 const executors = {
     entry: (runtime: string) => {
-        if (runtime === "sh" || runtime === "tools") return { invocation: {} };
+        if (runtime === "sh" || runtime === "tools") return { available: true, invocation: {} };
         if (runtime === "resource-tool") {
-            return { invocation: { target: { kind: "resource", required: true } } };
+            return { available: true, invocation: { target: { kind: "resource", required: true } } };
         }
         if (runtime === "optional-resource") {
-            return { invocation: { target: { kind: "resource", required: false } } };
+            return { available: true, invocation: { target: { kind: "resource", required: false } } };
         }
         return undefined;
     },

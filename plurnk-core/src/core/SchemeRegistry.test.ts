@@ -90,6 +90,15 @@ const runtimeRegistry = (tag: string, namespaceOwner: string): RegistryArg => ({
     entry: () => ({ executor: { manifest: manifest(tag) }, namespaceOwner: { kind: "package", name: namespaceOwner } }),
 }) as unknown as RegistryArg;
 
+test("{§exec-registry-resolves} an actionable runtime without an executor is an internal registry defect", () => {
+    const registry = new SchemeRegistry();
+    const broken = {
+        availableRuntimes: () => ["broken"],
+        entry: () => ({ executor: null, available: false }),
+    } as unknown as RegistryArg;
+    assert.throws(() => registry.registerRuntimeSchemes(broken), /Available runtime 'broken' has no executor instance/u);
+});
+
 test("registerRuntimeSchemes: an executor tag shadowing a reserved built-in fails hard", () => {
     const registry = new SchemeRegistry();
     assert.throws(

@@ -173,7 +173,9 @@ export default class SchemeRegistry {
     registerRuntimeSchemes(executors: ExecutorRegistry): void {
         for (const tag of executors.availableRuntimes()) {
             const entry = executors.entry(tag);
-            if (entry === undefined || !entry.available) continue;
+            if (entry === undefined || entry.executor === null) {
+                throw new Error(`Available runtime '${tag}' has no executor instance.`);
+            }
             this.registerRuntimeScheme(tag, entry.executor, entry.namespaceOwner, undefined, true);
         }
     }
