@@ -141,8 +141,5 @@ original evidence. The current turn's reasoning exists when its OPs execute, so
 `READ (reasoning://exampleWorkerName/1/3) <1,-1>` from `worker://exampleWorkerName` on loop 1,
 turn 3 retains it; a turn that produced no reasoning reads empty, and a turn
 that has not happened returns a missing-source result. READ never requests
-inference. NOTE retains working memory without changing the loop state; only
-NOTE also executes from exposed reasoning, while quoted examples and other
-reasoned operations remain data. Notes are ordinary log items whose read-only
-sources stay searchable (`FIND (note://exampleWorkerName/**) /parser/`) and READable
-after curation or a FORK.
+inference. Notes are ordinary log items whose read-only sources stay searchable
+(`FIND (note://exampleWorkerName/**) /parser/`) and READable after curation or a FORK.
