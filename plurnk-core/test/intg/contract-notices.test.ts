@@ -176,6 +176,28 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
     } finally { await db.close(); }
 });
 
+test("{§read-zero-start}: a zero-start READ delivers its body and one warning without a failed operation", async () => {
+    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    try {
+        await seedEntryWithChannel(db, { workspaceId, pathname: "/zero-start", content: "alpha\nbeta\ngamma", mimetype: "text/plain" });
+        const scopedRead = readStmt(urlPath("worker", "/zero-start"));
+        scopedRead.lineMarker = { marks: [0, 120] };
+        const provider = new Mock({ contextWindow: 100000, responses: [
+            { assistant: { content: "", ops: [scopedRead], reasoning: null } },
+            { assistant: { content: "", ops: [concludeStmt("done")], reasoning: null } },
+        ] });
+        const first = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const packet = await getPacket(db, second.turnId);
+        const read = logEntries(packet).find(({ logPath, body }) => String(logPath).endsWith("/READ") && /1<@[0-9A-Za-z]{5}>alpha/.test(String(body)));
+        assert.match(String(read?.body), /1<@[0-9A-Za-z]{5}>alpha\n2<@[0-9A-Za-z]{5}>beta\n3<@[0-9A-Za-z]{5}>gamma/);
+        assert.equal(packetSection(packet, "notices"), "* scope_normalized: Scope <0,120> was normalized to <1,120>.");
+        const receipts = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: first.turnId });
+        assert.deepEqual(receipts.filter(({ op }) => op === "READ").map(({ status_rx }) => status_rx), [200]);
+        assert.doesNotMatch(packetSection(packet, "notices"), /strike|failed/i);
+    } finally { await db.close(); }
+});
+
 test("an EDIT batch reports each tolerated scope once in authored order ({§text-scope-runtime})", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();
     const target = urlPath("worker", "/x");

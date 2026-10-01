@@ -4,6 +4,7 @@ import type {
     EntryReadResult,
     StoredEntryData,
 } from "@plurnk/plurnk-schemes";
+import { Slicer } from "@plurnk/plurnk-schemes";
 import type { SchemeManifest } from "../core/scheme-types.ts";
 import Results from "../core/results.ts";
 import BodyPreview from "./body-preview.ts";
@@ -157,6 +158,24 @@ export default class ReadProjector {
     }
 
     static async project(opts: ReadProjectionOptions): Promise<AnchoredReadResult> {
+        const marker = opts.statement.lineMarker;
+        const normalization = marker === null || LineAnchors.hasAnchor(marker)
+            ? undefined : Slicer.readScope(marker as LineMarker);
+        if (normalization !== undefined) {
+            const projected = await ReadProjector.project({
+                ...opts,
+                statement: { ...opts.statement, lineMarker: { marks: [...normalization.canonical] } },
+            });
+            return {
+                ...projected,
+                ...(projected.range === undefined ? {} : {
+                    range: { ...projected.range, requested: [0, normalization.requested[1]] },
+                }),
+                ...(projected.status >= 400 ? {} : {
+                    scopeNormalizations: [normalization, ...(projected.scopeNormalizations ?? [])],
+                }),
+            };
+        }
         const attributes = opts.representation.attributes;
         const sourceProjection = attributes?.sourceProjection as { mimetype?: string } | undefined;
         const mimetype = sourceProjection?.mimetype ?? opts.representation.channels[opts.manifest.defaultChannel]?.mimetype;

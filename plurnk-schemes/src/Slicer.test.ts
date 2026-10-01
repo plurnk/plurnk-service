@@ -590,7 +590,7 @@ test("{§zero-width-column-one-insert} wholeLineBody appends the content's separ
     assert.equal(Slicer.lineMarkerEdit("a\nb", { marks: [2, 1, 2, 1] }, Slicer.wholeLineBody("a\nb", { marks: [2, 1, 2, 1] }, "X")).result, "a\nX\nb");
 });
 
-test("{§range-starts-at-one} <0,-1> is not a whole-file alias: EDIT, READ and COPY refuse it and name <1,-1>, on empty content too", () => {
+test("{§range-starts-at-one} the strict slicing and mutation algebra rejects <0,-1>, including on empty content", () => {
     const recovery = "Write <1,-1> to select every line; <0> prepends and <-1> appends without replacing anything.";
     for (const content of [HEAD, ""]) {
         const edit = Slicer.lineMarkerEdit(content, { marks: [0, -1] }, "replacement");
@@ -603,7 +603,7 @@ test("{§range-starts-at-one} <0,-1> is not a whole-file alias: EDIT, READ and C
     assert.equal(Slicer.lineMarkerEdit("", { marks: [1, -1] }, "all").result, "all", "the documented whole-content form still writes empty content");
 });
 
-test("{§range-starts-at-one} READ <0,30> refuses rather than clamping to <1,30>", () => {
+test("{§range-starts-at-one} lines() requires the READ projection to normalize a zero start before slicing", () => {
     const result = Slicer.lines(HEAD, { marks: [0, 30] });
     assert.equal(result.status, 416);
     assert.equal(result.text, undefined);

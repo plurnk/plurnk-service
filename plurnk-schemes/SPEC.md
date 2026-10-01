@@ -459,6 +459,14 @@ have meant, in the range's unit:
 | line, `M < 1` | `<1,-1>` for every line, `<0>` / `<-1>` |
 | byte, result, resource | `<1,M>` |
 
+§read-zero-start The shared READ projection tolerates a two-coordinate `<0,M>`
+when `M` is a positive safe integer or `-1`: it selects `<1,M>`, retains `[0,M]`
+as the receipt's requested range, and returns scope-normalization evidence for
+the ordinary non-striking warning. Text and byte views, including empty resources,
+use the same rule. The strict algebra above remains unchanged for mutation,
+removal, and transfer operands. Single-position sentinels, character regions,
+and other invalid endpoints are not reinterpreted.
+
 As an unadvertised ingestion tolerance, `Slicer` accepts
 `<startLine,startColumn,endLine>` and immediately lowers it to the complete
 four-coordinate region ending after the final code point of `endLine`.

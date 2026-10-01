@@ -9,10 +9,13 @@ import type { TextRegion } from "@plurnk/plurnk-contracts";
 export type { ProblemDetails };
 export { InvalidOperationResultError };
 
-export interface ScopeNormalization {
+export type ScopeNormalization = {
     readonly requested: readonly [number, number, number];
     readonly canonical: readonly [number, number, number, number];
-}
+} | {
+    readonly requested: readonly [0, number];
+    readonly canonical: readonly [1, number];
+};
 
 export interface SchemeResult {
     readonly status: number;
@@ -245,6 +248,15 @@ export default class Results {
                 throw new TypeError("invalid scope normalization: requested and canonical coordinates are required");
             }
             const { requested, canonical } = record;
+            if (Array.isArray(requested) && requested.length === 2) {
+                if (requested[0] !== 0 || !Number.isSafeInteger(requested[1])
+                    || (requested[1] !== -1 && requested[1] < 1)
+                    || !Array.isArray(canonical) || canonical.length !== 2
+                    || canonical[0] !== 1 || canonical[1] !== requested[1]) {
+                    throw new TypeError("invalid scope normalization: a zero-start READ preserves its valid endpoint and starts at one");
+                }
+                continue;
+            }
             if (
                 !Array.isArray(requested)
                 || requested.length !== 3

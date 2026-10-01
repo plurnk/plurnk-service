@@ -74,6 +74,14 @@ export interface WindowResult extends SchemeResult {
 }
 
 export default class Slicer {
+    // {§read-zero-start} Projection tolerance is separate from the strict mutation algebra.
+    static readScope(marker: LineMarker): ScopeNormalization | undefined {
+        const [first, last] = marker.marks;
+        return marker.marks.length === 2 && first === 0 && Number.isSafeInteger(last) && (last === -1 || last > 0)
+            ? { requested: [0, last], canonical: [1, last] }
+            : undefined;
+    }
+
     static #failure<T extends SchemeResult>(
         code: string,
         status: number,

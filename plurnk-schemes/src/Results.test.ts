@@ -183,6 +183,20 @@ test("assert validates schemes-owned scope normalization evidence", () => {
     );
 });
 
+test("{§read-zero-start}: normalization evidence admits only an exact recoverable start correction", () => {
+    for (const end of [1, 120, -1]) {
+        const result = { status: 200, scopeNormalizations: [{ requested: [0, end] as const, canonical: [1, end] as const }] };
+        assert.equal(Results.assert(result), result);
+    }
+    for (const [requested, canonical] of [
+        [[0, 0], [1, 0]], [[0, -2], [1, -2]], [[0, 1.5], [1, 1.5]],
+        [[2, 5], [1, 5]], [[0, 5], [1, 6]], [[0, 5], [2, 5]],
+    ]) {
+        assert.throws(() => Results.assert({ status: 200, scopeNormalizations: [{ requested, canonical }] } as never),
+            /zero-start READ preserves its valid endpoint and starts at one/);
+    }
+});
+
 test("attachInstance adds the durable operation coordinate", () => {
     const result = Results.failure("scheme:file", "entry-not-found", 404, "Missing.");
     Results.attachInstance(result, "log:///5/2/1/READ");
