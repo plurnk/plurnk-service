@@ -21,7 +21,7 @@ test("{§provider-wire-emission}: blank emissions retain their wire channels thr
         contextWindow: 100000, outputBudget: 1000,
         effort: { mode: "off", budget: null }, temperature: null, repeatPenalty: null, retryAttempts: 0,
         rawBody: false,
-        // {§provider-output-dropped}: a tool-call finish is re-issued; the second attempt answers in text.
+        // {§provider-native-tool-calls}: ordinary empty-turn recovery follows the warning.
         fetch: async () => {
             requests += 1;
             if (requests > 1) {
@@ -47,22 +47,28 @@ test("{§provider-wire-emission}: blank emissions retain their wire channels thr
         const workerId = await insertWorker(db, workspaceId, null, "analyst");
         const loopId = await insertLoop(db, workerId, 1, "inspect");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "Inspect." }] });
+        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 3, messages: [{ role: "user", content: "Inspect." }] });
+        assert.equal(result.result.status, 200);
+        assert.equal(result.turnIds.length, 3, "initialization, one empty turn, then the answer");
+        const first = result.turnIds[1]!;
+        const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: first });
+        assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "no provider retry or parser rejection");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: first });
+        assert.deepEqual(rows.filter(({ op }) => op === "error").map(({ rx }) => JSON.parse(rx).problem.detail), ["The turn performed no operation."]);
     } finally {
         await db.close();
     }
-    assert.equal(requests, 2, "the tool-call finish is re-issued once and the text attempt concludes");
+    assert.equal(requests, 2, "the model recovers on the next ordinary turn");
     Digest.run({ dbPath, digestDir });
     const stems = await digestStems(digestDir);
-    // The rejected attempt keeps its wire channels as evidence; the retried attempt is the turn's emission.
-    const rejected = JSON.parse(await readFile(join(digestDir, `${stems[1]}.attempt001.rejected.response.json`), "utf8"));
-    assert.equal(rejected.assistantRaw.rawBody, undefined);
-    assert.deepEqual(rejected.assistantRaw.wire.toolCalls, [
+    const raw = JSON.parse(await readFile(join(digestDir, `${stems[1]}.assistantRaw.json`), "utf8"));
+    assert.equal(raw.rawBody, undefined);
+    assert.deepEqual(raw.wire.toolCalls, [
         { index: 0, id: "call-1", type: "function", name: "READ", arguments: '{"path":"example.txt"}' },
     ]);
-    assert.deepEqual(rejected.assistantRaw.wire.channels, { refusal: "retained vendor text" });
-    assert.equal(await readFile(join(digestDir, `${stems[1]}.assistant.md`), "utf8"), "````KILL\nInspected.\n````");
+    assert.deepEqual(raw.wire.channels, { refusal: "retained vendor text" });
+    assert.equal(await readFile(join(digestDir, `${stems[2]}.assistant.md`), "utf8"), "````KILL\nInspected.\n````");
     const report = await readFile(join(digestDir, "digest.md"), "utf8");
-    assert.match(report, /rejected-emissions=1\/2/);
-    assert.match(report, /ended the response with tool calls although no tools were declared/);
+    assert.doesNotMatch(report, /rejected-emissions=/);
+    assert.match(await readFile(join(digestDir, `${stems[2]}.user.md`), "utf8"), /native tool calls, but no tools were declared/);
 });

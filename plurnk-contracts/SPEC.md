@@ -616,10 +616,7 @@ its slots, and `parameter` tags around the content are debris, as are a copied f
 (`{"lines":6}`) under the heading, a `comment` attribute (the aside), and `<｜｜DSML｜｜tool_calls>`
 spelled without spaces. An executor's unknown parameter is one of its options, `[{"maxTokens":
 "2500"}]`, for its owner to accept or refuse; `bash` names `sh` when `sh` is the registered shell.
-Of 69 distinct recorded emissions carrying DSML markup (the 11,500 distinct emissions recorded
-through run429), 60 read this way and 9 draw the {§native-tool-call-receipt}: a bare
-`<｜｜DSML｜｜ calls>` with nothing inside, and calls whose native operation carries a parameter
-plurnk has no slot for.
+Calls that cannot be mapped draw {§native-tool-call-receipt}.
 Qwen's own shapes read the same way: a flat JSON call whose operation is the value
 of an `op`, `action` or `cmd` key in any case (`{"op": "READ", "path": …, "range": …}`),
 an XML element named by the operation (`<NOTE>…</NOTE>`, `<FIND (path) <1,3></FIND>`,
@@ -634,17 +631,17 @@ unknown name or parameter, or a FIND, READ, EDIT, COPY or MOVE naming no target,
 whole emission as it was. An emission that already yields an operation is never
 rewritten. No diagnostic, notice or teaching mentions a successful reading (#760).
 
-§native-tool-call-receipt **Markup that was not read is named.** When an emission yields no
-operation and carries native tool-call markup that could not be read, the parse reports one
-hard diagnostic at the markup, naming it and the fenced form that runs — `` `<tool_call>` is
-tool-call markup, which plurnk does not run, so nothing ran. An operation is a fenced block:
-three backticks and `READ (django/forms/widgets.py)` on the opening line. `` The form names
-the operation and target the markup itself names where it names them (`sh` for a shell
-command, `NOTE` for a note or narration), and otherwise the generic "the operation with its target,
-such as `READ (path)`". The model believes it
-acted; silence would let it wait on a result that never comes. Of 107 distinct recorded
-no-operation qflash emissions carrying call-like markup, 63 read under {§native-tool-calls}, 42 draw
-this receipt, and 2, a bare JSON object of narration with no tool-call marker, draw neither.
+Bare `invoke` elements use the same slots as wrapped calls. A complete JSON object
+inside an invoke supplies arguments when no explicit parameter elements are
+present; parameter bodies remain literal. Unknown native-operation arguments
+are not guessed.
+
+§native-tool-call-receipt **Unexecuted native markup draws a warning.** After exact
+recovery, the first remaining native-call block in outside text receives one
+warning naming its markup and the fenced form. It does not invalidate real OPs
+beside it, become an operation, or independently earn a strike. A turn with no
+operation follows {§empty-turn}. Quoted examples and operation bodies are not
+attempted calls. Outside text remains unchanged evidence under {§outside-text}.
 
 §empty-section Both the compact bodyless form and an empty multiline block
 normalize optional bodies to null. Closing fences are conventional, never required

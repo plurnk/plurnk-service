@@ -834,6 +834,14 @@ ordinary 5xx surface on the first failure as consumer-recoverable kinds; one
 retry authority — the consumer's own provider-recovery machinery — owns
 re-issue, backoff, and park above the transport.
 
+§provider-native-tool-calls A response with native tool-call data, or a
+`tool_calls` finish, preserves its text, reasoning, structured wire evidence,
+finish reason and accounting and emits one provider warning. It is not a
+transport failure and does not trigger provider recovery. The adapter executes
+no call and invents no textual operation; the consumer owns admission and
+no-operation handling. Text-only missing-output checks do not apply because
+the billed output includes structured calls.
+
 §provider-output-dropped **A completed exchange whose own evidence proves its
 text never arrived is `output_dropped`**, a 502 carrying the complete response as
 `error.attempt` and `stage: "provider-response"`; it is never admitted as an empty or
@@ -841,7 +849,6 @@ truncated turn, and the consumer re-issues it ({§provider-retryable-truth}):
 
 | Evidence | Detail | Facts |
 | --- | --- | --- |
-| `finish_reason` `tool_calls` (Plurnk never declares tools) | `The provider ended the response with tool calls although no tools were declared (N native tool call(s)); the response text was not delivered as text.` | `toolCallCount` |
 | Billed output tokens exceed the code points streamed across every channel — text and reasoning, before projection — by at least `PLURNK_PROVIDERS_DROPPED_OUTPUT_TOKENS` (`0` disables; an output token decodes to at least one character) | `The provider billed T output tokens but streamed C characters of text and reasoning; at least T−C tokens of output never arrived.` | `billedOutputTokens`, `streamedCharacters`, `droppedOutputTokens` |
 
 The token rule needs a billed output count, and it does not apply when the response bills

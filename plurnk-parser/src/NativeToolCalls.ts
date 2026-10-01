@@ -144,6 +144,8 @@ export default class NativeToolCalls {
         };
         const callsOpen = at(/<(?:｜｜DSML｜｜\s*)?(?:calls|tool_calls|function_calls)>/);
         if (callsOpen !== -1) candidates.push({ at: callsOpen, read: () => NativeToolCalls.#elementBlock(input, callsOpen, known) });
+        const invoke = at(new RegExp(`<${DSML}invoke\\s+name=`));
+        if (invoke !== -1) candidates.push({ at: invoke, read: () => NativeToolCalls.#invokeBlock(input, invoke, known) });
         const toolCall = at(/<tool_call(?:\s[^>]*)?>/);
         if (toolCall !== -1) candidates.push({ at: toolCall, read: () => NativeToolCalls.#toolCallBlock(input, toolCall, known) });
         const bareFunction = at("<function=");
@@ -183,15 +185,43 @@ export default class NativeToolCalls {
             : contentEnd > from && input[contentEnd - 1] === "\n" ? contentEnd - 1 : contentEnd;
         const startLine = input.slice(0, from).split("\n").length - 1;
         const region = input.slice(contentStart, contentEnd);
+        return { from, to, calls: NativeToolCalls.#invocations(region, startLine, known) };
+    }
+
+    static #invokeBlock(input: string, from: number, known: ReadonlySet<string>): Omit<Block, "startLine" | "endLine"> {
+        const closeRe = new RegExp(`</${DSML}invoke>|<${DSML}/invoke>`, "g");
+        closeRe.lastIndex = from;
+        const close = closeRe.exec(input);
+        const to = close === null ? input.length : close.index + close[0].length;
+        const startLine = input.slice(0, from).split("\n").length - 1;
+        return { from, to, calls: NativeToolCalls.#invocations(input.slice(from, to), startLine, known) };
+    }
+
+    static #invocations(region: string, startLine: number, known: ReadonlySet<string>): Call[] | null {
         const inline = !region.includes("\n");
         const normalized = inline
             ? region.replace(/(<(?:｜｜DSML｜｜\s*)?(?:invoke|parameter)\b|<\/(?:｜｜DSML｜｜\s*)?invoke>)/g, "\n$1").replace(/(<\/(?:｜｜DSML｜｜\s*)?parameter>)/g, "$1\n")
             : region;
         const lines = normalized.split("\n");
         const calls: Call[] = [];
-        let current: { name: string; slots: Slots; line: number } | null = null;
+        let current: { name: string; slots: Slots; line: number; parameters: boolean } | null = null;
         let mappable = true;
-        const finish = (): void => { if (current !== null) calls.push(current); current = null; };
+        const finish = (): void => {
+            if (current === null) return;
+            const text = current.slots.body.join("\n").trim();
+            if (!current.parameters && text.startsWith("{")) {
+                const args = NativeToolCalls.#jsonPrefix(text);
+                if (args === null || typeof args !== "object" || Array.isArray(args)) mappable = false;
+                else {
+                    current.slots.body = [];
+                    for (const [key, value] of Object.entries(args)) {
+                        if (!NativeToolCalls.#assign(current.slots, key, NativeToolCalls.#stringOf(value), known.has(current.name.toLowerCase()))) mappable = false;
+                    }
+                }
+            }
+            calls.push(current);
+            current = null;
+        };
         for (let i = 0; i < lines.length; i += 1) {
             const line = lines[i]!;
             // A multi-line block's first line is the opener's own; its calls sit on the lines after it.
@@ -207,7 +237,7 @@ export default class NativeToolCalls {
                 const slots = invoke[2] === undefined ? { body: [], extra: "" } : NativeToolCalls.#headingSlots(invoke[3]!);
                 if (name === null || slots === null) { mappable = false; continue; }
                 if (written.length > 0) slots.extra = slots.extra.length > 0 ? `${written} ${slots.extra}` : written;
-                current = { name, slots, line: sourceLine };
+                current = { name, slots, line: sourceLine, parameters: false };
                 continue;
             }
             if (INVOKE_CLOSE.test(line) || FENCE_LINE.test(line)) { finish(); continue; }
@@ -216,6 +246,7 @@ export default class NativeToolCalls {
             const parameter = PARAMETER.exec(line) ?? PARAMETER_OPEN.exec(line);
             if (parameter !== null) {
                 if (current === null || !NativeToolCalls.#assign(current.slots, parameter[1]!, parameter[2]!, known.has(current.name.toLowerCase()))) { mappable = false; continue; }
+                current.parameters = true;
                 continue;
             }
             if (current === null) { if (line.trim().length > 0) mappable = false; continue; }
@@ -223,7 +254,7 @@ export default class NativeToolCalls {
             current.slots.body.push(line);
         }
         finish();
-        return { from, to, calls: mappable ? calls : null };
+        return mappable ? calls : null;
     }
 
     // `<tool_call>…</tool_call>` in its three shapes: `<function=NAME>` with `<parameter=key>` children

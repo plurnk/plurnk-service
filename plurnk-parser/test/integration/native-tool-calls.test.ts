@@ -165,21 +165,70 @@ test("{§native-tool-calls} a targeted operation that names no target is not rea
 });
 
 test("{§native-tool-call-receipt} markup that was not read is named with the fenced form that runs", () => {
-    const receipt = (input: string) => read(input).items.flatMap((item) => item.kind === "error" && item.error.severity === "error" ? [item.error.message] : []);
+    const receipt = (input: string) => read(input).items.flatMap((item) => item.kind === "error" && item.error.severity === "warning" ? [item.error.message] : []);
     assert.deepEqual(receipt("<tool_call>\n<EDIT>\n(django/forms/widgets.py) <9,9>\n{\"lines\":1}\n</EDIT>"), [
-        "`<tool_call>` is tool-call markup, which plurnk does not run, so nothing ran. An operation is a fenced block: three backticks and `EDIT (django/forms/widgets.py)` on the opening line.",
-        PlurnkParser.NO_VALID_OPERATION,
+        "`<tool_call>` is tool-call markup and was not executed. Use three backticks and `EDIT (django/forms/widgets.py)` on the opening line.",
     ]);
     // `bash` names `sh` when `sh` is the registered shell, so the recorded Bash call runs; a shell by an unknown name draws the sh form.
     assert.deepEqual(withoutPosition(ops("<tool_call>\n{\"name\":\"Bash\",\"input\":{\"command\":\"cd /workspace && git status\"}}\n</tool_call>")), canonical("````sh\ncd /workspace && git status\n````"));
     assert.equal(receipt("<tool_call>\n{\"name\":\"zsh\",\"input\":{\"command\":\"cd /workspace && git status\"}}\n</tool_call>")[0],
-        "`<tool_call>` is tool-call markup, which plurnk does not run, so nothing ran. An operation is a fenced block: three backticks and `sh` on the opening line, the command on the lines below it, and three backticks to close.");
+        "`<tool_call>` is tool-call markup and was not executed. Use three backticks and `sh` on the opening line, the command on the lines below it, and three backticks to close.");
     assert.equal(receipt("<tool_call>\n{\"text\": \"Let me fix the `_css` property.\", \"type\": \"note\"}\n</tool_call>")[0],
-        "`<tool_call>` is tool-call markup, which plurnk does not run, so nothing ran. An operation is a fenced block: three backticks and `NOTE` on the opening line, the note on the lines below it, and three backticks to close.");
+        "`<tool_call>` is tool-call markup and was not executed. Use three backticks and `NOTE` on the opening line, the note on the lines below it, and three backticks to close.");
     assert.equal(receipt("<tool_call>\n<tool_call>\n<tool_call>")[0],
-        "`<tool_call>` is tool-call markup, which plurnk does not run, so nothing ran. An operation is a fenced block: three backticks and the operation with its target, such as `READ (path)`, on the opening line.");
+        "`<tool_call>` is tool-call markup and was not executed. Use three backticks and the operation with its target, such as `READ (path)`, on the opening line.");
     const beside = read("````READ (a.md)\n````\n\n<tool_call>\n<tool_call>");
-    assert.ok(beside.items.every((item) => item.kind !== "error" || !item.error.message.includes("tool-call markup")), "an emission that ran an operation draws no receipt");
+    const errors = beside.items.flatMap((item) => item.kind === "error" ? [item.error] : []);
+    assert.deepEqual(errors.map(({ line, severity }) => ({ line, severity })), [{ line: 4, severity: "warning" }]);
+    assert.equal(beside.items.filter((item) => item.kind === "statement").length, 1);
+    assert.deepEqual(read("<tool_call><function=unknown></function></tool_call>").items.flatMap((item) =>
+        item.kind === "error" && item.error.severity === "error" ? [item.error.message] : []), [PlurnkParser.NO_VALID_OPERATION]);
+});
+
+test("{§native-tool-call-receipt}: quoted markup and operation bodies are not attempted calls", () => {
+    const markup = "<tool_call><function=unknown></function></tool_call>";
+    for (const input of [
+        `\`\`\`\`EDIT (example.xml)\n${markup}\n\`\`\`\``,
+        `\`\`\`\`SEND\n${markup}\n\`\`\`\``,
+        `\`\`\`xml\n${markup}\n\`\`\`\n\n\`\`\`READ (a.md)\n\`\`\``,
+    ]) {
+        assert.deepEqual(read(input).items.filter((item) => item.kind === "error"), []);
+    }
+});
+
+test("{§native-tool-calls}: bare invokes and JSON argument bodies use the existing operation slots", () => {
+    const input = [
+        '<｜｜DSML｜｜ invoke name="NOTE">', '{"content":"Remember the observed fact."}', '</｜｜DSML｜｜ invoke>',
+        '<｜｜DSML｜｜ invoke name="sh">', '{"command":"printf ready"}', '</｜｜DSML｜｜ invoke>',
+        '<｜｜DSML｜｜ invoke name="READ">', '<｜｜DSML｜｜ parameter name="path">fact.md</｜｜DSML｜｜ parameter>', '</｜｜DSML｜｜ invoke>',
+        '</｜｜DSML｜｜ calls>',
+    ].join("\n");
+    assert.deepEqual(withoutPosition(ops(input)), canonical("````NOTE\nRemember the observed fact.\n````\n\n````sh\nprintf ready\n````\n\n````READ (fact.md)\n````"));
+    assert.equal(read(input).items.filter((item) => item.kind === "error").length, 0);
+    const unknown = '<invoke name="READ">\n{"path":"fact.md","height":4}\n</invoke>';
+    assert.deepEqual(ops(unknown), [], "an unknown argument is never guessed");
+});
+
+test("{§native-tool-calls}: recorded bare invokes recover the shell, READ and JSON-bodied NOTE (#904)", () => {
+    const first = readFileSync(new URL("../fixtures/recorded/deepdumb-run170-443d9fe6-1-27.md", import.meta.url), "utf8");
+    const second = readFileSync(new URL("../fixtures/recorded/deepdumb-run170-443d9fe6-1-29.md", import.meta.url), "utf8");
+    const before = ops(first);
+    const after = ops(second);
+    assert.deepEqual(before.map((op) => "runtime" in op ? op.runtime : op.op), ["sh", "READ"]);
+    assert.deepEqual(after.map((op) => "runtime" in op ? op.runtime : op.op), ["NOTE", "sh"]);
+    const [shell, read] = before;
+    const [note, nextShell] = after;
+    assert.ok(shell && "runtime" in shell);
+    assert.ok(read && "op" in read && read.op === "READ");
+    assert.ok(note && "op" in note && note.op === "NOTE");
+    assert.ok(nextShell && "runtime" in nextShell);
+    assert.match(shell.body ?? "", /^grep -rIl "stable_topological_sort"/u);
+    assert.equal(read.target?.raw, "tests/forms_tests/tests/test_media.py");
+    assert.deepEqual(read.lineMarker, { marks: [94, 153] });
+    assert.match(note.body ?? "", /^STATE: Fix applied to django\/forms\/widgets.py\./u);
+    assert.match(nextShell.body ?? "", /^grep -rl "Detected duplicate Media files"/u);
+    assert.deepEqual(PlurnkParser.parse(first, { executors: EXECUTORS }).items.filter((item) => item.kind === "error"), []);
+    assert.deepEqual(PlurnkParser.parse(second, { executors: EXECUTORS }).items.filter((item) => item.kind === "error"), []);
 });
 
 // {§native-tool-calls} — DeepSeek's dialect with the heading in the invoke's name, verbatim from run429 (#853).

@@ -131,24 +131,30 @@ export default class PlurnkParser {
     // Outside text is returned separately from executable operations. {§response-text}
     static parse(input: string, options: ParseOptions = {}): ParseResult {
         const direct = PlurnkParser.#parseTurn(input, options);
-        if (direct.items.some((item) => item.kind === "statement")) return direct;
         // {§native-tool-calls} — an emission with no operation may be native tool-call markup that
         // names plurnk operations; read it as those operations, silently (#760).
         const executors = options.executors ?? [];
-        const quoted = PlurnkParser.#quotedMarkup(input, executors);
-        const rewritten = NativeToolCalls.rewrite(input, executors, quoted);
+        const rewritten = direct.items.some((item) => item.kind === "statement") ? null
+            : NativeToolCalls.rewrite(input, executors, PlurnkParser.#quotedMarkup(input, executors));
         if (rewritten !== null) {
             const native = PlurnkParser.#parseTurn(rewritten, options);
             if (native.items.some((item) => item.kind === "statement") && !native.items.some((item) => item.kind === "error" && item.error.severity === "error")) return native;
         }
         // {§native-tool-call-receipt} — markup that could not be read is named, with the form that runs.
-        const unread = NativeToolCalls.unread(input, executors, quoted);
-        if (unread === null) return direct;
+        const unread = direct.items.flatMap((item) => {
+            if (item.kind !== "text") return [];
+            const found = NativeToolCalls.unread(item.content, executors, PlurnkParser.#quotedMarkup(item.content, executors));
+            return found === null ? [] : [{
+                ...found, line: item.position.line + found.line - 1,
+                column: found.column + (found.line === 1 ? item.position.column : 0),
+            }];
+        })[0];
+        if (unread === undefined) return direct;
         const absence = (item: ParseItem<PlurnkStatement>): boolean => item.kind === "error" && item.error.message === PlurnkParser.NO_VALID_OPERATION;
         const receipt: ParseItem<PlurnkStatement> = {
             kind: "error",
             error: new PlurnkParseError(unread.line, unread.column, "parser",
-                `\`${unread.markup}\` is tool-call markup, which plurnk does not run, so nothing ran. An operation is a fenced block: ${unread.form}.`),
+                `\`${unread.markup}\` is tool-call markup and was not executed. Use ${unread.form}.`, "warning"),
         };
         return { ...direct, items: [...direct.items.filter((item) => !absence(item)), receipt, ...direct.items.filter(absence)] };
     }

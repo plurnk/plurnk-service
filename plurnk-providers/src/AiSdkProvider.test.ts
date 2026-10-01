@@ -3130,13 +3130,45 @@ const assertDropped = async (generated: Promise<unknown>, detail: string, facts:
     });
 };
 
-test("{§provider-output-dropped} run133: a tool_calls finish on a request that declares no tools is output_dropped, not an empty turn", async () => {
-    await assertDropped(droppedGenerate([
+test("{§provider-native-tool-calls}: a tool_calls finish retains its evidence and warns without provider recovery", async () => {
+    const result = await droppedGenerate([
         { choices: [{ index: 0, delta: { role: "assistant", reasoning_content: "Look at widgets.py Media merge logic." }, finish_reason: null }] },
         { choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "chatcmpl-tool-af6fe7b410a1d7c5", type: "function", function: { name: "READ (django/forms/widgets.py) /def merge/<tool_call>READ (django/forms/widgets.py) /MediaOrderConflictWarning/</arg_value>", arguments: "{}" } }] }, finish_reason: null }] },
         { choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }], usage: glmUsage(39, 8) },
-    ], 0), "The provider ended the response with tool calls although no tools were declared (1 native tool call); the response text was not delivered as text.", { finishReason: "tool_calls", rawFinishReason: "tool_calls", toolCallCount: 1 });
+    ], 0);
+    assert.equal(result.assistant.finishReason, "tool_calls");
+    assert.equal(result.assistant.content, "");
+    assert.equal(result.accounting.length, 1);
+    assert.match(JSON.stringify(result.assistantRaw), /chatcmpl-tool-af6fe7b410a1d7c5/u);
+    assert.deepEqual(result.notices?.map(({ kind, message }) => ({ kind, message })), [{
+        kind: "provider_warning", message: "The response included native tool calls, but no tools were declared.",
+    }]);
 });
+
+for (const streaming of [true, false]) {
+    for (const finish of ["tool_calls", "stop"]) {
+        test(`{§provider-native-tool-calls}: streaming=${streaming}, finish=${finish} preserves valid text beside native calls`, async () => {
+            const content = "```READ (fact.txt)\n```";
+            const tool = { id: "call-native", type: "function", function: { name: "unknown", arguments: '{"text":"' + "x".repeat(600) + '"}' } };
+            const message = { content, tool_calls: [tool] };
+            const usage = glmUsage(180, 0);
+            const chunks = [
+                { choices: [{ index: 0, delta: { content, tool_calls: [{ index: 0, ...tool }] } }] },
+                { choices: [{ index: 0, delta: {}, finish_reason: finish }], usage },
+            ];
+            const result = await testProvider({ ...injectedBase, streaming, droppedOutputTokens: 32,
+                fetch: streaming ? droppedFetch(chunks) : async () => new Response(JSON.stringify({
+                    model: "fixture", choices: [{ index: 0, message, finish_reason: finish }], usage,
+                }), { headers: { "content-type": "application/json" } }),
+            }).generate({ workerId: "fixture", messages: [{ role: "user", content: "Read the fact." }] });
+            assert.equal(result.assistant.content, content);
+            assert.equal(result.assistant.finishReason, finish);
+            assert.equal(result.accounting.length, 1);
+            assert.match(JSON.stringify(result.assistantRaw), /call-native/u);
+            assert.equal(result.notices?.filter(({ message }) => message === "The response included native tool calls, but no tools were declared.").length, 1);
+        });
+    }
+}
 
 test("{§provider-output-dropped} run134: 187 billed output tokens against 115 streamed characters and no text is output_dropped", async () => {
     const reasoning = "Find the WCS wrapper that returns empty arrays for empty inputs instead of raising in transform.".padEnd(115, ".");

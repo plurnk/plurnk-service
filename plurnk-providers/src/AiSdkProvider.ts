@@ -978,6 +978,16 @@ export default class AiSdkProvider implements Provider {
         }
 
         let notices: ProviderNotice[] | undefined;
+        const nativeCalls = raw.finishReason === "tool_calls" || raw.wire.toolCalls.length > 0;
+        if (nativeCalls) {
+            (notices ??= []).push({
+                source: this.#source,
+                kind: "provider_warning",
+                level: "warn",
+                message: "The response included native tool calls, but no tools were declared.",
+                position: null,
+            });
+        }
         if (recoveredAfterOutput && accounting.at(-1)?.outcome === "response") {
             (notices ??= []).push({
                 source: this.#source,
@@ -1114,7 +1124,8 @@ export default class AiSdkProvider implements Provider {
                 },
             );
         }
-        const dropped = this.#droppedOutput(raw, streamedCharacters);
+        // {§provider-native-tool-calls} Structured output is not missing text.
+        const dropped = nativeCalls ? null : this.#droppedOutput(raw, streamedCharacters);
         if (dropped !== null) {
             const attempt: ProviderAttempt = {
                 assistant: { ...assistant, finishReason: raw.finishReason },
@@ -1138,20 +1149,13 @@ export default class AiSdkProvider implements Provider {
     }
 
     // {§provider-output-dropped} A completed exchange whose own evidence proves its output never arrived:
-    // a tool-call finish on a request that declares no tools, or billed output tokens exceeding every
-    // streamed character (text and reasoning together) by the configured margin — an output token decodes
+    // billed output tokens exceeding every streamed character (text and reasoning together) by the
+    // configured margin — an output token decodes
     // to at least one character. Reasoning billed but streamed nowhere is hidden reasoning, not a drop.
     #droppedOutput(
-        raw: { finishReason: string | null; usage?: ProviderUsage; reasoning: string; wire: { toolCalls: readonly unknown[] } },
+        raw: { usage?: ProviderUsage; reasoning: string },
         streamedCharacters: number,
     ): { message: string; facts: Record<string, number> } | null {
-        if (raw.finishReason === "tool_calls") {
-            const toolCallCount = raw.wire.toolCalls.length;
-            return {
-                message: `The provider ended the response with tool calls although no tools were declared (${toolCallCount} native tool call${toolCallCount === 1 ? "" : "s"}); the response text was not delivered as text.`,
-                facts: { toolCallCount },
-            };
-        }
         const billedOutputTokens = raw.usage?.outputTokens;
         if (this.#droppedOutputTokens === 0 || billedOutputTokens === undefined) return null;
         const billedReasoningTokens = raw.usage?.outputTokenDetails?.reasoningTokens ?? 0;
