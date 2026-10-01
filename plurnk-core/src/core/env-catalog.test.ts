@@ -91,7 +91,7 @@ test("EnvCatalog.candidates drops a section header, which introduces a region an
 // purpose so it can ask for the key by name, and never sees the value.
 test("EnvCatalog.candidates projects the declared value, never an operator's", () => {
     const [credential] = EnvCatalog.candidates([{
-        owner: "@plurnk/plurnk-schemes-http-tavily", parsed: {},
+        owner: "@plurnk/plurnk-tavily-plugin", parsed: {},
         text: "# Tavily API key; unset disables the materializer.\nTAVILY_API_KEY=",
     }]);
     assert.equal(credential!.definition.value, "", "the declaration is empty even when the host has one set");

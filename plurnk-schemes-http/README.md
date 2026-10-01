@@ -87,7 +87,7 @@ plurnk start
 The shipped `.env.defaults` is the canonical operator configuration registry.
 To select a page-materializer plugin for generic public HTML materialization,
 install it and set `PLURNK_SCHEMES_HTTP_MATERIALIZER=<id>` in `.env` (the
-`@plurnk/plurnk-schemes-http-tavily` showcase plugin supplies `tavily-extract`).
+`@plurnk/plurnk-tavily-plugin` showcase plugin supplies `tavily-extract`).
 Without a selection, `@plurnk/plurnk-mimetypes-text-html` supplies the local
 `readable` projection.
 
