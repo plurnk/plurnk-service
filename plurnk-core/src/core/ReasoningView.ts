@@ -5,9 +5,9 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 
 export default class ReasoningView {
     // {§reasoning-operations} — initialization uses the same extraction as a provider-produced turn.
-    static initialSource(): string {
-        return "This harness-generated turn surveys the workspace and available capabilities.\n\n"
-            + PlurnkParser.frame("NOTE", "NOTE, FIND and READ may also be emitted while reasoning.");
+    static initialSource(operations: boolean): string {
+        const rationale = "This harness-generated turn surveys the workspace and available capabilities.";
+        return operations ? `${rationale}\n\n${PlurnkParser.frame("NOTE", "NOTE, FIND and READ may also be emitted while reasoning.")}` : rationale;
     }
 
     static lines(provider: Provider, key: ReasoningViewKnob = "PLURNK_REASONING_VIEW_LINES"): number {

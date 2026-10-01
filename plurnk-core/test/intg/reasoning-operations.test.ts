@@ -17,34 +17,97 @@ import { testExecutors } from "./_execs.ts";
 
 const frame = PlurnkParser.frame;
 
-test("{§reasoning-reboot-configuration}: invalid input is a repairable configuration failure before inference", async () => {
-    const key = "PLURNK_SERVICE_REASONING_REBOOT";
-    const saved = process.env[key];
-    const db = await openMigrated();
-    try {
-        process.env[key] = "yes";
-        const workspaceId = await insertWorkspace(db, "invalid-reboot-control");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1);
-        const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("KILL", "Done."), reasoning: null } }] });
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        await assert.rejects(engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] }), (error) => {
-            assert.ok(error instanceof OperationFailureError);
-            assert.equal(error.result.status, 503);
-            assert.equal(error.result.problem.key, key);
-            assert.match(error.message, /must be 0 or 1/u);
-            return true;
-        });
-        assert.equal(provider.received.length, 0);
-        process.env[key] = "1";
-        assert.equal((await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] })).status, 200,
-            "repairing the setting restores inference on the same engine");
-    } finally {
-        if (saved === undefined) delete process.env[key];
-        else process.env[key] = saved;
-        await db.close();
-    }
-});
+for (const [global, alias, enabled] of [["1", undefined, true], ["0", undefined, false], ["1", "0", false], ["0", "1", true]] as const) {
+    test(`{§reasoning-operations-configuration}: global=${global}, alias=${alias} controls teaching and admission without losing reasoning`, async () => {
+        const key = "PLURNK_SERVICE_REASONING_OPERATIONS";
+        const aliasKey = `${key}_reasoningtest`;
+        const saved = [process.env[key], process.env[aliasKey]];
+        const db = await openMigrated();
+        try {
+            process.env[key] = global;
+            if (alias === undefined) delete process.env[aliasKey];
+            else process.env[aliasKey] = alias;
+            const workspaceId = await insertWorkspace(db, "reasoning-policy");
+            const workerId = await insertWorker(db, workspaceId, null, "alice");
+            const loopId = await insertLoop(db, workerId, 1);
+            const context = { workspaceId, workerId, loopId };
+            await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "Observed fact." });
+            const note = "This came from reasoning.";
+            const reasoning = `${frame("NOTE", note)}\n\n${frame("READ (worker:///fact.txt)", null)}\n\nContinue thinking.\n`;
+            const streamed: string[] = [];
+            const provider = new AiSdkProvider({ model: "fixture", url: "http://example.test/v1/chat/completions", contextWindow: 100_000,
+                fetchTimeoutMs: 5000, operationTimeoutMs: 5000, firstContentTimeoutMs: 0,
+                temperature: null, repeatPenalty: null, retryAttempts: 0, effort: { mode: "adaptive", budget: null },
+                fetch: async () => new Response([
+                    { choices: [{ index: 0, delta: { reasoning_content: reasoning } }] },
+                    { choices: [{ index: 0, delta: { content: frame("KILL", "Done.") }, finish_reason: "stop" }] },
+                ].map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("") + "data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } }),
+            });
+            ProviderInstantiate.registerConfigurationScope(provider, "reasoningtest");
+            const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
+                reasoningEventNotify: (_workspaceId, event) => { streamed.push(JSON.stringify(event)); },
+            });
+            const result = await engine.runTurn({ ...context, provider, messages: [{ role: "system", content: "The language definition." }] });
+            assert.equal(result.status, enabled ? 102 : 200);
+            const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
+            const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: workerId });
+            assert.equal(sources.some(({ kind, content }) => kind === "note" && content === note), enabled);
+            const reads = await db.test_log_entries_by_worker_op_full.all<{ pathname: string; rx: string }>({ worker_id: workerId, op: "READ" });
+            assert.equal(reads.some(({ pathname, rx }) => pathname === "/fact.txt" && rx.includes("Observed fact.")), enabled);
+            const serialized = JSON.stringify(packet);
+            assert.equal(serialized.includes("YOU MAY emit NOTE, FIND, and READ operations while reasoning."), enabled);
+            const teaching = packet.sections.find((section: { name: string }) => section.name === "reasoning-operations");
+            assert.equal(teaching !== undefined, enabled);
+            if (enabled) {
+                assert.equal(teaching.slot, "system");
+                assert.deepEqual(packet.sections.slice(0, 2).map((section: { name: string }) => section.name), ["definition", "reasoning-operations"]);
+            }
+            assert.equal(serialized.includes("NOTE, FIND and READ may also be emitted while reasoning."), enabled,
+                "turn zero must not advertise disabled reasoning operations");
+            const raw = await engine.look({ ...context, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
+            assert.equal(raw.content, reasoning.trimEnd(), "the normal line projection stays readable");
+            assert.ok(sources.some(({ kind, content }) => kind === "reasoning" && content === reasoning),
+                "disabling operations does not erase or rewrite reasoning evidence");
+            assert.ok(streamed.some((value) => value.includes(note)), "reasoning remains visible to clients");
+        } finally {
+            [key, aliasKey].forEach((name, index) => {
+                if (saved[index] === undefined) delete process.env[name];
+                else process.env[name] = saved[index];
+            });
+            await db.close();
+        }
+    });
+}
+
+for (const key of ["PLURNK_SERVICE_REASONING_REBOOT", "PLURNK_SERVICE_REASONING_OPERATIONS"]) {
+    test(`{§reasoning-reboot-configuration} {§reasoning-operations-configuration}: invalid ${key} is a repairable configuration failure before inference`, async () => {
+        const saved = process.env[key];
+        const db = await openMigrated();
+        try {
+            process.env[key] = "yes";
+            const workspaceId = await insertWorkspace(db, "invalid-reboot-control");
+            const workerId = await insertWorker(db, workspaceId, null, "alice");
+            const loopId = await insertLoop(db, workerId, 1);
+            const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("KILL", "Done."), reasoning: null } }] });
+            const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+            await assert.rejects(engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] }), (error) => {
+                assert.ok(error instanceof OperationFailureError);
+                assert.equal(error.result.status, 503);
+                assert.equal(error.result.problem.key, key);
+                assert.match(error.message, /must be 0 or 1/u);
+                return true;
+            });
+            assert.equal(provider.received.length, 0);
+            process.env[key] = "1";
+            assert.equal((await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] })).status, 200,
+                "repairing the setting restores inference on the same engine");
+        } finally {
+            if (saved === undefined) delete process.env[key];
+            else process.env[key] = saved;
+            await db.close();
+        }
+    });
+}
 
 for (const [global, alias, reboot] of [["1", undefined, true], ["0", undefined, false], ["1", "0", false], ["0", "1", true]] as const) {
     test(`{§reasoning-reboot-configuration}: global=${global}, alias=${alias} controls cutoff, not admission`, async () => {

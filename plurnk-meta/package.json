@@ -24,6 +24,7 @@
         "CORPUS.md",
         "POLICY.md",
         "recap.md",
+        "reasoning.md",
         "docs/**/*",
         "skills/**/*",
         "DIVERGENCES.md"

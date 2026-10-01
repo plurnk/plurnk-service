@@ -344,13 +344,10 @@ Models.dev identifies the route's controls but not a provider-specific toggle
 or budget field name. The adapter supplies that last-mile mechanism; it never
 invents a cataloged effort value.
 
-§provider-readable-reasoning **Reasoning is verbatim or it is nothing.** A route
-either returns the model's own reasoning text or it returns none; the service
-carries no projection that requests, unwraps, or reconstitutes a summarized,
-redacted, or otherwise abridged reasoning stream. A route that bills reasoning
-tokens and returns no reasoning text is a route whose `reasoning://` is empty,
-and that is reported rather than compensated for. Models.dev's reasoning bit
-remains capability metadata.
+§provider-readable-reasoning Route-owned options may request exposed reasoning
+text. Normalization follows {§provider-open-reasoning}; Models.dev's reasoning
+bit is capability metadata, not a statement about returned text's fidelity.
+Billing without exposed text does not create a reasoning source.
 
 §provider-sdk-warning AI SDK compatibility, unsupported-feature, deprecation,
 and other call warnings become source-attributed provider Notices on the
@@ -936,14 +933,14 @@ available; catalog estimation requires all quantities its rates need, otherwise
 cost is `unknown`. Covered by `usage.test.ts`, `aiSdkTransport.test.ts`, and
 `AiSdkProvider.test.ts`.
 
-§provider-open-reasoning **Plurnk reads the model's own reasoning.** The service is
-built for open models, whose reasoning arrives as text it can read, address at
-`reasoning://`, and let a model curate with NOTE. Encrypted, redacted and
-summarized reasoning carry no text to read, so the service does not collect them:
-there is no encrypted-reasoning carrier, no summary unwrapping, and no request
-option that asks for either. A route that withholds its reasoning is not refused
-and not compensated for — its `reasoning://` is simply empty, and the reasoning
-tokens it bills are visible in accounting as spend with nothing behind it.
+§provider-open-reasoning **Plurnk consumes exposed reasoning text.** The adapter
+retains the text its transport exposes, including SDK reasoning events that may
+contain a summary; their fidelity is not inferred from a model name or catalog
+reasoning flag. {§reasoning-operations-configuration} controls whether that text
+may supply operations. Encrypted or redacted payloads are never reconstructed
+into reasoning text. A route that withholds reasoning is not refused or
+compensated for: its `reasoning://` is empty, while billed reasoning tokens remain
+visible in accounting.
 Unrecognized detail shapes are omitted at this normalization boundary. Core
 may preserve normalized items as forensic evidence, but a client protocol must
 correlate them to an entity it actually created rather than reusing `id`.

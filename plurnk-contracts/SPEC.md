@@ -809,7 +809,8 @@ automatically hidden. A NOTE-only turn does not request completion; ordinary
 repetition and strike rules still apply.
 
 §reasoning-operations The shared fence parser admits complete, line-leading NOTE,
-FIND and READ statements from exposed provider reasoning. Other backtick or tilde
+FIND and READ statements from exposed provider reasoning when enabled by
+{§reasoning-operations-configuration}. Other backtick or tilde
 code blocks are opaque; heading and missing-closer recovery cannot escape them or
 complete an unfinished reasoning operation. Blockquoted and inline examples are
 not headings. Other reasoned operations never execute.
@@ -831,7 +832,7 @@ and becomes an ordinary admitted turn; results arrive in the next turn's log.
 | Admission | NOTE statements before the batch and the batch itself execute in order through {§reasoning-operations}. A following NOTE ends the batch; it and any lookahead or racing content remain forensic evidence, not executed work. Quoted examples and repaired/incomplete fences never trigger interruption. |
 | Lifecycle | Intentional interruption is a successful provider exchange and an ordinary continuing turn, not completion, cancellation, a strike or a retry. Ordinary permission, stream, receipt and curation rules apply. No operation executes before attempt admission. |
 | Restart | The next ordinary request sees the results in its log and begins fresh reasoning. No prefill, hidden continuation, second cache lane or in-place insertion exists. |
-| Capability | Buffered reasoning still admits operations at response completion; only exposed, streamed reasoning can save generation by interrupting it. No reasoning trace is fabricated from summaries or absent output. |
+| Capability | Buffered reasoning still admits operations at response completion; only exposed, streamed reasoning can save generation by interrupting it. No absent or opaque reasoning is reconstructed into text ({§provider-open-reasoning}). |
 
 §exec-executor-slot The fence name selects the executor directly: for example,
 `python3 (tools/report.py)` or `gitea (issue_list)` on the opening fence line.

@@ -28,12 +28,13 @@ import type { RequestPacket, StoredPacketSection } from "./StoredPacket.ts";
 import type { ChatMessage, Provider } from "@plurnk/plurnk-providers";
 import { scopeEnvToAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "./ProviderInstantiate.ts";
+import ReasoningPolicy from "./ReasoningPolicy.ts";
 import BudgetReadout from "./BudgetReadout.ts";
 import TokenCalibration from "./TokenCalibration.ts";
 import LineAnchors from "../content/line-anchors.ts";
 import ToolResources from "./ToolResources.ts";
 import LogVisibility from "./LogVisibility.ts";
-import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
+import { ConfigurationError, Knob, TEACHING_CORPUS } from "@plurnk/plurnk-meta";
 import Results, { OperationFailureError } from "./results.ts";
 
 const trimHorizontal = (value: string): string => value.replace(/^[\t ]+|[\t ]+$/gu, "");
@@ -240,6 +241,8 @@ export default class PacketBuilder {
             initialMessages.filter((m) => m.role === role).map((m) => m.content).join("\n\n");
         // Resource references are discovered through Turn0, not injected. {§schemes-directory}
         const system_definition = compactDefinitionTables(byRole("system"));
+        const reasoningTeaching = ReasoningPolicy.read(provider).operations
+            ? await readTeachingSource(TEACHING_CORPUS.reasoning) : "";
         const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
         const workerName = await WorkerName.forId(this.#db, workerId);
         // {§message-arrival}: source addresses survive curation of their log observations.
@@ -321,6 +324,7 @@ export default class PacketBuilder {
         const attachmentsWeight = renderedLog.attachments.reduce((sum, { weight }) => sum + weight, 0);
         const defaults: PacketSectionDraft[] = [
             { name: "definition", slot: "system", header: null, content: system_definition },
+            ...(reasoningTeaching.length > 0 ? [{ name: "reasoning-operations", slot: "system" as const, header: null, content: reasoningTeaching }] : []),
             // Stable privileged policy follows the definition for prefix-cache locality.
             { name: "system-policy", slot: "system", header: null, content: systemPolicy ?? "" },
 

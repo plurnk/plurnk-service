@@ -22,7 +22,7 @@ const comparePosition = (
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { Mimetypes, type BaseHandler } from "@plurnk/plurnk-mimetypes";
 import FabricatedLog from "./FabricatedLog.ts";
-import Meta, { ConfigurationError, Knob, type PluginAttributionContext } from "@plurnk/plurnk-meta";
+import Meta, { Knob, type PluginAttributionContext } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
 import GitMembership from "./git-membership.ts";
 import { acceptedKinds } from "./attachments.ts";
@@ -50,6 +50,7 @@ export const resolveOperatorGrammarPath = (value: string): string => {
 // drift between wire and digest possible.
 import PacketWire from "./packet-wire.ts";
 import ReasoningView from "./ReasoningView.ts";
+import ReasoningPolicy from "./ReasoningPolicy.ts";
 import Results, { OperationFailureError, type SchemeResult } from "./results.ts";
 import Turn, { type InferenceEvidence, type TurnRow } from "./Turn.ts";
 import type ClientInteractions from "./ClientInteractions.ts";
@@ -332,6 +333,7 @@ type ProviderAttempts = {
     readonly recoveryBudget: number;
     readonly recoveryBackoff: number;
     readonly reasoningReboot: boolean;
+    readonly reasoningOperations: boolean;
     readonly signal: AbortSignal | undefined;
     readonly providerWorkerId: string;
     // {§turn-accounting-notice} (#465) — every physical exchange this turn pays
@@ -811,7 +813,7 @@ export default class TurnRunner {
         if (filesItems !== null) { // {§actor-boundary-catalog-preview} — once per worker
             initializationStatements.push(...await this.#catalogSurveys(args, container, filesItems));
         }
-        const reasoning = ReasoningView.initialSource();
+        const reasoning = ReasoningView.initialSource(ReasoningPolicy.read(provider).operations);
         await Turn.recordSource(this.#db, initializationTurn.id, "reasoning", reasoning);
         const reasoningRead = ReasoningView.initialRead(provider, workerName, loopSequence, initializationTurn.sequence);
         if (reasoningRead !== null) initializationStatements.push(reasoningRead);
@@ -1079,13 +1081,7 @@ export default class TurnRunner {
     // Phase 4's bookkeeping: the wire request, the recovery knobs, the signal the
     // provider sees, the client id and the worker's provider identity.
     async #prepareProviderAttempts({ provider, workspaceId, workerId, loopId, signal }: TurnArgs, request: TurnRequest): Promise<ProviderAttempts> {
-        const scoped = scopeEnvToAlias(process.env, ProviderInstantiate.configurationAliasOf(provider) ?? "", ["PLURNK_SERVICE_REASONING_REBOOT"]);
-        let reasoningReboot: boolean;
-        try { reasoningReboot = Knob.flag("PLURNK_SERVICE_REASONING_REBOOT", scoped); }
-        catch (cause) {
-            if (!(cause instanceof ConfigurationError)) throw cause;
-            throw new OperationFailureError(Results.configurationFailure(cause), { cause });
-        }
+        const reasoningPolicy = ReasoningPolicy.read(provider);
         const wire = await this.#wireMessages(request.packet, request.systemCtx, provider);
         // {§provider-recovery} — this turn's recovery clock: the first recoverable provider
         // failure starts it; the budget and backoff are the operator's.
@@ -1112,7 +1108,8 @@ export default class TurnRunner {
             attributions: [],
             recoveryBudget,
             recoveryBackoff,
-            reasoningReboot,
+            reasoningReboot: reasoningPolicy.reboot,
+            reasoningOperations: reasoningPolicy.operations,
             signal: providerSignal,
             providerWorkerId,
             turnWireAccounting: [],
@@ -1250,7 +1247,7 @@ export default class TurnRunner {
         attempts.turnWireAccounting.push(...completedResponse.accounting);
         await modelCall.observeResponse(completedResponse, null, attempts.wire.nativeInputs);
         attempts.railEvidence = attempts.railGrammar === undefined ? undefined : completedResponse.grammarEvidence;
-        const split = this.#splitResponse(completedResponse, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []);
+        const split = this.#splitResponse(completedResponse, attempts.reasoningOperations, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []);
         attempts.split = split;
         await this.#classifyProviderAttempt(attempts, attemptRow.id, split, attempt, split.emissionValid);
         return split.emissionValid ? "admitted" : "rejected";
@@ -1369,7 +1366,7 @@ export default class TurnRunner {
     ): Promise<void> {
         await modelCall.observeResponse(attempt, TurnRunner.#providerFailure(error, attempts.signal), attempts.wire.nativeInputs);
         attempts.callInFlight = false;
-        const split = this.#splitResponse(attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []);
+        const split = this.#splitResponse(attempt, attempts.reasoningOperations, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []);
         attempts.response = attempt;
         attempts.split = {
             ...split,
@@ -1399,7 +1396,7 @@ export default class TurnRunner {
             // {§provider-interrupted-attempt} — the interrupted response stays durable
             // as an unaccepted attempt; it is never admitted or replayed.
             await modelCall.observeResponse(error.attempt, failure, attempts.wire.nativeInputs);
-            await this.#classifyProviderAttempt(attempts, attemptId, this.#splitResponse(error.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []), attempts.currentEmissionAttempt, false);
+            await this.#classifyProviderAttempt(attempts, attemptId, this.#splitResponse(error.attempt, attempts.reasoningOperations, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []), attempts.currentEmissionAttempt, false);
         } else {
             await modelCall.fail(failure, error.capacity ?? null);
         }
@@ -1499,7 +1496,7 @@ export default class TurnRunner {
         if (err instanceof ProviderError && err.attempt !== undefined) {
             attempts.response = err.attempt;
             await attempts.modelCall.observeResponse(err.attempt, failure, attempts.wire.nativeInputs);
-            attempts.split = this.#splitResponse(err.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []);
+            attempts.split = this.#splitResponse(err.attempt, attempts.reasoningOperations, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed, this.#executors()?.jsonBodyRuntimes(workspaceId) ?? []);
             await this.#classifyProviderAttempt(attempts, attempts.attemptId, attempts.split, attempts.currentEmissionAttempt, false);
         } else {
             await attempts.modelCall.fail(
@@ -1835,7 +1832,7 @@ export default class TurnRunner {
         };
     }
 
-    #splitResponse(response: ProviderAttempt, executors: readonly string[] = [], wellFormed?: BodyCheck, jsonBodyExecutors: readonly string[] = []): SplitProviderResponse {
+    #splitResponse(response: ProviderAttempt, reasoningOperations: boolean, executors: readonly string[] = [], wellFormed?: BodyCheck, jsonBodyExecutors: readonly string[] = []): SplitProviderResponse {
         const { assistant } = response;
         const yielded = response.reasoningYield;
         const preParsedOps = (assistant as { ops?: PlurnkStatement[] }).ops;
@@ -1913,7 +1910,7 @@ export default class TurnRunner {
             }
         }
         const reasoning = assistant.reasoning ?? null;
-        const reasoningOps = reasoning === null ? [] : PlurnkParser.parseReasoningOperations(yielded === undefined ? reasoning : reasoning.slice(0, yielded.end));
+        const reasoningOps = !reasoningOperations || reasoning === null ? [] : PlurnkParser.parseReasoningOperations(yielded === undefined ? reasoning : reasoning.slice(0, yielded.end));
         const reasoningWork = reasoningOps.filter(({ op }) => op !== "NOTE");
         if (yielded !== undefined && reasoningWork.length === 0) throw new Error("reasoning yield admitted no fact-finding operation");
         const operationCount = contentStatementCount + reasoningWork.length;

@@ -2176,19 +2176,32 @@ same transitions the dispatcher's atomic curation event makes, without the row.
 | Lifecycle | Restart retains sources and observations. FORK snapshots sources under the child's name at the same loop/turn coordinates and receipts with independent curation. No curation or lifecycle event automatically READs model reasoning. A turn the provider left without reasoning reads empty; absent workers and turns return the ordinary missing result ({§turn-source-resources}). |
 | Client | Standard live reasoning events and replay retain original provider reasoning; working resources and READ receipts never substitute for or replay that stream. |
 
+### §reasoning-operations-configuration Reasoning operation policy
+
+`PLURNK_SERVICE_REASONING_OPERATIONS` enables NOTE/FIND/READ admission from
+exposed reasoning, with an ordinary `<key>_<alias>` override. Its enabled
+default lives in `.env.defaults`; there is no model-name or fidelity allowlist.
+`0` disables their admission and interruption, the TIP after the language
+definition, and initialization's reasoning NOTE example. Reasoning display,
+source retention, and ordinary content operations remain unchanged. No reasoning
+is fabricated when the endpoint supplies none. Invalid values are repairable
+configuration failures before inference.
+
 ### §reasoning-reboot-configuration Reasoning interruption policy
 
 `PLURNK_SERVICE_REASONING_REBOOT` enables {§reasoning-yield}; its default lives
 in `.env.defaults`, with `PLURNK_SERVICE_REASONING_REBOOT_<alias>` overriding
 through the ordinary model-alias cascade. `0` disables early interruption, not
-{§reasoning-operations}: complete reasoning operations still join the admitted
-program when generation finishes. It changes neither teaching nor source retention.
+{§reasoning-operations}: when enabled by {§reasoning-operations-configuration},
+complete reasoning operations still join the admitted program when generation
+finishes. It changes neither teaching nor source retention.
 Invalid values are configuration failures before inference, not provider failures.
 
 ### §reasoning-initial-read Initial reasoning observation
 
 The initialization turn records a short `_plurnk`-authored rationale containing
-a fenced NOTE. The shared reasoning extractor ({§reasoning-operations}) executes that
+a fenced NOTE when reasoning operations are enabled ({§reasoning-operations-configuration}).
+The shared reasoning extractor ({§reasoning-operations}) executes that
 NOTE through ordinary dispatch, creating its log item and immutable source.
 The program begins with its own NOTE and READs its reasoning,
 demonstrating both NOTE placements and their ordinary results. The initial message arrives separately as an

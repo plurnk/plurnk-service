@@ -82,6 +82,7 @@ export { observed, observedSync } from "./observe.ts";
 export const TEACHING_CORPUS = Object.freeze({
     policy: "POLICY.md",
     recap: "recap.md",
+    reasoning: "reasoning.md",
     skill: "skills/plurnk/SKILL.md",
     schemeDocs: SCHEME_TEACHING,
 
@@ -90,6 +91,7 @@ export const TEACHING_CORPUS = Object.freeze({
 export type TeachingCorpusSource =
     | typeof TEACHING_CORPUS.policy
     | typeof TEACHING_CORPUS.recap
+    | typeof TEACHING_CORPUS.reasoning
     | typeof TEACHING_CORPUS.skill
     | (typeof TEACHING_CORPUS.schemeDocs)[keyof typeof TEACHING_CORPUS.schemeDocs];
 
