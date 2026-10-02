@@ -67,6 +67,43 @@ test("{§executor-input-schema-preview} complex conditional requirements stay in
     assert.deepEqual(parsed.oneOf, conditional.oneOf);
 });
 
+test("{§executor-tool-catalog} links an exact JSON catalog without changing the compact summary", () => {
+    const definitions = [{ name: "issue/read", description, inputSchema: schema,
+        outputSchema: { type: "object" }, annotations: { readOnlyHint: true },
+        _meta: { vendor: { revision: 1 } },
+    }, { name: "issue_write", inputSchema: { type: "object", additionalProperties: false } }];
+    const before = structuredClone(definitions);
+    const invocation = {
+        body: { role: "JSON arguments", required: true },
+        target: { role: "tool", required: true, kind: "literal" as const },
+        inputSchema: schema,
+    };
+    const tools = definitions.map((definition) => ({
+        target: definition.name, summary: "Manage issues.",
+        invocation: { ...invocation, inputSchema: definition.inputSchema }, definition,
+    }));
+    const source = { runtime: "gitea", resourcesPath: "/tools", summary: { from: "tools" as const },
+        details: "", invocation, registry: { tools } };
+    const resources = ToolResources.render(source);
+    const catalog = resources.find(({ pathname }) => pathname === "/_plurnk/tools/gitea.json");
+    assert.ok(catalog, "the family has a sibling JSON catalog");
+    assert.deepEqual(JSON.parse(catalog.content), { tools: definitions });
+    assert.equal(catalog.content, JSON.stringify({ tools: definitions }, null, 2));
+    assert.match(resources[0]!.content, /worker:\/\/\/_plurnk\/tools\/gitea\.json/);
+    assert.doesNotMatch(resources[0]!.content, /outputSchema|vendor|revision/);
+    assert.deepEqual(resources.slice(1, 3).map(({ pathname }) => pathname), [
+        "/_plurnk/tools/gitea/issue%2Fread.json", "/_plurnk/tools/gitea/issue_write.json",
+    ], "individual input schemas remain separately readable");
+    const withoutDefinitions = ToolResources.render({ ...source, registry: {
+        tools: tools.map(({ target, summary, invocation }) => ({ target, summary, invocation })),
+    } });
+    const summary = (content: string) => content.split("## Summary\n\n")[1]!.split("\n\n")[0];
+    assert.equal(summary(resources[0]!.content), summary(withoutDefinitions[0]!.content));
+    assert.ok(!withoutDefinitions.some(({ pathname }) => pathname === catalog.pathname));
+    assert.deepEqual(ToolResources.render({ ...source, registry: { tools: [] } }), []);
+    assert.deepEqual(definitions, before);
+});
+
 test("{§tools-summary-invocation} a featured exact tool includes its required input without expanding the family", () => {
     const tool = {
         target: "search", summary: "Search documents.",
@@ -176,4 +213,3 @@ test("{§executor-input-schema-preview} notes omitted optional properties as (+N
     })[0]!.content;
     assert.match(noOptions, /```gitea \(search\) <!-- Search repos\. Schema: worker:\/\/\/_plurnk\/tools\/gitea\/search\.json -->\n\{"query": ""\}\n```/);
 });
-

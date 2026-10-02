@@ -188,7 +188,7 @@ export default class RuntimeInvocation {
         const targets = new Set<string>();
         const tools = toolValues.map((value, index): RuntimeRegisteredTool => {
             const tool = recordOf(value, `tool registry.tools[${index}]`, fail);
-            assertKnownFields(tool, new Set(["target", "summary", "invocation", "details"]), `tool registry.tools[${index}]`, fail);
+            assertKnownFields(tool, new Set(["target", "summary", "invocation", "details", "definition"]), `tool registry.tools[${index}]`, fail);
             const exactTarget = exampleLineOf(tool.target, `tool registry.tools[${index}].target`, fail);
             const summary = RuntimeSummary.assertLine(tool.summary, `tool registry.tools[${index}].summary`, fail);
             if ("details" in tool && typeof tool.details !== "string") {
@@ -217,8 +217,12 @@ export default class RuntimeInvocation {
                 summary,
                 invocation,
                 ...(tool.details === undefined ? {} : { details: tool.details as string }),
+                ...("definition" in tool ? { definition: recordOf(tool.definition, `tool registry.tools[${index}].definition`, fail) } : {}),
             };
         });
+        if (tools.some(({ definition }) => definition !== undefined) && tools.some(({ definition }) => definition === undefined)) {
+            fail("tool registry definitions must be supplied for every tool or none");
+        }
         return { tools };
     }
 }

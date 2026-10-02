@@ -80,19 +80,28 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "catalog-race" });
     const workerId = await insertWorker(db, workspaceId, null, "reader", "model");
-    const source = PlurnkParser.frame("READ (worker:///_plurnk/tools/fixture.md) <1,-1>", null);
-    const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
-    const item = parsed.items[0];
-    assert.equal(item?.kind, "statement");
-    if (item?.kind !== "statement") throw new Error("Expected one READ");
-    const toolsDocument = async (): Promise<string> => {
-        const document = await daemon.look({ workspaceId, workerId, statement: item.statement });
+    const read = async (path: string) => {
+        const source = PlurnkParser.frame(`READ (${path}) <1,-1>`, null);
+        const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
+        const item = parsed.items[0];
+        assert.equal(item?.kind, "statement");
+        if (item?.kind !== "statement") throw new Error("Expected one READ");
+        return daemon.look({ workspaceId, workerId, statement: item.statement });
+    };
+    const toolsDocument = async (extension = "md"): Promise<string> => {
+        const document = await read(`worker:///_plurnk/tools/fixture.${extension}`);
         assert.equal(document.status, 200);
         assert.equal(typeof document.content, "string");
         return document.content as string;
     };
     // {§mcp-configuration} The first read makes the workspace resident.
     assert.match(await toolsDocument(), /fixture \(first\)/);
+    // {§executor-tool-catalog} The catalog shares the same refresh and withdrawal boundary.
+    const listRequests = () => served.requests.filter(({ body }) => (body as { method?: string }).method === "tools/list").length;
+    const beforeRead = listRequests();
+    const names = async (): Promise<string[]> => JSON.parse(await toolsDocument("json")).tools.map((entry: { name: string }) => entry.name);
+    assert.deepEqual(await names(), ["first"]);
+    assert.equal(listRequests(), beforeRead, "catalog READ reuses discovery rather than listing MCP tools again");
     const catalog = async () => (await daemon.invokeModuleAction("workspace.mcp.list", {}, {
         scope: "workspace", workspaceId,
     })) as { definitions: { alias: string; detail: { tools: string[] } }[] };
@@ -132,12 +141,20 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     const document = await toolsDocument();
     assert.match(document, /fixture \(third\)/);
     assert.doesNotMatch(document, /fixture \((?:first|second)\)/);
+    assert.deepEqual(await names(), ["third"]);
+    assert.equal((await read("worker:///_plurnk/tools/fixture/first.json")).status, 404,
+        "refresh removes the old per-tool schema as well as its catalog definition");
     assert.equal(provider.received.length, 0, "catalog updates do not invoke the model");
     const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Use the current tool.", policy: { proposals: "accept" } });
     const lifecycle = new LoopLifecycle(db);
     await waitForDb(() => lifecycle.status(loop.loopId), (status) => status === 200);
     assert.equal(provider.received.length, 2);
     assert.match(provider.received[1]!.map(chatMessageText).join("\n"), /Observed third from the server\./);
+    await daemon.invokeModuleAction("workspace.mcp.disable", { alias: "fixture" }, { scope: "workspace", workspaceId });
+    for (const path of ["fixture.md", "fixture.json", "fixture/third.json"]) {
+        assert.equal((await read(`worker:///_plurnk/tools/${path}`)).status, 404,
+            `disabled tools leave no generated resource: ${path}`);
+    }
 };
 
 for (const boundary of boundaries) {

@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { Module as AguiModule } from "@plurnk/plurnk-agui";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { Mock } from "@plurnk/plurnk-providers";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_db.ts";
 import { makeMockResponse } from "./_mock.ts";
@@ -167,7 +168,12 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
         contextWindow: 1_000_000,
         responses: [
             makeMockResponse("\n````READ (worker:///_plurnk/tools/fixture.md) <1,-1>````\n````NOTE\nSelect and inspect the echo contract linked from the family document.\n````"),
-            makeMockResponse("\n````READ (worker:///_plurnk/tools/fixture/echo.json) <1,-1>````\n````NOTE\nInvoke the documented observation tool.\n````"),
+            makeMockResponse([
+                PlurnkParser.frame("READ (worker:///_plurnk/tools/fixture/echo.json) <1,-1>", null),
+                PlurnkParser.frame('FIND (worker:///_plurnk/tools/fixture.json) $.tools[?(@.name=="echo")].name <1,-1>', null),
+                PlurnkParser.frame('READ (worker:///_plurnk/tools/fixture.json) $.tools[?(@.name=="echo")] <1,-1>', null),
+                PlurnkParser.frame("NOTE", "Invoke the documented observation tool."),
+            ].join("\n\n")),
             makeMockResponse("\n````fixture (echo)\nhello from MCP\n````\n\n````NOTE\nInspect the attributable tool failure.\n````"),
             makeMockResponse("\n````KILL (log:///**/READ)````\n````fixture (echo)\n{\"message\":\"hello from MCP\"}\n````\n\n````NOTE\nInspect the corrected tool result.\n````"),
             makeMockResponse("\n````FIND (fixture:///**) <1,-1> [{\"pattern\":\"invalid-tool-arguments\"}]````\n\n````NOTE\nInspect the source's durable terminal result.\n````"),
@@ -180,6 +186,7 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, {
         fixture: stdioEntry("echo-server.mjs", {
             PLURNK_MCP_TEST_TITLE: "Transport fixture",
+            PLURNK_MCP_TEST_WHERE: "1",
             PLURNK_MCP_TEST_INSTRUCTIONS: "Echo tools for transport testing.\n\n## Usage\nPass the message field unchanged.",
         }),
         legacy: stdioEntry("legacy-server.mjs"),
@@ -299,15 +306,44 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
         assert.match(firstPacket, /```fixture \(echo\)/);
         assert.doesNotMatch(firstPacket, /```fixture \([^)]*fail/);
         assert.doesNotMatch(firstPacket, /"path":"worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json"/, "without PLURNK_MCP_EXPANDED, turn 0 surveys family documents only");
+        assert.doesNotMatch(firstPacket, /fixture\.json|inputSchema|readOnlyHint/,
+            "the catalog and its full definitions are not injected into turn0");
         const familyContract = packet(provider.requests, 1);
         assert.match(familyContract, /Pass the message field unchanged\./, "READ of the family document retrieves the full authored instructions");
         assert.match(familyContract, /```fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json -->/);
         assert.doesNotMatch(familyContract, /```fixture \(fail\)/);
+        assert.match(familyContract, /worker:\/\/\/_plurnk\/tools\/fixture\.json/);
         const echoContract = packet(provider.requests, 2);
         assert.match(echoContract, /"title": "fixture: echo"/);
         assert.match(echoContract, /"additionalProperties": false/, "the linked document preserves constraints omitted from the preview");
         assert.match(echoContract, /"required": \[/);
         assert.doesNotMatch(echoContract, /output schema/i);
+        assert.match(echoContract, /"name": "echo"/);
+        assert.match(echoContract, /"inputSchema": \{/);
+        assert.match(echoContract, /"readOnlyHint": true/,
+            "an ordinary JSONPath READ materializes the selected complete tool record in the log");
+        assert.doesNotMatch(echoContract, /pattern-(?:invalid|unsupported)|entry-not-found/);
+        const toolsCatalog = async () => {
+            const parsed = PlurnkParser.parseStatements(PlurnkParser.frame("READ (worker:///_plurnk/tools/fixture.json) <1,-1>", null));
+            const item = parsed.items[0];
+            assert.equal(item?.kind, "statement");
+            if (item?.kind !== "statement") throw new Error("Expected one READ");
+            const result = await daemon.look({ workspaceId: workspaceRow.id, workerId: producer.id, statement: item.statement });
+            assert.equal(result.status, 200);
+            return JSON.parse(result.content as string) as { tools: { name: string; inputSchema: object }[] };
+        };
+        assert.deepEqual((await toolsCatalog()).tools.map(({ name }) => name), ["echo"],
+            "the catalog excludes both capability-denied fail and non-allowlisted where");
+        const found = actionResult(await post(port, runInput(workspace, "find-tool-definition", {
+            forwardedProps: { plurnk: { workspace, action: { kind: "op.parse",
+                text: PlurnkParser.frame('FIND (worker:///_plurnk/tools/fixture.json) $.tools[?(@.name=="echo")].name <1,-1>', null),
+            } } },
+        })));
+        assert.equal(found.ok, true, JSON.stringify(found.problem));
+        const [match] = found.result!.results as { status: number; matchingPathCount: number; matchLocationCount: number }[];
+        assert.equal(match?.status, 200);
+        assert.equal(match.matchingPathCount, 1);
+        assert.equal(match.matchLocationCount, 1, "ordinary FIND locates the requested tool in the JSON catalog");
         const failedInvocation = packet(provider.requests, 3);
         assert.match(failedInvocation, /invalid-tool-arguments/, "the first malformed invocation reached the model as the exact MCP failure");
         assert.match(failedInvocation, /One JSON object per MCP tool call/, "the failure names the form that works, not only the JSON diagnostic");
@@ -343,6 +379,8 @@ test("{§mcp-configuration} AG-UI composes configured MCP servers: execution, re
         })));
         assert.equal(restored.ok, true, JSON.stringify(restored.problem));
         assert.deepEqual(restored.result?.workspace, {});
+        assert.deepEqual((await toolsCatalog()).tools.map(({ name }) => name), ["echo", "fail"],
+            "policy reconciliation restores only the configured tools");
 
         const interrupted = await post(port, runInput(workspace, "host-tool-a", {
             messages: [{ id: "prompt-fail", role: "user", content: "Call the attached fail tool and recover from its result." }],

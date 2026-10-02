@@ -207,3 +207,33 @@ test("{§executor-tool-registry} validates one closed set of exact literal targe
         /summary must be one non-empty line/,
     );
 });
+
+test("{§executor-tool-catalog} preserves original definitions and rejects partial catalogs", () => {
+    const tool = {
+        target: "search", summary: "Search documents.",
+        invocation: {
+            body: { role: "JSON arguments", required: false },
+            target: { role: "tool", required: true, kind: "literal" },
+            inputSchema: { type: "object" },
+        },
+    };
+    const definition = {
+        name: "search", inputSchema: tool.invocation.inputSchema,
+        outputSchema: { type: "object", properties: { matches: { type: "array" } } },
+        _meta: { vendor: { revision: 2 } },
+    };
+    const registry = { tools: [{ ...tool, definition }] };
+    assert.deepEqual(RuntimeInvocation.assertToolRegistry(registry, "fixture", "search"), registry);
+    for (const invalid of [null, [], "tool", false]) {
+        assert.throws(() => RuntimeInvocation.assertToolRegistry({
+            tools: [{ ...tool, definition: invalid }],
+        }, "fixture", "search"), /definition must be an object/);
+    }
+    for (const tools of [
+        [{ ...tool, definition }, { ...tool, target: "other" }],
+        [{ ...tool, target: "other" }, { ...tool, definition }],
+    ]) {
+        assert.throws(() => RuntimeInvocation.assertToolRegistry({ tools }, "fixture", "search"),
+            /definitions must be supplied for every tool or none/);
+    }
+});

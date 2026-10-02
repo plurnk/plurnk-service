@@ -451,6 +451,7 @@ interface RuntimeToolRegistry {
         summary: string;
         invocation: RuntimeInvocation;
         details?: string;
+        definition?: Readonly<Record<string, unknown>>;
     }[];
 }
 ```
@@ -471,6 +472,17 @@ invocations, admitted targets, and effect-classification inputs cannot describe
 different tool sets. The hook is synchronous and
 side-effect-free; a protocol executor refreshes its cached snapshot at its own
 I/O boundary rather than making packet assembly perform network discovery.
+
+§executor-tool-catalog A registry may carry each tool's original JSON object as
+`definition`. Definitions are supplied for every tool or none; a partial set or
+non-object definition fails the plugin boundary. The adapter owns the definition's
+format and correspondence to the invocation. Core preserves it without interpreting
+or augmenting its fields. Filtering, refresh, and withdrawal operate on the same
+registered tool, never a separately maintained catalog.
+The common renderer exposes `{"tools":[...definitions]}` in declaration order as
+an on-demand sibling `.json` catalog linked from the family Markdown document.
+Definitions remain inspection data, not an additional source of execution authority.
+Registries without definitions and empty registries publish no catalog.
 
 §executor-tool-document **Tool documents are the model-facing executor
 directory.** A general runtime's document carries exact H2 `Summary` and

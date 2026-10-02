@@ -676,10 +676,11 @@ mediate a `postMessage` JSON-RPC `ui/` dialect, proxy app-initiated tool
 calls with consent, and own teardown. No Plurnk client can enforce that
 sandbox today (the terminal cannot), the daemon is not a second
 application platform, and AG-UI has no standard Apps projection — inventing
-a private event stream to carry Apps is rejected. Tool descriptions carrying
-`_meta.ui` metadata project into Plurnk without it: model-facing summaries
-derive only from name, description, title, and input schema, and no UI
-resource is fetched or preloaded. The capability matrix keeps the extension
+a private event stream to carry Apps is rejected. Compact tool summaries and
+invocations derive only from name, description, title, and input schema,
+without `_meta.ui`. The on-demand raw tool catalog preserves `_meta` as inert
+data: no UI resource is fetched or preloaded, permissions are not granted,
+and reading a definition does not activate an App. The capability matrix keeps the extension
 non-advertised ({§mcp-capability-matrix}). Re-evaluate only when a
 sandbox-capable client exists and a standard AG-UI projection is agreed;
 even then the capability would be per-client-advertised, never daemon-wide.
@@ -702,6 +703,7 @@ it as a skill. The design review is tracked in #654.
 |---|---|
 | Server | One registered executor family, `worker:///_plurnk/tools/<server>.md`, and matching resource scheme |
 | Enabled tool | One annotated call in the compact family document plus one exact `worker:///_plurnk/tools/<server>/<encoded-tool>.json` input-contract document |
+| Complete tool definitions | `worker:///_plurnk/tools/<server>.json`, containing `{"tools":[...]}` from the same effective snapshot |
 | Tool survey | Ordinary FIND summary metadata from the standard executable-tool resource tree |
 | Resource catalog | `<server>:///` and `<server>:///resources` |
 | Resources | `<server>:///resources` and encoded resource-URI descendants |
@@ -724,9 +726,19 @@ The compact family document contains annotated, copyable tool invocations with
 shallow required-field previews and alias-scoped schema links. Each linked child
 preserves the complete remote description and raw input schema, without
 reconstructing property tables or expanding nested constraints into the preview.
-Output schemas do not enter model teaching; the returned value remains ordinary evidence. Disabled names
+Output schemas do not enter compact invocation teaching; the returned value remains ordinary evidence. Disabled names
 appear in no model teaching, and there is no MCP-specific FIND,
 READ, authority-root, or other model discovery mechanism for tools.
+
+Each registry entry carries the original MCP `Tool` object as its
+{§executor-tool-catalog} definition. The catalog preserves full descriptions,
+input and output schemas, annotations, icons, and metadata as received through
+the MCP client, without synthesized fields or schema expansion. It contains
+the selected tools from all catalog pages, sorted by tool name, not the JSON-RPC
+envelope, pagination cursors, or transport cache controls. The Markdown family
+document links to it; ordinary READ and JSONPath can inspect one tool or the
+whole catalog. Reading the catalog performs no additional MCP discovery and
+does not inject its contents into turn 0.
 
 Core validates the exact target and the selected tool's invocation before
 effect admission. `McpExecutor.run()` independently rejects a target outside

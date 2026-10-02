@@ -5547,6 +5547,12 @@ with a multiline regex over matching fences), so turn 0 names every tool with it
 signature — one row per tool, paged like every survey. Capability attenuation
 restricts that matcher to the admitted exact tools. No document is delivered
 unasked.
+When the registry supplies {§executor-tool-catalog} definitions, the family
+document links to its sibling `<runtime>.json`. The catalog contains exactly
+the effective tools and is an ordinary `application/json` resource for READ,
+FIND, and JSONPath selection. It follows the same reconciliation as the family
+document and per-tool schemas; neither the catalog nor its definitions are
+automatically included in turn 0 or expanded-tool surveys.
 Attached tools are capabilities like every other runtime; the model never
 learns an origin.
 

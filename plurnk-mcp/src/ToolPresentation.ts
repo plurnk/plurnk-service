@@ -29,6 +29,7 @@ export const toolRegistry = (
                     inputSchema: tool.inputSchema,
                 },
                 ...(tool.description === undefined ? {} : { details: tool.description }),
+                definition: tool,
             };
         }),
     };

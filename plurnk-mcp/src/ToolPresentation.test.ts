@@ -32,6 +32,7 @@ test("{§mcp-tool-presentation} derives exact summaries and invocations from the
             inputSchema: tools[0]!.inputSchema,
         },
         details: tools[0]!.description,
+        definition: tools[0],
     }]);
 });
 
@@ -71,7 +72,7 @@ test("{§mcp-tool-presentation} a long description trims to its first sentence",
         "summary shortening does not discard the full description from the input document");
 });
 
-test("{§mcp-apps-exclusion} Apps UI metadata never leaks into the model-facing projection", () => {
+test("{§mcp-apps-exclusion} Apps metadata remains inert catalog data, absent from compact invocations", () => {
     const tools: Tool[] = [{
         name: "analytics",
         description: "Interactive analytics.",
@@ -90,6 +91,25 @@ test("{§mcp-apps-exclusion} Apps UI metadata never leaks into the model-facing 
     assert.equal(entry.summary, "Interactive analytics.");
     assert.ok(
         !JSON.stringify([entry.summary, entry.invocation]).includes("ui://"),
-        "no UI resource or policy material reaches the projection",
+        "no UI resource or policy material reaches the compact invocation",
     );
+    assert.deepEqual(entry.definition, tools[0], "the on-demand definition is not rewritten or stripped");
+});
+
+test("{§mcp-tool-presentation} catalogs preserve complete original tool records in name order", () => {
+    const tools: Tool[] = [{
+        name: "search", title: "Search", description: "Search documents.\n\nAll constraints apply.",
+        inputSchema: { type: "object", properties: { query: { $ref: "#/$defs/query" } },
+            $defs: { query: { type: "string", minLength: 1 } } },
+        outputSchema: { type: "object", properties: { matches: { type: "array", items: { type: "string" } } } },
+        annotations: { readOnlyHint: true },
+        icons: [{ src: "https://example.invalid/search.svg", mimeType: "image/svg+xml" }],
+        _meta: { vendor: { revision: 2 } },
+    }, {
+        name: "list", inputSchema: { type: "object", additionalProperties: false },
+    }];
+    const before = structuredClone(tools);
+    const registry = toolRegistry("docs", tools);
+    assert.deepEqual(registry.tools.map(({ definition }) => definition), [tools[1], tools[0]]);
+    assert.deepEqual(tools, before, "presentation does not mutate the received catalog");
 });

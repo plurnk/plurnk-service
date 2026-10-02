@@ -178,6 +178,7 @@ export interface RuntimeRegisteredTool {
     readonly summary: string;
     readonly invocation: RuntimeInvocation;
     readonly details?: string;
+    readonly definition?: Readonly<Record<string, unknown>>;
 }
 
 export interface RuntimeToolRegistry {

@@ -11,7 +11,15 @@ server and the tool, and its body is the tool's JSON arguments.
 One fenced call runs one tool, and the result is that call's output.
 `worker:///_plurnk/tools/<server>.md` lists a server's invocations and their
 required top-level inputs; each invocation links to the complete raw input
-schema. The turn-0 catalog lists every enabled server's document. `list`
+schema. Its sibling `<server>.json` contains `{"tools":[...]}` with complete
+tool definitions, including input/output schemas, descriptions, and annotations.
+Both documents reflect the same enabled tools. JSONPath selects individual
+definitions without reading the whole catalog:
+
+```READ (worker:///_plurnk/tools/files.json) $.tools[?(@.name=="list_directory")]
+```
+
+The turn-0 catalog lists every enabled server's Markdown document. `list`
 shows every server, including disabled ones and unavailable ones with their
 exact Problem; `enable` turns a server on; `discover` finds servers to add.
 

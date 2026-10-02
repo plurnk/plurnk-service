@@ -223,6 +223,11 @@ export default class ToolResources {
 
         // Declaration order is the taught order (a family's lifecycle verbs, a server's tools).
         const tools = source.registry.tools;
+        // {§executor-tool-catalog} — registry validation guarantees all definitions or none.
+        const catalog = tools[0]!.definition === undefined ? [] : [{
+            pathname: `${childrenRoot}.json`,
+            content: JSON.stringify({ tools: tools.map(({ definition }) => definition) }, null, 2),
+        }];
         const schemaPath = (target: string): string => `${childrenRoot}/${ToolResources.targetSegment(target)}.json`;
         // {§scheme-catalog-aside} — the family's summary is its complete menu: every tool inside
         // the invocation form, shown whole by the catalog, so the discovery row invokes without a READ.
@@ -259,12 +264,16 @@ export default class ToolResources {
         const family = renderDocument(
             source.runtime,
             summary,
-            ["## Tools", "", familyInvocations.join("\n\n")],
+            [
+                "## Tools", "",
+                ...catalog.map(({ pathname }) => `Complete tool definitions: ${inlineCode(`worker://${pathname}`)}.\n`),
+                familyInvocations.join("\n\n"),
+            ],
             detailsBlock,
         );
         return [{ pathname, content: family }, ...tools.flatMap((tool) =>
             tool.invocation.inputSchema === undefined ? [] : [schemaDocument(
                 schemaPath(tool.target), `${source.runtime}: ${tool.target}`, tool.invocation.inputSchema, tool.details ?? "",
-            )])];
+            )]), ...catalog];
     }
 }
