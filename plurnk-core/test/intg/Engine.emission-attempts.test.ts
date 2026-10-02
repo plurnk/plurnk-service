@@ -403,35 +403,51 @@ test("{§fabricated-log-entry}: an emission that writes the harness log is resam
     }
 });
 
-test("{§repetition-stop}: a response stopped at a repeated line is a rejected emission, resampled against the same packet", async () => {
+test("{§provider-generation-completion} repeated reasoning and its final answer settle once with complete usage", async () => {
     const { db, workspaceId, workerId, loopId, engine } = await setup();
     try {
-        const line = "gitea list_issues {\"owner\": \"plunk\", \"repo\": \"plunk-service\"}";
-        const chunk = (content: string, finish: string | null = null): string => `data: ${JSON.stringify({ id: "r", object: "chat.completion.chunk", created: 1, model: "repeat-witness", choices: [{ index: 0, delta: { content }, finish_reason: finish }] })}\n\n`;
-        const usage = `data: ${JSON.stringify({ id: "r", object: "chat.completion.chunk", created: 1, model: "repeat-witness", choices: [], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } })}\n\n`;
-        const stream = (body: string): Response => new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+        const line = "if app_configs is None:\n";
+        const reasoning = Array.from({ length: 40 }, (_, index) => `${line}    candidate_${index}()\n`);
+        const content = "\n````KILL\ncomplete answer\n````";
+        const chunk = (delta: Record<string, string>, finish: string | null = null): string => `data: ${JSON.stringify({ id: "r", object: "chat.completion.chunk", created: 1, model: "repeat-witness", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+        const usage = `data: ${JSON.stringify({ id: "r", object: "chat.completion.chunk", created: 1, model: "repeat-witness", choices: [], usage: { prompt_tokens: 10, completion_tokens: 100, total_tokens: 110, completion_tokens_details: { reasoning_tokens: 80 } } })}\n\n`;
         let calls = 0;
         const provider = new AiSdkProvider({
             model: "repeat-witness",
             url: "https://provider.test/v1/chat/completions",
             contextWindow: 100_000,
-            fetch: async () => ++calls === 1
-                ? stream(Array.from({ length: 100 }, () => chunk(`${line}\n`)).join("") + "data: [DONE]\n\n")
-                : stream(chunk("\n````KILL\nrecovered\n````", "stop") + usage + "data: [DONE]\n\n"),
+            fetch: async () => {
+                assert.equal(++calls, 1, "a completed generation is not resampled because its reasoning repeats code");
+                return new Response(reasoning.map((text) => chunk({ reasoning_content: text })).join("")
+                    + chunk({ content }, "stop") + usage + "data: [DONE]\n\n",
+                { headers: { "content-type": "text/event-stream" } });
+            },
             fetchTimeoutMs: 1_000, operationTimeoutMs: 5_000, firstContentTimeoutMs: 1_000, streamIdleTimeoutMs: 1_000,
-            repeatedLineLimit: 4,
             temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0,
             source: "provider:repeat-witness",
         });
         const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "do the task" }] });
         assert.equal(result.status, 200);
-        assert.equal(calls, 2, "the stopped response is resampled once, not recovered by waiting");
-        assert.equal(result.emissionAttempts, 2);
-        const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
-        assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 1]);
-        assert.equal(JSON.parse(attempts[0]!.parse_errors)[0].message, `The response repeated one line 4 times and was stopped: \`${line}\``);
-        const requests = await db.test_provider_requests.all<{ attempt_sequence: number }>({ turn_id: result.turnId });
-        assert.deepEqual(requests.map(({ attempt_sequence }) => attempt_sequence), [1, 2], "both physical requests are settled");
+        assert.equal(calls, 1);
+        assert.equal(result.emissionAttempts, 1);
+        const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string; response: string }>({ turn_id: result.turnId });
+        assert.equal(attempts.length, 1);
+        assert.equal(attempts[0]?.accepted, 1);
+        assert.deepEqual(JSON.parse(attempts[0]!.parse_errors), []);
+        const assistant = JSON.parse(attempts[0]!.response).assistant;
+        assert.equal(assistant.content, content);
+        assert.equal(assistant.reasoning, reasoning.join(""));
+        assert.equal(assistant.finishReason, "stop");
+        const requests = await db.test_provider_requests.all<{
+            state: string; outcome: string; usage_input: number; usage_output: number; usage_output_reasoning: number;
+        }>({ turn_id: result.turnId });
+        assert.equal(requests.length, 1);
+        assert.equal(requests[0]?.state, "settled");
+        assert.equal(requests[0]?.outcome, "response");
+        assert.equal(requests[0]?.usage_input, 10);
+        assert.equal(requests[0]?.usage_output, 100);
+        assert.equal(requests[0]?.usage_output_reasoning, 80);
+        assert.equal((await engine.loopUsage(loopId)).accounting.usage?.outputTokens, 100);
     } finally {
         await db.close();
     }

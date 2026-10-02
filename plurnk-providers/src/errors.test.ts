@@ -86,7 +86,7 @@ test("{§provider-retryable-truth} a transport's no-replay directive does not ch
 });
 
 test("{§provider-retryable-truth} retryable is exactly the consumer-recoverable kind set", () => {
-    const kinds = ["rate_limit", "network_failure", "deadline_exceeded", "model_refused", "request_rejected", "invalid_response", "unauthorized", "quota_exceeded", "grammar_invalid", "capacity_exceeded", "resource_interrupted", "output_dropped", "repetition"] as const;
+    const kinds = ["rate_limit", "network_failure", "deadline_exceeded", "model_refused", "request_rejected", "invalid_response", "unauthorized", "quota_exceeded", "grammar_invalid", "capacity_exceeded", "resource_interrupted", "output_dropped"] as const;
     assert.deepEqual(
         kinds.filter((kind) => new ProviderError("provider:test", kind, "fixture").problem.retryable === true),
         ["rate_limit", "network_failure", "deadline_exceeded", "resource_interrupted", "output_dropped"],

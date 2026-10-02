@@ -3,7 +3,6 @@ import { createOpenAICompatible, type ProviderErrorStructure } from "@ai-sdk/ope
 import { APICallError, generateText, streamText, type CallWarning, type JSONValue, type LanguageModel, type LanguageModelUsage, type ModelMessage } from "ai";
 import { z } from "zod";
 import type { ChatMessage, ProviderAttemptFinishReason, ProviderChargeEvidence, ProviderReasoningObserver, ProviderUsage, TokenLogprob } from "./types.ts";
-import RepeatedLine from "./RepeatedLine.ts";
 import { normalizeUsage, UsageDetailError, type RawUsage } from "./usage.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { ProviderTimeoutError, providerTimeoutOf } from "./errors.ts";
@@ -198,8 +197,6 @@ export type AiSdkTransportRequest = {
     captureRawBody: boolean;
     observeReasoning?: ProviderReasoningObserver;
     observeText?: (delta: string) => void;
-    // {§repetition-stop}: stop the stream at a line repeated this many times; 0 disables.
-    repeatedLineLimit?: number;
 };
 
 // {§provider-wire-emission} — what the wire carried, every channel, kept on every response.
@@ -233,8 +230,6 @@ export type AiSdkTransportResponse = {
     chargeEvidence: ProviderChargeEvidence;
     rawBody?: unknown;
     warnings: readonly CallWarning[];
-    // {§repetition-stop}: the line that stopped the stream, when finishReason is "repetition".
-    repetition?: { readonly line: string; readonly count: number };
 };
 
 type AiSdkModelRequest = Omit<AiSdkTransportRequest, "url" | "model" | "body" | "fetch"> & {
@@ -534,11 +529,6 @@ const executeModelOnce = async (
     const rawChunks: unknown[] = [];
     let streamError: unknown;
     let outputObserved = false;
-    let answer = "";
-    let reasoningSoFar = "";
-    const limit = request.repeatedLineLimit ?? 0;
-    const guards = limit > 0 ? { text: new RepeatedLine(limit), reasoning: new RepeatedLine(limit) } : undefined;
-    let repetition: { readonly line: string; readonly count: number } | null = null;
     try {
         for await (const part of result.fullStream) {
             if (part.type === "raw") {
@@ -547,20 +537,14 @@ const executeModelOnce = async (
             if (part.type === "text-delta" && part.text.length > 0) {
                 outputObserved = true;
                 liftAttemptDeadline();
-                answer += part.text;
                 request.observeText?.(part.text);
-                repetition = guards?.text.push(part.text) ?? null;
             }
             if (part.type === "reasoning-delta" && part.text.length > 0) {
                 outputObserved = true;
                 liftAttemptDeadline();
-                reasoningSoFar += part.text;
                 request.observeReasoning?.(part.text);
-                repetition ??= guards?.reasoning.push(part.text) ?? null;
             }
             if (part.type === "error") streamError ??= part.error;
-            // {§repetition-stop}: leaving the loop cancels the stream; what arrived is the response.
-            if (repetition !== null) break;
         }
     } catch (error) {
         preserveStreamFailure(error, rawChunks, outputObserved);
@@ -573,30 +557,6 @@ const executeModelOnce = async (
         throw streamError;
     }
     request.signal?.throwIfAborted();
-    if (repetition !== null) {
-        const stopped = extractEvidence(rawChunks);
-        const stoppedUsage = wireUsageEvidenceOf(rawChunks);
-        const stoppedCharge = wireChargeEvidenceOf(rawChunks);
-        return {
-            model: typeof request.languageModel === "string" ? request.languageModel : request.languageModel.modelId,
-            content: answer,
-            reasoning: stopped.reasoning || reasoningSoFar,
-            reasoningProjected: stopped.reasoningProjected,
-            wire: wireEmissionOf(rawChunks),
-            finishReason: "repetition",
-            ...settledUsage(rawChunks, undefined),
-            metadata: metadataOf(rawChunks),
-            logprobs: stopped.logprobs,
-            chargeEvidence: {
-                ...(stoppedCharge === undefined ? {} : { charge: stoppedCharge }),
-                ...(stoppedUsage === undefined ? {} : { usage: stoppedUsage }),
-                response: ((id) => typeof id === "string" ? { id } : {})(rawChunks.map((chunk) => recordOf(chunk)?.id).find((id) => typeof id === "string")),
-            },
-            ...(request.captureRawBody ? { rawBody: rawChunks } : {}),
-            warnings: [],
-            repetition,
-        };
-    }
     const evidence = extractEvidence(rawChunks);
     const accountingUsage = wireUsageEvidenceOf(rawChunks);
     const content = await result.text;
@@ -674,7 +634,6 @@ export const executeOpenAICompatible = async (
         captureRawBody: request.captureRawBody,
         ...(request.observeReasoning === undefined ? {} : { observeReasoning: request.observeReasoning }),
         ...(request.observeText === undefined ? {} : { observeText: request.observeText }),
-        ...(request.repeatedLineLimit === undefined ? {} : { repeatedLineLimit: request.repeatedLineLimit }),
     });
 };
 

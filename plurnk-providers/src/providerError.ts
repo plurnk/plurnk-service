@@ -14,8 +14,7 @@ export type ProviderErrorKind =
     | "grammar_invalid"
     | "capacity_exceeded"
     | "resource_interrupted"
-    | "output_dropped"
-    | "repetition";
+    | "output_dropped";
 
 const defaultStatus = (kind: ProviderErrorKind): number => {
     switch (kind) {
@@ -25,8 +24,7 @@ const defaultStatus = (kind: ProviderErrorKind): number => {
         case "capacity_exceeded": return 413;
         case "rate_limit": return 429;
         case "model_refused":
-        case "grammar_invalid":
-        case "repetition": return 422;
+        case "grammar_invalid": return 422;
         case "invalid_response":
         case "output_dropped": return 502;
         case "deadline_exceeded": return 504;
@@ -66,7 +64,6 @@ const buildProblem = (
         capacity_exceeded: "capacity-exceeded",
         resource_interrupted: "resource-interrupted",
         output_dropped: "output-dropped",
-        repetition: "repetition",
     };
     return Problems.create(source, code[kind], status, message, {
         providerKind: kind,

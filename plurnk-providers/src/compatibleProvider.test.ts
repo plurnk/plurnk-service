@@ -1,5 +1,7 @@
 import test, { mock } from "node:test";
 import { strict as assert } from "node:assert";
+import { readFile } from "node:fs/promises";
+import { parseEnv } from "node:util";
 import { compatibleProviderFromEnv } from "./compatibleProvider.ts";
 
 const env = {
@@ -9,7 +11,6 @@ const env = {
     PLURNK_PROVIDERS_OPERATION_TIMEOUT: "3000",
     PLURNK_PROVIDERS_FIRST_CONTENT_TIMEOUT: "1000",
     PLURNK_PROVIDERS_STREAM_IDLE_TIMEOUT: "0",
-    PLURNK_PROVIDERS_REPEATED_LINE_LIMIT: "0",
     PLURNK_PROVIDERS_DROPPED_OUTPUT_TOKENS: "0",
     PLURNK_PROVIDERS_EFFORT: "off",
     PLURNK_PROVIDERS_TEMPERATURE: "0.2",
@@ -36,6 +37,54 @@ const streamedChatResponse = (content: string) => new Response([
 ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
 
 test.afterEach(() => mock.restoreAll());
+
+test("{§provider-generation-completion} repeated text and reasoning retain the provider finish and final usage", async (t) => {
+    const defaults = parseEnv(await readFile(new URL("../.env.defaults", import.meta.url), "utf8"));
+    for (const channel of ["content", "reasoning_content"] as const) {
+        for (const finishReason of ["stop", "length"] as const) {
+            await t.test(`${channel}: ${finishReason}`, async () => {
+                const repeated = "if app_configs is None:\n";
+                const fragments = Array.from({ length: 40 }, (_, index) => `${repeated}    candidate_${index}()\n`);
+                const chunk = (delta: Record<string, string>, finish: string | null = null) => `data: ${JSON.stringify({
+                    id: "repeated-code", object: "chat.completion.chunk", created: 1, model: "local",
+                    choices: [{ index: 0, delta, finish_reason: finish }],
+                })}\n\n`;
+                const usage = { prompt_tokens: 10, completion_tokens: 100, total_tokens: 110,
+                    completion_tokens_details: { reasoning_tokens: channel === "reasoning_content" ? 80 : 0 } };
+                let requests = 0;
+                let settled = 0;
+                const observed: string[] = [];
+                mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+                    if (String(input).endsWith("/models")) {
+                        return Response.json({ data: [{ id: "local", n_ctx: 100_000 }] });
+                    }
+                    requests++;
+                    return new Response(fragments.map((text) => chunk({ [channel]: text })).join("")
+                        + chunk({ content: "final answer" }, finishReason)
+                        + `data: ${JSON.stringify({ choices: [], usage })}\n\ndata: [DONE]\n\n`,
+                    { headers: { "content-type": "text/event-stream" } });
+                });
+                const provider = await compatibleProviderFromEnv({ ...defaults, ...env }, "local");
+                const response = await provider.generate({
+                    workerId: "repeated-code", messages: [{ role: "user", content: "compare these candidates" }],
+                    observeReasoning: (delta) => { observed.push(delta); },
+                    observeRequest: async () => async () => { settled++; },
+                });
+                assert.equal(response.assistant.finishReason, finishReason);
+                assert.equal(response.assistant.content, (channel === "content" ? fragments.join("") : "") + "final answer");
+                assert.equal(response.assistant.reasoning ?? "", channel === "reasoning_content" ? fragments.join("") : "");
+                assert.equal(observed.join(""), channel === "reasoning_content" ? fragments.join("") : "");
+                assert.equal(requests, 1);
+                assert.equal(settled, 1);
+                assert.equal(response.accounting.length, 1);
+                assert.equal(response.accounting[0]?.outcome, "response");
+                assert.equal(response.accounting[0]?.usage?.inputTokens, 10);
+                assert.equal(response.accounting[0]?.usage?.outputTokens, 100);
+                assert.equal(response.accounting[0]?.usage?.outputTokenDetails?.reasoningTokens, usage.completion_tokens_details.reasoning_tokens);
+            });
+        }
+    }
+});
 
 test("an undifferentiated compatible endpoint receives no guessed prompt-cache field", async () => {
     let body: Record<string, unknown> | undefined;
