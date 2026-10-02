@@ -21,6 +21,8 @@ const journeys = Object.freeze({
             content: [
                 "````READ (log:///1/2/1/SEND)````",
                 "````READ (worker:///_plurnk/plurnk/worker.md) <1,-1>````",
+                "````READ (worker:///_plurnk/plurnk/pattern.md) ~quotes````",
+                "````READ (worker:///_plurnk/plurnk/delegation.md) <1,16>````",
                 "````READ (worker:///_plurnk/plurnk/node.md) <1,-1>````",
                 "````READ (skill://plurnk/SKILL.md) <1,-1>````",
                 "````READ (skill://plurnk/.env.defaults) <1,16>````",
@@ -113,12 +115,29 @@ export const startClientJourneyModel = async () => {
             const text = (body.messages ?? []).filter((message) => message.role !== "assistant").map((message) => typeof message.content === "string" ? message.content : "").join("\n\n");
             if (journey === "tui" && index === 1) {
                 const log = /(?:^|\n)## Log\n([\s\S]*?)(?=\n## |$)/u.exec(text)?.[1]?.trim() ?? "";
-                const messageRead = parseLogRecords(log).find((row) =>
+                const records = parseLogRecords(log);
+                const messageRead = records.find((row) =>
                     String(row.logPath).endsWith("/READ") && row.path === "log:///1/2/1/SEND");
                 assert.ok(messageRead, "installed TUI must READ its message from the arrival's log address");
                 assert.equal(messageRead.status ?? 200, 200, "the message READ succeeded");
                 assert.match(String(messageRead.body ?? ""), /^ *1(?:<@[0-9A-Za-z]{5}>|:)Exercise the installed interactive terminal\./u,
                     "the READ receipt contains the addressed message, not merely a final success claim");
+                // {§read-pattern-evidence} {§teaching-corpus}: packed references and indexed READ compose.
+                const patternRead = records.find((row) =>
+                    String(row.logPath).endsWith("/READ") && row.path === "worker:///_plurnk/plurnk/pattern.md");
+                assert.ok(patternRead, "the installed runtime exposes the pattern reference");
+                assert.equal(patternRead.status ?? 200, 200);
+                assert.equal(patternRead.matcher, "~quotes");
+                assert.match(String(patternRead.body ?? ""), /quotes and escapes, not the property name or colon\./u,
+                    "full-text READ returns the selected source line from the installed reference");
+                assert.ok(Array.isArray(patternRead.matches) && patternRead.matches.length > 0);
+                assert.ok(patternRead.matches.every(({ region }) => typeof region === "string"),
+                    "the installed packet retains precise match locations beside whole source lines");
+                const delegationRead = records.find((row) =>
+                    String(row.logPath).endsWith("/READ") && row.path === "worker:///_plurnk/plurnk/delegation.md");
+                assert.ok(delegationRead, "the installed runtime exposes the delegation reference");
+                assert.equal(delegationRead.status ?? 200, 200);
+                assert.match(String(delegationRead.body ?? ""), /WORK starts a fresh log/u);
                 for (const witness of [
                     /(?:^|\n) *\d+<@[0-9A-Za-z]{5}>```BARE\n *\d+<@[0-9A-Za-z]{5}>A self-contained prompt, with everything it needs pasted in\./u,
                     /(?:^|\n) *\d+<@[0-9A-Za-z]{5}>```node <!--/u,

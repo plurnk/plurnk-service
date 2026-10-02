@@ -319,7 +319,7 @@ try {
     await tui.waitFor(/plurnk\s+active/);
     await tui.exit();
     tui = undefined;
-    process.stdout.write("installed interactive TUI journey GREEN: Functionality + message READ + reasoning + NOTE + KILL + status\n");
+    process.stdout.write("installed interactive TUI journey GREEN: Functionality + message/indexed READ + references + reasoning + NOTE + KILL + status\n");
 
     tui = spawnInstalledTui(clientBin, [
         "--workspace", "installed-rejected",
