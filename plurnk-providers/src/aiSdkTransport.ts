@@ -273,7 +273,8 @@ const transportTimeout = (
 const streamFailureValues = new WeakMap<object, readonly unknown[]>();
 const streamFailureOutput = new WeakSet<object>();
 
-const retainStreamFailureValues = <T extends object>(source: object, target: T): T => {
+const retainStreamFailureValues = <T extends object>(source: unknown, target: T): T => {
+    if (typeof source !== "object" || source === null) return target;
     const values = streamFailureValues.get(source);
     if (values !== undefined) streamFailureValues.set(target, values);
     if (streamFailureOutput.has(source)) streamFailureOutput.add(target);
@@ -284,10 +285,13 @@ const preserveStreamFailure = (
     error: unknown,
     rawChunks: readonly unknown[],
     outputObserved: boolean,
-): void => {
-    if (typeof error !== "object" || error === null) return;
-    streamFailureValues.set(error, [...rawChunks, error]);
-    if (outputObserved) streamFailureOutput.add(error);
+): object => {
+    const failure = typeof error === "object" && error !== null
+        ? error
+        : new Error("Provider stream failed", { cause: error });
+    streamFailureValues.set(failure, [...rawChunks, error]);
+    if (outputObserved) streamFailureOutput.add(failure);
+    return failure;
 };
 
 export const transportFailureOutputObserved = (error: unknown): boolean => {
@@ -359,16 +363,18 @@ const executeModel = async (
     try {
         return await executeModelOnce(request);
     } catch (cause) {
-        if (request.signal?.aborted) throw request.signal.reason;
+        if (request.signal?.aborted) {
+            throw retainStreamFailureValues(cause, new Error("Provider call cancelled", { cause: request.signal.reason }));
+        }
         const timeout = transportTimeout(cause, request);
         if (timeout === null) throw normalizeRetryAttemptError(cause);
-        throw new APICallError({
+        throw retainStreamFailureValues(cause, new APICallError({
             message: timeout.message,
             url: "model:generation",
             requestBodyValues: {},
             cause: timeout,
             isRetryable: false,
-        });
+        }));
     }
 };
 
@@ -546,52 +552,48 @@ const executeModelOnce = async (
             }
             if (part.type === "error") streamError ??= part.error;
         }
+        if (streamError !== undefined) throw streamError;
+        abortSignal?.throwIfAborted();
+        const evidence = extractEvidence(rawChunks);
+        const accountingUsage = wireUsageEvidenceOf(rawChunks);
+        const content = await result.text;
+        const reasoningText = evidence.reasoning || (await result.reasoningText) || "";
+        const rawFinishReason = await result.rawFinishReason;
+        const [response, providerMetadata, warnings] = await Promise.all([
+            result.response,
+            result.providerMetadata,
+            result.warnings,
+        ]);
+        return {
+            model: response.modelId,
+            content,
+            reasoning: reasoningText,
+            reasoningProjected: evidence.reasoningProjected,
+            wire: wireEmissionOf(rawChunks),
+            finishReason: finishReasonOf(rawFinishReason),
+            ...(rawFinishReason === undefined ? {} : { rawFinishReason }),
+            ...settledUsage(rawChunks, await result.usage),
+            metadata: metadataOf(rawChunks),
+            logprobs: evidence.logprobs,
+            chargeEvidence: {
+                ...(wireChargeEvidenceOf(rawChunks) === undefined
+                    ? {}
+                    : { charge: wireChargeEvidenceOf(rawChunks) }),
+                ...(accountingUsage === undefined ? {} : { usage: accountingUsage }),
+                ...(providerMetadata === undefined ? {} : { providerMetadata }),
+                response: {
+                    id: response.id,
+                    ...(response.headers === undefined ? {} : { headers: response.headers }),
+                },
+            },
+            ...(request.captureRawBody ? { rawBody: rawChunks } : {}),
+            warnings: warnings ?? [],
+        };
     } catch (error) {
-        preserveStreamFailure(error, rawChunks, outputObserved);
-        throw error;
+        throw preserveStreamFailure(error, rawChunks, outputObserved);
     } finally {
         liftAttemptDeadline();
     }
-    if (streamError !== undefined) {
-        preserveStreamFailure(streamError, rawChunks, outputObserved);
-        throw streamError;
-    }
-    request.signal?.throwIfAborted();
-    const evidence = extractEvidence(rawChunks);
-    const accountingUsage = wireUsageEvidenceOf(rawChunks);
-    const content = await result.text;
-    const reasoningText = evidence.reasoning || (await result.reasoningText) || "";
-    const rawFinishReason = await result.rawFinishReason;
-    const [response, providerMetadata, warnings] = await Promise.all([
-        result.response,
-        result.providerMetadata,
-        result.warnings,
-    ]);
-    return {
-        model: response.modelId,
-        content,
-        reasoning: reasoningText,
-        reasoningProjected: evidence.reasoningProjected,
-        wire: wireEmissionOf(rawChunks),
-        finishReason: finishReasonOf(rawFinishReason),
-        ...(rawFinishReason === undefined ? {} : { rawFinishReason }),
-        ...settledUsage(rawChunks, await result.usage),
-        metadata: metadataOf(rawChunks),
-        logprobs: evidence.logprobs,
-        chargeEvidence: {
-            ...(wireChargeEvidenceOf(rawChunks) === undefined
-                ? {}
-                : { charge: wireChargeEvidenceOf(rawChunks) }),
-            ...(accountingUsage === undefined ? {} : { usage: accountingUsage }),
-            ...(providerMetadata === undefined ? {} : { providerMetadata }),
-            response: {
-                id: response.id,
-                ...(response.headers === undefined ? {} : { headers: response.headers }),
-            },
-        },
-        ...(request.captureRawBody ? { rawBody: rawChunks } : {}),
-        warnings: warnings ?? [],
-    };
 };
 
 export const executeAiSdkModel = executeModel;
@@ -662,6 +664,7 @@ export const transportFailureEvidence = (
     const settled = settledUsage(values, undefined);
     const usageEvidence = wireUsageEvidenceOf(values);
     const charge = wireChargeEvidenceOf(values);
+    const responseId = metadataOf(values).id;
     const wireStatus = values
         .map(recordOf)
         .find((record) => Number.isInteger(record?.status))?.status;
@@ -676,7 +679,7 @@ export const transportFailureEvidence = (
         chargeEvidence: {
             ...(charge === undefined ? {} : { charge }),
             ...(usageEvidence === undefined ? {} : { usage: usageEvidence }),
-            response: {},
+            response: typeof responseId === "string" ? { id: responseId } : {},
         },
         ...(status === undefined ? {} : { status }),
     };

@@ -246,6 +246,82 @@ test("caller cancellation and provider timeout reach an injected fetch", async (
     );
 });
 
+test("{§provider-cancellation-evidence} cancellation settles received accounting once before returning the caller reason (#971)", async (t) => {
+    for (const reason of [new Error("cancelled"), "killed via worker:// KILL"]) {
+        for (const reported of [false, true]) {
+            await t.test(`${typeof reason}, reported=${reported}`, async () => {
+                const cancellation = new AbortController();
+                const settled: unknown[] = [];
+                const usage = { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 };
+                let calls = 0;
+                let responseId: string | undefined;
+                const provider = testProvider({
+                    ...injectedBase,
+                    retryAttempts: 3,
+                    rawBody: false,
+                    normalizeCost: (evidence) => {
+                        responseId = evidence.response.id;
+                        return directCost(evidence);
+                    },
+                    fetch: async () => {
+                        calls++;
+                        return new Response(sseStream([{
+                            id: "cancelled-provider-call",
+                            choices: [{ index: 0, delta: { reasoning_content: "partial reasoning" }, finish_reason: null }],
+                            ...(reported ? { usage, charge: settledCharge } : {}),
+                        }]), { headers: { "content-type": "text/event-stream" } });
+                    },
+                });
+                await assert.rejects(provider.generate({
+                    workerId: "cancelled", messages: [], signal: cancellation.signal,
+                    observeReasoning: () => cancellation.abort(reason),
+                    observeRequest: async () => async (accounting) => { settled.push(accounting); },
+                }), (error) => error === reason);
+                assert.equal(calls, 1, "cancellation never retries a paid request");
+                assert.equal(responseId, "cancelled-provider-call");
+                assert.deepEqual(settled, [{
+                    provider: "provider", model: "m", outcome: "error",
+                    ...(reported ? { usage: { inputTokens: 100, outputTokens: 10, totalTokens: 110 } } : {}),
+                    cost: reported ? settledCharge : {
+                        kind: "unknown", reason: "the request reported no direct cost and no model rate is configured",
+                    },
+                }]);
+            });
+        }
+    }
+});
+
+test("{§provider-cancellation-evidence} cancellation during completed-response settlement neither erases nor duplicates it (#971)", async () => {
+    const cancellation = new AbortController();
+    const settled: unknown[] = [];
+    let calls = 0;
+    const provider = testProvider({
+        ...injectedBase, retryAttempts: 3, normalizeCost: directCost,
+        fetch: async () => {
+            calls++;
+            return new Response(sseStream([
+                { choices: [{ delta: { content: "finished" }, finish_reason: "stop" }] },
+                { choices: [], usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 }, charge: settledCharge },
+            ]), { headers: { "content-type": "text/event-stream" } });
+        },
+    });
+    const response = await provider.generate({
+        workerId: "completed", messages: [], signal: cancellation.signal,
+        observeRequest: async () => async (accounting) => {
+            cancellation.abort("cancel during settlement");
+            await Promise.resolve();
+            settled.push(accounting);
+        },
+    });
+    assert.equal(response.assistant.content, "finished");
+    assert.equal(calls, 1);
+    assert.deepEqual(settled, [{
+        provider: "provider", model: "m", outcome: "response",
+        usage: { inputTokens: 2, outputTokens: 1, totalTokens: 3 }, cost: settledCharge,
+    }]);
+    assert.deepEqual(response.accounting, settled);
+});
+
 test("per-instance fetch owns tokenization and retry attempts", async () => {
     const calls: string[] = [];
     let generationAttempts = 0;

@@ -179,6 +179,109 @@ test("stream failure evidence distinguishes semantic output from pre-output fail
     }
 });
 
+test("{§provider-cancellation-evidence} cancellation preserves received evidence through the SDK abort event (#971)", async (t) => {
+    for (const channel of ["content", "reasoning_content"] as const) {
+        for (const reason of [new Error("worker cancelled"), "worker cancelled"]) {
+            for (const reported of [false, true]) {
+                await t.test(`${channel}, ${typeof reason}, usage=${reported}`, async () => {
+                    const cancellation = new AbortController();
+                    const usage = { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 };
+                    const charge = { amount: "0.000021", currency: "USD" };
+                    const body = {
+                        id: "cancelled-response", model: "test-model",
+                        choices: [{ index: 0, delta: { [channel]: "partial output" }, finish_reason: null }],
+                        ...(reported ? { usage, charge } : {}),
+                    };
+                    let observed = "";
+                    const observe = (delta: string): void => {
+                        observed += delta;
+                        cancellation.abort(reason);
+                    };
+                    await assert.rejects(executeOpenAICompatible({
+                        ...request,
+                        streaming: true,
+                        signal: cancellation.signal,
+                        observeText: observe,
+                        observeReasoning: observe,
+                        fetch: async () => new Response(`data: ${JSON.stringify(body)}\n\ndata: [DONE]\n\n`, {
+                            headers: { "content-type": "text/event-stream" },
+                        }),
+                    }), (error) => {
+                        const evidence = transportFailureEvidence(error);
+                        assert.equal(transportFailureOutputObserved(error), true);
+                        assert.deepEqual(evidence.usage, reported
+                            ? { inputTokens: 100, outputTokens: 10, totalTokens: 110 }
+                            : undefined);
+                        assert.equal(evidence.chargeEvidence.response.id, "cancelled-response");
+                        assert.deepEqual(evidence.chargeEvidence.usage, reported ? usage : undefined);
+                        assert.deepEqual(evidence.chargeEvidence.charge, reported ? charge : undefined);
+                        return true;
+                    });
+                    assert.equal(observed, "partial output");
+                });
+            }
+        }
+    }
+});
+
+test("{§provider-cancellation-evidence} a shared cancellation reason does not mix concurrent request evidence (#971)", async () => {
+    const cancellation = new AbortController();
+    const reason = new Error("cancel the subtree");
+    let observed = 0;
+    const calls = [10, 20].map(async (inputTokens) => {
+        try {
+            await executeOpenAICompatible({
+                ...request, streaming: true, signal: cancellation.signal,
+                observeText: () => { if (++observed === 2) cancellation.abort(reason); },
+                fetch: async (_url, init) => new Response(new ReadableStream<Uint8Array>({
+                    start(controller) {
+                        controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+                            id: `request-${inputTokens}`, model: "test-model",
+                            choices: [{ index: 0, delta: { content: "received" }, finish_reason: null }],
+                            usage: { prompt_tokens: inputTokens, completion_tokens: 1, total_tokens: inputTokens + 1 },
+                        })}\n\n`));
+                        init?.signal?.addEventListener("abort", () => controller.error(reason), { once: true });
+                    },
+                }), { headers: { "content-type": "text/event-stream" } }),
+            });
+            assert.fail("a cancelled request must not return a completed response");
+        } catch (error) {
+            return transportFailureEvidence(error);
+        }
+    });
+    const results = await Promise.all(calls);
+    assert.equal(observed, 2);
+    assert.deepEqual(results.map(({ usage }) => usage?.inputTokens), [10, 20]);
+    assert.deepEqual(results.map(({ chargeEvidence }) => chargeEvidence.response.id), ["request-10", "request-20"]);
+});
+
+test("{§provider-cancellation-evidence} deadline normalization retains evidence received before first content (#971)", async () => {
+    const usage = { prompt_tokens: 100, completion_tokens: 0, total_tokens: 100 };
+    await assert.rejects(executeOpenAICompatible({
+        ...request, streaming: true, firstContentTimeoutMs: 50,
+        fetch: async (_url, init) => new Response(new ReadableStream<Uint8Array>({
+            start(controller) {
+                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
+                    id: "deadline-response", model: "test-model", choices: [], usage,
+                })}\n\n`));
+                init?.signal?.addEventListener("abort", () => {
+                    controller.error(new DOMException("Request aborted", "AbortError"));
+                }, { once: true });
+            },
+        }), { headers: { "content-type": "text/event-stream" } }),
+    }), (error) => {
+        assert.ok(APICallError.isInstance(error));
+        assert.ok(error.cause instanceof ProviderTimeoutError);
+        assert.equal(error.cause.phase, "first_content");
+        const evidence = transportFailureEvidence(error);
+        assert.deepEqual(evidence.usage, { inputTokens: 100, outputTokens: 0, totalTokens: 100 });
+        assert.deepEqual(evidence.chargeEvidence.usage, usage);
+        assert.equal(evidence.chargeEvidence.response.id, "deadline-response");
+        assert.equal(transportFailureOutputObserved(error), false);
+        return true;
+    });
+});
+
 test("the adapter preserves PLURNK request extensions and response evidence", async () => {
     let body: Record<string, unknown> | undefined;
     const responseBody = {

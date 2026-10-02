@@ -867,7 +867,7 @@ export default class AiSdkProvider implements Provider {
             if (err instanceof ProviderRequestObserverError
                 || err instanceof ProviderRequestAccountingError
                 || err instanceof ProviderReasoningObserverError) throw err.cause;
-            if (signal?.aborted) throw err;
+            if (signal?.aborted) throw signal.reason;
             if (operationTimeout?.aborted) {
                 const timeout = new ProviderTimeoutError("operation", this.#operationTimeoutMs, err);
                 throw new ProviderError(this.#source, "deadline_exceeded", timeout.message, {

@@ -787,6 +787,15 @@ the attempt for the whole attempt deadline. It still begins only after admission
 Settled calls remove their deadline timers and cancellation subscriptions.
 
 Caller cancellation spans the operation and preserves the caller's reason.
+
+§provider-cancellation-evidence Received usage/charge evidence and available
+response identity survive cancellation and deadline normalization through
+physical-request settlement, independently of optional raw-body capture.
+This includes SDK abort events and non-Error cancellation reasons. Concurrent
+requests keep independent evidence even when cancelled by the same scope.
+Absent evidence remains absent; stopping a request neither invents usage nor
+retries generation to obtain it. Partial output is never a completed response.
+
 A 2xx exchange whose body cannot be processed (a provider invalid-response)
 classifies as the non-retryable 502 on the first failure unless an explicit
 `x-should-retry` directive says otherwise (#479). Inner deadline failures surface on the first failure; when a

@@ -23,7 +23,8 @@ test("live and demo deadline reads the existing env knob and rejects invalid lim
 test("the live catalog contains every registered specimen exactly once", async () => {
     const files = await liveFiles();
     const names = await collectLiveTestNames(files);
-    assert.equal(names.length, 31);
+    assert.equal(names.length, 32);
+    assert.ok(names.includes("live: cancellation settles an active model request"));
     assert.ok(names.includes("{§bare-inference} live: delegate two isolated questions and consume their answers"));
     assert.ok(names.includes("live executor input: SEND feeds a running Node process"));
     assert.ok(names.includes("live: a client-attached image persists until log curation"));
