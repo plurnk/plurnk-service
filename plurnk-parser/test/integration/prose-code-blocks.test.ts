@@ -94,6 +94,18 @@ test("{§naked-kill} a naked KILL shows a fenced `KILL (notes.md)` without runni
     assert.deepEqual(closed.map((statement) => `${statement.op}${"target" in statement && statement.target ? ` ${statement.target.raw}` : ""}`), ["KILL", "READ b.md"], "the name alone still closes a naked block; a fence inside never does");
 });
 
+test("{§naked-kill} an aside on a naked KILL preserves its quoted deletion (recorded Cerebras demo)", () => {
+    const text = recorded("cerebras-show-dont-run-aa4faa76-1-2.md");
+    const result = parse(text);
+    const executed = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+    assert.deepEqual(executed.map((s) => [s.op, "target" in s ? s.target : null]), [["KILL", null]]);
+    assert.equal(executed[0]?.aside, "deliverable for message://aa4faa76/039632ea");
+    assert.equal(bodyOf(executed[0]), text.trimEnd().split("\n").slice(3).join("\n"));
+    assert.deepEqual(result.items.filter((item) => item.kind === "text"), []);
+    assert.deepEqual(result.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []),
+        ["`KILL` opened with no fence; the taught form is three backticks."]);
+});
+
 test("{§unclosed-mutation-yields} glm run158: an unclosed EDIT never swallows the EDIT after it; both run and no heading is written (recorded)", () => {
     const text = recorded("glm-run158-packet007.md");
     const result = parse(text);

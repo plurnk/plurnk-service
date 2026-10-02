@@ -300,10 +300,11 @@ fence only as the nesting form. Every producer of a statement — the parser, a 
 `/look`, a client's tab-completion — writes `PLURNK_FENCE` rather than its own literal
 (plurnk/plurnk#92).
 
-§naked-operation **A native operation's name alone on a line opens it without a fence.** A
-column-zero line outside any block that is exactly an operation's name, with nothing but
-horizontal whitespace after it, opens that operation as if it were fenced with the taught three
-backticks: no target, no modifiers, and a body that runs to a line that is exactly the name
+§naked-operation **A native name with only an optional aside opens without a fence.** A
+column-zero line outside any block containing a native operation's name and at most one complete
+`<!-- aside -->`, with only horizontal whitespace otherwise, opens that operation as if it were
+fenced with the taught three backticks. The aside retains its ordinary meaning: no target or
+modifiers are inferred. Its body runs to a line that is exactly the name
 again, to the next heading ({§fence-heading-in-body}), or to the end of the turn. A fence inside
 naming nothing known is body; the block expects no closer, so its body is never cut
 back ({§closer-fallback}). A naked `KILL` alone holds every fence inside it as text ({§naked-kill}). It runs, and one warning-severity receipt follows its statement —
@@ -312,10 +313,10 @@ operation: a naked `WAIT` parks, a naked `NOTE` takes its text, a naked `READ` m
 missing-target refusal. A closer the author wrote anyway is still not body: when the body's last line is
 a bare backtick fence that no other fence line in the body pairs with (an odd count of fence lines), that
 line is the block's closer and leaves the body, so `KILL`, then the answer, then a closing fence delivers
-the answer alone. Only the bare name qualifies; a name with anything else on its line is
-the unfenced form and still refuses ({§unfenced-operation}), executors are runtimes rather than
-operations, and reasoning is never read this way. In 9,196 recorded emissions, all 48 naked
-`KILL` lines were followed by the deliverable.
+the answer alone. An aside-bearing name inside a body is not a closer. An incomplete or repeated
+aside, an operand, or other heading text does not qualify and remains the unfenced form
+({§unfenced-operation}). Executors are runtimes rather than operations, and reasoning is never
+read this way.
 
 §fence-heading-in-body Outside a complete nested block ({§balanced-fences}), a fence
 line of three or more backticks and a name that is a native operation or a known executor
@@ -458,15 +459,11 @@ operations the author wrote than the best repaired reading, the repaired reading
 inner fence keep what followed it (the qflash run192, run90 and run210 deliverables regain their last
 sections), one echoed transcript (glm run155) runs one more operation, and none loses one.
 
-§naked-kill **A naked KILL is the whole rest of the turn.** A parameterless `KILL` opened by its
-name alone ({§naked-operation}) is a completion, and nothing can follow a completion: every fenced
+§naked-kill **A naked KILL is the whole rest of the turn.** A parameterless `KILL` opened without
+a fence ({§naked-operation}), with or without an aside, is a completion: every fenced
 block inside it, a native operation heading included, is text the deliverable shows, exactly as
 inside a fenced KILL ({§terminal-kill}), and the block ends only at its name alone on a line or at
-the end of the input. No operation the deliverable shows runs. In the rtx5070 demo
-`demo-show-dont-run-sJU8zO` the model, asked to show a deletion without doing it, answered with a
-naked `KILL` whose deliverable quoted ```` ```KILL (notes.md) ````; read as a heading that ended
-the deliverable, the quoted KILL ran and deleted the file. The fenced form of the same answer had
-already read as quotation; this rule makes the two forms one.
+the end of the input. No operation the deliverable shows runs.
 
 §pairing-witness **Witnesses.**
 
@@ -1287,8 +1284,8 @@ intent.
 so.** An outside-text line that opens at column zero with an operation's name and anything else
 — `KILL The answer…`, `READ (a.md)`, `KILL (notes.md)` — draws one warning: `` `KILL` has no
 fence, so it did not run. `` The line is not response text ({§response-text}): it is neither stored
-as outside text nor echoed into the next packet, and the exact emission remains at `ops://`; the bare name alone
-opens the operation instead ({§naked-operation}). A registered executor's name followed by an
+as outside text nor echoed into the next packet, and the exact emission remains at `ops://`; a name
+with only an optional complete aside opens the operation instead ({§naked-operation}). A registered executor's name followed by an
 operand slot — `gitea (list_issues)`, `sh(build.sh)` — draws the same warning under the executor's
 own spelling; quoted blocks, offset lines and names inside a sentence draw nothing, since `sh`,
 `env` and `members` are ordinary words. The model that wrote it believes it ran: stored as

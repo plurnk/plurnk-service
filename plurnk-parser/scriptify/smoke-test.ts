@@ -110,6 +110,11 @@ for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkPar
 // A quoted example rides a wider fence ({§balanced-fences}): the SEND's body holds the literal
 // heading without executing it, and the disposition still follows.
 const literalExample = PlurnkParser.frame("KILL (worker:///notes.md)", null);
+const naked = PlurnkParser.parse("KILL <!-- example only -->\\n" + literalExample);
+const nakedStatements = statementsOf(naked);
+if (nakedStatements.length !== 1 || nakedStatements[0]?.op !== "KILL"
+    || nakedStatements[0]?.target !== null || nakedStatements[0]?.aside !== "example only"
+    || nakedStatements[0]?.body !== literalExample) throw new Error("naked KILL exposed its quoted deletion");
 const quoted = PlurnkParser.frame("SEND <!-- literal example -->", literalExample) + "\\n" + program;
 const quotedSend = PlurnkParser.parse(quoted);
 assertClean("wider SEND", quotedSend);

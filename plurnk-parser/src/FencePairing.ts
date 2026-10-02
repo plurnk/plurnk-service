@@ -20,7 +20,7 @@ type Line =
     | { readonly kind: "info"; readonly character: FenceCharacter; readonly width: number }
     | { readonly kind: "heading"; readonly width: number; readonly selfClosed: boolean; readonly bodiless: boolean; readonly terminal: boolean; readonly prose: boolean; readonly mutation: boolean; readonly runtime: string | null }
     | { readonly kind: "closeThenHeading"; readonly width: number; readonly headingWidth: number; readonly selfClosed: boolean; readonly bodiless: boolean }
-    | { readonly kind: "name"; readonly name: string };
+    | { readonly kind: "name"; readonly name: string; readonly alone: boolean };
 
 /** How one top-level block (an operation or a quotation) ends. */
 export type BlockEnd =
@@ -149,7 +149,8 @@ export default class FencePairing {
     }
 
     static #line(text: string, options: PairingOptions): Line {
-        if (!options.reasoning && options.operations.has(text.trimEnd()) && /^[A-Z]+[ \t]*$/u.test(text)) return { kind: "name", name: text.trimEnd() };
+        const naked = options.reasoning ? null : /^([A-Z]+)[ \t]*(<!--(?:(?!-->)[^\r\n])*-->)?[ \t]*$/u.exec(text);
+        if (naked !== null && options.operations.has(naked[1]!)) return { kind: "name", name: naked[1]!, alone: naked[2] === undefined };
         const match = /^( {0,3})(`{3,}|~{3,})(.*)$/u.exec(text);
         if (match === null) return { kind: "text" };
         const character = match[2]!.charAt(0) as FenceCharacter;
@@ -464,7 +465,7 @@ class Search {
                     yield { kind: "child", cost: ZERO, effects: [], child: { kind: "naked", character: "`", width: Infinity, bareOpened: false, name: line.name, top: true, quoted: false, terminal: line.name === "KILL" }, line: i, flags };
                     return;
                 }
-                if (context.kind === "naked" && context.name === line.name && context.top) yield { kind: "end", cost: ZERO, effects: [], end: at(i + 1), record: { kind: "closer", line: i } };
+                if (line.alone && context.kind === "naked" && context.name === line.name && context.top) yield { kind: "end", cost: ZERO, effects: [], end: at(i + 1), record: { kind: "closer", line: i } };
                 yield { kind: "stay", cost: ZERO, effects: [], next: at(i + 1), flags: marked };
                 return;
             case "heading":

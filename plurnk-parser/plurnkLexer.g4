@@ -281,16 +281,16 @@ private static readonly OPERATIONS: Readonly<Record<string, number>> = {
     LOOK: plurnkLexer.OPEN_LOOK,
 };
 
-// {§naked-operation} - a native operation's name alone on a column-zero line: the next run of
-// capitals is a known operation and nothing but horizontal whitespace follows it on the line.
-private nakedHeadingAhead(): boolean {
+// {§naked-operation} — a native name and optional complete aside, outside reasoning.
+private nakedHeadingHere(): boolean {
+    if (!this.atColumnZero() || this.reasoning) return false;
     let name = "";
     for (let cursor = 1; ; cursor++) {
         const c = this.inputStream.LA(cursor);
         if (c >= 0x41 && c <= 0x5A) { name += String.fromCharCode(c); continue; }
         const after = this.skipHorizontal(cursor);
         const end = this.inputStream.LA(after);
-        return Object.hasOwn(plurnkLexer.OPERATIONS, name) && (end <= 0 || end === 0x0A || end === 0x0D);
+        return Object.hasOwn(plurnkLexer.OPERATIONS, name) && (end <= 0 || end === 0x0A || end === 0x0D || this.asideToLineEnd(after));
     }
 }
 
@@ -615,8 +615,8 @@ fragment EOL : '\r'? '\n' ;
 // {§fence-boundary} - only top-level fences can open statements. The first
 // block may terminate a provider preamble without an intervening newline.
 OPEN : { this.atLineStart() || !this.reasoning && this.inlineChain }? FENCE NAME { this.knownHeading() }? { this.open(); } -> mode(SLOTS) ;
-// {§naked-operation} - the name alone on a column-zero line opens the operation without a fence.
-NAKED_OPEN : { this.atColumnZero() && !this.reasoning && this.nakedHeadingAhead() }? [A-Z]+ { this.openNaked(); } -> mode(SLOTS) ;
+// {§naked-operation} — the name opens; the ordinary heading lexer reads its aside.
+NAKED_OPEN : { this.nakedHeadingHere() }? [A-Z]+ { this.openNaked(); } -> mode(SLOTS) ;
 // {§reasoning-operations} — an enclosing code fence is quotation, including unknown tags and tildes.
 // {§quotation} - a bare fence directly under a fence line is that block's orphaned closer: it
 // closes nothing and quotes nothing (a malformed heading's block ends at its own line).
@@ -632,7 +632,7 @@ WS : [ \t\r\n]+ -> channel(HIDDEN) ;
 // {§provider-tagged-reasoning} - a route that delivers reasoning inline declares it, and the
 // provider peels that one leading envelope. Here a reasoning tag is prose: no rule in this mode
 // crosses a line start unanchored, so no substring found in text can re-read the program after it.
-TEXT_RUN : ~[ \t\r\n`]+ { this.inlineChain = false; } -> type(TEXT), channel(HIDDEN) ;
+TEXT_RUN : { !this.nakedHeadingHere() }? ~[ \t\r\n`]+ { this.inlineChain = false; } -> type(TEXT), channel(HIDDEN) ;
 TEXT_TICK : '`' { this.inlineChain = false; } -> type(TEXT), channel(HIDDEN) ;
 
 // {§parser-architecture} - the modes below are that chapter's state diagram: DEFAULT, QUOTATION,

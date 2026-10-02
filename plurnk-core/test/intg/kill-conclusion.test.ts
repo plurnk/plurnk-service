@@ -61,6 +61,24 @@ test("{§naked-operation}: a bare KILL line concludes with everything beneath it
     } finally { await f.db.close(); }
 });
 
+test("{§naked-kill}: a recovered KILL with an aside delivers its deletion example without deleting the resource", async () => {
+    const answer = "To delete the entry, use:\n\n````KILL (worker:///kept.md)\n````\n\nNothing was deleted.";
+    const f = await setup([
+        { assistant: { content: frame("EDIT (worker:///kept.md)", "Retained."), reasoning: null } },
+        { assistant: { content: `KILL <!-- deliverable -->\n${answer}`, reasoning: null } },
+    ]);
+    try {
+        assert.equal((await f.turn()).status, 102);
+        const turn = await f.turn();
+        const channel = await f.db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/kept.md", name: "body" });
+        assert.equal(channel?.content, "Retained.", "the quoted deletion never executes");
+        assert.equal(turn.status, 200);
+        assert.deepEqual(await f.replies(), [answer], "the complete example is delivered literally");
+        assert.deepEqual(f.notices.filter(({ message }) => message?.includes("fence")).map(({ message }) => message),
+            ["`KILL` opened with no fence; the taught form is three backticks."]);
+    } finally { await f.db.close(); }
+});
+
 for (const shape of ["nested", "indented"] as const) {
     test(`{§quotation}: a ${shape} three-backtick deletion never deletes the entry`, async () => {
         const example = "```KILL (worker:///kept.md)\n```";

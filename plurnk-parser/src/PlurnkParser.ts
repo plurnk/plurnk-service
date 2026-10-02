@@ -398,7 +398,7 @@ export default class PlurnkParser {
 
     // {§unfenced-operation}: a prose line that opens with an operation's name and anything else
     // wrote the operation without its fence. It did not run, and the model that wrote it believes
-    // it did. The bare name alone never reaches here: the lexer opened it ({§naked-operation}).
+    // it did. A name with only an optional aside never reaches here: the lexer opened it ({§naked-operation}).
     // {§unfenced-operation} — a native name opening a column-zero line, or a registered executor's name
     // followed by an operand slot (`gitea (list_issues)`, `sh(build.sh)`); an executor's name inside a
     // sentence is a word, since `sh`, `env` and `members` are English.
