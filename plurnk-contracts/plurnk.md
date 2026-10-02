@@ -21,7 +21,8 @@ body?
 * COPY: (path) <scope>? (path) <scope>? - Copy files, entries, streams, or text regions.
 * MOVE: (path) <scope>? (path) <scope>? - Move files, entries, streams, or text regions.
 * KILL: End things — delete an entry, stop a process, retire log items, or end the loop.
-* WORK: Spawn a child worker (fresh log).
+* WORK: Delegate to a child worker (fresh log).
+* FORK: Delegate to a child worker (copied log).
 * WAIT: Yield until the next wake: a child worker's result or a stream's end.
 * SEND: Message endpoints or workers.
 
