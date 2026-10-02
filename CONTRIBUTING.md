@@ -67,7 +67,7 @@ at most 80 characters; reference the issue when useful.
 | Need | Canonical path |
 |---|---|
 | Configuration/startup | `npm run config:list`, then [`plurnk-core/INSTALL.md`](./plurnk-core/INSTALL.md); startup failure is authoritative for route-dependent credentials. |
-| Deterministic test failure | The reported workspace `test/intg/.tmp/`; each normal run replaces only its own prior evidence. |
+| Deterministic test failure | The reported `~/benchmarks/intg-<lane>-<run>/` directory (`PLURNK_BENCHMARKS` overrides the root). Successful suites remove their own artifacts; failed suites retain them. |
 | Runtime state/telemetry | [`plurnk-core/README.md`](./plurnk-core/README.md) for database, digest, and OpenTelemetry surfaces. |
 | Candidate/model forensics | `candidate` prints its retained artifact directory; `npm run share -- <plurnk.db> [folder]` writes any database's digest from a consistent copy ([`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md) {§share}). |
 | Published type resolution | Optional `npm run packages:types` (or `-- --only plurnk-contracts`): pinned ATTW 0.18.5 checks actual packed packages, invoking their normal prepack builds. |

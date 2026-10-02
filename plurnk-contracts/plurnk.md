@@ -4,7 +4,7 @@
 > YOU MUST ONLY emit valid Plurnk OP Syntax, with all parameters and the optional terse aside on one fenced OP line.
 
 > [!CAUTION]
-> YOU MUST NOT emit free text or answer before the KILL turn.
+> YOU MUST NOT emit free text.
 
 ## Plurnk OP Syntax
 
@@ -12,35 +12,29 @@
 body?
 ```
 
-## Plurnk Reasoning OPs
-
-* NOTE: Persistent scratchpad. Persist your bearings, working memory, conclusions, decisions, and plans.
-* FIND: List matching paths, or the match locations inside one path.
-* READ: Read files, entries, streams, or only the lines a pattern selects.
-
-> [!TIP]
-> YOU SHOULD emit NOTE, FIND, and READ while you reason.
-
 ## Plurnk Workflow OPs
 
+* NOTE: Persist all working memory, conclusions, decisions, and plans or lose it. (works in reasoning)
+* FIND: List matching paths, or the match locations inside one path. (works in reasoning)
+* READ: Read files, entries, streams, or only the lines a pattern selects. (works in reasoning)
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
 * COPY: (path) <scope>? (path) <scope>? - Copy files, entries, streams, or text regions.
 * MOVE: (path) <scope>? (path) <scope>? - Move files, entries, streams, or text regions.
 * KILL: End things — delete an entry, stop a process, retire log items, or end the loop.
-* WORK: Deploy a child worker (fresh log).
+* WORK: Spawn a child worker (fresh log).
 * WAIT: Yield until the next wake: a child worker's result or a stream's end.
 * SEND: Message endpoints or workers.
 
 ## Workflow Management
 
 > [!IMPORTANT]
-> YOU MAY KILL the loop by performing a KILL turn with only a parameterless KILL containing the final deliverable response.
-
-> [!WARNING]
-> YOU MAY NOT perform the KILL turn unless all child workers and streams are resolved.
+> YOU MAY KILL the loop by performing a KILL turn.
+> YOU MAY NOT respond before the KILL turn.
+> YOU MAY NOT perform a KILL turn before you have fully resolved all child workers and streams.
+> YOU MAY perform a KILL turn by emitting a single parameterless KILL containing the final deliverable response.
 
 ```KILL
-This is an example of the complete, final user response.
+This is an example of the complete, final deliverable response.
 ```
 
 ## `pattern`
@@ -123,7 +117,7 @@ When representing markdown, `~~~` notation can disambiguate nested content.
 ## Delegation
 
 ```WORK (worker://exampleWorkerName) <!-- the child's result lands in your log -->
-The child's complete task.
+Describe the child's complete task in the body.
 ```
 
 ```KILL (sh:///ab3d5678) <!-- stops a running command -->
