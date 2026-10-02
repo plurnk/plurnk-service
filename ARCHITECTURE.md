@@ -268,8 +268,8 @@ same-turn receipt ({§exec-readpure-ungated}). `read`/`pure` runtimes auto-run;
 host effect, because the effect is the rule and the op is not: an outbound
 POST, PUT or DELETE leaves the machine exactly as a subprocess does
 ({§http-outbound-proposes}). An accepted proposal's settlement replaces the
-202 with 200 regardless of the applied operation's own outcome
-({§proposal-accept-applies}) — the verb's own status rides its output entry.
+202 with the applied operation's result, preserving failures
+({§proposal-accept-applies}).
 
 Executors are Worker-agnostic by contract: `ExecArgs` carries no Worker
 identity. MCP servers and Functionality managers are published per workspace
