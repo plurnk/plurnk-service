@@ -22,7 +22,7 @@ The child's complete task goes here.
 body is the child's task, not a JSON options object. On WORK and FORK these
 values override the child's inherited environment (`env.md`).
 
-```FORK (worker://exampleWorkerName) <!-- a sibling that begins with your history -->
+```FORK (worker://exampleWorkerName) <!-- a child that begins with your history -->
 The child's task, continuing from what you already know.
 ```
 
