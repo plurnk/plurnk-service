@@ -29,8 +29,13 @@ test("live: broad log KILL retires READ receipts without erasing program artifac
         assert.notEqual(primedTurnId, undefined);
         const primedTurn = await s.db.test_get_turn.get<{ loop_id: number }>({ id: primedTurnId! });
         assert.ok(primedTurn);
-        const priorPrograms = await s.db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: primed.modelWorkerId });
-        assert.ok(priorPrograms.filter(({ kind }) => kind === "ops").length >= 2, "the prior loop contains multiple admitted programs");
+        const priorPrograms = await s.db.test_turn_sources.all<{
+            turn_id: number; kind: string; content: string; producer: string;
+        }>({ worker_id: primed.modelWorkerId });
+        assert.ok(priorPrograms.some(({ kind, producer }) => kind === "reasoning" && producer === "_plurnk"),
+            "initialization establishes a reasoning source, not an assistant-content program");
+        assert.ok(priorPrograms.some(({ kind, producer }) => kind === "ops" && producer === "model"),
+            "the completed model turn establishes a content program");
         const priorReads = (await s.db.test_log_entries_by_loop.all<{
             id: number; op: string | null; active: number; attrs: string;
         }>({ loop_id: primedTurn.loop_id })).filter((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
@@ -73,6 +78,13 @@ test("live: broad log KILL retires READ receipts without erasing program artifac
             "the requested KILL retires every still-active prior READ, independent of preparatory curation",
         );
         assert.equal(killOperations.size, 1, "one broad KILL owns the complete retired target set");
+        const retainedSources = await s.db.test_turn_sources.all<{
+            turn_id: number; kind: string; content: string;
+        }>({ worker_id: modelWorkerId });
+        for (const source of priorPrograms) {
+            const retained = retainedSources.find(({ turn_id, kind }) => turn_id === source.turn_id && kind === source.kind);
+            assert.equal(retained?.content, source.content, `immutable ${source.kind} source survives curation`);
+        }
 
         await s.cleanup();
         cleaned = true;
@@ -91,11 +103,16 @@ test("live: broad log KILL retires READ receipts without erasing program artifac
 
         // {§share-packet-names}: artifacts are named by log coordinate; the digest's turn order is chronological.
         const assistantArtifacts = digest.turns.toSorted((a, b) => a.id - b.id)
-            .flatMap(({ artifact }) => artifact === null ? [] : [`${artifact}.assistant.md`]);
+            .flatMap(({ artifact, program }) => artifact === null || program === null ? [] : [`${artifact}.assistant.md`]);
         const artifactSources = await Promise.all(assistantArtifacts.map((name) => readFile(join(digestDir, name), "utf8")));
         assert.deepEqual(artifactSources, durablePrograms, "every admitted program remains an exact chronological artifact");
-        assert.ok(priorPrograms.filter(({ kind }) => kind === "ops").every(({ content }) => artifactSources.includes(content)),
-            "curating READ observations cannot erase the programs that produced the history");
+        for (const { turn_id, kind, content } of priorPrograms.filter(({ kind }) => kind === "ops" || kind === "reasoning")) {
+            const turn = digest.turns.find(({ id }) => id === turn_id);
+            assert.ok(turn?.artifact, `source turn ${turn_id} remains in the digest`);
+            const channel = kind === "ops" ? "assistant" : "reasoning";
+            assert.equal(await readFile(join(digestDir, `${turn.artifact}.${channel}.md`), "utf8"), content,
+                `curating READ receipts cannot erase or move the ${kind} source of turn ${turn_id}`);
+        }
     } finally {
         if (!cleaned) await s.cleanup();
     }

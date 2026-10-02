@@ -320,7 +320,7 @@ export default class AstBuilder {
         if (AstBuilder.#bareMatcher(raw, op, false) !== null) return;
         AstBuilder.#advisories.push(new PlurnkParseError(
             position.line, position.column, "parser",
-            `${op} takes no body; the body was ignored. A pattern belongs on the opening fence line after the path.`,
+            `${op === "KILL" ? "KILL with a target" : op} takes no body; the body was ignored. A pattern belongs on the opening fence line after the path.`,
             "warning",
         ));
     }

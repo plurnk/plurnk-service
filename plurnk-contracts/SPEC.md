@@ -1824,7 +1824,8 @@ diagnostics are:
   of a FIND, READ or targeted KILL is a body, and those operations take none: the builder
   keeps the statement without it and raises one warning-severity advisory (`READ
   takes no body; the body was ignored. A pattern belongs on the opening fence line
-  after the path.`), delivered like {§misplaced-aside-advisory} as a
+  after the path.`). KILL's advisory names `KILL with a target`; it must not
+  prohibit parameterless completion bodies. Delivered like {§misplaced-aside-advisory} as a
   `parse_advisory` notice (a warning, never an error). One sigil line beneath the heading is the bare form
   written a line low and still lifts; nothing else is promoted into a matcher from
   below the heading, and the advisory never echoes the body.

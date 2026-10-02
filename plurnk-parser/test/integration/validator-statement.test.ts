@@ -141,12 +141,19 @@ test("PlurnkStatement: KILL with bare target", () => {
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
-test("PlurnkStatement: KILL carries its reason as an aside, never a body ({§matcher-option})", () => {
+test("PlurnkStatement: targeted KILL's body warning does not prohibit completion bodies ({§matcher-body-redirect})", () => {
     const r = validateRoundTrip("````KILL (sh:///3/1/2) <!-- runaway; no output for 4 turns -->````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
     const ignored = PlurnkParser.parseStatements("````KILL (sh:///3/1/2)\nrunaway; no output for 4 turns\n````");
     assert.equal(ignored.items[0]?.kind, "statement", "the KILL still parses without its body");
-    assert.ok(ignored.items.some((item) => item.kind === "error" && item.error.severity === "warning" && /KILL takes no body/u.test(item.error.message)));
+    assert.ok(ignored.items.some((item) => item.kind === "error" && item.error.severity === "warning" && /KILL with a target takes no body/u.test(item.error.message)));
+    const completion = PlurnkParser.parseStatements("````KILL\nThe final answer.\n````");
+    assert.equal(completion.items.length, 1);
+    const final = completion.items[0];
+    assert.ok(final?.kind === "statement" && final.statement.op === "KILL");
+    assert.equal(final.statement.body, "The final answer.");
+    const empty = PlurnkParser.parseStatements("````KILL (notes.md)\n\n````");
+    assert.equal(empty.items.length, 1, "an empty targeted body remains valid without an advisory");
 });
 
 test("PlurnkStatement: WORK and FORK require prompt bodies", () => {
