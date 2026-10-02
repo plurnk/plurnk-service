@@ -23,7 +23,7 @@ separators.
 | `//item` | Item elements |
 | `//item/text()` | Their direct text nodes |
 | `//item/@id` | The complete source attribute, not only its value |
-| `$.host` | The JSON member's value |
+| `$.host` | The JSON member's serialized value, including string quotes |
 | `&connect` | Definitions of `connect` |
 | `&<connect` | References to `connect` |
 | `&>connect` | Definitions of names referenced by `connect` |
@@ -51,7 +51,20 @@ decorations or another channel's rendered text.
 Regex anchors `^` and `$` address line boundaries; a match may span lines.
 EDIT's body is literal replacement text, not regex substitution syntax.
 
-COPY and MOVE attach the pattern to their source operand:
+## Pattern and metadata slots
+
+The bare pattern selects text. The header's optional `[metadata]` slot carries
+named options; first-party operations read it as a JSON array of option objects.
+It follows the path and optional scope, before a bare pattern or aside. The body
+remains the operation's input, not its options. Other option names belong to the
+addressed scheme or executor; `env.md` describes the `env` option.
+
+`READ (client.js) /connect/` and
+`READ (client.js) [{"pattern":"/connect/"}]` select identically. The `pattern`
+option carries a matcher that would collide with header syntax, such as literal
+text starting with `[`. EDIT also uses it for unprefixed literal/glob matchers.
+COPY and MOVE use it to bind a pattern to the source or destination operand;
+this example selects from the source and creates `names.txt`:
 
 ```COPY (client.js) [{"pattern":"/connect/"}] (names.txt)
 ```
@@ -69,10 +82,11 @@ C
 produces `<root><item>C</item><other>B</other></root>`.
 
 ```EDIT (items.xml) //item
-<replacement>C</replacement>
+<label>C</label>
 ```
 
-produces `<root><replacement>C</replacement><other>B</other></root>`.
+produces `<root><label>C</label><other>B</other></root>`. `label` is an ordinary
+XML element name in the replacement text, not Plurnk syntax.
 
 An empty body removes the selected source text. In mixed content
 `<item>A<b>B</b>C</item>`, `//item/text()` selects `A` and `C`, not the nested
@@ -93,6 +107,11 @@ For source `{"host":"old","port":80}`:
 produces `{"host":"new","port":80}`. The selected value includes its original
 quotes and escapes, not the property name or colon. The replacement body is
 source text: EDIT does not quote, escape, or serialize it for you.
+
+Body `new` would instead produce `{"host":new,"port":80}`, which is invalid
+JSON. Body `null` assigns JSON null; body `"null"` assigns the string `null`.
+Selecting only the substring with `/old/` lets body `new` retain the existing
+quotes. The quotes follow what was selected, not a separate EDIT requirement.
 
 Likewise, `$[0]` selects an array element's value, not an adjacent comma.
 Replacing the containing array can remove an element structurally;

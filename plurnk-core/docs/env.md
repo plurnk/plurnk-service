@@ -45,7 +45,8 @@ cargo test
 ```
 
 On `WORK` and `FORK` the same metadata is the child's starting environment: a
-copy of your entries first, then each name here becomes its own (`worker.md`).
+copy of your entries first, then each name here becomes its own. The complete
+header-and-task examples are in `delegation.md`.
 
 ## `lifetime`: how long a command runs
 

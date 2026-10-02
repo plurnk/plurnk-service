@@ -12,11 +12,22 @@ are preserved verbatim. Both share the workspace. An omitted address allocates
 a short worker name, reported in the receipt; an explicit name cannot replace
 an existing worker, even after it finishes. Names match
 `[A-Za-z0-9][A-Za-z0-9_-]{0,62}` and are case-sensitive. SEND to an existing
-worker gives it a follow-up task. `[{"env": {...}}]` on WORK or FORK is the
-child's starting environment (`env.md`).
+worker gives it a follow-up task.
+
+```WORK (worker://child) [{"env":{"LANG":"C.UTF-8"}}] <!-- fresh log -->
+The child's complete task goes here.
+```
+
+`env` occupies the header's `[metadata]` slot after the worker address; the
+body is the child's task, not a JSON options object. On WORK and FORK these
+values override the child's inherited environment (`env.md`).
 
 ```FORK (worker://exampleWorkerName) <!-- a sibling that begins with your history -->
 The child's task, continuing from what you already know.
+```
+
+```SEND (worker://child) <!-- follow-up to the existing worker -->
+The follow-up task or additional information goes here.
 ```
 
 Parents observe a direct child's mutations, messages, executor invocations, and
@@ -34,6 +45,9 @@ when that work settles, when a message arrives, or on an open stream's
 observation cadence; without live work it continues at once. Several WAITs in
 one turn are one park, and what a WAIT names is its label; scope and metadata
 decorations are ignored.
+
+```WAIT
+```
 
 A wake ends the suspension, not its held work; a further WAIT waits again.
 Waking retains the loop's messages, turn allowance, and remaining execution
@@ -54,6 +68,9 @@ result does not imply that every task in that worker has finished.
 `KILL (worker://<name>)` cancels that worker and its descendants, including
 queued work and unread messages. History remains readable; a later SEND can
 start new work.
+
+```KILL (worker://child) <!-- cancel this worker's activity -->
+```
 
 ## Messages
 
