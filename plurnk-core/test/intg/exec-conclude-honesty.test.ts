@@ -12,6 +12,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Results from "../../src/core/results.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
+import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { concludeStmt, execStmt, dispositionStmt } from "./_dsl.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
@@ -68,33 +69,34 @@ test("a rejecting driver still concludes its stream with an exact Problem, never
     } finally { await db.close(); }
 });
 
-test("a status-only executor failure is replaced by an exact contract-violation Problem", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire(async () => ({
-        status: 500,
-        exitCode: 1,
-    }));
-    try {
-        const started = await engine.dispatch({
-            statement: execStmt(tag, "go"),
-            workspaceId,
-            workerId,
-            loopId,
-            turnId,
-            sequence: 1,
-            origin: "model",
-        });
-        assert.equal(started.status, 200);
-        const concluded = await waitFor(() => wakes, (events) => events.length > 0, { timeoutMs: 4000 });
-        assert.equal(concluded[0].result.status, 500);
-        assert.equal(
-            concluded[0].result.problem?.type,
-            "https://problems.plurnk.xyz/scheme/exec/executor-invalid-result",
-        );
-        assert.equal(concluded[0].result.problem?.stage, "result-validation");
-        assert.equal(concluded[0].result.problem?.runtime, tag);
-        assert.equal(concluded[0].result.problem?.retryable, false);
-    } finally { await db.close(); }
-});
+for (const reported of [{ status: 500, exitCode: 1 }, { status: 102 }, { status: 202 }, { status: 200, content: "not a producer field" }]) {
+    test(`{§executor-results} invalid executor result ${JSON.stringify(reported)} becomes a durable terminal failure`, async () => {
+        const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire(async () => reported as never);
+        try {
+            const started = await engine.dispatch({
+                statement: execStmt(tag, "go"),
+                workspaceId,
+                workerId,
+                loopId,
+                turnId,
+                sequence: 1,
+                origin: "model",
+            });
+            assert.equal(started.status, 200);
+            const concluded = await waitFor(() => wakes, (events) => events.length > 0, { timeoutMs: 4000 });
+            assert.equal(concluded[0].result.status, 500);
+            assert.equal(
+                concluded[0].result.problem?.type,
+                "https://problems.plurnk.xyz/scheme/exec/executor-invalid-result",
+            );
+            assert.equal(concluded[0].result.problem?.stage, "result-validation");
+            assert.equal(concluded[0].result.problem?.runtime, tag);
+            assert.equal(concluded[0].result.problem?.retryable, false);
+            assert.equal(await ChannelWrite.findActiveSubscription(db, { entryId: concluded[0].entryId }), null,
+                "a rejected result cannot strand an open subscription");
+        } finally { await db.close(); }
+    });
+}
 
 test("{§notice-level} an executor notice with explicit severity crosses the plugin boundary unchanged", async () => {
     const notice = {

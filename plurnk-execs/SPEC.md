@@ -194,8 +194,9 @@ reformatting arbitrary source JSON read from an entry.
 
 ### §executor-results Results, failures, and notices
 
-`run()` resolves one universal `SchemeResult`; `ExecResult` adds an optional
-subprocess `exitCode`. A result with `status >= 400` carries exactly one RFC
+`run()` resolves one terminal channel-producer result; `ExecResult` adds an optional
+subprocess `exitCode`. Nonterminal statuses and consumer-owned projection fields
+are invalid at this boundary, before stream finalization. A result with `status >= 400` carries exactly one RFC
 9457 Problem whose status agrees with the result. Expected runtime failures
 resolve as failure results and leave affected channels `errored`; they do not
 throw. Rejection by an aborted execution's signal reason or an `AbortError`

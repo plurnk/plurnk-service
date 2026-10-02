@@ -45,7 +45,7 @@ export interface FunctionalityPreparedDefinition {
 export type FunctionalityOutcome =
     | { readonly state: "active"; readonly detail?: object }
     | { readonly state: "unavailable"; readonly problem: ProblemDetails }
-    | { readonly state: "authorization-required"; readonly authorization: { readonly url: string } };
+    | { readonly state: "authorization-required"; readonly authorization: { readonly url?: string } };
 
 export interface FunctionalityDocument {
     // Relative to the Worker's generated subtree root; the coordinator prefixes

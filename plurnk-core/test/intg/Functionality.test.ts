@@ -60,7 +60,7 @@ const runtime = (tag: string, log: string[]): RuntimeRegistration => ({
     availability: { available: true, detail: "fixture" },
 });
 
-// A family whose definitions are {kind: ok | fail | doc}. Service contributes
+// A family whose definitions are {kind: ok | fail | doc | auth}. Service contributes
 // `svc`, enabled by default. `fail` refuses preparation; `doc` also publishes a
 // family document.
 const fixtureAdapter = (log: string[]): FunctionalityAdapter => ({
@@ -71,7 +71,7 @@ const fixtureAdapter = (log: string[]): FunctionalityAdapter => ({
         type: "object",
         additionalProperties: false,
         required: ["kind"],
-        properties: { kind: { enum: ["ok", "fail", "doc"] } },
+        properties: { kind: { enum: ["ok", "fail", "doc", "auth"] } },
     },
     available: async () => [{ alias: "svc", definition: { kind: "ok" }, enabled: true }],
     discover: async (query) => [{
@@ -90,6 +90,10 @@ const fixtureAdapter = (log: string[]): FunctionalityAdapter => ({
         const documents: Array<{ pathname: string; content: string }> = [];
         for (const [alias, { definition }] of enabled) {
             const kind = (definition as { kind: string }).kind;
+            if (kind === "auth") {
+                outcomes.set(alias, { state: "authorization-required", authorization: {} });
+                continue;
+            }
             if (kind === "fail") {
                 const problem: ProblemDetails = Problems.create("fx:fixture", "refused", 502, `${alias} refused to prepare.`, { retryable: true });
                 if (failure === "reject") throw new OperationFailureError(Results.failure("fx:fixture", "refused", 502, `${alias} refused to prepare.`, {}, { retryable: true }));
@@ -774,6 +778,34 @@ for (const hold of ["", "fx:host"]) {
         }
     });
 }
+
+test("{§functionality-model-mutation} authorization-required reaches the model as a finished stream, not a live obligation", { timeout: 15_000 }, async (t) => {
+    const priorHold = process.env.PLURNK_SERVICE_EXEC_HOLD;
+    process.env.PLURNK_SERVICE_EXEC_HOLD = "fx:host";
+    t.after(() => { if (priorHold === undefined) delete process.env.PLURNK_SERVICE_EXEC_HOLD; else process.env.PLURNK_SERVICE_EXEC_HOLD = priorHold; });
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [
+        makeMockResponse(PlurnkParser.frame("fx (add)", JSON.stringify({ alias: "candidate", definition: { kind: "auth" } }))),
+        makeMockResponse(PlurnkParser.frame("KILL", "The candidate needs sign-in.")),
+    ] });
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider });
+    daemon.registerModule({ setup: (seam) => { seam.registerFunctionalityAdapter(fixtureAdapter([])); } });
+    const ws = await connect({ daemon });
+    try {
+        await daemon.start();
+        const created = await rpcCall(ws, 1, "workspace.create", { name: `authorization-result-${crypto.randomUUID()}` });
+        const workspaceId = (created.result as { id: number }).id;
+        const result = await runLoopToTerminal(ws, 2, { prompt: "Add the candidate fixture.", policy: { proposals: "accept" } }, { timeoutMs: 8_000 });
+        assert.equal(result.finalStatus, 200, JSON.stringify(result.result));
+        assert.ok(result.modelWorkerId !== undefined, "the loop identifies its model worker");
+        const rows = await daemon.readLog({ workspaceId, workerId: result.modelWorkerId, limit: Number.MAX_SAFE_INTEGER });
+        const observed = rows.find((row) => row.op === "READ" && row.scheme === "fx" && JSON.stringify(row.rx).includes("authorization-required"));
+        assert.ok(observed, "the ordinary terminal observation carries the pending resource outcome");
+        assert.equal(observed.status_rx, 200, "the observation is of a completed management invocation");
+        const body = await awaitExecOutcome(db, { workspaceId, scheme: "fx" });
+        assert.equal(body.status, 202, "resource-level accepted status survives inside the exact result body");
+    } finally { ws.close(); await daemon.stop(); await db.close(); }
+});
 
 test("{§functionality-model-mutation} execution verbs are the same owner: read verbs run ungated, host verbs propose, acceptance publishes at the turn boundary", async () => {
     const db = await openMigrated();

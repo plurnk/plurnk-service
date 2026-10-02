@@ -1148,7 +1148,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 // final chunk events / state transitions have committed.
                 await queue;
                 try {
-                    result = Results.assert(reported);
+                    result = Results.assertChannelProducerResult(reported);
                 } catch (cause) {
                     console.error(`Executor '${runtime}' returned an invalid operation result:`, cause);
                     result = Results.failure(

@@ -392,11 +392,12 @@ server needs, and its provenance names the registry and the server's `name@versi
 | The complete connection definition is invalid | `definition-invalid` | 400 |
 | The alias differs from the definition's name | `alias-mismatch` | 400 |
 
-Two protocol continuations remain MCP-registered workspace actions beneath the
+Protocol continuations remain MCP-registered workspace actions beneath the
 common grammar:
 
 | Action | Parameters | Result / effect |
 |---|---|---|
+| `workspace.mcp.oauth.begin` | `alias`, `redirectUrl` | Begin sign-in using a client-owned callback, without changing the connection definition; publish the pending URL through the coordinator. An active alias is returned unchanged. |
 | `workspace.mcp.oauth.complete` | `alias`, `callbackUrl` | State- and issuer-validates one pending interactive callback through the SDK, completes connection preparation, and re-enables the alias through the coordinator ({§oauth-continuation}); the result is the common mutation result. |
 | `workspace.mcp.complete` | `server`, `ref`, `argument`; optional `context` | Requests negotiated prompt/resource-template argument completion for a client-owned interaction. |
 
@@ -408,6 +409,9 @@ Worker's own accepted mutation publishes them as unavailable
 | Endpoint condition | Problem |
 |---|---|
 | Cannot connect or complete discovery/catalog preparation at the negotiated revision | `502 server-unavailable`, retryable; names the server and its `type` without exposing credentials |
+| HTTP 401 without configured credentials | Enabled `authorization-required`, no runtime and no URL until the client begins sign-in |
+| HTTP 401 with configured credentials | `502 server-authentication-failed`, non-retryable, with `upstreamStatus: 401`; credentials are not replaced by interactive OAuth |
+| Sign-in discovery lacks validated authorization metadata or a usable client-registration method | `502 oauth-metadata-unavailable` or `oauth-registration-unavailable`, non-retryable; retain the definition and surface the setup boundary, not retryable downtime |
 | The endpoint answers with a redirect | `502 server-redirected`, non-retryable ({§mcp-redirect-refused}) |
 | An operator setting of the alias is invalid | `422 server-settings-invalid`, non-retryable ({§mcp-server-settings}) |
 | Client-credentials grant rejected by the authorization server | `502 oauth-client-credentials-failed`, non-retryable; names the server and client id, never the secret ({§oauth-client-credentials}) |
@@ -416,12 +420,41 @@ Resource and prompt failures retain one caught remote diagnostic only through
 the executor-owned `PLURNK_EXECS_ERROR_DETAIL_LIMIT` bound; complete causes stay
 in daemon diagnostics. No MCP resource Problem admits an unbounded SDK message.
 
-§oauth-continuation Interactive preparation publishes the alias as enabled and
+§oauth-continuation A URL-only HTTP definition is sufficient to reach the client
+sign-in handoff. An unauthenticated 401 publishes `authorization-required` with
+an empty `authorization` object, not retryable downtime. No browser is opened,
+client is registered, or workspace lease retained merely for that challenge.
+The client binds its callback before `oauth.begin`; absent an explicitly
+configured redirect, it obtains an ephemeral loopback port (RFC 8252 §7.3).
+The MCP SDK owns metadata discovery, registration, PKCE and token exchange.
+An explicit OAuth definition may supply scope and client-registration metadata;
+its optional fixed redirect is respected, never silently rewritten. Bearer,
+client-credentials and Authorization-header configurations cannot be replaced
+by `oauth.begin`. Callback addresses and acquired credentials are session state,
+not changes to the persisted definition.
+
+```mermaid
+sequenceDiagram
+    Model->>MCP: add URL-only definition
+    MCP-->>Model: authorization-required
+    User->>Client: sign in to alias
+    Client->>Client: bind callback
+    Client->>MCP: oauth.begin(alias, redirectUrl)
+    MCP-->>Client: authorization URL
+    Client->>User: open consent page
+    User->>Client: browser callback
+    Client->>MCP: oauth.complete(alias, callbackUrl)
+    MCP-->>Model: active tools through normal publication
+```
+
+Interactive preparation with a callback publishes the alias as enabled and
 `authorization-required` with its URL; it publishes no runtime. The adapter
 retains one pending candidate per `(workspace, alias)` holding the challenged
 connection and one workspace residency lease; a new challenge for the alias
 supersedes and releases the previous one ({§oauth-lifetime}).
-`oauth.complete` accepts the complete callback URL so state, `code`, and
+Concurrent begin requests for one alias are refused; a later begun attempt
+supersedes the prior one. An in-flight begin cannot attach after disable,
+remove or definition replacement. `oauth.complete` accepts the complete callback URL so state, `code`, and
 `iss` remain one parsing unit; it finishes the pending connection's
 authorization, prepares its active attachment, and re-enables the alias through
 the coordinator, whose publication consumes the prepared attachment and
@@ -450,7 +483,7 @@ as an accidental failure.
 | Pending authorization | One pending candidate per `(workspace, alias)`; a new challenge or customized enable cancels and replaces it. A callback from a superseded attempt fails state validation instead of cross-completing. |
 | Client disconnect | Does not touch the pending candidate; it can still be completed, or replaced by a fresh request. |
 | Daemon restart during pending | The candidate is lost: nothing was durable, no attachment publishes, and `oauth.complete` answers `404 oauth-not-pending`. Start authorization again. |
-| Daemon restart after authorization | The durable definition rehydrates but tokens are gone; the attachment publishes `authorization-required` and enable returns status `202` with `definition.authorization.url` in the common mutation result. The operator reauthorizes. |
+| Daemon restart after authorization | The durable definition rehydrates but tokens are gone; a challenged attachment publishes `authorization-required` and enable returns `202`. A URL is present only when a callback is already configured. The operator reauthorizes. |
 | Token expiry | An expired access token surfaces as one unauthorized response; the SDK re-acquires via `refresh_token` when one was issued, otherwise re-enters interactive authorization. |
 | Refresh | Happens only against the issuer bound during the original authorization; the refreshed token replaces the in-memory token. |
 | Workspace disable/remove | Closes the attachment and clears its pending candidate; no durable secret deletion is needed because nothing secret is durable. |
@@ -775,6 +808,12 @@ stdio/Streamable HTTP servers are composition evidence only.
 | `tool-reported-error` | 502 | The MCP tool reported an error (the tool call failed). |
 | `invalid-tool-arguments` | 400 | The tool arguments are not one JSON object. Recovery: One JSON object per MCP tool call; a second call is a second fence. |
 | `oauth-client-credentials-failed` | 502 | MCP server '*name*' rejected the client-credentials grant; check the configured client credentials and issuer. |
+| `server-authentication-failed` | 502 | MCP server '*name*' rejected authentication (HTTP 401). |
+| `oauth-metadata-unavailable` | 502 | MCP OAuth requires validated authorization-server metadata; legacy endpoint inference is not supported. |
+| `oauth-registration-unavailable` | 502 | The authorization server exposes no usable client registration: configure pre-registration or advertised CIMD; its metadata does not advertise a Dynamic Client Registration endpoint. |
+| `oauth-redirect-invalid` | 400 | The OAuth callback must use HTTPS or HTTP loopback with a usable port. |
+| `oauth-configuration-conflict` | 409 | MCP server '*alias*' is not configured for this interactive OAuth callback. |
+| `oauth-busy` | 409 | MCP server '*alias*' is already starting authorization. |
 | `parameters-invalid` | 400 | Unsupported parameter(s): *names*. |
 | `server-settings-invalid` | 422 | MCP server '*name*' has invalid operator settings: *cause*. |
 | `server-busy` | 409 | MCP server '*name*' has *n* active request(s). |

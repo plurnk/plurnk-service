@@ -9,6 +9,16 @@ import type {
 } from "@modelcontextprotocol/client";
 import packageJson from "../package.json" with { type: "json" };
 
+// {§oauth-continuation} Host-owned diagnostics, without remote error bodies or secrets.
+export class OAuthSetupError extends Error {
+    readonly code: string;
+    constructor(code: string, message: string) {
+        super(message);
+        this.name = "OAuthSetupError";
+        this.code = code;
+    }
+}
+
 export default class InteractiveOAuthProvider implements OAuthClientProvider {
     readonly redirectUrl: string;
     readonly clientMetadataUrl: string | undefined;
@@ -79,8 +89,8 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
             const cimdAvailable = this.clientMetadataUrl !== undefined
                 && metadata?.client_id_metadata_document_supported === true;
             if (!cimdAvailable && metadata?.registration_endpoint === undefined) {
-                throw new Error(
-                    `MCP authorization server '${issuer}' exposes no usable client registration: `
+                throw new OAuthSetupError("oauth-registration-unavailable",
+                    "The authorization server exposes no usable client registration: "
                     + "configure pre-registration or advertised CIMD; its metadata does not advertise "
                     + "a Dynamic Client Registration endpoint.",
                 );
@@ -157,7 +167,7 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
 
     saveDiscoveryState(state: OAuthDiscoveryState): void {
         if (state.authorizationServerMetadata === undefined) {
-            throw new Error(
+            throw new OAuthSetupError("oauth-metadata-unavailable",
                 "MCP OAuth requires validated authorization-server metadata; "
                 + "legacy endpoint inference is not supported.",
             );

@@ -183,14 +183,19 @@ client.
 
 HTTP servers support bearer references, client credentials, and interactive
 OAuth; stdio servers read their credentials from the environment. A server that
-needs interactive OAuth comes up `authorization-required`, and enabling it
-returns `202` with `definition.authorization.url` without
-publishing a partial server. The terminal client's `/mcp oauth <alias>` receives
-a configured HTTP loopback IP callback and opens the browser; supplying the
+challenges an anonymous connection comes up `authorization-required`, without
+publishing partial tools. A URL-only definition is sufficient; no callback
+port needs to be configured. The terminal client's `/mcp oauth <alias>` binds
+an available loopback port and calls `workspace.mcp.oauth.begin` before opening
+the returned authorization URL. A fixed OAuth redirect, if configured, is
+respected. Supplying the
 callback URL explicitly also works for remote/headless use. The client submits
 the complete URL through `workspace.mcp.oauth.complete`. PKCE,
 issuer and resource validation, refresh, scope escalation, and credentials
-remain inside the host connection.
+remain inside the host connection. Callback addresses and credentials never
+replace the saved definition. `enable` retries a connection; it does not replace
+user sign-in. Rejected configured credentials are reported as authentication
+failures rather than retryable server downtime.
 
 ## Verification
 

@@ -769,8 +769,11 @@ detail?: {
 
 }
 problem?: ProblemDetails
+/**
+ * A protocol continuation is needed. A URL is present only after an authorization attempt has begun.
+ */
 authorization?: {
-url: string
+url?: string
 }
 }
 
@@ -847,18 +850,18 @@ attended?: boolean
 
 export type McpOAuth = ({
 type: "oauth"
-redirectUrl: string
+redirectUrl?: string
 clientMetadataUrl: string
 scope?: string
 } | {
 type: "oauth"
-redirectUrl: string
+redirectUrl?: string
 clientId: string
 clientSecret: EnvironmentReference
 scope?: string
 } | {
 type: "oauth"
-redirectUrl: string
+redirectUrl?: string
 scope?: string
 } | {
 type: "client-credentials"

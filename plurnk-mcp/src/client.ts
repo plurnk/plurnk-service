@@ -3,6 +3,7 @@ import {
     OAuthClientFlowError,
     OAuthError,
     UnauthorizedError,
+    SdkHttpError,
     ProtocolError,
     METHOD_NOT_FOUND,
     Client,
@@ -108,6 +109,8 @@ interface ResolvedHttpDefinition {
 type ResolvedDefinition = ResolvedStdioDefinition | ResolvedHttpDefinition;
 
 export interface ServerConnectionOptions {
+    // {§oauth-continuation} Callback supplied by the client, never persisted configuration.
+    readonly oauthRedirectUrl?: string;
     readonly plugin?: PluginContext;
     // {§mcp-launch-environment} Exact admitted environment, separate from reference resolution.
     readonly environment?: NodeJS.ProcessEnv;
@@ -151,6 +154,7 @@ const resolveDefinition = (
     environ: NodeJS.ProcessEnv,
     defaultCwd: string | undefined,
     plugin?: PluginContext,
+    oauthRedirectUrl?: string,
 ): ResolvedDefinition => {
     const definition = readDefinition(source);
     const field = `MCP server '${definition.name}'`;
@@ -172,7 +176,8 @@ const resolveDefinition = (
     const headers = configured.length === 0 ? undefined : Object.fromEntries(configured.map(([name, value]) => [name, plugin === undefined ? expandReferences(value, environ, `${field}.headers.${name}`) : value]));
     const url = definition.url;
     const authorization = definition.authorization;
-    if (authorization === undefined) {
+    const redirectUrl = (authorization?.type === "oauth" ? authorization.redirectUrl : undefined) ?? oauthRedirectUrl;
+    if ((authorization === undefined || authorization.type === "oauth") && redirectUrl === undefined) {
         return {
             type: "streamable-http",
             url,
@@ -180,7 +185,7 @@ const resolveDefinition = (
             cachePartition: "anonymous",
         };
     }
-    if (authorization.type === "bearer") {
+    if (authorization?.type === "bearer") {
         const field = `MCP server '${definition.name}'.authorization.token`;
         const token = expandReferences(authorization.token, environ, field);
         if (token.length === 0) throw new Error(`${field} resolved empty.`);
@@ -192,7 +197,7 @@ const resolveDefinition = (
             cachePartition: `bearer:${authorization.token}`,
         };
     }
-    if (authorization.type === "client-credentials") {
+    if (authorization?.type === "client-credentials") {
         const secret = expandReferences(authorization.clientSecret, environ, `${field}.clientSecret`);
         if (secret.length === 0) throw new Error(`${field}.clientSecret resolved empty.`);
         return {
@@ -215,16 +220,16 @@ const resolveDefinition = (
     // {§oauth-lifetime} — registration data, tokens, PKCE verifier, and
     // callback state remain process-memory in this provider.
     const oauthProvider = new InteractiveOAuthProvider({
-        redirectUrl: authorization.redirectUrl,
-        ...(authorization.scope === undefined ? {} : { scope: authorization.scope }),
-        ...("clientMetadataUrl" in authorization ? { clientMetadataUrl: authorization.clientMetadataUrl } : {}),
-        ...("clientId" in authorization
+        redirectUrl: redirectUrl!,
+        ...(authorization?.scope === undefined ? {} : { scope: authorization.scope }),
+        ...(authorization !== undefined && "clientMetadataUrl" in authorization ? { clientMetadataUrl: authorization.clientMetadataUrl } : {}),
+        ...(authorization !== undefined && "clientId" in authorization
             ? { clientId: authorization.clientId, clientSecret: expandReferences(authorization.clientSecret, environ, `${field}.clientSecret`) }
             : {}),
     });
-    const cachePartition = "clientMetadataUrl" in authorization
+    const cachePartition = authorization !== undefined && "clientMetadataUrl" in authorization
         ? `oauth:cimd:${authorization.clientMetadataUrl}`
-        : "clientId" in authorization
+        : authorization !== undefined && "clientId" in authorization
             ? `oauth:client:${authorization.clientId}`
             : "oauth:dynamic";
     return {
@@ -399,10 +404,10 @@ export class McpRedirectError extends Error {
 }
 
 export class AuthorizationRequiredError extends Error {
-    readonly authorizationUrl: string;
+    readonly authorizationUrl: string | undefined;
 
-    constructor(authorizationUrl: string, cause?: unknown) {
-        super("MCP server requires interactive OAuth authorization.", { cause });
+    constructor(authorizationUrl?: string, cause?: unknown) {
+        super("MCP server requires authorization.", { cause });
         this.name = "AuthorizationRequiredError";
         this.authorizationUrl = authorizationUrl;
     }
@@ -494,6 +499,12 @@ const openClient = async (
                 closeFailure === undefined ? cause : new AggregateError([cause, closeFailure]),
             );
         }
+        if (closeFailure === undefined && definition.type === "streamable-http"
+            && definition.authProvider === undefined
+            && !Object.keys(definition.headers ?? {}).some((name) => name.toLowerCase() === "authorization")
+            && cause instanceof SdkHttpError && cause.status === 401) {
+            throw new AuthorizationRequiredError(undefined, cause);
+        }
         if (closeFailure !== undefined) {
             throw new AggregateError(
                 [cause, closeFailure],
@@ -561,7 +572,7 @@ export default class ServerConnection {
         options: ServerConnectionOptions = {},
     ) {
         this.#definition = structuredClone(Validator.assertMcpServerDefinition(definition));
-        this.#resolved = resolveDefinition(this.#definition, environ, options.cwd, options.plugin);
+        this.#resolved = resolveDefinition(this.#definition, environ, options.cwd, options.plugin, options.oauthRedirectUrl);
         this.#environ = environ;
         this.#options = options;
     }
@@ -597,6 +608,7 @@ export default class ServerConnection {
         })().catch((cause: unknown) => {
             if (
                 cause instanceof AuthorizationRequiredError
+                && cause.authorizationUrl !== undefined
                 && this.#resolved.type === "streamable-http"
                 && this.#resolved.oauthProvider !== undefined
                 && transport instanceof StreamableHTTPClientTransport

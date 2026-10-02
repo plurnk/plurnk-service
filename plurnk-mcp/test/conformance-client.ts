@@ -86,7 +86,7 @@ const withInteractiveAuthorization = async <T>(
         try {
             return await operation();
         } catch (error) {
-            if (!(error instanceof AuthorizationRequiredError)) throw error;
+            if (!(error instanceof AuthorizationRequiredError) || error.authorizationUrl === undefined) throw error;
             await authorize(connection, error.authorizationUrl);
         }
     }

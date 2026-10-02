@@ -105,6 +105,20 @@ test("{§functionality-model-projection} every family's owned refusal survives i
     }
 });
 
+test("{§functionality-model-mutation} a pending resource sign-in is a completed management invocation", async () => {
+    const body = { status: 202, family: "fx", alias: "remote", definition: {
+        alias: "remote", origin: "workspace", state: "authorization-required", authorization: {},
+    } };
+    const manager = new FunctionalityManager({
+        family: "fx", workspaceId: 1, inputSchemas,
+        coordinator: { invoke: async () => ({ status: 202, body }) } as unknown as Functionality,
+    });
+    const { args: runArgs, written, states } = args("add", "{}");
+    assert.deepEqual(await manager.run(runArgs), { status: 200 }, "the executor finished; it is not waiting for the user's sign-in");
+    assert.deepEqual(states, ["active", "closed"]);
+    assert.deepEqual(JSON.parse(written.join("")), body, "the pending resource state remains exact in the result body");
+});
+
 test("{§functionality-model-projection} an unexpected exception is not reclassified as a managed refusal", async () => {
     for (const cause of [new Error("internal fixture failure"), Object.assign(new Error("malformed failure"), { problem: { status: 502 } })]) {
         const manager = new FunctionalityManager({

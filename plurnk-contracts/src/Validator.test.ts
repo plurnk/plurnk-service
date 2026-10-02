@@ -58,6 +58,18 @@ test("{§agent-skills-name}: wire definitions admit Unicode and digit-leading na
         "source locations do not introduce installation scopes");
 });
 
+test("{§oauth-continuation}: an authentication challenge needs no URL until the client starts authorization", () => {
+    for (const authorization of [{}, { url: "https://example.test/login" }]) {
+        const result = { family: "mcp", definitions: [{ alias: "remote", origin: "workspace", state: "authorization-required", authorization }] };
+        assert.deepEqual(Validator.assertFunctionalityListResult(result), result);
+    }
+    for (const authorization of [undefined, { url: null }, { redirectUrl: "http://127.0.0.1:9876/callback" }]) {
+        assert.throws(() => Validator.assertFunctionalityListResult({ family: "mcp", definitions: [{
+            alias: "remote", origin: "workspace", state: "authorization-required", ...(authorization === undefined ? {} : { authorization }),
+        }] }), InvalidFunctionalityListResultError);
+    }
+});
+
 test("{§model-catalog-wire}: model routes and bounded catalog pages preserve readiness evidence", () => {
     const directRoute: unknown = { provider: "google", model: "gemini-3-flash" };
     assert.deepEqual(
@@ -249,6 +261,10 @@ test("{§mcp-server-definition}: MCP definitions contain transport and authoriza
 
 test("{§mcp-oauth}: MCP OAuth takes exactly one identity mode, and every secret is a symbolic reference", () => {
     const settings: McpOAuth[] = [
+        { type: "oauth" },
+        { type: "oauth", scope: "read" },
+        { type: "oauth", clientMetadataUrl: "https://plurnk.example/oauth/client.json" },
+        { type: "oauth", clientId: "plurnk", clientSecret: "${GITEA_SECRET}" },
         { type: "oauth", redirectUrl: "http://127.0.0.1:8765/callback", clientMetadataUrl: "https://plurnk.example/oauth/client.json" },
         { type: "oauth", redirectUrl: "http://127.0.0.1:8765/callback", clientId: "plurnk", clientSecret: "${GITEA_SECRET}", scope: "read" },
         { type: "oauth", redirectUrl: "http://127.0.0.1:8765/callback" },
@@ -256,7 +272,7 @@ test("{§mcp-oauth}: MCP OAuth takes exactly one identity mode, and every secret
     ];
     for (const setting of settings) assert.equal(Validator.assertMcpOAuth(setting), setting);
     for (const invalid of [
-        { type: "oauth", clientMetadataUrl: "https://plurnk.example/oauth/client.json" },
+        { type: "oauth", redirectUrl: 8765 },
         { type: "oauth", redirectUrl: "http://127.0.0.1:8765/callback", clientMetadataUrl: "https://plurnk.example/oauth/client.json", clientId: "plurnk", clientSecret: "${S}" },
         { type: "client-credentials", clientId: "worker", clientSecret: "literal-secret" },
         { type: "bearer", token: "${TOKEN}" },

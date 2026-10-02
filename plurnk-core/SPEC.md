@@ -4522,7 +4522,9 @@ execution stream.** Preparation and publication share the family's serialized
 lane. Publication acquires workspace exclusivity after current turns release
 their leases; the invoking stream remains pending until publication completes.
 It then reports `active`, `unavailable`, or `authorization-required`, or the exact
-publication failure. A preparation failure may publish enabled-but-unavailable
+publication failure. Resource readiness is not execution liveness: a mutation's
+`202 authorization-required` body remains exact, while the finished manager
+execution closes with `200`. It does not wait for sign-in. A preparation failure may publish enabled-but-unavailable
 state; a publication failure never reports a successful mutation. Stream polling,
 waiting, and result observation use the ordinary execution lifecycle, without a
 separate deferred-commit queue. An explicit client action publishes now, rejects

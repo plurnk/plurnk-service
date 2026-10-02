@@ -22,6 +22,7 @@ import type { FunctionalityPreparedDefinition, McpServerDefinition, ProblemDetai
 import { z } from "zod/v4";
 import { SdkError, SdkErrorCode } from "@modelcontextprotocol/client";
 import { serveMcpHttp } from "../test/http-fixture.ts";
+import { serveOAuthMcp } from "../test/oauth-fixture.ts";
 import type McpExecutor from "./McpExecutor.ts";
 import { getDefaultEnvironment } from "@modelcontextprotocol/client/stdio";
 import Module, { closeConnections } from "./Module.ts";
@@ -46,7 +47,7 @@ interface RuntimeRegistration {
 type Outcome =
     | { state: "active"; detail?: { tools?: string[]; protocolVersion?: string } }
     | { state: "unavailable"; problem: ProblemDetails }
-    | { state: "authorization-required"; authorization: { url: string } };
+    | { state: "authorization-required"; authorization: { url?: string } };
 
 interface Prepared {
     readonly runtimes: readonly RuntimeRegistration[];
@@ -122,14 +123,15 @@ const harness = (env: Record<string, string> = {}) => {
             adapter = candidate;
             return {
                 invoke: async (verb: string, params: unknown, id: { workspaceId: number }) => {
-                    // The only re-entry the adapter uses: re-enable one alias (retry).
+                    const current = snapshots.get(id.workspaceId);
+                    if (current?.prepared == null) throw new Error("worker not prepared");
+                    if (verb === "list") return { status: 200, body: { family: "mcp", definitions: [...current.prepared.outcomes].map(([alias, outcome]) => ({ alias, origin: "workspace", definition: current.enabled.get(alias), ...outcome })) } };
                     if (verb !== "enable") throw new Error(`harness does not emulate ${verb}`);
                     const alias = (params as { alias: string }).alias;
-                    const current = snapshots.get(id.workspaceId);
-                    if (current === undefined) throw new Error("worker not prepared");
                     const prepared = await lane(id.workspaceId, current.enabled, { force: alias });
                     const outcome = prepared.outcomes.get(alias);
-                    return { status: outcome?.state === "authorization-required" ? 202 : 200, body: { status: 200, family: "mcp", alias, definition: { alias, origin: "worker", ...outcome } } };
+                    const status = outcome?.state === "authorization-required" ? 202 : 200;
+                    return { status, body: { status, family: "mcp", alias, definition: { alias, origin: "workspace", ...outcome } } };
                 },
                 refresh: async (id: { workspaceId: number }, options?: unknown) => {
                     refreshes++;
@@ -196,43 +198,9 @@ const httpHandler = (): McpHttpHandler => createMcpHandler(() => {
     return server;
 }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
 
-const interactiveOAuthFixture = async (
+const interactiveOAuthFixture = (
     t: import("node:test").TestContext,
-): Promise<{ origin: string; served: Awaited<ReturnType<typeof serveMcpHttp>> }> => {
-    let origin = "";
-    const served = await serveMcpHttp(t, httpHandler(), (request) => {
-        const url = new URL(request.url);
-        if (url.pathname === "/mcp") {
-            if (request.headers.get("authorization") === "Bearer access-token") return null;
-            return new Response("unauthorized", {
-                status: 401,
-                headers: { "www-authenticate": `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource/mcp"` },
-            });
-        }
-        if (url.pathname === "/.well-known/oauth-protected-resource/mcp") {
-            return Response.json({ resource: `${origin}/mcp`, authorization_servers: [origin], scopes_supported: ["mcp:read"] });
-        }
-        if (url.pathname === "/.well-known/oauth-authorization-server") {
-            return Response.json({
-                issuer: origin,
-                authorization_endpoint: `${origin}/authorize`,
-                token_endpoint: `${origin}/token`,
-                response_types_supported: ["code"],
-                grant_types_supported: ["authorization_code", "refresh_token"],
-                code_challenge_methods_supported: ["S256"],
-                token_endpoint_auth_methods_supported: ["none"],
-                client_id_metadata_document_supported: true,
-                authorization_response_iss_parameter_supported: true,
-            });
-        }
-        if (url.pathname === "/token") {
-            return Response.json({ access_token: "access-token", token_type: "Bearer", expires_in: 3600, scope: "mcp:read" });
-        }
-        return new Response("not found", { status: 404 });
-    });
-    origin = new URL(served.url).origin;
-    return { origin, served };
-};
+): ReturnType<typeof serveOAuthMcp> => serveOAuthMcp(t, httpHandler());
 
 const oauthDefinition = (served: { url: string }): McpServerDefinition => ({
     ...httpServer("oauth", served.url),
@@ -283,7 +251,7 @@ test("{§mcp-definitions} configured servers are inspectable without installatio
     await h.setup();
     try {
         assert.equal(h.adapter().family, "mcp");
-        assert.deepEqual([...h.actions.keys()].toSorted(), ["workspace.mcp.complete", "workspace.mcp.oauth.complete"]);
+        assert.deepEqual([...h.actions.keys()].toSorted(), ["workspace.mcp.complete", "workspace.mcp.oauth.begin", "workspace.mcp.oauth.complete"]);
         assert.deepEqual(await h.adapter().available(h.identity(1)), [
             { alias: "echo", definition: echo, enabled: true, provenance: { kind: "environment", source: "PLURNK_MCP_echo" } },
             { alias: "remote", definition: remote, enabled: false, provenance: { kind: "environment", source: "PLURNK_MCP_remote" } },
@@ -439,6 +407,140 @@ test("{§mcp-setup} commit closes connections the next snapshot no longer uses; 
     } finally { await h.module.stop(); }
 });
 
+test("{§oauth-continuation} a URL-only server hands authorization to the client without changing its definition", async (t) => {
+    const { origin, served } = await interactiveOAuthFixture(t);
+    const definition = httpServer("oauth", served.url);
+    const h = harness();
+    await h.setup();
+    try {
+        const prepared = await h.lane(1, new Map([["oauth", definition]]));
+        assert.deepEqual(prepared.outcomes.get("oauth"), { state: "authorization-required", authorization: {} });
+        assert.equal(h.leases(), 0, "no pending browser attempt before the client begins");
+        assert.deepEqual(h.runtimeTags(1), []);
+        const started = await h.action(1, "workspace.mcp.oauth.begin", {
+            alias: "oauth", redirectUrl: "http://127.0.0.1:54321/callback",
+        }) as { status: number; definition: { authorization: { url: string } } };
+        assert.equal(started.status, 202);
+        const url = new URL(started.definition.authorization.url);
+        assert.equal(url.searchParams.get("redirect_uri"), "http://127.0.0.1:54321/callback");
+        assert.equal(h.leases(), 1);
+        const callback = new URL("http://127.0.0.1:54321/callback");
+        callback.searchParams.set("code", "fixture-code");
+        callback.searchParams.set("state", url.searchParams.get("state")!);
+        callback.searchParams.set("iss", origin);
+        const completed = await h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: callback.href }) as { status: number };
+        assert.equal(completed.status, 200);
+        assert.deepEqual(h.runtimeTags(1), ["oauth"]);
+        assert.equal(h.leases(), 0);
+        assert.deepEqual(h.snapshots.get(1)?.enabled.get("oauth"), definition, "the client callback is session state, not configuration");
+    } finally { await h.module.stop(); }
+});
+
+for (const [option, code] of [["metadata", "oauth-metadata-unavailable"], ["registration", "oauth-registration-unavailable"]] as const) {
+    test(`{§oauth-continuation} missing OAuth ${option} is a setup diagnostic, not retryable downtime`, async (t) => {
+        const { served } = await serveOAuthMcp(t, httpHandler(), { [option]: false });
+        const h = harness();
+        await h.setup();
+        try {
+            const definition = httpServer("oauth", served.url);
+            await h.lane(1, new Map([["oauth", definition]]));
+            await rejectsManagementProblem(() => h.action(1, "workspace.mcp.oauth.begin", {
+                alias: "oauth", redirectUrl: "http://127.0.0.1:54321/callback",
+            }), code, 502);
+            assert.equal(h.leases(), 0, "failed setup leaves no pending credential flow");
+            assert.deepEqual(h.snapshots.get(1)?.prepared?.outcomes.get("oauth"), { state: "authorization-required", authorization: {} });
+            assert.deepEqual(h.snapshots.get(1)?.enabled.get("oauth"), definition, "the inspectable definition survives failed sign-in setup");
+        } finally { await h.module.stop(); }
+    });
+}
+
+test("{§oauth-continuation} rejected explicit credentials are not reported as retryable downtime", async (t) => {
+    const { served } = await interactiveOAuthFixture(t);
+    const h = harness();
+    await h.setup();
+    try {
+        const prepared = await h.lane(1, new Map([["oauth", {
+            ...httpServer("oauth", served.url), headers: { Authorization: "Bearer wrong-token" },
+        }]]));
+        const outcome = prepared.outcomes.get("oauth");
+        assert.equal(outcome?.state, "unavailable");
+        assert.equal((outcome as { problem: ProblemDetails }).problem.type, "https://problems.plurnk.xyz/mcp/management/server-authentication-failed");
+        assert.equal((outcome as { problem: ProblemDetails }).problem.retryable, false);
+        assert.doesNotMatch(JSON.stringify(outcome), /wrong-token/);
+        await rejectsManagementProblem(() => h.action(1, "workspace.mcp.oauth.begin", {
+            alias: "oauth", redirectUrl: "http://127.0.0.1:54321/callback",
+        }), "oauth-configuration-conflict", 409);
+    } finally { await h.module.stop(); }
+});
+
+test("{§oauth-continuation} client callbacks cannot replace fixed redirects or target nonlocal HTTP", async (t) => {
+    const { origin, served } = await interactiveOAuthFixture(t);
+    const h = harness();
+    await h.setup();
+    try {
+        await h.lane(1, new Map([["oauth", oauthDefinition(served)]]));
+        const count = served.requests.length;
+        for (const redirectUrl of ["http://example.test/callback", "file:///callback", "http://127.0.0.1:0/callback", "https://user:secret@example.test/callback"]) {
+            await rejectsManagementProblem(() => h.action(1, "workspace.mcp.oauth.begin", { alias: "oauth", redirectUrl }), "oauth-redirect-invalid", 400);
+        }
+        await rejectsManagementProblem(() => h.action(1, "workspace.mcp.oauth.begin", {
+            alias: "oauth", redirectUrl: `${origin}/different`,
+        }), "oauth-configuration-conflict", 409);
+        assert.equal(served.requests.length, count, "invalid callbacks cause no remote traffic");
+    } finally { await h.module.stop(); }
+});
+
+test("{§oauth-continuation} a later client attempt invalidates the old callback and publishes only the new one", async (t) => {
+    const { origin, served } = await interactiveOAuthFixture(t);
+    const h = harness();
+    await h.setup();
+    const redirectUrl = "http://127.0.0.1:54321/callback";
+    try {
+        await h.lane(1, new Map([["oauth", httpServer("oauth", served.url)]]));
+        const begin = async () => {
+            const result = await h.action(1, "workspace.mcp.oauth.begin", { alias: "oauth", redirectUrl }) as { definition: { authorization: { url: string } } };
+            const url = new URL(redirectUrl);
+            url.searchParams.set("state", new URL(result.definition.authorization.url).searchParams.get("state")!);
+            url.searchParams.set("code", "fixture-code");
+            url.searchParams.set("iss", origin);
+            return url.href;
+        };
+        const stale = await begin();
+        const current = await begin();
+        assert.notEqual(stale, current);
+        assert.equal(h.leases(), 1);
+        await rejectsManagementProblem(() => h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: stale }), "oauth-callback-invalid", 400);
+        await h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: current });
+        assert.deepEqual(h.runtimeTags(1), ["oauth"]);
+        assert.equal(h.leases(), 0);
+        await rejectsManagementProblem(() => h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: current }), "oauth-not-pending", 404);
+        const ready = await h.action(1, "workspace.mcp.oauth.begin", { alias: "oauth", redirectUrl }) as { status: number };
+        assert.equal(ready.status, 200, "an already active connection is not replaced");
+    } finally { await h.module.stop(); }
+});
+
+test("{§oauth-continuation} removal during client preparation prevents a late authorization publication", async (t) => {
+    const { served } = await interactiveOAuthFixture(t);
+    const h = harness();
+    await h.setup();
+    try {
+        await h.lane(1, new Map([["oauth", httpServer("oauth", served.url)]]));
+        const entered = Promise.withResolvers<void>();
+        const release = Promise.withResolvers<void>();
+        const environment = h.seam.readWorkspaceEnvironment;
+        h.seam.readWorkspaceEnvironment = async () => { entered.resolve(); await release.promise; return environment(); };
+        const start = { alias: "oauth", redirectUrl: "http://127.0.0.1:54321/callback" };
+        const result = rejectsManagementProblem(() => h.action(1, "workspace.mcp.oauth.begin", start), "oauth-target-conflict", 409);
+        await entered.promise;
+        await rejectsManagementProblem(() => h.action(1, "workspace.mcp.oauth.begin", start), "oauth-busy", 409);
+        await h.lane(1, new Map());
+        release.resolve();
+        await result;
+        assert.deepEqual(h.runtimeTags(1), []);
+        assert.equal(h.leases(), 0);
+    } finally { await h.module.stop(); }
+});
+
 test("{§oauth-lifetime} an interactive OAuth server publishes authorization-required, holds Worker residency, and the callback re-enables it through the coordinator", async (t) => {
     const { origin, served } = await interactiveOAuthFixture(t);
     const h = harness();
@@ -520,7 +622,8 @@ test("{§oauth-lifetime} a replacement without authorization discards the pendin
         const first = await h.lane(1, new Map([["oauth", oauthDefinition(served)]]));
         const firstUrl = (first.outcomes.get("oauth") as { authorization: { url: string } }).authorization.url;
         const replacement = await h.lane(1, new Map([["oauth", httpServer("oauth", served.url)]]));
-        assert.equal(replacement.outcomes.get("oauth")?.state, "unavailable", "the replacement does not inherit authorization");
+        assert.deepEqual(replacement.outcomes.get("oauth"), { state: "authorization-required", authorization: {} },
+            "the replacement sees the challenge but does not inherit the pending authorization URL");
         assert.equal(h.leases(), 0, "a superseded flow cannot retain the workspace");
         await rejectsManagementProblem(() => h.action(1, "workspace.mcp.oauth.complete", {
             alias: "oauth", callbackUrl: `${origin}/callback?code=fixture-code&state=${encodeURIComponent(new URL(firstUrl).searchParams.get("state")!)}`,

@@ -32,9 +32,9 @@
         },
         "problem": { "$ref": "https://schemas.plurnk.xyz/v0/ProblemDetails.json" },
         "authorization": {
+            "description": "A protocol continuation is needed. A URL is present only after an authorization attempt has begun.",
             "type": "object",
             "additionalProperties": false,
-            "required": ["url"],
             "properties": { "url": { "type": "string", "minLength": 1 } }
         }
     },

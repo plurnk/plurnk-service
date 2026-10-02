@@ -518,6 +518,7 @@ test("interactive HTTP OAuth preserves discovery, PKCE, state, issuer, and resou
                     ? `${error.name}: ${error.message}; cause=${String(error.cause)}`
                     : String(error),
             );
+            assert.ok(error.authorizationUrl);
             authorizationUrl = error.authorizationUrl;
             return true;
         },
@@ -631,6 +632,7 @@ test("{§oauth-lifetime} an expired access token refreshes with the stored grant
         () => connection.connect(),
         (error) => {
             assert.ok(error instanceof AuthorizationRequiredError);
+            assert.ok(error.authorizationUrl);
             authorizationUrl = error.authorizationUrl;
             return true;
         },

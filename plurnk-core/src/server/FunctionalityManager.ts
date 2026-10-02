@@ -177,8 +177,8 @@ export default class FunctionalityManager extends BaseExecutor {
         }
         args.setState(CHANNEL, "active");
         args.write(CHANNEL, JSON.stringify(result.body, null, 2), "application/json");
-        // The channel's terminal state follows the outcome's status, exactly as the stream close does.
+        // {§functionality-model-mutation} Resource readiness is the body; this invocation has settled.
         args.setState(CHANNEL, result.status >= 400 ? "errored" : "closed");
-        return refusal ?? { status: result.status };
+        return refusal ?? { status: result.status === 202 ? 200 : result.status };
     }
 }

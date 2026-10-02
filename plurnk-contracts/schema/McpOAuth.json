@@ -8,7 +8,7 @@
             "type": "object",
             "description": "Interactive OAuth identified by an HTTPS Client ID Metadata Document.",
             "additionalProperties": false,
-            "required": ["type", "redirectUrl", "clientMetadataUrl"],
+            "required": ["type", "clientMetadataUrl"],
             "properties": {
                 "type": { "const": "oauth" },
                 "redirectUrl": { "type": "string", "format": "uri" },
@@ -20,7 +20,7 @@
             "type": "object",
             "description": "Interactive OAuth with a pre-registered client ID and secret.",
             "additionalProperties": false,
-            "required": ["type", "redirectUrl", "clientId", "clientSecret"],
+            "required": ["type", "clientId", "clientSecret"],
             "properties": {
                 "type": { "const": "oauth" },
                 "redirectUrl": { "type": "string", "format": "uri" },
@@ -33,7 +33,7 @@
             "type": "object",
             "description": "Interactive OAuth through server-advertised Dynamic Client Registration.",
             "additionalProperties": false,
-            "required": ["type", "redirectUrl"],
+            "required": ["type"],
             "properties": {
                 "type": { "const": "oauth" },
                 "redirectUrl": { "type": "string", "format": "uri" },

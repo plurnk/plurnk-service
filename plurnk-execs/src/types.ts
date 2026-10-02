@@ -5,7 +5,7 @@
 //
 // The framework surface is `BaseExecutor.run()` + `discover()`.
 
-import type { SchemeResult } from "@plurnk/plurnk-schemes";
+import type { ChannelProducerResult, SchemeResult } from "@plurnk/plurnk-schemes";
 import type { ClientInteractionRequest, ClientInteractionResolution, JsonSchema } from "@plurnk/plurnk-contracts";
 import type { PackageAttributions } from "@plurnk/plurnk-meta";
 import type { Notice } from "./Notice.ts";
@@ -104,7 +104,7 @@ export interface ExecPreparation extends SchemeResult {
 // at this plugin boundary: every failure carries RFC 9457 Problem Details.
 // `exitCode` is present only for the subprocess family; `page` only when a tool result
 // is a full page ({§executor-page-receipt}).
-export interface ExecResult extends SchemeResult {
+export interface ExecResult extends ChannelProducerResult {
     exitCode?: number;
     page?: { readonly size: number; readonly returned: number };
 }

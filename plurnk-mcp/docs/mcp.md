@@ -33,8 +33,9 @@ enables anything.
 {"query": "filesystem"}
 ```
 
-`add` saves a workspace definition, connects, and enables it atomically. It is a host
-effect, admitted under the loop's policy.
+`add` saves and enables a workspace definition, then reports its connection
+state. It is a host effect, admitted under the loop's policy. Inspect that state:
+saved configuration does not imply a connected server.
 
 ```mcp (add)
 {"alias": "files", "definition": {"name": "files", "type": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/project/path"]}}
@@ -82,10 +83,23 @@ Structured authorization secrets must be references, not literal credentials.
 
 ## Authorization
 
-An HTTP server that needs OAuth comes up `authorization-required` with an
-authorization URL. That step is the user's, from their client; a body carries
-no credentials and the URL is not a resource to READ. Afterwards `enable`
-retries and the tools appear.
+For an OAuth server, start by adding its URL; the client supplies the callback.
+
+```mcp (add)
+{"alias": "remote", "definition": {"name": "remote", "type": "streamable-http", "url": "https://example.com/mcp"}}
+```
+
+`authorization-required` means the user must run `/mcp oauth remote` in their
+client. Tell them the alias and that command; do not run it in a model executor.
+The client opens the browser and receives the callback; Plurnk handles OAuth
+and activates the tools. Neither the sign-in URL nor callback is a resource to
+READ. After the user signs in, `list` confirms readiness and the server's tool
+reference becomes available. `enable` alone does not sign in.
+
+An advanced `authorization` definition can specify scope or client registration;
+the add schema describes it. A fixed redirect is optional. Bearer credentials
+remain environment references. `unavailable` includes a Problem: repair its
+reported cause rather than assuming every failure is an OAuth challenge.
 
 ## Lifecycle
 
