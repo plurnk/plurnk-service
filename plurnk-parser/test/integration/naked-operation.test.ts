@@ -61,6 +61,7 @@ test("{§unfenced-operation}: aside recovery never admits operands, extra text, 
     for (const header of [
         "KILL (notes.md) <!-- delete -->", "KILL <1,-1> <!-- scope -->", "KILL [{\"x\":1}] <!-- metadata -->",
         "KILL <!-- aside --> (notes.md)", "KILL <!-- aside --> trailing", "KILL <!-- a --> <!-- b -->", "KILL <!-- unclosed",
+        `KILL${" ".repeat(65_536)}still prose`,
     ]) {
         const result = PlurnkParser.parse(`${header}\n\`\`\`NOTE\nSibling.\n\`\`\``);
         assert.deepEqual(statements(result).map((s) => [s.op, bodyOf(s)]), [["NOTE", "Sibling."]], header);

@@ -149,7 +149,7 @@ export default class FencePairing {
     }
 
     static #line(text: string, options: PairingOptions): Line {
-        const naked = options.reasoning ? null : /^([A-Z]+)[ \t]*(<!--(?:(?!-->)[^\r\n])*-->)?[ \t]*$/u.exec(text);
+        const naked = options.reasoning ? null : /^([A-Z]+)(?:[ \t]*(<!--(?:(?!-->)[^\r\n])*-->))?[ \t]*$/u.exec(text);
         if (naked !== null && options.operations.has(naked[1]!)) return { kind: "name", name: naked[1]!, alone: naked[2] === undefined };
         const match = /^( {0,3})(`{3,}|~{3,})(.*)$/u.exec(text);
         if (match === null) return { kind: "text" };
