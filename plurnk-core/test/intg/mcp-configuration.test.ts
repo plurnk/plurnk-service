@@ -218,8 +218,8 @@ test("{§mcp-configuration} configured servers and workspace additions are calla
 
     assert.deepEqual(
         daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("workspace.mcp.")).toSorted(),
-        ["add", "complete", "disable", "discover", "enable", "list", "oauth.complete", "remove"].map((verb) => `workspace.mcp.${verb}`),
-        "the mcp family has every lifecycle verb beside its two protocol continuations",
+        ["add", "complete", "disable", "discover", "enable", "list", "oauth.begin", "oauth.complete", "remove"].map((verb) => `workspace.mcp.${verb}`),
+        "the mcp family has every lifecycle verb beside its protocol continuations",
     );
     assert.deepEqual((await listed()).map(({ alias, origin, state }) => ({ alias, origin, state })), [{ alias: "fixture", origin: "service", state: "dormant" }]);
     assert.equal((await call("fixture", "echo")).status, 200, "the configured server runs its read-only tool on first use");
