@@ -1,8 +1,9 @@
 import {
     BaseHandler,
     InvalidExpressionError,
-    QueryParseFailureError,
-    TextCoordinates,
+    projectDomToJson,
+    queryJsonpathObject,
+    serializeXpathNode,
 } from "@plurnk/plurnk-mimetypes";
 import type {
     HandlerContent,
@@ -12,7 +13,8 @@ import type {
 } from "@plurnk/plurnk-mimetypes";
 import { parse } from "parse5";
 import type { DefaultTreeAdapterMap } from "parse5";
-import { DOMParser } from "@xmldom/xmldom";
+import type { Node as XmlNode } from "@xmldom/xmldom";
+import HtmlSource from "./HtmlSource.ts";
 import * as xpath from "xpath";
 import { htmlToMarkdown } from "./htmlToMarkdown.ts";
 import { markdownWrapColumns } from "./wrapMarkdown.ts";
@@ -73,24 +75,10 @@ export default class TextHtml extends BaseHandler {
         return symbols;
     }
 
-    // Deep-channel ({§mimetype-channel-architecture}). Re-parses with parse5 and serializes the DOM
-    // as nested objects: { type: tagName, line, endLine, attrs: {...},
-    // children: [...] } per element; text nodes flatten into a `text` field
-    // on the parent when the parent has no mixed content, else surface as
-    // { type: "#text", text } in the children array. The framework's
-    // projectJsonToXml() with the attrs convention renders this back to
-    // clean HTML-shaped XML — xpath queries like //a[@href] or //h1 work
-    // naturally against the deep-xml channel.
     override deepJson(content: HandlerContent): unknown {
-        const html = typeof content === "string"
-            ? content
-            : new TextDecoder("utf-8").decode(content);
-        const doc = parse(html, { sourceCodeLocationInfo: true });
-        const root: Record<string, unknown> = {
-            type: "document",
-            children: collectChildren(doc),
-        };
-        return root;
+        const html = typeof content === "string" ? content : new TextDecoder("utf-8").decode(content);
+        const source = new HtmlSource(html);
+        return projectDomToJson(source.document, (node) => source.region(node)).value;
     }
 
     // {§mimetype-content} — project HTML into model-readable Markdown; empty or
@@ -105,109 +93,27 @@ export default class TextHtml extends BaseHandler {
         return htmlToMarkdown(html);
     }
 
-    // Override xpath dispatch. parse5's tree isn't xpath-traversable, so we
-    // re-parse via @xmldom/xmldom (which produces a real DOM that the `xpath`
-    // package can walk). parse5's source offsets address the queried markup,
-    // never its separate readable projection ({§mimetype-content-query}).
-    override async query(
-        content: HandlerContent,
-        dialect: QueryDialect,
-        pattern: string,
-        flags?: string,
-    ): Promise<QueryMatch[]> {
-        if (dialect === "xpath") {
-            const html = typeof content === "string"
-                ? content
-                : new TextDecoder("utf-8").decode(content);
-
-            // We parse as text/xml on purpose. Parsing as text/html or
-            // application/xhtml+xml causes xmldom to put every element in the
-            // XHTML namespace, which makes xpath queries without a namespace
-            // prefix (the natural `//p`, `//user`, etc.) match nothing —
-            // unusable from the matcher contract's perspective. text/xml
-            // omits the namespace assignment, so queries work as the model
-            // expects. Cost: content must be reasonably well-formed XML;
-            // malformed HTML (unclosed tags, void elements written without
-            // self-closing) follows {§mimetype-query}.
-            let doc;
-            try {
-                doc = new DOMParser().parseFromString(html, "text/xml");
-            } catch (cause) {
-                throw new QueryParseFailureError({ mimetype: this.mimetype, cause });
-            }
-
-            let result: xpath.SelectReturnType;
-            try {
-                result = xpath.select(pattern, doc as unknown as Node);
-            } catch (cause) {
-                throw new InvalidExpressionError({ dialect: "xpath", expression: pattern, cause });
-            }
-
-            return shapeXpathResult(pattern, result, sourceRegions(html));
+    override async query(content: HandlerContent, dialect: QueryDialect, pattern: string, flags?: string): Promise<QueryMatch[]> {
+        if (dialect !== "xpath" && dialect !== "jsonpath") return super.query(content, dialect, pattern, flags);
+        const html = typeof content === "string" ? content : new TextDecoder("utf-8").decode(content);
+        const source = new HtmlSource(html);
+        if (dialect === "jsonpath") {
+            const { value, regions } = projectDomToJson(source.document, (node) => source.region(node));
+            return queryJsonpathObject(value, pattern, (pointer) => regions.get(pointer));
         }
-        return super.query(content, dialect, pattern, flags);
-    }
-}
-
-// Translate an xpath.select return value to QueryMatch[] per {§mimetype-query}.
-function shapeXpathResult(pattern: string, result: xpath.SelectReturnType, regionsByStart: ReadonlyMap<string, NonNullable<QueryMatch["regions"]>>): QueryMatch[] {
-    if (Array.isArray(result)) {
-        return result.map((node, i): QueryMatch => {
-            const regions = nodeRegions(node, regionsByStart);
+        let result: xpath.SelectReturnType;
+        try { result = xpath.select(pattern, source.document as unknown as Node); }
+        catch (cause) { throw new InvalidExpressionError({ dialect, expression: pattern, cause }); }
+        if (!Array.isArray(result)) return result === null || result === undefined ? [] : [{ matched: String(result), matching: pattern }];
+        return result.map((node, index) => {
+            const region = source.region(node as unknown as XmlNode);
             return {
-                matched: serializeNode(node),
-                matching: result.length > 1 ? `(${pattern})[${i + 1}]` : pattern,
-                ...(regions === undefined ? {} : { regions }),
+                matched: serializeXpathNode(node),
+                matching: result.length > 1 ? "(" + pattern + ")[" + (index + 1) + "]" : pattern,
+                ...(region === undefined ? {} : { regions: [region] }),
             };
         });
     }
-    if (result === null || result === undefined) return [];
-    return [{
-        matched: typeof result === "string" ? result : String(result),
-        matching: pattern,
-    }];
-}
-
-function sourceRegions(html: string): ReadonlyMap<string, NonNullable<QueryMatch["regions"]>> {
-    const regions = new Map<string, NonNullable<QueryMatch["regions"]>>();
-    const coordinates = new TextCoordinates(html);
-    const visit = (node: ChildNode | ParentNode): void => {
-        const loc = node.sourceCodeLocation;
-        if (loc !== undefined && loc !== null) {
-            const region = coordinates.regionFromOffsets(loc.startOffset, loc.endOffset);
-            if (region !== null) regions.set(`${loc.startLine}:${loc.startCol}`, [region]);
-        }
-        if (hasChildNodes(node)) for (const child of node.childNodes) visit(child);
-    };
-    visit(parse(html, { sourceCodeLocationInfo: true }));
-    return regions;
-}
-
-function nodeRegions(node: Node, regionsByStart: ReadonlyMap<string, NonNullable<QueryMatch["regions"]>>): QueryMatch["regions"] {
-    const source = node as Node & { lineNumber?: number; columnNumber?: number };
-    const regions = regionsByStart.get(`${source.lineNumber}:${source.columnNumber}`);
-    if (regions !== undefined) return regions;
-    const parent = (node as Attr).ownerElement ?? node.parentNode;
-    return parent === null ? undefined : nodeRegions(parent, regionsByStart);
-}
-
-// Convert an xpath result node to a string suitable for QueryMatch.matched.
-// Per {§mimetype-query}: text/attribute → string value; element → serialized XML.
-// The xpath package's .d.ts advertises type-guard helpers (xpath.isAttribute
-// etc.) that aren't actually exported at runtime, so we dispatch on the
-// numeric nodeType the DOM spec defines.
-const ATTRIBUTE_NODE = 2;
-const TEXT_NODE = 3;
-const CDATA_SECTION_NODE = 4;
-const PROCESSING_INSTRUCTION_NODE = 7;
-const COMMENT_NODE = 8;
-function serializeNode(node: Node): string {
-    const nt = node.nodeType;
-    if (nt === ATTRIBUTE_NODE) return (node as Attr).value;
-    if (nt === TEXT_NODE || nt === CDATA_SECTION_NODE) return (node as Text).data;
-    if (nt === COMMENT_NODE) return (node as Comment).data;
-    if (nt === PROCESSING_INSTRUCTION_NODE) return (node as ProcessingInstruction).data;
-    return (node as unknown as { toString: () => string }).toString();
 }
 
 // Walk the parse5 tree depth-first, emitting heading and code-block symbols
@@ -315,53 +221,4 @@ function isTextNode(node: ChildNode | ParentNode): node is DefaultTreeAdapterMap
 
 function hasChildNodes(node: unknown): node is ParentNode {
     return Array.isArray((node as { childNodes?: unknown }).childNodes);
-}
-
-// Recursively serialize parse5 children into deep-json nodes. Text nodes are
-// preserved as { type: "#text", text } when interleaved with elements; when a
-// parent has only text children, they collapse into the parent's `text` field
-// (kept separate so the projection produces clean XML like <h1>Top</h1> rather
-// than <h1><_text>Top</_text></h1>).
-function collectChildren(parent: ParentNode): unknown[] {
-    const out: unknown[] = [];
-    if (!hasChildNodes(parent)) return out;
-    for (const child of parent.childNodes) {
-        if (isTextNode(child)) {
-            const text = child.value;
-            if (text.length === 0) continue;
-            out.push({ type: "#text", text });
-            continue;
-        }
-        if (isElement(child)) {
-            out.push(elementToDeep(child));
-            continue;
-        }
-        // Comment / doctype / etc — skip; not queryable structure.
-    }
-    return out;
-}
-
-function elementToDeep(el: Element): Record<string, unknown> {
-    const loc = el.sourceCodeLocation;
-    const node: Record<string, unknown> = {
-        type: el.tagName,
-        ...(loc === undefined || loc === null ? {} : { line: loc.startLine, endLine: loc.endLine }),
-    };
-    if (el.attrs && el.attrs.length > 0) {
-        const attrs: Record<string, string> = {};
-        for (const a of el.attrs) attrs[a.name] = a.value;
-        node.attrs = attrs;
-    }
-    const children = collectChildren(el);
-    // Collapse text-only children into the `text` field — produces cleaner
-    // XML when projected.
-    if (children.length === 1
-        && typeof children[0] === "object"
-        && children[0] !== null
-        && (children[0] as { type: string }).type === "#text") {
-        node.text = (children[0] as { text: string }).text;
-    } else if (children.length > 0) {
-        node.children = children;
-    }
-    return node;
 }

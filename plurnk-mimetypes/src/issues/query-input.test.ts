@@ -59,7 +59,7 @@ describe("{§mimetype-query-input} — C1: parsed-form matcher is accepted along
         const m = makeMimetypes();
         const out = await m.query(INPUT, { dialect: "jsonpath", pattern: "$..children[*]" });
         assert.equal(out.length, 1);
-        assert.deepEqual(out[0].regions, [{
+        assert.deepEqual(out[0].enclosingRegions, [{
             startLine: 2, startColumn: 1, endLine: 2, endColumn: 10,
         }]);
     });
@@ -79,8 +79,9 @@ describe("{§mimetype-query-input} — C2: parsed and raw forms agree, with m.li
             assert.deepEqual(parsedOut, rawOut, "parsed form must match raw-string dispatch exactly");
             assert.ok(parsedOut.length > 0, "expected at least one match");
             for (const m of parsedOut) {
+                const regions = parsed.dialect === "regex" || parsed.dialect === "glob" ? m.regions : m.enclosingRegions;
                 assert.ok(
-                    m.regions && m.regions.length > 0 && m.regions[0].startLine >= 1,
+                    regions && regions.length > 0 && regions[0].startLine >= 1,
                     "every match carries a readable text region",
                 );
             }

@@ -12,55 +12,49 @@ test("lines: every line a match touches, once, in order, inside the bounds", () 
     assert.deepEqual(PatternEdits.lines([{}], null), []);
 });
 
-test("spans: a regex keeps its evidence span and refuses one across a line break", () => {
-    const regex = { dialect: "regex" as const, raw: "/a/", pattern: "a", flags: "" };
-    assert.deepEqual(PatternEdits.spans(regex, "xa\nab", [region(2, 1, 2, 2), region(1, 2, 1, 3)], null), [
-        { line: 1, startColumn: 2, endLine: 1, endColumn: 3 },
-        { line: 2, startColumn: 1, endLine: 2, endColumn: 2 },
-    ]);
-    assert.deepEqual(PatternEdits.spans(regex, "a\na", [region(1, 1, 2, 2)], null), { error: "EDIT spans are line-limited; the pattern matched across a line break." });
-});
-
-test("spans: a literal glob is each occurrence on a matched line; a metacharacter glob is the whole line", () => {
-    const content = "foo bar foo\nnone\n\u{1F600}foo";
-    const evidence = [region(1, 1, 1, 12), region(3, 1, 3, 5)];
-    assert.deepEqual(PatternEdits.spans({ dialect: "glob", raw: "foo" }, content, evidence, null), [
-        { line: 1, startColumn: 1, endLine: 1, endColumn: 4 },
-        { line: 1, startColumn: 9, endLine: 1, endColumn: 12 },
-        { line: 3, startColumn: 2, endLine: 3, endColumn: 5 },
-    ]);
-    assert.deepEqual(PatternEdits.spans({ dialect: "glob", raw: "fo*" }, content, evidence, { from: 3, to: 3 }), [
-        { line: 3, startColumn: 1, endLine: 3, endColumn: 5 },
+test("spans: evidence retains exact coordinates across lines and sorts into source order", () => {
+    assert.deepEqual(PatternEdits.spans([region(2, 1, 2, 2), region(1, 2, 1, 3), region(3, 1, 5, 4)], null), [
+        { startLine: 1, startColumn: 2, endLine: 1, endColumn: 3 },
+        { startLine: 2, startColumn: 1, endLine: 2, endColumn: 2 },
+        { startLine: 3, startColumn: 1, endLine: 5, endColumn: 4 },
     ]);
 });
 
-test("spans: a node dialect keeps the node's whole region; a resource dialect names no spans", () => {
-    assert.deepEqual(PatternEdits.spans({ dialect: "xpath", raw: "//book" }, "", [region(2, 1, 5, 10)], null), [
-        { line: 2, startColumn: 1, endLine: 5, endColumn: 10 },
+test("spans: a coordinate scope admits whole matches and never clips them", () => {
+    const evidence = [region(1, 1, 1, 4), region(1, 9, 1, 12), region(3, 2, 3, 5)];
+    assert.deepEqual(PatternEdits.spans(evidence, region(1, 8, 3, 4).region), [
+        { startLine: 1, startColumn: 9, endLine: 1, endColumn: 12 },
     ]);
-    assert.deepEqual(PatternEdits.spans({ dialect: "fts", raw: "~x" }, "", [], null), { error: "EDIT replaces text spans; a fts pattern selects resources, not spans." });
 });
 
-test("replacements and deletions become coordinate edits; touchedLines covers regions", () => {
-    const edits = PatternEdits.replacements([{ line: 2, startColumn: 1, endLine: 4, endColumn: 3 }], "x");
+test("text: exact disjoint spans preserve spelling, Unicode, and line endings without invented separators", () => {
+    const content = "😀foo\r\nbar\rbaz\nlast";
+    const spans = [region(1, 2, 2, 4).region, region(4, 2, 4, 5).region];
+    assert.equal(PatternEdits.text(content, spans), "foo\r\nbarast");
+});
+
+test("replacements and deletions share exact coordinate edits; touchedLines covers regions", () => {
+    const spans = [region(2, 1, 4, 3).region];
+    const edits = PatternEdits.replacements(spans, "x");
     assert.deepEqual(edits, [{ marker: { marks: [2, 1, 4, 3] }, body: "x" }]);
-    assert.deepEqual(PatternEdits.deletions([3, 7]), [{ marker: { marks: [3] }, body: "" }, { marker: { marks: [7] }, body: "" }]);
-    assert.deepEqual(PatternEdits.touchedLines([...edits, ...PatternEdits.deletions([7])]), [2, 3, 4, 7]);
+    assert.deepEqual(PatternEdits.replacements(spans, ""), [{ marker: { marks: [2, 1, 4, 3] }, body: "" }]);
+    assert.deepEqual(PatternEdits.touchedLines(edits), [2, 3, 4]);
+    assert.deepEqual(PatternEdits.touchedLines(PatternEdits.replacements([region(2, 1, 4, 1).region], "")), [2, 3]);
 });
 
-test("bounds: one line, an inclusive range with -1 as the last line, a region; sentinels are refused", () => {
-    assert.equal(PatternEdits.bounds(undefined, 9), null);
-    assert.deepEqual(PatternEdits.bounds([3], 9), { from: 3, to: 3 });
-    assert.deepEqual(PatternEdits.bounds([2, -1], 9), { from: 2, to: 9 });
-    assert.deepEqual(PatternEdits.bounds([2, 1, 4, 5], 9), { from: 2, to: 4 });
-    assert.deepEqual(PatternEdits.bounds([-1], 9), { error: "A pattern needs a line to match; <0> and <-1> name a position, not a line." });
-    assert.deepEqual(PatternEdits.bounds([0, 3], 9), { error: "A pattern needs an inclusive line range; <0> and <-1> name a position, not a line." });
+test("bounds: scopes use ordinary text coordinates, including columns and the last logical line", () => {
+    const content = "aaaa\nbbbb\ncccc\ndddd";
+    assert.equal(PatternEdits.bounds(undefined, content), null);
+    assert.deepEqual(PatternEdits.bounds([3], content), region(3, 1, 4, 1).region);
+    assert.deepEqual(PatternEdits.bounds([2, -1], content), region(2, 1, 4, 5).region);
+    assert.deepEqual(PatternEdits.bounds([2, 2, 4, 3], content), region(2, 2, 4, 3).region);
+    assert.deepEqual(PatternEdits.bounds([-1], content), { error: "A pattern scope selects source text, not a prepend or append position." });
 });
 
-test("lineLimited: a regex gains the m flag once; other dialects pass through", () => {
-    assert.deepEqual(PatternEdits.lineLimited({ dialect: "regex", raw: "/a/i", pattern: "a", flags: "i" }), { dialect: "regex", raw: "/a/i", pattern: "a", flags: "im" });
+test("lineAnchored: a regex gains the m flag once; other dialects pass through", () => {
+    assert.deepEqual(PatternEdits.lineAnchored({ dialect: "regex", raw: "/a/i", pattern: "a", flags: "i" }), { dialect: "regex", raw: "/a/i", pattern: "a", flags: "im" });
     const anchored = { dialect: "regex" as const, raw: "/a/m", pattern: "a", flags: "m" };
-    assert.equal(PatternEdits.lineLimited(anchored), anchored);
+    assert.equal(PatternEdits.lineAnchored(anchored), anchored);
     const glob = { dialect: "glob" as const, raw: "a" };
-    assert.equal(PatternEdits.lineLimited(glob), glob);
+    assert.equal(PatternEdits.lineAnchored(glob), glob);
 });

@@ -29,7 +29,10 @@ export default class Matcher {
         const evidence: MatchEvidence[] = [];
         const seen = new Set<string>();
         for (const match of matches) {
-            const regions = match.regions ?? [];
+            const regions = [
+                ...(match.regions ?? []).map((region) => ({ region })),
+                ...(match.enclosingRegions ?? []).map((enclosingRegion) => ({ enclosingRegion })),
+            ];
             // A text row (regex, glob) shows what it matched; structural dialects keep their locator.
             const matched = (dialect === "regex" || dialect === "glob") && match.text !== undefined ? { matched: match.text } : {};
             if (regions.length === 0 && match.matching !== undefined) {
@@ -41,10 +44,10 @@ export default class Matcher {
                 }
                 continue;
             }
-            for (const region of regions) {
+            for (const location of regions) {
                 const item = Results.assertMatchEvidence({
                     ...(match.matching === undefined ? {} : { locator: match.matching }),
-                    region,
+                    ...location,
                     ...matched,
                 });
                 const key = JSON.stringify(item);
@@ -81,14 +84,24 @@ export default class Matcher {
         mimetypes: Mimetypes,
         diagnostic?: (cause: unknown) => string,
     ): Promise<MatchResult> {
+        return Matcher.fromQuery(body, mimetype, () => mimetypes.query(
+            { content, hint: mimetype }, Matcher.#parsedMatcher(body),
+        ), content, diagnostic);
+    }
+
+    // Representation adapters share typed outcomes and evidence mapping, not text coordinates.
+    static async fromQuery(
+        body: MatcherBody,
+        mimetype: string,
+        query: () => QueryMatch[] | Promise<QueryMatch[]>,
+        content = "",
+        diagnostic?: (cause: unknown) => string,
+    ): Promise<MatchResult> {
         try {
             // Pass the parsed matcher (declared dialect authoritative) + `hint`
             // (source mimetype, so the framework picks the right per-mimetype
             // handler without re-detecting from content). No re-parse, no drift.
-            const rawMatches: QueryMatch[] = await mimetypes.query(
-                { content, hint: mimetype },
-                Matcher.#parsedMatcher(body),
-            );
+            const rawMatches = await query();
             if (rawMatches.length === 0) {
                 return { status: 204, matches: [] };
             }
@@ -106,20 +119,7 @@ export default class Matcher {
                 const unsupportedMimetype = typeof (err as { mimetype?: unknown }).mimetype === "string"
                     ? (err as { mimetype: string }).mimetype
                     : mimetype;
-                return Results.failure(
-                    "schemes:matcher",
-                    "unsupported-dialect",
-                    415,
-                    `The ${body.dialect} matcher is not supported for ${unsupportedMimetype}.`,
-                    {},
-                    {
-                        stage: "matcher",
-                        dialect: body.dialect,
-                        mimetype: unsupportedMimetype,
-                        recovery: "Use a matcher supported by the resource mimetype.",
-                        retryable: false,
-                    },
-                );
+                return Matcher.unsupported(body, unsupportedMimetype);
             }
             if (name === "InvalidExpressionError" || err instanceof InvalidExpressionError) {
                 const cause = err instanceof Error ? err.cause : undefined;
@@ -152,5 +152,13 @@ export default class Matcher {
             // Unexpected — let it propagate so the engine logs it as a 500.
             throw err;
         }
+    }
+
+    static unsupported(body: MatcherBody, mimetype: string): MatchResult {
+        return Results.failure("schemes:matcher", "unsupported-dialect", 415,
+            `The ${body.dialect} matcher is not supported for ${mimetype}.`, {}, {
+                stage: "matcher", dialect: body.dialect, mimetype,
+                recovery: "Use a matcher supported by the resource mimetype.", retryable: false,
+            });
     }
 }

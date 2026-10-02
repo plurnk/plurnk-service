@@ -1,5 +1,5 @@
 // Shared exact-target READ projection for entry-bearing schemes, File, and Log.
-// READ owns text coordinates only; FIND owns every aggregate or matcher selection.
+// Matchers supply visible source lines; this layer applies READ scope and preview.
 
 import type { LineMarker, RangeExtent, TextRegion } from "@plurnk/plurnk-contracts";
 import type { SchemeResultBase, ScopeNormalization } from "@plurnk/plurnk-schemes";

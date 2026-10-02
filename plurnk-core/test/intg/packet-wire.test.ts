@@ -13,6 +13,54 @@ import { parseLogRecords } from "../LogRecords.ts";
 const METADATA_WEIGHT = 308;
 const tok = (s: string): number => Math.ceil(s.length / 4);
 
+test("{§read-pattern-evidence}: READ preserves precise match locations beside whole lines", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/2/3", op: "READ", status: 200,
+        target: { scheme: null, pathname: "/example.js" },
+        tx: { matcher: { raw: "/foo/" } },
+        rx: {
+            content: "return foo(input);", startLine: 12, lineOrdinals: [12], matched: 1,
+            range: { unit: "line", total: 20, requested: [12, 12], returned: [12, 12] },
+            matches: [{ region: { startLine: 12, startColumn: 8, endLine: 12, endColumn: 11 }, matched: "foo" }],
+        },
+    }], tok);
+    assert.deepEqual(JSON.parse(out.split("\n")[1]!), {
+        matched: 1, matches: [{ region: "<12,8,12,11>" }], range: "<12> of 20 lines",
+    });
+    assert.match(out, /12:return foo\(input\);/);
+});
+
+test("{§read-pattern-evidence}: match metadata uses the ordinary bounded preview without losing source locations", () => {
+    const matches = Array.from({ length: 30 }, (_, index) => ({
+        region: { startLine: 1, startColumn: index * 4 + 1, endLine: 1, endColumn: index * 4 + 4 }, matched: "foo",
+    }));
+    const row = {
+        coordinate: "1/2/3", op: "READ", status: 200,
+        target: { scheme: null, pathname: "/example.js" }, tx: { matcher: { raw: "/foo/" } },
+        rx: { content: Array(30).fill("foo").join(" "), startLine: 1, matched: 1, matches },
+    };
+    const meta = parseLogRecords(PacketWire.renderLog([row], tok))[0]!;
+    assert.deepEqual(meta.matches, matches.slice(0, 16).map(({ region }) => ({ region: `<1,${region.startColumn},1,${region.endColumn}>` })));
+    assert.equal(meta.matchLocationCount, 30);
+    assert.deepEqual(row.rx.matches, matches, "the durable evidence stays complete");
+});
+
+test("{§read-pattern-evidence}: curating sparse READ lines also curates their match metadata", () => {
+    const out = PacketWire.renderLog([{
+        coordinate: "1/2/3", op: "READ", status: 200, folded: [[1, 1]],
+        target: { scheme: null, pathname: "/example.js" }, tx: { matcher: { raw: "/foo/" } },
+        rx: {
+            content: "foo();\nfoo();", startLine: 3, lineOrdinals: [3, 7], matched: 2,
+            matches: [3, 7].map((line) => ({
+                region: { startLine: line, startColumn: 1, endLine: line, endColumn: 4 }, matched: "foo",
+            })),
+        },
+    }], tok);
+    assert.deepEqual(parseLogRecords(out)[0]!.matches, [{ region: "<7,1,7,4>" }]);
+    assert.doesNotMatch(out, /3:foo/);
+    assert.match(out, /7:foo/);
+});
+
 test("{§log-wire-format}: receipt headings carry only identity, resources, patterns and charge", () => {
     const matcher = String.raw`/\bexample\b/i`;
     const out = PacketWire.renderLog([{

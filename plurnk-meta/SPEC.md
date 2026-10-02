@@ -16,6 +16,8 @@ sources into a consuming package would create a second teaching owner.
 | `POLICY.md`                     | Required   | First-run default operating policy                 | Policy bootstrap {§policy-sections}                     |
 | `recap.md`                       | Required   | Optional default operational Recap                 | Per-packet user-slot footer {§recap}                    |
 | `docs/worker.md`                | Required   | Deep reference prose for the reserved worker scheme | Pull-doc materialization {§schemes-directory}           |
+| `docs/delegation.md`            | Required   | Worker delegation, lifecycle, and messaging | Pull-doc materialization with the worker scheme |
+| `docs/pattern.md`               | Required   | Operation-neutral pattern selection and literal source editing | Pull-doc materialization independent of schemes |
 | `skills/plurnk/SKILL.md`         | Required   | Standard Plurnk skill entry and chapter directory | Service-provided skill {§plurnk-skill} |
 
 Every teaching source, and every package's `docs/*.md`, is written to
@@ -31,12 +33,14 @@ its one authored source for later use. Consumers resolve the exported membership
 exactly: they do not scan `docs/`, infer new members from filenames, or treat a
 missing required source as empty teaching.
 
-A file in `docs/` does not declare a capability. A built-in scheme document is
-eligible only when its basename matches a registered reserved scheme; plugin
-documentation remains owned by that plugin's manifest. Retired or
-unregistered names do not ship as speculative teaching. Manifest `documentation` is deliberately
-optional: an absent field contributes no pull doc, while a present field is the
-fallback only when meta owns no source for that scheme name.
+A file in `docs/` does not declare a capability. Each exported document declares
+its source and an optional owning scheme. Scheme-bound references follow that
+scheme's visibility and capability admission; language references are independent
+of scheme registration. A basename is a document identity, not an invented scheme.
+Plugin documentation remains owned by its manifest: an absent `documentation`
+contributes no pull doc; a present field is the fallback when meta owns no
+document of that name. Document exclusions apply to the document and its owning
+scheme, when present.
 
 ## §skills-installation-boundary Skill composition and installation
 

@@ -12,18 +12,24 @@ SET content_id = (SELECT id FROM contents WHERE hash = $hash)
 WHERE id = $derivation_id;
 
 -- PREP: fts_rank_candidates
-WITH candidates AS (
+WITH candidates AS MATERIALIZED (
     SELECT json_extract(value, '$.key') AS key,
            json_extract(value, '$.deepHash') AS deep_hash
     FROM json_each($candidates)
+), matches AS MATERIALIZED (
+    SELECT c.key, f.content,
+           highlight(derivation_fts, 0, $open, $close) AS highlighted,
+           bm25(derivation_fts) AS rank
+    FROM derivation_fts f
+    JOIN derivations d ON d.id = f.rowid AND d.state = 'complete'
+    JOIN candidates c ON c.deep_hash = d.deep_hash
+    WHERE f.content MATCH $query
 )
-SELECT c.key, f.content,
-       highlight(derivation_fts, 0, $open, $close) AS highlighted
-FROM derivation_fts f
-JOIN derivations d ON d.id = f.rowid AND d.state = 'complete'
-JOIN candidates c ON c.deep_hash = d.deep_hash
-WHERE f.content MATCH $query
-ORDER BY bm25(derivation_fts), c.key COLLATE BINARY;
+SELECT c.key, d.state, m.content, m.highlighted
+FROM candidates c
+LEFT JOIN derivations d ON d.deep_hash = c.deep_hash
+LEFT JOIN matches m ON m.key = c.key
+ORDER BY m.rank IS NULL, m.rank, c.key COLLATE BINARY;
 
 -- INIT: derivations_delete_fts
 -- {§retention-policy}: the full-text row is the derivation's shadow (rowid = derivation id) and

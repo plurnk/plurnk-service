@@ -1,7 +1,7 @@
 // {§graph-relations} FIND graph dialect over symbol_defs/symbol_refs.
 //   &<sym  referrers — entries that REFERENCE sym
 //   &>sym  referents — entries DEFINING what sym references
-//   &sym   neighborhood — def ∪ referrers ∪ referents
+//   &sym   definitions
 // Symbol rows derive from mimetype symbols/references during persistent-index
 // maintenance. Source resolution is workspace-wide; the authored target
 // constrains the returned resources.
@@ -101,12 +101,12 @@ test("&>foo finds entries defining what foo references", async () => {
     } finally { db.close(); }
 });
 
-test("&foo is the union of definitions, referrers, and referents", async () => {
+test("&foo selects definitions, not callers or dependencies", async () => {
     const { db, workspaceId, workerId } = await seed();
     try {
         const r = await find(db, workspaceId, workerId, "&foo");
         assert.equal(r.status, 200);
-        assert.deepEqual([...new Set(resourcePaths(r))], ["worker:///a.ts", "worker:///b.ts", "worker:///c.ts"]);
+        assert.deepEqual([...new Set(resourcePaths(r))], ["worker:///a.ts"]);
     } finally { db.close(); }
 });
 

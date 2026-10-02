@@ -13,14 +13,14 @@ const src = notebook({
 describe("query-evidence conformance (both dialects)", () => {
     it("jsonpath: a cell property carries its source region", async () => {
         await assertQueryEvidenceConformance(h, [{
-            source: src, dialect: "jsonpath", pattern: "$.cells[0].cell_type", verdict: "enclosing",
-            expectRegions: [[{ startLine: 4, startColumn: 4, endLine: 4, endColumn: 23 }]],
+            source: src, dialect: "jsonpath", pattern: "$.cells[0].cell_type", verdict: "exact",
+            expectRegions: [[{ startLine: 4, startColumn: 17, endLine: 4, endColumn: 23 }]],
         }]);
     });
     it("xpath: the same property carries the same source region", async () => {
         await assertQueryEvidenceConformance(h, [{
-            source: src, dialect: "xpath", pattern: "//cell_type", verdict: "enclosing",
-            expectRegions: [[{ startLine: 4, startColumn: 4, endLine: 4, endColumn: 23 }]],
+            source: src, dialect: "xpath", pattern: "//cell_type", verdict: "exact",
+            expectRegions: [[{ startLine: 4, startColumn: 17, endLine: 4, endColumn: 23 }]],
         }]);
     });
 });

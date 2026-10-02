@@ -21,7 +21,7 @@
         "handlers": [
             {
                 "name": "text/x-diff",
-                "revision": "1",
+                "revision": "2",
                 "glyph": "🔀",
                 "extensions": [
                     ".diff",

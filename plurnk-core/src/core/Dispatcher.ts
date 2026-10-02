@@ -185,7 +185,6 @@ export default class Dispatcher {
         this.#resourceMutations = new ResourceMutations({
             schemes,
             liveSubscriptions,
-            run: (schemeName, statement, ctx) => this.#dataRun.run(schemeName, statement, ctx),
             checkWritable: (statement, origin, workspaceId) => this.#checkWritable(statement, origin, workspaceId),
             checkCapabilities: (statement, ctx) => this.#checkCapabilities(statement, ctx),
             editTargetIdentity: (statement, workspaceId, workerId) => this.#editTargetIdentity(statement, workspaceId, workerId),
@@ -401,7 +400,7 @@ export default class Dispatcher {
     #scopedEntryEdit(statement: PlurnkStatement, workspaceId: number): EditStatement | null {
         if (statement.op === "EDIT") return statement;
         // {§kill-scope-entry} a scoped KILL of an entry empties the span; {§kill-pattern} a KILL with
-        // a matcher removes every whole line the pattern selects, inside its scope when one is given.
+        // a matcher removes each selected span, inside its scope when one is given.
         // Both are emptying EDITs; the log and every scheme with its own kill() keep their own path.
         if (statement.op !== "KILL" || (statement.lineMarker === null && statement.matcher === null)) return null;
         const cached = this.#scopedEntryEdits.get(statement);
@@ -421,7 +420,6 @@ export default class Dispatcher {
             position: statement.position,
         };
         this.#scopedEntryEdits.set(statement, edit);
-        if (statement.matcher !== null) this.#resourceMutations.markLineDeletion(edit);
         return edit;
     }
 
@@ -490,16 +488,12 @@ export default class Dispatcher {
     // ordinary FIND over the same target (unlogged; a matcher FIND when there is one, the catalog
     // otherwise; its resource page bounds the fan-out), and each is read as an ordinary exact READ
     // with the authored scope and matcher and its own receipt row, so every rendered line keeps its
-    // path, ordinal and anchor. No path: one 204 receipt on the authored glob. A resource dialect
-    // (`~`, `&`) selects resources, not lines, so that READ is the FIND survey.
+    // path, ordinal and anchor. No path: one 204 receipt on the authored glob.
     async #fanOutRead(context: DispatchContext, statement: ReadStatement): Promise<DispatchResult> {
         const survey: FindStatement = {
             op: "FIND", aside: statement.aside, target: statement.target, metadata: statement.metadata,
             matcher: statement.matcher, lineMarker: null, body: null, position: statement.position,
         };
-        if (statement.matcher?.dialect === "fts" || statement.matcher?.dialect === "graph") {
-            return this.#dispatch({ ...context, statement: survey });
-        }
         const found = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(context),
             (ctx) => this.#dataRun.run(schemeNameOf(statement.target), survey, ctx));
         const paths = found.status < 300

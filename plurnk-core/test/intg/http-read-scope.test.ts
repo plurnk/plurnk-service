@@ -63,7 +63,7 @@ const windowOf = (source: string, first: number, last: number): string =>
 
 for (const pretty of [false, true]) {
     for (const prepared of [false, true]) {
-        test(`{§universal-read-composition}: HTTP JSONPath locations drive scoped property READs (${pretty ? "pretty" : "compact"}, ${prepared ? "warm" : "cold"})`, async (t) => {
+        test(`{§universal-read-composition}: HTTP JSONPath locations drive exact value READs (${pretty ? "pretty" : "compact"}, ${prepared ? "warm" : "cold"})`, async (t) => {
             const { db, engine, ids } = await setup();
             t.after(() => db.close());
             const releases = [
@@ -108,7 +108,7 @@ for (const pretty of [false, true]) {
                 assert.ok(value.content);
                 values.push(value.content);
             }
-            assert.deepEqual(values, ['"version": "v24.14.0"', '"version": "v22.18.0"'], "each READ returns the matching property's region, without unrelated fields");
+            assert.deepEqual(values, ['"v24.14.0"', '"v22.18.0"'], "each READ returns exactly the selected value, including quotes but not its key or colon");
             assert.deepEqual(requests, [url], "scoped follow-up reads reuse the acquired representation");
         });
     }

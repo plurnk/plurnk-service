@@ -68,6 +68,12 @@ export default class EntryManifest {
         return renderAddress({ scheme, authority, pathname });
     }
 
+    // {§line-anchors}: default-channel aliases share the same canonical identity.
+    static channelPath(address: { scheme: string; authority: string; pathname: string }, channel: string, defaultChannel: string): string {
+        const base = EntryManifest.toPath(address.scheme, address.authority, address.pathname);
+        return channel === defaultChannel ? base : `${base}#${PathSyntax.escapeTarget(channel)}`;
+    }
+
     static async catalogRowsFor(
         ctx: PlurnkSchemeContext,
         schemeFilter?: string,

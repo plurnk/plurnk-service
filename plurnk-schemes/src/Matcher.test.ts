@@ -118,6 +118,12 @@ test("matcher: framework returns empty array → status 204", async () => {
     assert.equal(r.body, undefined);
 });
 
+test("{§matcher-dispatch} enclosing evidence is not promoted to an exact selected region", async () => {
+    const mts = stubMimetypes(async () => [{ matched: "name", matching: "//name", enclosingRegions: at(2, 1, 15) }]);
+    const r = await Matcher.matchAgainstContent({ dialect: "xpath", raw: "//name" }, doc, "text/markdown", mts);
+    assert.deepEqual(r.matches, [{ locator: "//name", enclosingRegion: at(2, 1, 15)[0] }]);
+});
+
 test("matcher: structural hit exposes its canonical locator as metadata", async () => {
     const json = ['{', '  "users": [', '    { "name": "Alice" },', '    { "name": "Bob" }', '  ]', '}'].join("\n");
     const mts = stubMimetypes(async () => [

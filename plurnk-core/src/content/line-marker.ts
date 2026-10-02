@@ -27,7 +27,7 @@ export default class LineMarkerOps {
     static textReplacement(content: string, marker: LineMarker, body: string): TextReplacement | { error: string } {
         return Slicer.textReplacement(content, marker, body);
     }
-    // {§zero-width-column-one-insert} — every site that turns an authored EDIT body into inserted content calls this.
+    // {§zero-width-column-one-insert} — normalize authored insertion bodies before scheme dispatch.
     static wholeLineBody(content: string, marker: LineMarker, body: string): string { return Slicer.wholeLineBody(content, marker, body); }
     static page<T>(
         items: readonly T[],

@@ -20,7 +20,7 @@
         "handlers": [
             {
                 "name": "application/json",
-                "revision": "1",
+                "revision": "2",
                 "glyph": "📋",
                 "extensions": [
                     ".json"
@@ -28,7 +28,7 @@
             },
             {
                 "name": "application/jsonc",
-                "revision": "1",
+                "revision": "2",
                 "glyph": "📋",
                 "extensions": [
                     ".jsonc"

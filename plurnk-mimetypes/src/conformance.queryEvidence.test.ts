@@ -43,6 +43,12 @@ const md = { mimetype: "application/x-test", glyph: "?", extensions: [".t"] as c
 const readable = Array.from({ length: 9 }, () => "x").join("\n");
 
 describe("query-evidence conformance gate", () => {
+    it("rejects enclosing coordinates mislabeled as an exact selected region", async () => {
+        const region = { startLine: 1, startColumn: 1, endLine: 1, endColumn: 4 };
+        await assert.rejects(() => assertQueryEvidenceConformance({ query: async () => [{ matched: "a", regions: [region] }] }, [{
+            source: "abc", dialect: "jsonpath", pattern: "$.name", verdict: "enclosing", expectRegions: [[region]],
+        }]), /enclosing evidence was classified incorrectly/);
+    });
     it("passes exact text evidence with complete expected coordinates", async () => {
         const h = new BaseHandler(md);
         await assertQueryEvidenceConformance(h, [{

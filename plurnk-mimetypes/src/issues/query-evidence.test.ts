@@ -22,7 +22,7 @@ describe("{§mimetype-query-conformance} — structural matches report source-li
     it("C1: a node with explicit line/endLine reports that span", () => {
         const out = queryJsonpathObject(model, "$.children[0]", undefined, readable);
         assert.equal(out.length, 1);
-        assert.deepEqual(out[0].regions, [{
+        assert.deepEqual(out[0].enclosingRegions, [{
             startLine: 3, startColumn: 1, endLine: 5, endColumn: 7,
         }]);
     });
@@ -30,14 +30,14 @@ describe("{§mimetype-query-conformance} — structural matches report source-li
     it("C2: a primitive resolves to the nearest enclosing annotated node", () => {
         const heading = queryJsonpathObject(model, "$.children[1].name", undefined, readable);
         assert.equal(heading[0].matched, "Method");
-        assert.deepEqual(heading[0].regions, [{
+        assert.deepEqual(heading[0].enclosingRegions, [{
             startLine: 6, startColumn: 1, endLine: 9, endColumn: 7,
         }], "walks up to children[1]");
 
         // metadata has no line of its own → walks up to the document span.
         const title = queryJsonpathObject(model, "$.metadata.title", undefined, readable);
         assert.equal(title[0].matched, "Quarterly Report");
-        assert.deepEqual(title[0].regions, [{
+        assert.deepEqual(title[0].enclosingRegions, [{
             startLine: 1, startColumn: 1, endLine: 10, endColumn: 8,
         }]);
     });
@@ -61,7 +61,7 @@ describe("{§mimetype-query-conformance} — structural matches report source-li
             + '<function pk:line="5" pk:endLine="12">body</function></root>';
         const out = queryXpathString(xml, "//function", "application/x-test", readable);
         assert.equal(out.length, 1);
-        assert.deepEqual(out[0].regions, [{
+        assert.deepEqual(out[0].enclosingRegions, [{
             startLine: 5, startColumn: 1, endLine: 12, endColumn: 8,
         }]);
     });

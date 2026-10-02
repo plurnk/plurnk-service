@@ -2,10 +2,11 @@ import type { LineMarker, ReadStatement } from "@plurnk/plurnk-contracts";
 import { binaryInputMaximum, MimetypeInputLimitError, type Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type {
     EntryReadResult,
+    MatchEvidence,
     StoredEntryData,
 } from "@plurnk/plurnk-schemes";
 import { Slicer } from "@plurnk/plurnk-schemes";
-import type { SchemeManifest } from "../core/scheme-types.ts";
+import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import Results from "../core/results.ts";
 import BodyPreview from "./body-preview.ts";
 import LineAnchors from "./line-anchors.ts";
@@ -71,6 +72,7 @@ interface ReadProjectionOptions {
     readonly identity: string;
     readonly representation: StoredEntryData;
     readonly mimetypes: Mimetypes | undefined;
+    readonly context?: PlurnkSchemeContext;
     readonly bytes?: ByteSource;
     readonly visibleLines?: Readonly<Record<string, readonly number[]>>;
     readonly retainNative?: (bytes: Uint8Array) => Promise<string>;
@@ -132,6 +134,28 @@ export default class ReadProjector {
         }
         const total = await source.size();
         if (total === null) return failure("entry-not-found", 404, `No bytes exist at ${target}.`);
+        if (statement.matcher !== null) {
+            if (statement.lineMarker !== null) {
+                const bounds = LineMarkerOps.window(statement.lineMarker as LineMarker, total, "byte");
+                if (bounds.status !== 200) return { ...bounds, content: null, mimetype: sourceMimetype, channel } as AnchoredReadResult;
+            }
+            const loaded = await ByteView.load(source, target);
+            if (!("bytes" in loaded)) return { ...loaded, content: null, mimetype: sourceMimetype, channel };
+            const match = await ByteView.match(statement.matcher, loaded.bytes);
+            if (match.status >= 400) return { status: match.status, problem: match.problem, content: null, mimetype: sourceMimetype, channel };
+            const matches = match.matches ?? [];
+            const visibleLines = PatternEdits.lines(matches, { from: 1, to: total });
+            const projected = await ReadResolve.resolve({
+                content: ByteView.hexLines(loaded.bytes), mimetype: "text/plain",
+                lineMarker: statement.lineMarker as LineMarker | null, visibleLines,
+            });
+            return {
+                ...projected, mimetype: sourceMimetype, channel, projection: ByteView.PROJECTION,
+                ...(projected.range === undefined ? {} : { range: { ...projected.range, unit: "byte" } }),
+                matched: statement.lineMarker === null ? visibleLines.length : (projected.lineOrdinals?.length ?? 0),
+                matches: PatternEdits.visible(matches, projected.lineOrdinals ?? []),
+            };
+        }
         const marker: LineMarker = statement.lineMarker ?? BodyPreview.firstPage();
         const window = LineMarkerOps.window(marker, total, "byte");
         if (window.status !== 200) {
@@ -375,13 +399,15 @@ export default class ReadProjector {
         // touches, in source order, inside the scope, with its ordinary anchors. Zero matches is
         // an empty read, never a failure; `matched` counts the selected lines inside the scope.
         let visibleLines = opts.visibleLines?.[selected];
+        let matches: readonly MatchEvidence[] | undefined;
         if (statement.matcher !== null) {
-            if (statement.matcher.dialect === "fts" || statement.matcher.dialect === "graph") {
-                const { detail, recovery } = PatternEdits.findOnly({ ...statement.matcher, dialect: statement.matcher.dialect }, "READ", target);
-                return failure("pattern-dialect-unsupported", 400, detail, {}, { target, recovery, retryable: false });
-            }
             if (mimetypes === undefined) throw new Error("ReadProjector: a READ pattern requires the mimetypes capability");
-            const match = await Matcher.matchAgainstContent(PatternEdits.lineLimited(statement.matcher), selectedRepresentation.content, selectedRepresentation.mimetype, mimetypes);
+            const match = opts.context === undefined || statement.target === null
+                ? await Matcher.matchAgainstContent(PatternEdits.lineAnchored(statement.matcher), selectedRepresentation.content, selectedRepresentation.mimetype, mimetypes)
+                : await Matcher.matchResource(statement.matcher, {
+                    content: selectedRepresentation.content, mimetype: selectedRepresentation.mimetype,
+                    target: statement.target, ...(visibleLines === undefined ? {} : { visibleLines }),
+                }, opts.context);
             if (match.status >= 400 || match.status === 203) {
                 return Results.assertReadResult({
                     ...(match.problem === undefined
@@ -392,7 +418,11 @@ export default class ReadProjector {
                     channel,
                 }) as EntryReadResult;
             }
-            const ordered = PatternEdits.lines(match.matches ?? [], null);
+            matches = match.matches ?? [];
+            if (matches.some(({ region, enclosingRegion }) => region === undefined && enclosingRegion === undefined)) {
+                return failure("pattern-source-unlocated", 422, "The pattern selected a value without source coordinates.");
+            }
+            const ordered = PatternEdits.lines(matches, null);
             visibleLines = visibleLines === undefined ? ordered : ordered.filter((line) => visibleLines!.includes(line));
         }
         let resolved = await ReadResolve.resolve({
@@ -469,10 +499,11 @@ export default class ReadProjector {
             channel,
             ...(resolved.mimetype === selectedRepresentation.mimetype ? {} : { sourceMimetype: selectedRepresentation.mimetype }),
             ...(matched === undefined ? {} : { matched }),
+            ...(matches === undefined ? {} : { matches: PatternEdits.visible(matches, resolved.lineOrdinals ?? [], resolved.region) }),
         });
         const result = ReadProjector.#producerResult(projected, selectedRepresentation, channel !== null && manifest.channels[channel] === "text/stream");
         if (
-            result.status !== 200
+            (result.status !== 200 && result.status !== 204)
             || typeof result.content !== "string"
         ) {
             return result;

@@ -20,6 +20,8 @@ import LogEntryProjection from "./LogEntryProjection.ts";
 import LogVisibility, { type LogFoldRanges } from "./LogVisibility.ts";
 import BodyPreview from "../content/body-preview.ts";
 import ScopeFormat from "../content/scope-format.ts";
+import PatternEdits from "../content/pattern-edits.ts";
+import { Results as SchemeResults, type MatchEvidence } from "@plurnk/plurnk-schemes";
 import {
     assertEditReceipt,
     assertResourceEffects,
@@ -57,6 +59,7 @@ interface RxView {
     content?: unknown;
     resource?: unknown;
     matched?: unknown;
+    matches?: unknown;
     channels?: unknown;
     answers?: unknown;
     terminal?: unknown;
@@ -177,6 +180,7 @@ interface RowIdentity {
     readonly description: string | null;
 }
 interface RowResultFacts {
+    readonly matches?: readonly MatchEvidence[];
     readonly findItems: number | null;
     readonly range: RangeExtent | null;
     readonly structuredMutationReceipt: boolean;
@@ -1046,7 +1050,11 @@ export default class PacketWire {
             }));
             structuredMutationReceipt = effects.some((effect) => effect.receipt !== undefined);
         }
-        return { findItems, range, structuredMutationReceipt };
+        return {
+            findItems, range, structuredMutationReceipt,
+            ...(op === "READ" && rx?.matches !== undefined
+                ? { matches: SchemeResults.assertMatchEvidenceList(rx.matches) } : {}),
+        };
     }
 
     // The body the row shows: the canonical full body is shared with log READ, log FIND, and
@@ -1108,6 +1116,19 @@ export default class PacketWire {
             : PacketWire.#preview(projectedBody.content);
         const projectedLineCount = TextCoordinates.logicalLines(projection.text).length;
         const projectedOrdinals = sourceOrdinals.slice(0, projectedLineCount);
+        if (facts.matches !== undefined && !bodyVisibility.fullyFolded) {
+            const physicalLines = projectedOrdinals.map((ordinal) => fullBody.lineOrdinals?.[ordinal - 1]
+                ?? (fullBody.startLine ?? 1) + ordinal - 1);
+            const evidence = PatternEdits.visible(facts.matches, physicalLines).map(({ region, enclosingRegion, locator }) => ({
+                ...(locator === undefined ? {} : { locator }),
+                ...(region === undefined ? {} : { region: ScopeFormat.region(region) }),
+                ...(enclosingRegion === undefined ? {} : { enclosingRegion: ScopeFormat.region(enclosingRegion) }),
+            }));
+            if (evidence.length > 0) {
+                meta.matches = BodyPreview.items(evidence, JSON.stringify);
+                if ((meta.matches as unknown[]).length !== evidence.length) meta.matchLocationCount = evidence.length;
+            }
+        }
         const body = emptyFind || projection.text.length === 0
             ? ""
             : PacketWire.#renderContentBody(

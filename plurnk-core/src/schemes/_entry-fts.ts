@@ -6,7 +6,7 @@ import Results from "../core/results.ts";
 import type { CandidateMatch } from "../content/matcher.ts";
 import type { SearchCandidate } from "./_search-candidate.ts";
 
-type RankedRow = { key: string; content: string; highlighted: string };
+type RankedRow = { key: string; state: string | null; content: string | null; highlighted: string | null };
 
 export default class EntryFts {
     // {§content-store}: an artifact indexes a text by pointing at it in the content store; empty = nothing.
@@ -77,15 +77,21 @@ export default class EntryFts {
                 return { ...failure, matches: [] };
             }
             signal?.throwIfAborted();
-            if (rows.some(({ content }) => content.includes(open) || content.includes(close))) {
+            if (rows.some(({ state }) => state !== "complete")) return {
+                ...Results.failure("schemes:matcher", "search-index-incomplete", 503,
+                    "The full-text index no longer covers the selected representation.", {}, { retryable: true }),
+                matches: [],
+            };
+            const matchedRows = rows.filter((row): row is RankedRow & { content: string; highlighted: string } => row.content !== null && row.highlighted !== null);
+            if (matchedRows.some(({ content }) => content.includes(open) || content.includes(close))) {
                 // A source may contain the presentation markers. Grow once against all
                 // immutable matched bodies, then ask SQLite to mark them without ambiguity.
-                do { marker += marker; } while (rows.some(({ content }) => content.includes(marker)));
+                do { marker += marker; } while (matchedRows.some(({ content }) => content.includes(marker)));
                 continue;
             }
             return {
                 status: 200,
-                matches: rows.map(({ key, content, highlighted }) => ({
+                matches: matchedRows.map(({ key, content, highlighted }) => ({
                     key,
                     matches: EntryFts.#evidence(content, highlighted, open, close),
                 })),

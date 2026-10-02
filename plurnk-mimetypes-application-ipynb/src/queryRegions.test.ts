@@ -30,7 +30,7 @@ describe("ipynb structural match evidence", () => {
         const out = await h.query(nb, "jsonpath", "$.nbformat");
         assert.equal(out[0].matched, 4);
         assert.equal(out[0].matching, "$['nbformat']");
-        assert.deepEqual(out[0].regions, [{ startLine: 23, startColumn: 2, endLine: 23, endColumn: 15 }]);
+        assert.deepEqual(out[0].regions, [{ startLine: 23, startColumn: 14, endLine: 23, endColumn: 15 }]);
     });
 });
 

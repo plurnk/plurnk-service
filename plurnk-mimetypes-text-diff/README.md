@@ -11,7 +11,7 @@ npm i @plurnk/plurnk-mimetypes-text-diff
 ## what it does
 
 - **`extractRaw(content)`** emits one `module` symbol per file section and one `field` symbol per hunk (see the symbol model below).
-- **`deepJson(content)`** emits the structural tree of target-file ranges and per-file stats — the jsonpath query target. The framework projects it to deep-xml automatically, so xpath works too.
+- **`deepJson(content)`** emits the structural tree of target-file ranges and per-file stats — the jsonpath query target. File sections and hunks have exact source regions; synthesized scalar fields retain enclosing context only. The framework projects it to deep-xml automatically, so xpath works too.
 
 Both channels are backed by a single `scanDiff(text)` pass (exported for re-use). `validate` is the framework default (a diff has no fail-hard syntax check). `content` (HTML-only) and `references` are not implemented.
 

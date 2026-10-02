@@ -1,4 +1,4 @@
-// {§copy-move-pattern} — a pattern on a COPY or MOVE source selects whole matching lines; the
+// {§copy-move-pattern} — a pattern on a COPY or MOVE source selects exact matching spans; the
 // destination is a place named by its scope. Zero matches change nothing.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -27,14 +27,13 @@ const setup = async () => {
 const literal: MatcherBody = { dialect: "glob", raw: "TODO" };
 const withSource = <T extends CopyStatement | MoveStatement>(statement: T, matcher: MatcherBody): T => ({ ...statement, source: { ...statement.source, matcher } });
 
-test("COPY by pattern lands exactly the matching lines and leaves the source alone", async () => {
+test("COPY by pattern lands exactly the matching text and leaves the source alone", async () => {
     const { db, dispatch, body } = await setup();
     try {
         const r = await dispatch(withSource(copyStmt(urlPath("worker", "/notes.md"), urlPath("worker", "/todos.md")), literal));
         assert.equal(r.status, 201, JSON.stringify(r));
-        assert.equal(r.matched, 2, "the receipt counts the selected lines");
-        // Whole-line selections carry their separators, exactly as a scoped COPY does.
-        assert.equal(await body("/todos.md"), "TODO one\nTODO two\n");
+        assert.equal(r.matched, 2, "the receipt counts the selected spans");
+        assert.equal(await body("/todos.md"), "TODOTODO");
         assert.equal(await body("/notes.md"), "alpha\nTODO one\nbeta\nTODO two\ngamma", "COPY reads only");
     } finally { await db.close(); }
 });
@@ -45,7 +44,7 @@ test("a scoped source bounds the lines a pattern may select", async () => {
         const r = await dispatch(withSource(copyStmt(urlPath("worker", "/notes.md"), urlPath("worker", "/todos.md"), { marks: [1, 3] }), literal));
         assert.equal(r.status, 201, JSON.stringify(r));
         assert.equal(r.matched, 1);
-        assert.equal(await body("/todos.md"), "TODO one\n");
+        assert.equal(await body("/todos.md"), "TODO");
     } finally { await db.close(); }
 });
 
@@ -59,30 +58,30 @@ test("zero matches copy nothing and answer 204", async () => {
     } finally { await db.close(); }
 });
 
-test("MOVE by pattern retires exactly the matching lines from the source", async () => {
+test("MOVE by pattern removes exactly the matching spans from the source", async () => {
     const { db, dispatch, body } = await setup();
     try {
-        // A pattern works line by line, so `^` anchors each line without an explicit `m` flag.
+        // Regex anchors refer to source lines without requiring an explicit `m` flag.
         const regex: MatcherBody = { dialect: "regex", raw: "/^TODO/", pattern: "^TODO", flags: "" };
         const r = await dispatch(withSource(moveStmt(urlPath("worker", "/notes.md"), urlPath("worker", "/todos.md")), regex));
         assert.equal(r.status, 201, JSON.stringify(r));
         assert.equal(r.matched, 2);
-        assert.equal(await body("/todos.md"), "TODO one\nTODO two\n");
-        assert.equal(await body("/notes.md"), "alpha\nbeta\ngamma", "only the moved lines left the source");
+        assert.equal(await body("/todos.md"), "TODOTODO");
+        assert.equal(await body("/notes.md"), "alpha\n one\nbeta\n two\ngamma", "surrounding content stays in the source");
         const effects = r.effects as ReadonlyArray<{ target: string; action: string }>;
         assert.deepEqual(effects.map(({ target, action }) => `${action} ${target}`), [
             "create worker:///todos.md", "update worker:///notes.md", "update worker:///notes.md",
-        ], "one destination effect, one source effect per retired line");
+        ], "one destination effect, one source effect per removed span");
     } finally { await db.close(); }
 });
 
-test("MOVE by pattern within one channel appends the lines and removes them where they were", async () => {
+test("MOVE by pattern within one channel appends the spans and removes them where they were", async () => {
     const { db, dispatch, body } = await setup();
     try {
         const r = await dispatch(withSource(moveStmt(urlPath("worker", "/notes.md"), urlPath("worker", "/notes.md"), null, { marks: [-1] }), literal));
         assert.equal(r.status, 200, JSON.stringify(r));
         assert.equal(r.matched, 2);
-        assert.equal(await body("/notes.md"), "alpha\nbeta\ngamma\nTODO one\nTODO two\n");
+        assert.equal(await body("/notes.md"), "alpha\n one\nbeta\n two\ngamma\nTODOTODO");
     } finally { await db.close(); }
 });
 
@@ -97,11 +96,12 @@ test("a pattern on the destination is refused: a destination is a place", async 
     } finally { await db.close(); }
 });
 
-test("a resource-selecting dialect on a transfer source is refused before any read", async () => {
-    const { db, dispatch } = await setup();
+test("a full-text pattern transfers matching tokens without surrounding source", async () => {
+    const { db, dispatch, body } = await setup();
     try {
         const r = await dispatch(withSource(copyStmt(urlPath("worker", "/notes.md"), urlPath("worker", "/todos.md")), { dialect: "fts", raw: "~TODO" }));
-        assert.equal(r.status, 400, JSON.stringify(r));
-        assert.match(String(r.problem?.type), /\/pattern-dialect-unsupported$/);
+        assert.equal(r.status, 201, JSON.stringify(r));
+        assert.equal(await body("/todos.md"), "TODOTODO");
+        assert.equal(await body("/notes.md"), "alpha\nTODO one\nbeta\nTODO two\ngamma");
     } finally { await db.close(); }
 });

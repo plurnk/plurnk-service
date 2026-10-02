@@ -7,7 +7,7 @@ import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } 
 import type { WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
 import type EntryAddressBinding from "./EntryAddressBinding.ts";
 import type { BoundEntryAddress } from "./EntryAddressBinding.ts";
-import type { DispatchResult, RunOperation, ProposalIds } from "./mutation-types.ts";
+import type { DispatchResult, ProposalIds } from "./mutation-types.ts";
 import MutationEffects from "./MutationEffects.ts";
 import EditMutations from "./EditMutations.ts";
 import ResourceSelector from "./ResourceSelector.ts";
@@ -23,7 +23,6 @@ export default class ResourceMutations {
     constructor({
         schemes,
         liveSubscriptions,
-        run,
         checkWritable,
         checkCapabilities,
         editTargetIdentity,
@@ -36,7 +35,6 @@ export default class ResourceMutations {
     }: {
         schemes: SchemeRegistry;
         liveSubscriptions: LiveSubscriptions;
-        run: RunOperation;
         checkWritable: (statement: PlurnkStatement, origin: WriterTier, workspaceId: number) => DispatchResult | null;
         checkCapabilities: (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
         editTargetIdentity: (
@@ -57,7 +55,7 @@ export default class ResourceMutations {
         applyProposal: ProposalLifecycle["workerApply"];
     }) {
         this.#selection = selection;
-        this.#edits = new EditMutations({ schemes, liveSubscriptions, run, checkWritable, checkCapabilities, editTargetIdentity, resolveDataEntryAddress });
+        this.#edits = new EditMutations({ schemes, liveSubscriptions, selection, checkWritable, checkCapabilities, editTargetIdentity, resolveDataEntryAddress });
         this.#transfers = new ResourceTransfers({ schemes, liveSubscriptions, resolveDataEntryAddress, readEntry, writeEntry, deleteChannel, applyProposal, selection: this.#selection });
     }
 
@@ -67,10 +65,6 @@ export default class ResourceMutations {
 
     withMergeFacts(...args: Parameters<EditMutations["withMergeFacts"]>): ReturnType<EditMutations["withMergeFacts"]> {
         return this.#edits.withMergeFacts(...args);
-    }
-
-    markLineDeletion(statement: EditStatement): void {
-        this.#edits.markLineDeletion(statement);
     }
 
     settleEdit(...args: Parameters<EditMutations["settleEdit"]>): ReturnType<EditMutations["settleEdit"]> {

@@ -3,7 +3,7 @@ import {
     assertEditReceipt,
     assertResourceEffects,
     type EditReceipt,
-} from "../content/index.ts";
+} from "../content/edit-receipt.ts";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import LogVisibility, { type LogFoldRanges } from "./LogVisibility.ts";
 import LineSelection from "../content/line-selection.ts";

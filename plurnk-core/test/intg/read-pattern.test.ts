@@ -32,6 +32,10 @@ test("READ by pattern renders exactly the matching lines with their physical ord
         assert.equal(r.content, "TODO one\nTODO two");
         assert.deepEqual(r.lineOrdinals, [2, 4], "the lines keep their physical ordinals");
         assert.equal(r.matched, 2);
+        assert.deepEqual(r.matches, [
+            { region: { startLine: 2, startColumn: 1, endLine: 2, endColumn: 5 }, matched: "TODO" },
+            { region: { startLine: 4, startColumn: 1, endLine: 4, endColumn: 5 }, matched: "TODO" },
+        ], "the readable lines do not replace the precise match evidence");
         assert.equal((r.lineAnchors as string[]).length, 2, "every rendered line carries its anchor");
         assert.deepEqual(r.range, { unit: "line", total: 5, requested: [2, 4], returned: [2, 4] });
     } finally { await db.close(); }
@@ -45,6 +49,9 @@ test("a scope bounds the lines a READ pattern may select; matched counts inside 
         assert.equal(r.content, "TODO one");
         assert.deepEqual(r.lineOrdinals, [2]);
         assert.equal(r.matched, 1);
+        assert.deepEqual(r.matches, [
+            { region: { startLine: 2, startColumn: 1, endLine: 2, endColumn: 5 }, matched: "TODO" },
+        ], "the result does not advertise matches outside its returned text");
     } finally { await db.close(); }
 });
 
@@ -55,6 +62,7 @@ test("zero matches read as empty (204) with matched 0", async () => {
         assert.equal(r.status, 204, JSON.stringify(r));
         assert.equal(r.matched, 0);
         assert.equal(r.content, "");
+        assert.deepEqual(r.matches, []);
     } finally { await db.close(); }
 });
 
@@ -67,20 +75,26 @@ test("a whole-resource pattern READ pages through the selected lines, never the 
         assert.equal(r.matched, 20, "every selected line counts, beyond the page");
         assert.deepEqual(r.lineOrdinals, Array.from({ length: 16 }, (_, index) => index * 2 + 1), "the first page holds the first sixteen selected lines");
         assert.doesNotMatch(String(r.content), /skip/);
+        assert.equal((r.matches as unknown[]).length, 16, "match evidence follows the returned page, not the unseen remainder");
     } finally { await db.close(); }
 });
 
-test("a resource-selecting dialect on a READ is refused", async () => {
+test("a full-text READ returns matching lines and exact token coordinates", async () => {
     const { db, dispatch } = await setup();
     try {
         const r = await dispatch(readStmt(urlPath("worker", "/notes.md"), null, { dialect: "fts", raw: "~TODO" }));
-        assert.equal(r.status, 400, JSON.stringify(r));
-        assert.match(String(r.problem?.type), /\/pattern-dialect-unsupported$/);
+        assert.equal(r.status, 200, JSON.stringify(r));
+        assert.equal(r.content, "TODO one\nTODO two");
+        assert.deepEqual(r.lineOrdinals, [2, 4]);
+        assert.deepEqual(r.matches, [
+            { region: { startLine: 2, startColumn: 1, endLine: 2, endColumn: 5 }, matched: "TODO" },
+            { region: { startLine: 4, startColumn: 1, endLine: 4, endColumn: 5 }, matched: "TODO" },
+        ]);
     } finally { await db.close(); }
 });
 
 // {§read-fan-out} — a pattern READ over a glob is grep: one ordinary exact pattern READ receipt per
-// matching path, in the FIND's order; no match is one 204 on the glob; a survey dialect stays a FIND.
+// matching path, in the FIND's order; no match is one 204 on the glob.
 test("a pattern READ over a glob fans out into one exact pattern READ receipt per matching path", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`, { producer: "client" });
@@ -137,8 +151,11 @@ test("a pattern READ over a glob fans out into one exact pattern READ receipt pe
         assert.deepEqual(previews.map(({ op, pathname }) => [op, pathname]), [["READ", "/pets_cats.md"], ["READ", "/pets_dogs.md"], ["READ", "/pets_fish.md"]]);
         assert.equal((JSON.parse(previews[2]!.rx) as { content: string }).content, "Fish are quiet.", "each path renders its ordinary preview");
 
-        const survey = await dispatch(readStmt(urlPath("worker", "/pets_*.md"), null, { dialect: "fts", raw: "~dogs" }));
-        assert.ok(survey.status < 400, JSON.stringify(survey));
-        assert.equal((await rows()).at(-1)!.op, "FIND", "a resource dialect on a glob READ is the FIND survey it always was");
+        const fullText = await dispatch(readStmt(urlPath("worker", "/pets_*.md"), null, { dialect: "fts", raw: "~dogs" }));
+        assert.equal(fullText.status, 200, JSON.stringify(fullText));
+        assert.equal(fullText.rowsWritten, 2);
+        const fullTextRows = (await rows()).slice(-2);
+        assert.deepEqual(fullTextRows.map(({ op, pathname }) => [op, pathname]), [["READ", "/pets_dogs.md"], ["READ", "/pets_cats.md"]], "FTS ranking retains the higher-relevance resource first");
+        assert.deepEqual(fullTextRows.map(({ rx }) => JSON.parse(rx).content), ["but I love dogs.\nHistorically, dogs have been...", "Most cats are afraid of dogs."]);
     } finally { await db.close(); }
 });

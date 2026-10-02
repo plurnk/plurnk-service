@@ -98,7 +98,6 @@ export class SqlRiteSync {
 	find_workspace_entry_candidates: SqlRiteSyncPreparedStatements;
 	find_workspace_entry_candidate_ids: SqlRiteSyncPreparedStatements;
 	find_workspace_derivation_candidates: SqlRiteSyncPreparedStatements;
-	find_selected_channels: SqlRiteSyncPreparedStatements;
 	fts_intern: SqlRiteSyncPreparedStatements;
 	fts_attach: SqlRiteSyncPreparedStatements;
 	fts_rank_candidates: SqlRiteSyncPreparedStatements;
@@ -109,9 +108,7 @@ export class SqlRiteSync {
 	derivation_get: SqlRiteSyncPreparedStatements;
 	derivation_create: SqlRiteSyncPreparedStatements;
 	derivation_complete: SqlRiteSyncPreparedStatements;
-	graph_referrers_candidates: SqlRiteSyncPreparedStatements;
-	graph_defs_candidates: SqlRiteSyncPreparedStatements;
-	graph_referents: SqlRiteSyncPreparedStatements;
+	graph_match_candidates: SqlRiteSyncPreparedStatements;
 	engine_list_catalog_entries: SqlRiteSyncPreparedStatements;
 	ops_insert_workspace_entry_if_absent: SqlRiteSyncPreparedStatements;
 	ops_insert_channel_if_absent: SqlRiteSyncPreparedStatements;
@@ -693,7 +690,6 @@ export default class SqlRite {
 	find_workspace_entry_candidates: SqlRitePreparedStatements;
 	find_workspace_entry_candidate_ids: SqlRitePreparedStatements;
 	find_workspace_derivation_candidates: SqlRitePreparedStatements;
-	find_selected_channels: SqlRitePreparedStatements;
 	fts_intern: SqlRitePreparedStatements;
 	fts_attach: SqlRitePreparedStatements;
 	fts_rank_candidates: SqlRitePreparedStatements;
@@ -704,9 +700,7 @@ export default class SqlRite {
 	derivation_get: SqlRitePreparedStatements;
 	derivation_create: SqlRitePreparedStatements;
 	derivation_complete: SqlRitePreparedStatements;
-	graph_referrers_candidates: SqlRitePreparedStatements;
-	graph_defs_candidates: SqlRitePreparedStatements;
-	graph_referents: SqlRitePreparedStatements;
+	graph_match_candidates: SqlRitePreparedStatements;
 	engine_list_catalog_entries: SqlRitePreparedStatements;
 	ops_insert_workspace_entry_if_absent: SqlRitePreparedStatements;
 	ops_insert_channel_if_absent: SqlRitePreparedStatements;

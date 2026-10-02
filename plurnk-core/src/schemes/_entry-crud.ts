@@ -51,7 +51,7 @@ export default class EntryCrud {
         };
     }
 
-    static async storedByteSource(entry: StoredEntryData, channel: string, mimetypes: Mimetypes | undefined): Promise<ByteSource | undefined> {
+    static async storedByteSource(entry: { channels: Readonly<Record<string, { content: string; mimetype: string }>> }, channel: string, mimetypes: Mimetypes | undefined): Promise<ByteSource | undefined> {
         const selected = entry.channels[channel];
         // {§binary-parity} Empty base64 is a zero-byte source; acquisition outcomes live on the channel.
         return selected !== undefined && await MimetypeBinary.isBinaryMimetype(selected.mimetype, mimetypes)

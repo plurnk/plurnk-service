@@ -162,7 +162,10 @@ export interface SchemeHandler {
 shape: its `lineMarker` is `LineMarker | null` and therefore contains numbers
 only. Core resolves the model-facing {§text-line-anchor-syntax} before invoking
 `SchemeHandler.editBatch` or `EntryOperationCaps.editBatch`; an unresolved
-anchor crossing that boundary is an internal contract violation. The barrel's
+anchor crossing that boundary is an internal contract violation. Core also
+prepares authored body syntax before this boundary ({§zero-width-column-one-insert});
+handlers apply the supplied replacement literally, including at zero-width spans.
+The barrel's
 compatibility export named `EditStatement` aliases this resolved shape, so
 existing plugins do not inherit the model parser's anchor representation.
 The anchor precondition remains core-private. A public handler declaring
@@ -520,7 +523,7 @@ likewise. Both carry `columnKind: "unicodeCodePoints"`.
 - `Results.problem(owner, code, status, detail, extensions?)` — build and validate RFC 9457 Problem Details with a stable `https://problems.plurnk.xyz/<owner>/<code>` type.
 - `Results.failure(owner, code, status, detail, fields?, extensions?)` — build and validate a failed operation result.
 - `Results.assert(result)` — validate the complete success/failure discrimination and reject malformed plugin output.
-- `Results.assertMatchEvidence(evidence)` / `assertMatchEvidenceList(evidence)` - enforce the exact `{ locator?, region?, matched? }` shape and shared `TextRegion` contract.
+- `Results.assertMatchEvidence(evidence)` / `assertMatchEvidenceList(evidence)` - enforce the exact `{ locator?, region?, enclosingRegion?, matched? }` shape and shared `TextRegion` contract.
 - `Results.assertReadResult(result)` - validate the universal operation result plus any `region` and `matches` it exposes.
 - `Results.attachInstance(result, uri)` — attach the durable occurrence URI to a failed result.
 
@@ -536,12 +539,13 @@ entries and channels never return a bare failure status.
 
 - `Matcher.matchAgainstContent(body, content, mimetype, mimetypes, diagnostic?)` is the body-matcher adapter over `Mimetypes.query` (glob/regex/jsonpath/xpath). The optional projector supplies one bounded caught-parser `diagnostic` extension without transferring error-formatting policy into this package or splicing implementation text into Problem prose.
 - A match returns status 200 and `matches: MatchEvidence[]`.
-  `MatchEvidence` is `{locator?, region?, matched?}`. `locator` preserves a structural locator;
+  `MatchEvidence` is `{locator?, region?, enclosingRegion?, matched?}`. `locator` preserves a structural locator;
   `matched` is the matched text itself, present for the regex and glob dialects so a match row
   reads without a READ;
-  `region` is a complete four-coordinate `TextRegion` only when the finding has
-  an honest exact or nearest-enclosing mapping into the text the model can READ.
-  Each item must contain at least one of `locator` or `region`; other fields violate
+  `region` is the exact selected source span; `enclosingRegion` is context when
+  the handler can locate only the containing text. Both are complete four-coordinate
+  `TextRegion` values. Context does not authorize exact-source mutation.
+  Each item must contain at least one of `locator`, `region`, or `enclosingRegion`; other fields violate
   the shared evidence contract.
 - The matcher is a boolean resource selector. It does not replace content with matched values or choose a retrieval window. FIND owns selection and pagination; exact READ owns text projection.
 - Empty results return 204 with `matches: []`; `UnsupportedDialectError` maps to 415; `InvalidExpressionError` maps to 400 with the bounded native parser cause when one was projected; `QueryParseFailureError` maps to 203 with raw content, text/markdown, and `reason`.

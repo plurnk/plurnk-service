@@ -5,6 +5,14 @@ import { Knob } from "@plurnk/plurnk-meta";
 // {§body-projection} — one selector for ordinary packet previews and implicit
 // text acquisition. Explicit operation scopes never pass through this policy.
 export default class BodyPreview {
+    // Structured previews keep complete items under the same line/character allowance.
+    static items<T>(items: readonly T[], render: (item: T) => string): T[] {
+        const text = items.map(render).join("\n");
+        const { end } = BodyPreview.select(text);
+        const complete = TextCoordinates.logicalLines(text).filter((line) => line.contentEnd <= end).length;
+        return items.slice(0, complete);
+    }
+
     // {§markerless-first-page} — the implicit marker of every markerless retrieval. A marker's unit
     // is whatever the projection counts: lines of text, bytes of a byte view, results of a FIND.
     static firstPage(): LineMarker {

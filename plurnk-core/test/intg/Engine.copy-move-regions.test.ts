@@ -702,7 +702,7 @@ test("{§binary-parity} COPY and MOVE preserve zero-byte channels; a nonempty so
         assert.equal((await read("/copied")).entry?.channels.blob?.mimetype, "application/octet-stream");
         const sliced = await dispatch(copyStmt(urlPath("multi", "/source", "blob"), urlPath("multi", "/other", "blob"), { marks: [1] }));
         assert.equal(sliced.status, 416);
-        assert.equal(sliced.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/range-not-satisfiable");
+        assert.equal(sliced.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
         assert.equal((await read("/other")).status, 404);
         const moved = await dispatch(moveStmt(urlPath("multi", "/source", "blob"), urlPath("multi", "/moved", "blob"), { marks: [1, -1] }));
         assert.equal(moved.status, 201, JSON.stringify(moved));

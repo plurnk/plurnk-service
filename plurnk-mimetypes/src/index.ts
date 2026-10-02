@@ -83,6 +83,7 @@ export {
     serializeXpathNode,
 } from "./query.ts";
 export { projectJsonToXml } from "./projectJsonToXml.ts";
+export { projectDomToJson } from "./projectDomToJson.ts";
 export {
     InvalidExpressionError,
     QueryParseFailureError,

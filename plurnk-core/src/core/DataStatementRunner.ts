@@ -258,6 +258,7 @@ export default class DataStatementRunner {
             target,
             identity: resolved.identity ?? target,
             representation: resolved.representation,
+            context: ctx,
             ...(resolved.visibleLines === undefined ? {} : { visibleLines: resolved.visibleLines }),
             mimetypes: ctx.mimetypes,
             ...(ctx.weigh === undefined ? {} : { weigh: ctx.weigh }),

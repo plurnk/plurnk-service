@@ -1,18 +1,17 @@
-// {§graph-relations} The symbol index behind the FIND `graph` dialect
-// (&<sym referrers / &>sym referents / &sym neighborhood). Files are first-class
-// channel-backed entries, so the index is uniform across worker:/// and file:/// with
-// no scheme special-casing. Traversal is kind-agnostic; 1-hop (the grammar's
-// `&<sym` surface). Cross-entry resolution is name-match.
-//
-// Derivation does NOT happen at write — a scheme write never invokes the mimetypes
-// handler ({§mimetype}). SearchIndex extracts symbols and references from each readable
-// projection and hands them here via populateFrom; this module
-// only owns the relational index (insert + the &</&>/& resolution).
+// {§graph-relations}: one-hop name matching over immutable readable derivations.
 
 import type { Db } from "../core/Db.ts";
-import type { MimeSymbol, MimeRef } from "@plurnk/plurnk-mimetypes";
+import { TextCoordinates, type MimeSymbol, type MimeRef } from "@plurnk/plurnk-mimetypes";
+import type { MatchEvidence, ProblemDetails } from "@plurnk/plurnk-schemes";
+import Results from "../core/results.ts";
+import type { CandidateMatch } from "../content/matcher.ts";
 import type { SearchCandidate } from "./_search-candidate.ts";
 import { Knob } from "@plurnk/plurnk-meta";
+
+type GraphRow = {
+    key: string; state: string | null; content: string | null; universe_ready: number;
+    line: number | null; column: number | null; end_line: number | null; end_column: number | null;
+};
 
 export default class EntryGraph {
     static storeBatch(): number {
@@ -48,83 +47,39 @@ export default class EntryGraph {
         }
     }
 
-    // Resolve a FIND graph-dialect body (`&<sym` / `&>sym` / `&sym`) over
-    // address→derivation candidates. `universe` supplies relationship sources;
-    // `candidates` constrains returned addresses. Each match is a (key, span) — the reference's line (&<) or
-    // the symbol's def span (&> / definition side of &) — so a matcher resolves to (file, span)
-    // uniformly with every other dialect ({§matcher-selection-signal}). Malformed → 400.
     static async matchCandidates(
         db: Db,
         universe: readonly SearchCandidate[],
         candidates: readonly SearchCandidate[],
         raw: string,
-    ): Promise<{ status: number; matches: GraphMatch[] }> {
-        const m = /^&([<>]?)([^\s<>]\S*)$/.exec(raw);
-        if (m === null) return { status: 400, matches: [] };
-        const direction = m[1];
-        const name = m[2];
-        if (name.length === 0) return { status: 400, matches: [] };
-
-        if (direction === "<") return { status: 200, matches: await EntryGraph.#referrers(db, candidates, name) };
-        if (direction === ">") return { status: 200, matches: await EntryGraph.#referents(db, universe, candidates, name) };
-
-        // &sym neighborhood: the def ∪ referrers ∪ referents, deduped by (pathname, span).
-        return {
-            status: 200,
-            matches: EntryGraph.#dedupe([
-                ...await EntryGraph.#defs(db, candidates, name),
-                ...await EntryGraph.#referrers(db, candidates, name),
-                ...await EntryGraph.#referents(db, universe, candidates, name),
-            ]),
+    ): Promise<{ status: number; matches: CandidateMatch[]; problem?: ProblemDetails }> {
+        const match = /^&([<>]?)([^\s<>]\S*)$/.exec(raw);
+        if (match === null) return {
+            ...Results.failure("schemes:matcher", "invalid-expression", 400,
+                "Malformed graph matcher; expected &symbol, &<symbol, or &>symbol."),
+            matches: [],
         };
-    }
-
-    static #dedupe(matches: GraphMatch[]): GraphMatch[] {
-        const seen = new Set<string>();
-        const out: GraphMatch[] = [];
-        for (const m of matches) {
-            const key = `${m.key}\0${m.lineStart}\0${m.lineEnd}`;
-            if (!seen.has(key)) { seen.add(key); out.push(m); }
+        const [, direction, name] = match;
+        const rows = await db.graph_match_candidates.all<GraphRow>({
+            universe: JSON.stringify(universe), candidates: JSON.stringify(candidates), direction, name,
+        });
+        if (rows.some(({ state, universe_ready }) => state !== "complete" || universe_ready !== 1)) return {
+            ...Results.failure("schemes:matcher", "search-index-incomplete", 503,
+                "The relationship index no longer covers the selected representations.", {}, { retryable: true }),
+            matches: [],
+        };
+        const grouped = new Map<string, MatchEvidence[]>();
+        for (const { key, content, line, column, end_line, end_column } of rows) {
+            if (line === null) continue;
+            if (content === null || end_line === null) throw new Error(`Graph match ${key} has no indexed source text or end line`);
+            const region = column === null || end_column === null
+                ? TextCoordinates.lineRegion(content, line, end_line)
+                : { startLine: line, startColumn: column, endLine: end_line, endColumn: end_column };
+            if (region === null) throw new Error(`Graph match ${key} falls outside its indexed source text`);
+            const evidence = grouped.get(key) ?? [];
+            evidence.push({ region });
+            grouped.set(key, evidence);
         }
-        return out.sort((a, b) => a.key.localeCompare(b.key) || a.lineStart - b.lineStart);
-    }
-
-    static async #referrers(db: Db, candidates: readonly SearchCandidate[], name: string): Promise<GraphMatch[]> {
-        const rows = await db.graph_referrers_candidates.all<{ key: string; line: number; end_line: number }>({
-            candidates: JSON.stringify(candidates),
-            name,
-        });
-        return rows.map((r) => ({ key: r.key, lineStart: r.line, lineEnd: r.end_line }));
-    }
-
-    static async #defs(db: Db, candidates: readonly SearchCandidate[], name: string): Promise<GraphMatch[]> {
-        const rows = await db.graph_defs_candidates.all<{ key: string; line: number; end_line: number }>({
-            candidates: JSON.stringify(candidates),
-            name,
-        });
-        return rows.map((r) => ({ key: r.key, lineStart: r.line, lineEnd: r.end_line }));
-    }
-
-    // &>sym: sym's def(s) → the target names those defs reference → those targets'
-    // defining entries (with their def spans). The definition's fully qualified
-    // container identity is the &> join key. {§graph-relations}
-    static async #referents(
-        db: Db,
-        universe: readonly SearchCandidate[],
-        candidates: readonly SearchCandidate[],
-        name: string,
-    ): Promise<GraphMatch[]> {
-        // One statement walks definitions → referenced targets → their defining candidates.
-        const rows = await db.graph_referents.all<{ key: string; line: number; end_line: number }>({
-            universe: JSON.stringify(universe),
-            candidates: JSON.stringify(candidates),
-            name,
-        });
-        return EntryGraph.#dedupe(rows.map((r) => ({ key: r.key, lineStart: r.line, lineEnd: r.end_line })));
+        return { status: 200, matches: [...grouped].map(([key, matches]) => ({ key, matches })) };
     }
 }
-
-// An &graph match: an entry and the span where the relation lands — a reference
-// line (&<) or a symbol definition span (&> / definition side of &).
-// {§matcher-selection-signal}
-export interface GraphMatch { key: string; lineStart: number; lineEnd: number; }

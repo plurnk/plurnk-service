@@ -646,7 +646,9 @@ sets and ranges, and the complete Bash extglob family. Its wildcard spans `/`
 because it matches one text line rather than a pathname. Leading whole-pattern
 negation is disabled: `!text` is literal text while `!(one|two)` remains a
 negative extglob. A pattern with no glob magic is a literal substring search;
-it is not interpreted as regex syntax. Malformed bracket, brace, or extglob
+each non-overlapping occurrence carries its exact source region and matched
+text. Explicit globs select complete matching lines. Literal text is not
+interpreted as regex syntax. Malformed bracket, brace, or extglob
 syntax throws `InvalidExpressionError`.
 
 Consumers that need the same anchored dialect as a predicate can reuse
@@ -670,7 +672,9 @@ is available to consumers, but PLURNK's resource matcher does not substitute it
 for the resource body.
 
 `matching` is an optional canonical structural locator. `regions` contains
-contiguous regions in the exact text the model can READ. Each `TextRegion` has
+exact selected source spans; `enclosingRegions` contains enclosing presentation
+context when exact selection is unavailable. Both address the text the model
+can READ. They are never interchangeable mutation bounds. Each `TextRegion` has
 all four 1-based `startLine`, `startColumn`, `endLine`, and `endColumn`
 coordinates; columns count Unicode code points and the end is exclusive.
 
@@ -679,12 +683,15 @@ Evidence is honest or absent:
 - Regex and glob derive regions from offsets in the readable text. The region
   is exact when both offsets are addressable Unicode code-point boundaries. If
   a regex bisects an indivisible code point or CRLF separator, the smallest
-  enclosing addressable region is reported instead.
+  enclosing addressable region is reported in `enclosingRegions` instead.
 - JSONPath and XPath preserve their canonical locator. A native source node may
-  contribute its exact or nearest honest enclosing text region.
+  contribute its exact source region. An ancestor's bounds or line-only
+  provenance belong in `enclosingRegions`, never `regions`. A handler-supplied
+  source resolver is authoritative: an absent mapping cannot fall back to an
+  ancestor or interpret source data named `line` or `column` as coordinates.
 - A computed scalar, synthetic tree, or transformed projection whose parser
   coordinates do not address the readable text is locator-only and omits
-  `regions`.
+  both region fields.
 - A genuinely disjoint finding may report several regions. Separate findings
   remain separate `QueryMatch` values.
 
@@ -792,10 +799,27 @@ fallback when a custom algebra omits or inverts `endLine`.
 
 ### 12.3 `deep-xml` projection rule
 
-The framework's `projectJsonToXml()` applies these rules (in priority order):
+The framework's `projectJsonToXml()` distinguishes handler-authored syntax
+trees from parsed data values. Callers select `value` for JSON, JSONL,
+notebooks, CSV, INI, dotenv, and symbol-outline maps; their keys, including
+`type`, `text`, `attrs`, and `line`, remain data. Tree projection retains the
+annotated-node convention below.
+
+| Input kind | Element identity | Positional authority | Null-valued members |
+| --- | --- | --- | --- |
+| Annotated tree | Nonempty `type`, otherwise the parent key | Explicit source resolver when supplied; otherwise node provenance | Omitted |
+| Parsed value | Parent key | Source resolver only | Present as empty elements with their source coordinates |
+
+An explicit resolver may return disjoint `TextRegion[]`; the internal
+`pk:regions` annotation preserves those spans without widening over gaps.
+Queries of the selected element retain exact spans, while queries of an
+unmapped child retain them only as enclosing context.
+
+Tree projection applies these rules (in priority order); value projection
+uses their ordinary child-element mapping without interpreting reserved keys:
 
 1. A JSON object whose `type` field is a non-empty string becomes an element named after that type. Otherwise, the element name comes from the parent key, falling back to `<root>` at the document root. **Every element name — whether from `type` or from a key — is sanitized to a valid XML Name** (first char `[A-Za-z_]`, rest `[A-Za-z0-9_.-]`; anything else → `_`, empty → `node`). Keys are arbitrary text (symbol names, outline labels), so this is load-bearing: a `"Given x"` outline key projects to `<Given_x>`, never the invalid `<Given x>`. Sanitization may make a name diverge from the jsonpath key for that node; the **line** stays identical across dialects regardless.
-2. Fields `line`, `endLine`, `column`, `endColumn`, `level` become XML **attributes** under the **reserved `pk:` namespace** (`xmlns:pk="https://plurnk.xyz/deep-xml/1"`, declared on the root element only) when their value is a number or non-empty string. Namespacing is required because content's own attributes can carry the same names (e.g., HTML/XML source with `<foo line="5">`), and unprefixed bookkeeping would emit duplicate-attribute names → invalid XML. The `pk:` prefix makes framework bookkeeping always distinguishable from content attrs, keeps the document valid, and lets consumers strip the bookkeeping cleanly via `removeAttributeNS` or a regex on the prefix. **Optional `lineFor` resolver:** `projectJsonToXml(json, rootName?, lineFor?)` takes an optional `ProjectLineFor = (pointer) => {line, endLine} | undefined`. For a node that carries no `line` of its own (raw parsed JSON/INI/CSV, or the symbol outline), the resolver supplies `pk:line`/`pk:endLine` by JSON pointer — so the xpath target gets the same real source lines jsonpath resolves through its own `lineFor`. A node's own `line` field always wins over the resolver.
+2. Fields `line`, `endLine`, `column`, `endColumn`, and `level` become attributes in the reserved `pk:` namespace (`https://plurnk.xyz/deep-xml/1`), distinct from content attributes. An optional `ProjectLineFor` callback maps JSON pointers to source coordinates. When supplied, that callback owns coordinates; a data field named `line` cannot override parser provenance. Complete four-coordinate spans are exact; line-only spans provide enclosing context ({§mimetype-query-conformance}).
 3. A leaf's `text` field becomes the element's text content.
 4. The optional `attrs` field on an object renders its entries as **content attributes in the default (no-prefix) namespace** — these are source-algebra attributes (HTML's `href`/`class`, XML's anything), and the model writes xpath against them naturally (`//a[@href]`, not `//a[@pk:href]`).
 5. Other object fields become **child elements** named after their key. An array of primitives expands to repeated sibling elements (parent key supplies the element name). An array of objects expands to repeated sibling elements named per rule (1) — each object's `type` wins over the parent key.
@@ -970,7 +994,7 @@ expected verdict:
 | Verdict        | Required result                                                                        |
 |----------------|----------------------------------------------------------------------------------------|
 | `exact`        | Complete `TextRegion` values equal the declared exact coordinates.                     |
-| `enclosing`    | Complete `TextRegion` values equal the declared nearest honest enclosing coordinates.  |
+| `enclosing`    | `enclosingRegions` contains the declared complete context coordinates; `regions` is absent. |
 | `locator-only` | Nonempty canonical `matching` value and no fabricated region.                          |
 | `unsupported`  | `UnsupportedDialectError`.                                                             |
 

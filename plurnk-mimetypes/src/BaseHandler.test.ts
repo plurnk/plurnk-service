@@ -21,7 +21,8 @@ describe("BaseHandler", () => {
         for (const [dialect, pattern] of [["xpath", "//node"], ["jsonpath", "$"]] as const) {
             const matches = await h.query("before\nsource\nafter", dialect, pattern);
             assert.equal(matches.length, 1);
-            assert.deepEqual(matches[0].regions, expected);
+            assert.equal(matches[0].regions, undefined, "line-only provenance is enclosing context");
+            assert.deepEqual(matches[0].enclosingRegions, expected);
             const binary = await h.query(new TextEncoder().encode("before\nsource\nafter"), dialect, pattern);
             assert.equal(binary[0].regions, undefined, "bytes do not imply a text source map");
         }

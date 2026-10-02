@@ -116,10 +116,16 @@ export default class TextCoordinates {
         const index = this.#lineIndexAtOffset(offset);
         const line = this.#lines[index]!;
         if (offset > line.contentEnd) return null;
-        const columnIndex = this.#offsetsForLine(index).indexOf(offset);
-        return columnIndex === -1
+        const offsets = this.#offsetsForLine(index);
+        let low = 0, high = offsets.length;
+        while (low < high) {
+            const middle = (low + high) >>> 1;
+            if (offsets[middle]! < offset) low = middle + 1;
+            else high = middle;
+        }
+        return offsets[low] !== offset
             ? null
-            : { line: index + 1, column: columnIndex + 1 };
+            : { line: index + 1, column: low + 1 };
     }
 
     static regionFromOffsets(

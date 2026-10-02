@@ -3,6 +3,7 @@
 // planner statistics. Information is kept by default; only what no row references is collected.
 import type { Db } from "../core/Db.ts";
 import { Knob } from "@plurnk/plurnk-meta";
+import DerivationUse from "../schemes/_derivation-use.ts";
 
 export interface RetentionPolicy {
     readonly retainPacketTurns: number;   // -1 = every packet
@@ -72,12 +73,15 @@ export default class Retention {
         const packets = await this.#db.retention_retire_packets.run({ keep_turns: retainPacketTurns, keep_ms: retainPacketMs, now_ms: now });
         const responses = await this.#db.retention_retire_responses.run({ keep_turns: retainResponseTurns, keep_ms: retainResponseMs, now_ms: now });
         const items = await this.#db.retention_collect_packet_items.run({ collect: collectPacketItems ? 1 : 0 });
-        const derivations = await this.#db.retention_collect_derivations.run({ collect: collectDerivations ? 1 : 0 });
-        const contents = await this.#db.retention_collect_contents.run({ collect: collectContents ? 1 : 0 });
+        const collected = await DerivationUse.collect(this.#db, async () => {
+            const derivations = await this.#db.retention_collect_derivations.run({ collect: collectDerivations ? 1 : 0 });
+            const contents = await this.#db.retention_collect_contents.run({ collect: collectContents ? 1 : 0 });
+            return { derivations: derivations.changes, contents: contents.changes };
+        });
         const reclaimedPages = await this.#reclaim();
         // `.run`, not `.all`: `.all` is served by a read-only reader, and a checkpoint there is an I/O error.
         await this.#db.retention_wal_truncate.run({});
-        return { retiredPackets: packets.changes, retiredResponses: responses.changes, collectedItems: items.changes, collectedDerivations: derivations.changes, collectedContents: contents.changes, reclaimedPages };
+        return { retiredPackets: packets.changes, retiredResponses: responses.changes, collectedItems: items.changes, collectedDerivations: collected?.derivations ?? 0, collectedContents: collected?.contents ?? 0, reclaimedPages };
     }
 
     // {§db-space-reclamation} — free pages go back to the OS once they reach the policy's floor;

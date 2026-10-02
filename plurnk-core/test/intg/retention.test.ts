@@ -9,6 +9,7 @@ import Retention, { retentionPolicy } from "../../src/server/Retention.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import SearchIndex from "../../src/schemes/_search-index.ts";
+import EntryFts from "../../src/schemes/_entry-fts.ts";
 import type { DurablePacket } from "../../src/core/StoredPacket.ts";
 import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
 import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
@@ -176,6 +177,31 @@ test("{§retention-policy}: a superseded derivation and its full-text shadow are
         assert.equal((await db.test_fts_count.get<{ n: number }>({}))!.n, 1, "its full-text row left with it through derivations_delete_fts");
         assert.deepEqual(await db.test_fts_search.all({ query: "second", workspace_id: workspaceId }), [{ pathname: "/notes.md" }], "the cited edition still searches");
     } finally { await db.close(); }
+});
+
+test("{§derivation-in-flight}: collection preserves unattached search snapshots through derivation and query", async (t) => {
+    await using db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, `snapshot-retention-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
+    const retention = new Retention(db, retentionPolicy(DEFAULTS));
+    const process = DEFAULT_MIMETYPES.process.bind(DEFAULT_MIMETYPES);
+    t.mock.method(DEFAULT_MIMETYPES, "process", async (...args: Parameters<typeof process>) => {
+        const collected = await retention.run();
+        assert.equal(collected.collectedDerivations, 0, "a building artifact is still owned by its producer");
+        return process(...args);
+    });
+    const source = { content: "a needle in an unattached snapshot", mimetype: "text/plain", pathname: "/snapshot", scheme: "worker" };
+    await SearchIndex.snapshot(ctx, source, async ({ deepHash }) => {
+        assert.equal((await retention.run()).collectedDerivations, 0, "a completed snapshot remains held until its query ends");
+        const result = await EntryFts.rankCandidates(db, [{ key: "snapshot", deepHash }], "needle");
+        assert.equal(result.status, 200);
+        assert.deepEqual(result.matches[0]?.matches, [{ region: { startLine: 1, startColumn: 3, endLine: 1, endColumn: 9 }, matched: "needle" }]);
+    });
+    assert.equal((await retention.run()).collectedDerivations, 1, "unattached evidence is collectible when no operation holds it");
+    assert.equal((await db.test_fts_count.get({}))?.n, 0);
+    await assert.rejects(SearchIndex.snapshot(ctx, source, async () => { throw new Error("query failed"); }), /query failed/);
+    assert.equal((await retention.run()).collectedDerivations, 1, "a failed query also releases its snapshot");
 });
 
 test("{§db-space-reclamation}: the daemon converts its database to incremental auto-vacuum once, and every pass returns freed pages", async () => {

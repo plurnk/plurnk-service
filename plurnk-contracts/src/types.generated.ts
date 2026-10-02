@@ -319,7 +319,7 @@ dialect: "fts"
 raw: string
 }
 /**
- * Code-graph reference query. Body is `&symbol` for a neighborhood, `&<symbol` for inbound references, or `&>symbol` for outbound references. Shape is validated during language admission; resolution happens service-side through the symbol index.
+ * Code-graph selection. Body is `&symbol` for definitions, `&<symbol` for references to that name, or `&>symbol` for definitions of its one-hop dependencies. Shape is validated during language admission; resolution happens service-side through the symbol index.
  */
 
 export interface GraphBody {

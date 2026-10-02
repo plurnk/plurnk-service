@@ -38,7 +38,7 @@ describe("{§mimetype-query-conformance} — Q1: xpath QueryMatch.line reflects 
         const matches = await h.query(source, "xpath", "//function");
         assert.equal(matches.length, 2);
         // The two function elements have pk:line="42" and pk:line="73".
-        const lines = matches.map((m) => m.regions![0].startLine).sort((a, b) => a - b);
+        const lines = matches.map((m) => m.enclosingRegions![0].startLine).sort((a, b) => a - b);
         assert.deepEqual(lines, [42, 73]);
     });
 
@@ -50,7 +50,7 @@ describe("{§mimetype-query-conformance} — Q1: xpath QueryMatch.line reflects 
             "//function[name='fn_b']",
         );
         assert.equal(matches.length, 1);
-        assert.equal(matches[0].regions![0].startLine, 73);
+        assert.equal(matches[0].enclosingRegions![0].startLine, 73);
     });
 
     it("computed scalars (count/string/…) carry no lines — no source node ({§mimetype-query-conformance})", async () => {
@@ -80,7 +80,7 @@ describe("{§mimetype-query-conformance} — Q1: xpath QueryMatch.line reflects 
         assert.equal(viaXpath.length, 1);
         // Both should report line 42 — jsonpath via the matched subtree's line
         // annotations, xpath via pk:line on the element.
-        assert.equal(viaJsonpath[0].regions![0].startLine, 42);
-        assert.equal(viaXpath[0].regions![0].startLine, 42);
+        assert.equal(viaJsonpath[0].enclosingRegions![0].startLine, 42);
+        assert.equal(viaXpath[0].enclosingRegions![0].startLine, 42);
     });
 });

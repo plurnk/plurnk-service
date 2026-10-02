@@ -1,4 +1,4 @@
-import { PathSyntax, type LineMarker, type MatcherBody, type MessageResource, type MessageResourceReceipt, type ReadStatement } from "@plurnk/plurnk-contracts";
+import { PathSyntax, type LineMarker, type MatcherBody, type MessageResource, type MessageResourceReceipt, type ReadStatement, type TextRegion } from "@plurnk/plurnk-contracts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { basename } from "node:path";
 import NativeContent from "./NativeContent.ts";
@@ -11,6 +11,7 @@ import EntryAddressBinding, { type BoundEntryAddress } from "./EntryAddressBindi
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import { LineAnchors, LineMarkerOps, MimetypeBinary, type LineAnchorPrecondition } from "../content/index.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
+import EntryManifest from "../schemes/_entry-manifest.ts";
 import EntryReadable from "../schemes/_entry-readable.ts";
 import Results from "./results.ts";
 import type { DispatchResult, MetadataResourceSelection, AddressedResourceSelection, ResolvedResourceSelection, SelectedSource, PrepareDataRepresentation } from "./mutation-types.ts";
@@ -19,6 +20,8 @@ import { coreRepresentationProvider } from "./CoreSchemeServices.ts";
 import LineSelection from "../content/line-selection.ts";
 import PatternEdits from "../content/pattern-edits.ts";
 import PatternSelection from "./PatternSelection.ts";
+import ByteView from "../content/byte-view.ts";
+import { contentHash } from "./content-hash.ts";
 
 // Shared source acquisition for explicit resource transfers.
 export default class ResourceSelector {
@@ -87,13 +90,13 @@ export default class ResourceSelector {
                 { retryable: false },
             );
         }
-        // {§copy-move-pattern} — a pattern selects the lines a source gives; a destination is a
+        // {§copy-move-pattern} — a pattern selects source spans; a destination is a
         // place, named by its scope.
         if (access === "write" && matcher !== null) {
             return MutationEffects.failure(
                 "pattern-destination-unsupported",
                 400,
-                "A pattern selects source lines; a COPY or MOVE destination is a place. Name where the lines land with a scope.",
+                "A pattern selects source text; a COPY or MOVE destination uses a scope.",
                 {},
                 { scheme, retryable: false },
             );
@@ -195,7 +198,7 @@ export default class ResourceSelector {
     async selectSource(
         selection: AddressedResourceSelection,
         ctx: PlurnkSchemeContext,
-        operation: "COPY" | "MOVE" | "SEND",
+        operation: "COPY" | "MOVE" | "SEND" | "EDIT",
     ): Promise<SelectedSource | DispatchResult> {
         const handler = (await ResourceBindings.resolve(selection.target, ctx))?.handler as SchemeHandler | undefined;
         if (handler === undefined) {
@@ -222,8 +225,6 @@ export default class ResourceSelector {
                 },
             );
         }
-        const resolvedMarker = this.resolveResourceLineMarker(selection, selected.content, operation, identity);
-        if ("result" in resolvedMarker) return resolvedMarker.result;
         if (selected.producerResult !== undefined && selected.producerResult.status >= 400) {
             return Results.assert(selected.producerResult) as DispatchResult;
         }
@@ -234,10 +235,15 @@ export default class ResourceSelector {
         // not its readable text projection.
         const sourceProjection = (representation.attributes as { sourceProjection?: { mimetype?: unknown } } | undefined)?.sourceProjection;
         const sourceMimetype = typeof sourceProjection?.mimetype === "string" ? sourceProjection.mimetype : selected.mimetype;
-        if (await MimetypeBinary.isBinaryMimetype(sourceMimetype, ctx.mimetypes)) {
-            if (selection.matcher !== null) {
-                return PatternSelection.refuse("pattern-unsupported", 400, `Channel #${selection.channel} is binary; bytes have no lines for a pattern to select.`, selection.scheme, operation);
-            }
+        const binary = await MimetypeBinary.isBinaryMimetype(sourceMimetype, ctx.mimetypes);
+        if (binary) {
+            if (operation === "EDIT") return PatternSelection.refuse("binary-edit-unsupported", 415, "Text edits do not author native bytes.", selection.scheme, operation);
+            const marker = ByteView.marker(selection.lineMarker);
+            if ("result" in marker) return marker.result;
+        }
+        const resolvedMarker = this.resolveResourceLineMarker(selection, selected.content, operation, identity);
+        if ("result" in resolvedMarker) return resolvedMarker.result;
+        if (binary) {
             const byteSource = (storageAddress === undefined ? undefined : handler.byteSource?.(storageAddress, EntryAddressBinding.addressContext(ctx)))
                 ?? await EntryCrud.storedByteSource(representation, selection.channel, ctx.mimetypes);
             if (byteSource === undefined) {
@@ -254,22 +260,36 @@ export default class ResourceSelector {
                     {}, { target, retryable: false },
                 );
             }
-            const marks = resolvedMarker.selection.lineMarker?.marks ?? [];
-            const whole = marks.length === 0 || (marks.length === 2 && marks[0] === 1 && marks[1] === -1);
-            const start = marks.length >= 1 ? marks[0]! : 1;
-            const end = marks.length >= 2 ? (marks[1] === -1 ? size : marks[1]!) : (marks.length === 1 ? marks[0]! : size);
-            if (!whole && !(start >= 1 && end >= start && end <= size)) {
-                return MutationEffects.failure(
-                    "range-not-satisfiable", 416, `Byte range <${start},${end}> is outside the available 1..${size}.`,
-                    {}, { channel: selection.channel, unit: "byte", available: size, retryable: false },
-                );
+            const window = LineMarkerOps.window(resolvedMarker.selection.lineMarker ?? { marks: [1, -1] }, size, "byte");
+            if (window.status !== 200) return window;
+            let complete: Uint8Array | undefined;
+            let bytes: Uint8Array;
+            let matchedScopes: LineMarker[] | undefined;
+            if (selection.matcher !== null) {
+                const loaded = await ByteView.load(byteSource, target);
+                if (!("bytes" in loaded)) return loaded;
+                complete = loaded.bytes;
+                const match = await ByteView.match(selection.matcher, complete);
+                if (match.status >= 400) return Results.assert(match);
+                const spans = PatternEdits.spans(match.matches ?? [], selection.lineMarker === null ? null : {
+                    startLine: window.start ?? 1, startColumn: 1, endLine: window.end ?? 0, endColumn: 3,
+                });
+                if (spans.length === 0) return Results.assert({ status: 204, matched: 0 });
+                bytes = Buffer.concat(spans.map(({ startLine, endLine, endColumn }) => complete!.subarray(startLine - 1, endColumn === 1 ? endLine - 1 : endLine)));
+                matchedScopes = spans.map(({ startLine, endLine, endColumn }) => ({ marks: endColumn === 1 ? [startLine] : [startLine, endLine] }));
+            } else {
+                if (operation === "MOVE") complete = size === 0 ? new Uint8Array() : await byteSource.read(1, size);
+                bytes = window.start === null || window.end === null ? new Uint8Array()
+                    : complete?.subarray(window.start! - 1, window.end!) ?? await byteSource.read(window.start!, window.end!);
             }
-            const bytes = await byteSource.read(start, end);
             return {
                 ...resolvedMarker.selection,
                 content: "",
                 completeContent: "",
                 bytes,
+                ...(identity === undefined ? {} : { identity }),
+                ...(matchedScopes === undefined ? {} : { matchedScopes }),
+                ...(operation === "MOVE" ? { bytePrecondition: contentHash(complete!) } : {}),
                 mimetype: sourceMimetype,
                 lineAnchorPrecondition: resolvedMarker.precondition,
             };
@@ -283,13 +303,14 @@ export default class ResourceSelector {
         }
         const retained = visibleLines?.[selection.channel];
         if (selection.matcher !== null) {
-            const matched = await this.#matchedLines(selection.matcher, resolvedMarker, selected, retained, operation, ctx, identity);
+            const matched = await this.#matchedSpans(selection.matcher, resolvedMarker, selected, retained, operation, ctx, identity);
             if ("result" in matched) return matched.result;
             return {
                 ...resolvedMarker.selection,
-                content: LineSelection.retain(selected.content, matched.lines).content,
+                content: PatternEdits.text(selected.content, matched.spans),
+                ...(identity === undefined ? {} : { identity }),
                 completeContent: selected.content,
-                matchedLines: matched.lines,
+                matchedScopes: PatternEdits.replacements(matched.spans, "").map(({ marker }) => marker),
                 mimetype: selected.mimetype,
                 lineAnchorPrecondition: MutationEffects.mergeLineAnchorPreconditions(resolvedMarker.precondition, matched.precondition),
                 ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
@@ -298,6 +319,7 @@ export default class ResourceSelector {
         return {
             ...resolvedMarker.selection,
             content: retained === undefined ? content : LineSelection.retain(content, retained, startLine).content,
+            ...(identity === undefined ? {} : { identity }),
             completeContent: selected.content,
             mimetype: selected.mimetype,
             lineAnchorPrecondition: resolvedMarker.precondition,
@@ -305,35 +327,33 @@ export default class ResourceSelector {
         };
     }
 
-    // {§copy-move-pattern} — the whole lines a source pattern selects, bounded by the scope and by
-    // what the source shows; their anchors guard a MOVE's removal exactly as an anchored scope would.
-    async #matchedLines(
+    // {§copy-move-pattern} — selection and removal share the same source regions.
+    async #matchedSpans(
         matcher: MatcherBody,
         resolvedMarker: { readonly selection: ResolvedResourceSelection; readonly precondition: LineAnchorPrecondition | null },
         selected: { readonly content: string; readonly mimetype: string },
         retained: readonly number[] | undefined,
-        operation: "COPY" | "MOVE" | "SEND",
+        operation: "COPY" | "MOVE" | "SEND" | "EDIT",
         ctx: PlurnkSchemeContext,
         identity: string | undefined,
-    ): Promise<{ lines: number[]; precondition: LineAnchorPrecondition | null } | { result: DispatchResult }> {
+    ): Promise<{ spans: readonly TextRegion[]; precondition: LineAnchorPrecondition | null } | { result: DispatchResult }> {
         const { selection } = resolvedMarker;
-        const dialect = PatternSelection.refuseDialect(matcher, selection.scheme, operation, selection.target.raw);
-        if (dialect !== null) return { result: dialect };
         const matched = await PatternSelection.match({
-            matcher, content: selected.content, mimetype: selected.mimetype,
+            matcher, content: selected.content, mimetype: selected.mimetype, target: selection.target,
+            ...(retained === undefined ? {} : { visibleLines: retained }),
             marks: selection.lineMarker?.marks, ctx, scheme: selection.scheme, operation,
         });
         if ("result" in matched) return matched;
-        const shown = retained === undefined ? null : new Set(retained);
-        const lines = PatternEdits.lines(matched.evidence, matched.bounds).filter((line) => shown === null || shown.has(line));
-        if (lines.length === 0) {
-            return { result: Results.assert({ status: 204, matched: 0, detail: `No line matched the pattern; nothing to ${operation === "COPY" ? "copy" : "move"}.` }) };
+        const { spans } = matched;
+        if (spans.length === 0) {
+            return { result: Results.assert({ status: 204, matched: 0 }) };
         }
-        if (selection.manifest.textEditScopes !== true) return { lines, precondition: null };
+        if (selection.manifest.textEditScopes !== true) return { spans, precondition: null };
         const target = identity ?? MutationEffects.resourceAddress(selection);
         const tokens = LineAnchors.tokens(target, selected.content);
+        const lines = PatternEdits.touchedLines(PatternEdits.replacements(spans, ""));
         return {
-            lines,
+            spans,
             precondition: { identity: target, checks: lines.flatMap((line) => tokens[line - 1] === undefined ? [] : [{ anchor: tokens[line - 1]!, line }]) },
         };
     }
@@ -381,14 +401,15 @@ export default class ResourceSelector {
                 `The '${selection.scheme}' scheme returned status ${read.status} without a source entry.`,
             );
         }
-        return { representation: read.entry, storageAddress };
+        return { representation: read.entry, storageAddress,
+            identity: EntryManifest.channelPath(storageAddress, selection.channel, selection.manifest.defaultChannel) };
     }
 
 
     resolveResourceLineMarker(
         selection: AddressedResourceSelection,
         content: string,
-        operation: "COPY" | "MOVE" | "SEND",
+        operation: "COPY" | "MOVE" | "SEND" | "EDIT",
         identity?: string,
     ): { readonly selection: ResolvedResourceSelection; readonly precondition: LineAnchorPrecondition | null }
         | { readonly result: DispatchResult } {

@@ -16,11 +16,8 @@ import { PathSyntax, renderJsonResult, type FindStatement, type RangeExtent, typ
 import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
 import BodyPreview from "../content/body-preview.ts";
 import ByteView, { type ByteSource } from "../content/byte-view.ts";
-import { binaryInputMaximum } from "@plurnk/plurnk-mimetypes";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
-import PatternEdits from "../content/pattern-edits.ts";
-import type { SourceCandidateMatch } from "../content/matcher.ts";
 import { entryCoordinateOf, missDetail } from "../core/plurnk-uri.ts";
 import EntryGraph from "./_entry-graph.ts";
 import EntryCrud from "./_entry-crud.ts";
@@ -177,6 +174,7 @@ export const projectFindResult = (
                         matchLocationCount: locations.length,
                         ...(single?.locator === undefined ? {} : { locator: single.locator }),
                         ...(single?.region === undefined ? {} : { region: single.region }),
+                        ...(single?.enclosingRegion === undefined ? {} : { enclosingRegion: single.enclosingRegion }),
                     },
                     ...item.slice(1),
                 ];
@@ -507,24 +505,17 @@ export default class EntryFind {
                 return {
                     status: graph.status,
                     matches: [],
-                    error: "Malformed graph matcher; expected `&symbol`, `&<symbol`, or `&>symbol`.",
+                    problem: graph.problem,
                     extensions: {
                         stage: "matcher",
                         dialect: "graph",
-                        retryable: false,
+                        retryable: graph.status === 503,
                     },
                 };
             }
-            matches = await EntryFind.#addTextRegions(
-                graph.matches.map((m): SourceCandidateMatch => ({
-                    key: m.key,
-                    span: { lineStart: m.lineStart, lineEnd: m.lineEnd },
-                })),
-                ctx,
-                manifest,
-                channelOf,
-                coordinateByKey,
-            );
+            matches = graph.matches.map(({ key, matches: evidence }) => ({
+                pathname: key, matches: evidence.map((item) => ({ channel: channelOf(key), ...item })),
+            }));
         } else {
             const { mimetypes } = ctx;
             if (mimetypes === undefined) throw new Error("EntryFind.#matchPathnames: body matcher requires the mimetypes capability in ctx");
@@ -590,66 +581,20 @@ export default class EntryFind {
         mimetypes: NonNullable<PlurnkSchemeContext["mimetypes"]>,
         channelOf: (key: string) => string,
     ): Promise<{ status: number; matches: Match[]; problem?: ProblemDetails }> {
-        const ceiling = binaryInputMaximum();
         const matches: Match[] = [];
         for (const pathname of pathnames) {
             const source = bytesOf(pathname);
-            const total = await source.size();
-            if (total === null) continue;
-            if (total > ceiling) {
-                return {
-                    status: 413,
-                    matches: [],
-                    problem: Results.failure(
-                        "scheme:find",
-                        "bytes-too-large",
-                        413,
-                        `'${pathname}' holds ${total} bytes; the byte search ceiling is ${ceiling}.`,
-                        {},
-                        { pathname, total, ceiling, retryable: false },
-                    ).problem,
-                };
+            const loaded = await ByteView.load(source, pathname);
+            if (!("bytes" in loaded)) {
+                if (loaded.status === 404) continue;
+                return { status: loaded.status, matches: [], problem: loaded.problem };
             }
-            const bytes = total === 0 ? new Uint8Array() : await source.read(1, total);
-            const latin1 = ByteView.latin1(bytes);
-            const match = await Matcher.matchAgainstContent(PatternEdits.lineLimited(body), latin1, MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE, mimetypes);
+            const match = await ByteView.match(body, loaded.bytes);
             if (match.status >= 400) return { status: match.status, matches: [], problem: match.problem };
             if (match.status !== 200 || match.matches === undefined) continue;
-            matches.push({ pathname, matches: ByteView.byteEvidence(latin1, bytes, match.matches).map((evidence) => ({ channel: channelOf(pathname), ...evidence })) });
+            matches.push({ pathname, matches: match.matches.map((evidence) => ({ channel: channelOf(pathname), ...evidence })) });
         }
         return { status: 200, matches };
-    }
-
-    static async #addTextRegions(
-        matches: readonly SourceCandidateMatch[],
-        ctx: PlurnkSchemeContext,
-        manifest: SchemeManifest,
-        channelOf: (key: string) => string,
-        coordinates: ReadonlyMap<string, { authority: string; pathname: string }>,
-    ): Promise<Match[]> {
-        if (matches.every(({ span }) => span === null)) {
-            return [...new Set(matches.map(({ key }) => key))].map((pathname) => ({ pathname, matches: [] }));
-        }
-        const scheme = EntryCrud.identityScheme(manifest);
-        const selections = [...new Set(matches.filter(({ span }) => span !== null).map(({ key }) => key))].map((pathname) => {
-            const coordinate = coordinates.get(pathname);
-            if (coordinate === undefined) throw new Error(`FIND graph result lost coordinate ${pathname}`);
-            return { key: pathname, ...coordinate, channel: channelOf(pathname) };
-        });
-        // One statement reads every matched entry's selected channel.
-        const candidates = await ctx.db.find_selected_channels.all<{ key: string; content: string; mimetype: string }>({
-            workspace_id: ctx.workspaceId,
-            scheme,
-            selections: JSON.stringify(selections),
-        });
-        const found = new Set(candidates.map(({ key }) => key));
-        const missing = selections.find(({ key }) => !found.has(key));
-        if (missing !== undefined) throw new Error(`EntryFind.#addTextRegions: matched entry ${missing.key} has no selected channel ${missing.channel}`);
-        const resolved = Matcher.addTextRegions(matches, candidates);
-        // {§find-result-projection} — every addressable finding names the channel
-        // it was located in, so line coordinates cannot be mis-attributed across
-        // channels of the same resource.
-        return resolved.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges.map((range) => ({ channel: channelOf(key), ...range })) }));
     }
 
     // FIND result = the scheme's default-first channel groups, filtered to the matched

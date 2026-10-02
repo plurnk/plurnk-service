@@ -28,6 +28,34 @@ const setup = async (content = "alpha foo\nfoo bar foo\nbeta\nfoo", pathname = "
 const target = urlPath("worker", "/notes.md");
 const regex = (pattern: string, flags = ""): MatcherBody => ({ dialect: "regex", raw: `/${pattern}/${flags}`, pattern, flags });
 
+test("{§edit-pattern} selection runs on canonical source, including its original line separators", async () => {
+    const { db, dispatch, body } = await setup("before\r\nneedle\r\nafter");
+    try {
+        const result = await dispatch(editStmt(target, " / ", null, regex("\\r\\n")));
+        assert.equal(result.status, 200, JSON.stringify(result));
+        assert.equal(result.matched, 2);
+        assert.equal(await body(), "before / needle / after");
+    } finally { await db.close(); }
+});
+
+test("{§zero-width-column-one-insert} authored insertion uses the source's separator, not its READ presentation", async () => {
+    const { db, dispatch, body } = await setup("before\r\nafter");
+    try {
+        const result = await dispatch(editStmt(target, "inserted", { marks: [2, 1, 2, 1] }));
+        assert.equal(result.status, 200, JSON.stringify(result));
+        assert.equal(await body(), "before\r\ninserted\r\nafter");
+    } finally { await db.close(); }
+});
+
+test("{§edit-pattern} pattern replacement preserves the body's literal line endings", async () => {
+    const { db, dispatch, body } = await setup("before\r\nneedle\r\nafter");
+    try {
+        const result = await dispatch(editStmt(target, "first\r\nsecond\rthird", null, regex("needle")));
+        assert.equal(result.status, 200, JSON.stringify(result));
+        assert.equal(await body(), "before\r\nfirst\r\nsecond\rthird\r\nafter");
+    } finally { await db.close(); }
+});
+
 test("a literal pattern replaces every occurrence on every line with the literal body", async () => {
     const { db, dispatch, body } = await setup();
     try {
@@ -80,13 +108,13 @@ test("an empty body deletes the matched spans and leaves the lines", async () =>
     } finally { await db.close(); }
 });
 
-test("a pattern that would span a line break is refused before any change", async () => {
+test("a regex pattern replaces its exact region across a line break", async () => {
     const { db, dispatch, body } = await setup("one\ntwo");
     try {
         const r = await dispatch(editStmt(target, "x", null, regex("one\\ntwo")));
-        assert.equal(r.status, 400, JSON.stringify(r));
-        assert.match(String(r.problem?.type), /\/pattern-span-invalid$/);
-        assert.equal(await body(), "one\ntwo");
+        assert.equal(r.status, 200, JSON.stringify(r));
+        assert.equal(r.matched, 1);
+        assert.equal(await body(), "x");
     } finally { await db.close(); }
 });
 
@@ -97,9 +125,7 @@ test("a node-selecting pattern replaces each node's whole region, across lines",
         const r = await dispatch(editStmt(urlPath("worker", "/books.xml"), "<book/>", null, { dialect: "xpath", raw: "//book[price > 35]" }));
         assert.equal(r.status, 200, JSON.stringify(r));
         assert.equal(r.matched, 1);
-        // The node's region is the handler's evidence, the same region a FIND reports: here it
-        // starts at the line's first column, so the indentation goes with the element.
-        assert.equal(await body(), "<books>\n<book/>\n  <book>\n    <title>B</title>\n    <price>10</price>\n  </book>\n</books>");
+        assert.equal(await body(), "<books>\n  <book/>\n  <book>\n    <title>B</title>\n    <price>10</price>\n  </book>\n</books>", "surrounding indentation is not part of the element");
     } finally { await db.close(); }
 });
 
@@ -113,12 +139,35 @@ test("a jsonpath pattern with an empty body removes the selected nodes' text", a
     } finally { await db.close(); }
 });
 
-test("a resource-selecting dialect on an EDIT is refused: it names no spans", async () => {
-    const { db, dispatch } = await setup();
+test("a full-text pattern replaces SQLite's located token occurrences", async () => {
+    const { db, dispatch, body } = await setup();
     try {
         const r = await dispatch(editStmt(target, "x", null, { dialect: "fts", raw: "~foo" }));
-        assert.equal(r.status, 400, JSON.stringify(r));
-        assert.match(String(r.problem?.type), /\/pattern-dialect-unsupported$/);
+        assert.equal(r.status, 200, JSON.stringify(r));
+        assert.equal(r.matched, 4);
+        assert.equal(await body(), "alpha x\nx bar x\nbeta\nx");
+    } finally { await db.close(); }
+});
+
+for (const matcher of [{ dialect: "glob", raw: "foo" }, regex("foo"), { dialect: "fts", raw: "~foo" }] as const) {
+    test(`a four-coordinate scope bounds ${matcher.dialect} EDIT without broadening to the line`, async () => {
+        const { db, dispatch, body } = await setup("foo foo foo");
+        try {
+            const r = await dispatch(editStmt(target, "bar", { marks: [1, 5, 1, 8] }, matcher));
+            assert.equal(r.status, 200, JSON.stringify(r));
+            assert.equal(r.matched, 1);
+            assert.equal(await body(), "foo bar foo");
+        } finally { await db.close(); }
+    });
+}
+
+test("a pattern on an existing empty entry is a no-match, not a missing resource", async () => {
+    const { db, dispatch, body } = await setup("");
+    try {
+        const r = await dispatch(editStmt(target, "x", null, regex("foo")));
+        assert.equal(r.status, 204, JSON.stringify(r));
+        assert.equal(r.matched, 0);
+        assert.equal(await body(), "");
     } finally { await db.close(); }
 });
 

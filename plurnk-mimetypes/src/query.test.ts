@@ -5,6 +5,21 @@ import { globToRegex, outlineLineFor, queryGlob, queryJsonpathObject, queryRegex
 import { projectJsonToXml } from "./projectJsonToXml.ts";
 import { InvalidExpressionError } from "./QueryError.ts";
 
+it("{§mimetype-query} an explicit source mapper never borrows an ancestor for an unmapped value", () => {
+    const tree = { line: 1, column: 1, endLine: 1, endColumn: 4, name: "synthetic" };
+    const [match] = queryJsonpathObject(tree, "$.name", () => undefined, "abc");
+    assert.equal(match.matching, "$['name']");
+    assert.equal(match.regions, undefined);
+    assert.equal(match.enclosingRegions, undefined);
+});
+
+it("{§mimetype-query} projected fields retain enclosing context without claiming the node's exact span", () => {
+    const tree = { line: 1, column: 1, endLine: 1, endColumn: 4, name: "synthetic" };
+    const [match] = queryJsonpathObject(tree, "$.name", undefined, "abc");
+    assert.equal(match.regions, undefined);
+    assert.deepEqual(match.enclosingRegions, [{ startLine: 1, startColumn: 1, endLine: 1, endColumn: 4 }]);
+});
+
 describe("queryRegex — bare patterns", () => {
     it("returns a string `matched` per global match", () => {
         const out = queryRegex("foo bar foo", "foo");
@@ -37,7 +52,8 @@ describe("queryRegex — bare patterns", () => {
     it("reports the smallest enclosing region when a match bisects CRLF", () => {
         const out = queryRegex("a\r\nb", "\\n");
         assert.equal(out.length, 1);
-        assert.deepEqual(out[0].regions, [{
+        assert.equal(out[0].regions, undefined, "a partial CRLF is not the whole separator");
+        assert.deepEqual(out[0].enclosingRegions, [{
             startLine: 1, startColumn: 2, endLine: 2, endColumn: 1,
         }]);
     });
@@ -107,7 +123,8 @@ describe("queryRegex — flag handling", () => {
     it("honestly encloses a non-Unicode match inside a surrogate pair", () => {
         const out = queryRegex("😀", "()");
         assert.equal(out.length, 3);
-        assert.deepEqual(out[1].regions, [{
+        assert.equal(out[1].regions, undefined, "an interior code-unit position is not an exact code-point span");
+        assert.deepEqual(out[1].enclosingRegions, [{
             startLine: 1, startColumn: 1, endLine: 1, endColumn: 2,
         }]);
     });
@@ -153,10 +170,10 @@ describe("queryGlob", () => {
         assert.deepEqual(queryGlob(text, "!(alpha|beta)").map(({ matched }) => matched), ["alphabeta", "gamma"]);
     });
 
-    it("treats bare at-sign text literally and fuzzily", () => {
+    it("treats bare at-sign text as a literal occurrence", () => {
         const text = "prefix @data/users.json suffix\ndata/users.json";
         assert.deepEqual(queryGlob(text, "@data/users.json").map(({ matched }) => matched), [
-            "prefix @data/users.json suffix",
+            "@data/users.json",
         ]);
     });
 
@@ -187,11 +204,16 @@ describe("queryGlob", () => {
         }]);
     });
 
-    it("treats a bare word as a fuzzy content search", () => {
+    it("reports each literal occurrence at its exact source coordinates", () => {
         const text = "hello world hello again\ngoodbye";
         const out = queryGlob(text, "hello");
-        assert.equal(out.length, 1);
-        assert.equal(out[0].matched, "hello world hello again");
+        assert.deepEqual(out.map(({ matched, regions }) => ({ matched, regions })), [
+            { matched: "hello", regions: [{ startLine: 1, startColumn: 1, endLine: 1, endColumn: 6 }] },
+            { matched: "hello", regions: [{ startLine: 1, startColumn: 13, endLine: 1, endColumn: 18 }] },
+        ]);
+        assert.deepEqual(queryGlob("😀hello", "hello")[0]?.regions, [
+            { startLine: 1, startColumn: 2, endLine: 1, endColumn: 7 },
+        ]);
     });
 
     it("explicit wildcards keep structural meaning", () => {
@@ -297,7 +319,8 @@ describe("queryXpathString — line-less child elements walk to the enclosing sp
         const out = queryXpathString(xml, "//name", "text/test", readable);
         assert.equal(out.length, 1);
         assert.equal(out[0].matched, "<name>greet</name>");
-        assert.deepEqual(out[0].regions, [{
+        assert.equal(out[0].regions, undefined);
+        assert.deepEqual(out[0].enclosingRegions, [{
             startLine: 5, startColumn: 1, endLine: 10, endColumn: 2,
         }]);
     });
@@ -332,7 +355,8 @@ describe("outlineLineFor — bare-number outline projection resolver ({§mimetyp
         const readable = Array.from({ length: 9 }, () => "x").join("\n");
         const out = queryXpathString(xml, "//Sub", "text/test", readable);
         assert.equal(out.length, 1);
-        assert.deepEqual(out[0].regions, [{
+        assert.equal(out[0].regions, undefined);
+        assert.deepEqual(out[0].enclosingRegions, [{
             startLine: 5, startColumn: 1, endLine: 5, endColumn: 2,
         }]);
     });

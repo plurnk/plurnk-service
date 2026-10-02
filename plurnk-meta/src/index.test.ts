@@ -19,12 +19,15 @@ test("teaching corpus: the meta owner publishes one exact immutable membership",
         policy: "POLICY.md",
         recap: "recap.md",
         skill: "skills/plurnk/SKILL.md",
-        schemeDocs: {
-            worker: "docs/worker.md",
+        docs: {
+            worker: { source: "docs/worker.md", scheme: "worker" },
+            delegation: { source: "docs/delegation.md", scheme: "worker" },
+            pattern: { source: "docs/pattern.md", scheme: null },
         },
     });
     assert.equal(Object.isFrozen(TEACHING_CORPUS), true);
-    assert.equal(Object.isFrozen(TEACHING_CORPUS.schemeDocs), true);
+    assert.equal(Object.isFrozen(TEACHING_CORPUS.docs), true);
+    assert.ok(Object.values(TEACHING_CORPUS.docs).every(Object.isFrozen));
 });
 
 test("isTrusted: gate off ('' / '0') trusts everything", () => {

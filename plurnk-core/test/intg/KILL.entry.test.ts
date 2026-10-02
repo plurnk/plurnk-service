@@ -83,22 +83,21 @@ test("a scoped KILL deletes one span of an entry through the EDIT path; the log 
     } finally { await db.close(); }
 });
 
-// {§kill-pattern} — a pattern on an entry KILL deletes each matching line as one batch of
-// line deletions; the receipt quotes the first and last lines it took.
-test("a whole entry KILL with a pattern deletes exactly the matching lines and records the KILL", async () => {
+// {§kill-pattern}
+test("an entry KILL with a pattern deletes exactly the matching spans and records the KILL", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/notes.md"), "alpha\nbeta\ngamma\nbeta again\ndelta"), makeSchemeCtx({ db, workspaceId, workerId }));
         const matcher: MatcherBody = { dialect: "regex", raw: "/beta/", pattern: "beta", flags: "" };
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/notes.md"), null, matcher));
         assert.equal(r.status, 200, `the pattern deletion lands: ${JSON.stringify(r)}`);
-        assert.equal(r.matched, 2, "every matching line counts once");
+        assert.equal(r.matched, 2, "every match counts once");
         const body = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/notes.md", name: "body" });
-        assert.equal(body?.content, "alpha\ngamma\ndelta", "exactly the matching lines are gone");
+        assert.equal(body?.content, "alpha\n\ngamma\n again\ndelta", "unmatched text and separators remain");
         const receipt = r.receipt as { effect: { removedText?: string } } | undefined;
-        assert.equal(receipt?.effect.removedText, "beta", "the receipt quotes the first line it took");
+        assert.equal(receipt?.effect.removedText, "beta", "the receipt quotes the first span it took");
         const last = r.last as { removedText?: string } | undefined;
-        assert.equal(last?.removedText, "beta again", "and the last one");
+        assert.equal(last?.removedText, "beta", "and the last one");
         const row = await db.test_first_log_entry_for_turn.get<{ op: string }>({ turn_id: turnId });
         assert.equal(row?.op, "KILL", "the log row is the model's own operation");
     } finally { await db.close(); }
@@ -117,19 +116,19 @@ test("a scoped entry KILL with a pattern matches only inside the scope and repor
         const one = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/notes.md"), { marks: [1, 2] }, literal), 2);
         assert.equal(one.status, 200, `the in-scope match is deleted: ${JSON.stringify(one)}`);
         assert.equal(one.matched, 1);
-        assert.equal((await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/notes.md", name: "body" }))?.content, "alpha\ngamma\nbeta again", "the out-of-scope match stays");
+        assert.equal((await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/notes.md", name: "body" }))?.content, "alpha\n\ngamma\nbeta again", "the out-of-scope match and unmatched separator stay");
     } finally { await db.close(); }
 });
 
-// {§kill-pattern} — a matcher that selects resources rather than text is refused before any read.
-test("an entry KILL with a full-text pattern is refused; nothing is deleted", async () => {
+// {§kill-pattern}
+test("an entry KILL with a full-text pattern deletes the matching source span", async () => {
     const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
     try {
         await new Worker().edit(editStmt(urlPath("worker", "/notes.md"), "alpha\nbeta"), makeSchemeCtx({ db, workspaceId, workerId }));
         const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/notes.md"), null, { dialect: "fts", raw: "~beta" }));
-        assert.equal(r.status, 400, JSON.stringify(r));
-        assert.match(String(r.problem?.type), /\/pattern-dialect-unsupported$/);
-        assert.equal((await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/notes.md", name: "body" }))?.content, "alpha\nbeta", "nothing was deleted");
+        assert.equal(r.status, 200, JSON.stringify(r));
+        assert.equal(r.matched, 1);
+        assert.equal((await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/notes.md", name: "body" }))?.content, "alpha\n", "only the matched token was deleted");
     } finally { await db.close(); }
 });
 

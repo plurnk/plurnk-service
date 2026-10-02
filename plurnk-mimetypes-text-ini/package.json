@@ -20,7 +20,7 @@
         "handlers": [
             {
                 "name": "text/x-ini",
-                "revision": "1",
+                "revision": "2",
                 "glyph": "⚙️",
                 "extensions": [
                     ".ini",

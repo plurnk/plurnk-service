@@ -22,7 +22,7 @@
         "handlers": [
             {
                 "name": "text/csv",
-                "revision": "2",
+                "revision": "3",
                 "glyph": "📊",
                 "extensions": [
                     ".csv"

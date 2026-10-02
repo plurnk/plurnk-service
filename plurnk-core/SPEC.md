@@ -736,7 +736,8 @@ identity, and terminal disposition without exposing raw bytes or a base64 lane.
 | ---------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------- |
 | Text                               | Verbatim Unicode under the detected textual mimetype | READ and EDIT use the snapshot.                                                  |
 | Binary with readable projection    | Derived Unicode as `text/markdown`                   | READ uses the projection; source-aware EDIT remains 415.                         |
-| Binary without projection/over cap | Empty marker under the source binary mimetype        | READ and EDIT return 415; private metadata distinguishes unavailable from limit. |
+| Binary without projection          | Empty marker under the source binary mimetype        | READ uses source bytes under {§read-bytes}; text EDIT remains 415.                |
+| Failed or oversized acquisition    | Empty marker carrying the producer failure           | The operation preserves that failure under {§membership-materialization-limit}. |
 
 §membership-materialization-limit **A pathological member degrades, never the
 workspace.** `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES` is a required positive
@@ -2034,24 +2035,24 @@ AST: `{ op: "EDIT", target, body: string | null, signal: tags | null, lineMarker
   ```` ```EDIT (path) [{"pattern": "/foo/"}] ```` reads the resource once under
   the channel's own mimetype, matches, and expands into one atomic batch
   ({§edit-batch}) of four-coordinate splices, all relative to the same original
-  content: a regex span is its evidence region; a literal (a glob without
-  metacharacters) is each of its occurrences on every matched line; a glob with
-  metacharacters is the whole matched line; a node dialect's span (`//` xpath,
-  `$` jsonpath) is the node's whole region as its handler reports it, across as
+  content under {§slice-semantics-compose-pattern}: a regex span is its match;
+  a literal is each substring occurrence; a glob selects matching line content;
+  a node dialect's span (`//` xpath, `$` jsonpath) is the selected node's source
+  region, not its enclosing context, across as
   many lines as the node spans, so ```` ```EDIT (books.xml) [{"pattern":
   "//book[price > 35]"}] ```` replaces each such element and an empty body
-  removes it. The body is literal replacement text, never a template; an absent
-  body deletes the spans and leaves their lines. A regex anchors each line (`^`,
-  `$`) and a regex span never crosses a line break — a match that would is
-  refused before any change (400 `pattern-span-invalid`). A numeric scope bounds the lines
-  a pattern may touch; `<0>` and `<-1>` name positions, not lines, and are refused
+  removes it. FTS uses its located token/phrase occurrences; graph uses the
+  definitions or references selected under {§graph-relations}. The body is
+  literal replacement text, never a template; an absent body deletes only the
+  spans. Regex anchors apply per line (`^`, `$`); matches may cross line breaks.
+  A numeric scope admits only complete matches inside its resolved source
+  region, including columns; `<0>` and `<-1>` name insertion positions and are refused
   (400 `pattern-scope-invalid`). Every touched line's anchor guards the batch as a
   precondition, so a same-turn change to one of them is the ordinary
   {§edit-collision}. Zero matches change nothing: 204 with `matched: 0`, never a
   clobber. The result is one operation receipt: `matched` spans, `receipt` for the
   first splice ({§edit-result-receipt-projection}), and `last` beside it for the
-  final one when there were several. Resource-selecting dialects (`~`, `&`)
-  name no spans: 400 `pattern-dialect-unsupported`. A scheme without textual EDIT scopes refuses the
+  final one when there were several. A scheme without textual EDIT scopes refuses the
   pattern before any read (400 `pattern-unsupported`). Same-turn anchor continuity
   ({§edit-anchor-continuity}) does not carry through a pattern batch; the next
   anchored EDIT validates against current state.
@@ -2082,25 +2083,20 @@ READ is the one fan-out core performs ({§read-fan-out}).
 - §log-range-miss-names-stream A 416 on a log execution item is the range twin of its channel miss ({§log-channel-miss-names-stream}): the coordinate addresses the row's invocation (its authored call body, often empty or one line) while the execution's output stays readable at the stream address the row records. When that stream link exists, the 416 gains it as `stream`, the detail appends where the command's streams live, and `recovery` is `READ <stream> for the command's stream`, whether the invocation's extent is empty or merely shorter than the range (#759). A 416 on a row with no recorded stream stays byte-identical to the generic slicer's.
 - §read-pattern **A pattern selects the lines a READ renders.** With a heading
   matcher ({§matcher-option} in the contracts SPEC) an exact-target READ stays a
-  READ: the matcher runs over the channel's text line by line — a regex anchors
-  each line, so `^` and `$` are the line's ends — and every line a match touches,
+  READ: the matcher runs over the channel's complete text — a regex anchors
+  each line, so `^` and `$` are the line's ends, while matches may span lines — and every line a match touches,
   in source order, is the visible selection. The scope still bounds it: a scoped
   READ renders exactly the selected lines the scope holds; a whole-resource one
   pages through the selected lines under the ordinary preview bound, never showing
   an unselected line. Selected lines keep their physical ordinals and their
   ordinary anchors, so a pattern READ is a coordinate source for EDIT and KILL. The
   result carries `matched`, the count of selected lines inside the scope. Zero
-  matches is an empty read (204, `matched: 0`), never a failure. A full-text
-  (`~`) or graph (`&`) pattern selects resources, not lines: 400
-  `pattern-dialect-unsupported` ({§pattern-dialect-find-only}); a matcher its mimetype cannot run answers the
-  matcher's own 415/400 ({§matcher-dispatch}).
-- §pattern-dialect-find-only **A `~` or `&` matcher outside FIND is refused as FIND's alone.** Every
-  400 `pattern-dialect-unsupported` — READ, EDIT, KILL, COPY, MOVE, SEND — names the model's
-  matcher and says only FIND takes it, and its recovery gives both working forms with the
-  model's own target: the FIND carrying that matcher, and the same operation with a text
-  pattern built from the symbol or words it named (regex metacharacters escaped, words joined
-  by `|`): `` Locate it with `FIND (django/urls/resolvers.py) &RoutePattern`, or select lines
-  with a text pattern: `READ (django/urls/resolvers.py) /RoutePattern/`. ``
+  matches is an empty read (204, `matched: 0`), never a failure. Full-text and
+  graph matches project their located occurrences through the same line
+  presentation. A matcher its mimetype cannot run answers the
+  matcher's own 415/400 ({§matcher-dispatch}). A selected value with neither
+  exact nor enclosing source coordinates answers 422 `pattern-source-unlocated`;
+  READ does not substitute an unrelated ancestor or the whole resource.
 - §read-fan-out **A READ over a glob reads every matching path.** `READ (pets_*.md)`
   and `READ (pets_*.md) /dogs/i` keep their glob ({§read-find-normalization} in the
   contracts SPEC) and dispatch fans them out: the ordinary FIND over the same
@@ -2119,8 +2115,24 @@ READ is the one fan-out core performs ({§read-fan-out}).
   receipt on the authored glob (`matched: 0` when a pattern selected nothing); a
   FIND failure is that failure on the authored glob. The FIND's resource page bounds
   the fan-out: when more paths matched than were read, one `read_fanout_bounded`
-  notice names both counts. A full-text (`~`) or graph (`&`) matcher selects
-  resources, not lines, so that READ dispatches as the FIND survey.
+  notice names both counts. Every dialect follows this same READ fan-out;
+  none substitutes a FIND receipt for the requested content.
+
+§read-pattern-evidence **Match regions survive line-oriented presentation.** A patterned
+READ retains `matches` ({§matcher-selection-signal}) for findings intersecting its
+returned text, in physical source coordinates. The body shows matching lines;
+its `range` describes that presentation, not the match boundaries. A match's
+region is never clipped into a different selection when a preview or authored
+READ scope shows only part of it. An empty read carries an empty match array.
+
+The packet projects each visible match's `locator`, exact `region`, or
+explicitly enclosing `enclosingRegion`
+using {§packet-extent-metadata}, without duplicating matched body text. Log
+curation removes metadata for matches outside the retained body. Match metadata
+uses the ordinary preview allowance ({§body-projection}), keeping only complete
+items; `matchLocationCount` appears when that preview omits locations. Exact
+FIND pages the complete location set ({§find-result-projection}).
+
 - §read-bytes A binary channel, and the `#bytes` view of
   any resource whose scheme supplies bytes, reads as the source bytes one hexadecimal
   octet per line: coordinate = line = byte, so `<a,b>` selects bytes, the markerless
@@ -2140,34 +2152,24 @@ READ is the one fan-out core performs ({§read-fan-out}).
   into a byte READ (`region` spans the hexadecimal lines of the matched bytes; `matched`
   is their hex). The load is bounded by the mimetypes binary input ceiling; a larger
   resource fails 413 `bytes-too-large` by name rather than being skipped.
-- §binary-parity A binary member is not a second-class resource. It behaves exactly as a text
-  member does for existence, FIND by path, KILL/delete, mimetype, weight, and membership; it
-  READs whole as its byte projection ({§read-bytes}) and, on a supporting route, contributes native
-  content to the next model request ({§packet-attachment-parts}),
-  READs and FINDs by byte range and byte pattern ({§read-bytes}/{§find-bytes}); and COPY or MOVE transfers
-  its bytes exactly, between file members and into or out of a DB-backed `worker://` entry alike. A
-  whole-resource transfer writes the source's bytes ({§read-bytes} `ByteSource`) verbatim to the
-  destination through the ordinary proposal gate, the receipt reporting the byte count rather than a text
-  line diff; "whole-resource" is the markerless selection or `<1,-1>` ({§move-canonical-whole-source}),
-  and a MOVE deletes the source after the destination lands. A **byte range** `<a,b>` transfers exactly
-  those source bytes (coordinate = byte, 1-indexed inclusive). A transfer **into** a destination byte
-  range is a splice: `<c,d>` replaces exactly the destination bytes c..d with the source bytes and a
-  single position `<c>` inserts the source bytes before byte c (`<-1>` appends); every byte outside the
-  window is preserved, and the whole spliced result is re-written through the proposal gate. A binary
-  **lives in a DB entry** as its bytes base64 in the channel's TEXT content; the same READ, byte range,
-  and COPY/MOVE recover them through a byte source synthesized from that content, so a File member and a
-  `worker://` entry hold and yield a binary identically. An empty binary channel represents
-  zero bytes, not an unsupported format; whole COPY/MOVE preserves it. Failed acquisition
-  is not an empty success: its producer outcome remains authoritative for READ and transfer.
-  This supersedes the older blanket refusal (#140)
-  for both the file and the entry case. Native image/PDF/audio attachment facts come from the configured
-  mimetype handler over original bytes, whether supplied by a file or stored channel
-  ({§packet-attachment-parts}); the hexadecimal view remains available. The exceptions are narrow and
-  defined, each a clear receipt rather than a dead end: a binary region addressed by a **textual anchor**
-  rather than a numeric byte coordinate has no meaning (416 — bytes are not lines), **authoring** binary
-  content from a text EDIT body is impossible (a text emission cannot type bytes), and a scheme that keeps
-  no bytes for a binary channel — no disk file, no stored content — has nothing to transfer and says so
-  (415). None is the entry-storage dead end the older text named; that cell is filled.
+- §binary-parity Binary resources share ordinary existence, membership, FIND-by-path,
+  deletion, and proposal rules. Files supply native bytes; DB-backed channels store
+  them as base64 and recover the same bytes through their byte source. Empty binary
+  content is zero bytes, never an unsupported format. Acquisition failure preserves
+  its producer result and cannot become a successful empty transfer.
+
+| Binary operation | Contract |
+| --- | --- |
+| READ / FIND | Hexadecimal byte projection and byte-pattern coordinates under {§read-bytes}/{§find-bytes}. Eligible image/PDF/audio attachments use original bytes independently ({§packet-attachment-parts}). |
+| Whole COPY / MOVE | Markerless or `<1,-1>` transfers the original bytes verbatim ({§move-canonical-whole-source}); MOVE deletes its source after the destination lands. |
+| Source range or pattern | `<a,b>` selects 1-indexed inclusive bytes. Patterns use {§find-bytes}; a source scope admits complete matches. Fragments concatenate without separators. MOVE removes exactly those bytes after destination success. |
+| Destination range | `<c,d>` replaces bytes c..d; `<c>` inserts before byte c, `<0>` prepends, and `<-1>` appends. All coordinates name the pre-mutation source. Other bytes remain unchanged. |
+| Same-channel MOVE | Destination insertion and source removal use one pre-mutation snapshot and one proposal-gated write. Overlapping selections refuse with 409 before writing. |
+| Deferred MOVE | The source byte snapshot is retained as a content-hash precondition; changed bytes refuse removal with 409 `edit-collision`. A landed destination remains reported under {§copy-move-observation}. |
+| Mutation result | Ordinary proposal gate and byte count; no fabricated text diff. |
+| Text anchor on a transfer | 416: native byte coordinates are numeric. |
+| Text EDIT of native bytes | 415: an EDIT body authors text, not native bytes. |
+| Binary channel without a byte source | 415, not an empty success. |
 
 ### §log-history-projection Durable history and active projection
 
@@ -2249,7 +2251,11 @@ Coordinates and anchors retain the original body's physical lines; selection occ
 before omitted lines are removed, and sparse receipts retain their original line
 ordinals. Automatic previews remain retrieval bounds, not deletions. COPY can read
 an active log source under ordinary read authority, without minting log history;
-destinations and MOVE sources still require independently writable entry storage.
+entry destinations require independently writable storage; MOVE retires its
+source under {§move-decomposition}. A pattern spanning retained lines on either
+side of a curated gap maps to separate exact source regions, never to a bounding
+region that restores hidden lines. Concatenating those fragments reproduces only
+the matched readable text.
 Trimming invalidates derived search attachments; an in-flight derivation attaches
 only if its source projection is still current. Forks copy both projection facts;
 forensics always retain the complete immutable body and curation history.
@@ -2370,7 +2376,7 @@ The packet projects one actionable owner for each retrieval fact:
 | catalog/path FIND | `range` in resources | none | none |
 | broad matcher FIND | `range` in resources | per-resource match-location counts; a resource with exactly one match also carries that match's `locator`/`region` | nonzero complete `matchLocationCount` |
 | exact matcher FIND | `range` in match locations | each row's locator/region; a regex or glob row also carries `matched`, the matched text | none |
-| pattern READ ({§read-pattern}) | `range` over the physical lines | the selected lines with their ordinals and anchors | the heading's pattern and `matched`, the selected line count |
+| pattern READ ({§read-pattern}) | `range` over the physical lines | selected lines with ordinals and anchors; precise `matches` under {§read-pattern-evidence} | heading pattern and selected-line `matched`; `matchLocationCount` only when the metadata preview omits locations |
 
 Any row whose statement carried a heading pattern ({§matcher-option}) retains it
 in its H3, and a pattern mutation ({§edit-pattern}, {§kill-pattern},
@@ -2587,24 +2593,23 @@ Operand syntax: {§transfer-resource-selections}. Result projection: {§copy-mov
    channel is 404. Entry sources follow {§membership-source-projection}; active
    log sources follow {§log-readable-projection}. Binary sources transfer bytes
    under {§binary-parity}; text anchors resolve under {§line-anchors}.
-   - §copy-move-pattern **A source pattern selects whole matching lines; a
+   - §copy-move-pattern **A source pattern selects exact source spans; a
      destination is a place.** A source operand's heading pattern
      (```` ```COPY (notes.md) [{"pattern": "TODO"}] (todos.md) <-1> ````) runs
-     over the source text line by line, bounded by the source scope and by what
-     the source shows ({§log-readable-projection}); the selection is every line a
-     match touches, in source order, each with its own line separator exactly as
-     a scoped whole-line selection carries it. The result reports `matched`. Zero
+     over the addressed source channel, bounded by the source scope and by what
+     the source shows ({§log-readable-projection}). The selected fragments are
+     concatenated verbatim in source order, without invented separators or
+     enclosing line context ({§slice-semantics-compose-pattern}). The result
+     reports `matched` spans. Zero
      matches transfer nothing: 204 with `matched: 0`, and no destination is
-     created. A MOVE retires exactly the selected lines through the source's EDIT
-     path, one empty-body line splice per line in one batch guarded by their
-     anchors ({§edit-pattern}); within one channel the insertion and the removals
+     created. A textual MOVE removes exactly those spans through the source's EDIT
+     path, one empty-body exact splice per span in one batch guarded by their
+     anchors ({§edit-pattern}); byte selections use {§binary-parity}. Within one channel the insertion and the removals
      are one atomic batch, and a deferred MOVE ({§proposal}) retires the same
-     lines after acceptance. A curated source retires rows, not lines of its
+     spans after acceptance. A curated source retires rows, not arbitrary text of its
      projection, so a pattern MOVE from `log:///` is 400 `pattern-unsupported`
-     (COPY the lines, then KILL its rows by pattern); a pattern on a binary
-     channel is 400 `pattern-unsupported` (bytes have no lines); a pattern on
-     the destination is 400 `pattern-destination-unsupported`; resource-selecting
-     dialects (`~`, `&`) are 400 `pattern-dialect-unsupported`.
+     (COPY its selected text, then KILL its rows by pattern). A pattern on
+     the destination is 400 `pattern-destination-unsupported`.
 2. Resolve destination path, channel, and optional text scope. Source and
    destination mimetypes must be compatible under {§mimetype-verbatim-transfer}
    or the result is 415. Destination anchors
@@ -5872,7 +5877,17 @@ container identity.
 | ------------ | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | `&<symbol`   | In-scope resources that reference `symbol`                                       | Each matching reference's source span                                     |
 | `&>symbol`   | In-scope resources defining names referenced by each definition of `symbol`      | Each referenced symbol's definition span                                  |
-| `&symbol`    | Union of definitions of `symbol`, referrers, and definitions of referenced names | Corresponding definition/reference spans, deduplicated by resource + span |
+| `&symbol`    | In-scope resources defining `symbol` | Each definition's source span |
+
+Graph storage preserves the handler's complete text coordinates, including
+reference columns and end positions. Match evidence and source text come from
+the same immutable derivation. A definition without handler-supplied columns
+selects its declared whole-line extent; a reference always retains its exact
+region. Matches are deduplicated by resource and complete region, not line.
+READ presents whole lines with that evidence ({§read-pattern-evidence}); EDIT
+replaces the selected region literally, not a semantic rename of the symbol.
+Upgrades invalidate obsolete derived indexes, never their source content or
+retained history ({§db-migrations}).
 
 | Result | HTTP status |
 |---|---|
@@ -5900,16 +5915,32 @@ one binary marker to fail a repository-wide text search.
 Glob anchoring (`TODO*` starts-with, `*TODO*` contains, `*.log` ends-with,
 `[Tt]odo*` character class) lives in the mimetypes framework.
 
+§derivation-in-flight **In-flight derivation and query are live uses.** An exact
+indexed operation holds its content-addressed artifact from derivation through
+the completed query. Producers hold artifacts while building and attaching
+them. Derivation and content collection share one per-database exclusion boundary:
+parallel uses remain parallel, a collection pass skips these two collectors
+while a use is active, and a new use waits for an already-running collection.
+Successful, failed, and cancelled uses release in `finally`; no durable pin or
+additional retention setting is introduced. The ordinary later pass or drained
+shutdown collects unattached artifacts under {§retention-policy}.
+
 ### Matcher selection and evidence
 
-- §matcher-selection-signal **Matching carries navigation evidence** - a matcher is a boolean resource predicate. Internally, each selected resource carries `matches: MatchEvidence[]`, where `MatchEvidence` is `{channel?,locator?,region?}`; `channel` names the entry channel the finding was located in and is absent for channel-less resources such as log rows, so line coordinates cannot be mis-attributed across channels of the same resource ({§channel-selection-visibility}). `locator` preserves a structural address without overloading the resource row's `path`; `region` is a complete four-coordinate `TextRegion` only when the finding maps honestly into the exact text the model can READ. Exact duplicate evidence deduplicates. Relation findings map their indexed source spans through the same readable text coordinate index. FIND alone decides whether that grouped selection projects as resource rows or flat locations ({§find-result-projection}); the engine never fabricates a region or guesses which surgical READ the model wants.
+- §matcher-selection-signal **Matching carries navigation evidence** - each selected resource carries `matches: MatchEvidence[]`, where `MatchEvidence` is `{channel?,locator?,region?,enclosingRegion?}`. `channel` identifies the entry channel and is absent for channel-less resources such as log rows ({§channel-selection-visibility}); `locator` preserves the structural address. `region` is the exact selection; `enclosingRegion` is presentation context only. Both use complete four-coordinate `TextRegion`s in the readable source. Exact duplicate evidence deduplicates. FIND projects this evidence as resource rows or flat locations ({§find-result-projection}); consumers never invent missing precision. An operation requiring exact source fragments refuses a selection containing unlocated or enclosing-only findings with 422 `pattern-source-unlocated`, before any mutation.
+
+§matcher-index-readiness **Indexed patterns require complete evidence.** A held
+resource snapshot whose search derivation is excluded or failed answers 422
+`search-unavailable`, preserving the reason. Graph selection requiring an
+unsettled relationship universe answers retryable 503 `search-index-incomplete`.
+Neither condition is a successful empty match.
 
 §matcher-result-resource-selection **A matcher selects resources; it never extracts a value or chooses a retrieval
 window.** Every dialect answers whether a resource matches and may return
-`MatchEvidence { locator?, region? }` ({§matcher-selection-signal}). `locator` is a
-canonical structural locator. `region` is a complete `TextRegion` in the exact
-text the model can READ and may be exact or the smallest honest enclosing
-region. A matcher miss is 204. FIND's target shape projects the selected
+`MatchEvidence { locator?, region?, enclosingRegion? }` ({§matcher-selection-signal}).
+`locator` is a canonical structural locator. `region` is an exact selected
+`TextRegion`; `enclosingRegion` identifies presentation context, not a selection.
+Both address the physical text the model can READ. A matcher miss is 204. FIND's target shape projects the selected
 resources according to {§find-result-projection}.
 
 | Dialect | Selects | Natural use |
@@ -5945,16 +5976,17 @@ One/two-coordinate line shorthand is newline-aware so deleting a line does not
 leave an empty line. A terminal position after a final newline is an exact
 insertion anchor, not an additional whole line. `<1,-1>` selects all content.
 
-§zero-width-column-one-insert **A zero-width region at column 1 inserts whole lines.** The
-schemes region algebra ({§slicer-text-algebra}) inserts every body verbatim; the missing
-newline is a fence artifact, so core repairs it where a fenced EDIT body becomes inserted
-content, through the one schemes helper `wholeLineBody`, at the mutation and again in the
-receipt and anchor-continuity recomputation so every site sees one body. At `<L,1,L,1>`,
+§zero-width-column-one-insert **An authored zero-width column-1 scope inserts whole lines.**
+Core prepares that fenced EDIT body once, using `wholeLineBody`, before handing
+literal replacements to the scheme. Mutation, receipt, and anchor-continuity
+calculation all consume that same prepared body. At `<L,1,L,1>`,
 an anchored `<@hash,1,@hash,1>`, or `L` = final line + 1 when the content ends with a
 newline, a non-empty body that does not end in a newline is inserted with the content's
 line separator appended, so `X` at `<2,1,2,1>` into `a\nb` yields `a\nX\nb`. An empty
 body inserts nothing. A zero-width region at any other column stays a byte-exact insert with
-nothing appended. COPY and MOVE transfer source bytes, not a fenced body, and are untouched.
+nothing appended. A pattern's generated coordinates select exact matches, not
+authored line-insertion syntax: `/^/` inserts a literal prefix without adding
+a newline. COPY and MOVE transfer source bytes and are likewise untouched.
 The runtime also tolerates an authored three-coordinate
 `<startLine,startColumn,endLine>` scope, immediately lowers it to the complete
 four-coordinate region ending after the final code point of `endLine`, and
@@ -5973,10 +6005,31 @@ down; overlaps and duplicate insertion boundaries are 409. This is the adopted
 SARIF region/replacement algebra for exact spans and same-snapshot ordering, not
 adoption of the SARIF interchange envelope.
 
-§slice-semantics-compose-pattern **Compose from evidence.** A match region already uses the four-coordinate
-scope shape. A follow-up ```` ```READ (resource) <SL,SC,EL,EC> ```` retrieves that exact
-region. JSONPath/XPath remain locators and matchers; they do not introduce a
-second structural scope or structural EDIT language.
+§slice-semantics-compose-pattern **One selection, independent of operation.**
+A pattern runs over the canonical source channel, never a READ receipt's
+line-ending normalization, preview, coordinate prefixes, or other presentation.
+A match region uses the four-coordinate source scope. FIND reports it, READ
+shows its lines with that evidence, EDIT replaces it, COPY transfers it, MOVE
+transfers then removes it, and a textual KILL removes it. Enclosing display
+context never enlarges the selected span. Multiple fragments retain source
+order and literal text; COPY/MOVE insert no separators between them. Scope
+composition admits complete matches, never clipped fragments or other matches
+on the same line. Mutation batches retain {§edit-batch-merges} and collision
+handling; a pattern does not create another overlap-recovery algorithm.
+
+FIND retains locators even without source coordinates. READ may display
+`enclosingRegion` as context, but a selected value with neither kind of location
+returns `422 pattern-source-unlocated`. EDIT, COPY, MOVE,
+and textual KILL require exact `region` evidence for every selected match;
+enclosing or unlocated values return that same Problem without changing any
+source or destination. Absence of matches remains an ordinary empty selection.
+
+A follow-up ```` ```READ (resource) <SL,SC,EL,EC> ```` retrieves the exact
+region. JSONPath/XPath remain locators and matchers, not a structural update
+language: `//item` selects the element, `//item/text()` its direct text nodes,
+and `$.host` the JSON value including its lexical quotes/escapes, never the
+property name or colon. Literal replacement does not serialize a value or
+repair neighboring punctuation. Readable projections have their own coordinates.
 
 ### §ext-mimetype Path-extension declares mimetype
 
@@ -6037,7 +6090,7 @@ Auto-derived text mimetypes anywhere in plurnk-service normalize to `text/markdo
 Carried from the contract walk; durable.
 
 - **Dialect/mimetype mismatch** → 415 (xpath on text/plain → 415; jsonpath on JSON-shapeless mimetypes → 204 because outline is empty, not 415).
-- **Binary markers** → 415 for text operations. A readable binary source is durably represented as projected `text/markdown` under {§membership-source-projection}; source-aware File EDIT remains 415.
+- **Binary coordinates** are numeric byte positions for READ and transfer; text EDIT does not author native bytes ({§binary-parity}). Readable projections retain their own textual coordinates ({§membership-source-projection}).
 - **EDIT `<L>` on non-existent entry** → body becomes content; `<L>` is positional-only on existing content.
 - §copy-l-source-range **COPY/MOVE source scope** selects only the addressed source channel and
   first resolves and, when required, prepares the same canonical
@@ -6058,7 +6111,7 @@ Carried from the contract walk; durable.
   {§copy-move-observation}.
 - **READ rx** prefixes every textual line under {§render-rule-line-navigable-prefix}; eligible
   editable resources carry `@hash N:`, and all others carry `N:`.
-- **FIND pattern** (`[{"pattern": …}]` in the heading, {§matcher-option}) applies to the addressed entry channel (all dialects), per-candidate via the in-tree `Matcher.matchAgainstContent` ({§matcher-dispatch}; status 200 = content hit → entry selected). The target scope and channel select candidates; the path-glob is the (target). On READ, EDIT, KILL, COPY and MOVE the same heading pattern selects lines within one resource ({§read-pattern}, {§edit-pattern}, {§kill-pattern}, {§copy-move-pattern}).
+- **Pattern selection** applies to the addressed source channel under {§slice-semantics-compose-pattern}. The path and channel select resources; FIND reports matches and READ displays their lines. EDIT, textual KILL, COPY, and MOVE act on exact selected spans, not their enclosing lines ({§read-pattern}, {§edit-pattern}, {§kill-pattern}, {§copy-move-pattern}).
 - **Scoped KILL** on the **log** (`log:///`) removes a body span from its readable projection ({§log-kill-scope}); on an entry it deletes that span through the EDIT path ({§kill-scope-entry}). A whole-entry KILL deletes the entry, or one `#fragment` channel.
 - **File scheme** detects with `Mimetypes.detect({ path })` and classifies with the same configured service ({§mimetype-classification-consumption}). Handler-declared binary sources materialize through {§membership-source-projection}; projected bodies are READ-able, while source-aware EDIT remains 415.
 
@@ -6066,7 +6119,14 @@ Carried from the contract walk; durable.
 
 A KILL with a text-coordinate scope aimed at an entry-bearing scheme deletes exactly that span: core prepares and dispatches it as an EDIT with an empty body over the same marker, so anchors resolve, proposals gate it, and the merge facts and receipt are the EDIT path's — while the log row records the model's KILL. Its packet metadata and canonical log body use {§edit-result-receipt-projection}. ```` ```EDIT (path) <scope> ```` with an empty body remains the same act spelled the other way; the teaching names KILL.
 
-§kill-pattern **A pattern on an entry KILL deletes each matching line.** ```` ```KILL (path) [{"pattern": "beta"}] ```` takes the same EDIT path as a scoped KILL, expanded under {§edit-pattern} in whole lines: the resource is read once, the matcher runs line by line, and every line a match touches becomes one empty-body line splice in one atomic batch guarded by those lines' anchors. A numeric scope bounds the lines the pattern may touch. Zero matches change nothing (204, `matched: 0`); a whole-entry KILL never widens from a pattern that selected nothing. The receipt is the EDIT path's, compacted the same way: `matched` lines, the first deletion's `receipt` with its `removedText` ({§edit-receipt-removed-text}), and `last` for the final one. Node-selecting patterns (`//`, `$`) select whole lines here, as they name nodes with line extents; resource-selecting ones (`~`, `&`) are refused (400 `pattern-dialect-unsupported`, {§pattern-dialect-find-only}). The log stays the exception: a pattern on `log:///` selects rows ({§log-curation-set-selection}), and a stream scheme's KILL is process control, so a pattern there is 400 `kill-pattern-unsupported`.
+§kill-pattern **A pattern on a textual entry KILL removes exactly its matches.**
+It is the same empty-body EDIT under {§edit-pattern}, including exact column
+and multiline regions, scope, preconditions, proposals, and receipt. It has no
+separate line-deletion mode. Zero matches leave the resource unchanged (204,
+`matched: 0`); a pattern never becomes whole-resource deletion. The receipt
+counts selected spans and retains the first and last applied effects.
+Log KILL still selects retirement rows ({§log-curation-set-selection}); stream
+KILL controls a process and refuses a content pattern (`kill-pattern-unsupported`).
 
 ---
 

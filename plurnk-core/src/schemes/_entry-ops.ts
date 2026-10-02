@@ -1,6 +1,6 @@
 import EntryCrud from "./_entry-crud.ts";
 import EntryReadable from "./_entry-readable.ts";
-import { PathSyntax, type RangeExtent, type ReadStatement, type TextRegion } from "@plurnk/plurnk-contracts";
+import type { RangeExtent, ReadStatement, TextRegion } from "@plurnk/plurnk-contracts";
 import { entryCoordinateOf, missDetail } from "../core/plurnk-uri.ts";
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import type { ByteSource } from "../content/byte-view.ts";
@@ -232,10 +232,9 @@ export default class EntryOps {
             );
         }
         if (channelExists) {
-            // {§zero-width-column-one-insert}
             const edits = statements.map((candidate) => ({
                 marker: candidate.lineMarker!,
-                body: LineMarkerOps.wholeLineBody(originalContent, candidate.lineMarker!, candidate.body ?? ""),
+                body: candidate.body ?? "",
             }));
             const result = LineMarkerOps.applyLineMarkerEditBatch(originalContent, edits);
             if (result.status !== 200) {
@@ -328,10 +327,7 @@ export default class EntryOps {
         await EntryReadable.sync(ctx, entryId, targetChannel, defaultChannel, newContent, effectiveMimetype);
 
         // {§edit-receipt-anchored-context} — the same identity the READ projector hashes with.
-        const receiptBase = EntryManifest.toPath(scheme, authority, pathname);
-        const receiptIdentity = targetChannel === defaultChannel
-            ? receiptBase
-            : `${receiptBase}#${PathSyntax.escapeTarget(targetChannel ?? "")}`;
+        const receiptIdentity = EntryManifest.channelPath({ scheme, authority, pathname }, targetChannel ?? "", defaultChannel);
         const receiptEdits = !channelExists
             ? [{ marker: { marks: [1, -1] as [number, number] }, body: newContent }]
             : (appliedEdits ?? statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" })));
@@ -438,10 +434,7 @@ export default class EntryOps {
         };
         const { authority, pathname } = coordinate;
         const selectedChannel = statement.target.fragment ?? manifest.defaultChannel;
-        const baseIdentity = EntryManifest.toPath(scheme, authority, pathname);
-        const identity = selectedChannel === manifest.defaultChannel
-            ? baseIdentity
-            : `${baseIdentity}#${PathSyntax.escapeTarget(selectedChannel)}`;
+        const identity = EntryManifest.channelPath({ scheme, authority, pathname }, selectedChannel, manifest.defaultChannel);
         const stored = await EntryCrud.readEntry({ authority, pathname }, ctx, scheme);
         // {§read-read-404} + {§fs-errno} — ENOENT carries its fact, the RESOLVED name in wire
         // canon: the model distinguishes wrong-address from wrong-range by the strings alone.
@@ -465,6 +458,7 @@ export default class EntryOps {
             target: EntryManifest.toPath(scheme, authority, pathname),
             identity,
             representation: stored.entry,
+            context: ctx,
             mimetypes: ctx.mimetypes,
             ...(ctx.weigh === undefined ? {} : { weigh: ctx.weigh }),
             ...(effectiveBytes === undefined ? {} : { bytes: effectiveBytes }),

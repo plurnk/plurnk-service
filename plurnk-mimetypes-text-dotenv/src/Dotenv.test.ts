@@ -2,10 +2,29 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { parseEnv } from "node:util";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import Dotenv, { parseDotenv } from "./Dotenv.ts";
 
 const META = { mimetype: "text/x-dotenv", glyph: "🔑", extensions: [".env"] };
 const h = () => new Dotenv(META);
+
+describe("{§mimetype-query}: value queries preserve lexical dotenv spans", () => {
+    for (const [source, selected] of [
+        ["VALUE = old # comment", "old"],
+        ["export VALUE = 'a # b' # comment", "'a # b'"],
+        ['VALUE="first\nlast" # comment', '"first\nlast"'],
+        ["VALUE=", ""],
+        ["VALUE=old\nVALUE=new", "new"],
+    ]) for (const dialect of ["jsonpath", "xpath"] as const) {
+        it(`${dialect} selects ${JSON.stringify(selected)} from ${JSON.stringify(source)}`, async () => {
+            const [match] = await h().query(source, dialect, dialect === "jsonpath" ? "$.VALUE" : "//VALUE");
+            assert.equal(match.regions?.length, 1, JSON.stringify(match));
+            const region = match.regions![0];
+            const coordinates = new TextCoordinates(source);
+            assert.equal(source.slice(coordinates.offsetAtPosition(region.startLine, region.startColumn), coordinates.offsetAtPosition(region.endLine, region.endColumn)), selected);
+        });
+    }
+});
 
 const { fixtures } = JSON.parse(await readFile(new URL("../test/fixtures/node-dotenv.json", import.meta.url), "utf8")) as {
     fixtures: Array<{ name: string; text: string }>;

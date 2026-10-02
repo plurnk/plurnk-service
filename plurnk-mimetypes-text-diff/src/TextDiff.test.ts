@@ -152,7 +152,7 @@ describe("TextDiff — multi-file git diff (edit + new + delete + rename + mode 
         assert.deepEqual(edit.hunks[0], {
             type: "hunk",
             oldStart: 1, oldCount: 3, newStart: 1, newCount: 4,
-            heading: null, line: 5, endLine: 10,
+            heading: null, line: 5, endLine: 10, column: 1, endColumn: 18,
         });
     });
 });

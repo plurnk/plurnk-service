@@ -22,7 +22,7 @@
         "handlers": [
             {
                 "name": "application/x-ipynb+json",
-                "revision": "2",
+                "revision": "3",
                 "glyph": "📓",
                 "extensions": [
                     ".ipynb"
@@ -56,6 +56,7 @@
         "@plurnk/plurnk-mimetypes": "^1.26.0"
     },
     "dependencies": {
+        "@plurnk/plurnk-mimetypes-application-json": "1.26.0",
         "jsonc-parser": "^3.3.1"
     },
     "devDependencies": {

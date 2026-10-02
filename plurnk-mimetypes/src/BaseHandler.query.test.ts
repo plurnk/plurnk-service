@@ -51,7 +51,7 @@ describe("BaseHandler.query — jsonpath default (against outline)", () => {
         const out = await h.query("top\nx\nsection\nx\nsub", "jsonpath", "$.Top.Section.Sub");
         assert.equal(out.length, 1);
         assert.equal(out[0].matched, 5);
-        assert.deepEqual(out[0].regions, [{
+        assert.deepEqual(out[0].enclosingRegions, [{
             startLine: 5, startColumn: 1, endLine: 5, endColumn: 4,
         }]);
     });
@@ -90,7 +90,7 @@ describe("BaseHandler.query — xpath default", () => {
         const h = new WithSymbols(metadata);
         const out = await h.query("top\nx\nsection\nx\nsub", "xpath", "//Sub");
         assert.equal(out.length, 1);
-        assert.deepEqual(out[0].regions, [{
+        assert.deepEqual(out[0].enclosingRegions, [{
             startLine: 5, startColumn: 1, endLine: 5, endColumn: 4,
         }]);
     });

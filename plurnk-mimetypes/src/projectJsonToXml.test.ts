@@ -174,7 +174,7 @@ describe("projectJsonToXml — element names from arbitrary keys are sanitized (
         const readable = ["one", "two", "three"].join("\n");
         const out = queryXpathString(xml, "//Given_a_paid_invoice", "text/test", readable);
         assert.equal(out.length, 1);
-        assert.deepEqual(out[0].regions, [{
+        assert.deepEqual(out[0].enclosingRegions, [{
             startLine: 3,
             startColumn: 1,
             endLine: 3,

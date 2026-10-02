@@ -59,6 +59,37 @@ for (const release of [RELEASED, PREVIOUS, EARLIER]) {
     });
 }
 
+test("{§graph-relations}: upgrading preserves source content and invalidates imprecise derived coordinates", async () => {
+    const path = await released(RELEASED);
+    const before = new DatabaseSync(path);
+    before.function("sha256", { deterministic: true }, (text) => sha256(text as string));
+    try {
+        before.exec(`
+            PRAGMA foreign_keys = ON;
+            INSERT INTO workspaces (id, name) VALUES (1, 'graphUpgrade');
+            INSERT INTO entries (id, workspace_id, scheme, pathname) VALUES (1, 1, 'worker', '/example.js');
+            INSERT INTO derivations (id, deep_hash, state, disposition) VALUES (1, 'old-graph', 'complete', 'indexed');
+            INSERT INTO symbol_defs (derivation_id, name, kind, line, end_line) VALUES (1, 'foo', 'function', 1, 1);
+            INSERT INTO symbol_refs (derivation_id, name, kind, line) VALUES (1, 'bar', 'call', 1);
+            INSERT INTO entry_channels (entry_id, name, content, mimetype, deep_hash)
+                VALUES (1, 'body', 'function foo() { bar(); }', 'text/javascript', 'old-graph');
+        `);
+    } finally { before.close(); }
+    const db = await openMigrated(path);
+    await db.close();
+    const after = new DatabaseSync(path);
+    try {
+        assert.deepEqual({ ...after.prepare("SELECT content, deep_hash FROM entry_channels WHERE entry_id = 1").get() },
+            { content: "function foo() { bar(); }", deep_hash: null });
+        assert.equal(after.prepare("SELECT COUNT(*) AS n FROM derivations").get()?.n, 0);
+        for (const table of ["symbol_defs", "symbol_refs"]) {
+            assert.ok(columns(after, table).includes("column") && columns(after, table).includes("end_column"));
+        }
+        assert.ok(columns(after, "symbol_refs").includes("end_line"));
+        assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally { after.close(); }
+});
+
 test(`{§db-migrations} {§emission-row}: a ${PREVIOUS.release} database migrates in place, keeping its log and inventing no announcement`, async () => {
     const path = await released(PREVIOUS);
     const before = new DatabaseSync(path);

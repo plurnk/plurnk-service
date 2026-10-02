@@ -59,7 +59,7 @@ test("&graph resolves over file:/// entries", async () => {
         const referents = await new File().find(findStmt(filePath(""), graph("&>foo")), ctx);
         assert.deepEqual([...new Set(resourcePaths(referents))], ["src/c.ts"]);
 
-        const neighborhood = await new File().find(findStmt(filePath(""), graph("&foo")), ctx);
-        assert.deepEqual([...new Set(resourcePaths(neighborhood))], ["src/a.ts", "src/b.ts", "src/c.ts"]);
+        const definitions = await new File().find(findStmt(filePath(""), graph("&foo")), ctx);
+        assert.deepEqual([...new Set(resourcePaths(definitions))], ["src/a.ts"]);
     } finally { db.close(); }
 });

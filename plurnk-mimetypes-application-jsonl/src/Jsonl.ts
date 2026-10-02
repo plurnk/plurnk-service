@@ -1,7 +1,9 @@
-import { BaseHandler, projectJsonToXml, queryJsonpathObject, regionsForLineSpans } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, projectJsonToXml, queryJsonpathObject, TextCoordinates, type TextRegion } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
+import { JsonSource } from "@plurnk/plurnk-mimetypes-application-json";
+import { parseTree } from "jsonc-parser";
 
-// application/jsonl (JSON Lines / NDJSON) handler — Tier 4, no parser dep.
+// application/jsonl (JSON Lines / NDJSON) handler.
 //
 // One JSON value per line: training data, eval sets, fine-tune files, chat /
 // agent logs. The structural definition of a JSONL dataset is its RECORD
@@ -28,10 +30,7 @@ export default class Jsonl extends BaseHandler {
         return scan(toText(content)).records;
     }
 
-    // jsonpath against the record array, with source-line spans ({§mimetype-query}). deepJson
-    // is line-less raw records, so we map a match's record index (the first
-    // pointer segment) to its source line — one record per non-empty parseable
-    // line, the JSONL invariant. Absent for non-record pointers; never faked.
+    // {§mimetype-query}: each record delegates lexical coordinates to the JSON owner.
     override async query(
         content: HandlerContent,
         dialect: QueryDialect,
@@ -39,56 +38,25 @@ export default class Jsonl extends BaseHandler {
         flags?: string,
     ): Promise<QueryMatch[]> {
         if (dialect === "jsonpath") {
-            const recordLines: number[] = [];
-            const lines = toText(content).split("\n");
-            for (let i = 0; i < lines.length; i += 1) {
-                const t = lines[i].trim();
-                if (t.length === 0) continue;
-                try {
-                    JSON.parse(t);
-                    recordLines.push(i + 1);
-                } catch (cause) {
-                    if (!(cause instanceof SyntaxError)) throw cause;
-                    // Unparseable line skipped, mirroring scan().
-                }
-            }
+            const source = sourceMap(toText(content));
             const regionFor = (pointer: string) => {
-                const m = pointer.match(/^\/(\d+)/);
-                if (m === null) return undefined;
-                const ln = recordLines[Number(m[1])];
-                return ln === undefined
-                    ? undefined
-                    : regionsForLineSpans(toText(content), [{ line: ln, endLine: ln }]);
+                const region = source.region(pointer);
+                return region === undefined ? undefined : [region];
             };
-            return queryJsonpathObject(this.deepJson(content), pattern, regionFor);
+            return queryJsonpathObject(source.records, pattern, regionFor);
         }
         return super.query(content, dialect, pattern, flags);
     }
 
-    // deep-xml carries the SAME source lines as jsonpath ({§mimetype-query}): a match's record
-    // index (first pointer segment) → its source line (one record per line).
     override deepXml(content: HandlerContent): Promise<string> {
-        const recordLines: number[] = [];
-        const lines = toText(content).split("\n");
-        for (let i = 0; i < lines.length; i += 1) {
-            const t = lines[i].trim();
-            if (t.length === 0) continue;
-            try {
-                JSON.parse(t);
-                recordLines.push(i + 1);
-            } catch (cause) {
-                if (!(cause instanceof SyntaxError)) throw cause;
-                // Unparseable line skipped, mirroring scan().
-            }
-        }
-        const span = (pointer: string): { line: number; endLine: number } | undefined => {
-            if (pointer === "") return { line: 1, endLine: 1 };
-            const m = pointer.match(/^\/(\d+)/);
-            if (m === null) return undefined;
-            const ln = recordLines[Number(m[1])];
-            return ln === undefined ? undefined : { line: ln, endLine: ln };
+        const source = sourceMap(toText(content));
+        const span = (pointer: string) => {
+            const region = source.region(pointer);
+            return region === undefined ? undefined : {
+                line: region.startLine, column: region.startColumn, endLine: region.endLine, endColumn: region.endColumn,
+            };
         };
-        return Promise.resolve(projectJsonToXml(this.deepJson(content), "root", span));
+        return Promise.resolve(projectJsonToXml(source.records, "root", span, "value"));
     }
 
 }
@@ -104,31 +72,55 @@ export interface JsonlScan {
 }
 
 export function scan(text: string): JsonlScan {
-    const lines = text.split("\n");
     const records: unknown[] = [];
     const schema: SchemaEntry[] = [];
     const seen = new Set<string>();
-    for (let i = 0; i < lines.length; i += 1) {
-        const line = lines[i].trim();
-        if (line.length === 0) continue;
-        let value: unknown;
-        try {
-            value = JSON.parse(line);
-        } catch (cause) {
-            if (cause instanceof SyntaxError) continue;
-            throw cause;
-        }
+    for (const { value, line } of parsedRecords(text)) {
         records.push(value);
         if (typeof value === "object" && value !== null && !Array.isArray(value)) {
             for (const key of Object.keys(value)) {
                 if (!seen.has(key)) {
                     seen.add(key);
-                    schema.push({ key, firstLine: i + 1 });
+                    schema.push({ key, firstLine: line });
                 }
             }
         }
     }
     return { records, schema };
+}
+
+function sourceMap(text: string): { records: unknown[]; region: (pointer: string) => TextRegion | undefined } {
+    const records: unknown[] = [];
+    const sources: Array<{ line: number; source: JsonSource }> = [];
+    for (const { value, line, content } of parsedRecords(text)) {
+        const tree = parseTree(content);
+        if (tree === undefined) throw new Error("Valid JSON has no source tree");
+        records.push(value);
+        sources.push({ line, source: new JsonSource(content, tree) });
+    }
+    return { records, region: (pointer) => {
+        if (pointer === "") return TextCoordinates.regionFromOffsets(text, 0, text.length) ?? undefined;
+        const match = /^\/(\d+)(\/.*)?$/.exec(pointer);
+        if (match === null) return undefined;
+        const source = sources[Number(match[1])];
+        const region = source?.source.region(match[2] ?? "");
+        return source === undefined || region === undefined ? undefined
+            : { ...region, startLine: region.startLine + source.line - 1, endLine: region.endLine + source.line - 1 };
+    } };
+}
+
+function* parsedRecords(text: string): Generator<{ value: unknown; content: string; line: number }> {
+    for (const [index, line] of TextCoordinates.logicalLines(text).entries()) {
+        const content = text.slice(line.start, line.contentEnd);
+        let value: unknown;
+        try {
+            value = JSON.parse(content);
+        } catch (cause) {
+            if (!(cause instanceof SyntaxError)) throw cause;
+            continue;
+        }
+        yield { value, content, line: index + 1 };
+    }
 }
 
 function toText(content: HandlerContent): string {

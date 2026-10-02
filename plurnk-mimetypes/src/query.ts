@@ -23,6 +23,18 @@ import { PK_NS, PK_PREFIX } from "./projectJsonToXml.ts";
 // prefix stays an invalid expression.
 const selectWithProvenance = xpath.useNamespaces({ [PK_PREFIX]: PK_NS });
 
+type LocateMatch = (start: number, end: number) => Pick<QueryMatch, "regions" | "enclosingRegions">;
+
+function textLocations(text: string): LocateMatch {
+    const coordinates = new TextCoordinates(text);
+    return (start, end) => {
+        const region = coordinates.regionFromOffsets(start, end);
+        if (region !== null) return { regions: [region] };
+        const enclosing = coordinates.enclosingRegionFromOffsets(start, end);
+        return enclosing === null ? {} : { enclosingRegions: [enclosing] };
+    };
+}
+
 // regex against arbitrary text. Returns one QueryMatch per match. Polymorphic
 // `matched` shape under {§mimetype-query}:
 //   - no captures → string (the whole match)
@@ -32,7 +44,7 @@ const selectWithProvenance = xpath.useNamespaces({ [PK_PREFIX]: PK_NS });
 //
 // Always runs with the global flag so we get every match. Trailing /flags
 // from the matcher syntax are honored.
-export function queryRegex(text: string, pattern: string, flags?: string): QueryMatch[] {
+export function queryRegex(text: string, pattern: string, flags?: string, locate: LocateMatch = textLocations(text)): QueryMatch[] {
     const effective = flags ?? "";
     const withGlobal = effective.includes("g") ? effective : effective + "g";
     let regex: RegExp;
@@ -43,18 +55,13 @@ export function queryRegex(text: string, pattern: string, flags?: string): Query
     }
 
     const out: QueryMatch[] = [];
-    const coordinates = new TextCoordinates(text);
     const unicode = withGlobal.includes("u") || withGlobal.includes("v");
     let m: RegExpExecArray | null;
     while ((m = regex.exec(text)) !== null) {
-        const region = coordinates.enclosingRegionFromOffsets(
-            m.index,
-            m.index + m[0].length,
-        );
         out.push({
             matched: shapeMatched(m),
             text: m[0],
-            ...(region === null ? {} : { regions: [region] }),
+            ...locate(m.index, m.index + m[0].length),
         });
         // Defend against zero-length matches infinite-looping the global regex.
         if (m[0].length === 0) {
@@ -76,14 +83,10 @@ function advanceStringIndex(text: string, index: number, unicode: boolean): numb
     return second >= 0xDC00 && second <= 0xDFFF ? index + 2 : index + 1;
 }
 
-// glob applied line-anchored against text body. Under {§mimetype-query}, each
-// matching line is a separate QueryMatch; matched = the full line.
-// A bare word (no glob metacharacters) is a fuzzy content search — the natural
-// intent for "find X in this file." Explicit wildcards keep structural meaning.
-export function queryGlob(text: string, pattern: string): QueryMatch[] {
-    const regex = PathSyntax.hasGlob(pattern)
-        ? globToRegex(pattern)
-        : new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "u");
+// {§mimetype-query} — literals select occurrences; glob syntax selects whole lines.
+export function queryGlob(text: string, pattern: string, locate: LocateMatch = textLocations(text)): QueryMatch[] {
+    if (!PathSyntax.hasGlob(pattern)) return queryRegex(text, pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "u", locate);
+    const regex = globToRegex(pattern);
     const coordinates = new TextCoordinates(text);
     const lines = coordinates.logicalLines();
     const out: QueryMatch[] = [];
@@ -91,13 +94,12 @@ export function queryGlob(text: string, pattern: string): QueryMatch[] {
         const line = lines[i]!;
         const body = text.slice(line.start, line.contentEnd);
         if (regex.test(body)) {
-            const region = coordinates.regionFromOffsets(line.start, line.contentEnd);
             out.push({
                 matched: body,
                 // {§mimetype-query} — the matching line rides as `text`, like a regex match,
                 // so a FIND row can show it without a READ.
                 text: body,
-                ...(region === null ? {} : { regions: [region] }),
+                ...locate(line.start, line.contentEnd),
             });
         }
     }
@@ -134,11 +136,11 @@ export function queryJsonpathObject(
         ? undefined
         : new TextCoordinates(readableText);
     return results.map((r) => {
-        const regions = regionFor?.(r.pointer, r.value)
-            ?? defaultRegions(obj, r.pointer, r.value, coordinates);
-        return regions === undefined
-            ? { matched: r.value, matching: r.path }
-            : { matched: r.value, matching: r.path, regions };
+        if (regionFor !== undefined) {
+            const regions = regionFor(r.pointer, r.value);
+            return { matched: r.value, matching: r.path, ...(regions === undefined ? {} : { regions }) };
+        }
+        return { matched: r.value, matching: r.path, ...defaultRegions(obj, r.pointer, r.value, coordinates) };
     });
 }
 
@@ -183,13 +185,8 @@ export function queryXpathString(
 }
 
 // Translate xpath.select result to QueryMatch[] under {§mimetype-query}.
-// Source-line recovery under {§mimetype-query-conformance}: element matches
-// read the `pk:line` attribute the framework's projection wrote to every
-// element node — that's the source-line the original handler's deepJson knew
-// about. Attribute/text/comment/PI
-// matches walk up to the parent element to find the same. Primitive results
-// (string/number/boolean from `string(...)`, `count(...)`, etc.) retain only
-// the authored expression because they have no node context.
+// {§mimetype-query-conformance} — only the selected element's complete source
+// coordinates are exact. Ancestors and line-only bounds provide context.
 function shapeXpathResult(
     pattern: string,
     result: xpath.SelectReturnType,
@@ -200,13 +197,13 @@ function shapeXpathResult(
         : new TextCoordinates(readableText);
     if (Array.isArray(result)) {
         return result.map((node, i): QueryMatch => {
-            const region = coordinates === undefined
-                ? undefined
+            const location = coordinates === undefined
+                ? {}
                 : regionOfMatchedNode(node, coordinates);
             return {
                 matched: serializeXpathNode(node),
                 matching: result.length > 1 ? `(${pattern})[${i + 1}]` : pattern,
-                ...(region === undefined ? {} : { regions: [region] }),
+                ...location,
             };
         });
     }
@@ -233,7 +230,7 @@ const ELEMENT_NODE = 1;
 function regionOfMatchedNode(
     node: Node,
     coordinates: TextCoordinates,
-): TextRegion | undefined {
+): Pick<QueryMatch, "regions" | "enclosingRegions"> {
     let el: Element | null = null;
     if (node.nodeType === ELEMENT_NODE) {
         el = node as unknown as Element;
@@ -247,21 +244,20 @@ function regionOfMatchedNode(
         }
         el = cur as unknown as Element | null;
     }
-    // pk:line / pk:endLine — the source span the projection wrote onto the
-    // element ({§mimetype-channel-architecture}). A line-less child (e.g. a
-    // bare `name:"g"`
-    // field projected to <name>g</name>) carries none of its own, so walk up to
-    // the nearest ancestor element that does — mirroring jsonpath's ancestorChain
-    // walk in defaultLines so both dialects report the same enclosing span
-    // ({§mimetype-query-conformance}).
-    // Only when nothing in the chain is annotated do we honestly return no span;
-    // we never fake a line.
-    while (el && pkAttr(el, "line") === undefined) {
+    while (el && pkAttr(el, "line") === undefined && !el.hasAttributeNS(PK_NS, "regions")) {
         el = parentElement(el);
     }
-    if (!el) return undefined;
+    if (!el) return {};
+    const serializedRegions = el.getAttributeNS(PK_NS, "regions");
+    if (serializedRegions) {
+        const regions = JSON.parse(serializedRegions) as TextRegion[];
+        if (!Array.isArray(regions) || !regions.every((region) => isAddressableRegion(coordinates, region))) {
+            throw new Error("Projected source regions must be addressable text coordinates");
+        }
+        return el === node ? { regions } : { enclosingRegions: regions };
+    }
     const line = pkAttr(el, "line");
-    if (line === undefined) return undefined;
+    if (line === undefined) return {};
     const endLine = pkAttr(el, "endLine") ?? line;
     const column = pkAttr(el, "column");
     const endColumn = pkAttr(el, "endColumn");
@@ -272,9 +268,11 @@ function regionOfMatchedNode(
             endLine,
             endColumn,
         };
-        return isAddressableRegion(coordinates, region) ? region : undefined;
+        if (!isAddressableRegion(coordinates, region)) return {};
+        return el === node ? { regions: [region] } : { enclosingRegions: [region] };
     }
-    return coordinates.lineRegion(line, endLine) ?? undefined;
+    const region = coordinates.lineRegion(line, endLine);
+    return region === null ? {} : { enclosingRegions: [region] };
 }
 
 // Nearest ancestor ELEMENT of an element node, or null at the document root.
@@ -363,19 +361,20 @@ function defaultRegions(
     pointer: string,
     value: unknown,
     coordinates: TextCoordinates | undefined,
-): readonly TextRegion[] | undefined {
-    if (coordinates === undefined) return undefined;
+): Pick<QueryMatch, "regions" | "enclosingRegions"> {
+    if (coordinates === undefined) return {};
     const exact = explicitRegion(value);
-    if (exact !== undefined && isAddressableRegion(coordinates, exact)) return [exact];
+    if (exact !== undefined && isAddressableRegion(coordinates, exact)) return { regions: [exact] };
     const chain = ancestorChain(root, pointer);
     for (let index = chain.length - 1; index >= 0; index -= 1) {
         const enclosing = explicitRegion(chain[index]);
         if (enclosing !== undefined && isAddressableRegion(coordinates, enclosing)) {
-            return [enclosing];
+            return { enclosingRegions: [enclosing] };
         }
     }
     const lines = defaultLines(root, pointer, value);
-    return lines === undefined ? undefined : regionsForSpans(coordinates, lines);
+    const enclosingRegions = lines === undefined ? undefined : regionsForSpans(coordinates, lines);
+    return enclosingRegions === undefined ? {} : { enclosingRegions };
 }
 
 export function regionsForLineSpans(
@@ -411,7 +410,7 @@ export function outlineLineFor(root: unknown): (pointer: string) => LineSpan | u
 
 // Resolve a JSON Pointer (RFC 6901) to the value AT that pointer ("" → root).
 function valueAtPointer(root: unknown, pointer: string): unknown {
-    if (pointer === "" || pointer === "/") return root;
+    if (pointer === "") return root;
     const tokens = pointer.split("/").slice(1).map((t) => t.replace(/~1/g, "/").replace(/~0/g, "~"));
     let cur: unknown = root;
     for (const tok of tokens) {
@@ -498,7 +497,7 @@ function collectLineNumbers(value: unknown): number[] {
 // down to (but excluding) the matched leaf. Used to find the nearest enclosing
 // line-annotated node for a primitive hit.
 function ancestorChain(root: unknown, pointer: string): unknown[] {
-    if (!pointer || pointer === "/") return [];
+    if (!pointer) return [];
     const tokens = pointer.split("/").slice(1).map((t) => t.replace(/~1/g, "/").replace(/~0/g, "~"));
     const chain: unknown[] = [root];
     let cur: unknown = root;

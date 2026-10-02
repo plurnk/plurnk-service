@@ -615,7 +615,7 @@ describe("Mimetypes — process: channel selection ({§mimetype-channel-selectio
         assert.equal(materialized.deepXml, await handler.deepXml(input.content));
 
         const matches = await m.query(input, "//Section");
-        assert.deepEqual(matches[0]?.regions, [{
+        assert.deepEqual(matches[0]?.enclosingRegions, [{
             startLine: 3,
             startColumn: 1,
             endLine: 3,
@@ -807,7 +807,7 @@ describe("Mimetypes — query", () => {
         );
         assert.equal(results.length, 1);
         assert.equal(results[0].matched, 5);
-        assert.equal(results[0].regions?.[0]?.startLine, 5);
+        assert.equal(results[0].enclosingRegions?.[0]?.startLine, 5);
     });
 
     it("dispatches glob (no prefix) line-anchored against text body", async () => {
@@ -831,7 +831,7 @@ describe("Mimetypes — query", () => {
         });
         const results = await m.query({ path: "foo.txt", content: "any" }, "//Plain");
         assert.equal(results.length, 1);
-        assert.deepEqual(results[0].regions, [{
+        assert.deepEqual(results[0].enclosingRegions, [{
             startLine: 1, startColumn: 1, endLine: 1, endColumn: 4,
         }]);
     });

@@ -70,7 +70,7 @@ for (const op of ["FIND", "READ", "EDIT", "KILL"] as const) {
                 if (op === "FIND") assert.equal(result.matchLocationCount, pattern === "absent" ? 0 : 2);
                 const expected = pattern === "absent" || op === "FIND" || op === "READ" ? original
                     : op === "EDIT" ? "keep first\nreplacement one\nkeep last\nreplacement two"
-                        : "keep first\nkeep last\n";
+                        : "keep first\n one\nkeep last\n two";
                 const stored = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
                     scheme: "opaque", pathname: "/notes", name: "body",
                 });

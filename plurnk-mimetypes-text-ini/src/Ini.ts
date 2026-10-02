@@ -2,10 +2,9 @@ import {
     BaseHandler,
     projectJsonToXml,
     queryJsonpathObject,
-    regionsForLineSpans,
     TextCoordinates,
 } from "@plurnk/plurnk-mimetypes";
-import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
+import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch, TextRegion } from "@plurnk/plurnk-mimetypes";
 
 // text/x-ini (INI / config) handler — Tier 4, no parser dep.
 //
@@ -40,22 +39,22 @@ export default class Ini extends BaseHandler {
     }
 
     override deepJson(content: HandlerContent): unknown {
-        const root: Record<string, unknown> = {};
+        const root: Record<string, unknown> = Object.create(null);
         for (const section of parseIni(toText(content))) {
             if (section.name === null) {
                 for (const k of section.keys) root[k.key] = k.value;
             } else {
-                const target = (root[section.name] ??= {}) as Record<string, string>;
+                if (typeof root[section.name] !== "object") root[section.name] = Object.create(null);
+                const target = root[section.name] as Record<string, string>;
                 for (const k of section.keys) target[k.key] = k.value;
             }
         }
-        return root;
+        return Object.fromEntries(Object.entries(root).map(([key, value]) => [
+            key, typeof value === "object" && value !== null ? { ...value } : value,
+        ]));
     }
 
-    // jsonpath against the nested {section:{key:value}} object, with source-line
-    // spans ({§mimetype-query}): deepJson is line-less (raw values), so we supply a lineFor
-    // from parseIni's positions, keyed by JSON pointer. A key on line N → line N
-    // (single-line per v1). Absent for pointers we don't recognize — never faked.
+    // {§mimetype-query}: both structural views consume the same source map.
     override async query(
         content: HandlerContent,
         dialect: QueryDialect,
@@ -64,49 +63,20 @@ export default class Ini extends BaseHandler {
     ): Promise<QueryMatch[]> {
         if (dialect === "jsonpath") {
             const text = toText(content);
-            const byPointer = new Map<string, { line: number; endLine: number }>();
-            const totalLines = TextCoordinates.logicalLines(text).length;
-            if (totalLines > 0) byPointer.set("", { line: 1, endLine: totalLines });
-            for (const section of parseIni(text)) {
-                const base = section.name === null ? "" : `/${ptr(section.name)}`;
-                if (section.name !== null) {
-                    byPointer.set(base, { line: section.line, endLine: section.endLine });
-                }
-                for (const k of section.keys) {
-                    byPointer.set(`${base}/${ptr(k.key)}`, { line: k.line, endLine: k.line });
-                }
-            }
-            const regionFor = (pointer: string) => {
-                const span = byPointer.get(pointer);
-                return span === undefined
-                    ? undefined
-                    : regionsForLineSpans(text, [span]);
-            };
-            return queryJsonpathObject(this.deepJson(content), pattern, regionFor);
+            const byPointer = sourceSpans(text);
+            return queryJsonpathObject(this.deepJson(content), pattern, (pointer) => byPointer.get(pointer));
         }
         return super.query(content, dialect, pattern, flags);
     }
 
-    // deep-xml carries the SAME source lines as jsonpath ({§mimetype-query}): stamp pk:line
-    // from the same parseIni positions during projection.
     override deepXml(content: HandlerContent): Promise<string> {
         const text = toText(content);
-        const byPointer = new Map<string, { line: number; endLine: number }>();
-        const totalLines = TextCoordinates.logicalLines(text).length;
-        if (totalLines > 0) byPointer.set("", { line: 1, endLine: totalLines });
-        for (const section of parseIni(text)) {
-            const base = section.name === null ? "" : `/${ptr(section.name)}`;
-            if (section.name !== null) {
-                byPointer.set(base, { line: section.line, endLine: section.endLine });
-            }
-            for (const k of section.keys) {
-                byPointer.set(`${base}/${ptr(k.key)}`, { line: k.line, endLine: k.line });
-            }
-        }
+        const byPointer = sourceSpans(text);
         return Promise.resolve(projectJsonToXml(
             this.deepJson(content),
             "root",
             (pointer) => byPointer.get(pointer),
+            "value",
         ));
     }
 }
@@ -115,6 +85,7 @@ export interface IniKey {
     key: string;
     value: string;
     line: number;
+    valueRegion: TextRegion;
 }
 
 export interface IniSection {
@@ -125,6 +96,7 @@ export interface IniSection {
 }
 
 export function parseIni(text: string): IniSection[] {
+    const coordinates = new TextCoordinates(text);
     const lines = TextCoordinates.logicalLines(text)
         .map(({ start, contentEnd }) => text.slice(start, contentEnd));
     const global: IniSection = { name: null, line: 1, endLine: lines.length, keys: [] };
@@ -141,12 +113,37 @@ export function parseIni(text: string): IniSection[] {
             sections.push(current);
             continue;
         }
-        const entry = /^([^=:]+?)\s*[=:]\s*(.*)$/.exec(t);
-        if (entry) current.keys.push({ key: entry[1].trim(), value: entry[2].trim(), line: i + 1 });
+        const entry = /^([^=:]+?)\s*[=:]\s*(.*)$/d.exec(t);
+        if (entry) {
+            const value = entry[2].trim();
+            const start = coordinates.offsetAtPosition(i + 1, 1) + lines[i].indexOf(t) + entry.indices![2]![0] + entry[2].indexOf(value);
+            const valueRegion = coordinates.regionFromOffsets(start, start + value.length);
+            if (valueRegion === null) throw new Error("INI value has no addressable source region");
+            current.keys.push({ key: entry[1].trim(), value, line: i + 1, valueRegion });
+        }
     }
 
     // Drop the implicit global section when it carries no top-level keys.
     return sections.filter((s) => s.name !== null || s.keys.length > 0);
+}
+
+function sourceSpans(text: string): Map<string, readonly TextRegion[]> {
+    const regions = new Map<string, readonly TextRegion[]>();
+    const sections = new Set<string>();
+    const coordinates = new TextCoordinates(text);
+    const root = coordinates.regionFromOffsets(0, text.length);
+    if (root !== null) regions.set("", [root]);
+    for (const section of parseIni(text)) {
+        const base = section.name === null ? "" : `/${ptr(section.name)}`;
+        if (section.name !== null) {
+            if (!sections.has(base)) regions.delete(base);
+            sections.add(base);
+            const region = coordinates.lineRegion(section.line, section.endLine);
+            if (region !== null) regions.set(base, [...(regions.get(base) ?? []), region]);
+        }
+        for (const key of section.keys) regions.set(`${base}/${ptr(key.key)}`, [key.valueRegion]);
+    }
+    return regions;
 }
 
 // JSON Pointer token escape (RFC 6901): ~ → ~0, / → ~1.

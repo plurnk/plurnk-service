@@ -15,22 +15,22 @@ describe("{§mimetype-query-conformance} — projectJsonToXml lineFor + xpath ho
         const lineFor = (p: string) =>
             (({ "/host": { line: 2, endLine: 2 }, "/pool": { line: 3, endLine: 5 }, "/pool/size": { line: 4, endLine: 4 } }) as Record<string, { line: number; endLine: number }>)[p];
         const xml = projectJsonToXml(deepJson, "root", lineFor);
-        assert.deepEqual(queryXpathString(xml, "//host", "x", readable)[0].regions, [{
+        assert.deepEqual(queryXpathString(xml, "//host", "x", readable)[0].enclosingRegions, [{
             startLine: 2, startColumn: 1, endLine: 2, endColumn: 2,
         }]);
-        assert.deepEqual(queryXpathString(xml, "//size", "x", readable)[0].regions, [{
+        assert.deepEqual(queryXpathString(xml, "//size", "x", readable)[0].enclosingRegions, [{
             startLine: 4, startColumn: 1, endLine: 4, endColumn: 2,
         }]);
-        assert.deepEqual(queryXpathString(xml, "//pool", "x", readable)[0].regions, [{
+        assert.deepEqual(queryXpathString(xml, "//pool", "x", readable)[0].enclosingRegions, [{
             startLine: 3, startColumn: 1, endLine: 5, endColumn: 2,
         }]);
     });
 
-    it("a node's own line field still wins over the resolver", () => {
+    it("a source resolver owns coordinates even when source data contains a line field", () => {
         const readable = Array.from({ length: 9 }, () => "x").join("\n");
         const xml = projectJsonToXml({ type: "n", line: 9, endLine: 9, text: "v" }, "root", () => ({ line: 1, endLine: 1 }));
-        assert.deepEqual(queryXpathString(xml, "//n", "x", readable)[0].regions, [{
-            startLine: 9, startColumn: 1, endLine: 9, endColumn: 2,
+        assert.deepEqual(queryXpathString(xml, "//n", "x", readable)[0].enclosingRegions, [{
+            startLine: 1, startColumn: 1, endLine: 1, endColumn: 2,
         }]);
     });
 

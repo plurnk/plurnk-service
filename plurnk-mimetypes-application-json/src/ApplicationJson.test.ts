@@ -81,6 +81,14 @@ describe("ApplicationJson — validate (application/jsonc is permissive)", () =>
 describe("ApplicationJson — extract", () => {
     const h = new ApplicationJson(jsonMetadata);
 
+    it("{§mimetype-symbol}: key regions count Unicode code points and lone CR lines", () => {
+        assert.deepEqual(h.extractRaw('{"😀":1, "later":2,\r"final":3}').map(({ name, line, column, endLine, endColumn }) => ({ name, line, column, endLine, endColumn })), [
+            { name: "😀", line: 1, column: 2, endLine: 1, endColumn: 5 },
+            { name: "later", line: 1, column: 9, endLine: 1, endColumn: 16 },
+            { name: "final", line: 2, column: 1, endLine: 2, endColumn: 8 },
+        ]);
+    });
+
     it("returns top-level keys as field symbols", () => {
         const result = h.extractRaw(`{"name":"plurnk","version":"0.2.0"}`);
         assert.deepEqual(
@@ -306,12 +314,12 @@ describe("ApplicationJson — query (jsonpath against parsed value)", () => {
         assert.ok(out[1].matching?.includes("[1]"));
     });
 
-    it("maps matches to honest enclosing property regions via jsonc-parser positions", async () => {
+    it("maps matches to exact value regions via jsonc-parser positions", async () => {
         const out = await h.query(src, "jsonpath", "$.version");
         assert.equal(out.length, 1);
         assert.deepEqual(out[0].regions, [{
             startLine: 6,
-            startColumn: 5,
+            startColumn: 16,
             endLine: 6,
             endColumn: 23,
         }]);
@@ -338,7 +346,7 @@ describe("ApplicationJson — xpath and jsonpath agree on exact columns (#372)",
 
     it("deep-xml carries pk:column/pk:endColumn from the parse tree", async () => {
         const xml = await new ApplicationJson(metadata).deepXml(content);
-        assert.match(xml, /<name pk:line="1" pk:endLine="1" pk:column="12" pk:endColumn="26">alpha<\/name>/);
+        assert.match(xml, /<name pk:line="1" pk:endLine="1" pk:column="19" pk:endColumn="26">alpha<\/name>/);
     });
 
     it("an xpath row reports the same region as the jsonpath row", async () => {
@@ -346,6 +354,6 @@ describe("ApplicationJson — xpath and jsonpath agree on exact columns (#372)",
         const viaXpath = await h.query(content, "xpath", "//items/name");
         const viaJsonpath = await h.query(content, "jsonpath", "$.items[*].name");
         assert.deepEqual(viaXpath.map((m) => m.regions), viaJsonpath.map((m) => m.regions));
-        assert.deepEqual(viaXpath[0]?.regions, [{ startLine: 1, startColumn: 12, endLine: 1, endColumn: 26 }]);
+        assert.deepEqual(viaXpath[0]?.regions, [{ startLine: 1, startColumn: 19, endLine: 1, endColumn: 26 }]);
     });
 });

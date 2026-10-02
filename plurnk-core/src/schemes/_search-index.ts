@@ -4,6 +4,7 @@ import { Knob } from "@plurnk/plurnk-meta";
 // artifacts; FTS and graph relationships consume them uniformly.
 
 import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
+import DerivationUse from "./_derivation-use.ts";
 import { MimetypeDerivationError, isMimetypeInputError } from "@plurnk/plurnk-mimetypes";
 import type { Notice, ProcessResult } from "@plurnk/plurnk-mimetypes";
 import { createHash } from "node:crypto";
@@ -36,7 +37,6 @@ type DerivationArtifact = {
     reason: string | null;
 };
 type DerivationRow = {
-    id: number;
     pathname: string;
     mimetype: string;
     contentLength: number;
@@ -47,9 +47,10 @@ type DerivationRow = {
     // since it was judged, which the next pass judges afresh.
     body: () => Promise<string | null>;
 } & (
-    | { attachment: "entry-channel"; scheme: string; authority: string; channel: string; hashed: boolean }
-    | { attachment: "log"; folded: string }
-    | { attachment: "turn-source"; kind: "ops" | "reasoning" | "note"; sequence: number }
+    | { attachment: "entry-channel"; id: number; scheme: string; authority: string; channel: string; hashed: boolean }
+    | { attachment: "log"; id: number; folded: string }
+    | { attachment: "turn-source"; id: number; kind: "ops" | "reasoning" | "note"; sequence: number }
+    | { attachment: "snapshot" }
 );
 type PendingDerivation = {
     r: DerivationRow;
@@ -76,7 +77,7 @@ export default class SearchIndex {
 
     static async #deriveOne(ctx: PlurnkSchemeContext, r: DerivationRow, hash: string, searchExcluded: string | undefined, binary: boolean, callbacks: DerivationCallbacks = {}): Promise<void> {
         const prior = SearchIndex.#deriveChains.get(hash) ?? Promise.resolve();
-        const run = prior.then(() => SearchIndex.#deriveOneUnlocked(ctx, r, hash, searchExcluded, binary, callbacks));
+        const run = prior.then(() => DerivationUse.read(ctx.db, () => SearchIndex.#deriveOneUnlocked(ctx, r, hash, searchExcluded, binary, callbacks)));
         const tail = run.catch(() => {}); // the chain survives a failed link; deriveOne's caller sees the rejection
         SearchIndex.#deriveChains.set(hash, tail);
         void tail.finally(() => {
@@ -91,6 +92,7 @@ export default class SearchIndex {
         // Attach while the channel still denotes the derived representation: by its stored identity
         // when it has one, by the exact body otherwise ({§derivation-dedup-parallel}).
         const attach = async (content: string | null): Promise<void> => {
+            if (r.attachment === "snapshot") return;
             if (r.attachment === "entry-channel") {
                 const identity = { entry_id: r.id, scheme: r.scheme, authority: r.authority, pathname: r.pathname, channel: r.channel, mimetype: r.mimetype, deep_hash: hash };
                 if (r.hashed) {
@@ -188,6 +190,40 @@ export default class SearchIndex {
 
     static progressHeartbeatMs(): number {
         return Knob.integer("PLURNK_SERVICE_DERIVE_PROGRESS_HEARTBEAT_MS", 1);
+    }
+
+    // Exact operations query the representation they hold, not whichever edition an address
+    // points at after an await. The same content-addressed artifact backs bulk discovery.
+    static async snapshot<T>(ctx: PlurnkSchemeContext, source: {
+        content: string;
+        mimetype: string;
+        pathname: string;
+        scheme: string;
+    }, query: (snapshot: { deepHash: string; disposition: string; reason: string | null }) => Promise<T>): Promise<T> {
+        return DerivationUse.read(ctx.db, async () => {
+            const { mimetypes } = ctx;
+            if (mimetypes === undefined) throw new Error("SearchIndex.snapshot requires mimetypes");
+            ctx.signal?.throwIfAborted();
+            const searchExcluded = matchSearchExclusion(source) ?? sizeExclusion(source.content.length);
+            const binary = (await mimetypes.classify(source.mimetype)).binary;
+            const projectionIdentity = searchExcluded !== undefined || source.content.length === 0 || binary
+                ? NO_PROJECTION_IDENTITY : await mimetypes.projectionIdentity(source.mimetype);
+            const identity = contentHash(source.content);
+            const deepHash = derivationHash({
+                contentHash: identity, mimetype: source.mimetype, binary, projectionIdentity,
+                dispositionIdentity: searchExcluded === undefined ? "included" : `excluded:${searchExcluded}`,
+            });
+            await SearchIndex.#deriveOne(ctx, {
+                attachment: "snapshot", pathname: source.pathname, mimetype: source.mimetype,
+                contentLength: source.content.length, contentHash: identity,
+                body: () => Promise.resolve(source.content),
+            }, deepHash, searchExcluded, binary, { onNotice: ctx.pushNotice });
+            const artifact = await ctx.db.derivation_get.get<DerivationArtifact>({ deep_hash: deepHash });
+            if (artifact?.state !== "complete" || artifact.disposition === null) {
+                throw new Error("Search snapshot lost its completed derivation");
+            }
+            return query({ deepHash, disposition: artifact.disposition, reason: artifact.reason });
+        });
     }
 
     static producerConcurrency(): number {

@@ -71,8 +71,10 @@ export interface PluginAttributionSource {
     attributions?(context: PluginAttributionContext): PluginAttributionDeclaration | null | undefined;
 }
 
-const SCHEME_TEACHING = Object.freeze({
-    worker: "docs/worker.md",
+const REFERENCE_TEACHING = Object.freeze({
+    worker: Object.freeze({ source: "docs/worker.md", scheme: "worker" }),
+    delegation: Object.freeze({ source: "docs/delegation.md", scheme: "worker" }),
+    pattern: Object.freeze({ source: "docs/pattern.md", scheme: null }),
 } as const);
 
 // {§teaching-corpus} — the authored package membership is one exported fact;
@@ -83,7 +85,7 @@ export const TEACHING_CORPUS = Object.freeze({
     policy: "POLICY.md",
     recap: "recap.md",
     skill: "skills/plurnk/SKILL.md",
-    schemeDocs: SCHEME_TEACHING,
+    docs: REFERENCE_TEACHING,
 
 } as const);
 
@@ -91,7 +93,7 @@ export type TeachingCorpusSource =
     | typeof TEACHING_CORPUS.policy
     | typeof TEACHING_CORPUS.recap
     | typeof TEACHING_CORPUS.skill
-    | (typeof TEACHING_CORPUS.schemeDocs)[keyof typeof TEACHING_CORPUS.schemeDocs];
+    | (typeof TEACHING_CORPUS.docs)[keyof typeof TEACHING_CORPUS.docs]["source"];
 
 
 const TRUSTED_ONLY = "PLURNK_PLUGINS_TRUSTED_ONLY";

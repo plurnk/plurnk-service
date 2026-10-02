@@ -52,11 +52,12 @@ export interface ChannelProducerResult extends SchemeResultBase {
 export interface RepresentationPreparationResult extends SchemeResultBase {}
 
 // Evidence explaining why a matcher selected a resource. Structural dialects
-// retain their canonical `locator`. `region` is present only when the
-// finding has an honest exact or enclosing mapping into text the model can READ.
+// retain their canonical `locator`. Only `region` denotes selected source text;
+// `enclosingRegion` is presentation context, never a mutation bound.
 export interface MatchEvidence {
     readonly locator?: string;
     readonly region?: TextRegion;
+    readonly enclosingRegion?: TextRegion;
     // The matched text itself: a match row reads without a READ.
     readonly matched?: string;
     // The entry channel the match was located in ({§find-result-projection});
@@ -148,7 +149,7 @@ export default class Results {
             throw new TypeError("invalid match evidence: expected an object");
         }
         const record = evidence as Record<string, unknown>;
-        const extras = Object.keys(record).filter((key) => key !== "locator" && key !== "region" && key !== "matched");
+        const extras = Object.keys(record).filter((key) => key !== "locator" && key !== "region" && key !== "enclosingRegion" && key !== "matched");
         if (extras.length > 0) {
             throw new TypeError(`invalid match evidence: unexpected field ${JSON.stringify(extras[0])}`);
         }
@@ -157,13 +158,15 @@ export default class Results {
         }
         const hasLocator = Object.hasOwn(record, "locator");
         const hasRegion = Object.hasOwn(record, "region");
-        if (!hasLocator && !hasRegion) {
-            throw new TypeError("invalid match evidence: expected locator, region, or both");
+        const hasEnclosingRegion = Object.hasOwn(record, "enclosingRegion");
+        if (!hasLocator && !hasRegion && !hasEnclosingRegion) {
+            throw new TypeError("invalid match evidence: expected locator, region, or enclosingRegion");
         }
         if (hasLocator && (typeof record.locator !== "string" || record.locator.length === 0)) {
             throw new TypeError("invalid match evidence: locator must be a non-empty string");
         }
         if (hasRegion) Validator.assertTextRegion(record.region as TextRegion);
+        if (hasEnclosingRegion) Validator.assertTextRegion(record.enclosingRegion as TextRegion);
         return evidence as MatchEvidence;
     }
 

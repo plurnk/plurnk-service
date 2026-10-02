@@ -1,6 +1,7 @@
-import { BaseHandler, projectJsonToXml, queryJsonpathObject, TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, projectJsonToXml, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
+import { JsonSource } from "@plurnk/plurnk-mimetypes-application-json";
 import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";
-import { findNodeAtLocation, getNodeValue, parseTree, type Node } from "jsonc-parser";
+import { getNodeValue, parseTree, type Node } from "jsonc-parser";
 
 // application/x-ipynb+json (Jupyter notebook) handler.
 //
@@ -71,7 +72,7 @@ export default class Ipynb extends BaseHandler {
                 column: region.startColumn, endColumn: region.endColumn,
             };
         };
-        return Promise.resolve(projectJsonToXml(this.deepJson(content), "root", span));
+        return Promise.resolve(projectJsonToXml(this.deepJson(content), "root", span, "value"));
     }
 
     // Strict source gate; orchestrated projections and structural queries call
@@ -112,22 +113,11 @@ export interface Projection {
 
 // Parse to a notebook object, or null on anything that isn't one — the
 // degrade-not-throw policy every channel but validate() follows.
-function pointerToSegments(pointer: string): Array<string | number> {
-    if (!pointer || pointer === "/") return [];
-    return pointer.split("/").slice(1).map((tok) => {
-        const t = tok.replace(/~1/g, "/").replace(/~0/g, "~");
-        return /^\d+$/.test(t) ? Number(t) : t;
-    });
-}
-
 function sourceRegions(tree: Node, content: string): (pointer: string) => QueryMatch["regions"] {
-    const coordinates = new TextCoordinates(content);
+    const source = new JsonSource(content, tree);
     return (pointer) => {
-        const value = findNodeAtLocation(tree, pointerToSegments(pointer));
-        if (value === undefined) return undefined;
-        const node = value.parent?.type === "property" ? value.parent : value;
-        const region = coordinates.regionFromOffsets(node.offset, node.offset + node.length);
-        return region === null ? undefined : [region];
+        const region = source.region(pointer);
+        return region === undefined ? undefined : [region];
     };
 }
 

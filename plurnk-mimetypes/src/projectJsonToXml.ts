@@ -61,6 +61,8 @@
 //     <params>y</params>
 //   </function_definition>
 
+import type { TextRegion } from "@plurnk/plurnk-contracts";
+
 const ATTRIBUTE_FIELDS = new Set([
     "line", "endLine", "column", "endColumn", "level",
 ]);
@@ -76,12 +78,14 @@ export const PK_NS = "https://plurnk.xyz/deep-xml/1";
 
 // Optional source-line resolver ({§mimetype-query-conformance}): for deepJson whose nodes carry no
 // `line` of their own (raw parsed JSON/INI/etc.), the handler supplies a
-// resolver keyed by JSON pointer, so xpath-over-deepXml gets the SAME real lines
-// as jsonpath — both dialects agree. A node's own `line` field still wins.
-export type ProjectLineFor = (pointer: string) => { line: number; endLine: number; column?: number; endColumn?: number } | undefined;
+// resolver keyed by JSON pointer. When present, it owns source coordinates;
+// data fields cannot impersonate parser provenance.
+type ProjectSpan = { line: number; endLine: number; column?: number; endColumn?: number };
+export type ProjectLineFor = (pointer: string) => ProjectSpan | readonly TextRegion[] | undefined;
+type ProjectionKind = "tree" | "value";
 
-export function projectJsonToXml(json: unknown, rootName = "root", lineFor?: ProjectLineFor): string {
-    return renderValue(json, rootName, "", lineFor, /*isRoot*/ true);
+export function projectJsonToXml(json: unknown, rootName = "root", lineFor?: ProjectLineFor, kind: ProjectionKind = "tree"): string {
+    return renderValue(json, rootName, "", lineFor, kind, /*isRoot*/ true);
 }
 
 // JSON Pointer token escape (RFC 6901).
@@ -90,42 +94,45 @@ function ptrKey(k: string): string {
 }
 
 // pk:line/pk:endLine (and pk:column/pk:endColumn when the resolver knows them) from a
-// resolver span — only when the node carries none. Columns let xpath report the same
+// resolver span. Columns let xpath report the same
 // exact region jsonpath reports ({§mimetype-query}).
 function resolvedLineAttrs(lineFor: ProjectLineFor | undefined, pointer: string): string {
     const span = lineFor?.(pointer);
     if (!span) return "";
-    const columns = span.column !== undefined && span.endColumn !== undefined
-        ? ` ${PK_PREFIX}:column="${span.column}" ${PK_PREFIX}:endColumn="${span.endColumn}"`
+    if (Array.isArray(span)) return span.length === 0 ? "" : ` ${PK_PREFIX}:regions="${escapeAttr(JSON.stringify(span))}"`;
+    const single = span as ProjectSpan;
+    const columns = single.column !== undefined && single.endColumn !== undefined
+        ? ` ${PK_PREFIX}:column="${single.column}" ${PK_PREFIX}:endColumn="${single.endColumn}"`
         : "";
-    return ` ${PK_PREFIX}:line="${span.line}" ${PK_PREFIX}:endLine="${span.endLine}"${columns}`;
+    return ` ${PK_PREFIX}:line="${single.line}" ${PK_PREFIX}:endLine="${single.endLine}"${columns}`;
 }
 
-function renderValue(value: unknown, elementName: string, pointer: string, lineFor: ProjectLineFor | undefined, isRoot = false): string {
+function renderValue(value: unknown, elementName: string, pointer: string, lineFor: ProjectLineFor | undefined, kind: ProjectionKind, isRoot = false): string {
     const ns = isRoot ? ` xmlns:${PK_PREFIX}="${PK_NS}"` : "";
     // An element name derived from a key (symbol name, outline label, array
     // parent key) is arbitrary text — sanitize it so spaces/punctuation can't
     // emit invalid XML (e.g. a "Given x" outline key → <Given_x>, not <Given x>).
     const tag = sanitizeElementName(elementName);
     if (value === null || value === undefined) {
-        return `<${tag}${ns}/>`;
+        return `<${tag}${ns}${resolvedLineAttrs(lineFor, pointer)}/>`;
     }
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
         return `<${tag}${ns}${resolvedLineAttrs(lineFor, pointer)}>${escapeText(String(value))}</${tag}>`;
     }
     if (Array.isArray(value)) {
         const la = resolvedLineAttrs(lineFor, pointer);
-        const inner = value.map((v, i) => renderValue(v, "item", `${pointer}/${i}`, lineFor, false)).join("");
+        const inner = value.map((v, i) => renderValue(v, "item", `${pointer}/${i}`, lineFor, kind, false)).join("");
         return `<${tag}${ns}${la}>${inner}</${tag}>`;
     }
     if (typeof value === "object") {
-        return renderObject(value as Record<string, unknown>, elementName, pointer, lineFor, isRoot);
+        return renderObject(value as Record<string, unknown>, elementName, pointer, lineFor, kind, isRoot);
     }
     return `<${tag}${ns}/>`;
 }
 
-function renderObject(obj: Record<string, unknown>, fallbackName: string, pointer: string, lineFor: ProjectLineFor | undefined, isRoot = false): string {
-    const tag = typeof obj.type === "string" && obj.type.length > 0
+function renderObject(obj: Record<string, unknown>, fallbackName: string, pointer: string, lineFor: ProjectLineFor | undefined, kind: ProjectionKind, isRoot = false): string {
+    const tree = kind === "tree";
+    const tag = tree && typeof obj.type === "string" && obj.type.length > 0
         ? sanitizeElementName(obj.type)
         : sanitizeElementName(fallbackName);
 
@@ -136,6 +143,8 @@ function renderObject(obj: Record<string, unknown>, fallbackName: string, pointe
     // to avoid collision with content's own attributes of the same name.
     let hasOwnLine = false;
     for (const key of ATTRIBUTE_FIELDS) {
+        if (!tree) continue;
+        if (lineFor !== undefined && key !== "level") continue;
         if (!(key in obj)) continue;
         const v = obj[key];
         if (v === null || v === undefined) continue;
@@ -144,14 +153,14 @@ function renderObject(obj: Record<string, unknown>, fallbackName: string, pointe
             if (key === "line") hasOwnLine = true;
         }
     }
-    // Node carries no line of its own → take it from the resolver ({§mimetype-query-conformance}).
+    // {§mimetype-query-conformance} — explicit mapping is authoritative.
     if (!hasOwnLine) attrs += resolvedLineAttrs(lineFor, pointer);
     // Additional attrs from the optional `attrs` object — HTML/XML
     // convention for source-algebra attributes. Rendered in the default
     // namespace (no prefix), so consumers' xpath like `//a[@href]` keeps
     // working naturally and is structurally distinguishable from
     // framework bookkeeping.
-    const extraAttrs = obj.attrs;
+    const extraAttrs = tree ? obj.attrs : undefined;
     if (extraAttrs !== null && typeof extraAttrs === "object" && !Array.isArray(extraAttrs)) {
         for (const [k, v] of Object.entries(extraAttrs as Record<string, unknown>)) {
             if (v === null || v === undefined) continue;
@@ -163,20 +172,20 @@ function renderObject(obj: Record<string, unknown>, fallbackName: string, pointe
     }
 
     let inner = "";
-    if (typeof obj.text === "string" && obj.text.length > 0) {
+    if (tree && typeof obj.text === "string" && obj.text.length > 0) {
         inner += escapeText(obj.text);
     }
 
     for (const [key, value] of Object.entries(obj)) {
-        if (RESERVED_FIELDS.has(key)) continue;
-        if (value === null || value === undefined) continue;
+        if (tree && RESERVED_FIELDS.has(key)) continue;
+        if (value === undefined || (tree && value === null)) continue;
         const childPtr = `${pointer}/${ptrKey(key)}`;
         if (Array.isArray(value)) {
             value.forEach((item, i) => {
-                inner += renderValue(item, key, `${childPtr}/${i}`, lineFor);
+                inner += renderValue(item, key, `${childPtr}/${i}`, lineFor, kind);
             });
         } else {
-            inner += renderValue(value, key, childPtr, lineFor);
+            inner += renderValue(value, key, childPtr, lineFor, kind);
         }
     }
 

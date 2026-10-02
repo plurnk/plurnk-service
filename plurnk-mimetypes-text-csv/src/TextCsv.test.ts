@@ -147,13 +147,13 @@ describe("TextCsv — query (jsonpath against row objects)", () => {
         assert.deepEqual(out.map((m) => m.matched), ["alice", "carol"]);
     });
 
-    it("returns the enclosing record line when physical and logical rows align", async () => {
+    it("returns the selected field's exact source region", async () => {
         const out = await h.query(src, "jsonpath", "$[1].name");
         assert.equal(out.length, 1);
         assert.equal(out[0].matched, "bob");
         // bob is on line 3 (header line 1, alice line 2, bob line 3)
         assert.deepEqual(out[0].regions, [{
-            startLine: 3, startColumn: 1, endLine: 3, endColumn: 12,
+            startLine: 3, startColumn: 1, endLine: 3, endColumn: 4,
         }]);
     });
 

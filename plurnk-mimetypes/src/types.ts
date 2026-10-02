@@ -134,8 +134,10 @@ export interface QueryMatch {
     readonly matched: unknown;
     // Canonical structural locator when meaningful.
     readonly matching?: string;
-    // Honest readable-text evidence ({§mimetype-query-conformance}).
+    // Exact selected source spans ({§mimetype-query-conformance}).
     readonly regions?: ReadonlyArray<TextRegion>;
+    // Presentation context when the selected value lacks exact source bounds.
+    readonly enclosingRegions?: ReadonlyArray<TextRegion>;
     // The whole matched text (regex: m[0]) — what a match row can show without a READ.
     readonly text?: string;
 }

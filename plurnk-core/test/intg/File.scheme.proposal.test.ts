@@ -21,6 +21,7 @@ import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 import { DEFAULT_MIMETYPES, makeSchemeCtx, seedStaticChannel } from "./_scheme.ts";
 import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { moveStmt, urlPath, localPath } from "./_dsl.ts";
 
 // {§edit-marker-required-on-existing}: a marker is required on an existing
 // file; `fullReplace` (marks:[1,-1]) states a deliberate whole-content rewrite
@@ -89,6 +90,49 @@ test("{§configuration-repair-path}: invalid file creation policy refuses the ED
         assert.equal(result.problem?.key, key);
         assert.deepEqual(await ctx.engine.pendingProposals(ctx.workspaceId), []);
         await assert.rejects(stat(join(root, "new.txt")), { code: "ENOENT" });
+    });
+});
+
+for (const decision of ["accept", "reject", "drift"] as const) test(`{§slice-semantics-compose-pattern}: exact attribute EDIT through a ${decision} file proposal`, async () => {
+    await withWorkspaceRoot(async (root, ctx) => {
+        const original = '<root><item id = "old" class="kept"/></root>';
+        const seed = deferred<number>();
+        const creating = ctx.engine.dispatch({ ...ctx, statement: fileEditStmt("source.xml", original), sequence: 1, origin: "model", onDispatch: seed.resolve });
+        ctx.engine.resolveProposal(await seed.promise, { decision: "accept" });
+        assert.equal((await creating).status, 200);
+        const pending = deferred<number>();
+        const editing = ctx.engine.dispatch({ ...ctx, sequence: 2, origin: "model", onDispatch: pending.resolve,
+            statement: { ...fileEditStmt("source.xml", 'id="new"'), matcher: { dialect: "xpath" as const, raw: "//item/@id" } } });
+        const id = await pending.promise;
+        if (decision === "drift") await writeFile(join(root, "source.xml"), original.replace("old", "external"));
+        ctx.engine.resolveProposal(id, decision === "reject" ? { decision: "reject", outcome: "declined" } : { decision: "accept" });
+        const result = await editing;
+        assert.equal(result.status, decision === "accept" ? 200 : decision === "reject" ? 400 : 409, JSON.stringify(result));
+        assert.equal(await readFile(join(root, "source.xml"), "utf8"), decision === "accept"
+            ? '<root><item id="new" class="kept"/></root>' : decision === "drift" ? original.replace("old", "external") : original);
+        if (decision !== "accept") assert.match(String(result.problem?.type), decision === "reject" ? /\/rejected$/ : /\/edit-collision$/);
+    });
+});
+
+test("{§binary-parity}: a deferred byte MOVE cannot remove a source that changed during destination review", async () => {
+    await withWorkspaceRoot(async (root, ctx) => {
+        const source = { authority: "", pathname: "/source.png" };
+        const schemeCtx = makeSchemeCtx(ctx);
+        const original = new Uint8Array([0, 1, 2, 3, 4]);
+        const updated = new Uint8Array([0, 9, 9, 3, 4]);
+        assert.equal((await EntryCrud.writeEntry(source, { channels: { body: { content: "", bytes: original, mimetype: "image/png" } } }, schemeCtx, "worker")).status, 201);
+        const pending = deferred<number>();
+        const moving = ctx.engine.dispatch({ ...ctx, sequence: 1, origin: "model", onDispatch: pending.resolve,
+            statement: moveStmt(urlPath("worker", "/source.png"), localPath("destination.png"), { marks: [2, 3] }) });
+        const id = await pending.promise;
+        assert.equal((await EntryCrud.writeEntry(source, { channels: { body: { content: "", bytes: updated, mimetype: "image/png" } } }, schemeCtx, "worker")).status, 200);
+        ctx.engine.resolveProposal(id, { decision: "accept" });
+        const result = await moving;
+        assert.equal(result.status, 409, JSON.stringify(result));
+        assert.match(String(result.problem?.type), /\/edit-collision$/);
+        assert.deepEqual(await readFile(join(root, "destination.png")), Buffer.from([1, 2]));
+        const read = await EntryCrud.readEntry(source, schemeCtx, "worker");
+        assert.equal(read.entry?.channels.body?.content, Buffer.from(updated).toString("base64"));
     });
 });
 

@@ -1,4 +1,4 @@
-import { BaseHandler } from "@plurnk/plurnk-mimetypes";
+import { BaseHandler, TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent, MimeSymbol } from "@plurnk/plurnk-mimetypes";
 
 // text/x-diff handler (Tier 4 hand-roll, no parser dependency).
@@ -57,19 +57,22 @@ export default class TextDiff extends BaseHandler {
     }
 
     override deepJson(content: HandlerContent): unknown {
-        const { files } = scanDiff(toText(content));
+        const text = toText(content);
+        const { files } = scanDiff(text);
+        const coordinates = new TextCoordinates(text);
+        const lines = coordinates.logicalLines();
+        const span = (line: number, endLine: number) => ({
+            line, endLine, column: 1,
+            endColumn: coordinates.positionAtOffset(lines[endLine - 1]?.contentEnd ?? text.length)!.column,
+        });
         return {
             type: "diff",
-            // Document span so a match on the root (e.g. $.type) resolves to a
-            // source line via walk-up ({§mimetype-query}), not absent.
-            line: 1,
-            endLine: files.reduce((m, f) => Math.max(m, f.endLine), 1),
+            ...span(1, files.reduce((m, f) => Math.max(m, f.endLine), 1)),
             files: files.map((f) => ({
                 type: "file",
                 oldPath: f.oldPath,
                 newPath: f.newPath,
-                line: f.line,
-                endLine: f.endLine,
+                ...span(f.line, f.endLine),
                 additions: f.additions,
                 deletions: f.deletions,
                 binary: f.binary,
@@ -80,8 +83,7 @@ export default class TextDiff extends BaseHandler {
                     newStart: h.newStart,
                     newCount: h.newCount,
                     heading: h.heading,
-                    line: h.line,
-                    endLine: h.endLine,
+                    ...span(h.line, h.endLine),
                 })),
             })),
         };
@@ -197,10 +199,7 @@ function parseHunkHeader(line: string): {
 // content — consumed verbatim. That authority is what resolves the
 // `--`-content ambiguity a grammar can't.
 export function scanDiff(text: string): DiffScan {
-    const lines = text.split("\n");
-    // A trailing newline yields a final empty element; drop it so it doesn't
-    // inflate spans (it is the line terminator, not a line).
-    if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+    const lines = TextCoordinates.logicalLines(text).map(({ start, contentEnd }) => text.slice(start, contentEnd));
 
     const files: DiffFile[] = [];
     let file: DiffFile | null = null;

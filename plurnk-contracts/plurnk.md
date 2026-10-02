@@ -38,7 +38,7 @@ body?
 This is an example of the complete, final deliverable response.
 ```
 
-## `pattern`
+## `pattern` (worker:///_plurnk/plurnk/pattern.md)
 
 > [!TIP]
 > All member files and entries are mapped, indexed, and universally pattern searchable.
@@ -115,7 +115,7 @@ When representing markdown, `~~~` notation can disambiguate nested content.
 ```KILL (log:///1/[8-9]/*/READ) <17,-1> <!-- keeps lines 1–16 of each, trims the rest -->
 ```
 
-## Delegation
+## Delegation (worker:///_plurnk/plurnk/delegation.md)
 
 ```WORK (worker://exampleWorkerName) <!-- the child's result lands in your log -->
 Describe the child's complete task in the body.

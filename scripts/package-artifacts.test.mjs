@@ -64,9 +64,16 @@ test("PDF package projection rejects the fixture builder", () => {
     ]);
 });
 
-test("first-party skill sources are required packed runtime inputs", () => {
-    for (const [owner, path] of [["plurnk-meta", "skills/plurnk/SKILL.md"], ["plurnk-providers", "docs/models.md"]]) {
-        assert.deepEqual(packageArtifactViolations(owner, [path]), []);
-        assert.deepEqual(packageArtifactViolations(owner, []), [`${owner}: required runtime artifact is absent: ${path}`]);
+test("first-party teaching sources are required packed runtime inputs", () => {
+    for (const [owner, paths] of [
+        ["plurnk-meta", ["skills/plurnk/SKILL.md", "docs/worker.md", "docs/pattern.md", "docs/delegation.md"]],
+        ["plurnk-providers", ["docs/models.md"]],
+    ]) {
+        assert.deepEqual(packageArtifactViolations(owner, paths), []);
+        for (const path of paths) {
+            assert.deepEqual(packageArtifactViolations(owner, paths.filter((candidate) => candidate !== path)), [
+                `${owner}: required runtime artifact is absent: ${path}`,
+            ]);
+        }
     }
 });

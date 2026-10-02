@@ -251,7 +251,7 @@ describe("TextHtml — xpath query", () => {
         const elements = await h.query(html, "xpath", "//p");
         assert.deepEqual(elements[0].regions, [{ startLine: 2, startColumn: 8, endLine: 4, endColumn: 5 }]);
         const attributes = await h.query(html, "xpath", "//p/@title");
-        assert.deepEqual(attributes[0].regions, elements[0].regions, "an attribute has its honest enclosing element");
+        assert.deepEqual(attributes[0].regions, [{ startLine: 2, startColumn: 11, endLine: 2, endColumn: 26 }], "the selected attribute keeps its own lexical source");
         assert.equal(attributes[0].matched, "a&b");
     });
 });

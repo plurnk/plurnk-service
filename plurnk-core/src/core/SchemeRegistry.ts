@@ -64,7 +64,7 @@ export default class SchemeRegistry {
     // faces, and programmatic schemes. {§plugin-namespace-arbitration}
     #claims = new Map<string, NamespaceClaim>();
     #readTeaching: ReadTeaching;
-    #schemeDocs: Promise<ReadonlyMap<string, string>> | undefined;
+    #referenceDocs: Promise<readonly { name: string; scheme: string | null; content: string }[]> | undefined;
 
 
     // `fetchWeb` ({§exec-entry-sink}) is forwarded to the exec handler's content:null sink; default
@@ -393,28 +393,29 @@ export default class SchemeRegistry {
         return this.manifestFor(scheme, workspaceId)?.defaultChannel ?? "body";
     }
 
-    async #requiredSchemeDocs(): Promise<ReadonlyMap<string, string>> {
-        this.#schemeDocs ??= Promise.all(
-            Object.entries(TEACHING_CORPUS.schemeDocs).map(async ([name, source]) =>
-                [name, await this.#readTeaching(source)] as const),
-        ).then((entries) => new Map(entries));
-        return this.#schemeDocs;
+    async #requiredDocs(): Promise<readonly { name: string; scheme: string | null; content: string }[]> {
+        this.#referenceDocs ??= Promise.all(
+            Object.entries(TEACHING_CORPUS.docs).map(async ([name, { source, scheme }]) =>
+                ({ name, scheme, content: await this.#readTeaching(source) })),
+        );
+        return this.#referenceDocs;
     }
 
     // {§teaching-corpus} — exact meta-owned sources are required; manifest-owned
     // documentation is the deliberately optional fallback for every other scheme.
-    async docs(workspaceId?: number): Promise<Array<{ name: string; content: string }>> {
-        const schemeDocs = await this.#requiredSchemeDocs();
-        const out: Array<{ name: string; content: string }> = [];
+    async docs(workspaceId?: number): Promise<Array<{ name: string; scheme: string | null; content: string }>> {
+        const required = await this.#requiredDocs();
         const excluded = docsExcludeSet();
+        const out = required.filter(({ name, scheme }) => !excluded.has(name)
+            && (scheme === null || (!excluded.has(scheme) && this.manifestFor(scheme, workspaceId)?.modelVisible === true)));
         for (const name of this.#effectiveHandlers(workspaceId).keys()) {
             if (this.#isRuntimeScheme(name, workspaceId)) continue; // {§exec} — runtime aliases share exec's doc, not their own
             if (excluded.has(name)) continue; // {§schemes-directory} — exclude drops the doc
             const manifest = this.manifestFor(name, workspaceId);
             if (manifest?.modelVisible !== true) continue;
             const inline = manifest.documentation;
-            const content = schemeDocs.get(name) ?? (typeof inline === "string" && inline.length > 0 ? inline : undefined);
-            if (content !== undefined && content.length > 0) out.push({ name, content });
+            if (required.some((doc) => doc.name === name)) continue;
+            if (typeof inline === "string" && inline.length > 0) out.push({ name, scheme: name, content: inline });
         }
         return out;
     }

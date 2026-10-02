@@ -427,7 +427,7 @@ export default class PacketBuilder {
         const layers = await CapabilityPolicies.layers(this.#db, workspaceId);
         const policies = layers.map((layer) => layer.policy);
         const out = (await this.#schemes.docs(workspaceId))
-            .filter(({ name }) => this.#capabilities.allowsSchemeAcross(name, workspaceId, policies))
+            .filter(({ scheme }) => scheme === null || this.#capabilities.allowsSchemeAcross(scheme, workspaceId, policies))
             .map(({ name, content }) => ({
                 pathname: generatedPathname(`/plurnk/${name}.md`),
                 content,

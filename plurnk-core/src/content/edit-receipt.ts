@@ -386,7 +386,7 @@ const codePointEffects = (
             const replacement = LineMarkerOps.textReplacement(
                 original,
                 edit.marker,
-                LineMarkerOps.wholeLineBody(original, edit.marker, edit.body), // {§zero-width-column-one-insert}
+                edit.body,
             );
             if ("error" in replacement) {
                 throw new Error(`EDIT receipt could not resolve ${ScopeFormat.marker(edit.marker)}: ${replacement.error}`);

@@ -103,6 +103,20 @@ test("{§binary-parity} new binary destinations still reject character-column re
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+for (const operand of ["source", "destination"]) test(`{§binary-parity} a textual anchor on the byte ${operand} is a typed range refusal`, async () => {
+    const dsl = operand === "source"
+        ? "````COPY (logo.png) <@abcde> (copy.png)````"
+        : "````COPY (logo.png) (copy.png) <@abcde>````";
+    const { root, operations } = await runCopy({ "logo.png": PNG }, dsl);
+    try {
+        const receipt = operations.find(({ op }) => op === "COPY");
+        assert.equal(receipt?.status_rx, 416, JSON.stringify(receipt));
+        assert.match(JSON.parse(receipt?.rx ?? "null").problem.type, /\/range-not-satisfiable$/);
+        await assert.rejects(readFile(join(root, "copy.png")), { code: "ENOENT" });
+        assert.deepEqual(await readFile(join(root, "logo.png")), PNG);
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("{§binary-parity} MOVE of a whole binary file relocates the bytes and deletes the source", async () => {
     const { root } = await runCopy({ "a.png": PNG }, "````MOVE (a.png) (b.png)````");
     try {
@@ -123,6 +137,45 @@ test("{§binary-parity} a byte range copies exactly those bytes (coordinate = by
     try {
         // The 8-byte PNG signature, 1-indexed bytes 1..8 inclusive.
         assert.ok(Buffer.from(await readFile(join(root, "head.png"))).equals(PNG.subarray(0, 8)), "bytes 1..8 are the PNG signature");
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("{§binary-parity} a byte-pattern COPY and MOVE select the same native fragments", async () => {
+    const bytes = Buffer.from([0, 0x41, 0x42, 0xff, 0x41, 0x42, 0]);
+    const { root, operations } = await runCopy({ "source.png": bytes }, '````COPY (source.png) [{"pattern":"/AB/"}] (copy.png)````\n````MOVE (source.png) [{"pattern":"/AB/"}] (move.png)````');
+    try {
+        assert.deepEqual(operations.filter(({ op }) => op === "COPY" || op === "MOVE").map(({ status_rx }) => status_rx), [200, 200]);
+        assert.deepEqual(await readFile(join(root, "copy.png")), Buffer.from("ABAB"));
+        assert.deepEqual(await readFile(join(root, "move.png")), Buffer.from("ABAB"));
+        assert.deepEqual(await readFile(join(root, "source.png")), Buffer.from([0, 0xff, 0]));
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("{§binary-parity} a scoped binary MOVE removes exactly the transferred source bytes", async () => {
+    const { root, operations } = await runCopy({ "source.png": PNG }, "````MOVE (source.png) <2,4> (move.png)````");
+    try {
+        assert.equal(operations.find(({ op }) => op === "MOVE")?.status_rx, 200);
+        assert.deepEqual(await readFile(join(root, "move.png")), PNG.subarray(1, 4));
+        assert.deepEqual(await readFile(join(root, "source.png")), Buffer.concat([PNG.subarray(0, 1), PNG.subarray(4)]));
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("{§binary-parity} a same-channel byte MOVE uses pre-mutation coordinates", async () => {
+    const source = Buffer.from([0, 1, 2, 3, 4, 5]);
+    const { root, operations } = await runCopy({ "source.png": source }, "````MOVE (source.png) <2,3> (source.png) <-1>````");
+    try {
+        assert.equal(operations.find(({ op }) => op === "MOVE")?.status_rx, 200);
+        assert.deepEqual(await readFile(join(root, "source.png")), Buffer.from([0, 3, 4, 5, 1, 2]));
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+for (const target of ["source.png", "worker:///source.png"]) test(`{§binary-parity} pattern EDIT of ${target} is a typed refusal, not an anchor invariant failure`, async () => {
+    const { root, operations } = await runCopy({ "source.png": PNG }, `${target.startsWith("worker:") ? `\`\`\`\`COPY (source.png) (${target})\`\`\`\`\n` : ""}\`\`\`\`EDIT (${target}) /PNG/\nreplacement\n\`\`\`\``);
+    try {
+        const edit = operations.find(({ op }) => op === "EDIT");
+        assert.equal(edit?.status_rx, 415, JSON.stringify(edit));
+        assert.match(JSON.parse(edit?.rx ?? "null").problem.type, /\/binary-(edit|write)-unsupported$/);
+        assert.deepEqual(await readFile(join(root, "source.png")), PNG);
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -195,6 +248,15 @@ test("{§binary-parity} a byte range copies out of a worker:// entry exactly (co
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test("{§binary-parity} a stored binary supports the same destination splice and scoped MOVE as a file", async () => {
+    const root = await runRoundTrip("````COPY (logo.png) (worker:///stash.png)````",
+        "````COPY (logo.png) <2,4> (worker:///stash.png) <5,8>````\n````MOVE (worker:///stash.png) <2,4> (moved.png)````\n````COPY (worker:///stash.png) (remaining.png)````");
+    try {
+        assert.deepEqual(await readFile(join(root, "moved.png")), PNG.subarray(1, 4));
+        assert.deepEqual(await readFile(join(root, "remaining.png")), Buffer.concat([PNG.subarray(0, 1), PNG.subarray(1, 4), PNG.subarray(8)]));
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 // The read side of the entry story, exercised directly: a binary channel stored in a DB entry keeps its
 // bytes base64 in TEXT content, and a default READ recovers them as the hex byte view — no byte source
 // handed in, synthesized from the stored content — exactly as a File member's #bytes reads.
@@ -243,6 +305,28 @@ test("{§binary-parity} a binary entry stores its bytes base64 and READs back as
         assert.equal(read.startLine, 1, "the byte window starts at byte 1");
         assert.match(read.content ?? "", /^89\n50\n4e\n47\n/, "one hex octet per line, opening on the PNG signature 89 50 4e 47");
     } finally { await db.close(); }
+});
+
+test("{§read-bytes} a READ pattern selects source bytes, retaining byte coordinates and exact evidence", async () => {
+    await using db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, `binpattern-${crypto.randomUUID()}`);
+    const workerId = await insertWorker(db, workspaceId);
+    const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
+    await EntryCrud.writeEntry({ authority: "", pathname: "/stash.png" }, { channels: { body: { content: "", bytes: PNG, mimetype: "image/png" } } }, ctx, "worker");
+    const statement: ReadStatement = { ...readStmt("stash.png"), matcher: { dialect: "regex", raw: "/\\r/", pattern: "\\r", flags: "" }, lineMarker: { marks: [1, 8] } };
+    const read = await lookThroughScheme("worker", null, statement, ctx);
+    assert.equal(read.status, 200, JSON.stringify(read));
+    assert.equal(read.content, "0d\n");
+    assert.equal(read.projection, "hex");
+    assert.equal(read.mimetype, "image/png");
+    assert.deepEqual(read.lineOrdinals, [5]);
+    assert.deepEqual(read.range, { unit: "byte", total: PNG.length, requested: [1, 8], returned: [5, 5] });
+    assert.deepEqual(read.matches, [{ region: { startLine: 5, startColumn: 1, endLine: 5, endColumn: 3 }, matched: "0d" }]);
+    const empty = await lookThroughScheme("worker", null, { ...statement, lineMarker: { marks: [6, 8] } }, ctx);
+    assert.equal(empty.status, 204);
+    assert.equal(empty.content, "");
+    assert.equal(empty.matched, 0);
+    assert.deepEqual(empty.matches, []);
 });
 
 // FIND treats a binary entry as bytes, never as its base64 text: a byte run in the entry's bytes is

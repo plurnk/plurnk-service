@@ -168,6 +168,7 @@ export interface QueryEvidenceConformanceHandler {
         matched: unknown;
         matching?: string;
         regions?: ReadonlyArray<TextRegion>;
+        enclosingRegions?: ReadonlyArray<TextRegion>;
     }>>;
 }
 
@@ -196,6 +197,7 @@ export async function assertQueryEvidenceConformance(
                     undefined,
                     `${label}: locator-only match fabricated text regions: ${JSON.stringify(m.regions)}`,
                 );
+                assert.equal(m.enclosingRegions, undefined, `${label}: locator-only match fabricated enclosing regions`);
                 assert.ok(
                     typeof m.matching === "string" && m.matching.length > 0,
                     `${label}: locator-only match omitted its canonical locator`,
@@ -209,16 +211,18 @@ export async function assertQueryEvidenceConformance(
             `${label}: ${c.verdict} verdict must declare complete expected regions`,
         );
         for (const m of matches) {
+            const regions: readonly TextRegion[] | undefined = c.verdict === "exact" ? m.regions : m.enclosingRegions;
+            assert.equal(c.verdict === "exact" ? m.enclosingRegions : m.regions, undefined, `${label}: ${c.verdict} evidence was classified incorrectly`);
             assert.ok(
-                Array.isArray(m.regions) && m.regions.length > 0,
+                Array.isArray(regions) && regions.length > 0,
                 `${label}: ${c.verdict} match has no region: ${JSON.stringify(m.matched)}`,
             );
-            for (const region of m.regions!) {
+            for (const region of regions!) {
                 assertTextRegion(region, label);
             }
         }
         assert.deepEqual(
-            matches.map((match) => match.regions),
+            matches.map((match) => c.verdict === "exact" ? match.regions : match.enclosingRegions),
             c.expectRegions,
             `${label}: ${c.verdict} regions mismatch`,
         );

@@ -1,4 +1,4 @@
-// {§matcher-dispatch} Core candidate-set composition over the public schemes
+// {§matcher-dispatch} {§matcher-selection-signal} {§matcher-index-readiness} Core candidate-set composition over the public schemes
 // matcher adapter. Mimetypes owns content-dialect execution and evidence; the
 // adapter owns operation-result mapping; this layer preserves caller identity
 // across heterogeneous entry/log candidate sets.
@@ -7,8 +7,8 @@
 // expression; 203 = source unparseable for its mimetype → raw bytes as text so the model
 // can fall back to regex/visual parsing (SPEC {§matcher-dispatch}).
 
-import { Problems, type MatcherBody } from "@plurnk/plurnk-contracts";
-import { TextCoordinates, type Mimetypes } from "@plurnk/plurnk-mimetypes";
+import { Problems, type MatcherBody, type ParsedPath } from "@plurnk/plurnk-contracts";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import {
     Matcher as SchemeMatcher,
     type MatchEvidence,
@@ -17,20 +17,68 @@ import {
 } from "@plurnk/plurnk-schemes";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import PatternEdits from "./pattern-edits.ts";
+import SearchIndex from "../schemes/_search-index.ts";
+import EntryFts from "../schemes/_entry-fts.ts";
+import EntryGraph from "../schemes/_entry-graph.ts";
+import { resolveSearchCandidates } from "../schemes/_search-candidate.ts";
+import type { PlurnkSchemeContext } from "../core/scheme-types.ts";
+import LineSelection from "./line-selection.ts";
 
 export type { MatchResult };
 
 export default class Matcher {
+    static async matchResource(
+        body: MatcherBody,
+        source: { content: string; mimetype: string; target: ParsedPath; visibleLines?: readonly number[] },
+        ctx: PlurnkSchemeContext,
+    ): Promise<MatchResult> {
+        if (ctx.mimetypes === undefined) throw new Error("Resource matching requires mimetypes");
+        const { target, mimetype, visibleLines } = source;
+        const content = visibleLines === undefined ? source.content : LineSelection.retain(source.content, visibleLines).content;
+        let result: MatchResult;
+        if (body.dialect !== "fts" && body.dialect !== "graph") {
+            result = await Matcher.matchAgainstContent(PatternEdits.lineAnchored(body), content, mimetype, ctx.mimetypes);
+        } else {
+            const scheme = target.kind === "url" ? target.scheme : "file";
+            result = await SearchIndex.snapshot(ctx, {
+                content, mimetype, scheme, pathname: target.kind === "url" ? target.pathname : target.raw,
+            }, async (snapshot): Promise<MatchResult> => {
+                if (snapshot.disposition === "excluded" || snapshot.disposition === "failed") {
+                    return { status: 422, problem: Problems.create("schemes:matcher", "search-unavailable", 422,
+                        `The selected representation is not indexed: ${snapshot.reason ?? snapshot.disposition}.`) };
+                }
+                const candidates = [{ key: target.raw, deepHash: snapshot.deepHash }];
+                if (body.dialect === "fts") {
+                    const ranked = await EntryFts.rankCandidates(ctx.db, candidates, body.raw.slice(1), ctx.signal);
+                    return { ...ranked, matches: ranked.matches.flatMap(({ matches }) => matches) };
+                } else {
+                    await ctx.settleDerivations?.();
+                    const rows = scheme === "log"
+                        ? await ctx.db.log_find_candidates.all<{ coordinate: string; deep_hash: string | null }>({ worker_id: ctx.workerId, scope_prefix: null, max_id: null })
+                        : scheme === "ops" || scheme === "reasoning" || scheme === "note"
+                            ? await ctx.db.turn_source_candidates.all<{ pathname: string; deep_hash: string | null }>({ workspace_id: ctx.workspaceId, worker_name: target.kind === "url" ? target.hostname : null, kind: scheme })
+                                .then((sources) => sources.filter(({ pathname }) => !/^\/\d+$/.test(pathname)))
+                            : await ctx.db.find_workspace_derivation_candidates.all<{ key: string; deep_hash: string | null }>({ workspace_id: ctx.workspaceId });
+                    const universe = resolveSearchCandidates(rows.map(({ deep_hash }, index) => ({ key: String(index), deepHash: deep_hash })));
+                    if (universe.state !== "ready") return { status: 503, problem: Problems.create("schemes:matcher", "search-index-incomplete", 503,
+                        "The relationship index is incomplete.", { retryable: true }) };
+                    const graph = await EntryGraph.matchCandidates(ctx.db, [...universe.candidates, ...candidates], candidates, body.raw);
+                    return { ...graph, matches: graph.matches.flatMap(({ matches }) => matches) };
+                }
+            });
+        }
+        if (result.status >= 300 || result.status === 203) return result;
+        const matches = visibleLines === undefined ? result.matches : LineSelection.evidence(result.matches ?? [], visibleLines);
+        return { ...result, status: matches?.length ? 200 : 204, matches };
+    }
+
     static async matchAgainstContent(
         body: MatcherBody,
         content: string,
         mimetype: string,
         mimetypes: Mimetypes,
     ): Promise<MatchResult> {
-        // ~full-text and &graph resolve to resource selections with coordinate
-        // evidence through FIND's persistent index, never through this content
-        // matcher. Reaching here with a relation dialect is a routing bug.
-        if (body.dialect === "fts" || body.dialect === "graph") throw new Error(`matchAgainstContent is content-only; ${body.dialect} must resolve through FIND`);
+        if (body.dialect === "fts" || body.dialect === "graph") throw new Error(`matchAgainstContent is content-only; ${body.dialect} requires the indexed matcher`);
         return SchemeMatcher.matchAgainstContent(body, content, mimetype, mimetypes, (value) => ErrorDetail.preview(value));
     }
 
@@ -47,7 +95,7 @@ export default class Matcher {
         candidates: ReadonlyArray<{ key: string; content: string; mimetype: string }>,
         mimetypes: Mimetypes,
     ): Promise<{ status: number; matches: CandidateMatch[]; problem?: ProblemDetails }> {
-        const lineBody = PatternEdits.lineLimited(body);
+        const lineBody = PatternEdits.lineAnchored(body);
         const matches: CandidateMatch[] = [];
         let queryable = 0;
         let unsupported: ProblemDetails | undefined;
@@ -97,60 +145,8 @@ export default class Matcher {
         return { status: 200, matches };
     }
 
-    // Project relation findings into honest text regions a scoped READ accepts,
-    // then group every finding on its resource.
-    static addTextRegions(
-        matches: readonly SourceCandidateMatch[],
-        candidates: ReadonlyArray<{ key: string; content: string }>,
-    ): CandidateMatch[] {
-        const byKey = new Map(candidates.map((candidate) => [candidate.key, candidate] as const));
-        const grouped = new Map<string, SourceCandidateMatch[]>();
-        const order: string[] = [];
-        for (const match of matches) {
-            if (!grouped.has(match.key)) order.push(match.key);
-            const findings = grouped.get(match.key) ?? [];
-            findings.push(match);
-            grouped.set(match.key, findings);
-        }
-        const resolved: CandidateMatch[] = [];
-        for (const key of order) {
-            const findings = grouped.get(key) ?? [];
-            const candidate = byKey.get(key);
-            if (candidate === undefined) throw new Error(`Matcher.addTextRegions: matched candidate ${key} has no readable projection`);
-            resolved.push({
-                key,
-                matches: findings.flatMap((match): MatchEvidence[] => {
-                    if (match.span === null) {
-                        return match.locator === undefined ? [] : [{ locator: match.locator }];
-                    }
-                    const region = TextCoordinates.lineRegion(
-                        candidate.content,
-                        match.span.lineStart,
-                        match.span.lineEnd,
-                    );
-                    if (region === null) {
-                        throw new Error(
-                            `Matcher.addTextRegions: ${key} span ${match.span.lineStart}-${match.span.lineEnd} is outside the readable text`,
-                        );
-                    }
-                    return [{
-                        ...(match.locator === undefined ? {} : { locator: match.locator }),
-                        region,
-                    }];
-                }),
-            });
-        }
-        return resolved;
-    }
 }
 
 // One selected resource, keyed by the caller's identity (pathname for entries,
 // coordinate for log), with every addressable finding grouped on it.
 export interface CandidateMatch { key: string; matches: MatchEvidence[]; }
-
-// Relation matchers initially provide source coordinates only.
-export interface SourceCandidateMatch {
-    key: string;
-    span: { lineStart: number; lineEnd: number } | null;
-    locator?: string;
-}

@@ -14,5 +14,5 @@ export async function projectDeepXml(
     if (deepJson !== null && deepJson !== undefined) return projectJsonToXml(deepJson);
     const outline = buildJsonOutline(await symbols());
     if (Object.keys(outline).length === 0) return "";
-    return projectJsonToXml(outline, "root", outlineLineFor(outline));
+    return projectJsonToXml(outline, "root", outlineLineFor(outline), "value");
 }

@@ -38,7 +38,7 @@ export type Channel = "symbols" | "deepJson" | "deepXml" | "references" | "conte
 
 // Every structural projection: what a call that names no channels asks for. `facts` is only ever named.
 const STRUCTURAL_CHANNELS: readonly Channel[] = ["symbols", "deepJson", "deepXml", "references", "content"];
-const FRAMEWORK_PROJECTION_REVISION = "2";
+const FRAMEWORK_PROJECTION_REVISION = "3";
 const HANDLER_METHODS = [
     "extractRaw",
     "deepJson",

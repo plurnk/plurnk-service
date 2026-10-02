@@ -30,7 +30,9 @@ describe("TextMarkdown", () => {
             kind: "heading",
             level: 1,
             line: 1,
+            column: 1,
             endLine: 1,
+            endColumn: 8,
         });
     });
 

@@ -1,4 +1,4 @@
-import { PathSyntax, type CopyStatement, type EditStatement, type LineMarker, type MoveStatement, type PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { CopyStatement, EditStatement, LineMarker, MoveStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { InvalidOperationResultError, MimetypeClassifier, type ResolvedEditStatement, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { missDetail } from "./plurnk-uri.ts";
@@ -7,7 +7,10 @@ import type ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalSettlement } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
-import { assertResourceEffects, editReceipt, LineMarkerOps, MimetypeBinary, PathMimetype, type LineAnchorPrecondition } from "../content/index.ts";
+import { assertResourceEffects, editReceipt, EditCollision, LineMarkerOps, MimetypeBinary, PathMimetype, type LineAnchorPrecondition } from "../content/index.ts";
+import ByteView from "../content/byte-view.ts";
+import EntryCrud from "../schemes/_entry-crud.ts";
+import { contentHash } from "./content-hash.ts";
 import DbProjectionCaps from "./caps/DbProjectionCaps.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import Results from "./results.ts";
@@ -17,7 +20,6 @@ import EntryManifest from "../schemes/_entry-manifest.ts";
 import EntryReadable from "../schemes/_entry-readable.ts";
 import type { DispatchResult, MetadataResourceSelection, AddressedResourceSelection, ResolvedResourceSelection, SelectedSource, OrchestrationProposalAttrs, ProposalIds } from "./mutation-types.ts";
 import MutationEffects from "./MutationEffects.ts";
-import PatternEdits from "../content/pattern-edits.ts";
 import type ResourceSelector from "./ResourceSelector.ts";
 
 // COPY and MOVE orchestration: source selection, destination writes, move settlement.
@@ -113,10 +115,10 @@ export default class ResourceTransfers {
         return ResourceTransfers.#withMatched(MutationEffects.prependScopeNormalizations(result, selected.scopeNormalizations), selected);
     }
 
-    // {§copy-move-pattern} — a pattern transfer reports how many lines it selected.
+    // {§copy-move-pattern} — a pattern transfer reports how many spans it selected.
     static #withMatched(result: DispatchResult, selected: SelectedSource): DispatchResult {
-        if (selected.matchedLines === undefined || result.status >= 300) return result;
-        return Results.assert({ ...result, matched: selected.matchedLines.length });
+        if (selected.matchedScopes === undefined || result.status >= 300) return result;
+        return Results.assert({ ...result, matched: selected.matchedScopes.length });
     }
 
 
@@ -152,7 +154,7 @@ export default class ResourceTransfers {
             );
         }
         // {§copy-move-pattern} — a curated source retires rows, not lines of its projection.
-        if (selected.matchedLines !== undefined && ResourceTransfers.#curatedSource(resolvedSource)) {
+        if (selected.matchedScopes !== undefined && ResourceTransfers.#curatedSource(resolvedSource)) {
             return MutationEffects.failure(
                 "pattern-unsupported", 400,
                 `MOVE cannot retire lines of the '${resolvedSource.scheme}' projection by pattern; COPY the lines and KILL its rows by pattern.`,
@@ -259,7 +261,7 @@ export default class ResourceTransfers {
         destination: AddressedResourceSelection,
         ctx: PlurnkSchemeContext,
     ): Promise<DispatchResult> {
-        if (source.lineMarker === null && source.matchedLines === undefined) {
+        if (source.lineMarker === null && source.matchedScopes === undefined) {
             if (destination.lineMarker !== null) {
                 return MutationEffects.failure(
                     "move-region-overlap",
@@ -277,6 +279,9 @@ export default class ResourceTransfers {
         }
         if (destination.lineMarker === null) {
             return this.writeDestination(statement, source, destination, ctx);
+        }
+        if (source.bytes !== undefined) {
+            return this.#moveBytes(source, destination, ctx);
         }
         const resolvedDestination = this.#selection.resolveResourceLineMarker(
             destination,
@@ -306,14 +311,14 @@ export default class ResourceTransfers {
         return MutationEffects.finalizeEffects(moved, resolvedDestination.selection, [effect, ...removals.map(() => effect)]);
     }
 
-    // The edits that take a scoped source out of its channel: the scope itself, or each line a
+    // The edits that take a scoped source out of its channel: the scope itself, or each span a
     // pattern selected ({§copy-move-pattern}).
     static #sourceRemovals(
-        source: ResolvedResourceSelection & { readonly matchedLines?: readonly number[] },
+        source: ResolvedResourceSelection & { readonly matchedScopes?: readonly LineMarker[] },
         position: EditStatement["position"],
     ): Array<{ readonly marker: LineMarker; readonly body: string; readonly position: EditStatement["position"] }> {
-        if (source.matchedLines !== undefined) {
-            return PatternEdits.deletions(source.matchedLines).map(({ marker, body }) => ({ marker, body, position }));
+        if (source.matchedScopes !== undefined) {
+            return source.matchedScopes.map((marker) => ({ marker, body: "", position }));
         }
         if (source.lineMarker === null) throw new InvalidOperationResultError("A whole-channel MOVE source has no removal edits.");
         return [{ marker: source.lineMarker, body: "", position }];
@@ -329,15 +334,25 @@ export default class ResourceTransfers {
 
     async removeMoveSource(
         statement: MoveStatement,
-        source: ResolvedResourceSelection & { readonly matchedLines?: readonly number[] },
+        source: ResolvedResourceSelection & Pick<SelectedSource, "matchedScopes" | "bytePrecondition">,
         ctx: PlurnkSchemeContext,
         lineAnchorPrecondition: LineAnchorPrecondition | null = null,
     ): Promise<DispatchResult> {
+        if (source.bytePrecondition !== undefined) {
+            const current = await this.#selection.selectSource({ ...source, lineMarker: null, matcher: null }, ctx, "COPY");
+            if (MutationEffects.isDispatchResult(current)) return current;
+            if (current.bytes === undefined || contentHash(current.bytes) !== source.bytePrecondition) {
+                return EditCollision.result(MutationEffects.resourceAddress(source));
+            }
+            if (source.lineMarker !== null || source.matchedScopes !== undefined) {
+                return this.#moveBytes({ ...current, ...source }, null, ctx);
+            }
+        }
         const effect = MutationEffects.pendingEffect(
             source,
-            source.lineMarker === null && source.matchedLines === undefined ? "delete" : "update",
+            source.lineMarker === null && source.matchedScopes === undefined ? "delete" : "update",
         );
-        if (source.matchedLines !== undefined) {
+        if (source.matchedScopes !== undefined) {
             const removals = ResourceTransfers.#sourceRemovals(source, statement.position);
             const edited = await this.invokeEditBatch(source, removals, ctx, lineAnchorPrecondition);
             return MutationEffects.finalizeEffects(edited, source, removals.map(() => effect));
@@ -480,6 +495,10 @@ export default class ResourceTransfers {
         let creationContent = source.content;
         let creationScopeNormalizations: ReturnType<typeof LineMarkerOps.applyLineMarkerEdit>["scopeNormalizations"];
         if (destination.lineMarker !== null && destinationChannel === undefined) {
+            if (source.bytes !== undefined) {
+                const marker = ByteView.marker(destination.lineMarker);
+                if ("result" in marker) return marker.result;
+            }
             // {§fs-write-surface} {§empty-mutation-scope} — creation has an
             // ordinary empty pre-mutation value. Resolve and apply the authored
             // destination scope to that value; no source-length allowlist exists.
@@ -600,9 +619,7 @@ export default class ResourceTransfers {
                     }],
                     parseIssues,
                     // {§edit-receipt-anchored-context} — the destination's READ identity
-                    destination.channel === destination.manifest.defaultChannel
-                        ? EntryManifest.toPath(destination.scheme, storageAddress.authority, storageAddress.pathname)
-                        : `${EntryManifest.toPath(destination.scheme, storageAddress.authority, storageAddress.pathname)}#${PathSyntax.escapeTarget(destination.channel)}`,
+                    EntryManifest.channelPath(storageAddress, destination.channel, destination.manifest.defaultChannel),
                 ),
             );
         return MutationEffects.prependScopeNormalizations(
@@ -627,8 +644,11 @@ export default class ResourceTransfers {
         mimetype: string,
         destinationEffect: ReturnType<typeof MutationEffects.pendingEffect>,
         ctx: PlurnkSchemeContext,
+        removals: readonly LineMarker[] = [],
+        expectedHash?: string,
     ): Promise<DispatchResult> {
-        const byteSource = (handler as SchemeHandler).byteSource?.(storageAddress, EntryAddressBinding.addressContext(ctx));
+        const byteSource = handler.byteSource?.(storageAddress, EntryAddressBinding.addressContext(ctx))
+            ?? (existing === null ? undefined : await EntryCrud.storedByteSource(existing, destination.channel, ctx.mimetypes));
         if (byteSource === undefined) {
             return MutationEffects.failure(
                 "binary-region-unsupported", 415,
@@ -643,51 +663,40 @@ export default class ResourceTransfers {
                 {}, { destination: MutationEffects.resourceAddress(destination), retryable: false },
             );
         }
-        // A binary region is numeric byte coordinates; a textual anchor mark has no byte meaning.
-        const marks = (destination.lineMarker?.marks ?? []).map((m) => typeof m === "number" ? m : Number.NaN);
-        if (marks.some(Number.isNaN)) {
-            return MutationEffects.failure(
-                "range-not-satisfiable", 416, `A binary region is a numeric byte range; #${destination.channel} was given a textual anchor.`,
-                {}, { channel: destination.channel, unit: "byte", available: size, retryable: false },
-            );
-        }
-        let headEnd: number;
-        let tailStart: number;
-        if (marks.length >= 2) {
-            const start = marks[0] === -1 ? size : marks[0]!;
-            const end = marks[1] === -1 ? size : marks[1]!;
-            if (!(start >= 1 && end >= start && end <= size)) {
-                return MutationEffects.failure(
-                    "range-not-satisfiable", 416, `Byte range <${start},${end}> is outside the available 1..${size}.`,
-                    {}, { channel: destination.channel, unit: "byte", available: size, retryable: false },
-                );
-            }
-            headEnd = start - 1;
-            tailStart = end + 1;
-        } else {
-            const c = marks.length === 1 && marks[0] !== -1 ? marks[0]! : size + 1;
-            if (!(c >= 1 && c <= size + 1)) {
-                return MutationEffects.failure(
-                    "range-not-satisfiable", 416, `Byte position <${c}> is outside the available 1..${size + 1}.`,
-                    {}, { channel: destination.channel, unit: "byte", available: size, retryable: false },
-                );
-            }
-            headEnd = c - 1;
-            tailStart = c;
-        }
-        const head = headEnd >= 1 ? await byteSource.read(1, headEnd) : new Uint8Array(0);
-        const tail = tailStart <= size ? await byteSource.read(tailStart, size) : new Uint8Array(0);
-        const result = new Uint8Array(head.length + srcBytes.length + tail.length);
-        result.set(head, 0);
-        result.set(srcBytes, head.length);
-        result.set(tail, head.length + srcBytes.length);
+        const marker = ByteView.marker(destination.lineMarker);
+        if ("result" in marker) return marker.result;
+        if (marker.marker === null) throw new InvalidOperationResultError("A byte splice requires destination coordinates.");
+        const original = size === 0 ? new Uint8Array() : await byteSource.read(1, size);
+        if (expectedHash !== undefined && contentHash(original) !== expectedHash) return EditCollision.result(MutationEffects.resourceAddress(destination));
+        const result = ByteView.splice(original, [
+            { marker: marker.marker, bytes: srcBytes },
+            ...removals.map((marker) => ({ marker, bytes: new Uint8Array() })),
+        ]);
+        if ("result" in result) return result.result;
+        if (Buffer.from(original).equals(result.bytes)) return { status: 304 };
 
         const channels = {
             ...(existing?.channels ?? {}),
-            [destination.channel]: { content: "", bytes: result, mimetype },
+            [destination.channel]: { content: "", bytes: result.bytes, mimetype },
         };
         const written = await this.#writeEntry(destination.scheme, storageAddress, { channels }, ctx);
         return MutationEffects.finalizeEffects(Results.assert(written), destination, [destinationEffect]);
+    }
+
+    // {§binary-parity}: source removal is a byte splice, not an empty text EDIT.
+    async #moveBytes(source: SelectedSource, destination: AddressedResourceSelection | null, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
+        const removals = source.matchedScopes ?? (source.lineMarker === null ? [] : [source.lineMarker]);
+        if (removals.length === 0) throw new InvalidOperationResultError("A scoped byte MOVE has no removal coordinates.");
+        const target = destination ?? { ...source, matcher: null, lineMarker: removals[0]! };
+        const handler = this.#schemes.get(source.scheme, ctx.workspaceId) as SchemeHandler;
+        const binding = await this.#resolveDataEntryAddress({ target: source.target, routedScheme: source.scheme, handler,
+            manifest: source.manifest as SchemeManifest & { category: "data" }, ctx, access: "write" });
+        if (binding.result !== null) return binding.result;
+        if (binding.address === null) return MutationEffects.failure("entry-not-found", 404, "The MOVE source could not be resolved for deletion.");
+        const read = await this.#readEntry(source.scheme, binding.address, ctx);
+        if (read.status >= 400) return read;
+        return this.#spliceBytes(handler, binding.address, target, read.entry, destination === null ? new Uint8Array() : source.bytes!,
+            source.mimetype, MutationEffects.pendingEffect(target, "update"), ctx, destination === null ? removals.slice(1) : removals, source.bytePrecondition);
     }
 
     async invokeEditBatch(
@@ -919,7 +928,8 @@ export default class ResourceTransfers {
             {
                 ...resolvedSource,
                 lineMarker: resolvedSource.lineMarker as LineMarker | null,
-                ...(deferred.matchedLines === undefined ? {} : { matchedLines: deferred.matchedLines }),
+                ...(deferred.matchedScopes === undefined ? {} : { matchedScopes: deferred.matchedScopes }),
+                ...(deferred.bytePrecondition === undefined ? {} : { bytePrecondition: deferred.bytePrecondition }),
             },
             ctx,
             deferred.lineAnchorPrecondition,

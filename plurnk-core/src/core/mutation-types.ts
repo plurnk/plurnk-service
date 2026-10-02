@@ -1,5 +1,5 @@
 // Shapes shared by the resource mutation classes (edit preparation, selection, transfers, effects).
-import { type LineMarker, type MatcherBody, type ParsedPath, type ReadStatement, type ResourceSelection, type SchemeMetadataOrNull, type TextLineMarker } from "@plurnk/plurnk-contracts";
+import { type LineMarker, type MatcherBody, type ParsedPath, type ResourceSelection, type SchemeMetadataOrNull, type TextLineMarker } from "@plurnk/plurnk-contracts";
 import { type ScopeNormalization, type SchemeHandler, type SchemeResult } from "@plurnk/plurnk-schemes";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
 import { type LineAnchorPrecondition, type ResourceEffect } from "../content/index.ts";
@@ -36,14 +36,15 @@ export type ResolvedResourceSelection = ResourceAddress & {
 };
 
 export type SelectedSource = ResolvedResourceSelection & {
+    readonly identity?: string;
     readonly content: string;
     readonly completeContent: string;
-    // {§copy-move-pattern} — the whole lines a source pattern selected, in source order; a MOVE
-    // retires exactly these.
-    readonly matchedLines?: readonly number[];
+    // {§copy-move-pattern} A MOVE removes the same source regions it transferred.
+    readonly matchedScopes?: readonly LineMarker[];
     // {§binary-parity} — a binary source carries its selected bytes here (whole resource, or the byte
     // range the marker names); `content` is then "". The destination writes them verbatim.
     readonly bytes?: Uint8Array;
+    readonly bytePrecondition?: string;
     readonly mimetype: string;
     readonly lineAnchorPrecondition: LineAnchorPrecondition | null;
     readonly scopeNormalizations?: ReadonlyArray<ScopeNormalization>;
@@ -53,7 +54,8 @@ export type DeferredMoveSource = {
     readonly target: ParsedPath;
     readonly metadata: SchemeMetadataOrNull;
     readonly lineMarker: LineMarker | null;
-    readonly matchedLines?: readonly number[];
+    readonly matchedScopes?: readonly LineMarker[];
+    readonly bytePrecondition?: string;
     readonly scheme: string;
     readonly authority: string;
     readonly pathname: string;
@@ -76,12 +78,6 @@ export type OrchestrationProposalAttrs = {
     readonly moveDestinationWritten?: string;
     readonly moveDestinationEffects?: readonly ResourceEffect[];
 };
-
-export type RunOperation = (
-    schemeName: string | null,
-    statement: ReadStatement,
-    ctx: PlurnkSchemeContext,
-) => Promise<DispatchResult>;
 
 export type PrepareDataRepresentation = (args: {
     target: ParsedPath;

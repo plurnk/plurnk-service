@@ -208,7 +208,7 @@ test("problem identifiers fail hard instead of minting ambiguous types", () => {
     assert.throws(() => Results.problem("scheme:notes", "Entry_Not_Found", 404, "Missing."), /problem code/);
 });
 
-test("match evidence requires a locator, a complete TextRegion, or both", () => {
+test("match evidence requires a locator or a complete exact/enclosing TextRegion", () => {
     assert.deepEqual(
         Results.assertMatchEvidence({
             locator: "$.users[0]",
@@ -221,7 +221,7 @@ test("match evidence requires a locator, a complete TextRegion, or both", () => 
     );
     assert.throws(
         () => Results.assertMatchEvidence({}),
-        /expected locator, region, or both/,
+        /expected locator, region, or enclosingRegion/,
     );
     assert.throws(
         () => Results.assertMatchEvidence({ locator: "" }),
@@ -251,7 +251,7 @@ test("match evidence lists validate every plugin-produced item", () => {
     );
     assert.throws(
         () => Results.assertMatchEvidenceList([{ locator: "//item" }, {}]),
-        /expected locator, region, or both/,
+        /expected locator, region, or enclosingRegion/,
     );
 });
 

@@ -6,7 +6,6 @@ import {
 } from "@plurnk/plurnk-contracts";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import Matcher from "../content/matcher.ts";
-import type { SourceCandidateMatch } from "../content/matcher.ts";
 import { emptyFindFields, projectFindResult } from "./_entry-find.ts";
 import type { FindResult, Match, CatalogScope, FindProjectionResource } from "./_entry-find.ts";
 import { CoreSchemeAdapterBase } from "../core/CoreSchemeServices.ts";
@@ -482,23 +481,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 candidateSet.candidates,
                 statement.matcher.raw,
             );
-            if (graph.status !== 200) {
-                return empty(
-                    graph.status,
-                    "Malformed graph matcher; expected `&symbol`, `&<symbol`, or `&>symbol`.",
-                    {
-                        stage: "matcher",
-                        dialect: "graph",
-                        retryable: false,
-                    },
-                );
-            }
-            const sourceMatches = graph.matches.map(({ key, lineStart, lineEnd }): SourceCandidateMatch => ({
-                key,
-                span: { lineStart, lineEnd },
-            }));
-            const readable = Matcher.addTextRegions(sourceMatches, projected);
-            matches = readable.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
+            if (graph.status !== 200) return { ...graph, ...emptyFindFields() };
+            matches = graph.matches.map(({ key, matches: ranges }) => ({ pathname: key, matches: ranges }));
         } else if (statement.matcher === null) {
             matches = projected.map(({ key }) => ({ pathname: key, matches: [] }));
         } else {
@@ -543,10 +527,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             const item: LogCatalogMatch = [channel];
             resources.push({ item, match: {
                 ...m,
-                matches: m.matches.map(({ region, ...match }) => {
-                    const mapped = region === undefined ? undefined : LineSelection.region(region, proj.lineOrdinals);
-                    return { ...match, ...(mapped === undefined ? {} : { region: mapped }) };
-                }),
+                matches: LineSelection.evidence(m.matches, proj.lineOrdinals),
             } });
         }
         const scopes: CatalogScope[] = [];

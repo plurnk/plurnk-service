@@ -79,7 +79,7 @@ export default class TextCsv extends BaseHandler {
                 column: region.startColumn, endColumn: region.endColumn,
             };
         };
-        return Promise.resolve(projectJsonToXml(toRowObjects(records), "root", span));
+        return Promise.resolve(projectJsonToXml(toRowObjects(records), "root", span, "value"));
     }
 }
 
@@ -92,16 +92,21 @@ function toRowObjects(records: CsvRecord[]): Array<Record<string, string>> {
 function sourceRegions(content: string, records: CsvRecord[]): (pointer: string) => QueryMatch["regions"] {
     const coordinates = new TextCoordinates(content);
     return (pointer) => {
-        const match = /^\/(\d+)(?:\/|$)/u.exec(pointer);
+        const match = /^\/(\d+)(?:\/([^/]*))?$/u.exec(pointer);
         const record = pointer === "" ? { start: 0, end: content.length } : match ? records[Number(match[1]) + 1] : undefined;
         if (record === undefined) return undefined;
-        const region = coordinates.regionFromOffsets(record.start, record.end);
+        const key = match?.[2]?.replace(/~1/g, "/").replace(/~0/g, "~");
+        const selected = key === undefined ? record
+            : "spans" in record ? record.spans[records[0].fields.lastIndexOf(key)] : undefined;
+        if (selected === undefined) return undefined;
+        const region = coordinates.regionFromOffsets(selected.start, selected.end);
         return region === null ? undefined : [region];
     };
 }
 
 interface CsvRecord {
     fields: string[];
+    spans: Array<{ start: number; end: number }>;
     start: number;
     end: number;
 }
@@ -121,6 +126,8 @@ function parseRecords(content: string): CsvRecord[] {
     let inQuotes = false;
     let i = 0;
     let start = 0;
+    let fieldStart = 0;
+    let spans: CsvRecord["spans"] = [];
 
     while (i < content.length) {
         const ch = content[i];
@@ -150,18 +157,23 @@ function parseRecords(content: string): CsvRecord[] {
         }
         if (ch === ",") {
             row.push(field);
+            spans.push({ start: fieldStart, end: i });
             field = "";
             i += 1;
+            fieldStart = i;
             continue;
         }
         if (ch === "\r" || ch === "\n") {
             row.push(field);
+            spans.push({ start: fieldStart, end: i });
             field = "";
-            records.push({ fields: row, start, end: i });
+            records.push({ fields: row, spans, start, end: i });
             row = [];
+            spans = [];
             i += 1;
             if (ch === "\r" && content[i] === "\n") i += 1;
             start = i;
+            fieldStart = i;
             continue;
         }
         field += ch;
@@ -176,7 +188,8 @@ function parseRecords(content: string): CsvRecord[] {
     // a trailing newline).
     if (start < content.length) {
         row.push(field);
-        records.push({ fields: row, start, end: content.length });
+        spans.push({ start: fieldStart, end: content.length });
+        records.push({ fields: row, spans, start, end: content.length });
     }
 
     return records;

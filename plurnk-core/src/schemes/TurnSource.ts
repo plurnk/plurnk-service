@@ -129,8 +129,8 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
                 matches = result.matches;
             } else {
                 const result = await EntryGraph.matchCandidates(db, universe.candidates, candidates.candidates, relation.raw);
-                if (result.status !== 200) return failed(result.status, "invalid-expression", "Malformed graph matcher; expected &symbol, &<symbol, or &>symbol.");
-                matches = Matcher.addTextRegions(result.matches.map(({ key, lineStart, lineEnd }) => ({ key, span: { lineStart, lineEnd } })), projections);
+                if (result.status !== 200) return { ...result, ...emptyFindFields() };
+                matches = result.matches;
             }
         } else if (statement.matcher !== null) {
             const result = await Matcher.matchCandidates(statement.matcher, projections, mimetypes);

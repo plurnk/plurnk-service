@@ -105,6 +105,27 @@ test("{§packet-extent-metadata}: a stored source slice and its curated log reso
     assert.equal((await dispatch("````READ (worker:///source.txt) <1,-1>````")).content, content, "the source still has every line");
 });
 
+test("{§log-readable-projection}: a multiline pattern never copies a curated gap", async (t) => {
+    const { dispatch } = await runtime(t);
+    await dispatch("````EDIT (worker:///source.txt)\nalpha\nsecret\nomega\n````");
+    await dispatch("````READ (worker:///source.txt) <1,-1>````");
+    const target = "log:///1/1/2/READ";
+    await dispatch(`\`\`\`\`KILL (${target}) <2>\`\`\`\``);
+    const pattern = JSON.stringify([{ pattern: "/alpha\\nomega/" }]);
+    const found = await dispatch(`\`\`\`\`FIND (${target}) ${pattern}\`\`\`\``);
+    assert.equal(found.status, 200, JSON.stringify(found));
+    assert.deepEqual(JSON.parse(found.content).map(({ region }: { region: unknown }) => region), [
+        { startLine: 1, startColumn: 1, endLine: 2, endColumn: 1 },
+        { startLine: 3, startColumn: 1, endLine: 3, endColumn: 6 },
+    ]);
+    const read = await dispatch(`\`\`\`\`READ (${target}) <1,-1> ${pattern}\`\`\`\``);
+    assert.equal(read.status, 200, JSON.stringify(read));
+    assert.equal(read.content, "alpha\nomega");
+    const copied = await dispatch(`\`\`\`\`COPY (${target}) ${pattern} (worker:///copy.txt)\`\`\`\``);
+    assert.equal(copied.status, 201, JSON.stringify(copied));
+    assert.equal((await dispatch("````READ (worker:///copy.txt) <1,-1>````")).content, "alpha\nomega");
+});
+
 test("{§log-readable-projection}: FIND prices retained bodies consistently in rows and folders", async (t) => {
     const { db, ids, dispatch } = await runtime(t);
     const content = "apple\nsecret\npear";

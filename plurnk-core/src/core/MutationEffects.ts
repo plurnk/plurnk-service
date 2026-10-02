@@ -374,7 +374,7 @@ export default class MutationEffects {
 
 
     static deferredMoveSource(
-        source: ResolvedResourceSelection & { readonly matchedLines?: readonly number[] },
+        source: ResolvedResourceSelection & Pick<SelectedSource, "matchedScopes" | "bytePrecondition">,
         destination: ResourceAddress,
         lineAnchorPrecondition: LineAnchorPrecondition | null,
     ): DeferredMoveSource {
@@ -382,7 +382,8 @@ export default class MutationEffects {
             target: source.target,
             metadata: source.metadata,
             lineMarker: source.lineMarker,
-            ...(source.matchedLines === undefined ? {} : { matchedLines: source.matchedLines }),
+            ...(source.matchedScopes === undefined ? {} : { matchedScopes: source.matchedScopes }),
+            ...(source.bytePrecondition === undefined ? {} : { bytePrecondition: source.bytePrecondition }),
             scheme: source.scheme,
             authority: source.authority,
             pathname: source.pathname,

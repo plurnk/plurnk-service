@@ -43,8 +43,8 @@ export default class EditSequence {
             this.forget(snapshot.identity);
             return;
         }
-        // {§zero-width-column-one-insert} — the same body the mutation inserted.
-        const replacement = LineMarkerOps.textReplacement(snapshot.content, statement.lineMarker, LineMarkerOps.wholeLineBody(snapshot.content, statement.lineMarker, (statement.body ?? "").replace(/\r\n?/g, "\n")));
+        // This expectation uses the snapshot's line-normal form, not the literal body sent to storage.
+        const replacement = LineMarkerOps.textReplacement(snapshot.content, statement.lineMarker, (statement.body ?? "").replace(/\r\n?/g, "\n"));
         if ("error" in replacement) {
             throw new Error("A successful EDIT has no valid text replacement.");
         }

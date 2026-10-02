@@ -512,8 +512,7 @@ export default class File extends CoreSchemeAdapterBase {
                     },
                 );
             }
-            // {§zero-width-column-one-insert}
-            const edits = statements.map((candidate) => ({ marker: candidate.lineMarker!, body: LineMarkerOps.wholeLineBody(original, candidate.lineMarker!, candidate.body ?? "") }));
+            const edits = statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" }));
             const result = LineMarkerOps.applyLineMarkerEditBatch(original, edits);
             if (result.status !== 200) return Results.assert(result) as EditResult;
             patched = result.result ?? "";

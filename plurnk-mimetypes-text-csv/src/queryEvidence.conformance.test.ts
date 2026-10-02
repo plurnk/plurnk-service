@@ -14,20 +14,20 @@ describe("query-evidence conformance (both dialects)", () => {
                 {
                     source, dialect,
                     pattern: dialect === "jsonpath" ? "$[0].note" : "//item[1]/note",
-                    verdict: "enclosing",
-                    expectRegions: [[{ startLine: 2, startColumn: 1, endLine: 3, endColumn: 8 }]],
+                    verdict: "exact",
+                    expectRegions: [[{ startLine: 2, startColumn: 7, endLine: 3, endColumn: 8 }]],
                 },
                 {
                     source, dialect,
                     pattern: dialect === "jsonpath" ? "$[1].name" : "//item[2]/name",
-                    verdict: "enclosing",
-                    expectRegions: [[{ startLine: 4, startColumn: 1, endLine: 4, endColumn: 7 }]],
+                    verdict: "exact",
+                    expectRegions: [[{ startLine: 4, startColumn: 1, endLine: 4, endColumn: 4 }]],
                 },
             ]);
         });
     }
 
-    it("jsonpath distinguishes exact rows from enclosing field evidence", async () => {
+    it("jsonpath distinguishes exact rows from exact field evidence", async () => {
         await assertQueryEvidenceConformance(h, [
             {
                 source: src,
@@ -42,14 +42,14 @@ describe("query-evidence conformance (both dialects)", () => {
                 source: src,
                 dialect: "jsonpath",
                 pattern: "$[0].name",
-                verdict: "enclosing",
+                verdict: "exact",
                 expectRegions: [[{
-                    startLine: 2, startColumn: 1, endLine: 2, endColumn: 9,
+                    startLine: 2, startColumn: 1, endLine: 2, endColumn: 6,
                 }]],
             },
         ]);
     });
-    it("xpath distinguishes exact rows from enclosing field evidence", async () => {
+    it("xpath distinguishes exact rows from exact field evidence", async () => {
         await assertQueryEvidenceConformance(h, [
             {
                 source: src,
@@ -64,9 +64,9 @@ describe("query-evidence conformance (both dialects)", () => {
                 source: src,
                 dialect: "xpath",
                 pattern: "//item[1]/name",
-                verdict: "enclosing",
+                verdict: "exact",
                 expectRegions: [[{
-                    startLine: 2, startColumn: 1, endLine: 2, endColumn: 9,
+                    startLine: 2, startColumn: 1, endLine: 2, endColumn: 6,
                 }]],
             },
         ]);

@@ -68,14 +68,14 @@ const PROBES: Probe[] = [
     { target: "worker:///data/config.json", pattern: "$.items[*].name", expect: (rx, status) => {
         assert.equal(status, 200, rx.slice(0, 200));
         assert.equal(locations(rx), 2);
-        assert.match(rx, /"locator":"\$\['items'\]\[0\]\['name'\]","region":\{"startLine":1,"startColumn":12,"endLine":1,"endColumn":26\}/, "exact columns of the first value");
+        assert.match(rx, /"locator":"\$\['items'\]\[0\]\['name'\]","region":\{"startLine":1,"startColumn":19,"endLine":1,"endColumn":26\}/, "exact columns of the first value");
         assert.match(rx, /"locator":"\$\['items'\]\[1\]\['name'\]"/);
     } },
     { target: "worker:///data/config.json", pattern: "//items/name", expect: (rx, status) => {
         assert.equal(status, 200, rx.slice(0, 200));
         assert.equal(locations(rx), 2, "xpath over JSON through the deep-xml projection");
-        assert.match(rx, /"locator":"\(\/\/items\/name\)\[1\]","region":\{"startLine":1,"startColumn":12,"endLine":1,"endColumn":26\}/, "xpath rows carry the same exact columns as jsonpath rows (#372)");
-        assert.match(rx, /"locator":"\(\/\/items\/name\)\[2\]","region":\{"startLine":1,"startColumn":38,"endLine":1,"endColumn":51\}/);
+        assert.match(rx, /"locator":"\(\/\/items\/name\)\[1\]","region":\{"startLine":1,"startColumn":19,"endLine":1,"endColumn":26\}/, "xpath rows carry the same exact columns as jsonpath rows");
+        assert.match(rx, /"locator":"\(\/\/items\/name\)\[2\]","region":\{"startLine":1,"startColumn":45,"endLine":1,"endColumn":51\}/);
     } },
     { target: "worker:///data/feed.xml", pattern: "//item[@id='2']", expect: (rx, status) => {
         assert.equal(status, 200, rx.slice(0, 200));

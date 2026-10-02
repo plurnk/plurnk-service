@@ -20,7 +20,7 @@
         "handlers": [
             {
                 "name": "application/xml",
-                "revision": "1",
+                "revision": "2",
                 "glyph": "📐",
                 "extensions": [
                     ".xml"
@@ -28,7 +28,7 @@
             },
             {
                 "name": "text/xml",
-                "revision": "1",
+                "revision": "2",
                 "glyph": "📐",
                 "extensions": []
             }
@@ -57,6 +57,7 @@
         "prepack": "npm run build"
     },
     "dependencies": {
+        "@lezer/xml": "^1.0.6",
         "@xmldom/xmldom": "^0.9.10",
         "xpath": "^0.0.34"
     },

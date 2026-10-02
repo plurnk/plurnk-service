@@ -2,13 +2,12 @@ import { describe, it } from "node:test";
 import { assertQueryEvidenceConformance } from "@plurnk/plurnk-mimetypes/conformance";
 import Handler from "./Jsonl.ts";
 
-// A record maps exactly to its source line; a field maps to that honest
-// enclosing record line.
+// {§mimetype-query}: records and their nested values have distinct exact spans.
 const h = new Handler({"mimetype":"application/jsonl","glyph":"🧾","extensions":[".jsonl",".ndjson"]});
 const src = "{\"name\":\"a\",\"v\":1}\n{\"name\":\"b\",\"v\":2}\n";
 
 describe("query-evidence conformance (both dialects)", () => {
-    it("jsonpath distinguishes exact records from enclosing field evidence", async () => {
+    it("jsonpath distinguishes exact records from exact field evidence", async () => {
         await assertQueryEvidenceConformance(h, [
             {
                 source: src,
@@ -23,14 +22,14 @@ describe("query-evidence conformance (both dialects)", () => {
                 source: src,
                 dialect: "jsonpath",
                 pattern: "$[0].name",
-                verdict: "enclosing",
+                verdict: "exact",
                 expectRegions: [[{
-                    startLine: 1, startColumn: 1, endLine: 1, endColumn: 19,
+                    startLine: 1, startColumn: 9, endLine: 1, endColumn: 12,
                 }]],
             },
         ]);
     });
-    it("xpath distinguishes exact records from enclosing field evidence", async () => {
+    it("xpath distinguishes exact records from exact field evidence", async () => {
         await assertQueryEvidenceConformance(h, [
             {
                 source: src,
@@ -45,9 +44,9 @@ describe("query-evidence conformance (both dialects)", () => {
                 source: src,
                 dialect: "xpath",
                 pattern: "//item[1]/name",
-                verdict: "enclosing",
+                verdict: "exact",
                 expectRegions: [[{
-                    startLine: 1, startColumn: 1, endLine: 1, endColumn: 19,
+                    startLine: 1, startColumn: 9, endLine: 1, endColumn: 12,
                 }]],
             },
         ]);

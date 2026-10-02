@@ -3,7 +3,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TEACHING_CORPUS } from "@plurnk/plurnk-meta";
@@ -12,13 +12,37 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { teachingCorpusReader } from "../../src/core/teaching-corpus.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import Paths from "../../src/Paths.ts";
 import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 
 const corpusRoot = async (): Promise<string> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-teaching-"));
     await mkdir(join(root, "docs"));
+    for (const [name, { source }] of Object.entries(TEACHING_CORPUS.docs)) {
+        if (name === "worker") continue;
+        await writeFile(join(root, source), await readFile(new URL(`../../../plurnk-meta/${source}`, import.meta.url)));
+    }
     return root;
 };
+
+test("language and delegation references named by plurnk.md are materialized from their published sources", async () => {
+    const db = await openMigrated();
+    try {
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
+        const workspaceId = await insertWorkspace(db, `teaching-links-${crypto.randomUUID()}`);
+        await insertWorker(db, workspaceId);
+        await LoopDocs.materialize(engine, db, workspaceId);
+        for (const name of ["pattern", "delegation"] as const) {
+            const body = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
+                pathname: `/_plurnk/plurnk/${name}.md`, scheme: "worker", name: "body",
+            });
+            assert.equal(body?.content, await readFile(Paths.teachingSource(TEACHING_CORPUS.docs[name].source), "utf8"));
+        }
+        const docs = await new SchemeRegistry().docs();
+        assert.equal(docs.find(({ name }) => name === "pattern")?.scheme, null, "a language reference declares no new runtime scheme");
+        assert.equal(docs.find(({ name }) => name === "delegation")?.scheme, "worker");
+    } finally { await db.close(); }
+});
 
 test("required built-in corpus absence rejects workspace doc materialization with its filesystem cause", async () => {
     const root = await corpusRoot();
@@ -48,7 +72,7 @@ test("a failed required corpus read is not reclassified as optional absence", as
     const root = await corpusRoot();
     const db = await openMigrated();
     try {
-        await mkdir(join(root, TEACHING_CORPUS.schemeDocs.worker));
+        await mkdir(join(root, TEACHING_CORPUS.docs.worker.source));
         const schemes = new SchemeRegistry({ readTeaching: teachingCorpusReader(root) });
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
         const workspaceId = await insertWorkspace(db, `teaching-unreadable-${crypto.randomUUID()}`);

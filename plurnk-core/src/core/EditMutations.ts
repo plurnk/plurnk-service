@@ -8,18 +8,20 @@ import { EditCollision, LineAnchors, type LineAnchorCheck, type LineAnchorPrecon
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import Results from "./results.ts";
 import type EntryAddressBinding from "./EntryAddressBinding.ts";
-import type { DispatchResult, EditMergeFact, RunOperation } from "./mutation-types.ts";
+import type { DispatchResult, EditMergeFact } from "./mutation-types.ts";
 import type EditSequence from "./EditSequence.ts";
 import type { EditSnapshot } from "./EditSequence.ts";
 import MutationEffects from "./MutationEffects.ts";
 import PatternEdits from "../content/pattern-edits.ts";
 import PatternSelection from "./PatternSelection.ts";
+import LineMarkerOps from "../content/line-marker.ts";
+import type ResourceSelector from "./ResourceSelector.ts";
 
 // {§edit-execution}: one authored EDIT owns one effect and one proposal.
 export default class EditMutations {
     readonly #schemes: SchemeRegistry;
     readonly #liveSubscriptions: LiveSubscriptions;
-    readonly #run: RunOperation;
+    readonly #selection: ResourceSelector;
     readonly #checkWritable: (statement: PlurnkStatement, origin: WriterTier, workspaceId: number) => DispatchResult | null;
     readonly #checkCapabilities: (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
     readonly #editTargetIdentity: (
@@ -28,13 +30,6 @@ export default class EditMutations {
         workerId: number,
     ) => Promise<string | null>;
     readonly #resolveDataEntryAddress: EntryAddressBinding["resolve"];
-    // {§kill-pattern} — EDITs synthesized from a KILL with a matcher remove whole lines.
-    readonly #lineDeletions = new WeakSet<EditStatement>();
-
-    markLineDeletion(statement: EditStatement): void {
-        this.#lineDeletions.add(statement);
-    }
-
     readonly #preparedEdits = new WeakMap<EditStatement, {
         readonly merged: readonly EditMergeFact[];
         readonly snapshot?: EditSnapshot;
@@ -43,10 +38,10 @@ export default class EditMutations {
     }>();
 
 
-    constructor({ schemes, liveSubscriptions, run, checkWritable, checkCapabilities, editTargetIdentity, resolveDataEntryAddress }: {
+    constructor({ schemes, liveSubscriptions, selection, checkWritable, checkCapabilities, editTargetIdentity, resolveDataEntryAddress }: {
         schemes: SchemeRegistry;
         liveSubscriptions: LiveSubscriptions;
-        run: RunOperation;
+        selection: ResourceSelector;
         checkWritable: (statement: PlurnkStatement, origin: WriterTier, workspaceId: number) => DispatchResult | null;
         checkCapabilities: (statement: PlurnkStatement, ctx: PlurnkSchemeContext) => Promise<DispatchResult | null>;
         editTargetIdentity: (
@@ -58,11 +53,26 @@ export default class EditMutations {
     }) {
         this.#schemes = schemes;
         this.#liveSubscriptions = liveSubscriptions;
-        this.#run = run;
+        this.#selection = selection;
         this.#checkWritable = checkWritable;
         this.#checkCapabilities = checkCapabilities;
         this.#editTargetIdentity = editTargetIdentity;
         this.#resolveDataEntryAddress = resolveDataEntryAddress;
+    }
+
+    // {§slice-semantics-compose-pattern}: mutation coordinates belong to the source,
+    // never to the line-normalized or previewed public READ projection.
+    async #current(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
+        if (statement.target === null) throw new InvalidOperationResultError("An admitted resource edit has no target.");
+        const selection = await this.#selection.resolveResourceSelection({ target: statement.target, metadata: statement.metadata, lineMarker: null, matcher: null }, ctx, "read");
+        if ("status" in selection) return selection;
+        const source = await this.#selection.selectSource(selection, ctx, "EDIT");
+        if ("status" in source) return source;
+        return {
+            status: source.completeContent.length === 0 ? 204 : 200,
+            content: source.completeContent, mimetype: source.mimetype,
+            lineAnchorIdentity: source.identity ?? MutationEffects.resourceAddress(source),
+        };
     }
 
     async #resolveEditAnchors(
@@ -90,7 +100,10 @@ export default class EditMutations {
         const rendered = looksRendered(authored)
             && manifest.textEditScopes === true && manifest.writableBy.includes("model");
         const track = sequence !== undefined && manifest.textEditScopes === true && manifest.writableBy.includes("model");
-        if (!anchored && !rendered && !track) {
+        const marks = authored.lineMarker?.marks;
+        const lineInsertion = authored.matcher === null && marks?.length === 4
+            && marks[0] === marks[2] && marks[1] === 1 && marks[3] === 1;
+        if (!anchored && !rendered && !track && !lineInsertion) {
             return { statement: authored as ResolvedEditStatement, precondition: null };
         }
         if (manifest.textEditScopes !== true || !manifest.writableBy.includes("model")) {
@@ -121,16 +134,7 @@ export default class EditMutations {
             };
         }
 
-        const current = await this.#run(schemeName, {
-            op: "READ",
-            aside: null,
-            target: authored.target,
-            metadata: authored.metadata,
-            lineMarker: { marks: [1, -1] },
-            matcher: null,
-            body: null,
-            position: authored.position,
-        }, ctx);
+        const current = await this.#current(authored, ctx);
         if (current.status === 204 || current.status === 404) {
             sequence?.forget(identity);
             if (!anchored && !rendered) {
@@ -138,6 +142,7 @@ export default class EditMutations {
             }
             return { result: EditCollision.result(identity) };
         }
+        if (!anchored && !rendered && current.status >= 300) return { result: current };
         if (current.status >= 300) {
             return {
                 result: MutationEffects.failure(
@@ -260,6 +265,11 @@ export default class EditMutations {
             resolved = { ...statement, lineMarker: resolution.marker };
         }
         const uniqueChecks = [...new Map(checks.map((check) => [`${check.anchor}:${check.line}`, check])).values()];
+        // {§zero-width-column-one-insert} Normalize authored scope syntax once.
+        // Pattern-generated spans and scheme replacements already denote literal text.
+        if (resolved.matcher === null && resolved.lineMarker !== null) {
+            resolved = { ...resolved, body: LineMarkerOps.wholeLineBody(content, resolved.lineMarker, resolved.body ?? "") };
+        }
         return {
             statement: resolved,
             // A strip-only EDIT authored no anchor and so carries no compare-and-swap precondition.
@@ -317,7 +327,7 @@ export default class EditMutations {
         let precondition = resolved.precondition;
         let matched: number | undefined;
         if (statement.matcher !== null) {
-            const expanded = await this.expandPattern(resolved.statement, this.#lineDeletions.has(statement) ? "lines" : "spans", schemeName, manifest, ctx);
+            const expanded = await this.expandPattern(resolved.statement, schemeName, manifest, ctx);
             if ("result" in expanded) return expanded.result;
             batch = expanded.statements;
             matched = expanded.matched;
@@ -362,59 +372,40 @@ export default class EditMutations {
     }
 
     // {§edit-pattern} {§kill-pattern} — read the resource once, match, and expand into a batch of
-    // coordinate edits: within-line spans replaced by the body ("spans"), or whole matched lines
-    // removed ("lines"). Every touched line's anchor guards the batch, so a same-turn change to
+    // coordinate edits. Every touched line's anchor guards the batch, so a same-turn change to
     // one of them collides exactly as an anchored EDIT would.
     async expandPattern(
         resolved: ResolvedEditStatement,
-        mode: "spans" | "lines",
         schemeName: string,
         manifest: SchemeManifest,
         ctx: PlurnkSchemeContext,
     ): Promise<{ statements: ResolvedEditStatement[]; matched: number; precondition: LineAnchorPrecondition; identity: string } | { result: DispatchResult }> {
         const matcher = resolved.matcher;
         if (matcher === null) throw new Error("expandPattern requires a matcher");
-        const operation = mode === "spans" ? "EDIT" : "KILL";
+        const operation = "EDIT";
         const refuse = (code: string, status: number, detail: string): { result: DispatchResult } => ({
             result: PatternSelection.refuse(code, status, detail, schemeName, operation),
         });
         const target = resolved.target;
         if (target === null) return refuse("edit-target-required", 400, `A pattern ${operation} requires a target resource.`);
-        const dialect = PatternSelection.refuseDialect(matcher, schemeName, operation, target.raw);
-        if (dialect !== null) return { result: dialect };
         if (manifest.textEditScopes !== true) {
             return refuse("pattern-unsupported", 400, `Scheme '${schemeName}' has no textual lines for a pattern to select.`);
         }
-        const current = await this.#run(schemeName, {
-            op: "READ", aside: null, target, metadata: resolved.metadata, lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: resolved.position,
-        }, ctx);
-        if (current.status === 204 || current.status === 404) {
-            return refuse("entry-not-found", 404, `Nothing to match: ${target.raw} has no text.`);
-        }
+        const current = await this.#current(resolved, ctx);
+        if (current.status === 404) return { result: current };
         if (current.status >= 300) return { result: current };
         const content = (current as { content?: unknown }).content;
-        const read = current as { mimetype?: unknown; sourceMimetype?: unknown };
-        // The whole-resource slice reads as the text primitive; the channel's own mimetype picks
-        // the handler the pattern runs under, exactly as FIND does.
-        const mimetype = typeof read.sourceMimetype === "string" ? read.sourceMimetype : read.mimetype;
+        const mimetype = (current as { mimetype?: unknown }).mimetype;
         const identity = (current as { lineAnchorIdentity?: unknown }).lineAnchorIdentity;
         if (typeof content !== "string" || typeof identity !== "string" || identity.length === 0) {
-            throw new InvalidOperationResultError(`Scheme '${schemeName}' returned READ ${current.status} without textual content and its anchor identity for a pattern ${operation}.`);
+            throw new InvalidOperationResultError(`Scheme '${schemeName}' supplied pattern ${operation} source ${current.status} without textual content and its anchor identity.`);
         }
         const matched = await PatternSelection.match({
-            matcher, content, mimetype: typeof mimetype === "string" ? mimetype : "text/plain",
+            matcher, content, target, mimetype: typeof mimetype === "string" ? mimetype : "text/plain",
             marks: resolved.lineMarker?.marks, ctx, scheme: schemeName, operation,
         });
         if ("result" in matched) return matched;
-        const { evidence, bounds } = matched;
-        let edits;
-        if (mode === "spans") {
-            const spans = PatternEdits.spans(matcher, content, evidence, bounds);
-            if ("error" in spans) return refuse("pattern-span-invalid", 400, spans.error);
-            edits = PatternEdits.replacements(spans, (resolved.body ?? "").replace(/\r\n?/g, "\n"));
-        } else {
-            edits = PatternEdits.deletions(PatternEdits.lines(evidence, bounds));
-        }
+        const edits = PatternEdits.replacements(matched.spans, resolved.body ?? "");
         const tokens = LineAnchors.tokens(identity, content);
         const checks: LineAnchorCheck[] = PatternEdits.touchedLines(edits).flatMap((line) => tokens[line - 1] === undefined ? [] : [{ anchor: tokens[line - 1]!, line }]);
         return {
