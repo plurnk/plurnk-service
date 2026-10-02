@@ -20,6 +20,7 @@ import { caretRange, compatibleRange, exactVersion, supportsVersion } from "./re
 import {
     assertNpmPublisher,
     assertReleaseRepository,
+    externalRepositoryName,
 } from "./release-authority.mjs";
 import { resolveExternalReposRoot } from "./project-topology.mjs";
 import { awaitRegistryVersion } from "./registry-visibility.mjs";
@@ -107,7 +108,7 @@ for (const { dir, name, release, owner, platformDependencies, pushable } of regi
     }
 
     if (pushable !== true) throw new Error(`${tag}: managed release requires pushable=true in the external registry`);
-    await assertReleaseRepository(repo, dir);
+    await assertReleaseRepository(repo, externalRepositoryName(name));
 
     // A compatible artifact survives family releases unchanged only while its
     // complete dependency contract still matches the immutable registry copy.

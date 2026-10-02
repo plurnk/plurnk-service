@@ -5,10 +5,18 @@ const run = promisify(execFile);
 
 const CANONICAL_NPM_IDENTITY = "possumtechcom";
 const CANONICAL_NPM_REGISTRY = "https://registry.npmjs.org/";
+const REPOSITORY_NAME = /^[a-z0-9][a-z0-9.-]*$/;
 
 export const canonicalForgeOrigin = (repo) => {
-    if (!/^[a-z0-9][a-z0-9.-]*$/.test(repo)) throw new Error(`invalid canonical repository name: ${repo}`);
+    if (!REPOSITORY_NAME.test(repo)) throw new Error(`invalid canonical repository name: ${repo}`);
     return `ssh://git@ssh.possumtech.com/plurnk/${repo}.git`;
+};
+
+export const externalRepositoryName = (name) => {
+    const repo = typeof name === "string" && name.startsWith("@plurnk/")
+        ? name.slice("@plurnk/".length) : "";
+    if (!REPOSITORY_NAME.test(repo)) throw new Error(`invalid managed package identity: ${name}`);
+    return repo;
 };
 
 export const repositoryAuthorityViolations = ({ repo, origin, branch, head, remoteHead }) => {

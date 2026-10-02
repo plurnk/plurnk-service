@@ -90,7 +90,7 @@ test("release lifecycle stamps, commits, then builds and gates before script-fre
 
     const externalSweep = await readFile(new URL("./release-external-packages.mjs", import.meta.url), "utf8");
     assert.doesNotMatch(externalSweep, /--dry-run/);
-    assert.match(externalSweep, /assertReleaseRepository\(repo, dir\)/);
+    assert.match(externalSweep, /assertReleaseRepository\(repo, externalRepositoryName\(name\)\)/);
     assert.match(externalSweep, /assertNpmPublisher\(MONOREPO\)/);
     const checkBranch = externalSweep.indexOf("if (CHECK)");
     const firstWrite = externalSweep.indexOf("await alignManagedPackage(repo)");
