@@ -6,9 +6,9 @@ test("service teardown releases admitted resources in reverse ownership order, e
     const calls: string[] = [];
     const teardown = new ServiceTeardown(
         async () => { calls.push("daemon.stop"); },
-        async () => { calls.push("observability.shutdown"); },
-        async () => { calls.push("db.close"); },
-        async () => { calls.push("listener.close"); },
+        ["observability shutdown", async () => { calls.push("observability.shutdown"); }],
+        ["database close", async () => { calls.push("db.close"); }],
+        ["HTTP listener close", async () => { calls.push("listener.close"); }],
     );
 
     await Promise.all([teardown.close(), teardown.close()]);
@@ -23,8 +23,8 @@ test("service teardown runs observability and database phases after daemon failu
     const calls: string[] = [];
     const teardown = new ServiceTeardown(
         async () => { calls.push("daemon.stop"); throw daemonFailure; },
-        async () => { calls.push("observability.shutdown"); throw observabilityFailure; },
-        async () => { calls.push("db.close"); throw databaseFailure; },
+        ["observability shutdown", async () => { calls.push("observability.shutdown"); throw observabilityFailure; }],
+        ["database close", async () => { calls.push("db.close"); throw databaseFailure; }],
     );
 
     await assert.rejects(
@@ -46,8 +46,8 @@ test("failed startup preserves the originating failure and every teardown failur
     const databaseFailure = new Error("database close failed");
     const teardown = new ServiceTeardown(
         async () => { throw daemonFailure; },
-        async () => { throw observabilityFailure; },
-        async () => { throw databaseFailure; },
+        ["observability shutdown", async () => { throw observabilityFailure; }],
+        ["database close", async () => { throw databaseFailure; }],
     );
 
     await assert.rejects(
@@ -63,7 +63,7 @@ test("failed startup preserves the originating failure and every teardown failur
 
 test("failed startup rethrows its exact failure when teardown succeeds", async () => {
     const startupFailure = new Error("daemon start failed");
-    const teardown = new ServiceTeardown(async () => {}, async () => {}, async () => {});
+    const teardown = new ServiceTeardown(async () => {});
 
     await assert.rejects(
         () => teardown.fail(startupFailure),
@@ -80,8 +80,8 @@ test("a repeated signal request performs and reports failed teardown once", asyn
     const reportReceived = new Promise<void>((resolve) => { resolveReport = resolve; });
     const teardown = new ServiceTeardown(
         async () => { stops += 1; throw failure; },
-        async () => {},
-        async () => { closes += 1; },
+        ["observability shutdown", async () => {}],
+        ["database close", async () => { closes += 1; }],
     );
     const report = (cause: unknown): void => {
         reported.push(cause);
@@ -103,7 +103,7 @@ test("{§crash-only-stop} a clean request reports its settlement once, to the cl
     const reported: unknown[] = [];
     let resolveClosed: (() => void) | undefined;
     const settled = new Promise<void>((resolve) => { resolveClosed = resolve; });
-    const teardown = new ServiceTeardown(async () => { closes += 1; }, async () => {});
+    const teardown = new ServiceTeardown(async () => { closes += 1; });
     const onClosed = (): void => { closed += 1; resolveClosed?.(); };
     teardown.request((cause) => { reported.push(cause); }, onClosed);
     teardown.request((cause) => { reported.push(cause); }, onClosed);
@@ -126,4 +126,92 @@ test("service teardown diagnostics enumerate aggregate failures", () => {
         + "  1. daemon stop failed\n"
         + "  2. database close failed\n",
     );
+});
+
+for (const phase of ["observability shutdown", "database close", "HTTP listener close"]) {
+test(`{§crash-only-stop} ${phase} cannot outlive the enclosing shutdown budget`, async (t) => {
+    const prior = process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS;
+    process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS = "20";
+    t.after(() => {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS;
+        else process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS = prior;
+    });
+    const pending = Promise.withResolvers<void>();
+    let laterCleanup = false;
+    const teardown = new ServiceTeardown(
+        async () => {},
+        [phase, async () => pending.promise],
+        ["later cleanup", async () => { laterCleanup = true; }],
+    );
+    let guard: ReturnType<typeof setTimeout> | undefined;
+    try {
+        await assert.rejects(Promise.race([
+            teardown.close(),
+            new Promise((_, reject) => { guard = setTimeout(() => reject(new Error("test guard: service cleanup remained unbounded")), 200); }),
+        ]), { message: `stop deadline exceeded waiting for ${phase}` });
+        assert.equal(laterCleanup, true, "later cleanup is attempted even after the deadline");
+    } finally {
+        clearTimeout(guard);
+        pending.resolve();
+        await teardown.close().catch((cause) => { assert.match(String(cause), /stop deadline exceeded/); });
+    }
+});
+}
+
+test("{§crash-only-stop} nested drains and later cleanup share the original deadline", async (t) => {
+    t.mock.timers.enable({ apis: ["Date", "setTimeout"] });
+    const prior = process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS;
+    process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS = "100";
+    t.after(() => {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS;
+        else process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS = prior;
+    });
+    const nested = Promise.withResolvers<void>();
+    const later = Promise.withResolvers<void>();
+    const stuck = Promise.withResolvers<void>();
+    const teardown = new ServiceTeardown(
+        async (deadline) => {
+            const result = deadline.settle("nested drain", () => new Promise<void>((resolve) => setTimeout(resolve, 60)));
+            nested.resolve();
+            assert.equal((await result).status, "fulfilled");
+        },
+        ["database close", async () => { later.resolve(); await stuck.promise; }],
+    );
+    const closed = assert.rejects(teardown.close(), { message: "stop deadline exceeded waiting for database close" });
+    await nested.promise;
+    t.mock.timers.tick(60);
+    await later.promise;
+    t.mock.timers.tick(40);
+    await closed;
+    stuck.resolve();
+});
+
+test("{§module-shutdown-order} an expired producer drain still closes observers before enclosing resources", async (t) => {
+    t.mock.timers.enable({ apis: ["Date", "setTimeout"] });
+    const prior = process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS;
+    process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS = "20";
+    t.after(() => {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS;
+        else process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS = prior;
+    });
+    const events: string[] = [];
+    const stuck = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    const teardown = new ServiceTeardown(
+        async (deadline) => {
+            const waiting = deadline.settle("producer drain", () => stuck.promise);
+            entered.resolve();
+            const result = await waiting;
+            events.push("observers closed");
+            if (result.status === "rejected") throw result.reason;
+        },
+        ["database close", async () => { events.push("database closed"); }],
+    );
+    try {
+        const closed = assert.rejects(teardown.close(), { message: "stop deadline exceeded waiting for producer drain" });
+        await entered.promise;
+        t.mock.timers.tick(20);
+        await closed;
+        assert.deepEqual(events, ["observers closed", "database closed"]);
+    } finally { stuck.resolve(); }
 });

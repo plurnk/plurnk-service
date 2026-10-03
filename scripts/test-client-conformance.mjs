@@ -4,6 +4,8 @@
 // conformance corpus owns protocol semantics; this gate owns composed product
 // paths and host-native behavior.
 import { spawn, execFile } from "node:child_process";
+import { once } from "node:events";
+import { request } from "node:http";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
@@ -230,10 +232,10 @@ try {
     };
     // {§daemon-launch} — the installed executable through the service's own launcher; the port is
     // the one the fixture chose, so the readiness line must name it.
-    const boot = async () => {
+    const boot = async (overrides = {}) => {
         daemonOutput = { stdout: "", stderr: "" };
         const launched = await Launch.start({
-            command: [daemonBin, "start"], cwd: install, env: daemonEnv,
+            command: [daemonBin, "start"], cwd: install, env: { ...daemonEnv, ...overrides },
             readyTimeoutMs: 30_000, stopGraceMs: 5_000,
             onOutput: (stream, chunk) => {
                 daemonOutput[stream] += chunk;
@@ -478,6 +480,26 @@ try {
         throw new Error(`persisted membership did not activate on explicit demand: ${JSON.stringify(activatedMembers)}`);
     }
     process.stdout.write("client composition GREEN: one packed platform, CLI and TUI, success and failure journeys, shared durable state\n");
+    // {§crash-only-stop}: an admitted but incomplete body remains outside the module's run set.
+    await daemon.stop();
+    daemon = await boot({ PLURNK_SERVICE_STOP_TIMEOUT_MS: "250" });
+    const unfinished = request({
+        host: "127.0.0.1", port, method: "POST", path: "/",
+        headers: { "Content-Type": "application/json", "Content-Length": "100", Expect: "100-continue", Authorization: `Bearer ${bridgeToken}` },
+    });
+    const disconnected = new Promise((accept) => unfinished.on("error", accept));
+    try {
+        unfinished.flushHeaders();
+        await once(unfinished, "continue");
+        unfinished.write("{");
+        const ended = await daemon.stop();
+        if (ended.code !== 1 || ended.signal !== null) throw new Error(`installed service required a supervisor kill: ${JSON.stringify(ended)}`);
+        if (!daemonOutput.stderr.includes("stop deadline exceeded waiting for HTTP listener close")) {
+            throw new Error("installed service did not name the unfinished cleanup phase");
+        }
+        if ((await disconnected).code !== "ECONNRESET") throw new Error("the unfinished request did not observe the service exit");
+    } finally { unfinished.destroy(); }
+    process.stdout.write("installed shutdown journey GREEN: incomplete HTTP request reports its phase and exits within the shared budget\n");
     passed = true;
 } catch (cause) {
     throw new Error(

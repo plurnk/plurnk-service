@@ -9,7 +9,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn, ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createServer } from "node:http";
+import { createServer, request } from "node:http";
+import { once } from "node:events";
 import { access, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -235,6 +236,35 @@ test("bin: spawns, the AG-UI listener answers HTTP on its bound port, exits clea
         const { code, signal } = await stopDaemon(booted);
         assert.equal(code, 0, `the service handled SIGTERM and exited zero (signal=${signal})`);
         assert.equal(signal, null, "SIGTERM was handled rather than killing the process directly");
+    }
+});
+
+test("{§crash-only-stop} bin: an unfinished HTTP request cannot strand process teardown", { timeout: 120_000 }, async () => {
+    const booted = await bootDaemon(async () => ({ PLURNK_SERVICE_STOP_TIMEOUT_MS: "100" }));
+    const pending = request({
+        host: booted.host, port: booted.port, method: "POST", path: "/",
+        headers: { "Content-Type": "application/json", "Content-Length": "100", Expect: "100-continue" },
+    });
+    const disconnected = new Promise<Error>((resolve) => pending.on("error", resolve));
+    let diagnostic = "";
+    booted.child.stderr?.on("data", (data: Buffer) => { diagnostic += data.toString(); });
+    try {
+        pending.flushHeaders();
+        await once(pending, "continue");
+        pending.write("{");
+        const { code, signal } = await stopDaemon(booted);
+        assert.equal(code, 1, `an unfinished request reports forced teardown: ${diagnostic}`);
+        assert.equal(signal, null, "the service exits itself rather than requiring a supervisor kill");
+        assert.match(diagnostic, /stop deadline exceeded waiting for HTTP listener close/);
+        assert.equal((await disconnected as NodeJS.ErrnoException).code, "ECONNRESET");
+    } finally {
+        pending.destroy();
+        if (booted.child.exitCode === null && booted.child.signalCode === null) {
+            const exited = once(booted.child, "exit");
+            booted.child.kill("SIGKILL");
+            await exited;
+        }
+        await rm(booted.tmpdir, { recursive: true, force: true });
     }
 });
 

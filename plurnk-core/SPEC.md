@@ -4128,10 +4128,13 @@ The shared deadline bounds every phase, including observer delivery; forced
 shutdown may therefore lose notifications and reports the unfinished phase.
 
 §crash-only-stop The settle sequence is deadline-bounded
-(`PLURNK_SERVICE_STOP_TIMEOUT_MS`, default 30000): past the deadline each wait
+(`PLURNK_SERVICE_STOP_TIMEOUT_MS`): one absolute deadline spans daemon drains
+and the enclosing observability, database, and HTTP-listener cleanup. No phase
+renews the budget. The service joins core's bounded producer/observer drain
+before releasing enclosing resources, including on timeout. Past the deadline each wait
 is abandoned with a named error instead of hanging the daemon on a child that
 never closes. A wedged child costs a forced shutdown; it must never cost an
-unbounded one. When the teardown settles, success or failure, the process ends
+unbounded one. Later cleanup phases are still attempted. When the teardown settles, success or failure, the process ends
 itself: `0` after a clean teardown, `1` after a reported one. A handle an abandoned
 wait left alive never keeps a stopped daemon running; the supervisor's kill is a
 backstop, not the exit.

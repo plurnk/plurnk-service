@@ -5,6 +5,7 @@ import { makeMockResponse } from "./_mock.ts";
 import { insertWorkspace, insertWorker, insertLoop, insertTurn, openMigrated } from "./_db.ts";
 import { viableWindow } from "./_provider.ts";
 import Daemon from "../../src/server/Daemon.ts";
+import ServiceTeardown from "../../src/core/ServiceTeardown.ts";
 import type { ModuleSetupSeam, RuntimeRegistration } from "../../src/server/DaemonModule.ts";
 import Dsl from "./dsl.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
@@ -1667,6 +1668,38 @@ test("{§module-shutdown-order} a stalled producer does not prevent other produc
         return true;
     });
     assert.deepEqual(calls, ["producer-stopped", "observer-closed"]);
+});
+
+test("{§module-shutdown-order} service teardown joins the expired daemon drain before database release", async (t) => {
+    const prior = process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS;
+    process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS = "50";
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null });
+    const pending = Promise.withResolvers<void>();
+    const events: string[] = [];
+    let closing: Promise<void> | undefined;
+    t.after(async () => {
+        pending.resolve();
+        await daemon.stop();
+        await (closing ?? db.close());
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS;
+        else process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS = prior;
+    });
+    daemon.registerModule({
+        stop() { events.push("producer stop"); return pending.promise; },
+        close() { events.push("observer close"); },
+    });
+    await daemon.start();
+    const teardown = new ServiceTeardown(
+        (deadline) => daemon.stop(deadline),
+        ["database close", async () => { events.push("database close"); closing = db.close(); await closing; }],
+    );
+    await assert.rejects(teardown.close(), (cause: unknown) => {
+        assert.ok(cause instanceof Error);
+        assert.match(ServiceTeardown.diagnostic("shutdown", cause), /stop deadline exceeded waiting for modules stop/);
+        return true;
+    });
+    assert.deepEqual(events, ["producer stop", "observer close", "database close"]);
 });
 
 test("Daemon.stop disposes its owned mimetypes after derivations exactly once", async () => {

@@ -62,6 +62,7 @@ import type { LoopPolicy, LoopPolicyRequest } from "../core/types.ts";
 import type { CapabilityPolicy, ClientEnvelope, FunctionalityFamilyHandle, ProposalResolution } from "@plurnk/plurnk-contracts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
+import StopDeadline from "../core/StopDeadline.ts";
 import type { WorkspaceCapabilityRelease } from "./WorkspaceCapabilities.ts";
 import WorkspaceResidency from "./WorkspaceResidency.ts";
 import type { DaemonModule, FunctionalityAdapter, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration, ModuleSetupSeam, RuntimeRegistration, StartedModule, WorkspaceCapabilityProvider, WorkspaceCapabilityReplacement } from "./DaemonModule.ts";
@@ -1739,14 +1740,7 @@ export default class Daemon implements ApplicationPort {
         }
     }
 
-    // {§crash-only-stop} — the settle deadline. The panel owns the value; an operator can raise it
-    // for slow hosts or lower it for tests. 0 is refused (an unbounded stop is exactly the wedge
-    // this exists to prevent).
-    static #stopDeadlineMs(): number {
-        return Knob.integer("PLURNK_SERVICE_STOP_TIMEOUT_MS", 1);
-    }
-
-    async stop(): Promise<void> {
+    async stop(deadline?: StopDeadline): Promise<void> {
         if (!this.#started) return;
         this.#started = false;
 
@@ -1760,26 +1754,7 @@ export default class Daemon implements ApplicationPort {
         this.#drains.beginStop("daemon_stopping");
         this.#residency.beginStop();
 
-        const stopDeadlineMs = Daemon.#stopDeadlineMs();
-        const deadline = Date.now() + stopDeadlineMs;
-        const settle = <T>(label: string, wait: () => Promise<T>): Promise<PromiseSettledResult<T>> =>
-            new Promise((resolve) => {
-                let settled = false;
-                const finish = (result: PromiseSettledResult<T>): void => {
-                    if (settled) return;
-                    settled = true;
-                    clearTimeout(timer);
-                    resolve(result);
-                };
-                const timer = setTimeout(
-                    () => finish({ status: "rejected", reason: new Error(`stop deadline exceeded waiting for ${label}`) }),
-                    Math.max(0, deadline - Date.now()),
-                );
-                Promise.resolve().then(wait).then(
-                    (value) => finish({ status: "fulfilled", value }),
-                    (reason: unknown) => finish({ status: "rejected", reason }),
-                );
-            });
+        const shutdown = deadline ?? new StopDeadline();
 
         // Stop accepting external work immediately, but do not await listener
         // closure before cancelling active workers: an SSE connection may itself be
@@ -1791,7 +1766,7 @@ export default class Daemon implements ApplicationPort {
             const errors = results.filter((result): result is PromiseRejectedResult => result.status === "rejected").map(({ reason }) => reason);
             if (errors.length > 0) throw new AggregateError(errors, `module ${phase} failed`);
         };
-        const moduleStop = settle("modules stop", () => modulePhase("stop"));
+        const moduleStop = shutdown.settle("modules stop", () => modulePhase("stop"));
 
         // Drain order: (1) tell the supervisor to abort worker scopes so
         // strike paths don't keep going, (2) await its active drains
@@ -1810,27 +1785,27 @@ export default class Daemon implements ApplicationPort {
         // the daemon forever. Past the deadline the waits are abandoned; the
         // process may exit with the WAL in place (SQLite recovers) rather than
         // leak as a live-but-wedged tree.
-        const drainResult = await settle("drains idle", () => this.#drains.idle());
+        const drainResult = await shutdown.settle("drains idle", () => this.#drains.idle());
         // A boundary publication queued behind the last turn settles before
         // modules close and before the DB goes away ({§functionality-publication}).
-        const functionalityResult = await settle("functionality publications", () => this.#functionality.settle());
+        const functionalityResult = await shutdown.settle("functionality publications", () => this.#functionality.settle());
         const moduleStopResult = await moduleStop;
-        const streamingResult = await settle("streaming schemes idle", () => this.#drainStreamingSchemes());
-        const derivationResult = await settle("derivation drain", () => this.#engine.drainDerivations(derivationAbort));
+        const streamingResult = await shutdown.settle("streaming schemes idle", () => this.#drainStreamingSchemes());
+        const derivationResult = await shutdown.settle("derivation drain", () => this.#engine.drainDerivations(derivationAbort));
         const mimetypeResult = this.#ownsMimetypes
-            ? await settle("mimetypes dispose", () => this.#mimetypes.dispose())
+            ? await shutdown.settle("mimetypes dispose", () => this.#mimetypes.dispose())
             : null;
-        const schemeResult = await settle("schemes close", () => this.#schemes.close());
+        const schemeResult = await shutdown.settle("schemes close", () => this.#schemes.close());
         // Streaming and scheme closure are the last producers of synchronous
         // conclusion notifications. Join the supervisor-owned async tails only
         // after those producers settle, before the caller may close SQLite.
-        const wakeResult = await settle("drains idle (wake)", () => this.#drains.idle());
-        const moduleCloseResult = await settle("modules close", () => modulePhase("close"));
+        const wakeResult = await shutdown.settle("drains idle (wake)", () => this.#drains.idle());
+        const moduleCloseResult = await shutdown.settle("modules close", () => modulePhase("close"));
         // {§db-maintenance-optimize} — the last database step before the caller closes SQLite:
         // planner statistics refreshed on the writer, bounded by SQLite's own analysis limit.
         // {§retention-policy} — the operator's retention runs once more before the statistics.
-        const collectResult = await settle("retention", async () => this.#retention?.run());
-        const optimizeResult = await settle("database optimize", () => this.#db.maintenance_optimize.run({}));
+        const collectResult = await shutdown.settle("retention", async () => this.#retention?.run());
+        const optimizeResult = await shutdown.settle("database optimize", () => this.#db.maintenance_optimize.run({}));
         const closeErrors = [
             moduleStopResult,
             moduleCloseResult,

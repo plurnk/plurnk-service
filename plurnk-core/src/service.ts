@@ -236,10 +236,10 @@ export default class Service {
         let daemon: Daemon | null = null;
         let observability: Awaited<ReturnType<typeof startObservability>> = null;
         const teardown = new ServiceTeardown(
-            async () => { await daemon?.stop(); },
-            async () => { await observability?.shutdown(); },
-            async () => { await db?.close(); },
-            async () => { await listener.close(); },
+            async (deadline) => { await daemon?.stop(deadline); },
+            ["observability shutdown", async () => { await observability?.shutdown(); }],
+            ["database close", async () => { await db?.close(); }],
+            ["HTTP listener close", async () => { await listener.close(); }],
         );
         try {
             // {§startup-admission-order}: after listener ownership, persistence

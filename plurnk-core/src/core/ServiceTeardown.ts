@@ -1,11 +1,15 @@
-type Cleanup = () => Promise<void>;
+import StopDeadline from "./StopDeadline.ts";
+
+type Cleanup = readonly [name: string, run: () => Promise<void>];
 
 export default class ServiceTeardown {
+    readonly #stopDaemon: (deadline: StopDeadline) => Promise<void>;
     readonly #cleanups: readonly Cleanup[];
     #closing: Promise<void> | null = null;
     #requested = false;
 
-    constructor(...cleanups: readonly Cleanup[]) {
+    constructor(stopDaemon: (deadline: StopDeadline) => Promise<void>, ...cleanups: readonly Cleanup[]) {
+        this.#stopDaemon = stopDaemon;
         this.#cleanups = cleanups;
     }
 
@@ -47,13 +51,18 @@ export default class ServiceTeardown {
     }
 
     async #close(): Promise<void> {
+        const deadline = new StopDeadline();
         const failures: unknown[] = [];
-        for (const cleanup of this.#cleanups) {
-            try {
-                await cleanup();
-            } catch (cause) {
-                failures.push(...ServiceTeardown.#causes(cause));
-            }
+        // Core bounds its own producer/observer sequence. An outer race would let
+        // resource release overtake that sequence when the shared deadline expires.
+        try {
+            await this.#stopDaemon(deadline);
+        } catch (cause) {
+            failures.push(...ServiceTeardown.#causes(cause));
+        }
+        for (const [name, cleanup] of this.#cleanups) {
+            const result = await deadline.settle(name, cleanup);
+            if (result.status === "rejected") failures.push(...ServiceTeardown.#causes(result.reason));
         }
         if (failures.length === 1) throw failures[0];
         if (failures.length > 1) throw new AggregateError(failures, "service shutdown failed");
