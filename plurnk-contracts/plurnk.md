@@ -32,8 +32,11 @@ body?
 Example explanation of delay.
 ```
 
-> [!IMPORTANT]
+> [!TIP]
 > YOU SHOULD record at least one NOTE per continuing turn.
+
+> [!TIP]
+> YOU SHOULD promptly submit the turn after emitting FIND and READ discovery operations rather than speculating more.
 
 ```NOTE
 Example of reasoning distilled and preserved for future turns.
