@@ -16,6 +16,11 @@ export default class LiveSubscriptions {
         this.#cancellations.delete(subscriptionId);
     }
 
+    // {§subscription-finalization} A failed durable close retains the owner but permits another attempt.
+    retryable(subscriptionId: number): void {
+        this.#cancellations.delete(subscriptionId);
+    }
+
     cancel(subscriptionId: number): Promise<boolean> {
         const pending = this.#cancellations.get(subscriptionId);
         if (pending !== undefined) return pending;
@@ -28,6 +33,9 @@ export default class LiveSubscriptions {
             cancellation = Promise.reject(error);
         }
         this.#cancellations.set(subscriptionId, cancellation);
+        void cancellation.catch(() => {
+            if (this.#cancellations.get(subscriptionId) === cancellation) this.retryable(subscriptionId);
+        });
         return cancellation;
     }
 }

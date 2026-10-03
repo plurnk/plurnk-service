@@ -39,6 +39,16 @@ const journeys = Object.freeze({
             rejection: "The requested model is unavailable; select an available model.",
         }],
     },
+    recovery: {
+        marker: "Exercise the failed stream finalization.",
+        programs: [{
+            reasoning: "The stream will finish before its durable close can commit.",
+            content: "````sh\nprintf 'retained-stream-output\\n'\n````\n\n````WAIT\nAwait the command.\n````",
+        }, {
+            reasoning: "The additional message reached the parked worker.",
+            content: "````NOTE <!-- Follow-up accepted while parked. -->\nThe unresolved stream remains an obligation.\n````\n\n````WAIT\nAwait settlement.\n````",
+        }],
+    },
 });
 
 const readJson = async (request) => {
@@ -113,6 +123,10 @@ export const startClientJourneyModel = async () => {
             const program = definition.programs[index];
             // {§packet-wire-envelope}: the packet is the system and user messages; the assistant messages are the worker's emissions.
             const text = (body.messages ?? []).filter((message) => message.role !== "assistant").map((message) => typeof message.content === "string" ? message.content : "").join("\n\n");
+            if (journey === "recovery" && index === 1) {
+                assert.ok(text.includes("Please keep observing the unresolved stream."), "new input wakes the parked worker");
+                assert.ok(text.includes("retained-stream-output"), "the next packet retains the producer's output");
+            }
             if (journey === "tui" && index === 1) {
                 const log = /(?:^|\n)## Log\n([\s\S]*?)(?=\n## |$)/u.exec(text)?.[1]?.trim() ?? "";
                 const records = parseLogRecords(log);

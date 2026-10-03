@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
 import DbSubscriptionCaps from "../../src/core/caps/DbSubscriptionCaps.ts";
-import type { WakeWorkerPayload, StreamEventPayload } from "../../src/core/ChannelWrite.ts";
+import ChannelWrite, { type WakeWorkerPayload, type StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
 import { makeSchemeCtx, schemeManifest } from "./_scheme.ts";
 import LiveSubscriptions from "../../src/core/LiveSubscriptions.ts";
@@ -114,4 +114,105 @@ test("{§per-entry-channels} DbSubscriptionCaps: open binds + composes abort, no
         // open on an absent entry → throws (a subscription needs its entry)
         await assert.rejects(() => subs.open("/missing", { cancel: () => {} }), /no entry/);
     } finally { await db.close(); }
+});
+
+test("{§subscriptions-subscription-registry-routes-cancellation} notification failure after durable close still releases ownership and wakes the worker", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `close-notify-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const failure = new Error("fixture notification failure");
+        const wakes: WakeWorkerPayload[] = [];
+        const ctx = makeSchemeCtx({
+            db, workspaceId, workerId,
+            streamEventNotify: () => { throw failure; }, wakeWorkerNotify: (event) => wakes.push(event),
+        });
+        const entries = new DbEntryCaps(ctx, "exec", schemeManifest("exec", { stdout: "text/plain" }, "stdout"), "");
+        const live = new LiveSubscriptions();
+        const subscriptions = new DbSubscriptionCaps(ctx, "exec", "", live, "stdout");
+        const entry = await entries.write("/run", { channels: { stdout: { content: "", mimetype: "text/plain", state: "active" } } });
+        let cancellations = 0;
+        const subscription = await subscriptions.open("/run", { cancel: () => { cancellations++; } });
+        const row = await db.find_active_subscription.get<{ id: number }>({ entry_id: entry.entryId });
+        assert.ok(row);
+        await assert.rejects(subscription.close({ status: 200 }), (cause) => cause === failure);
+        assert.equal((await db.test_get_subscription.get<{ close_status: number }>({ id: row.id }))?.close_status, 200);
+        assert.equal(await live.cancel(row.id), false, "a committed terminal subscription has no remaining cancellation owner");
+        assert.equal(cancellations, 0);
+        assert.equal(wakes.length, 1, "an observer failure cannot suppress the terminal wake");
+        assert.deepEqual(wakes[0].result, { status: 200 });
+        await subscription.close({ status: 200 });
+        assert.equal(wakes.length, 1, "repeated closure never repeats post-commit delivery");
+    } finally { await db.close(); }
+});
+
+for (const cancelledBeforeClose of [false, true]) {
+test(`{§subscription-finalization} failed durable closure can retry settlement without recancelling the producer (prior cancellation: ${cancelledBeforeClose})`, async (t) => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `close-retry-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const wakes: WakeWorkerPayload[] = [];
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, wakeWorkerNotify: (event) => wakes.push(event) });
+        const entries = new DbEntryCaps(ctx, "exec", schemeManifest("exec", { stdout: "text/plain" }, "stdout"), "");
+        const live = new LiveSubscriptions();
+        const subscriptions = new DbSubscriptionCaps(ctx, "exec", "", live, "stdout");
+        const entry = await entries.write("/run", { channels: { stdout: { content: "done", mimetype: "text/plain", state: "active" } } });
+        let cancellations = 0;
+        const subscription = await subscriptions.open("/run", { cancel: () => { cancellations++; } });
+        const row = await db.find_active_subscription.get<{ id: number }>({ entry_id: entry.entryId });
+        assert.ok(row);
+        if (cancelledBeforeClose) assert.equal(await live.cancel(row.id), true);
+        const failure = new Error("fixture durable close unavailable");
+        t.mock.method(ChannelWrite, "closeSubscription", async () => { throw failure; }, { times: 2 });
+        await assert.rejects(subscription.close({ status: 200 }, "finished"), (cause) => cause === failure);
+        await assert.rejects(live.cancel(row.id), (cause) => cause === failure);
+        assert.equal(wakes.length, 0, "nothing announces a closure that has not committed");
+        assert.equal((await db.find_open_subscriptions_for_worker.all({ worker_id: workerId })).length, 1);
+        assert.equal(await live.cancel(row.id), true);
+        assert.equal((await db.find_open_subscriptions_for_worker.all({ worker_id: workerId })).length, 0);
+        assert.equal(wakes.length, 1);
+        assert.deepEqual(wakes[0].result, { status: 200 });
+        assert.equal(wakes[0].summary, "finished");
+        assert.equal(cancellations, cancelledBeforeClose ? 1 : 0, "settlement retries do not call the ended producer");
+        await subscription.close({ status: 200 });
+        assert.equal(wakes.length, 1);
+        assert.equal(await live.cancel(row.id), false);
+    } finally { await db.close(); }
+});
+}
+
+test("{§subscription-finalization} concurrent close and cancellation share the first terminal outcome and one wake", async (t) => {
+    const db = await openMigrated();
+    const release = Promise.withResolvers<void>();
+    try {
+        const workspaceId = await insertWorkspace(db, `close-concurrent-${crypto.randomUUID()}`);
+        const workerId = await insertWorker(db, workspaceId);
+        const wakes: WakeWorkerPayload[] = [];
+        const ctx = makeSchemeCtx({ db, workspaceId, workerId, wakeWorkerNotify: (event) => wakes.push(event) });
+        const entries = new DbEntryCaps(ctx, "exec", schemeManifest("exec", { stdout: "text/plain" }, "stdout"), "");
+        const live = new LiveSubscriptions();
+        const subs = new DbSubscriptionCaps(ctx, "exec", "", live, "stdout");
+        const entry = await entries.write("/run", { channels: { stdout: { content: "", mimetype: "text/plain", state: "active" } } });
+        const subscription = await subs.open("/run", { cancel: () => assert.fail("settling is not running") });
+        const row = await db.find_active_subscription.get<{ id: number }>({ entry_id: entry.entryId });
+        assert.ok(row);
+        const original = ChannelWrite.closeSubscription;
+        const close = t.mock.method(ChannelWrite, "closeSubscription", async (...args: Parameters<typeof original>) => {
+            await release.promise;
+            return original(...args);
+        });
+        const first = subscription.close({ status: 200 }, "first");
+        const second = subscription.close(Results.failure("scheme:exec", "cancelled", 499, "cancelled"), "second");
+        assert.equal(first, second);
+        const cancelled = live.cancel(row.id);
+        assert.equal(close.mock.callCount(), 1);
+        release.resolve();
+        await first;
+        assert.equal(await cancelled, true);
+        assert.equal(wakes.length, 1);
+        assert.deepEqual(wakes[0].result, { status: 200 });
+        assert.equal(wakes[0].summary, "first");
+        assert.equal(await live.cancel(row.id), false);
+    } finally { release.resolve(); await db.close(); }
 });

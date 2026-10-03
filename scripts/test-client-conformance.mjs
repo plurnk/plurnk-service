@@ -12,6 +12,7 @@ import { join, relative, resolve, sep } from "node:path";
 import { projectTarball } from "./package-projection.mjs";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import SqlRite from "@possumtech/sqlrite";
 import { startClientJourneyModel } from "./fixtures/client-journey-model.mjs";
 import Launch from "@plurnk/plurnk-service/launch";
 import { resolveClientCheckout } from "./project-topology.mjs";
@@ -176,6 +177,8 @@ let fixture;
 let tui;
 let passed = false;
 let daemonOutput = { stdout: "", stderr: "" };
+const closeFailure = Promise.withResolvers();
+const closeFailureMessage = "installed-journey durable close unavailable";
 
 try {
     await run("npm", ["run", "build"], { cwd: root, maxBuffer: 128 * 1024 * 1024 });
@@ -232,7 +235,10 @@ try {
         const launched = await Launch.start({
             command: [daemonBin, "start"], cwd: install, env: daemonEnv,
             readyTimeoutMs: 30_000, stopGraceMs: 5_000,
-            onOutput: (stream, chunk) => { daemonOutput[stream] += chunk; },
+            onOutput: (stream, chunk) => {
+                daemonOutput[stream] += chunk;
+                if (daemonOutput.stderr.includes(closeFailureMessage)) closeFailure.resolve();
+            },
         }).catch((error) => {
             daemonOutput = { stdout: error.stdout ?? "", stderr: error.stderr ?? "" };
             throw new Error(`installed service ${error.kind}: ${error.message}`, { cause: error });
@@ -345,6 +351,48 @@ try {
         throw new Error("a rejected provider request consumed more than one inference attempt");
     }
     process.stdout.write("installed rejected-request journey GREEN: one attempt + exact cause + failed status after inspection\n");
+
+    // {§subscription-finalization}: a real failed SQLite commit, with no production fault-injection seam.
+    const faultDb = await SqlRite.open({ path: db, dir: join(root, "plurnk-core/test/conformance") });
+    try {
+        await faultDb.test_fail_stream_close();
+        tui = spawnInstalledTui(clientBin, [
+            "--workspace", "installed-recovery", "--worker", "Recovery_Worker",
+            "--project-root", "", "--model", "journey", "--max-turns", "4", "--yolo",
+        ], clientEnv);
+        await tui.waitFor(/workspace: installed-recovery/);
+        tui.write("Exercise the failed stream finalization.\r");
+        const failureDeadline = setTimeout(() => closeFailure.reject(new Error("stream close did not reach the injected SQLite failure")), 10_000);
+        try { await closeFailure.promise; } finally { clearTimeout(failureDeadline); }
+        await tui.waitFor(/updates in /);
+        const state = await faultDb.test_stream_recovery_state.get({});
+        if (state?.closed_at !== null || state.close_status !== null || state.loop_status !== 202) {
+            throw new Error(`failed close lost its live obligation or parked loop: ${JSON.stringify(state)}`);
+        }
+        tui.write(`/look sh://${state.pathname}\r`);
+        await tui.waitFor(/LOOK \(sh:\/\/\/[^)]+\)[\s\S]*retained-stream-output/);
+        if (fixture.requests.filter(({ journey }) => journey === "recovery").length !== 1) {
+            throw new Error("inspection ran inference instead of inspecting the parked worker");
+        }
+        tui.write("Please keep observing the unresolved stream.\r");
+        await tui.waitFor(/Follow-up accepted while parked\./);
+        tui.write("/workers\r");
+        await tui.waitFor(/Recovery_Worker[^\n]*← bound/);
+        await faultDb.test_restore_stream_close();
+        tui.write("/stop\r");
+        await tui.waitFor(/cancelled|final 499/);
+        const settled = await faultDb.test_stream_recovery_state.get({});
+        if (settled?.close_status !== 200 || JSON.parse(settled.close_result).status !== 200) {
+            throw new Error(`cancellation did not retain the finished producer's real outcome: ${JSON.stringify(settled)}`);
+        }
+        if (settled.loop_status !== 499) throw new Error(`client cancellation did not terminate the parked loop: ${JSON.stringify(settled)}`);
+        await tui.exit();
+        tui = undefined;
+    } finally {
+        await faultDb.test_restore_stream_close();
+        await faultDb.close();
+    }
+    process.stdout.write("installed failed-finalization journey GREEN: honest park + inspection + new input + cancellation + retained outcome\n");
 
     fixture.assertComplete();
 

@@ -19,6 +19,7 @@ import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } 
 import type { FindResult } from "./_entry-find.ts";
 import { MetadataOptions } from "@plurnk/plurnk-schemes";
 import ChannelWrite, { type StreamCoordinate } from "../core/ChannelWrite.ts";
+import LiveSubscription from "../core/LiveSubscription.ts";
 import EnvFunctionality, { type EnvRecord } from "../server/EnvFunctionality.ts";
 import ExecAbort from "./exec-abort.ts";
 import { LIFETIME_SYNTAX, formatLifetime, parseExecLifetime } from "./exec-lifetime.ts";
@@ -159,7 +160,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return this.#scratch ??= new ExecScratch();
     }
 
-    #activeAborts = new Map<number, { workspaceId: number; workerId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; unlink: () => void; detached: boolean; input: ExecutionInput; invocation: ExecStatement; executor: Executor }>();
+    #activeAborts = new Map<number, { workspaceId: number; workerId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; detached: boolean; input: ExecutionInput; invocation: ExecStatement; executor: Executor }>();
     #activeSpawns = new Map<number, Promise<SchemeResult>>();
 
     async idle(): Promise<void> {
@@ -227,9 +228,12 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const { scheme } = statement.target;
         const { pathname } = entryCoordinateOf(statement.target, "namespace");
         const core = this.coreContext(ctx);
-        for (const entry of this.#activeAborts.values()) {
+        for (const [subscriptionId, entry] of this.#activeAborts) {
             if (entry.workspaceId === core.workspaceId && entry.pathname === pathname && (scheme === "exec" || entry.runtime === scheme)) {
                 entry.controller.abort(ExecAbort.killReason(null));
+                if (!await this.liveSubscriptions().cancel(subscriptionId)) {
+                    throw new Error(`Active execution subscription ${subscriptionId} has no cancellation owner.`);
+                }
                 return { status: 200 };
             }
         }
@@ -798,9 +802,20 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             if (parent.aborted) controller.abort(ExecAbort.teardownReason());
         }
         const input = new ExecutionInput(controller.signal, execution.inputTimeoutMs);
-        this.#activeAborts.set(subscriptionId, { workspaceId: core.workspaceId, workerId: core.workerId, turnId: core.turnId, pathname, runtime, effect, controller, unlink, detached: attrs.detached === true, input, invocation, executor: resolved.executor });
-        this.liveSubscriptions().register(subscriptionId, {
-            cancel: () => controller.abort(ExecAbort.teardownReason()),
+        this.#activeAborts.set(subscriptionId, { workspaceId: core.workspaceId, workerId: core.workerId, turnId: core.turnId, pathname, runtime, effect, controller, detached: attrs.detached === true, input, invocation, executor: resolved.executor });
+        const lifecycle = new LiveSubscription({
+            db: core.db, registry: this.liveSubscriptions(),
+            identity: {
+                workspaceId: core.workspaceId, workerId: core.workerId, entryId,
+                target: `${runtime}://${pathname}`, subscriptionId, scheme: runtime, ...attrs.coordinate,
+            },
+            handle: { cancel: () => controller.abort(ExecAbort.teardownReason()) },
+            release: () => {
+                unlink();
+                this.#activeAborts.delete(subscriptionId);
+                this.#activeSpawns.delete(subscriptionId);
+            },
+            notify: core.streamEventNotify, wake: core.wakeWorkerNotify,
         });
 
         const admission = execution.scheduler.admit(core.workspaceId, controller.signal);
@@ -809,7 +824,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 return await this.#runExecutor({
                     executor: resolved.executor,
                     runtime, body, cwd, target, metadata: args.metadata, ctx: core, pathname, coordinate: attrs.coordinate,
-                    entryId, subscriptionId, signal: controller.signal, controller, tempPath, input,
+                    entryId, lifecycle, signal: controller.signal, controller, tempPath, input,
                     timeoutSec: typeof attrs.timeoutSec === "number" ? attrs.timeoutSec : null,
                 });
             } finally {
@@ -823,6 +838,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         // from the preserved effect fact; they resolve a turn later, uniformly
         // with host streams.
         this.#activeSpawns.set(subscriptionId, tail);
+        void tail.catch((cause: unknown) => { console.error(`Execution '${runtime}' failed to settle:`, cause); });
         return admission.queued
             ? {
                 status: 202,
@@ -879,13 +895,13 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     async #runExecutor(opts: {
         executor: Executor;
         runtime: string; body: string; cwd: string | null; target: string | null; metadata: readonly string[] | null; ctx: PlurnkSchemeContext;
-        pathname: string; entryId: number; subscriptionId: number; signal: AbortSignal;
+        pathname: string; entryId: number; lifecycle: LiveSubscription; signal: AbortSignal;
         coordinate?: StreamCoordinate;
         controller: AbortController; timeoutSec: number | null;
         tempPath: string | null;
         input: ExecutionInput;
     }): Promise<SchemeResult> {
-        const { runtime, body, cwd, target, metadata, ctx, pathname, entryId, subscriptionId, signal, controller, timeoutSec, tempPath, input, coordinate } = opts;
+        const { runtime, body, cwd, target, metadata, ctx, pathname, entryId, lifecycle, signal, controller, timeoutSec, tempPath, input, coordinate } = opts;
         // {§functionality-model-projection} — a Core-owned manager acts for the invoking Worker. The
         // framework's ExecArgs carries no Worker identity, so Core binds it here, at the operation.
         const executor = isWorkerBound(opts.executor) ? opts.executor.forWorker(ctx.workerId) : opts.executor;
@@ -1218,13 +1234,6 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                     : exitCode !== null
                         ? `exit ${exitCode}`
                         : result.problem?.title.toLowerCase() ?? "completed";
-            await ChannelWrite.closeSubscription(db, {
-                subscriptionId,
-                result,
-                notify: ctx.streamEventNotify,
-                coordinate,
-            });
-
             const stdoutMeta = await db.channel_meta.get<{ contentLength: number }>({ entry_id: entryId, channel: "stdout" });
             const stderrMeta = await db.channel_meta.get<{ contentLength: number }>({ entry_id: entryId, channel: "stderr" });
             stdoutLength = stdoutMeta?.contentLength ?? 0;
@@ -1281,22 +1290,10 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                     console.error(`Execution source temporary cleanup failed for '${tempPath}':`, cause);
                 });
             }
-            this.#activeAborts.get(subscriptionId)?.unlink();
-            this.#activeAborts.delete(subscriptionId);
-            this.liveSubscriptions().unregister(subscriptionId);
-            this.#activeSpawns.delete(subscriptionId);
-
-            // Every worker backgrounds now ({§exec-stream}) — wake a parked loop on completion so the
-            // worker resumes to the turn where the stream's terminal delta surfaces.
-            if (ctx.wakeWorkerNotify !== undefined) {
-                ctx.wakeWorkerNotify({
-                    workspaceId: ctx.workspaceId, workerId: ctx.workerId,
-                    entryId, target: `${runtime}://${pathname}`, subscriptionId, result,
-                    scheme: runtime,
-                    summary: `${runtime}://${pathname} completed (${exitLabel}); stdout=${stdoutLength} bytes, stderr=${stderrLength} bytes`,
-                    ...coordinate,
-                });
-            }
+            try {
+                await lifecycle.close(result,
+                    `${runtime}://${pathname} completed (${exitLabel}); stdout=${stdoutLength} bytes, stderr=${stderrLength} bytes`);
+            } catch (cause) { finalizationErrors.push(cause); }
             if (finalizationErrors.length === 1) throw finalizationErrors[0];
             if (finalizationErrors.length > 1) {
                 throw new AggregateError(finalizationErrors, `Execution narration ${completedNarration?.turnId ?? "unknown"} failed to settle`);

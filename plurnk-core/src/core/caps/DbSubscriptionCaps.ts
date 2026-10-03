@@ -20,6 +20,7 @@ import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import ChannelWrite from "../ChannelWrite.ts";
 import CapsResolve from "./CapsResolve.ts";
 import type LiveSubscriptions from "../LiveSubscriptions.ts";
+import LiveSubscription from "../LiveSubscription.ts";
 import { renderAddress } from "../plurnk-uri.ts";
 
 export default class DbSubscriptionCaps implements SubscriptionCaps {
@@ -71,33 +72,21 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
                 mimetype,
             });
         };
-        const close = async (
-            result: ChannelProducerResult,
-            summary?: string,
-            channelResults?: Readonly<Record<string, ChannelProducerResult>>,
-        ): Promise<void> => {
-            // {§validation-topology}: ChannelWrite.closeSubscription is the gate this result crosses.
-            await ChannelWrite.closeSubscription(db, {
-                subscriptionId,
-                result,
-                channelResults,
-                notify: streamEventNotify,
-            });
-            liveSubscriptions.unregister(subscriptionId);
-            unlink();
-            wakeWorkerNotify?.({
+        const lifecycle = new LiveSubscription({
+            db, registry: liveSubscriptions,
+            identity: {
                 workspaceId, workerId, entryId,
                 target: renderAddress({ scheme, authority: this.#authority, pathname }),
-                subscriptionId, result, scheme, summary: summary ?? "",
-            });
-        };
-        const subscription = Object.assign(controller.signal, { notifyChunk, close });
-
-        liveSubscriptions.register(subscriptionId, {
-            cancel: async () => {
+                subscriptionId, scheme,
+            },
+            notify: streamEventNotify, wake: wakeWorkerNotify, release: () => unlink(),
+            handle: { cancel: async () => {
                 controller.abort("subscription cancelled");
                 await handle.cancel();
-            },
+            } },
+        });
+        const subscription = Object.assign(controller.signal, {
+            notifyChunk, close: lifecycle.close.bind(lifecycle),
         });
         this.#current = subscription;
         if (parent !== undefined) {

@@ -37,3 +37,14 @@ test("LiveSubscriptions preserves a synchronous teardown failure as the shared r
     assert.equal(first, second);
     await assert.rejects(first, failure);
 });
+
+test("{§subscription-finalization} failed cancellation may be retried without replacing its owner", async () => {
+    const registry = new LiveSubscriptions();
+    const failure = new Error("teardown failed");
+    let calls = 0;
+    registry.register(7, { cancel() { if (++calls === 1) throw failure; } });
+    await assert.rejects(registry.cancel(7), (cause) => cause === failure);
+    assert.equal(await registry.cancel(7), true);
+    assert.equal(await registry.cancel(7), true);
+    assert.equal(calls, 2, "successful cancellation is still coalesced");
+});

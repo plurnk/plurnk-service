@@ -6,11 +6,12 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Engine from "../../src/core/Engine.ts";
+import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import type { Executor } from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import { Results } from "@plurnk/plurnk-schemes";
-import { concludeStmt, execStmt, dispositionStmt, sendStmt } from "./_dsl.ts";
+import { concludeStmt, execStmt, dispositionStmt, sendStmt, killStmt, urlPath } from "./_dsl.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
@@ -71,6 +72,42 @@ const wire = async (run: Executor["run"]) => {
 const idle = async (schemes: SchemeRegistry): Promise<void> => {
     await (schemes.get("exec") as Exec).idle();
 };
+
+test("{§subscriptions-subscription-registry-routes-cancellation} a failed executor close retains a callable owner for its durable obligation", { timeout: 10000 }, async (t) => {
+    const completion = Promise.withResolvers<{ status: number }>();
+    const fixture = await wire(() => completion.promise);
+    const failure = new Error("fixture durable closure failure");
+    const close = t.mock.method(ChannelWrite, "closeSubscription", async () => { throw failure; }, { times: 1 });
+    try {
+        const result = await fixture.engine.runTurn({
+            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "WAIT")] }),
+            workspaceId: fixture.workspaceId, workerId: fixture.workerId, loopId: fixture.loopId, messages: [],
+        });
+        assert.equal(result.status, 202);
+        const settling = idle(fixture.schemes);
+        completion.resolve({ status: 200 });
+        await settling;
+        assert.equal(close.mock.callCount(), 1);
+        const open = await fixture.db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: fixture.workerId });
+        assert.equal(open.length, 1, "failed persistence cannot pretend the obligation has settled");
+        const subscription = await fixture.db.test_get_subscription.get<{ entry_id: number }>({ id: open[0].id });
+        const entry = await fixture.db.test_get_entry_by_id.get<{ pathname: string }>({ id: subscription!.entry_id });
+        const logs = await fixture.db.test_log_entries_by_turn.all<{ sequence: number }>({ turn_id: result.turnId });
+        const killed = await fixture.engine.dispatch({
+            statement: killStmt(urlPath(fixture.tag, entry!.pathname)),
+            workspaceId: fixture.workspaceId, workerId: fixture.workerId, loopId: fixture.loopId,
+            turnId: result.turnId, sequence: Math.max(...logs.map(({ sequence }) => sequence)) + 1, origin: "model",
+        });
+        assert.equal(killed.status, 200, "KILL can settle the durable obligation through its retained owner");
+        assert.equal((await fixture.db.find_open_subscriptions_for_worker.all({ worker_id: fixture.workerId })).length, 0);
+        const closed = await fixture.db.test_get_subscription.get<{ close_status: number }>({ id: open[0].id });
+        assert.equal(closed?.close_status, 200, "settlement retains the producer's actual result, not a fabricated cancellation");
+    } finally {
+        completion.resolve({ status: 200 });
+        await idle(fixture.schemes);
+        await fixture.db.close();
+    }
+});
 
 test("{§send-wait-scope} a decorated WAIT parks on its actual live stream; the decoration is a label, never a join", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;

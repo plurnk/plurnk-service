@@ -3530,6 +3530,20 @@ Capability admission precedes this decision, so proposal disposition cannot gran
 
 The durable row is lifecycle evidence and the lookup key, not a serialized callback. `subscriptions.open()` establishes both halves before yielding a composed `StreamSubscription`: an `AbortSignal` whose fused `notifyChunk` and terminal `close` methods are safe to retain without the operation's general `SchemeCtx`. `close(result, summary?, channelResults?)` validates one universal terminal producer result plus exact named channel overrides. One SQLite transition closes the subscription and installs each channel's terminal `producerResult`; its lifecycle state derives from that result. The transition then wakes the worker when appropriate and unregisters the live handle. `close_status` is a constrained relational projection of `close_result.status`, never an independent result, while `channel_results` preserves historical overrides after a later subscription replaces the channel's current evidence. A durable open row without a live handle is an explicit lifecycle failure, never a fabricated cancellation success. Channel state ({§channel-state}) + log entries ({§no-chunk-rows}) carry lifecycle.
 
+§subscription-finalization Executors and scheme subscriptions share the durable
+close boundary. Concurrent closes join one attempt; a committed close is
+idempotent, including its completion wake.
+
+| Boundary | Ownership and recovery |
+| --- | --- |
+| Persistence fails | Surface the cause, retain the terminal result and callable owner, and emit no completion wake. Another close or cancellation retries settlement, not execution. |
+| Persistence commits | Release ownership before observational delivery. Attempt channel notifications and the completion wake even if another observer throws. |
+| Observer fails after commit | Surface the cause without reverting terminal state, retaining a false live owner, or repeating delivery on another close. |
+
+Cancellation remains coalesced while work is live. Failed cancellation or
+failed settlement permits a subsequent cancellation attempt; it never converts
+the producer's already obtained outcome into a fictitious cancellation result.
+
 At process restart every still-open row is necessarily missing its callable owner. Boot
 settles it as interruption (`500`) and errors active channels before evaluating parked
 loops ({§worker-lifecycle-restart-recovery}); it never reports cancellation (`499`) or

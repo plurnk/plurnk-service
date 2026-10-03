@@ -184,16 +184,16 @@ export default class ChannelWrite {
         return row.id;
     }
 
+    // {§subscription-finalization} Return committed notifications; observers run only after ownership release.
     static async closeSubscription(
         db: Db,
-        { subscriptionId, result, channelResults = {}, notify, coordinate }: {
+        { subscriptionId, result, channelResults = {}, coordinate }: {
             subscriptionId: number;
             result: SchemeResult;
             channelResults?: Readonly<Record<string, ChannelProducerResult>>;
-            notify?: StreamEventNotify;
             coordinate?: StreamCoordinate;
         },
-    ): Promise<void> {
+    ): Promise<readonly [number, StreamEventPayload][] | null> {
         Results.assertChannelProducerResult(result);
         const exactChannelResults: Record<string, ChannelProducerResult> = Object.fromEntries(
             Object.entries(channelResults).map(([channel, channelResult]) => [
@@ -201,23 +201,16 @@ export default class ChannelWrite {
                 Results.assertChannelProducerResult(channelResult),
             ]),
         );
-        const published = notify === undefined
-            ? []
-            : await ChannelWrite.#publishedChannelMetaStmt(db).all<SubscriptionChannelMetaRow>({
-                subscription_id: subscriptionId });
-        const settled = await ChannelWrite.#closeSubStmt(db).run({
-            result: JSON.stringify(result),
-            status: result.status,
-            channel_results: JSON.stringify(exactChannelResults),
+        const published = await ChannelWrite.#publishedChannelMetaStmt(db).all<SubscriptionChannelMetaRow>({
             subscription_id: subscriptionId });
-        if (settled.changes === 0 || notify === undefined) return;
+        const events: [number, StreamEventPayload][] = [];
         for (const meta of published) {
             const channelResult = Object.hasOwn(exactChannelResults, meta.channel)
                 ? exactChannelResults[meta.channel]!
                 : result;
             const state: ChannelState = channelResult.status >= 400 ? "errored" : "closed";
             if (meta.state === state) continue;
-            notify(meta.workspace_id, {
+            events.push([meta.workspace_id, {
                 entryId: meta.entryId,
                 workerId: meta.workerId,
                 target: ChannelWrite.#targetUri(meta.scheme, meta.authority, meta.pathname),
@@ -225,8 +218,14 @@ export default class ChannelWrite {
                 state,
                 contentLength: meta.contentLength,
                 mimetype: meta.mimetype,
-                ...coordinate });
+                ...coordinate }]);
         }
+        const settled = await ChannelWrite.#closeSubStmt(db).run({
+            result: JSON.stringify(result),
+            status: result.status,
+            channel_results: JSON.stringify(exactChannelResults),
+            subscription_id: subscriptionId });
+        return settled.changes === 0 ? null : events;
     }
 
     // Terminal close_status of a finished exec stream, by coordinate pathname —
