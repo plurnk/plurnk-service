@@ -72,7 +72,7 @@ export default class TurnDispositionHandler {
             const configured = TurnDispositionHandler.configuredWaitSeconds();
             const seconds = waits.length === 0 ? configured
                 : Math.min(...waits.map((statement) => statement.lineMarker?.marks[0] ?? configured));
-            const pollAt = Date.now() + seconds * 1000;
+            const pollAt = Math.ceil(Date.now() + seconds * 1000);
             return await this.#lifecycle.park(ctx.loopId, { wakenBy: "obligations", pollAt }) ? 202 : this.#lifecycle.status(ctx.loopId);
         }
         if (decision.status !== 200 || ctx.origin !== "model") return decision.status;

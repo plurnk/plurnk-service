@@ -115,6 +115,7 @@ test("{§notifications-loop-packet} {§application-loop-observation} {§methods-
                     status: 200,
                 },
                 packetCount: 1,
+                waitUntil: null,
             });
             assert.equal(typeof own?.terminatedAt, "string");
             const messages = await daemon.readMessages({ workspaceId: workspace.workspaceId, workerId: task.workerId });

@@ -840,8 +840,9 @@ all use that one definition.
 With live work—an open stream or a live child worker—the loop parks until an
 ordinary wake or its maximum wait elapses. `PLURNK_SERVICE_WAIT_SEC` supplies the
 bound; `WAIT <seconds>` overrides that one park ({§send-wait-scope}). The wake time
-commits atomically with the wait revision. Expiry queues the same loop through
-normal worker/provider admission; it never cancels work or fabricates a result.
+commits atomically with the wait revision, rounded up to the next millisecond.
+Expiry queues the same loop through normal worker/provider admission; it never
+cancels work or fabricates a result.
 
 | Boundary | Outcome |
 |---|---|

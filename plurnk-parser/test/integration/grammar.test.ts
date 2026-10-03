@@ -815,10 +815,10 @@ test("the displayed row prefix copied whole — digits before the scope — read
     assert.ok(retired.items.some((item) => item.kind === "error" && item.error.severity === "error"), "`<@aZ09b:42>` is refused");
 });
 
-test("{§send-wait-scope} WAIT discards scope while execution retains its runtime timing", () => {
+test("{§send-wait-scope} WAIT retains a positive duration while execution keeps its distinct timing tuple", () => {
     const terminal = oneStatement(section("WAIT", " <30>", "polling"));
     if (terminal.op !== "WAIT") assert.fail("expected WAIT");
-    assert.equal(terminal.lineMarker, null);
+    assert.deepEqual(terminal.lineMarker, { marks: [30] });
     const appended = oneStatement(section("WAIT", " <-1>", "standing by"));
     if (appended.op !== "WAIT") assert.fail("expected WAIT");
     assert.equal(appended.lineMarker, null);

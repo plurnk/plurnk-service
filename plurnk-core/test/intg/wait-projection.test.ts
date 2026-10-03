@@ -13,6 +13,7 @@ for (const [headers, seconds] of [
     [["WAIT"], 300],
     [["WAIT <600>"], 600],
     [["WAIT (worker://missing) <0.25>"], 0.25],
+    [["WAIT <0.0001>"], 0.0001],
     [["WAIT <600>", "WAIT <120>"], 120],
     [["WAIT <600>", "WAIT"], 300],
     [["KILL"], 300],
@@ -34,7 +35,7 @@ for (const [headers, seconds] of [
         assert.equal(result.status, 202);
         const lifecycle = new LoopLifecycle(db);
         const [parked] = await lifecycle.parked(workerId);
-        assert.equal(parked?.wait_poll_at, 10_000 + seconds * 1000);
+        assert.equal(parked?.wait_poll_at, Math.ceil(10_000 + seconds * 1000));
         assert.equal(await lifecycle.wake(loopId, { revision: parked!.wait_revision, dueAt: parked!.wait_poll_at! }), true);
         assert.equal(await lifecycle.status(loopId), 100, "expiry queues the same loop");
         assert.equal(await lifecycle.status(childLoopId), 102, "expiry does not cancel or conclude the child");
