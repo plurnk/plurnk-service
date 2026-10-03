@@ -427,15 +427,18 @@ test("{§oauth-continuation} a URL-only server hands authorization to the client
         assert.deepEqual(h.runtimeTags(1), []);
         const started = await h.action(1, "workspace.mcp.oauth.begin", {
             alias: "oauth", redirectUrl: "http://127.0.0.1:54321/callback",
-        }) as { status: number; definition: { authorization: { url: string } } };
+        }) as { status: number; authorization: { url: string } };
         assert.equal(started.status, 202);
-        const url = new URL(started.definition.authorization.url);
+        const url = new URL(started.authorization.url);
+        assert.equal(h.snapshots.get(1)?.prepared, prepared, "starting sign-in does not publish or enable capabilities");
         assert.equal(url.searchParams.get("redirect_uri"), "http://127.0.0.1:54321/callback");
         assert.equal(h.leases(), 1);
         const callback = new URL("http://127.0.0.1:54321/callback");
         callback.searchParams.set("code", "fixture-code");
         callback.searchParams.set("state", url.searchParams.get("state")!);
         callback.searchParams.set("iss", origin);
+        await h.lane(1, new Map([["oauth", definition]]));
+        assert.equal(h.leases(), 1, "an unchanged publication cannot discard the client's independent sign-in attempt");
         const completed = await h.action(1, "workspace.mcp.oauth.complete", { alias: "oauth", callbackUrl: callback.href }) as { status: number };
         assert.equal(completed.status, 202);
         await h.settleRefreshes();
@@ -443,6 +446,33 @@ test("{§oauth-continuation} a URL-only server hands authorization to the client
         assert.equal(h.leases(), 0);
         assert.deepEqual(h.snapshots.get(1)?.enabled.get("oauth"), definition, "the client callback is session state, not configuration");
     } finally { await h.module.stop(); }
+});
+
+test("{§oauth-continuation} beginning sign-in can discover usable tools without publishing into a held workspace", async (t) => {
+    let challenged = true;
+    const served = await serveMcpHttp(t, httpHandler(), () => challenged ? new Response("unauthorized", { status: 401 }) : null);
+    const release = Promise.withResolvers<void>();
+    const h = harness({}, () => release.promise);
+    await h.setup();
+    try {
+        const definition = httpServer("oauth", served.url);
+        const initial = await h.lane(1, new Map([["oauth", definition]]));
+        assert.equal(initial.outcomes.get("oauth")?.state, "authorization-required");
+        challenged = false;
+        const begin = () => h.action(1, "workspace.mcp.oauth.begin", {
+            alias: "oauth", redirectUrl: "http://127.0.0.1:54321/callback",
+        });
+        assert.deepEqual(await begin(), { status: 202, alias: "oauth" });
+        assert.deepEqual(await begin(), { status: 202, alias: "oauth" });
+        assert.equal(h.refreshes(), 1);
+        assert.equal(h.leases(), 1);
+        assert.equal(h.snapshots.get(1)?.prepared, initial);
+        release.resolve();
+        await h.settleRefreshes();
+        assert.deepEqual(h.runtimeTags(1), ["oauth"]);
+        assert.equal(h.leases(), 0);
+        assert.deepEqual(await begin(), { status: 200, alias: "oauth" });
+    } finally { release.resolve(); await h.module.stop(); }
 });
 
 for (const [option, code] of [["metadata", "oauth-metadata-unavailable"], ["registration", "oauth-registration-unavailable"]] as const) {
@@ -507,9 +537,9 @@ test("{§oauth-continuation} a later client attempt invalidates the old callback
     try {
         await h.lane(1, new Map([["oauth", httpServer("oauth", served.url)]]));
         const begin = async () => {
-            const result = await h.action(1, "workspace.mcp.oauth.begin", { alias: "oauth", redirectUrl }) as { definition: { authorization: { url: string } } };
+            const result = await h.action(1, "workspace.mcp.oauth.begin", { alias: "oauth", redirectUrl }) as { authorization: { url: string } };
             const url = new URL(redirectUrl);
-            url.searchParams.set("state", new URL(result.definition.authorization.url).searchParams.get("state")!);
+            url.searchParams.set("state", new URL(result.authorization.url).searchParams.get("state")!);
             url.searchParams.set("code", "fixture-code");
             url.searchParams.set("iss", origin);
             return url.href;
@@ -594,6 +624,9 @@ test(`{§oauth-continuation} accepted callbacks are coalesced and publication re
         assert.equal(tokenRequests.length, 1, "one grant exchange for concurrent callbacks");
         assert.deepEqual(h.runtimeTags(1), [], "the callback does not bypass publication");
         assert.equal(h.refreshes(), 1, "duplicate callbacks do not schedule duplicate publication");
+        assert.deepEqual(await h.action(1, "workspace.mcp.oauth.begin", {
+            alias: "oauth", redirectUrl: `${origin}/callback`,
+        }), accepted, "beginning again cannot replace a grant already awaiting publication");
         if (change === "withdraw") await h.lane(1, new Map());
         if (change === "replace") await h.lane(1, new Map([["oauth", { ...definition, headers: { "X-Replacement": "1" } }]]));
         release.resolve();

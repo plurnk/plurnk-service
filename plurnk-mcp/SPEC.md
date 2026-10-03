@@ -448,13 +448,17 @@ sequenceDiagram
     MCP-->>Model: active tools through normal publication
 ```
 
-Interactive preparation with a callback publishes the alias as enabled and
-`authorization-required` with its URL; it publishes no runtime. The adapter
-retains one pending candidate per `(workspace, alias)` holding the challenged
-connection and one workspace residency lease; a new challenge for the alias
-supersedes and releases the previous one ({§oauth-lifetime}).
+`oauth.begin` prepares an authorization attempt without enabling the alias or
+waiting for workspace quiescence. It returns `202` with an `authorization.url`
+when consent is required, `202` without that field when an accepted connection
+awaits publication, or `200` when tools are already active. These results name
+the alias, not a capability snapshot. The adapter retains one pending candidate
+per `(workspace, alias)` holding the connection and one workspace residency
+lease. An unchanged publication preserves that independent attempt; a new
+challenge supersedes it ({§oauth-lifetime}).
 Concurrent begin requests for one alias are refused; a later begun attempt
-supersedes the prior one. An in-flight begin cannot attach after disable,
+supersedes the prior one unless its grant is already accepted and awaiting
+publication. An in-flight begin cannot attach after disable,
 remove or definition replacement. `oauth.complete` accepts the complete callback URL so state, `code`, and
 `iss` remain one parsing unit. Grant acceptance returns without waiting for
 workspace quiescence; it is not a configuration mutation and cannot re-enable

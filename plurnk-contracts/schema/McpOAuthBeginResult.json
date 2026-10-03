@@ -1,0 +1,33 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/McpOAuthBeginResult.json",
+    "title": "McpOAuthBeginResult",
+    "description": "An MCP authorization attempt, independent of capability publication. An authorization URL requests consent; 202 without one awaits publication; 200 is already active.",
+    "oneOf": [
+        { "$ref": "https://schemas.plurnk.xyz/v0/McpOAuthCompletionResult.json" },
+        {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["status", "alias"],
+            "properties": {
+                "status": { "const": 200 },
+                "alias": { "type": "string", "minLength": 1 }
+            }
+        },
+        {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["status", "alias", "authorization"],
+            "properties": {
+                "status": { "const": 202 },
+                "alias": { "type": "string", "minLength": 1 },
+                "authorization": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["url"],
+                    "properties": { "url": { "type": "string", "format": "uri" } }
+                }
+            }
+        }
+    ]
+}

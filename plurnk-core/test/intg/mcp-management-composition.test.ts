@@ -200,6 +200,11 @@ test(`{§oauth-continuation}: AG-UI accepts authorization in an ${busy ? "active
     const running = busy ? post("authorization", undefined, "Hold this turn while sign-in completes.") : Promise.resolve([]);
     if (busy) await entered.promise;
     try {
+        const begun = await action("authorization", "workspace.mcp.oauth.begin", { alias: "fixture", redirectUrl: `${origin}/callback` });
+        assert.equal(begun.ok, true, JSON.stringify(begun));
+        const challenge = begun.result as { authorization: { url: string } };
+        authorization = new URL(challenge.authorization.url);
+        callback.searchParams.set("state", authorization.searchParams.get("state")!);
         const accepted = await complete("authorization");
         assert.equal(accepted.ok, true, JSON.stringify(accepted));
         assert.deepEqual(accepted.result, { status: 202, alias: "fixture" }, "callback acceptance is not a claim of published tools");

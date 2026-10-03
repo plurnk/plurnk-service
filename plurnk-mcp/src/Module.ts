@@ -28,13 +28,13 @@ import {
     type FunctionalityDiscoverQuery,
     type FunctionalityFamilyHandle,
     type FunctionalityOutcome,
-    type FunctionalityListResult,
     type FunctionalityPreparation,
     type FunctionalityPreparedDefinition,
     type FunctionalityPrepared,
     type FunctionalityServiceDefinition,
     type McpServerDefinition,
     type McpOAuthCompletionResult,
+    type McpOAuthBeginResult,
     type JsonSchema,
     type ProblemDetails,
     type WorkspaceCapabilityIdentity,
@@ -67,7 +67,6 @@ const FAMILY = "mcp";
 const NONEMPTY_STRING = { type: "string", minLength: 1 } as const;
 const OPEN_OBJECT = { type: "object", additionalProperties: true } as const;
 const MCP_DEFINITION = { $ref: "https://schemas.plurnk.xyz/v0/McpServerDefinition.json" } as const;
-const MUTATION_RESULT = { $ref: "https://schemas.plurnk.xyz/v0/FunctionalityMutationResult.json" } as const;
 const actionInput = (
     properties: Readonly<Record<string, JsonSchema>>,
     required: readonly string[] = [],
@@ -170,11 +169,11 @@ const attachmentConnection = (attachment: Attachment): ServerConnection | undefi
 
 // {§oauth-lifetime} — a pending authorization is process memory per
 // (workspace, alias): the challenged connection, its URL, the workspace residency it
-// holds, and, once the callback lands, the prepared active attachment.
+// holds, and the accepted grant awaiting capability publication.
 interface PendingAuthorization extends McpBinding {
     readonly connection: ServerConnection;
     readonly releaseWorkspace: () => void;
-    prepared?: ConnectedAttachment;
+    prepared?: ActiveAttachment;
     authorized?: boolean;
     completion?: { readonly callbackUrl: string; readonly result: Promise<McpOAuthCompletionResult> };
 }
@@ -428,7 +427,7 @@ export default class Module {
             scope: "workspace",
             residency: "required",
             inputSchema: actionInput({ alias: NONEMPTY_STRING, redirectUrl: NONEMPTY_STRING }, ["alias", "redirectUrl"]),
-            outputSchema: MUTATION_RESULT,
+            outputSchema: { $ref: "https://schemas.plurnk.xyz/v0/McpOAuthBeginResult.json" },
             handler: (params, context) => this.#beginOAuth(workspaceIdentityOf(context), params),
         });
         seam.registerModuleAction({
@@ -770,15 +769,18 @@ export default class Module {
                     .flatMap((attachment) => attachmentConnection(attachment) ?? [])
                     .filter((connection) => !retained.has(connection) && !pendingConnections.has(connection));
                 for (const [name, pending] of consumedPending) {
-                    this.#pending.delete(this.#pendingKey(workspaceId, name));
+                    const key = this.#pendingKey(workspaceId, name);
+                    if (this.#pending.get(key) === pending) this.#pending.delete(key);
                     pending.releaseWorkspace();
                     if (!retained.has(pending.connection)) obsolete.push(pending.connection);
                 }
-                // {§oauth-lifetime} Only the same pending connection can retain its authorization flow.
+                // {§oauth-lifetime} A client's challenge is independent of the published connection.
                 for (const [key, pending] of this.#pending) {
                     if (!key.startsWith(`${workspaceId}:`)) continue;
-                    const current = next.get(key.slice(`${workspaceId}:`.length));
-                    if (current?.kind === "authorization-required" && current.connection === pending.connection) continue;
+                    const name = key.slice(`${workspaceId}:`.length);
+                    const current = next.get(name);
+                    if (current !== undefined && current.kind !== "active" && sameBinding(current, pending)
+                        && force !== name) continue;
                     this.#pending.delete(key);
                     pending.releaseWorkspace();
                     if (!retained.has(pending.connection)) obsolete.push(pending.connection);
@@ -787,17 +789,13 @@ export default class Module {
                     if (attachment.kind !== "authorization-required" || attachment.authorizationUrl === undefined) continue;
                     const key = this.#pendingKey(workspaceId, name);
                     const current = this.#pending.get(key);
-                    if (current?.connection === attachment.connection) continue;
+                    if (current !== undefined) continue;
                     this.#pending.set(key, {
                         definition: attachment.definition,
                         ...(attachment.context === undefined ? {} : { context: attachment.context }),
                         connection: attachment.connection,
                         releaseWorkspace: this.#retain(workspaceId),
                     });
-                    if (current !== undefined) {
-                        current.releaseWorkspace();
-                        if (!retained.has(current.connection)) obsolete.push(current.connection);
-                    }
                 }
                 if (obsolete.length > 0) {
                     try {
@@ -837,7 +835,7 @@ export default class Module {
     }
 
     // {§oauth-continuation} Client callback state travels with the prepared connection, not its definition.
-    async #beginOAuth(identity: WorkspaceCapabilityIdentity, params: Readonly<Record<string, unknown>>): Promise<unknown> {
+    async #beginOAuth(identity: WorkspaceCapabilityIdentity, params: Readonly<Record<string, unknown>>): Promise<McpOAuthBeginResult> {
         assertActionKeys(params, ["alias", "redirectUrl"]);
         const alias = requiredString(params, "alias");
         const redirectUrl = requiredString(params, "redirectUrl");
@@ -848,11 +846,7 @@ export default class Module {
         }
         const current = this.#attachments.get(identity.workspaceId)?.get(alias);
         if (current === undefined) throw actionError("server-not-connected", 409, `MCP server '${alias}' is not connected for this workspace.`, { retryable: false });
-        if (current.kind === "active") {
-            const result = await this.#handleOrThrow().invoke("list", {}, identity);
-            const definition = (result.body as FunctionalityListResult).definitions.find((entry) => entry.alias === alias);
-            return { status: 200, family: FAMILY, alias, definition };
-        }
+        if (current.kind === "active") return { status: 200, alias };
         const definition = current.definition;
         if (definition.type !== "streamable-http"
             || (definition.authorization !== undefined && definition.authorization.type !== "oauth")
@@ -862,6 +856,7 @@ export default class Module {
                 `MCP server '${alias}' is not configured for this interactive OAuth callback.`, { retryable: false });
         }
         const key = this.#pendingKey(identity.workspaceId, alias);
+        if (this.#pending.get(key)?.authorized === true) return { status: 202, alias };
         if (this.#authorizing.has(key)) throw actionError("oauth-busy", 409, `MCP server '${alias}' is already starting authorization.`, { retryable: true });
         this.#authorizing.add(key);
         try {
@@ -876,23 +871,20 @@ export default class Module {
             const pending: PendingAuthorization = {
                 ...prepared,
                 releaseWorkspace: this.#retain(identity.workspaceId),
-                prepared,
+                ...(prepared.kind === "active" ? { prepared, authorized: true } : {}),
             };
             this.#pending.set(key, pending);
-            try {
-                return (await this.#handleOrThrow().invoke("enable", { alias }, identity)).body;
-            } catch (cause) {
-                if (this.#pending.get(key) === pending) {
-                    this.#pending.delete(key);
-                    pending.releaseWorkspace();
-                    if (previous !== undefined) this.#pending.set(key, previous);
-                    try { await this.#closeOwned([prepared.connection]); }
-                    catch (error) { throw new AggregateError([cause, error], "OAuth preparation and cleanup failed."); }
-                }
-                throw cause;
-            } finally {
-                if (previous !== undefined && this.#pending.get(key) !== previous) previous.releaseWorkspace();
+            if (previous !== undefined) {
+                previous.releaseWorkspace();
+                if (previous.connection !== attachmentConnection(current)) await this.#closeOwned([previous.connection]);
             }
+            if (prepared.kind === "authorization-required") {
+                if (prepared.authorizationUrl === undefined) throw new Error("OAuth preparation with a callback omitted its authorization URL.");
+                return { status: 202, alias, authorization: { url: prepared.authorizationUrl } };
+            }
+            this.#dirty.set(key, Symbol());
+            this.#refreshCatalog(identity.workspaceId, alias);
+            return { status: 202, alias };
         } finally { this.#authorizing.delete(key); }
     }
 
@@ -914,7 +906,7 @@ export default class Module {
             );
         }
         const current = this.#attachments.get(identity.workspaceId)?.get(alias);
-        if (current === undefined || current.kind !== "authorization-required" || !sameBinding(current, pending)) {
+        if (current === undefined || !sameBinding(current, pending)) {
             throw actionError(
                 "oauth-target-conflict",
                 409,

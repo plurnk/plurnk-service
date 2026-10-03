@@ -885,6 +885,21 @@ issuer?: string
 
 export type EnvironmentReference = string
 
+export type McpOAuthBeginResult = (McpOAuthCompletionResult | {
+status: 200
+alias: string
+} | {
+status: 202
+alias: string
+authorization: {
+url: string
+}
+})
+
+/**
+ * A validated MCP sign-in accepted for normal capability publication. This acknowledges authorization, not tool readiness; inspect the published definition for readiness.
+ */
+
 export interface McpOAuthCompletionResult {
 status: 202
 alias: string

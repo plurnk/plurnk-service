@@ -79,6 +79,20 @@ test("{§oauth-continuation}: callback acceptance is not a published capability 
     ]) assert.equal(Validator.validateJsonSchemaInstance(schema, invalid).valid, false, JSON.stringify(invalid));
 });
 
+test("{§oauth-continuation}: beginning sign-in distinguishes consent, pending publication, and active tools", () => {
+    const schema = { $ref: "https://schemas.plurnk.xyz/v0/McpOAuthBeginResult.json" };
+    const authorization = { url: "https://identity.example/authorize?state=fixture" };
+    for (const valid of [
+        { status: 200, alias: "remote" }, { status: 202, alias: "remote" },
+        { status: 202, alias: "remote", authorization },
+    ]) assert.equal(Validator.validateJsonSchemaInstance(schema, valid).valid, true, JSON.stringify(valid));
+    for (const invalid of [
+        { status: 200, alias: "remote", authorization }, { status: 202, alias: "" },
+        { status: 202, alias: "remote", authorization: {} },
+        { status: 202, alias: "remote", definition: { state: "active" } },
+    ]) assert.equal(Validator.validateJsonSchemaInstance(schema, invalid).valid, false, JSON.stringify(invalid));
+});
+
 test("{§model-catalog-wire}: model routes and bounded catalog pages preserve readiness evidence", () => {
     const directRoute: unknown = { provider: "google", model: "gemini-3-flash" };
     assert.deepEqual(
