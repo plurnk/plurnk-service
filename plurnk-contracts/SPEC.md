@@ -827,6 +827,9 @@ NOTE alone does not rescue an empty or inadmissible content program. Reasoning
 and content remain separate, unchanged forensic sources. Rejected or superseded
 provider attempts execute none of their operations. All three operations remain
 available in the ordinary program; no task inventory is inferred from reasoning.
+Builder normalization warnings for admitted reasoning operations surface as
+ordinary non-striking notices. Quoted, unfinished, malformed or disallowed
+reasoning operations contribute neither execution nor normalization notices.
 
 §exec-executor-slot The fence name selects the executor directly: for example,
 `python3 (tools/report.py)` or `gitea (issue_list)` on the opening fence line.
@@ -1161,12 +1164,30 @@ optional decimal fraction, so the ingester preserves even noncanonical numeric
 shapes for runtime validation. An anchor-bearing text scope uses commas; ANTLR
 tolerates one space after each comma.
 
-Apart from the unadvertised three-coordinate text-scope tolerance in
-{§text-scope-semantics} and a log KILL's per-body empty intersection, the runtime rejects invalid arity, out-of-range or
-inverted positions, and decimal text coordinates rather than rounding or
-reinterpreting them. FIND owns a deterministic result order so the same
-inclusive range selects the same positions from unchanged state. The parser
-does not enforce either condition.
+§scope-range-recovery For FIND result positions and text-coordinate operations,
+the parser normalizes these two-component numeric scopes, emitting one warning
+`Scope <written> was read as <canonical>.` per normalized scope:
+
+| Written coordinates | Canonical inclusive range | Example |
+|---|---|---|
+| Positive integers `start,count`, with `count < start` | `start,start+count-1` | `<395,12>` → `<395,406>` |
+| Positive integer `start` followed by `+offset`, with nonnegative integer offset | `start,start+offset` | `<395,+12>` → `<395,407>` |
+
+Recovery requires safe integer operands and a safe integer endpoint; arithmetic
+overflow is refused. Forward/equal ranges, zero and negative sentinels, noninteger
+coordinates, three/four-component regions, and scopes containing anchors are not
+reinterpreted as counts. Anchor-relative endpoints retain {§anchor-offset};
+standalone `+N` has no base and is invalid. WAIT durations and owner-defined SEND
+or execution scopes are outside this normalization. The AST carries canonical
+coordinates; the retained emission preserves the authored spelling. These
+tolerances do not add hot-path teaching.
+
+After syntax normalization, ordinary {§text-scope-semantics}, pagination and
+{§read-zero-start} rules apply. Unsupported arity, unresolved inversions and
+noninteger coordinates remain failures; normalization does not bypass an
+operation's bounds checks, end clamping or empty-page semantics. FIND owns a
+deterministic result order so the same inclusive range selects the same positions
+from unchanged state. The parser does not resolve resource bounds or ordering.
 
 ## 8. Literal programs and code blocks
 

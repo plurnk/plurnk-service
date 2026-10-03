@@ -1894,7 +1894,15 @@ export default class TurnRunner {
             }
         }
         const reasoning = assistant.reasoning ?? null;
-        const reasoningOps = reasoning === null ? [] : PlurnkParser.parseReasoningOperations(reasoning);
+        const reasoningOps = reasoning === null ? [] : PlurnkParser.parseReasoningOperations(reasoning, (warning) => {
+            parseNotices.push({
+                source: "grammar:reasoning",
+                kind: "parse_advisory",
+                level: "warn",
+                message: warning.message,
+                parserSource: warning.source,
+            });
+        });
         const reasoningWork = reasoningOps.filter(({ op }) => op !== "NOTE");
         const operationCount = contentStatementCount + reasoningWork.length;
         // {§reasoning-operations}: fact-finding is real work, even without a content program.

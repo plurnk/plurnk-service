@@ -82,6 +82,15 @@ const reasoning = PlurnkParser.frame("READ (worker:///fact.txt)", null);
 if (PlurnkParser.parseReasoningOperations(reasoning)[0]?.op !== "READ") {
     throw new Error("reasoning admission is not available from the packed parser");
 }
+const warnings = [];
+const relative = PlurnkParser.parseReasoningOperations(
+    PlurnkParser.frame("READ (worker:///fact.txt) <395,+12>", null),
+    (warning) => warnings.push(warning.message),
+);
+if (JSON.stringify(relative[0]?.lineMarker?.marks) !== "[395,407]"
+    || JSON.stringify(warnings) !== JSON.stringify(["Scope <395,+12> was read as <395,407>."])) {
+    throw new Error("packed reasoning range recovery lost its coordinates or advisory");
+}
 
 const selected = PlurnkParser.parseStatements(PlurnkParser.frame('READ (https://example.com) [{"headers":{"Accept":"text/plain"}}] /needle/', null));
 assertClean("owner metadata with matcher", selected);

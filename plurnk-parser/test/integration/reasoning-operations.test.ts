@@ -49,3 +49,27 @@ test("{§reasoning-operations}: only authored, closed operations survive an unfi
     }
     assert.deepEqual(parse("````READ (missing close\n````"), []);
 });
+
+test("{§reasoning-operations}: normalization warnings belong only to admitted operations", () => {
+    const warning = "Scope <5,2> was read as <5,6>.";
+    for (const source of [
+        frame("READ (file.txt) <5,2>", null),
+        frame("FIND (*) <5,2>", null),
+    ]) {
+        const warnings: string[] = [];
+        const ops = PlurnkParser.parseReasoningOperations(source, (advisory) => warnings.push(advisory.message));
+        assert.equal(ops.length, 1);
+        assert.deepEqual(warnings, [warning]);
+    }
+    for (const ignored of [
+        "```READ (unfinished.txt) <5,2>\n",
+        frame("EDIT (file.txt) <5,2>", "replacement"),
+        frame("NOTE", frame("READ (quoted.txt) <5,2>", null)),
+        frame("text", frame("READ (quoted.txt) <5,2>", null)),
+        frame("READ (file.txt) <9007199254740991,2>", null),
+    ]) {
+        const warnings: string[] = [];
+        PlurnkParser.parseReasoningOperations(ignored, (advisory) => warnings.push(advisory.message));
+        assert.deepEqual(warnings, [], ignored);
+    }
+});

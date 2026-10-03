@@ -168,12 +168,21 @@ export default class PlurnkParser {
     }
 
     // {§reasoning-operations} — only closed top-level operations cross this boundary.
-    static parseReasoningOperations(input: string): ReasoningOperation[] {
-        const { result, lexer } = PlurnkParser.#run(input, (parser) => parser.statementSeq(), undefined, {}, "reasoning");
-        return result.items.flatMap((item) => item.kind === "statement"
+    static parseReasoningOperations(input: string, onAdvisory?: (advisory: PlurnkParseError) => void): ReasoningOperation[] {
+        const warnings = new Map<PlurnkStatement, PlurnkParseError[]>();
+        const { result, lexer } = PlurnkParser.#run(input, (parser) => parser.statementSeq(), (ctx) => {
+            const { value, advisories } = AstBuilder.collectAdvisories(() => AstBuilder.build(ctx));
+            warnings.set(value, advisories);
+            return value;
+        }, {}, "reasoning");
+        const operations = result.items.flatMap((item) => item.kind === "statement"
             && isReasoningOperation(item.statement.op)
             && lexer.hasClosedBlock(item.statement.position.line)
             ? [item.statement as ReasoningOperation] : []);
+        for (const operation of operations) {
+            for (const warning of warnings.get(operation) ?? []) onAdvisory?.(warning);
+        }
+        return operations;
     }
 
     // {§turn-shape} — no source operation is reported as its own fact, beside every diagnostic

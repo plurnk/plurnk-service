@@ -71,7 +71,7 @@ test("{§parse-recovery} every grammar-level refusal names its working form", ()
         ["```READ (a.json) $.[\n```", "Write an RFC 9535 JSONPath after `$`, such as `$.items[?(@.price>500)]`; a text search is a regex, `/needle/`."],
         ["```READ (a.py) &\n```", "Write `&symbol` for a symbol, `&<symbol` for what calls it, or `&>symbol` for what it calls."],
         ["```READ (a.py) /a/i extra\n```", "Write only `/pattern/flags` in the matcher; flags are optional."],
-        ["```READ (a.py) <+1>\n```", "Count from an anchor, `<@abcde,+1>`, or write line numbers, `<L,M>`."],
+        ["```READ (a.py) <+1>\n```", "Write `<start,+offset>`, `<@abcde,+offset>`, or `<start,end>`."],
         ["```READ (http://exa mple.com/x)\n```", "Write a local path, `(src/a.py)`, or a complete URL, `scheme://host/path`."],
         ["```READ (a.py) [{\"pattern\": 3}]\n```", "Write the matcher as a string, `[{\"pattern\": \"/needle/i\"}]`, or bare on the opening fence line after the path."],
         ["```sh (a) (b)\n```", "Write one `(program)` path on the `sh` heading, and the rest below it as the input."],

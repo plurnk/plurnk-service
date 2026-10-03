@@ -146,7 +146,7 @@ export default class AstBuilder {
                 text = text.slice(0, trailingAside.index).trim();
                 continue;
             }
-            const trailingScope = scopeTail.exec(text);
+            const trailingScope = scopeTail.exec(text) ?? AstBuilder.#TAIL_RELATIVE_SCOPE.exec(text);
             if (trailingScope !== null && scopeFree && trailingScope.index > 0) {
                 scope = trailingScope[1]!;
                 scopeFree = false;
@@ -276,6 +276,7 @@ export default class AstBuilder {
     // The scope shapes the lexer admits, matched at the right end of the heading text.
     static readonly #TAIL_POSITIONS = /\s*(<-?[0-9]+(?:\.[0-9]+)?(?:(?:,\s?|-)-?[0-9]+(?:\.[0-9]+)?)*>)\s*$/u;
     static readonly #TAIL_TEXT_SCOPE = /\s*(<(?:-?[0-9]+(?:\.[0-9]+)?|@[0-9A-Za-z]{5}|@[0-9]{1,4})(?:(?:,\s?|-)(?:-?[0-9]+(?:\.[0-9]+)?|@[0-9A-Za-z]{5}|@[0-9]{1,4}))*>)\s*$/u;
+    static readonly #TAIL_RELATIVE_SCOPE = /\s*(<[0-9]+, ?\+[0-9]+>)\s*$/u;
 
     // The body text that opened on the heading line itself, split from the lines beneath it.
     static #splitInlineBody(ctx: ParserRuleContext, position: Position): { inline: string | null; below: string | null } {
@@ -386,7 +387,7 @@ export default class AstBuilder {
 
     static #buildFindFrom(ctx: FindStatementContext, aside: string | null, inline: string | null, below: string | null): FindStatement {
         const position = AstBuilder.#positionOf(ctx);
-        const slots = AstBuilder.#extractSlots(ctx.slotModifiers(), position);
+        const slots = AstBuilder.#extractSlots(ctx.slotModifiers(), position, AstBuilder.#parseRangeMarker);
         AstBuilder.#bareTarget("FIND", slots.target, inline, position);
         AstBuilder.#adviseBody("FIND", below, position);
         const lifted = AstBuilder.#liftMatcher("FIND", slots.metadata, position, inline ?? below, inline !== null, slots.lineMarker !== null, slots.target);
@@ -394,7 +395,7 @@ export default class AstBuilder {
             op: "FIND",
             aside: aside ?? lifted.aside,
             ...slots,
-            lineMarker: slots.lineMarker ?? (lifted.scope === null ? null : AstBuilder.#parseLineMarker(lifted.scope)),
+            lineMarker: slots.lineMarker ?? (lifted.scope === null ? null : AstBuilder.#parseRangeMarker(lifted.scope, position)),
             metadata: lifted.metadata,
             matcher: lifted.matcher,
             body: null,
@@ -669,11 +670,16 @@ export default class AstBuilder {
         return found[0] ?? null;
     }
 
-    static #extractSlots(modCtx: SlotModifiersContext | ResourceSelectionContext | null, pos: Position): Slots {
+    static #extractSlots(
+        modCtx: SlotModifiersContext | ResourceSelectionContext | null,
+        pos: Position,
+        parseScope: (text: string, position: Position) => LineMarker = AstBuilder.#parseLineMarker,
+    ): Slots {
+        const marker = AstBuilder.#singleMarker(modCtx, pos);
         return {
             target: AstBuilder.#targetFromCtx(AstBuilder.#findFirst(modCtx, TargetContext), pos),
             metadata: AstBuilder.#metadataFromCtx(modCtx),
-            lineMarker: AstBuilder.#lineMarkerFromCtx(AstBuilder.#singleMarker(modCtx, pos)),
+            lineMarker: marker === null ? null : parseScope(marker.getText(), AstBuilder.#positionOf(marker)),
         };
     }
 
@@ -795,12 +801,7 @@ export default class AstBuilder {
                 `\`${marker}\` was read as the scope \`${text}\`; a scope takes the anchor without its displayed line number.`, "warning"));
         }
         if (!text.includes("@")) {
-            // {§anchor-offset} — a bare `+N` counts only from an anchor (#749).
-            if (/[<,] ?\+/u.test(text)) {
-                throw new PlurnkParseError(position?.line ?? 0, position?.column ?? 0, "visitor",
-                    `invalid scope ${JSON.stringify(text)}; use numeric coordinates or \`@hash\` line anchors`, "error", AstBuilder.#OFFSET_RECOVERY);
-            }
-            return AstBuilder.#parseLineMarker(text);
+            return AstBuilder.#parseRangeMarker(text, position);
         }
         const marks = text.slice(1, -1).split(/, ?/).map((component) => {
             // {§anchor-digits} — `@210` is the line number 210 with the anchor's sigil, not a hash.
@@ -813,8 +814,7 @@ export default class AstBuilder {
             }
             return component.startsWith("@") ? component : Number.parseFloat(component);
         });
-        // {§anchor-offset} — a bare `+N` counts from the anchor before it (`<@abcde,+1>`); anywhere
-        // else it names no line, so the scope is refused as before (#749).
+        // {§anchor-offset} — anchor-bearing scopes retain their offsets, never count recovery.
         const components = text.slice(1, -1).split(/, ?/);
         for (const [index, component] of components.entries()) {
             if (!component.startsWith("+")) continue;
@@ -827,6 +827,32 @@ export default class AstBuilder {
             marks[index] = offset === 0 ? base[1]! : `${base[1]!}${offset > 0 ? "+" : ""}${offset}`;
         }
         return { marks: marks as [number | string, ...(number | string)[]] };
+    }
+
+    // {§scope-range-recovery}: normalize authored numeric ranges before anchors resolve.
+    static #parseRangeMarker(text: string, position: Position = { line: 0, column: 0 }): LineMarker {
+        const relative = /^<([0-9]+), ?\+([0-9]+)>$/u.exec(text);
+        if (relative === null && text.includes("+")) {
+            throw new PlurnkParseError(position.line, position.column, "visitor",
+                `invalid scope ${JSON.stringify(text)}; use numeric coordinates or \`@hash\` line anchors`, "error", AstBuilder.#OFFSET_RECOVERY);
+        }
+        const marker = relative === null ? AstBuilder.#parseLineMarker(text)
+            : { marks: [Number(relative[1]), Number(relative[2])] as [number, number] };
+        const [start, end] = marker.marks;
+        const count = marker.marks.length === 2 && Number.isInteger(start) && end !== undefined
+            && Number.isInteger(end) && start > 0 && end > 0 && end < start;
+        if (relative === null && !count) return marker;
+        if (start <= 0 || !Number.isSafeInteger(start) || !Number.isSafeInteger(end)) {
+            throw new PlurnkParseError(position.line, position.column, "visitor",
+                `Scope ${text} requires a positive start and safe integer coordinates.`);
+        }
+        const last = start + (relative === null ? end! - 1 : end!);
+        if (!Number.isSafeInteger(last)) {
+            throw new PlurnkParseError(position.line, position.column, "visitor", `Scope ${text} exceeds safe integer coordinates.`);
+        }
+        AstBuilder.#advisories.push(new PlurnkParseError(position.line, position.column, "parser",
+            `Scope ${text} was read as <${start},${last}>.`, "warning"));
+        return { marks: [start, last] };
     }
 
     static #positionOf(ctx: { start: { line: number; column: number } | null }): Position {
@@ -976,7 +1002,7 @@ export default class AstBuilder {
 
     // The leading prefix claims its dialect; failed claimed syntax never falls back
     // to glob. XPath's `//` is classified before regex `/`. {§matcher-prefix-claims}
-    static readonly #OFFSET_RECOVERY = "Count from an anchor, `<@abcde,+1>`, or write line numbers, `<L,M>`.";
+    static readonly #OFFSET_RECOVERY = "Write `<start,+offset>`, `<@abcde,+offset>`, or `<start,end>`.";
 
     // {§parse-recovery} — the working forms for a refused regex, in the model's terms: the regex that matches the
     // words it wrote, and, when the pattern is glob-shaped, the target glob that selects files by name.

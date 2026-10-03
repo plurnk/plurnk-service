@@ -1,4 +1,4 @@
-// {§anchor-offset} — recorded anchor-offset scopes parse; a bare +N without an anchor stays refused (#749).
+// {§anchor-offset} — recorded anchor-offset scopes retain their relative meaning.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "../../src/index.ts";
@@ -17,8 +17,8 @@ test("{§anchor-offset} recorded offset scopes read as anchor-relative marks", (
     assert.deepEqual(marksOf("````EDIT (catalog.md) <@ormjQ-2,@ormjQ>"), ["@ormjQ-2", "@ormjQ"]);
 });
 
-test("{§anchor-offset} a bare +N counts only from an anchor", () => {
-    for (const heading of ["````EDIT (a.md) <3,+1>", "````EDIT (a.md) <+1>"]) {
+test("{§anchor-offset} a bare +N requires a base", () => {
+    for (const heading of ["````EDIT (a.md) <+1>"]) {
         const result = PlurnkParser.parse(`${heading}\nbody\n\`\`\`\``);
         assert.ok(result.items.some((item) => item.kind === "error" && item.error.severity === "error"), heading);
     }

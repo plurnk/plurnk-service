@@ -18,7 +18,8 @@ client that installs contracts installs no `antlr4ng`, `xpath`, or `json-p3`.
 
 `PlurnkParser.parseReasoningOperations` implements {§reasoning-operations}
 using the same lexer, quotation pairing and AST admission. Nothing executes
-in this package.
+in this package. Its optional advisory callback reports normalization warnings
+only for the operations it admits.
 
 ## §parser-build 2. Build and artifacts
 
