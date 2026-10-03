@@ -650,7 +650,6 @@ export default class ServerConnection {
         pending.provider.assertCallbackState(callback);
         await pending.transport.finishAuth(callback.searchParams);
         this.#pendingAuthorization = undefined;
-        await this.connect();
     }
 
     async #request<T>(

@@ -398,7 +398,7 @@ common grammar:
 | Action | Parameters | Result / effect |
 |---|---|---|
 | `workspace.mcp.oauth.begin` | `alias`, `redirectUrl` | Begin sign-in using a client-owned callback, without changing the connection definition; publish the pending URL through the coordinator. An active alias is returned unchanged. |
-| `workspace.mcp.oauth.complete` | `alias`, `callbackUrl` | State- and issuer-validates one pending interactive callback through the SDK, completes connection preparation, and re-enables the alias through the coordinator ({§oauth-continuation}); the result is the common mutation result. |
+| `workspace.mcp.oauth.complete` | `alias`, `callbackUrl` | Validates and exchanges the pending callback through the SDK, returning `McpOAuthCompletionResult` (`202`, `alias`); ordinary capability refresh publishes the authenticated tools at the next safe boundary ({§oauth-continuation}). |
 | `workspace.mcp.complete` | `server`, `ref`, `argument`; optional `context` | Requests negotiated prompt/resource-template argument completion for a client-owned interaction. |
 
 Expected preparation failures cross the boundary as MCP-management Problems
@@ -444,6 +444,7 @@ sequenceDiagram
     Client->>User: open consent page
     User->>Client: browser callback
     Client->>MCP: oauth.complete(alias, callbackUrl)
+    MCP-->>Client: 202 sign-in accepted; activation pending
     MCP-->>Model: active tools through normal publication
 ```
 
@@ -455,14 +456,27 @@ supersedes and releases the previous one ({§oauth-lifetime}).
 Concurrent begin requests for one alias are refused; a later begun attempt
 supersedes the prior one. An in-flight begin cannot attach after disable,
 remove or definition replacement. `oauth.complete` accepts the complete callback URL so state, `code`, and
-`iss` remain one parsing unit; it finishes the pending connection's
-authorization, prepares its active attachment, and re-enables the alias through
-the coordinator, whose publication consumes the prepared attachment and
-releases the lease. A callback for a superseded attempt fails as invalid; a
+`iss` remain one parsing unit. Grant acceptance returns without waiting for
+workspace quiescence; it is not a configuration mutation and cannot re-enable
+an alias. The existing catalog-refresh path prepares and publishes the current
+enabled definitions, then consumes the candidate and releases its lease.
+The accepted result does not claim tool readiness: `list` reports the current
+published snapshot, including any subsequent preparation failure. A callback
+for a superseded attempt fails as invalid; a
 committed attachment that no longer matches the pending definition fails
 with a conflict instead of replaying a stale snapshot. A missing, expired,
 mismatched, or replayed callback fails without exposing attacker-owned OAuth
 error text.
+
+| Callback boundary | Result |
+|---|---|
+| Active workspace | Accept the valid grant without waiting for the held turn; queue publication through the coordinator's ordinary workspace gate. |
+| Identical concurrent or accepted-but-unpublished callback | Share the same acceptance; exchange the one-time code once. |
+| Different callback for that accepted attempt | Reject; never borrow another callback's acceptance. |
+| Disable, remove, or replacement | Current definitions win; the old candidate cannot restore a withdrawn server. |
+| Publication failure | Do not claim active tools; retain the accepted candidate for normal refresh/enable retry, without another code exchange. |
+| Preparation failure published as unavailable | Preserve the preparation diagnostic; release the pending lease and close its unused connection. |
+| Callback after publication | The attempt has been consumed; `404 oauth-not-pending`. |
 
 ## §oauth-lifetime Interactive OAuth lifetime and reauthorization
 

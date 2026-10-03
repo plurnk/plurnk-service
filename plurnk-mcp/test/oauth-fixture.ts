@@ -6,8 +6,9 @@ export const serveOAuthMcp = async (
     t: TestContext,
     handler: McpHttpHandler,
     options: { metadata?: boolean; registration?: boolean } = {},
-): Promise<{ origin: string; served: Awaited<ReturnType<typeof serveMcpHttp>> }> => {
+): Promise<{ origin: string; served: Awaited<ReturnType<typeof serveMcpHttp>>; tokenRequests: URLSearchParams[] }> => {
     let origin = "";
+    const tokenRequests: URLSearchParams[] = [];
     const served = await serveMcpHttp(t, handler, async (request) => {
         const url = new URL(request.url);
         if (url.pathname === "/mcp") {
@@ -38,10 +39,11 @@ export const serveOAuthMcp = async (
             return Response.json({ ...await request.json(), client_id: "registered-fixture", token_endpoint_auth_method: "none" });
         }
         if (url.pathname === "/token") {
+            tokenRequests.push(new URLSearchParams(await request.text()));
             return Response.json({ access_token: "access-token", token_type: "Bearer", expires_in: 3600, scope: "mcp:read" });
         }
         return new Response("not found", { status: 404 });
     });
     origin = new URL(served.url).origin;
-    return { origin, served };
+    return { origin, served, tokenRequests };
 };

@@ -885,6 +885,11 @@ issuer?: string
 
 export type EnvironmentReference = string
 
+export interface McpOAuthCompletionResult {
+status: 202
+alias: string
+}
+
 export type McpServerDefinition = (McpStdioServerDefinition | McpStreamableHttpServerDefinition)
 /**
  * The server's alias: the runtime tag whose fence invokes it and its resource scheme.

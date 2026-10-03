@@ -70,6 +70,15 @@ test("{§oauth-continuation}: an authentication challenge needs no URL until the
     }
 });
 
+test("{§oauth-continuation}: callback acceptance is not a published capability snapshot", () => {
+    const schema = { $ref: "https://schemas.plurnk.xyz/v0/McpOAuthCompletionResult.json" };
+    assert.equal(Validator.validateJsonSchemaInstance(schema, { status: 202, alias: "remote" }).valid, true);
+    for (const invalid of [
+        { status: 200, alias: "remote" }, { status: 202 }, { status: 202, alias: "" },
+        { status: 202, alias: "remote", definition: { state: "active" } },
+    ]) assert.equal(Validator.validateJsonSchemaInstance(schema, invalid).valid, false, JSON.stringify(invalid));
+});
+
 test("{§model-catalog-wire}: model routes and bounded catalog pages preserve readiness evidence", () => {
     const directRoute: unknown = { provider: "google", model: "gemini-3-flash" };
     assert.deepEqual(

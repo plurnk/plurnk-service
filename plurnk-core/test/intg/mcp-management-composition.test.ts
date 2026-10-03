@@ -12,6 +12,7 @@ import { makeMockResponse } from "./_mock.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { taskHandler } from "../../../plurnk-mcp/test/task-fixture.ts";
 import { httpEntry, mcpFixture } from "./_mcp-config.ts";
+import { waitForDb } from "./_rpc.ts";
 
 type Event = Record<string, unknown>;
 type ActionResult = { ok: boolean; result?: Record<string, unknown>; problem?: { type: string; status: number } };
@@ -118,7 +119,8 @@ test("{§mcp-management-actions}: AG-UI completion preserves prompt and resource
     assert.equal(provider.received.length, 0, "argument completion does not invoke a model");
 });
 
-test("{§oauth-continuation}: AG-UI authorization activates the same workspace attachment and its tool reaches the model", { timeout: 20000 }, async (t) => {
+for (const busy of [false, true]) {
+test(`{§oauth-continuation}: AG-UI accepts authorization in an ${busy ? "active" : "idle"} workspace and publishes its tools safely`, { timeout: 20000 }, async (t) => {
     let origin = "";
     let authorization: URL | undefined;
     let exchanges = 0;
@@ -160,6 +162,7 @@ test("{§oauth-continuation}: AG-UI authorization activates the same workspace a
         ...httpEntry(served.url),
         authorization: { type: "oauth", redirectUrl: `${origin}/callback`, clientMetadataUrl: "https://client.example.test/oauth.json" },
     } }, [
+        ...(busy ? [makeMockResponse("```KILL\nThe held turn finished.\n```")] : []),
         makeMockResponse("````fixture (echo)\n{\"message\":\"management proof\"}\n````\n\n````WAIT\nObserve the result.\n````"),
         makeMockResponse("````KILL\nObserved the authorized result.\n````"),
     ]);
@@ -186,21 +189,46 @@ test("{§oauth-continuation}: AG-UI authorization activates the same workspace a
     assert.equal(rejected.ok, false);
     assert.equal(rejected.problem?.type, "https://problems.plurnk.xyz/mcp/management/oauth-callback-invalid");
     assert.equal(exchanges, 0, "rejected callbacks never exchange the code");
-    const accepted = await complete("authorization");
-    assert.equal(accepted.ok, true, JSON.stringify(accepted));
-    assert.equal((accepted.result?.definition as { state: string } | undefined)?.state, "active");
-    assert.equal(exchanges, 1);
+    const entered = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    const generate = provider.generate.bind(provider);
+    if (busy) t.mock.method(provider, "generate", async (...args: Parameters<typeof generate>) => {
+        entered.resolve();
+        await resume.promise;
+        return generate(...args);
+    }, { times: 1 });
+    const running = busy ? post("authorization", undefined, "Hold this turn while sign-in completes.") : Promise.resolve([]);
+    if (busy) await entered.promise;
+    try {
+        const accepted = await complete("authorization");
+        assert.equal(accepted.ok, true, JSON.stringify(accepted));
+        assert.deepEqual(accepted.result, { status: 202, alias: "fixture" }, "callback acceptance is not a claim of published tools");
+        assert.equal(exchanges, 1);
+        if (busy) {
+            const listed = await action("authorization", "workspace.mcp.list");
+            assert.equal((listed.result?.definitions as { state: string }[] | undefined)?.[0]?.state, "authorization-required",
+                "the in-flight turn retains its previous published snapshot");
+            assert.deepEqual(await complete("authorization"), accepted, "a duplicate accepted callback does not exchange the grant again");
+            assert.equal(exchanges, 1);
+            const wrongRetry = await complete("authorization", wrongState.href);
+            assert.equal(wrongRetry.ok, false, "an unrelated callback cannot borrow acceptance of the valid grant");
+            assert.equal(wrongRetry.problem?.type, "https://problems.plurnk.xyz/mcp/management/oauth-callback-invalid");
+        }
+    } finally { resume.resolve(); await running; }
+    await waitForDb(() => action("authorization", "workspace.mcp.list"), (value) =>
+        (value.result?.definitions as { state: string }[] | undefined)?.[0]?.state === "active");
     const replay = await complete("authorization");
     assert.equal(replay.ok, false);
     assert.equal(replay.problem?.type, "https://problems.plurnk.xyz/mcp/management/oauth-not-pending");
     assert.equal(exchanges, 1);
     const events = await post("authorization", undefined, "Call the authorized echo and report its result.");
     assert.equal((events.at(-1)?.outcome as { type: string } | undefined)?.type, "success", JSON.stringify(events));
-    assert.equal(provider.received.length, 2);
-    const packet = provider.received[1]!.map(chatMessageText).join("\n");
+    assert.equal(provider.received.length, busy ? 3 : 2);
+    const packet = provider.received.at(-1)!.map(chatMessageText).join("\n");
     assert.match(packet, /Authorized response: management proof/);
     assert.doesNotMatch(packet, /fixture-access|fixture-code|code_verifier/);
 });
+}
 
 const applicationServer = async (t: TestContext, rejectGrant = false) => {
     let origin = "";

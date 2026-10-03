@@ -190,7 +190,9 @@ an available loopback port and calls `workspace.mcp.oauth.begin` before opening
 the returned authorization URL. A fixed OAuth redirect, if configured, is
 respected. Supplying the
 callback URL explicitly also works for remote/headless use. The client submits
-the complete URL through `workspace.mcp.oauth.complete`. PKCE,
+the complete URL through `workspace.mcp.oauth.complete`. Its `202` acknowledges
+sign-in; tools activate at the next safe workspace boundary, without another
+callback submission. `list` shows their current readiness. PKCE,
 issuer and resource validation, refresh, scope escalation, and credentials
 remain inside the host connection. Callback addresses and credentials never
 replace the saved definition. `enable` retries a connection; it does not replace

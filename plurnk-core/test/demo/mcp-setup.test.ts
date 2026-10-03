@@ -1,7 +1,7 @@
 // {§mcp-model-projection} {§mcp-configuration}
 import assert from "node:assert/strict";
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
-import type { FunctionalityListResult, FunctionalityMutationResult } from "@plurnk/plurnk-contracts";
+import type { FunctionalityListResult, FunctionalityMutationResult, McpOAuthCompletionResult } from "@plurnk/plurnk-contracts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { serveOAuthMcp } from "../../../plurnk-mcp/test/oauth-fixture.ts";
 import { liveLoop, liveWorkspace } from "../_live-harness.ts";
@@ -45,8 +45,8 @@ for (const oauth of [false, true]) {
                 redirect.searchParams.set("state", authorization.searchParams.get("state")!);
                 redirect.searchParams.set("iss", authorization.origin);
                 redirect.searchParams.set("code", "fixture-code");
-                const completed = await s.invokeWorkspaceAction("workspace.mcp.oauth.complete", { alias: installed!.alias, callbackUrl: redirect.href }) as FunctionalityMutationResult;
-                assert.equal(completed.status, 200);
+                const completed = await s.invokeWorkspaceAction("workspace.mcp.oauth.complete", { alias: installed!.alias, callbackUrl: redirect.href }) as McpOAuthCompletionResult;
+                assert.deepEqual(completed, { status: 202, alias: installed!.alias });
                 result = await liveLoop(s, 3, { prompt: "I'm signed in now. Can you look up that code?", workerId: result.modelWorkerId, maxTurns: 8 }, { signal: t.signal });
             }
             assert.equal(result.finalStatus, 200, "setup and use conclude cleanly");

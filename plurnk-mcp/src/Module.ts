@@ -34,6 +34,7 @@ import {
     type FunctionalityPrepared,
     type FunctionalityServiceDefinition,
     type McpServerDefinition,
+    type McpOAuthCompletionResult,
     type JsonSchema,
     type ProblemDetails,
     type WorkspaceCapabilityIdentity,
@@ -174,6 +175,8 @@ interface PendingAuthorization extends McpBinding {
     readonly connection: ServerConnection;
     readonly releaseWorkspace: () => void;
     prepared?: ConnectedAttachment;
+    authorized?: boolean;
+    completion?: { readonly callbackUrl: string; readonly result: Promise<McpOAuthCompletionResult> };
 }
 
 export interface ModuleOptions {
@@ -433,7 +436,7 @@ export default class Module {
             scope: "workspace",
             residency: "required",
             inputSchema: actionInput({ alias: NONEMPTY_STRING, callbackUrl: NONEMPTY_STRING }, ["alias", "callbackUrl"]),
-            outputSchema: MUTATION_RESULT,
+            outputSchema: { $ref: "https://schemas.plurnk.xyz/v0/McpOAuthCompletionResult.json" },
             handler: (params, context) => this.#completeOAuth(workspaceIdentityOf(context), params),
         });
         seam.registerModuleAction({
@@ -682,7 +685,7 @@ export default class Module {
                     && force !== name
                     && !this.#dirty.has(this.#pendingKey(workspaceId, name))
                     && sameBinding(existing, binding)
-                    && !(pending?.prepared !== undefined)
+                    && pending?.prepared === undefined && pending?.authorized !== true
                 ) {
                     next.set(name, existing);
                     continue;
@@ -692,7 +695,7 @@ export default class Module {
                 const catalogOnly = existing !== undefined
                     && force !== name
                     && sameBinding(existing, binding)
-                    && !(pending?.prepared !== undefined)
+                    && pending?.prepared === undefined && pending?.authorized !== true
                     && heldConnection !== undefined;
                 if (pending?.prepared !== undefined && sameBinding(pending, binding)) {
                     attachment = pending.prepared;
@@ -710,8 +713,9 @@ export default class Module {
                         attachment = existing;
                     }
                 } else {
+                    const authorized = pending?.authorized === true && sameBinding(pending, binding);
                     try {
-                        attachment = await this.#prepareAttachment(workspaceId, binding);
+                        attachment = await this.#prepareAttachment(workspaceId, binding, authorized ? pending.connection : undefined);
                     } catch (cause) {
                         this.#assertOpen();
                         if (failure === "reject") throw cause;
@@ -720,7 +724,8 @@ export default class Module {
                         console.error(`MCP server '${name}' unavailable: ${refusal.problem.detail}`, refusal.cause ?? refusal);
                     }
                     // Only a connection this attempt opened is the attempt's to close on abort.
-                    if (attachment.kind !== "unavailable") fresh.push(attachment);
+                    if (authorized) consumedPending.set(name, pending);
+                    else if (attachment.kind !== "unavailable") fresh.push(attachment);
                 }
                 next.set(name, attachment);
                 if (attachment !== existing) refreshed.set(key, invalidation);
@@ -767,6 +772,7 @@ export default class Module {
                 for (const [name, pending] of consumedPending) {
                     this.#pending.delete(this.#pendingKey(workspaceId, name));
                     pending.releaseWorkspace();
+                    if (!retained.has(pending.connection)) obsolete.push(pending.connection);
                 }
                 // {§oauth-lifetime} Only the same pending connection can retain its authorization flow.
                 for (const [key, pending] of this.#pending) {
@@ -890,10 +896,8 @@ export default class Module {
         } finally { this.#authorizing.delete(key); }
     }
 
-    // {§oauth-continuation} — the callback finishes the pending connection's
-    // authorization, prepares its attachment, and re-enables the alias through
-    // the coordinator, which consumes the prepared attachment on publication.
-    async #completeOAuth(identity: WorkspaceCapabilityIdentity, params: Readonly<Record<string, unknown>>): Promise<unknown> {
+    // {§oauth-continuation} — grant acceptance precedes ordinary catalog publication.
+    async #completeOAuth(identity: WorkspaceCapabilityIdentity, params: Readonly<Record<string, unknown>>): Promise<McpOAuthCompletionResult> {
         assertActionKeys(params, ["alias", "callbackUrl"]);
         const alias = requiredString(params, "alias");
         const callbackUrl = requiredString(params, "callbackUrl");
@@ -918,13 +922,19 @@ export default class Module {
                 { workspaceId: identity.workspaceId, alias, recovery: "Start authorization again from the server's current definition.", retryable: false },
             );
         }
-        if (pending.prepared === undefined) {
+        if (pending.completion !== undefined) {
+            if (pending.completion.callbackUrl !== callbackUrl) throw actionError(
+                "oauth-callback-invalid", 400,
+                `OAuth authorization for MCP server '${alias}' could not be completed.`,
+                { workspaceId: identity.workspaceId, alias, retryable: false },
+            );
+            return pending.completion.result;
+        }
+        const result = (async (): Promise<McpOAuthCompletionResult> => {
             try {
                 await pending.connection.finishAuthorization(callbackUrl);
-                const prepared = await this.#prepareAttachment(identity.workspaceId, pending, pending.connection);
-                if (prepared.kind !== "active") throw new Error("OAuth completion returned another authorization challenge.");
-                pending.prepared = prepared;
             } catch (cause) {
+                delete pending.completion;
                 throw actionError(
                     "oauth-callback-invalid",
                     400,
@@ -933,9 +943,18 @@ export default class Module {
                     cause,
                 );
             }
-        }
-        const result = await this.#handleOrThrow().invoke("enable", { alias }, identity);
-        return result.body;
+            if (this.#pending.get(key) !== pending || this.#closed) throw actionError(
+                "oauth-target-conflict", 409,
+                `MCP server '${alias}' changed while its OAuth authorization was pending.`,
+                { workspaceId: identity.workspaceId, alias, retryable: false },
+            );
+            pending.authorized = true;
+            this.#dirty.set(key, Symbol());
+            this.#refreshCatalog(identity.workspaceId, alias);
+            return { status: 202, alias };
+        })();
+        pending.completion = { callbackUrl, result };
+        return result;
     }
 
     async #complete(workspaceId: number, params: Readonly<Record<string, unknown>>): Promise<unknown> {
@@ -971,23 +990,28 @@ export default class Module {
         const delay = retryDelayMs(retryPacing(this.#env), attempt);
         const timer = setTimeout(() => {
             this.#refreshTimers.delete(key);
-            const identity = this.#identities.get(workspaceId);
-            if (identity === undefined || this.#closed) {
-                this.#dirty.delete(key);
-                return;
-            }
-            void this.#handleOrThrow().refresh(identity).then(() => {
-                if (this.#dirty.has(key)) this.#scheduleCatalogRefresh(workspaceId, name, attempt + 1);
-            }).catch((error: unknown) => {
-                if (statusOf(error) === 409) {
-                    this.#scheduleCatalogRefresh(workspaceId, name, attempt + 1);
-                    return;
-                }
-                console.error(`MCP server '${name}' capability refresh failed:`, error);
-            });
+            this.#refreshCatalog(workspaceId, name, attempt);
         }, delay);
         timer.unref();
         this.#refreshTimers.set(key, timer);
+    }
+
+    #refreshCatalog(workspaceId: number, name: string, attempt = 0): void {
+        const key = this.#pendingKey(workspaceId, name);
+        const identity = this.#identities.get(workspaceId);
+        if (identity === undefined || this.#closed) {
+            this.#dirty.delete(key);
+            return;
+        }
+        void this.#handleOrThrow().refresh(identity).then(() => {
+            if (this.#dirty.has(key)) this.#scheduleCatalogRefresh(workspaceId, name, attempt + 1);
+        }).catch((error: unknown) => {
+            if (statusOf(error) === 409) {
+                this.#scheduleCatalogRefresh(workspaceId, name, attempt + 1);
+                return;
+            }
+            console.error(`MCP server '${name}' capability refresh failed:`, error);
+        });
     }
 
     #clearCatalogRefresh(key: string): void {

@@ -1,0 +1,13 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://schemas.plurnk.xyz/v0/McpOAuthCompletionResult.json",
+    "title": "McpOAuthCompletionResult",
+    "description": "A validated MCP sign-in accepted for normal capability publication. This acknowledges authorization, not tool readiness; inspect the published definition for readiness.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["status", "alias"],
+    "properties": {
+        "status": { "const": 202 },
+        "alias": { "type": "string", "minLength": 1 }
+    }
+}
