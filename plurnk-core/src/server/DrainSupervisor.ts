@@ -116,6 +116,7 @@ export default class DrainSupervisor {
     readonly #runLoop: RunLoop;
     readonly #loopUsage: (loopId: number) => Promise<LoopUsage>;
     readonly #loopAttributions: (loopId: number) => Promise<string[]>;
+    readonly #discardLoopNotices: (loopId: number) => void;
     readonly #cancelSubscription: (subscriptionId: number) => Promise<boolean>;
     readonly #hasActiveStreams: (workerId: number) => boolean;
     readonly #readSystemPrompt: () => Promise<string>;
@@ -147,6 +148,7 @@ export default class DrainSupervisor {
         runLoop,
         loopUsage,
         loopAttributions,
+        discardLoopNotices,
         cancelSubscription,
         hasActiveStreams,
         readSystemPrompt,
@@ -161,6 +163,7 @@ export default class DrainSupervisor {
         runLoop: RunLoop;
         loopUsage: (loopId: number) => Promise<LoopUsage>;
         loopAttributions: (loopId: number) => Promise<string[]>;
+        discardLoopNotices: (loopId: number) => void;
         cancelSubscription: (subscriptionId: number) => Promise<boolean>;
         hasActiveStreams: (workerId: number) => boolean;
         readSystemPrompt: () => Promise<string>;
@@ -175,6 +178,7 @@ export default class DrainSupervisor {
         this.#runLoop = runLoop;
         this.#loopUsage = loopUsage;
         this.#loopAttributions = loopAttributions;
+        this.#discardLoopNotices = discardLoopNotices;
         this.#cancelSubscription = cancelSubscription;
         this.#hasActiveStreams = hasActiveStreams;
         this.#readSystemPrompt = readSystemPrompt;
@@ -1009,6 +1013,7 @@ export default class DrainSupervisor {
     }
 
     #publishTermination(workspaceId: number, event: DrainLoopResult & { workerId: number }): void {
+        this.#discardLoopNotices(event.loopId);
         this.#emit(workspaceId, "loop/terminated", event);
         this.#trackSettlement(this.#notifyParentCompletion(workspaceId, event.workerId), "wake-on-completion");
     }

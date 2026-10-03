@@ -31,6 +31,7 @@ const supervisor = (
     runLoop: async () => { throw new Error("unused runLoop"); },
     loopUsage: async () => ({} as never),
     loopAttributions: async () => [],
+    discardLoopNotices: () => {},
     cancelSubscription: async () => false,
     hasActiveStreams: () => false,
     readSystemPrompt,

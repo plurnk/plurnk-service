@@ -15,6 +15,7 @@ import { packetSection, logEntries } from "./_packet.ts";
 import { testProviderCapacity } from "./_provider.ts";
 import { concludeStmt, editStmt, readStmt, urlPath, noteStmt } from "./_dsl.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
+import NoticeChannel from "../../src/core/NoticeChannel.ts";
 
 // Response from raw content WITHOUT ops - forces the engine to run the real
 // PlurnkParser rather than Mock's trusted pre-parsed seam.
@@ -136,6 +137,28 @@ test("{§notice-drain-on-read} the notice buffer drains — a notice appears on 
         assert.equal(await kindsOf(t3.turnId), 0, "drained notice does not reappear on subsequent packets");
     } finally { await db.close(); }
 });
+
+for (const fail of [false, true]) {
+    test(`{§notice-drain-on-read} ${fail ? "exceptional exit" : "normal completion"} releases undelivered notices`, async (t) => {
+        const db = await openMigrated();
+        t.after(() => db.close());
+        const workspaceId = await insertWorkspace(db, "notice-cleanup");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        const pushed = t.mock.method(NoticeChannel.prototype, "push");
+        const cause = new Error("notice delivery fixture failed");
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_workspaceId, { notice }) => {
+            if (fail && notice.kind === "parse_advisory") throw cause;
+        } });
+        const provider = new Mock({ contextWindow: 100_000, responses: [contentResponse("````NOTE remember\n````\n\n````KILL\ndone\n````")] });
+        const running = engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
+        if (fail) await assert.rejects(running, (error) => error === cause);
+        else assert.equal((await running).result.status, 200);
+        const warning = pushed.mock.calls.find(({ arguments: args }) => args[2] === loopId && args[3].kind === "parse_advisory");
+        assert.ok(warning, "the last emission produced a pending warning");
+        assert.deepEqual((warning.this as NoticeChannel).drain(loopId), [], "no future model packet exists to consume the buffer");
+    });
+}
 
 test("a tolerated three-coordinate scope reports its exact canonical region on the next packet ({§text-scope-runtime})", async () => {
     const { db, engine, workspaceId, workerId, loopId } = await setup();

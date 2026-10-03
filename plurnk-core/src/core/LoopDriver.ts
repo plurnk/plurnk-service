@@ -137,7 +137,7 @@ export default class LoopDriver {
                 loopAbort.abort(reason ?? "loop_forceful_termination");
             }
             this.#loopSignals.delete(loopId);
-            this.#notices.delete(loopId);
+            if (kind === "forceful") this.#notices.delete(loopId);
         };
 
         try {

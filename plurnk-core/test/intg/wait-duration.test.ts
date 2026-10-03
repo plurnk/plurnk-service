@@ -3,12 +3,43 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
-import { makeMockResponse } from "./_mock.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal, subscribeNotifications, waitFor } from "./_rpc.ts";
+import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
+import NoticeChannel from "../../src/core/NoticeChannel.ts";
 
 // Observation begins only after optimistic settlement declines to keep waiting.
 // This file isolates the parked observation itself.
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
+
+test("{§notice-drain-on-read} cancelling a parked loop releases its undelivered feedback", async (t) => {
+    const pushed = t.mock.method(NoticeChannel.prototype, "push");
+    const deleted = t.mock.method(NoticeChannel.prototype, "delete");
+    const mock = new Mock({ contextWindow: 16384, responses: [
+        makeRawMockResponse("````sh\nsleep 30\n````\n\n````WAIT 15\n````", 10),
+    ] });
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "cancel-wait-feedback" });
+            const notices = subscribeNotifications(ws, "notice/event");
+            const terminated = subscribeNotifications(ws, "loop/terminated");
+            const response = await rpcCall(ws, 2, "loop.run", { prompt: "go", policy: { proposals: "accept" } });
+            const { loopId } = response.result as { loopId: number };
+            await waitFor(() => notices() as Array<{ loopId: number; notice: { kind: string; status?: number } }>,
+                (items) => items.some((item) => item.loopId === loopId && item.notice.kind === "loop_status" && item.notice.status === 202));
+            const warning = pushed.mock.calls.find(({ arguments: args }) => args[2] === loopId && args[3].kind === "parse_advisory");
+            assert.ok(warning, "the real parser generated feedback for the parked loop");
+            const channel = warning.this as NoticeChannel;
+            assert.equal(deleted.mock.calls.some((call) => call.this === channel && call.arguments[0] === loopId), false,
+                "parking is not terminal cleanup");
+            await rpcCall(ws, 3, "loop.cancel", {});
+            await waitFor(() => terminated() as Array<{ loopId: number; result: { status: number } }>,
+                (items) => items.some((item) => item.loopId === loopId && item.result.status === 499));
+            assert.deepEqual(channel.drain(loopId), [], "cancellation releases feedback without another model call");
+            assert.equal(mock.received.length, 1);
+        } finally { ws.close(); }
+    });
+});
 
 test("{§worker-lifecycle-poll-matrix} the configured wait bound wakes a loop with an open stream", async (t) => {
     const previous = process.env.PLURNK_SERVICE_WAIT_SEC;

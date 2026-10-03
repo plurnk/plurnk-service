@@ -519,6 +519,10 @@ export default class Engine {
         return this.#liveSubscriptions.cancel(subscriptionId);
     }
 
+    discardLoopNotices(loopId: number): void {
+        this.#notices.delete(loopId);
+    }
+
     // {§env-delta} — exec streams as an instance of the ambient-observe machine:
     // each turn, emit each owned channel's next publishable content as a foisted READ row. It is
     // 200 while the channel streams and preserves the exact terminal result when closed. Intermediate

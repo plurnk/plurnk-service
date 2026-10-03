@@ -13,6 +13,29 @@ import { parseLogRecords } from "../LogRecords.ts";
 const METADATA_WEIGHT = 308;
 const tok = (s: string): number => Math.ceil(s.length / 4);
 
+test("{§worker-wait-timing}: WAIT receipts expose their effective maximum, not elapsed time or a re-read default", () => {
+    for (const seconds of [300, 600, 0.25]) {
+        const out = PacketWire.renderLog([{
+            coordinate: "1/2/3", op: "WAIT", status: 202, tx: { body: "" }, attrs: { waiting: seconds },
+        }], tok);
+        assert.deepEqual(JSON.parse(out.split("\n")[1]!), { status: 202, waitSeconds: seconds });
+    }
+    const idle = PacketWire.renderLog([{
+        coordinate: "1/2/3", op: "WAIT", status: 102, tx: { body: "" }, rx: { detail: "Nothing is in flight. Continuing." },
+    }], tok);
+    assert.equal(parseLogRecords(idle)[0]!.waitSeconds, undefined, "an idle WAIT has no wait duration");
+    const unbounded = {
+        coordinate: "1/2/3", op: "WAIT", status: 202, tx: { body: "" }, attrs: { waiting: -1 },
+    };
+    assert.equal(parseLogRecords(PacketWire.renderLog([unbounded], tok))[0]!.waitSeconds, undefined,
+        "a released unbounded receipt does not acquire a duration from today's configuration");
+    assert.equal(unbounded.attrs.waiting, -1, "historical evidence is unchanged");
+    for (const waiting of [0, -2, "600", null, Number.NaN, Number.POSITIVE_INFINITY]) {
+        assert.throws(() => PacketWire.renderLog([{ ...unbounded, attrs: { waiting } }], tok),
+            /A WAIT receipt carries a malformed waiting bound\./u);
+    }
+});
+
 test("{§read-pattern-evidence}: READ preserves precise match locations beside whole lines", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/2/3", op: "READ", status: 200,

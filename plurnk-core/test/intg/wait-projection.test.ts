@@ -8,6 +8,54 @@ import LogBody from "../../src/core/LogBody.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
+import { logEntries, packetSection } from "./_packet.ts";
+
+test("{§notice-drain-on-read} WAIT feedback survives parking, reaches only its loop, and drains once", async (t) => {
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const workspaceId = await insertWorkspace(db, "wait-feedback");
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1);
+    const childLoopId = await holdChild(db, workspaceId, workerId);
+    const engine = new Engine({ db, schemes: new SchemeRegistry() });
+    const lifecycle = new LoopLifecycle(db);
+    const provider = new Mock({ contextWindow: 100_000, responses: ["WAIT 15", "WAIT <0.25>", "WAIT", "KILL"].map((header) => ({
+        assistant: { content: PlurnkParser.frame(header, null), reasoning: null },
+    })) });
+    const run = () => engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
+    const packet = async (turnId: number) => JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
+    const resume = async () => {
+        assert.equal(await lifecycle.wake(loopId), true);
+        assert.equal((await db.drain_claim_next_loop.get({ worker_id: workerId }))?.id, loopId);
+        return run();
+    };
+
+    assert.equal((await run()).result.status, 202);
+    const siblingId = await insertWorker(db, workspaceId);
+    const siblingLoop = await insertLoop(db, siblingId, 1);
+    const sibling = await engine.runLoop({
+        provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: PlurnkParser.frame("KILL", null), reasoning: null } }] }),
+        workspaceId, workerId: siblingId, loopId: siblingLoop, messages: [],
+    });
+    assert.equal(sibling.result.status, 200);
+    assert.equal(packetSection(await packet(sibling.turnIds.at(-1)!), "notices"), "", "another loop neither consumes nor receives the warning");
+
+    const resumed = await resume();
+    assert.equal(resumed.result.status, 202);
+    const resumedPacket = await packet(resumed.turnIds.at(-1)!);
+    const notices = packetSection(resumedPacket, "notices");
+    assert.match(notices, /parse_advisory: `WAIT` body text was on the OP line and was taken as the body/);
+    assert.equal(notices.match(/parse_advisory:/gu)?.length, 1);
+    const wait = logEntries(resumedPacket).find(({ logPath }) => String(logPath).endsWith("/WAIT"));
+    assert.equal(wait?.waitSeconds, 300, "inline prose does not override the configured wait bound");
+    assert.match(String(wait?.body), /15/u, "the authored prose is retained");
+
+    const next = await resume();
+    assert.equal(next.result.status, 202);
+    assert.equal(packetSection(await packet(next.turnIds.at(-1)!), "notices"), "", "the warning drains on the first resumed packet only");
+    await lifecycle.finish(childLoopId, { status: 200 });
+    assert.equal((await resume()).result.status, 200);
+});
 
 for (const [headers, seconds] of [
     [["WAIT"], 300],

@@ -65,7 +65,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
             FORK: "`FORK (worker://name)?` on the opening fence line, the child's task on the lines below, then the closing fence.",
             BARE: "`BARE (path)?` on the opening fence line, the prompt on the lines below, then the closing fence.",
             NOTE: "`NOTE` alone on the opening fence line, the note on the lines below, then the closing fence.",
-            WAIT: "`WAIT (path)?` on the opening fence line, nothing else.",
+            WAIT: "`WAIT (path)? <seconds>?` on the opening fence line, any body on the lines below, then the closing fence.",
             LOOK: "`LOOK (path) <scope>?` on the opening fence line, the matcher on the line below.",
         };
         return forms[op];
