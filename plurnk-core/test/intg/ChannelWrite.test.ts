@@ -106,14 +106,14 @@ test("openSubscription: inserts a row and returns its id", async () => {
     } finally { await db.close(); }
 });
 
-test("{§exec-lifetime} an open stream is the worker's, whatever its lifetime: the drain reads one count", async () => {
+test("{§exec-lifetime} open streams remain live obligations regardless of their lifetime", async () => {
     const { db, workspaceId, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sh", handle: "first" });
+        const first = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sh", handle: "first" });
         assert.deepEqual(
-            await db.drain_worker_open_streams.get({ worker_id: workerId }),
-            { open_count: 1 },
-            "one open stream arms the worker's own observation; no cadence is stored",
+            await db.worker_live_obligations.get({ worker_id: workerId }),
+            { streams: 1, workers: 0 },
+            "an open stream holds the worker's join",
         );
         const row = await db.test_seed_entry_workspace.get<{ id: number }>({
             workspace_id: workspaceId, scheme: "worker", authority: "", pathname: "/second",
@@ -123,10 +123,11 @@ test("{§exec-lifetime} an open stream is the worker's, whatever its lifetime: t
             entry_id: row.id, name: "body", content: "", mimetype: "text/plain", state: "active",
         });
         await ChannelWrite.openSubscription(db, { workerId, entryId: row.id, scheme: "sh", handle: "second", turnScoped: true });
+        await ChannelWrite.closeSubscription(db, { subscriptionId: first, result: { status: 200 } });
         assert.deepEqual(
-            await db.drain_worker_open_streams.get({ worker_id: workerId }),
-            { open_count: 2 },
-            "a turn-scoped stream counts the same: lifetime bounds the spawn, never the observation",
+            await db.worker_live_obligations.get({ worker_id: workerId }),
+            { streams: 1, workers: 0 },
+            "the turn-scoped stream alone still holds the join after the first stream closes",
         );
     } finally { await db.close(); }
 });

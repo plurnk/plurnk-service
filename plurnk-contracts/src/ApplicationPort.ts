@@ -90,6 +90,8 @@ export interface ApplicationLoopProjection {
     readonly terminalResult: OperationResult | null;
     /** Exact count of durable packet-bearing turns; retries and administrative turns do not contribute. */
     readonly packetCount: number;
+    /** Durable observation deadline, Unix milliseconds; null outside bounded parks. */
+    readonly waitUntil: number | null;
 }
 
 export interface ApplicationLoopPacket {

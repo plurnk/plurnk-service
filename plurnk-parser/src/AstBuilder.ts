@@ -503,13 +503,16 @@ export default class AstBuilder {
         const op = (ctx.start?.text ?? "").replace(/^`+[0-9]*/, "");
         if (!TurnDisposition.isOp(op)) throw new Error(`Unknown disposition operation: ${op}`);
         const target = AstBuilder.#targetFromCtx(AstBuilder.#findFirst(ctx, TargetContext), position);
+        const durations = AstBuilder.#findAll(ctx, LineMarkerContext)
+            .map((marker) => AstBuilder.#lineMarkerFromCtx(marker)!.marks[0]!)
+            .filter((seconds) => Number.isFinite(seconds) && seconds > 0);
         return {
             op,
             aside: AstBuilder.#asideOf(ctx),
             target,
             metadata: null,
-            // {§send-wait-scope} Scope and metadata do not schedule wakes.
-            lineMarker: null,
+            // {§send-wait-scope} Repeated duration bounds compose as their earliest wake.
+            lineMarker: durations.length === 0 ? null : { marks: [Math.min(...durations)] },
             body: AstBuilder.#bodyTextOf(ctx),
             position,
         };

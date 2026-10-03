@@ -561,7 +561,23 @@
                     "$ref": "#/$defs/PathOrNull"
                 },
                 "lineMarker": {
-                    "$ref": "#/$defs/LineMarkerOrNull"
+                    "description": "The optional maximum park duration, in positive seconds.",
+                    "oneOf": [
+                        { "type": "null" },
+                        {
+                            "type": "object",
+                            "required": ["marks"],
+                            "additionalProperties": false,
+                            "properties": {
+                                "marks": {
+                                    "type": "array",
+                                    "minItems": 1,
+                                    "maxItems": 1,
+                                    "items": { "type": "number", "exclusiveMinimum": 0 }
+                                }
+                            }
+                        }
+                    ]
                 },
                 "body": {
                     "type": ["string", "null"]

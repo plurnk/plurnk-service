@@ -253,7 +253,7 @@ for (const status of [200, 502]) {
                 ...initial.snapshot,
                 plurnk: { ...initial.snapshot.plurnk, status: {
                     lifecycle: status === 200 ? "completed" : "failed", model: null, loopId: 9,
-                    packetCount: 2, children: 1, activity: null, preparation: [],
+                    packetCount: 2, children: 1, activity: null, preparation: [], waitUntil: null,
                     descendants: { requests: 1, usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, costUsd: "0.01" },
                 } },
                 budget: { curationWeight: 123, curationBudget: 4000, contextTokens: 900, contextCapacity: 8000 },
@@ -556,6 +556,7 @@ test("the initial AG-UI snapshot carries durable model, exact packet count, and 
         terminatedAt: null,
         terminalResult: null,
         packetCount: 3,
+        waitUntil: null,
     }];
     seam.workspaceDerivationStatus = () => ({
         phase: "indexing",
@@ -582,6 +583,7 @@ test("the initial AG-UI snapshot carries durable model, exact packet count, and 
             model: { alias: "deepdumb", provider: "deepseek", model: "deepseek-v4-flash" },
             loopId: 9,
             packetCount: 3,
+            waitUntil: null,
             children: 0,
             descendants: { requests: 0, usage: null, costUsd: null },
             activity: {
@@ -598,7 +600,7 @@ test("the initial AG-UI snapshot carries durable model, exact packet count, and 
 
 test("{§application-worker-observation}: an older running task owns the snapshot over newer queued and completed loops", async () => {
     const { seam } = mockSeam();
-    const base = { workerId: 20, prompt: "task", promptSource: null, terminatedAt: null, terminalResult: null, packetCount: 4 };
+    const base = { workerId: 20, prompt: "task", promptSource: null, terminatedAt: null, terminalResult: null, packetCount: 4, waitUntil: null };
     seam.listWorkerLoops = async () => [
         { ...base, id: 56, sequence: 2, status: 102 },
         { ...base, id: 58, sequence: 4, status: 200, terminatedAt: "2026-09-15T00:00:00.000Z", terminalResult: { status: 200 } },
@@ -1722,6 +1724,7 @@ test("a descendant client interaction round-trips through its controlling AG-UI 
         terminatedAt: null,
         terminalResult: null,
         packetCount: 1,
+        waitUntil: null,
     }] : [];
     seam.resolveClientInteraction = async (interactionId, resolution) => {
         resolutions.push({ interactionId, resolution });

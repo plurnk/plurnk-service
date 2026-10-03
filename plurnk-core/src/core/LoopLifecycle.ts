@@ -90,13 +90,14 @@ export default class LoopLifecycle {
     // here rather than idling until a caller's clock notices (#765). This is a tripwire, not a
     // fallback: the provider-recovery path concludes before it reaches this, and a future park site
     // that forgets attendance fails loudly on its first unattended run instead of silently hanging.
-    async park(loopId: number, { wakenBy }: { wakenBy: string | null }): Promise<boolean> {
+    async park(loopId: number, { wakenBy, pollAt }: { wakenBy: string | null; pollAt?: number }): Promise<boolean> {
         if (wakenBy === null && !(await LoopPolicyReader.read(this.#db, loopId)).attended) {
             throw new Error(`loop ${loopId} cannot park with no waker in an unattended run; conclude instead`);
         }
         return (await this.#db.lifecycle_park_loop.get<{ id: number }>({
             loop_id: loopId,
             elapsed_ms: this.#stopExecution(loopId),
+            poll_at: pollAt ?? null,
         })) !== undefined;
     }
 
@@ -111,10 +112,6 @@ export default class LoopLifecycle {
 
     parked(workerId: number): Promise<ParkedLoop[]> {
         return this.#db.lifecycle_parked_loops.all<ParkedLoop>({ worker_id: workerId });
-    }
-
-    async inheritPoll(loopId: number, revision: number, pollAt: number): Promise<void> {
-        await this.#db.lifecycle_set_inherited_poll.run({ loop_id: loopId, revision, poll_at: pollAt });
     }
 
     async finish(

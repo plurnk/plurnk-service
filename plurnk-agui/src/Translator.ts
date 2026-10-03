@@ -258,6 +258,7 @@ export default class Translator {
                 { op: "replace", path: "/plurnk/status/lifecycle", value: result.status === 200 ? "completed" : "failed" },
                 { op: "replace", path: "/plurnk/status/loopId", value: n.loopId },
                 { op: "replace", path: "/plurnk/status/activity", value: null },
+                { op: "replace", path: "/plurnk/status/waitUntil", value: null },
                 { op: "replace", path: "/budget/curationWeight", value: n.usage.curationWeight },
                 { op: "replace", path: "/budget/curationBudget", value: n.usage.curationBudget },
                 { op: "replace", path: "/budget/contextTokens", value: n.usage.contextTokens },
@@ -335,13 +336,19 @@ export default class Translator {
 
     notice(notice: unknown): AguiEvent[] {
         const diagnostic: AguiEvent = { type: EventType.CUSTOM, name: "plurnk.notice", value: notice };
-        const value = notice as { source?: unknown; kind?: unknown; level?: unknown; status?: unknown };
-        // {§loop-status-notice} — the drain's running/parked beat is the lifecycle gauge, nothing else.
+        const value = notice as { source?: unknown; kind?: unknown; level?: unknown; status?: unknown; waitUntil?: unknown };
+        // {§loop-status-notice} — lifecycle and its durable deadline, never a diagnostic or chat message.
         if (value.source === "engine:lifecycle" && value.kind === "loop_status") {
-            if (value.status !== 102 && value.status !== 202) throw new TypeError("A loop_status notice carries 102 or 202.");
+            if (value.status !== 100 && value.status !== 102 && value.status !== 202) throw new TypeError("A loop_status notice carries 100, 102 or 202.");
+            if (value.waitUntil !== null && (typeof value.waitUntil !== "number" || !Number.isFinite(value.waitUntil) || value.waitUntil < 0)) {
+                throw new TypeError("A loop_status notice carries a nullable Unix-millisecond waitUntil.");
+            }
             return [{
                 type: EventType.STATE_DELTA,
-                delta: [{ op: "replace", path: "/plurnk/status/lifecycle", value: lifecycleOfLoopStatus(value.status) }],
+                delta: [
+                    { op: "replace", path: "/plurnk/status/lifecycle", value: lifecycleOfLoopStatus(value.status) },
+                    { op: "replace", path: "/plurnk/status/waitUntil", value: value.status === 202 ? value.waitUntil : null },
+                ],
             }];
         }
         if (value.source !== "engine:derivation" || value.kind !== "search_progress") return [diagnostic];

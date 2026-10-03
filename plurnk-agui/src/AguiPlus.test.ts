@@ -193,7 +193,7 @@ test("reads → STATE: snapshot owns plurnk state and initializes replaceable bu
     assert.equal((delta as { delta: Array<{ path: string }> }).delta[0].path, "/plurnk/providers/0/active");
 });
 
-test("worker status projects the durable model and exact packet-bearing loop count", () => {
+test("{§agui-status-wait} worker status projects the durable model, packet count, and wait deadline", () => {
     const model = { alias: "deepdumb", provider: "deepseek", model: "deepseek-v4-flash" };
     assert.deepEqual(statusState(model, {
         id: 7,
@@ -205,11 +205,13 @@ test("worker status projects the durable model and exact packet-bearing loop cou
         terminatedAt: null,
         terminalResult: null,
         packetCount: 4,
+        waitUntil: 123_000,
     }), {
         lifecycle: "parked",
         model,
         loopId: 7,
         packetCount: 4,
+        waitUntil: 123_000,
         activity: null,
         preparation: [],
         children: 0,
@@ -220,6 +222,7 @@ test("worker status projects the durable model and exact packet-bearing loop cou
         model: null,
         loopId: null,
         packetCount: 0,
+        waitUntil: null,
         activity: null,
         preparation: [],
         children: 0,

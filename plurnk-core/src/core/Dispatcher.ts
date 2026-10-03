@@ -2,7 +2,7 @@ import { parsePath } from "@plurnk/plurnk-parser";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import { TurnDisposition, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import Turn from "./Turn.ts";
-import type { BareStatement, CapabilityProjection, EditStatement, FindStatement, ForkStatement, KillStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, CapabilityProjection, DispositionStatement, EditStatement, FindStatement, ForkStatement, KillStatement, ParsedPath, PlurnkOp, PlurnkStatement, ReadStatement, SendStatement, WorkStatement } from "@plurnk/plurnk-contracts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "./Db.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
@@ -570,8 +570,8 @@ export default class Dispatcher {
                     result = { status: 200, resource: renderAddress({ scheme: "note", authority: workerName, pathname: `/${coordinate.loop_seq}/${coordinate.turn_seq}/${sequence}` }) };
                 } else if (TurnDisposition.is(statement)) {
                     // {§turn-disposition} — WAIT is the park; whatever it names is its label in the
-                    // row, never a join: the next wake is a message, a child's end, a stream's close.
-                    result = await this.#disposition.handle({ workerId, loopId, turnId, origin });
+                    // row, never a selected waker; arrivals or its duration end the park.
+                    result = await this.#disposition.handle({ workerId, loopId, turnId, origin }, statement);
                 } else if (
                     statement.op === "KILL" && schemeNameOf(statement.target) === "log"
                 ) {
@@ -1333,8 +1333,8 @@ export default class Dispatcher {
         return rows.map((row) => row.path);
     }
 
-    async settleProgram(ctx: { workerId: number; loopId: number; turnId: number; origin: WriterTier }, wait: boolean, finalResponse: boolean): Promise<number> {
-        return this.#disposition.settle(ctx, wait, finalResponse);
+    async settleProgram(ctx: { workerId: number; loopId: number; turnId: number; origin: WriterTier }, waits: readonly DispositionStatement[], finalResponse: boolean): Promise<number> {
+        return this.#disposition.settle(ctx, waits, finalResponse);
     }
 
     // {§send-premature-terminate}: judge observation boundaries after the whole program settles.

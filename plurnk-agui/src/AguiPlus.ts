@@ -153,6 +153,7 @@ export interface AguiStatusState {
     readonly model: ModelRoute | null;
     readonly loopId: number | null;
     readonly packetCount: number;
+    readonly waitUntil: number | null;
     readonly activity: AguiStatusActivity | null;
     // {§agui-status-children} — the bound Worker's alive direct children (queued, running, parked).
     readonly children: number;
@@ -207,6 +208,7 @@ export const statusState = (
     model,
     loopId: loop?.id ?? null,
     packetCount: loop?.packetCount ?? 0,
+    waitUntil: loop?.status === 202 ? loop.waitUntil : null,
     activity,
     children,
     descendants,

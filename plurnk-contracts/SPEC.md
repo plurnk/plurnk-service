@@ -672,7 +672,7 @@ changing ownership or making them distinct canonical forms. Each selection
 has at most one scope; its metadata blocks retain their authored order.
 
 §lifecycle-slots NOTE accepts no target, scope, or metadata. WAIT retains its
-optional target and ignores syntactically valid scope and metadata without diagnostics
+optional target and positive `<seconds>` duration; other scope and metadata decorations are ignored
 ({§send-wait-scope}). Their literal bodies begin below the header.
 
 §scope-on-scopeless **A scope on an operation that takes none is dropped, and named.** WORK, FORK,
@@ -681,8 +681,8 @@ heading, in any position, is skipped and the operation runs, with one warning-se
 naming the operation's slots and the dropped scope — `` `WORK` takes a target only; the scope
 `<1,-1>` was ignored. A scope selects lines in READ, EDIT and KILL. `` (`` `NOTE` takes no target or
 scope; … ``, `` `SEND` without a recipient takes no scope; … ``). An aside is never a scope, a
-recipient SEND keeps its scope for the recipient ({§send-directed-scope}), and WAIT's is skipped
-unread ({§send-wait-scope}). There is no ambiguity: the operation has one reading with or without
+recipient SEND keeps its scope for the recipient ({§send-directed-scope}), and WAIT's positive
+scalar bounds its park ({§send-wait-scope}). There is no ambiguity: the operation has one reading with or without
 the slot. Before this, the heading drew the grammar's expected-token diagnostic and the turn was
 dead; in the distinct recorded emissions one heading carried the form (zai run426,
 ```` ```WORK (worker://deprecation-implementer) <1,-1> ````), beside two recipient SENDs whose scope
@@ -794,7 +794,7 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | KILL | optional target; absent requests loop completion | optional text region on a target ({§kill-scope}) | literal final answer when parameterless; none when targeted |
 | SEND | optional recipient | recipient-defined; none for workers ({§send-directed-scope}) | message |
 | NOTE | none | none | literal working memory |
-| WAIT | optional event source ({§send-wait-scope}) | ignored | explanation of the wait |
+| WAIT | optional label ({§send-wait-scope}) | positive seconds | explanation of the wait |
 
 §note-value NOTE retains its literal body as ordinary model-owned working memory.
 It has no target, scope, metadata, or lifecycle effect. Its full body participates
@@ -840,14 +840,14 @@ under {§wait-obligation-matrix}. Parameterless KILL requests successful complet
 under {§kill-conclusion}; its optional body is the literal final answer.
 SEND delivers messages and NOTE retains memory, neither declaring an outcome.
 
-§send-wait-scope WAIT's optional target is retained as the row's label; no
-scheme handler runs for it, so every WAIT is the bare park. Scope and metadata
-are discarded without diagnostics,
-including structured scopes. The body, aside, and exact submitted program
-remain intact. WAIT neither creates a schedule nor restricts which ordinary
-events may awaken the loop. A scope slot's content is skipped unread whatever it
-holds (`<sh:///…>` included; #756). Ordinary malformed-header rules still apply;
-a second WAIT is one more label on the same park, never a refusal.
+§send-wait-scope WAIT's optional `<seconds>` is a positive finite scalar bounding
+this park, not the lifetime of its work. Without it, the service supplies its
+configured bound ({§worker-wait-timing}). Repeated duration slots select the
+smallest positive scalar; other scope decorations and metadata remain ignored
+without diagnostics. The optional target is a label, never a selected wake source;
+the body is the wait's explanation. Neither creates a schedule or restricts ordinary
+wake events. Ordinary malformed-header rules still apply. Multiple WAITs request
+one park with the earliest bound, including the configured bound for each bare WAIT.
 
 §send-directed-scope A recipient SEND carries an optional numeric scope after
 its target and metadata through to the addressed owner, which assigns its
@@ -1122,7 +1122,7 @@ The operation column names the canonical AST operation after
 | COPY/MOVE destination | 0/1/2/4 text coordinates after target  | Region replaced or insertion point at the destination                      |
 | KILL                  | 0/1/2 text coordinates                 | Whole target when absent; one physical line or inclusive range when present ({§kill-scope}) |
 | execution             | None                                   | Lifetime uses metadata; observation cadence belongs to the daemon ({§exec-lifetime}) |
-| WAIT                  | None                                   | Scope is ignored ({§send-wait-scope}) |
+| WAIT                  | Positive seconds                       | Maximum park duration ({§send-wait-scope}) |
 | Directed SEND         | Owner-defined numeric scope           | Carried to the addressed owner; worker actors refuse it ({§send-directed-scope}) |
 
 Text coordinates use the algebra in {§text-scope-semantics}: one integer is a
@@ -1212,7 +1212,7 @@ disposition. The shape rules ARE structural:
   position. Omission does not synthesize a disposition ({§turn-shape}).
 - SEND is communication: an optional recipient path and an optional body.
 - §park-202-only WAIT joins live work: an open stream or a live
-  child. With none, it continues. It takes no scope ({§send-wait-scope});
+  child. With none, it continues. Its optional duration bounds parking ({§send-wait-scope});
   a future message is scheduled through the schedule family.
 - §lifecycle-only-turn A WAIT-, SEND-, NOTE-, or KILL-only turn is valid.
   NOTE does not request parking or acknowledge messages.
@@ -1639,7 +1639,8 @@ directory: no loop `idle`; 100 `queued`; 102 `running`; 202 `parked`; 200
 in `@plurnk/plurnk-contracts` is that projection's one owner.
 
 §application-loop-observation Loop observation exposes the durable scheduler
-state of work loops (excluding maintenance-only administrative loops), exact terminal `OperationResult`, and exact count of packet-bearing
+state of work loops (excluding maintenance-only administrative loops), nullable
+`waitUntil` (the durable observation deadline in Unix milliseconds), exact terminal `OperationResult`, and exact count of packet-bearing
 Turns for one owned Worker. Packetless producer Turns and physical provider
 retries do not contribute to `packetCount`. Exterior
 adapters consume this projection instead of reconstructing lifecycle from

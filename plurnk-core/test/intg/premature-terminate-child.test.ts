@@ -139,16 +139,15 @@ test("{§completion-defers-to-results}: READ + completed inventory in the same t
     } finally { await db.close(); }
 });
 
-test("{§send-wait-scope} a direct WAIT ignores its scope and continues without live work", async () => {
+test("{§send-wait-scope} WAIT ignores a non-duration decoration and continues without live work", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `park-${crypto.randomUUID()}`);
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "wait");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const wait = { ...dispositionStmt("WAIT", "standing by"), lineMarker: { marks: [-1] } };
         const result = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [wait] } }] }),
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "```WAIT <-1>\nstanding by\n```", reasoning: null } }] }),
             workspaceId, workerId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });

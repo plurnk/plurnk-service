@@ -1107,13 +1107,13 @@ test("WAIT: a live obligation parks; an empty join continues without inventing c
         assert.equal(satisfied.detail, "Nothing is in flight. Continuing."); // {§pinned-wording-core}
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop }))?.status, 102, "the empty join is not terminal");
 
-        // {§send-wait-scope} — an ignored scope never invents a future wake.
+        // {§send-wait-scope} — a duration never invents live work.
         const s3 = await insertWorkspace(db, `wait-scope-${crypto.randomUUID()}`);
         const run3 = await insertWorker(db, s3);
         const loop3 = await insertLoop(db, run3, 1, "solo");
         const turn3 = await insertTurn(db, loop3, 1, 200);
         const eng3 = new Engine({ db, schemes: new SchemeRegistry() });
-        const scoped = { ...dispositionStmt("WAIT", "standing by"), lineMarker: { marks: [-1] as [number, ...number[]] } };
+        const scoped = { ...dispositionStmt("WAIT", "standing by"), lineMarker: { marks: [600] as [number] } };
         const continued = await eng3.dispatch({ statement: scoped, workspaceId: s3, workerId: run3, loopId: loop3, turnId: turn3, sequence: 1, origin: "model" });
         assert.equal(continued.status, 102);
         assert.equal(continued.problem, undefined);

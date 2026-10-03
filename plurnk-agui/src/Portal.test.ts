@@ -76,6 +76,7 @@ const loop = (workerId: number, id: number): ApplicationLoopProjection => ({
     terminatedAt: null,
     terminalResult: null,
     packetCount: 1,
+    waitUntil: null,
 });
 
 const mockSeam = (

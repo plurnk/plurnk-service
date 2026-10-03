@@ -527,7 +527,16 @@ op: "WAIT"
 aside: (string | null)
 metadata: null
 target: (ParsedPath | null)
-lineMarker: (LineMarker | null)
+/**
+ * The optional maximum park duration, in positive seconds.
+ */
+lineMarker: (null | {
+/**
+ * @minItems 1
+ * @maxItems 1
+ */
+marks: [number]
+})
 body: (string | null)
 position: Position
 }

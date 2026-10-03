@@ -39,6 +39,50 @@ const supervisor = (
     ...overrides,
 });
 
+test("{§worker-wait-timing} a new supervisor restores the durable deadline without extending or duplicating it", async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 10_000 });
+    const events: unknown[] = [];
+    let parked = true;
+    let starts = 0;
+    const lifecycle = {
+        parked: async () => parked ? [{ id: 7, wait_revision: 2, wait_poll_at: 11_000 }] : [],
+        wake: async (id: number, { revision, dueAt }: { revision: number; dueAt: number }) => {
+            assert.equal(id, 7);
+            if (!parked || revision !== 2 || dueAt < 11_000) return false;
+            parked = false;
+            return true;
+        },
+    };
+    const create = () => {
+        const drains = supervisor(async () => "system", (_workspaceId, _method, params) => events.push(params), { lifecycle: lifecycle as never });
+        t.mock.method(drains, "ensureDrain", async () => { starts++; return null; });
+        drains.start();
+        return drains;
+    };
+    const first = create();
+    await first.scheduleWakes(1, 2, "system");
+    t.mock.timers.tick(500);
+    first.beginStop("daemon_stopping");
+    await first.idle();
+    const resumed = create();
+    t.after(() => resumed.beginStop("daemon_stopping"));
+    await resumed.scheduleWakes(1, 2, "system");
+    await resumed.scheduleWakes(1, 2, "system");
+    t.mock.timers.tick(499);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(starts, 0);
+    t.mock.timers.tick(1);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await resumed.idle();
+    assert.equal(starts, 1, "one expiry queues one drain at the original deadline");
+    assert.deepEqual(events, [{ workerId: 2, loopId: 7, notice: {
+        source: "engine:lifecycle", kind: "loop_status", level: "info", status: 100, waitUntil: null,
+    } }], "the wake clears the public countdown before waiting for inference");
+    t.mock.timers.tick(10_000);
+    await resumed.idle();
+    assert.equal(starts, 1);
+});
+
 test("{§module-shutdown-order}: supervisor idle owns an accepted conclusion wake", async () => {
     const prompt = Promise.withResolvers<string>();
     const events: Array<{ method: string; params: unknown }> = [];
@@ -249,29 +293,20 @@ test("{§module-shutdown-order}: stopping during wait selection cannot install a
     } finally { drains.beginStop("fixture_cleanup"); }
 });
 
-test("{§module-shutdown-order}: stopping during poll persistence cannot install its selected timer", async (t) => {
-    const persisting = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<void>();
+test("{§worker-wait-timing}: a recovery park without a deadline receives no observation timer", async (t) => {
     const drains = supervisor(async () => "system", undefined, {
-        db: {
-            drain_worker_open_streams: { get: async () => ({ open_count: 1 }) },
-        } as unknown as Db,
+        db: {} as unknown as Db,
         lifecycle: {
             parked: async () => [{
                 id: 7, wait_revision: 1, wait_poll_at: null,
             }],
-            inheritPoll: async () => { persisting.resolve(); await release.promise; },
         } as never,
     });
     drains.start();
-    const scheduled = drains.scheduleWakes(1, 2, "system");
-    await persisting.promise;
-    drains.beginStop("daemon_stopping");
     const timers = t.mock.method(globalThis, "setTimeout");
-    release.resolve();
     try {
-        await scheduled;
-        assert.equal(timers.mock.callCount(), 0, "timer installation rechecks stop even after the durable poll was admitted");
+        await drains.scheduleWakes(1, 2, "system");
+        assert.equal(timers.mock.callCount(), 0, "observation timing cannot restart provider recovery or human review");
     } finally { drains.beginStop("fixture_cleanup"); }
 });
 

@@ -26,6 +26,7 @@ export type NotifyTarget = "all" | { workspaceId: number };
 import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult, type TurnCeilingSelection } from "./DrainSupervisor.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import PacketBuilder from "../core/PacketBuilder.ts";
+import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
 import { Validator, type ClientDisplayCapabilities, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationPort, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort } from "@plurnk/plurnk-contracts";
 import type { HttpRouteHandler, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
@@ -107,6 +108,7 @@ export default class Daemon implements ApplicationPort {
         FileCreationPolicy.serviceScope();
         EffectPolicy.validateConfiguration();
         LoopPolicies.validateConfiguration();
+        TurnDispositionHandler.configuredWaitSeconds();
         retentionPolicy();
         PacketBuilder.validateConfiguration();
         Exec.validateConfiguration();
@@ -1212,6 +1214,7 @@ export default class Daemon implements ApplicationPort {
             terminatedAt: string | null;
             terminalResult: string | null;
             packetCount: number;
+            waitUntil: number | null;
         }>({ worker_id: workerId });
         return rows.map((row) => ({
             id: row.id,
@@ -1222,6 +1225,7 @@ export default class Daemon implements ApplicationPort {
             promptSource: row.promptSource,
             terminatedAt: row.terminatedAt,
             packetCount: row.packetCount,
+            waitUntil: row.waitUntil,
             // {§validation-topology}: a stored result is chapter 3's (`loops_terminal_result_contract`); it is parsed, not re-asserted.
             terminalResult: row.terminalResult === null ? null : JSON.parse(row.terminalResult) as SchemeResult }));
     }
@@ -1583,6 +1587,7 @@ export default class Daemon implements ApplicationPort {
         await this.#configuration.capture("file-creation", () => FileCreationPolicy.serviceScope());
         await this.#configuration.capture("effect-policy", () => EffectPolicy.validateConfiguration());
         await this.#configuration.capture("loop-policy", () => LoopPolicies.validateConfiguration());
+        await this.#configuration.capture("wait", () => TurnDispositionHandler.configuredWaitSeconds());
         await this.#configuration.capture("packet", () => PacketBuilder.validateConfiguration());
         await this.#configuration.capture("execution", () => Exec.validateConfiguration());
         this.#retention = await this.#configuration.capture("retention", () => new Retention(this.#db, retentionPolicy()));

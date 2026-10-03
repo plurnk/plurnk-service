@@ -3,6 +3,8 @@ import type { WriterTier } from "./scheme-types.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
 import TerminalResult from "./TerminalResult.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
+import type { DispositionStatement } from "@plurnk/plurnk-contracts";
+import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 
 export interface PacketBoundaries {
     operations: Array<{ op: string; tx: string | null }>;
@@ -18,6 +20,16 @@ export interface CompletionEvidence {
 type TurnContext = { workerId: number; loopId: number; turnId: number; origin: WriterTier };
 
 export default class TurnDispositionHandler {
+    static configuredWaitSeconds(): number {
+        const retired = { PLURNK_SERVICE_EXEC_POLL_SEC: true, PLURNK_SERVICE_EXEC_POLL_TURNS: true };
+        for (const key of Object.keys(retired)) {
+            if (process.env[key]) {
+                throw new ConfigurationError(key, `${key} is retired: use PLURNK_SERVICE_WAIT_SEC for the maximum park duration.`);
+            }
+        }
+        return Knob.integer("PLURNK_SERVICE_WAIT_SEC", 1);
+    }
+
     readonly #db: Db;
     readonly #lifecycle: LoopLifecycle;
     readonly #unobservedFailureCount: (turnId: number) => Promise<number>;
@@ -38,9 +50,12 @@ export default class TurnDispositionHandler {
         this.#hasLiveWork = hasLiveWork;
     }
 
-    async handle(ctx: TurnContext): Promise<DispatchResult> {
+    async handle(ctx: TurnContext, statement: DispositionStatement): Promise<DispatchResult> {
         // {§wait-obligation-matrix}: record intent now; settle the complete program before parking.
-        if (await this.#hasLiveWork(ctx.loopId)) return { status: 202, attrs: { waiting: -1 } };
+        if (await this.#hasLiveWork(ctx.loopId)) return {
+            status: 202,
+            attrs: { waiting: statement.lineMarker?.marks[0] ?? TurnDispositionHandler.configuredWaitSeconds() },
+        };
         return { status: 102, detail: "Nothing is in flight. Continuing." };
     }
 
@@ -49,12 +64,16 @@ export default class TurnDispositionHandler {
         return this.#assess(ctx, false, true);
     }
 
-    async settle(ctx: TurnContext, wait: boolean, finalResponse: boolean): Promise<number> {
+    async settle(ctx: TurnContext, waits: readonly DispositionStatement[], finalResponse: boolean): Promise<number> {
         const status = await this.#lifecycle.status(ctx.loopId);
         if (![100, 102, 202].includes(status)) return status;
-        const decision = await this.#assess(ctx, wait, finalResponse);
+        const decision = await this.#assess(ctx, waits.length > 0, finalResponse);
         if (decision.status === 202) {
-            return await this.#lifecycle.park(ctx.loopId, { wakenBy: "obligations" }) ? 202 : this.#lifecycle.status(ctx.loopId);
+            const configured = TurnDispositionHandler.configuredWaitSeconds();
+            const seconds = waits.length === 0 ? configured
+                : Math.min(...waits.map((statement) => statement.lineMarker?.marks[0] ?? configured));
+            const pollAt = Date.now() + seconds * 1000;
+            return await this.#lifecycle.park(ctx.loopId, { wakenBy: "obligations", pollAt }) ? 202 : this.#lifecycle.status(ctx.loopId);
         }
         if (decision.status !== 200 || ctx.origin !== "model") return decision.status;
         // {§completion-defers-to-messages}: recheck arrivals atomically with conclusion.

@@ -3,6 +3,33 @@ import test from "node:test";
 import { PlurnkParser } from "../../src/index.ts";
 import { TurnDisposition, Validator } from "@plurnk/plurnk-contracts";
 
+test("{§send-wait-scope} WAIT preserves a positive duration in seconds in every program tier", () => {
+    for (const seconds of [1, 600, 0.25]) {
+        const source = PlurnkParser.frame(`WAIT <${seconds}> <!-- reassess -->`, "Check the running tests again.");
+        for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements, PlurnkParser.parseClient]) {
+            const result = parse(source);
+            assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+            const item = result.items[0];
+            assert.ok(item?.kind === "statement" && item.statement.op === "WAIT");
+            assert.deepEqual(item.statement.lineMarker, { marks: [seconds] });
+            assert.equal(Validator.validatePlurnkStatement(item.statement).valid, true);
+            assert.equal(PlurnkParser.stringify([item.statement]), source);
+        }
+    }
+});
+
+test("{§send-wait-scope} duration composition keeps the earliest positive scalar without binding the target", () => {
+    const result = PlurnkParser.parse(PlurnkParser.frame("WAIT (sh:///tests) <600> <120> <0> <9,2>", null));
+    assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
+    const item = result.items[0];
+    assert.ok(item?.kind === "statement" && item.statement.op === "WAIT");
+    assert.equal(item.statement.target?.raw, "sh:///tests");
+    assert.deepEqual(item.statement.lineMarker, { marks: [120] });
+    for (const marks of [[0], [-1], [1, 2], []]) {
+        assert.equal(Validator.validatePlurnkStatement({ ...item.statement, lineMarker: { marks } }).valid, false);
+    }
+});
+
 for (const [op, status] of [["WAIT", 202]] as const) {
     test(`{§turn-disposition} ${op} determines lifecycle independently of its literal body`, () => {
         for (const body of [null, "Inspect the evidence.", "{broken JSON", "[]"]) {
@@ -20,11 +47,11 @@ for (const [op, status] of [["WAIT", 202]] as const) {
         }
     });
 
-    test(`{§send-wait-scope} ${op} retains its optional path and discards scope and metadata in every program tier`, () => {
+    test(`{§send-wait-scope} ${op} retains its optional path and ignores decorations that are not positive durations`, () => {
         const body = "Let the verification suite finish.";
         for (const decoration of [
             "<5,1>", "(notes.md)", "(sh:///56d607dc)", "[{\"trace\":true}]",
-            "(worker://missing) <60,60> [{\"timeout\":42}]", "<1> (sh:///missing)",
+            "(worker://missing) <60,60> [{\"timeout\":42}]", "<-1> (sh:///missing)",
             "(sh:///missing)[{\"trace\":true}]<0>",
         ]) {
             const source = PlurnkParser.frame(`${op} ${decoration} <!-- suite -->`, body);
@@ -77,7 +104,7 @@ test("{§quotation} an unlabeled fence between operations quotes to its first cl
     assert.deepEqual(result.items.flatMap((item) => item.kind === "error" ? [item.error.message] : []), ["`WAIT` inside a code block was shown, not run."]);
 });
 
-test("{§send-wait-scope} any WAIT scope is skipped unread; the WAIT keeps its target and aside (#756)", () => {
+test("{§send-wait-scope} non-duration WAIT scopes are ignored; the WAIT keeps its target and aside", () => {
     for (const [source, aside] of [
         [PlurnkParser.frame("WAIT <sh:///468a112b> <!-- waiting for core test suite to finish -->", null), "waiting for core test suite to finish"],
         [PlurnkParser.frame("WAIT <> <5,1>", null), null],

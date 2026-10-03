@@ -23,10 +23,14 @@ body?
 * KILL: End things — delete an entry, stop a process, retire log items, or end the loop.
 * WORK: Delegate to a child worker (fresh log).
 * FORK: Delegate to a child worker (copied log).
-* WAIT: Yield until the next wake: a child worker's result or a stream's end.
+* WAIT: Yield to live work; <seconds>? bounds the wait.
 * SEND: Message endpoints or workers.
 
 ## Workflow Management
+
+```WAIT <600>
+Await the test results; check progress again within ten minutes.
+```
 
 > [!IMPORTANT]
 > YOU MAY KILL the loop by performing a KILL turn.

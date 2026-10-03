@@ -837,19 +837,31 @@ all use that one definition.
 
 ### §worker-wait-timing Durable waits and wake ownership
 
-WAIT has no timing operand; its optional path is a label ({§send-wait-scope}).
-With live work—an open stream or a live child worker—the loop parks durably
-and wakes on settlement, on a
-message, or on the inherited observation cadence of its open streams
-({§exec-lifetime}); without live work it continues at once, told so. A wake
-continues the same loop with the same messages, generation policy, and
-cumulative turn ceiling; it never creates another assignment. Scheduled messages
-exist independently of a loop's optional attachment to one occurrence.
+With live work—an open stream or a live child worker—the loop parks until an
+ordinary wake or its maximum wait elapses. `PLURNK_SERVICE_WAIT_SEC` supplies the
+bound; `WAIT <seconds>` overrides that one park ({§send-wait-scope}). The wake time
+commits atomically with the wait revision. Expiry queues the same loop through
+normal worker/provider admission; it never cancels work or fabricates a result.
+
+| Boundary | Outcome |
+|---|---|
+| Message or work settlement before expiry | Wake normally; retire the old timer. |
+| Several WAITs | One park at the earliest requested bound; a bare WAIT requests the configured bound. |
+| Eligible completion joining live work | Use the configured bound. |
+| No live work | Continue immediately; do not arm a timer. |
+| Later WAIT after any wake | New wait identity and bound; no inherited override or backoff. |
+| Restart | Restore the durable due time; an overdue wait becomes runnable. |
+| Cancellation or terminal loop | Late timers are inert. |
+| Provider-recovery or client-review wait | Keep its owning recovery/admission semantics, not this observation bound. |
+
+A wake preserves the loop's messages, generation policy, cumulative turn ceiling,
+and execution allowance. Parked time does not consume that allowance. Scheduled
+messages remain independent; WAIT neither creates one nor selects its waker.
 
 ```mermaid
 stateDiagram-v2
     Running --> Parked: atomically persist the wait identity
-    Parked --> Queued: arrival / completion / inherited observation, guarded by wait identity
+    Parked --> Queued: arrival / completion / wait expiry, guarded by wait identity
     Parked --> Terminal: cancellation
     Queued --> Running: same loop claimed by its worker's drain
 ```
@@ -965,7 +977,7 @@ completion. Closure is always a wake edge.
 
 | §worker-lifecycle-poll-matrix stream | While open | On closure |
 |------------------------------------------------|---|---|
-| any lifetime but `turn`                        | the daemon's exponential-backoff observation wakes ({§exec-lifetime}) | resume once with terminal observation |
+| any lifetime but `turn`                        | bounded wait expiry permits inspection ({§worker-wait-timing}) | resume once with terminal observation |
 | `[{"lifetime":"turn"}]`                        | reap at the next pre-turn boundary | surface the terminal outcome |
 
 The structured-concurrency sequence is identical whether a child performs an
@@ -981,7 +993,7 @@ sequenceDiagram
     P->>P: WAIT parks on live child
     C->>S: execution opens subscription
     C->>C: WAIT parks on live stream
-    loop backoff, fixed cadence, or explicit arrival
+    loop wait expiry or explicit arrival
         S-->>C: optional progress observation
         C->>C: continue or park
     end
@@ -2772,7 +2784,7 @@ same durable liveness.
 | New unpublished message | Continue; publish it in the next packet. |
 | Fresh operation/parser failure, without an authored WAIT | Continue before any automatic parking. |
 | Neither an authored WAIT nor an eligible completion request ({§kill-conclusion}) | Continue, regardless of earlier replies or live work. |
-| Live work and either WAIT or an eligible completion request | Park the same loop; message arrival, child or stream settlement, or stream cadence wakes it. No final-answer body is delivered while joining. |
+| Live work and either WAIT or an eligible completion request | Park the same loop; message arrival, child or stream settlement, or wait expiry wakes it ({§worker-wait-timing}). No final-answer body is delivered while joining. |
 | WAIT without live work | Continue; never invent a future wake. Its row says only `Nothing is in flight. Continuing.`, however often the loop yields this way. |
 | Unobserved operation results, failures, child results or stream conclusions | Continue; the next packet presents them. |
 | Eligible completion request with no unpublished arrivals, live work or unobserved results | Conclude successfully, whether or not it delivers an answer. |
@@ -3119,14 +3131,10 @@ executor target is refused `scope-unsupported` (400), naming the field.
 | `turn`       | Reaped at the worker's next pre-turn via the registry abort, before the turn's own spawns, so it never survives into the subsequent turn; its terminal output surfaces born visible like any close ({§exec-stream}). |
 | `detached`   | Outlives its loop's terminal, 200 included. It never binds to the loop's teardown and is nobody's obligation — completion is not gated by it, WAIT does not park on it, optimistic settlement looks past it — and it ends only by KILL, the worker's total reap, or daemon shutdown; its late conclusion surfaces without opening a loop. |
 
-**Cadence is the daemon's, never the model's.** While a loop is parked on an open
-stream the daemon wakes it on the worker's exponential backoff
-(`PLURNK_SERVICE_EXEC_POLL_SEC`, `PLURNK_SERVICE_EXEC_POLL_TURNS`, floored by
-`PLURNK_SERVICE_OPTIMISTIC_WAIT_MS`) to inspect progress; it does nothing while
-the loop is active, because ambient stream deltas already surface progress.
-Closure is a wake edge regardless. Child-only joins never use this timer: child
-settlement is their durable wake edge. A recurring check on the calendar is a
-schedule targeting yourself ({§schedule-delivery}), not a loop that polls.
+Observation timing belongs to the bounded wait ({§worker-wait-timing}), separately
+from execution lifetime. Wait expiry permits inspection of still-running work;
+closure remains an independent wake edge. Active loops already receive ambient
+stream deltas. Calendar recurrence remains a schedule ({§schedule-delivery}).
 
 §exec-host-proposes **Effect-gating.** Each executor — and each scheme operation that mutates something outside this process — declares an `effect` (`pure` | `read` | `host`); the service maps it to policy (`EffectPolicy`). The declarer states the FACT, the panel decides the POLICY, and one rule covers every operation: nothing that changes the world runs on nobody's authority. A `host` runtime (subprocess; file-backed sqlite) proposes under {§proposal}, and so does an outbound request that mutates a remote resource ({§http-outbound-proposes}). Once accepted, it spawns and writes channels at its workspace execution address ({§execution-output-identity}), returning `102 Processing`. Channel state transitions (`active` → `closed`/`errored`) drive subsequent observations ({§channel-state}).
 
@@ -5407,7 +5415,20 @@ retain distinct contracts and lifetimes.
 
 §notice-event-notify **Client surface.** Engine Notices broadcast live via the `notice/event` notification — `{ workerId, loopId, notice: { source, kind, level, message?, position?, …kind-specific } }` per the grammar's `Notice` schema — the moment they land. A loop Notice names its owning Worker; workspace derivation progress alone carries `workerId=null, loopId=0`. AG-UI projects the same observation as the custom `plurnk.notice` event. Failures do not broadcast on this surface: they are log rows, and the client reads them through `log.read` / the `log/entry` notification, the durable log.
 
-§loop-status-notice **The drain beats the loop's lifecycle on the notice channel.** When the drain claims a loop to run it broadcasts `notice/event` `{ workerId, loopId, notice: { source: "engine:lifecycle", kind: "loop_status", level: "info", status: 102 } }`, and when it leaves a loop parked ({§loop-wake-identity}) the same with `status: 202`; a wake that the drain claims again is another `102`. The beat is transient: broadcast to the workspace like any notice ({§notice-event-notify}), never a log row, never in a packet. Terminals stay `loop/terminated`'s; a client that reads the beat has the running/parked edges a parked delegation otherwise never publishes.
+§loop-status-notice **The drain publishes lifecycle and its observation deadline together.**
+`notice/event` carries `{ workerId, loopId, notice: { source: "engine:lifecycle", kind: "loop_status", level: "info", status, waitUntil } }`.
+
+| Edge | `status` | `waitUntil` |
+|---|---|---|
+| Claimed to run | 102 | `null` |
+| Parked | 202 | Persisted Unix-millisecond observation deadline, or `null` for an untimed park |
+| Woken, awaiting dispatch | 100 | `null` |
+
+Park observations and wakes use the worker's existing drain serialization, so
+an earlier park cannot overwrite a later wake's cleared countdown.
+The beat is transient: broadcast to the workspace ({§notice-event-notify}), never
+a log row or packet. Terminals remain `loop/terminated`'s. Reattachment obtains
+the same deadline through {§application-loop-observation}, not a restarted clock.
 
 §share **A share is the database's record, ready to send.** `plurnk-service share [<file.db>] [<folder>]`, and `npm run share` from a checkout, take a consistent copy of the database (`VACUUM INTO`; a live database is never read in place), and write its digest into `<folder>`, an ordinary folder the user archives or attaches however they like. Without a database the service's own is shared. Nothing is overwritten: a folder that exists and is not empty is refused, and a caller reusing a place removes it first. The share is the user's bug report and our dogfood, benchmark and forensics artifact alike.
 

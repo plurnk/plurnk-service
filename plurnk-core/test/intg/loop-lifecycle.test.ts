@@ -131,7 +131,26 @@ test("202 remains a parked lifecycle state and cannot be stored as a terminal re
     }
 });
 
-test("{§loop-wake-identity}: inherited observation times are durable and stale wait generations cannot resume another wait", async (t) => {
+test("{§worker-wait-timing}: the wake time commits with the park and survives a new lifecycle owner", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, "atomic-wait-deadline");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1, "inspect running work");
+        const lifecycle = new LoopLifecycle(db);
+        assert.equal(await lifecycle.park(loopId, { wakenBy: "obligations", pollAt: 10_600 }), true);
+        assert.deepEqual((await new LoopLifecycle(db).parked(workerId))[0], {
+            id: loopId, wait_revision: 1, wait_poll_at: 10_600,
+        });
+        assert.equal(await lifecycle.wake(loopId, { revision: 1, dueAt: 10_599 }), false);
+        assert.equal(await lifecycle.wake(loopId, { revision: 1, dueAt: 10_600 }), true);
+        assert.equal(await lifecycle.wake(loopId, { revision: 1, dueAt: 10_601 }), false);
+        assert.equal(await lifecycle.status(loopId), 100, "expiry queues the same loop; it does not conclude it");
+        assert.equal(await lifecycle.result(loopId), null);
+    } finally { await db.close(); }
+});
+
+test("{§loop-wake-identity}: durable observation times cannot resume another wait generation", async (t) => {
     t.mock.method(Date, "now", () => 10_000);
     const db = await openMigrated();
     try {
@@ -139,9 +158,7 @@ test("{§loop-wake-identity}: inherited observation times are durable and stale 
         const workerId = await insertWorker(db, workspaceId);
         const loopId = await insertLoop(db, workerId, 1, "original task");
         const lifecycle = new LoopLifecycle(db);
-        assert.equal(await lifecycle.park(loopId, { wakenBy: "test-fixture" }), true);
-        assert.deepEqual((await new LoopLifecycle(db).parked(workerId))[0], { id: loopId, wait_revision: 1, wait_poll_at: null }, "a fresh wait inherits its observation");
-        await lifecycle.inheritPoll(loopId, 1, 10_100);
+        assert.equal(await lifecycle.park(loopId, { wakenBy: "test-fixture", pollAt: 10_100 }), true);
         assert.deepEqual((await lifecycle.parked(workerId))[0], { id: loopId, wait_revision: 1, wait_poll_at: 10_100 });
         assert.equal(await lifecycle.wake(loopId, { revision: 1, dueAt: 10_099 }), false);
         assert.equal(await lifecycle.wake(loopId, { revision: 1, dueAt: 10_100 }), true);

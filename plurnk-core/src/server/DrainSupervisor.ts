@@ -16,7 +16,6 @@ import Results, { OperationFailureError, type SchemeResult } from "../core/resul
 import { observed } from "../observe/spans.ts";
 import { LOOP_TERMINALS, recordCounter } from "../observe/metrics.ts";
 import { readOptimisticSettlementMs } from "../core/optimistic-settlement.ts";
-import { execPollBackoffMs } from "./exec-poll-backoff.ts";
 
 interface DrainLoopResult {
     loopId: number;
@@ -134,7 +133,6 @@ export default class DrainSupervisor {
     readonly #loopTimers = new Map<number, {
         workerId: number; revision: number; dueAt: number; timer: NodeJS.Timeout;
     }>();
-    readonly #pollBackoff = new Map<number, number>();
     readonly #drainLocks = new Map<number, Promise<unknown>>();
     readonly #admissionLocks = new Map<number, Promise<unknown>>();
     readonly #completionWakeGates = new Map<number, CompletionWakeGate>();
@@ -194,7 +192,6 @@ export default class DrainSupervisor {
             if (!scope.signal.aborted) scope.abort(reason);
         }
         for (const { timer } of this.#loopTimers.values()) clearTimeout(timer);
-        this.#pollBackoff.clear();
         this.#loopTimers.clear();
     }
 
@@ -265,7 +262,7 @@ export default class DrainSupervisor {
                 // runLoop may already have parked in the database while this drain
                 // is still registered. Wake that state now; if it is still running,
                 // the serialized park-boundary check below supplies the wake edge.
-                await this.#wakeLoop(workerId, result.loopId);
+                await this.#wakeLoop(workspaceId, workerId, result.loopId);
                 return { action: "injected_next_turn", loopId: result.loopId, turnSeq: result.turnSeq } as const;
             }
             const accepted = await this.#enqueueFreshLoop({
@@ -379,7 +376,7 @@ export default class DrainSupervisor {
                     }
                     currentLoopId = loopRow.id;
                     this.#clearLoopTimer(loopRow.id);
-                    this.#emitLoopStatus(workspaceId, workerId, loopRow.id, 102);
+                    await this.#emitLoopStatus(workspaceId, workerId, loopRow.id, 102);
                     const onSettled = async (logEntryId: number): Promise<void> => {
                         await this.#emitLogEntry(workspaceId, logEntryId).catch((error: unknown) => {
                             console.error("log/entry broadcast failed:", error instanceof Error ? error.message : String(error));
@@ -405,11 +402,11 @@ export default class DrainSupervisor {
                         },
                     );
                     if (result.result.status === 202) {
-                        this.#emitLoopStatus(workspaceId, workerId, loopRow.id, 202);
+                        await this.#withDrainLock(workerId, () => this.#emitLoopStatus(workspaceId, workerId, loopRow.id, 202));
                         // The loop parked — suspended, not terminated. Leave it at 202
                         // (resumable); no loop/terminated, no orphan-reconcile. A stream conclusion
-                        // through handleWakeWorker re-queues it; if it holds an open stream, the daemon's
-                        // backoff wakes it to inspect ({§exec-lifetime}). {§worker-lifecycle-wake-liveness}.
+                        // through handleWakeWorker re-queues it; the durable wait deadline also
+                        // wakes it to inspect ({§worker-wait-timing}). {§worker-lifecycle-wake-liveness}.
                         await this.scheduleWakes(workspaceId, workerId, systemPrompt);
                         // Serialize the park boundary against message injection.
                         // Whichever side arrives first owns a wake edge: injection wakes
@@ -418,7 +415,7 @@ export default class DrainSupervisor {
                         const messageWaiting = await this.#withDrainLock(workerId, async () => {
                             const unpublished = await this.#db.drain_unpublished_messages_for_loop.get<{ id: number }>({ loop_id: loopRow.id });
                             if (unpublished === undefined) return false;
-                            return this.#wakeLoop(workerId, loopRow.id);
+                            return this.#wakeLoop(workspaceId, workerId, loopRow.id);
                         });
                         if (messageWaiting) {
                             currentLoopId = null;
@@ -426,7 +423,7 @@ export default class DrainSupervisor {
                         }
                         // {§loop-wake-identity}: events observed by another loop
                         // cannot consume this loop's completion wake.
-                        if (await this.#wakeLoop(workerId, loopRow.id, { eventOnly: true })) {
+                        if (await this.#withDrainLock(workerId, () => this.#wakeLoop(workspaceId, workerId, loopRow.id, { eventOnly: true }))) {
                             currentLoopId = null;
                             continue;
                         }
@@ -435,7 +432,6 @@ export default class DrainSupervisor {
                         currentLoopId = null;
                         continue;
                     }
-                    this.#pollBackoff.delete(loopRow.id);
                     const [usage, attributions, turnIds] = await Promise.all([
                         this.#loopUsage(loopRow.id),
                         this.#loopAttributions(loopRow.id),
@@ -704,7 +700,6 @@ export default class DrainSupervisor {
             }
             return { cancelled, subscriptions };
         });
-        for (const { loopId } of cancelled.loops) this.#pollBackoff.delete(loopId);
         await Promise.all(subscriptions.map(({ id }) => this.#cancelSubscription(id)));
         for (const { loopId, workerId: targetWorkerId, result } of cancelled.loops) {
             const row = await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({
@@ -841,13 +836,7 @@ export default class DrainSupervisor {
                 if (timer.workerId === workerId && !waits.some(({ id }) => id === loopId)) this.#clearLoopTimer(loopId);
             }
             for (const wait of waits) {
-                if (wait.wait_poll_at === null) {
-                    const interval = await this.#inheritedPollMs(workerId, wait.id);
-                    if (!this.#acceptingWork) return;
-                    if (interval === null) continue;
-                    wait.wait_poll_at = Date.now() + interval;
-                    await this.#lifecycle.inheritPoll(wait.id, wait.wait_revision, wait.wait_poll_at);
-                }
+                if (wait.wait_poll_at === null) continue;
                 this.#armTimer(workspaceId, workerId, systemPrompt, wait.id, wait.wait_revision, wait.wait_poll_at);
             }
         });
@@ -869,7 +858,7 @@ export default class DrainSupervisor {
 
     async #wakeTimedLoop(workspaceId: number, workerId: number, systemPrompt: string, loopId: number, revision: number): Promise<void> {
         if (!this.#acceptingWork) return;
-        if (await this.#wakeLoop(workerId, loopId, { revision, dueAt: Date.now() })) {
+        if (await this.#withDrainLock(workerId, () => this.#wakeLoop(workspaceId, workerId, loopId, { revision, dueAt: Date.now() }))) {
             await this.ensureDrain({ workspaceId, workerId, systemPrompt });
         } else {
             // A capped timer or backwards clock may fire before the durable due time.
@@ -877,50 +866,40 @@ export default class DrainSupervisor {
         }
     }
 
-    async #inheritedPollMs(workerId: number, loopId: number): Promise<number | null> {
-        const row = await this.#db.drain_worker_open_streams.get<{ open_count: number }>({ worker_id: workerId });
-        if (!this.#acceptingWork) return null;
-        if ((row?.open_count ?? 0) === 0) {
-            this.#pollBackoff.delete(loopId);
-            return null;
-        }
-        // {§exec-lifetime} — cadence is the daemon's: an open stream is observed on the worker's
-        // exponential-backoff step. Child joins never enter here: durable child settlement is their
-        // only wake edge.
-        const base = Knob.integer("PLURNK_SERVICE_EXEC_POLL_SEC", 0);
-        const turns = Knob.integer("PLURNK_SERVICE_EXEC_POLL_TURNS", 1);
-        const step = this.#pollBackoff.get(loopId) ?? 0;
-        this.#pollBackoff.set(loopId, step + 1);
-        // Floored by the optimistic settlement cap so the first step cannot wake a parked loop
-        // faster than the preceding turn's settlement scale.
-        return Math.max(execPollBackoffMs(step, base, turns), readOptimisticSettlementMs());
-    }
-
-    // {§loop-status-notice} — a transient lifecycle notice: running when the drain claims a loop,
-    // parked when it leaves one suspended. Broadcast only; it never enters a packet.
-    #emitLoopStatus(workspaceId: number, workerId: number, loopId: number, status: 102 | 202): void {
+    // {§loop-status-notice} — the clock belongs to the durable park, not the client receipt.
+    async #emitLoopStatus(workspaceId: number, workerId: number, loopId: number, status: 100 | 102 | 202): Promise<void> {
+        const wait = status === 202 ? (await this.#lifecycle.parked(workerId)).find(({ id }) => id === loopId) : null;
+        if (wait === undefined) return;
+        const waitUntil = wait?.wait_poll_at ?? null;
         this.#emit(workspaceId, "notice/event", {
-            workerId, loopId, notice: { source: "engine:lifecycle", kind: "loop_status", level: "info", status },
+            workerId, loopId, notice: { source: "engine:lifecycle", kind: "loop_status", level: "info", status, waitUntil },
         });
     }
 
-    async #wakeLoop(workerId: number, loopId: number, condition: Parameters<LoopLifecycle["wake"]>[1] = {}): Promise<boolean> {
+    async #wakeLoop(workspaceId: number, workerId: number, loopId: number, condition: Parameters<LoopLifecycle["wake"]>[1] = {}): Promise<boolean> {
         // {§worker-lifecycle-durable-disposition}: test admission at the mutation,
         // after asynchronous prompt, completion, or deadline selection.
         if (!this.#acceptingWork || this.#workerAborts.get(workerId)?.signal.aborted) return false;
-        return this.#lifecycle.wake(loopId, condition);
+        const woke = await this.#lifecycle.wake(loopId, condition);
+        if (woke) {
+            this.#clearLoopTimer(loopId);
+            await this.#emitLoopStatus(workspaceId, workerId, loopId, 100);
+        }
+        return woke;
     }
 
     async #wakeParkedWorker(workspaceId: number, workerId: number, systemPrompt: string): Promise<void> {
         if (!this.#acceptingWork) return;
-        const waits = await this.#lifecycle.parked(workerId);
-        let woke = false;
-        for (const wait of waits) {
-            if (await this.#wakeLoop(workerId, wait.id, { revision: wait.wait_revision, eventOnly: true })) {
-                this.#clearLoopTimer(wait.id);
-                woke = true;
+        const woke = await this.#withDrainLock(workerId, async () => {
+            const waits = await this.#lifecycle.parked(workerId);
+            let changed = false;
+            for (const wait of waits) {
+                if (await this.#wakeLoop(workspaceId, workerId, wait.id, { revision: wait.wait_revision, eventOnly: true })) {
+                    changed = true;
+                }
             }
-        }
+            return changed;
+        });
         if (!woke) return;
         const started = await this.ensureDrain({
             workspaceId, workerId, systemPrompt,

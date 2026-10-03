@@ -188,7 +188,6 @@ export class SqlRiteSync {
 	drain_rehome_orphaned_messages: SqlRiteSyncPreparedStatements;
 	drain_find_slept_loop: SqlRiteSyncPreparedStatements;
 	drain_loop_generation_policy: SqlRiteSyncPreparedStatements;
-	drain_worker_open_streams: SqlRiteSyncPreparedStatements;
 	worker_parent_id: SqlRiteSyncPreparedStatements;
 	worker_lineage_contains: SqlRiteSyncPreparedStatements;
 	edit_published_reads: SqlRiteSyncPreparedStatements;
@@ -251,7 +250,6 @@ export class SqlRiteSync {
 	lifecycle_park_loop: SqlRiteSyncPreparedStatements;
 	lifecycle_wake_loop: SqlRiteSyncPreparedStatements;
 	lifecycle_parked_loops: SqlRiteSyncPreparedStatements;
-	lifecycle_set_inherited_poll: SqlRiteSyncPreparedStatements;
 	lifecycle_finish_loop: SqlRiteSyncPreparedStatements;
 	lifecycle_loop_status: SqlRiteSyncPreparedStatements;
 	lifecycle_loop_turns: SqlRiteSyncPreparedStatements;
@@ -780,7 +778,6 @@ export default class SqlRite {
 	drain_rehome_orphaned_messages: SqlRitePreparedStatements;
 	drain_find_slept_loop: SqlRitePreparedStatements;
 	drain_loop_generation_policy: SqlRitePreparedStatements;
-	drain_worker_open_streams: SqlRitePreparedStatements;
 	worker_parent_id: SqlRitePreparedStatements;
 	worker_lineage_contains: SqlRitePreparedStatements;
 	edit_published_reads: SqlRitePreparedStatements;
@@ -843,7 +840,6 @@ export default class SqlRite {
 	lifecycle_park_loop: SqlRitePreparedStatements;
 	lifecycle_wake_loop: SqlRitePreparedStatements;
 	lifecycle_parked_loops: SqlRitePreparedStatements;
-	lifecycle_set_inherited_poll: SqlRitePreparedStatements;
 	lifecycle_finish_loop: SqlRitePreparedStatements;
 	lifecycle_loop_status: SqlRitePreparedStatements;
 	lifecycle_loop_turns: SqlRitePreparedStatements;

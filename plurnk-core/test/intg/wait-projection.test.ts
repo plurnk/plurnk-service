@@ -9,6 +9,70 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
+for (const [headers, seconds] of [
+    [["WAIT"], 300],
+    [["WAIT <600>"], 600],
+    [["WAIT (worker://missing) <0.25>"], 0.25],
+    [["WAIT <600>", "WAIT <120>"], 120],
+    [["WAIT <600>", "WAIT"], 300],
+    [["KILL"], 300],
+] as const) {
+    test(`{§worker-wait-timing} ${headers.join(" + ")} bounds the child-only park to ${seconds} seconds`, async (t) => {
+        t.mock.method(Date, "now", () => 10_000);
+        const db = await openMigrated();
+        t.after(() => db.close());
+        const workspaceId = await insertWorkspace(db, "bounded-child-wait");
+        const workerId = await insertWorker(db, workspaceId);
+        const loopId = await insertLoop(db, workerId, 1);
+        const childLoopId = await holdChild(db, workspaceId, workerId);
+        const result = await new Engine({ db, schemes: new SchemeRegistry() }).runTurn({
+            provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: {
+                content: headers.map((header) => PlurnkParser.frame(header, null)).join("\n\n"), reasoning: null,
+            } }] }),
+            workspaceId, workerId, loopId, messages: [],
+        });
+        assert.equal(result.status, 202);
+        const lifecycle = new LoopLifecycle(db);
+        const [parked] = await lifecycle.parked(workerId);
+        assert.equal(parked?.wait_poll_at, 10_000 + seconds * 1000);
+        assert.equal(await lifecycle.wake(loopId, { revision: parked!.wait_revision, dueAt: parked!.wait_poll_at! }), true);
+        assert.equal(await lifecycle.status(loopId), 100, "expiry queues the same loop");
+        assert.equal(await lifecycle.status(childLoopId), 102, "expiry does not cancel or conclude the child");
+        assert.equal(await lifecycle.result(loopId), null);
+        assert.equal(await lifecycle.result(childLoopId), null);
+    });
+}
+
+test("{§worker-wait-timing} an early wake retires the override; a later bare WAIT uses the configured default", async (t) => {
+    let now = 10_000;
+    t.mock.method(Date, "now", () => now);
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const workspaceId = await insertWorkspace(db, "one-park-override");
+    const workerId = await insertWorker(db, workspaceId);
+    const loopId = await insertLoop(db, workerId, 1);
+    await holdChild(db, workspaceId, workerId);
+    const engine = new Engine({ db, schemes: new SchemeRegistry() });
+    const lifecycle = new LoopLifecycle(db);
+    const run = (header: string) => engine.runTurn({
+        provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: PlurnkParser.frame(header, null), reasoning: null } }] }),
+        workspaceId, workerId, loopId, messages: [],
+    });
+    assert.equal((await run("WAIT <600>")).status, 202);
+    const [first] = await lifecycle.parked(workerId);
+    assert.equal(first?.wait_poll_at, 610_000);
+    now += 1000;
+    assert.equal(await lifecycle.wake(loopId), true);
+    assert.deepEqual(await lifecycle.parked(workerId), []);
+    assert.equal((await db.drain_claim_next_loop.get({ worker_id: workerId }))?.id, loopId);
+    assert.equal((await run("WAIT")).status, 202);
+    const [second] = await lifecycle.parked(workerId);
+    assert.equal(second?.wait_poll_at, 311_000);
+    assert.equal(second?.wait_revision, first!.wait_revision + 1);
+    assert.equal(await lifecycle.wake(loopId, { revision: first!.wait_revision, dueAt: 610_000 }), false,
+        "the previous timer cannot end the new park");
+});
+
 for (const header of ["WAIT", "WAIT (sh:///missing) <60,60> [{\"timeout\":42}]"]) {
     test(`{§park-202-only} {§wait-obligation-matrix} ${header} parks on the actual live child, not the decoration`, async (t) => {
         const db = await openMigrated();

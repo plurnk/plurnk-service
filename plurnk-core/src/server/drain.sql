@@ -155,12 +155,6 @@ SELECT id FROM loops WHERE worker_id = $worker_id AND status = 202 ORDER BY sequ
 -- PREP: drain_loop_generation_policy
 SELECT model_route_id, spawn_model_route_id, effort FROM loops WHERE id = $loop_id;
 
--- PREP: drain_worker_open_streams
--- {§exec-lifetime} — whether the worker holds any open stream at all. Cadence is the daemon's
--- backoff, never the model's, so there is no policy to aggregate. Child-only joins have none.
-SELECT COUNT(*) AS open_count
-FROM subscriptions WHERE worker_id = $worker_id AND closed_at IS NULL;
-
 -- PREP: worker_parent_id
 -- A worker's parent (worker:// spawn / fork set parent_worker_id, {§lifecycle-terms}). NULL = a root worker.
 -- {§worker-lifecycle-child-wake}: direct parent of a terminal task's worker.

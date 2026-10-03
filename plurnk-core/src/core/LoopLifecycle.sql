@@ -15,7 +15,7 @@ UPDATE loops
 SET status = 202,
     execution_elapsed_ms = COALESCE($elapsed_ms, execution_elapsed_ms),
     wait_revision = wait_revision + 1,
-    wait_poll_at = NULL
+    wait_poll_at = $poll_at
 WHERE id = $loop_id AND status = 102
 RETURNING id;
 
@@ -33,11 +33,6 @@ RETURNING id;
 SELECT id, wait_revision, wait_poll_at
 FROM loops WHERE worker_id = $worker_id AND status = 202
 ORDER BY sequence;
-
--- PREP: lifecycle_set_inherited_poll
-UPDATE loops SET wait_poll_at = $poll_at
-WHERE id = $loop_id AND status = 202 AND wait_revision = $revision
-  AND wait_poll_at IS NULL;
 
 -- PREP: lifecycle_finish_loop
 UPDATE loops

@@ -1,6 +1,6 @@
 import { TurnDisposition } from "@plurnk/plurnk-contracts";
 // Executing an admitted turn: its ordered statements dispatched, problems and notices recorded, the bare batch when no provider spoke. Split out of TurnRunner, which keeps the delegating entry point.
-import type { BareStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
+import type { BareStatement, DispositionStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type { Db } from "./Db.ts";
 import type { WriterTier } from "./scheme-types.ts";
@@ -131,7 +131,7 @@ export default class AdmittedTurnExecutor {
             await Turn.complete(this.#db, turnId, TURN_STATUS_IMPLICIT_CONTINUE);
             return { status: TURN_STATUS_IMPLICIT_CONTINUE, outcomes: [], progressed: false, fingerprint: StrikeRail.fingerprintEmptyTurn(source ?? ""), emptyTurn: true };
         }
-        let wait = false;
+        const waits: DispositionStatement[] = [];
         const pendingEngineErrors: EngineProblemKind[] = [];
         let realCommands = 0;
         const admitted = statements.filter((statement) => TurnDisposition.is(statement) || TurnDisposition.isCompletion(statement)
@@ -333,7 +333,7 @@ export default class AdmittedTurnExecutor {
                     message: `EDIT resolution applied: ${merge.rule} - the row's merged fact has the coordinates; verify before building on it.`,
                 });
             }
-            if (TurnDisposition.is(scheduledStatement) && result.status < 400) wait = true;
+            if (TurnDisposition.is(scheduledStatement) && result.status < 400) waits.push(scheduledStatement);
         }
         if (finalOp === undefined) await settleTurn();
         if (droppedCount > 0) pendingEngineErrors.push("max_commands_exceeded");
@@ -348,7 +348,7 @@ export default class AdmittedTurnExecutor {
             };
             await recordEngineProblem(kind, rowSequence++, extensions);
         }
-        const turnStatus = await this.#dispatcher.settleProgram({ workerId, loopId, turnId, origin }, wait, completionEligible);
+        const turnStatus = await this.#dispatcher.settleProgram({ workerId, loopId, turnId, origin }, waits, completionEligible);
         await Turn.complete(this.#db, turnId, turnStatus);
         return {
             status: turnStatus,

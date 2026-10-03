@@ -453,6 +453,7 @@ test("the budget STATE_DELTA carries the daemon's numbers verbatim", () => {
         "/plurnk/status/lifecycle",
         "/plurnk/status/loopId",
         "/plurnk/status/activity",
+        "/plurnk/status/waitUntil",
         "/budget/curationWeight",
         "/budget/curationBudget",
         "/budget/contextTokens",
@@ -593,8 +594,13 @@ test("{§agui-outside-text}: outside text projects one plurnk.outside per admitt
 
 test("{§loop-status-notice} a lifecycle notice is the lifecycle gauge and nothing else", () => {
     const tr = t();
-    const beat = (status: number) => tr.notice({ source: "engine:lifecycle", kind: "loop_status", level: "info", status });
-    assert.deepEqual(beat(202), [{ type: EventType.STATE_DELTA, delta: [{ op: "replace", path: "/plurnk/status/lifecycle", value: "parked" }] }], "parked, and no diagnostic custom");
-    assert.deepEqual(beat(102), [{ type: EventType.STATE_DELTA, delta: [{ op: "replace", path: "/plurnk/status/lifecycle", value: "running" }] }]);
-    assert.throws(() => beat(200), /carries 102 or 202/u, "a terminal is loop/terminated's, never a beat");
+    const beat = (status: number, waitUntil: number | null = null) => tr.notice({ source: "engine:lifecycle", kind: "loop_status", level: "info", status, waitUntil });
+    for (const [status, lifecycle, waitUntil] of [[202, "parked", 123_000], [202, "parked", null], [100, "queued", null], [102, "running", null]] as const) {
+        assert.deepEqual(beat(status, waitUntil), [{ type: EventType.STATE_DELTA, delta: [
+            { op: "replace", path: "/plurnk/status/lifecycle", value: lifecycle },
+            { op: "replace", path: "/plurnk/status/waitUntil", value: waitUntil },
+        ] }], "the same status event owns the countdown, with no diagnostic duplication");
+    }
+    assert.throws(() => beat(200), /carries 100, 102 or 202/u, "a terminal is loop/terminated's, never a beat");
+    assert.throws(() => beat(202, NaN), /nullable Unix-millisecond waitUntil/u);
 });

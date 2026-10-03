@@ -41,10 +41,11 @@ delivery and wake behavior.
 
 Ordinary operations keep the loop working while children run; WAIT joins their
 activity. With live work (a child or an open stream) the loop parks and wakes
-when that work settles, when a message arrives, or on an open stream's
-observation cadence; without live work it continues at once. Several WAITs in
-one turn are one park, and what a WAIT names is its label; scope and metadata
-decorations are ignored.
+when that work settles, when a message arrives, or when the wait duration expires;
+without live work it continues at once. `WAIT <600>` waits at most ten minutes;
+bare WAIT uses `PLURNK_SERVICE_WAIT_SEC`. Expiry resumes inspection without
+cancelling work. Several WAITs are one park with the earliest bound. An optional
+path is a label, not a selected wake source.
 
 ```WAIT
 ```

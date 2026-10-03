@@ -63,8 +63,8 @@ npm run dev
 
 A duration (`30s`, `30m`, `2h`) kills the command at that deadline. `detached`
 outlives the loop: it runs until it exits or is KILLed. `turn` keeps the command
-only through the current turn. While a stream is live, observation wakes arrive
-on the daemon's cadence and present it for inspection.
+only through the current turn. WAIT's duration bounds the wait for inspection,
+not the command's lifetime.
 
 ## Names you cannot set
 
