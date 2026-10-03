@@ -62,8 +62,8 @@ time. This command is stopped after 30 seconds if it has not finished:
 npm test
 ```
 
-Expiry closes the stream with status 504. By contrast, `WAIT <30>` resumes the
-model after at most 30 seconds without stopping the command. Without `lifetime`,
+Expiry closes the stream with status 504. By contrast, `WAIT <30>` limits one
+wait to 30 seconds without stopping the command. Without `lifetime`,
 the command is loop-bound; see `env.md` for other lifetime values.
 
 ## Live input
