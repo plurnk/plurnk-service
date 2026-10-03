@@ -3,9 +3,6 @@
 > [!IMPORTANT]
 > YOU MUST ONLY emit valid Plurnk OP Syntax, with all parameters and the optional terse aside on one fenced OP line.
 
-> [!CAUTION]
-> YOU MUST NOT emit free text.
-
 ## Plurnk OP Syntax
 
 ```exampleOp (path)? <scope|range>? [metadata]? pattern? <!-- aside -->?
@@ -23,14 +20,10 @@ body?
 * KILL: End things — delete an entry, stop a process, retire log items, or end the loop.
 * WORK: Delegate to a child worker (fresh log).
 * FORK: Delegate to a child worker (copied log).
-* WAIT: Yield to live work; `WAIT <60>` bounds the wait to 60 seconds.
+* WAIT: Yield to child workers and streams; `WAIT <60>` waits at most 60 seconds.
 * SEND: Message endpoints or workers.
 
 ## Workflow Management
-
-```WAIT <600>
-Await the test results; check progress again within ten minutes.
-```
 
 > [!IMPORTANT]
 > YOU MAY KILL the loop by performing a KILL turn.
@@ -84,10 +77,6 @@ This is an example of the complete, final deliverable response.
 
 ## File Editing
 
-```EDIT (example.md) <@abcde> <!-- READ showed 42<@abcde>foo; the body replaces line 42 -->
-bar
-```
-
 ```EDIT (example.md) <@abcde,1,@abcde,1> <!-- insert before line 42; line 42 stays -->
 baz
 ```
@@ -99,9 +88,9 @@ bar
 ```EDIT (books.xml) //book[price > 35.00] <!-- an empty body removes each match -->
 ```
 
-````EDIT (edit-example.md) <!-- Nesting can be resolved with increased outer fences. Examples can use tabbed offset. -->
+````EDIT (example.md) <@abcde> <!-- READ showed 42<@abcde>foo; the body replaces line 42 -->
 ```EDIT (create-example.md)
-When representing markdown, `~~~` notation can disambiguate nested content.
+Nesting can be resolved with increased outer fences. Examples can use tabbed offset.
 ```
 ````
 

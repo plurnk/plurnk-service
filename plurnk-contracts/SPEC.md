@@ -672,8 +672,8 @@ changing ownership or making them distinct canonical forms. Each selection
 has at most one scope; its metadata blocks retain their authored order.
 
 §lifecycle-slots NOTE accepts no target, scope, or metadata. WAIT retains its
-optional target and positive `<seconds>` duration; other scope and metadata decorations are ignored
-({§send-wait-scope}). Their literal bodies begin below the header.
+optional target and duration under {§send-wait-scope}. Their literal bodies begin
+below the header.
 
 §scope-on-scopeless **A scope on an operation that takes none is dropped, and named.** WORK, FORK,
 BARE and NOTE take no scope, and neither does a SEND without a recipient; a `<…>` slot on such a
@@ -681,8 +681,8 @@ heading, in any position, is skipped and the operation runs, with one warning-se
 naming the operation's slots and the dropped scope — `` `WORK` takes a target only; the scope
 `<1,-1>` was ignored. A scope selects lines in READ, EDIT and KILL. `` (`` `NOTE` takes no target or
 scope; … ``, `` `SEND` without a recipient takes no scope; … ``). An aside is never a scope, a
-recipient SEND keeps its scope for the recipient ({§send-directed-scope}), and WAIT's positive
-scalar bounds its park ({§send-wait-scope}). There is no ambiguity: the operation has one reading with or without
+recipient SEND keeps its scope for the recipient ({§send-directed-scope}), and WAIT follows
+{§send-wait-scope}. There is no ambiguity: the operation has one reading with or without
 the slot. Before this, the heading drew the grammar's expected-token diagnostic and the turn was
 dead; in the distinct recorded emissions one heading carried the form (zai run426,
 ```` ```WORK (worker://deprecation-implementer) <1,-1> ````), beside two recipient SENDs whose scope
