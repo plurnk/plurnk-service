@@ -55,8 +55,16 @@ says why it was refused.
 
 ## Lifetime
 
-How long a command may run is the heading's `lifetime` metadata field, the
-service's (`env.md`); absent, the run ends with the loop.
+The heading's `lifetime` metadata bounds the command's total runtime, not idle
+time. This command is stopped after 30 seconds if it has not finished:
+
+```sh [{"lifetime": "30s"}]
+npm test
+```
+
+Expiry closes the stream with status 504. By contrast, `WAIT <30>` resumes the
+model after at most 30 seconds without stopping the command. Without `lifetime`,
+the command is loop-bound; see `env.md` for other lifetime values.
 
 ## Live input
 

@@ -2,8 +2,7 @@
 // (a service key the framework withholds from every owner, {§service-metadata-keys}). A duration
 // bounds it (504 at the deadline); `loop` — the default, and what absence means — ends it with the
 // loop; `turn` ends it at the worker's next pre-turn; `detached` outlives the loop and is nobody's
-// obligation. Cadence is not here and is not the model's: the daemon's backoff observes an open
-// stream, and a recurring check on the calendar is a schedule.
+// obligation. WAIT bounds observation rather than execution ({§worker-wait-timing}).
 const DURATION = /^([1-9]\d*)(s|m|h)$/u;
 const PER_UNIT = { s: 1, m: 60, h: 3600 } as const;
 
