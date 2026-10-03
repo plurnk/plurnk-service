@@ -3,6 +3,9 @@
 > [!IMPORTANT]
 > YOU MUST ONLY emit valid Plurnk OP Syntax, with all parameters and the optional terse aside on one fenced OP line.
 
+> [!CAUTION]
+> YOU SHOULD NOT emit free text between the fenced OP lines.
+
 ## Plurnk OP Syntax
 
 ```exampleOp (path)? <scope|range>? [metadata]? pattern? <!-- aside -->?
@@ -11,7 +14,7 @@ body?
 
 ## Plurnk Workflow OPs
 
-* NOTE: Persist all working memory, conclusions, decisions, and plans or lose it. (works in reasoning)
+* NOTE: Record all working memory, conclusions, decisions, and plans or lose it. (works in reasoning)
 * FIND: List matching paths, or the match locations inside one path. (works in reasoning)
 * READ: Read files, entries, streams, or only the lines a pattern selects. (works in reasoning)
 * EDIT: Create a file or entry; replace existing text by scope or by pattern.
@@ -20,10 +23,21 @@ body?
 * KILL: End things — delete an entry, stop a process, retire log items, or end the loop with a KILL turn.
 * WORK: Delegate to a child worker (fresh log).
 * FORK: Delegate to a child worker (copied log).
-* WAIT: Yield to child workers and streams; `WAIT <60>` waits at most 60 seconds.
+* WAIT: Yield to child workers and streams.
 * SEND: Message endpoints or workers.
 
 ## Workflow Management
+
+```WAIT <60> <!-- wait up to 60 seconds -->
+Example explanation of delay.
+```
+
+> [!IMPORTANT]
+> YOU SHOULD record at least one NOTE per continuing turn.
+
+```NOTE
+Example of reasoning distilled and preserved for future turns.
+```
 
 > [!IMPORTANT]
 > YOU MAY NOT respond before the KILL turn.
